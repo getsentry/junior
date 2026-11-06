@@ -366,7 +366,7 @@ function SearchAwareLinkLabel(props: { href: string; label: string }) {
   if (hrefMatches && !labelMatches) {
     return (
       <mark
-        className="rounded-[2px] bg-amber-400/20 px-0.5 text-inherit not-italic"
+        className="rounded-[2px] bg-amber-400/20 text-inherit not-italic"
         title={`Matched URL: ${props.href}`}
       >
         {props.label}

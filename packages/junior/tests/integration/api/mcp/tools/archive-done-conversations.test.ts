@@ -9,7 +9,7 @@ import { seedMcpConversation } from "../../../../fixtures/mcp-tools";
 mockMcpDashboardConfig();
 
 describe("archiveDoneConversations MCP tool", () => {
-  it("keeps Conversations without finished work", async () => {
+  it("keeps Conversations that had activity during the wait time", async () => {
     await seedMcpConversation({
       conversationId: "slack:C123:1700000000.000300",
       email: MCP_TEST_VIEWER,

@@ -271,6 +271,7 @@ describe("agent invocation worker", () => {
         destination: DESTINATION,
         piMessages: [
           buildSteeringPiMessage({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: agentInvocationInputText(savedMessage),
             timestampMs: savedMessage.createdAtMs,
@@ -339,13 +340,14 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
-      // The parent's text is labeled as agent-written and has no Actor.
+      // The parent's text is a runtime input tag and has no Actor.
       expect(steered).toEqual([
         [
           expect.objectContaining({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: expect.stringMatching(
-              /^\[parent agent task\][\s\S]*Also check the retry path\.$/,
+              /^<parent-agent-task>\n[\s\S]*Also check the retry path\.\n<\/parent-agent-task>$/,
             ),
           }),
         ],

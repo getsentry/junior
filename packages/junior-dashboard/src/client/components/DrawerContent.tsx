@@ -43,7 +43,8 @@ export function DrawerContent(props: DrawerProps) {
               : "data-[swipe-axis=x]:md:[--drawer-content-width:min(560px,94vw)]",
         )}
       >
-        <header className="flex shrink-0 items-start gap-3 border-b border-dashboard-border bg-dashboard-bg-elevated px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
+        {/* Positioned so header overlays, such as transcript search, float over the body. */}
+        <header className="relative z-10 flex shrink-0 items-start gap-3 border-b border-dashboard-border bg-dashboard-bg-elevated px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
           <div className="min-w-0 flex-1">{props.header}</div>
           <div className="flex shrink-0 items-start gap-1.5">
             {props.actions}

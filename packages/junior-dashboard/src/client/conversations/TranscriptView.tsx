@@ -56,6 +56,9 @@ export function Transcript(props: {
   revealSeq?: number;
   search?: string;
   onSearchChange?(value: string): void;
+  /** Index of the current search match. */
+  searchMatch?: number;
+  onSearchMatches?(count: number, prepended: number): void;
   selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -135,7 +138,11 @@ export function Transcript(props: {
   }
 
   return (
-    <TranscriptSearchProvider query={search}>
+    <TranscriptSearchProvider
+      match={props.searchMatch}
+      onMatches={props.onSearchMatches}
+      query={search}
+    >
       {/* The pinning hook holds the reader's place; browser anchoring would fight it. */}
       <div
         className="grid min-w-0 [overflow-anchor:none]"

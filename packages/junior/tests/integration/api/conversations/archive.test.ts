@@ -248,6 +248,11 @@ describe("conversation archive API", () => {
     // The root is quiet, but its child had activity inside the grace period.
     const busyChildId = "local:test:auto-archive-busy-child";
     const pinnedId = "local:test:auto-archive-pinned";
+    // No plugin reported work, so only the quiet checks decide it.
+    const noWorkId = "local:test:auto-archive-no-work";
+    // A child agent opened the pull request, so the work is on the child.
+    const childDoneId = "local:test:auto-archive-child-done";
+    const childOpenId = "local:test:auto-archive-child-open";
     for (const conversationId of [
       doneId,
       unfinishedId,
@@ -255,6 +260,9 @@ describe("conversation archive API", () => {
       oldId,
       busyChildId,
       pinnedId,
+      noWorkId,
+      childDoneId,
+      childOpenId,
     ]) {
       await getConversationStore().recordActivity({
         destination: { platform: "local" as const, conversationId },
@@ -269,6 +277,13 @@ describe("conversation archive API", () => {
       nowMs: nowMs - 2 * hour,
       parentConversationId: busyChildId,
     });
+    for (const parentConversationId of [childDoneId, childOpenId]) {
+      await getConversationStore().createChild({
+        childConversationId: `${parentConversationId}:child`,
+        nowMs: nowMs - 48 * hour,
+        parentConversationId,
+      });
+    }
     const viewer = await addParticipant({
       conversationId: doneId,
       email: "auto@example.com",
@@ -280,6 +295,9 @@ describe("conversation archive API", () => {
       oldId,
       busyChildId,
       pinnedId,
+      noWorkId,
+      childDoneId,
+      childOpenId,
     ]) {
       await getDb()
         .insert(juniorConversationParticipants)
@@ -323,9 +341,12 @@ describe("conversation archive API", () => {
                 oldId,
                 busyChildId,
                 pinnedId,
+                `${childDoneId}:child`,
+                `${childOpenId}:child`,
               ],
-              conversationIds: [unfinishedId],
+              conversationIds: [unfinishedId, `${childOpenId}:child`],
               finishedWorkAtByConversationId: {
+                [`${childDoneId}:child`]: finishedAt,
                 [busyChildId]: finishedAt,
                 [pinnedId]: finishedAt,
                 [doneId]: finishedAt,
@@ -378,8 +399,8 @@ describe("conversation archive API", () => {
     ).toBe(false);
 
     await expect(sweep()).resolves.toEqual({
-      archived: 2,
-      scanned: 4,
+      archived: 4,
+      scanned: 7,
     });
     const archivedIds = async (userId: string) =>
       (
@@ -396,7 +417,7 @@ describe("conversation archive API", () => {
         .map((row) => row.rootConversationId);
     await expect(
       archivedIds(viewer.id).then((ids) => ids.sort()),
-    ).resolves.toEqual([oldId, doneId].sort());
+    ).resolves.toEqual([oldId, doneId, noWorkId, childDoneId].sort());
     await expect(archivedIds(otherViewer.id)).resolves.toEqual([]);
 
     // A manual restore turns auto-archive off, so the next sweep keeps it.
@@ -418,7 +439,51 @@ describe("conversation archive API", () => {
       ).autoArchive,
     ).toBe(false);
     await sweep();
-    await expect(archivedIds(viewer.id)).resolves.toEqual([oldId]);
+    await expect(
+      archivedIds(viewer.id).then((ids) => ids.sort()),
+    ).resolves.toEqual([oldId, noWorkId, childDoneId].sort());
+  });
+
+  it("archives nothing when a plugin cannot report work", async () => {
+    const nowMs = Date.now();
+    const conversationId = "local:test:archive-done-plugin-failed";
+    await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
+      conversationId,
+      nowMs: nowMs - 60_000,
+      source: "internal",
+    });
+    const viewer = await addParticipant({
+      conversationId,
+      email: "archive-failed@example.com",
+      lastMessageAt: new Date(nowMs - 60_000),
+    });
+    await createApp({
+      dashboard: { disabled: true },
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "work",
+            displayName: "Work",
+            description: "Failing work test plugin",
+          },
+          hooks: {
+            unfinishedWork: () => {
+              throw new Error("provider unavailable");
+            },
+          },
+        }),
+      ]),
+    });
+
+    const { app } = await authenticatedApi(viewer.email);
+    const response = await app.request(
+      "http://localhost/api/conversations/archive-done",
+      { method: "POST" },
+    );
+    expect(
+      archiveDoneConversationsResponseSchema.parse(await response.json()),
+    ).toEqual({ archived: 0 });
   });
 
   it("archives the viewer's done conversations once on request", async () => {
@@ -427,26 +492,31 @@ describe("conversation archive API", () => {
     const waitingId = "local:test:archive-done-waiting";
     const optedOutId = "local:test:archive-done-opted-out";
     const unfinishedId = "local:test:archive-done-unfinished";
-    const ids = [doneId, waitingId, optedOutId, unfinishedId];
+    const recentId = "local:test:archive-done-recent";
+    const ids = [doneId, waitingId, optedOutId, unfinishedId, recentId];
+    // Past the default 24-hour wait time.
+    const staleMs = nowMs - 25 * 60 * 60 * 1000;
+    const activityMsById = (id: string) =>
+      id === recentId ? nowMs - 60_000 : staleMs;
     for (const conversationId of ids) {
       await getConversationStore().recordActivity({
         destination: { platform: "local" as const, conversationId },
         conversationId,
-        nowMs: nowMs - 60_000,
+        nowMs: activityMsById(conversationId),
         source: "internal",
       });
     }
     const viewer = await addParticipant({
       conversationId: doneId,
       email: "archive-now@example.com",
-      lastMessageAt: new Date(nowMs - 60_000),
+      lastMessageAt: new Date(staleMs),
     });
     for (const conversationId of ids.slice(1)) {
       await getDb()
         .insert(juniorConversationParticipants)
         .values({
           autoArchive: conversationId === optedOutId ? false : null,
-          lastMessageAt: new Date(nowMs - 60_000),
+          lastMessageAt: new Date(activityMsById(conversationId)),
           rootConversationId: conversationId,
           userId: viewer.id,
         });
@@ -475,8 +545,9 @@ describe("conversation archive API", () => {
       title: "Follow-up",
       visibility: "private",
     });
-    // Work finished a minute ago. The manual run has no wait time.
-    const finishedAt = new Date(nowMs - 60_000).toISOString();
+    // The manual run waits the same time as the scheduled sweep. The recent
+    // conversation has no work but had activity a minute ago, so it stays.
+    const finishedAt = new Date(staleMs).toISOString();
     await createApp({
       dashboard: { disabled: true },
       plugins: defineJuniorPlugins([
@@ -515,7 +586,13 @@ describe("conversation archive API", () => {
     const feed = await readConversationFeedFromSql({ limit: 1, viewer });
     expect(
       feed.conversations.map((conversation) => conversation.conversationId),
-    ).toEqual([optedOutId, waitingId]);
+    ).toEqual([recentId, waitingId]);
+    const fullFeed = await readConversationFeedFromSql({ viewer });
+    expect(
+      fullFeed.conversations
+        .map((conversation) => conversation.conversationId)
+        .sort(),
+    ).toEqual([optedOutId, recentId, unfinishedId, waitingId].sort());
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(doneId, { viewer }),

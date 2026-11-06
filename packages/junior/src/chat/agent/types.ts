@@ -59,6 +59,8 @@ export type AgentInstructionActor = {
 /** One mid-turn steered user message drained from the durable mailbox. */
 export type AgentSteeringMessage = {
   actor?: AgentInstructionActor;
+  /** `runtime` text is already a rendered input tag. Omitted means `person`. */
+  kind?: AgentInstructionInput["kind"];
   /** Provenance of this queued/steered message, carrying its original author. */
   provenance: ConversationMessageProvenance;
   omittedImageAttachmentCount?: number;
@@ -121,9 +123,26 @@ export type MessageAgent = (
   options: { signal?: AbortSignal; toolCallId: string },
 ) => Promise<MessageAgentResult>;
 
+/**
+ * One input of a Turn. Each input is its own prompt content part, in order.
+ * A `person` input is words that a person typed; the prompt shows it in
+ * `<current-instruction>` with the Actor of the instruction. A `runtime`
+ * input is already rendered as its own tag by the runtime, such as `<task>`,
+ * `<agent-result>`, or `<review-item-answer>`.
+ */
+export type AgentInstructionInput =
+  | { kind: "person"; text: string }
+  | { kind: "runtime"; text: string };
+
 /** Current user instruction for one agent-run slice. */
 export type AgentInstruction = {
+  /** Text of every input, for skill commands and action review. */
   text: string;
+  /**
+   * Prompt inputs in order. Omitted means one person input: `text` by
+   * `actor`.
+   */
+  inputs?: readonly AgentInstructionInput[];
   attachments?: readonly AgentAttachment[];
   /** Durable web image references, resolved by the host before execution. */
   storedAttachments?: readonly MessageAttachment[];

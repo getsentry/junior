@@ -89,19 +89,22 @@ import {
   type TurnInputFacts,
 } from "@/chat/task-execution/mailbox-turn";
 import {
-  joinMailboxText,
   savedTurnInputMessages,
   webConversationMessage,
+  webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
+import { instructionForInputs } from "@/chat/agent/prompt";
+import type { AgentInstructionInput } from "@/chat/agent/types";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
   eventBatchMessageMeta,
   isEventMailboxMetadata,
-  renderEventBatchText,
+  renderEventBatchInputs,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
@@ -239,7 +242,7 @@ export function createConversationTurnWorker(
 
     const isResume = resolved.kind === "resume";
     let turnInputFacts: TurnInputFacts | undefined;
-    let text = "";
+    let inputs: AgentInstructionInput[] = [];
     let attachments: MessageAttachment[] = [];
     let turnId = "";
     let userMessageId = "";
@@ -268,10 +271,13 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
-        text = renderEventBatchText(messages);
+        inputs = renderEventBatchInputs(
+          messages,
+          await eventReviewItemInputs(messages),
+        ).map((text) => ({ kind: "runtime", text }));
         eventMeta = eventBatchMessageMeta(messages);
       } else {
-        text = joinMailboxText(messages);
+        inputs = await webTurnInputs(messages.map((message) => message.input));
         webInputMessages = resolved.batch.map((entry) =>
           webConversationMessage(entry.message, entry.author),
         );
@@ -319,17 +325,24 @@ export function createConversationTurnWorker(
         savedSource: savedTurn?.source,
         visibility: storedConversation?.visibility,
       });
-      // Rebuild the joined input from every saved input Message.
+      // Rebuild the inputs from every saved input Message. A web batch saved
+      // each Message apart. An Event batch saved one Message with its inputs
+      // joined, so it resumes as one input; the prompt is rebuilt only when
+      // the Turn paused before its first prompt.
       const turnInputs = savedTurnInputMessages(
         conversation,
         userMessage,
         await lifecycle.loadInputMessageIds(context.conversationId, turnId),
       );
       userMessageId = userMessage.id;
-      text = turnInputs
-        .map((message) => message.text.trim())
-        .filter(Boolean)
-        .join("\n\n");
+      inputs = savedMessageIsEvent
+        ? [{ kind: "runtime", text: userMessage.text }]
+        : await webTurnInputs(
+            turnInputs.map((message) => ({
+              reviewItemChange: message.meta?.reviewItemChanges?.[0],
+              text: message.text,
+            })),
+          );
       attachments = turnInputs.flatMap(
         (message) => message.meta?.attachments ?? [],
       );
@@ -342,6 +355,8 @@ export function createConversationTurnWorker(
       );
     }
     const { actor, author } = turnInputFacts;
+    const instructionInputs = instructionForInputs(inputs);
+    const { text } = instructionInputs;
     // A timer Turn stays system-acted but may use its creator's grants.
     let credentialSubject: CredentialSubject | undefined;
     if (actor.platform === "system") {
@@ -451,7 +466,7 @@ export function createConversationTurnWorker(
           }
         } else {
           // Save each web Message apart, so an answer in a batch stays an
-          // answer in the transcript. The model still gets one joined prompt.
+          // answer in the transcript and on resume.
           for (const [index, message] of webInputMessages.entries()) {
             upsertConversationMessage(
               conversation,
@@ -626,7 +641,7 @@ export function createConversationTurnWorker(
               turnId,
               runId: currentRunId,
               instruction: {
-                text,
+                ...instructionInputs,
                 storedAttachments: attachments,
                 context: buildConversationContext(conversation, {
                   excludeMessageIds: inputMessageIds,

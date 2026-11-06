@@ -2,10 +2,19 @@ import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
-import { getConversationStore, getDb } from "@/chat/db";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
-import { getReviewItem, takeReviewItem } from "@/chat/review-items/store";
+import {
+  getReviewItem,
+  insertReviewItem,
+  takeReviewItem,
+} from "@/chat/review-items/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -16,7 +25,7 @@ import {
 } from "../../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
-const RELAY_CONVERSATION_ID = "local:cli:relay";
+const CLI_CONVERSATION_ID = "local:cli:review-items";
 
 const REQUEST = {
   question: "Approve or reject this entry?",
@@ -95,6 +104,15 @@ async function pendingMessages(conversationId: string) {
   return conversation?.execution.pendingMessages ?? [];
 }
 
+async function savedTakes(conversationId: string) {
+  const messages = projectConversationMessages(
+    await getConversationEventStore().loadMessageHistory(conversationId),
+  );
+  return messages.filter((message) =>
+    message.meta?.reviewItemChanges?.some((change) => change.kind === "taken"),
+  );
+}
+
 async function pendingTexts(conversationId: string): Promise<string[]> {
   return (await pendingMessages(conversationId)).map(
     (message) => message.input.text,
@@ -129,6 +147,38 @@ describe("review item actions API", () => {
       request: REQUEST,
     });
 
+    // A child agent links its items to its own conversation. The root waits
+    // on Ana.
+    await slackConversation("slack:CPUB:1.000004");
+    await getConversationStore().createChild({
+      childConversationId: "agent:child-of-4",
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      parentConversationId: "slack:CPUB:1.000004",
+    });
+    await insertReviewItem(getDb(), {
+      addedByConversationId: "agent:child-of-4",
+      assignedToEveryone: false,
+      assigneeUserIds: [ana.id],
+      body: "The initech entry changed its license.",
+      conversationIds: ["agent:child-of-4"],
+      dedupeKey: "fair-source:entry:initech",
+      kind: "action",
+      nowMs: Date.now(),
+      request: {
+        fields: [
+          {
+            id: "decision",
+            kind: "choice",
+            label: "Decision",
+            options: [{ label: "Approve" }, { label: "Reject" }],
+          },
+        ],
+        question: "Approve or reject this entry?",
+      },
+      title: "Review initech entry",
+      visibility: "private",
+    });
+
     expect(
       await (await api(fixture, ana).get("/waiting-conversations")).json(),
     ).toEqual({
@@ -137,6 +187,11 @@ describe("review item actions API", () => {
           conversationId: "slack:CPUB:1.000001",
           title: "Review globex entry",
           count: 2,
+        },
+        {
+          conversationId: "slack:CPUB:1.000004",
+          title: "Review initech entry",
+          count: 1,
         },
       ],
     });
@@ -353,23 +408,22 @@ describe("review item actions API", () => {
         },
       ],
     });
-    const texts = await pendingTexts("slack:CPUB:1.000001");
-    expect(texts).toEqual([
-      expect.stringContaining("cal@example.com took review item"),
+    // A take starts no Turn. The Conversation saves it as a handled
+    // Message with its record, so the dashboard still shows it, and a later
+    // answer does not change what it shows.
+    expect(await pendingMessages("slack:CPUB:1.000001")).toEqual([]);
+    expect(await savedTakes("slack:CPUB:1.000001")).toEqual([
+      expect.objectContaining({
+        text: expect.stringContaining("cal@example.com took review item"),
+        meta: expect.objectContaining({
+          reviewItemChanges: [{ kind: "taken", reviewItemId: id }],
+        }),
+      }),
     ]);
-    // The take records a take, so a later answer does not change what this
-    // message shows.
-    const [takeMessage] = await pendingMessages("slack:CPUB:1.000001");
-    expect(takeMessage?.source).toBe("web");
-    expect(takeMessage?.input.reviewItemChange).toEqual({
-      kind: "taken",
-      reviewItemId: id,
-    });
-    // A local CLI Conversation takes no web Messages. It gets the change as
-    // a relayed event with the same record.
+    // A local CLI Conversation saves it the same way.
     await getConversationStore().recordActivity({
-      conversationId: RELAY_CONVERSATION_ID,
-      destination: { platform: "local", conversationId: RELAY_CONVERSATION_ID },
+      conversationId: CLI_CONVERSATION_ID,
+      destination: { platform: "local", conversationId: CLI_CONVERSATION_ID },
       nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
       source: "local",
       visibility: "public",
@@ -377,16 +431,12 @@ describe("review item actions API", () => {
     const item = await getReviewItem(getDb(), id);
     await sendReviewItemMessages({
       change: { kind: "taken", user: cal },
-      item: { ...item!, conversationIds: [RELAY_CONVERSATION_ID] },
+      item: { ...item!, conversationIds: [CLI_CONVERSATION_ID] },
       nowMs: Date.now(),
       queue: fixture.queue,
     });
-    const [relayed] = await pendingMessages(RELAY_CONVERSATION_ID);
-    expect(relayed?.source).toBe("event");
-    expect(relayed?.input.reviewItemChange).toEqual({
-      kind: "taken",
-      reviewItemId: id,
-    });
+    expect(await pendingMessages(CLI_CONVERSATION_ID)).toEqual([]);
+    expect(await savedTakes(CLI_CONVERSATION_ID)).toHaveLength(1);
 
     const dismissed = await api(fixture, cal).act(id, { action: "dismiss" });
     expect(dismissed.status).toBe(200);
@@ -394,9 +444,6 @@ describe("review item actions API", () => {
       (await pendingMessages("slack:CPUB:1.000001")).map(
         (message) => message.input.reviewItemChange,
       ),
-    ).toEqual([
-      { kind: "taken", reviewItemId: id },
-      { kind: "dismissed", reviewItemId: id },
-    ]);
+    ).toEqual([{ kind: "dismissed", reviewItemId: id }]);
   });
 });
