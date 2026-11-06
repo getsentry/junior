@@ -44,6 +44,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
+import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Tooltip,
@@ -141,10 +142,10 @@ export function ConversationSidebar(props: {
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
       <div className="px-3 pb-1 pt-3">
         {/* Same grid as the rows, so the pen and label line up with them. */}
-        <button
-          className="grid w-full cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg border-0 bg-transparent px-3 py-1.5 text-left font-sans text-sm font-medium leading-snug text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+        <Button
+          className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-1.5 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-text"
           onClick={props.onNewConversation}
-          type="button"
+          size="menu"
         >
           <SquarePen
             aria-hidden="true"
@@ -152,7 +153,7 @@ export function ConversationSidebar(props: {
             strokeWidth={2.25}
           />
           New conversation
-        </button>
+        </Button>
       </div>
       <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
