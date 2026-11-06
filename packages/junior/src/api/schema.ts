@@ -1,4 +1,7 @@
-export { INPUT_IMAGE_TYPES } from "../chat/attachments/media";
+export {
+  INLINE_VIDEO_TYPES,
+  INPUT_IMAGE_TYPES,
+} from "../chat/attachments/media";
 export {
   MAX_INPUT_IMAGES,
   MAX_INPUT_IMAGE_BYTES,
