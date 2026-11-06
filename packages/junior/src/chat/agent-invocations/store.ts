@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
 import { getAgentInvocationIdForResult } from "./ids";
@@ -154,15 +154,15 @@ export async function getChildAgentLabel(
 }
 
 /**
- * Return whether a child Conversation has work that will start another agent
- * invocation on it: another open agent invocation, an open child agent, or a
- * sent child agent result that no agent invocation has received yet.
+ * List the open agent invocations that run on one Conversation or on its
+ * child agents, oldest first. Open-work checks read this once and filter it.
  */
-async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
-  const db = getSqlExecutor().db();
-  const conversationId = invocation.childConversationId;
-  const open = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
+export async function listOpenAgentInvocations(
+  conversationId: string,
+): Promise<AgentInvocation[]> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select()
     .from(juniorAgentInvocations)
     .where(
       and(
@@ -170,17 +170,28 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
           eq(juniorAgentInvocations.childConversationId, conversationId),
           eq(juniorAgentInvocations.parentConversationId, conversationId),
         ),
-        ne(juniorAgentInvocations.invocationId, invocation.invocationId),
         inArray(
           juniorAgentInvocations.status,
           NON_TERMINAL_AGENT_INVOCATION_STATUSES,
         ),
       ),
     )
-    .limit(1);
-  if (open.length > 0) {
+    .orderBy(asc(juniorAgentInvocations.createdAt));
+  return rows.map(invocationFromRow);
+}
+
+/**
+ * Return whether a child Conversation has work that will start another agent
+ * invocation on it: another open agent invocation, an open child agent, or a
+ * sent child agent result that no agent invocation has received yet.
+ */
+async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
+  const conversationId = invocation.childConversationId;
+  const open = await listOpenAgentInvocations(conversationId);
+  if (open.some((row) => row.invocationId !== invocation.invocationId)) {
     return true;
   }
+  const db = getSqlExecutor().db();
   // A `replaced` child result is never sent. A later agent invocation of
   // that child agent sends its report instead.
   const sent = await db
