@@ -131,6 +131,10 @@ import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
+import {
+  createIdentityDispatcher,
+  type IdentityDispatcher,
+} from "@/chat/agent-dispatch/context";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
@@ -533,6 +537,7 @@ export async function createApp(
   let sandboxEgressTracePropagationDomains: string[] = [];
   let signInConfig: SignInAuthConfig | undefined;
   let allowedDomains: string[] = [];
+  let dispatchForIdentity: IdentityDispatcher;
   try {
     sandboxEgressTracePropagationDomains =
       normalizeSandboxEgressTracePropagationDomains(
@@ -557,6 +562,12 @@ export async function createApp(
           "allowedDomains is empty, so any Slack workspace member can use Junior",
       });
     }
+    // One entry point for plugin routes and heartbeats, so both use the
+    // same rules for who counts as a person.
+    dispatchForIdentity = createIdentityDispatcher({
+      allowedDomains,
+      conversationWorkQueue: () => conversationWorkQueue,
+    });
     if (dashboard && !dashboard.disabled) {
       signInConfig = resolveSignInAuthConfig(
         botConfig.userName,
@@ -572,6 +583,7 @@ export async function createApp(
       );
     }
     pluginRoutes = getPluginRoutes({
+      dispatchForIdentity,
       events,
       showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
     });
@@ -849,7 +861,10 @@ export async function createApp(
   });
 
   app.get("/api/internal/heartbeat", (c) => {
-    return heartbeatGET(c.req.raw, waitUntil, { conversationWorkQueue });
+    return heartbeatGET(c.req.raw, waitUntil, {
+      conversationWorkQueue,
+      dispatchForIdentity,
+    });
   });
 
   app.get("/api/internal/retention", (c) => {

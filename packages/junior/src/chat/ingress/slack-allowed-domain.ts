@@ -4,7 +4,10 @@ import { logWarn } from "@/chat/logging";
 import { createCache } from "@/chat/state/cache";
 import { isAllowedDomain } from "@/chat/sign-in/allowlist";
 import { parseSlackUserId } from "@/chat/slack/ids";
-import { lookupSlackUserProfile } from "@/chat/slack/users";
+import {
+  lookupSlackUserProfile,
+  type SlackUserProfile,
+} from "@/chat/slack/users";
 
 // Like workspace membership: avoid a lookup per message, and let a changed
 // profile email apply within five minutes.
@@ -32,21 +35,35 @@ export async function isSlackAuthorDomainAllowed(args: {
     `slack:allowed-domain:${args.teamId}:${userId}`,
     async () => {
       const profile = await lookupSlackUserProfile(userId);
-      const email = profile.email?.toLowerCase();
-      const separator = email?.lastIndexOf("@") ?? -1;
-      const domain = separator > 0 ? email?.slice(separator + 1) : undefined;
       const allowed =
-        profile.id === userId && isAllowedDomain(domain, args.allowedDomains);
-      if (!allowed) {
-        // A Slack app without `users:read.email` sees no email and blocks all.
-        logWarn("slack.allowed_domain.rejected", {
-          "app.reason": email ? "domain_not_allowed" : "missing_email",
-        });
-      }
+        profile.id === userId &&
+        isSlackProfileDomainAllowed(profile, args.allowedDomains);
       return {
         value: allowed,
         ttlMs: allowed ? ALLOWED_TTL_MS : NOT_ALLOWED_TTL_MS,
       };
     },
   );
+}
+
+/**
+ * Return whether the email of a Slack profile is on the allowed domains.
+ * Without allowed domains, every profile is allowed.
+ */
+export function isSlackProfileDomainAllowed(
+  profile: SlackUserProfile,
+  allowedDomains: readonly string[],
+): boolean {
+  if (allowedDomains.length === 0) return true;
+  const email = profile.email?.toLowerCase();
+  const separator = email?.lastIndexOf("@") ?? -1;
+  const domain = separator > 0 ? email?.slice(separator + 1) : undefined;
+  const allowed = isAllowedDomain(domain, allowedDomains);
+  if (!allowed) {
+    // A Slack app without `users:read.email` sees no email and blocks all.
+    logWarn("slack.allowed_domain.rejected", {
+      "app.reason": email ? "domain_not_allowed" : "missing_email",
+    });
+  }
+  return allowed;
 }

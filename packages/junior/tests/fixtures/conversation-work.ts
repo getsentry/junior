@@ -11,6 +11,7 @@ import {
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/context";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
@@ -536,7 +537,22 @@ export async function runHeartbeatAfterLeasesExpire(
   queue: ConversationWorkQueue,
 ): Promise<void> {
   vi.setSystemTime(Date.now() + CONVERSATION_WORK_LEASE_TTL_MS + 1);
-  await runHeartbeat({ conversationWorkQueue: queue, nowMs: Date.now() });
+  await runTestHeartbeat(queue, Date.now());
+}
+
+/** Run the production heartbeat with every allowed domain and one queue. */
+export async function runTestHeartbeat(
+  queue: ConversationWorkQueue,
+  nowMs: number,
+): Promise<void> {
+  await runHeartbeat({
+    conversationWorkQueue: queue,
+    dispatchForIdentity: createIdentityDispatcher({
+      allowedDomains: [],
+      conversationWorkQueue: () => queue,
+    }),
+    nowMs,
+  });
 }
 
 /**

@@ -490,6 +490,27 @@ Heartbeat dispatches are durable, signed, bounded, and scoped to the plugin
 that created them. Plugins can dispatch only to validated Slack destinations
 and receive projection records, not raw runtime state.
 
+To start work for one person, such as the author of a webhook event or the
+sender of an email, use `ctx.agent.dispatchForIdentity(...)` from a heartbeat
+or a webhook route. Name the person with one of these:
+
+- `subjectId`: the provider account id that the OAuth account-linking flow
+  stored.
+- `verifiedEmail`: an address that your plugin proved the person sent from.
+  Never use an address that only appears in content.
+
+Junior starts private work in that person's Slack DM only when the person is a
+current member of the Slack workspace on the allowed domains. For any other
+person, it returns `{ status: "not_linked" }` and calls no model.
+
+```ts
+const result = await ctx.agent.dispatchForIdentity({
+  idempotencyKey: `event:${event.id}`,
+  input: "Look at the issue that this person opened.",
+  subjectId: event.sender.id,
+});
+```
+
 ## Validate
 
 Run validation before deploy:

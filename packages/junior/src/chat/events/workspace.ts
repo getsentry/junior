@@ -2,8 +2,8 @@ import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
 /**
- * Resolve the single-bot Slack team id for event-automation indexing and
- * Event people mentions.
+ * Resolve the single-bot Slack team id for event-automation indexing, Event
+ * people mentions, and Identity dispatches.
  *
  * Watch matching does not use this. Event automations still key by
  * destination team until that store is conversation-owned. Event delivery
