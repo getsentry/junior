@@ -72,7 +72,7 @@ describe("transcriptions API", () => {
           audio: Buffer.from(audio).toString("base64"),
           mediaType: "audio/webm",
         }),
-        modelId: "openai/gpt-transcribe",
+        modelId: "spacexai/grok-stt",
       },
     ]);
   });
