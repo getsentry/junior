@@ -27,6 +27,7 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { useComposerAutocorrect } from "./composerAutocorrect";
+import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
@@ -141,6 +142,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [autocorrect] = useComposerAutocorrect();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useSwipeDownToBlur(textareaRef);
   const draftRef = useRef(initialDraft);
   const canSendRef = useRef(canSend);
   const storageTimerRef = useRef<number | undefined>(undefined);
