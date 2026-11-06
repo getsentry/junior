@@ -173,6 +173,26 @@ test("starts a new conversation from a centered compose empty state", async ({
   ).toBeVisible();
 });
 
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("adds a line on Return instead of sending", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const composer = page.getByLabel("Start a conversation");
+    await expect(composer).toHaveAttribute("enterkeyhint", "enter");
+    await composer.fill("First line");
+    await composer.press("Enter");
+    await composer.pressSequentially("Second line");
+    await expect(composer).toHaveValue("First line\nSecond line");
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+});
+
 test("opens and closes a conversation on mobile", async ({
   page,
   dashboard,
