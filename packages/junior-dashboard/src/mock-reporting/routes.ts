@@ -46,6 +46,8 @@ import {
   automationRunListSchema,
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
+  acceptedConversationMessageSchema,
+  createConversationBodySchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
@@ -81,6 +83,7 @@ import {
   setMockPinOrder,
   setMockConversationAutoArchive,
   archiveMockDoneConversations,
+  createMockConversation,
 } from "./fixtures";
 import { readMockConversationWatches } from "./watches";
 
@@ -194,6 +197,18 @@ export function createMockReportingApi(): Hono<{
       conversations: [...conversations.values()].filter((conversation) =>
         conversation.displayTitle.toLowerCase().includes(search),
       ),
+    });
+  });
+  app.post("/conversations", async (c) => {
+    const body = createConversationBodySchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!body.success) return errorResponse("Invalid request body.", 400);
+    // About a real create's round trip, so the held draft shows.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return jsonResponse(acceptedConversationMessageSchema, {
+      ...createMockConversation(body.data),
+      status: "accepted",
     });
   });
   app.get("/conversations/stats", () =>

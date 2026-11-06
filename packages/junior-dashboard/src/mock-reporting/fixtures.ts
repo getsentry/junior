@@ -1566,8 +1566,51 @@ function usage(cost: number) {
   };
 }
 
+// Conversations started from the local create view. Process-local, like the
+// other mock edits.
+const createdMockConversations: MockConversation[] = [];
+
+/** Start a mock Conversation, so a local create opens with its message. */
+export function createMockConversation(args: {
+  message: string;
+  visibility?: "private" | "public";
+}): { conversationId: string; messageId: string } {
+  const conversationId = `mock:created:${crypto.randomUUID()}`;
+  const messageId = `${conversationId}:message`;
+  const nowMs = Date.now();
+  const startedAt = iso(nowMs);
+  createdMockConversations.unshift(
+    detail(nowMs, {
+      conversationId,
+      displayTitle: args.message.trim().split("\n")[0]!.slice(0, 80),
+      startedAt,
+      isParticipant: true,
+      status: "active",
+      surface: "internal",
+      visibility: args.visibility ?? "public",
+      actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+      events: [
+        reportEvent(0, startedAt, {
+          type: "message",
+          messageId,
+          role: "user",
+          text: args.message,
+          actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+        }),
+        reportEvent(1, startedAt, {
+          type: "turn_lifecycle",
+          turnId: `${conversationId}:turn`,
+          state: "started",
+        }),
+      ],
+    }),
+  );
+  return { conversationId, messageId };
+}
+
 function mockConversations(nowMs: number): MockConversation[] {
   return [
+    ...createdMockConversations,
     activeConversation(nowMs),
     dashboardQaConversation(nowMs),
     advisorConversation(

@@ -15,6 +15,7 @@ import {
   ConversationComposer,
   restoreStoredDraftText,
   type ConversationComposerHandle,
+  CONVERSATION_COMPOSER_TRANSITION,
 } from "./ConversationComposer";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { PendingAuthorization } from "./ConversationMeta";
@@ -330,6 +331,7 @@ function ReplyFooter(props: {
           ref={composerRef}
           label="Continue this conversation"
           submitLabel="Send"
+          viewTransitionName={CONVERSATION_COMPOSER_TRANSITION}
           onFocus={onComposerFocus}
           onStop={props.stoppable ? onStop : undefined}
           stopPending={stopTurn.isPending}

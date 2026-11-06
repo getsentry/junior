@@ -19,6 +19,7 @@ import { ConversationHomeList } from "./ConversationHomeList";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
+  CONVERSATION_COMPOSER_TRANSITION,
   ConversationComposer,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
@@ -168,11 +169,26 @@ export function ConversationWorkspace(props: {
         // Open the Conversation with its transcript and composer, not a
         // skeleton. The draft stays on this page until the route changes, so
         // the message moves from the composer to the transcript at once.
-        await prefetchConversationDetail(queryClient, accepted.conversationId);
+        // The list read too, so the new row shows with the page change.
+        await Promise.all([
+          prefetchConversationDetail(queryClient, accepted.conversationId),
+          queryClient.refetchQueries({
+            queryKey: ["dashboard", "conversations"],
+            type: "active",
+          }),
+        ]);
         if (visit?.aborted) return;
-        await navigate(conversationPath(accepted.conversationId), {
-          flushSync: true,
-        });
+        const open = () =>
+          navigate(conversationPath(accepted.conversationId), {
+            flushSync: true,
+          });
+        // Resolve after the new page is in place: the composer clears its
+        // draft when this resolves, and the old snapshot must keep the text.
+        if (document.startViewTransition) {
+          await document.startViewTransition(open).updateCallbackDone;
+        } else {
+          await open();
+        }
       }}
     />
   );
@@ -293,6 +309,9 @@ export function ConversationWorkspace(props: {
                 !sidebarOpen && "hidden",
               )}
               id={sidebarId}
+              // Its own transition layer: the list stays put while the pane
+              // changes.
+              style={{ viewTransitionName: "conversation-sidebar" }}
             >
               <ConversationSidebar
                 conversations={conversations}
@@ -394,6 +413,7 @@ function NewConversationView(props: {
         holdDraftUntilAccept
         ref={props.composerRef}
         submitLabel="Send"
+        viewTransitionName={CONVERSATION_COMPOSER_TRANSITION}
         onSubmit={(message, idempotencyKey, images) =>
           props.onSubmit(message, idempotencyKey, visibility, images)
         }
