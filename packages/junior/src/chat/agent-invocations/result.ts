@@ -5,6 +5,7 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
+  eventBatchDoers,
   isEventMailboxMetadata,
   renderEventBatchInputs,
   timerWatchCredentialSubject,
@@ -36,6 +37,7 @@ import {
   markAgentInvocationParentMailboxAppended,
 } from "./store";
 import { renderUntrustedTag } from "@/chat/input-tags";
+import { renderEventDoerLines } from "@/chat/task-input";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { listUnreportedSiblingAgents } from "./list";
 import type {
@@ -99,8 +101,10 @@ function trustedSummary(
 /**
  * Render the parent agent input for one terminal agent invocation as one
  * `<agent-result>`. A child agent wrote the output, so it is escaped data.
- * `status` and `waiting_on` are runtime facts. The system prompt says what to
- * do for each status, so the input repeats no guidance.
+ * `status` and `waiting_on` are runtime facts. The child names the people who
+ * did its watch events by provider handle, so the runtime adds who they are.
+ * The system prompt says what to do for each status, so the input repeats no
+ * guidance.
  */
 function renderResultInput(
   invocation: TerminalAgentInvocation,
@@ -129,6 +133,7 @@ function renderResultInput(
     },
     "A child agent that you started",
     output || "(empty)",
+    renderEventDoerLines(invocation.doneBy ?? []),
   );
 }
 
@@ -226,6 +231,7 @@ function renderMessageInput(sender: AgentInvocation, text: string): string {
     },
     "A child agent that you started",
     text.trim(),
+    renderEventDoerLines(sender.doneBy ?? []),
   );
 }
 
@@ -367,6 +373,7 @@ async function startAgentInvocationsForChildInput(
     // use the grants of the person who set it.
     const { actor, source } = events[0]!;
     const invocation = await createAgentInvocationFromLatest({
+      doneBy: eventBatchDoers(messages),
       // TODO(dcramer): Keep one content part per input after an agent
       // invocation stores its input as parts.
       input: renderEventBatchInputs(

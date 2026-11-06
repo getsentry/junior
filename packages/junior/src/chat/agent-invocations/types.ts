@@ -47,6 +47,14 @@ const agentInvocationBaseSchema = z
     createdAtMs: z.number().finite(),
     credentialContext: credentialContextSchema.optional(),
     destination: destinationSchema,
+    /** Linked people who did the Watch Events that started this invocation. */
+    doneBy: z
+      .array(
+        z
+          .object({ handles: z.array(z.string()), mention: exactStringSchema })
+          .strict(),
+      )
+      .optional(),
     input: exactStringSchema,
     invocationId: exactStringSchema,
     mailboxStatus: agentInvocationMailboxStatusSchema,

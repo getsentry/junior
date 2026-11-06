@@ -169,6 +169,7 @@ export function invocationFromRow(
       ? { credentialContext: row.credentialContext }
       : undefined),
     destination: row.destination,
+    ...(row.doneBy?.length ? { doneBy: row.doneBy } : undefined),
     ...(row.errorMessage !== null
       ? { errorMessage: row.errorMessage }
       : undefined),
@@ -497,6 +498,8 @@ export async function createAgentInvocation(
  */
 export async function createAgentInvocationFromLatest(
   args: {
+    /** Linked people who did the watch events. */
+    doneBy?: AgentInvocation["doneBy"];
     input: string;
     invocationId: string;
     latest: AgentInvocation;
@@ -518,6 +521,7 @@ export async function createAgentInvocationFromLatest(
       actor: (args.runAs ?? args.latest).actor,
       credentialContext: (args.runAs ?? args.latest).credentialContext ?? null,
       source: args.runAs?.source ?? { kind: "agent_invocation" },
+      doneBy: args.doneBy?.length ? args.doneBy : null,
       destination: args.latest.destination,
       agentType: args.latest.agentType ?? null,
       reasoningLevel: args.latest.reasoningLevel ?? null,

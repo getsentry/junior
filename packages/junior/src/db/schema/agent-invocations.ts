@@ -11,6 +11,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
+import type { EventDoer } from "@/chat/task-input";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 import type {
@@ -59,6 +60,9 @@ export const juniorAgentInvocations = pgTable(
       "credential_context_json",
     ).$type<CredentialContext>(),
     source: jsonb("source_json").$type<Source>().notNull(),
+    // Linked people who did the Watch Events that started this invocation.
+    // The parent reads them with the result. Null for other invocations.
+    doneBy: jsonb("done_by_json").$type<EventDoer[]>(),
     // TODO(dcramer): Remove destination_json after AgentRun no longer carries
     // Destination and child Runs read only the parent Conversation Location.
     destination: jsonb("destination_json").$type<Destination>().notNull(),
