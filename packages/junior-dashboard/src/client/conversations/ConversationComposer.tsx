@@ -11,6 +11,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -32,6 +33,19 @@ import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
+// Touch keyboards have no Shift+Enter, so Return adds a line there and the
+// send button sends.
+const TOUCH_KEYBOARD_QUERY = "(pointer: coarse)";
+
+function subscribeToTouchKeyboard(onChange: () => void) {
+  const media = window.matchMedia(TOUCH_KEYBOARD_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function touchKeyboardMatches() {
+  return window.matchMedia(TOUCH_KEYBOARD_QUERY).matches;
+}
 
 type ConversationDraft = {
   /** Image bytes are not restored from localStorage; do not reuse their send key. */
@@ -140,6 +154,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   const fileInputRef = useRef<HTMLInputElement>(null);
   const online = useDashboardOnline();
   const [autocorrect] = useComposerAutocorrect();
+  const enterSends = !useSyncExternalStore(
+    subscribeToTouchKeyboard,
+    touchKeyboardMatches,
+    () => false,
+  );
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useSwipeDownToBlur(textareaRef);
@@ -409,6 +428,7 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
+      enterSends &&
       event.key === "Enter" &&
       !event.shiftKey &&
       !event.nativeEvent.isComposing
@@ -506,9 +526,9 @@ export const ConversationComposer = memo(function ConversationComposer(
           {props.label}
         </label>
         <textarea
-          // Chat is technical: ids, paths, code. Keep the keyboard chat-like
-          // (Send) and suppress browser IME assist that fights identifiers,
-          // unless the user turns autocorrect on in settings.
+          // Chat is technical: ids, paths, code. Suppress browser IME assist
+          // that fights identifiers, unless the user turns autocorrect on in
+          // settings.
           autoCapitalize={autocorrect ? "sentences" : "off"}
           autoComplete="off"
           autoCorrect={autocorrect ? "on" : "off"}
@@ -522,7 +542,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               : !props.compact && "md:min-h-14",
           )}
           disabled={holdPending}
-          enterKeyHint="send"
+          enterKeyHint={enterSends ? "send" : "enter"}
           id={id}
           inputMode="text"
           maxLength={32_000}
@@ -571,7 +591,7 @@ export const ConversationComposer = memo(function ConversationComposer(
               </Tooltip>
             )}
             {props.footerStart}
-            {props.footerStart || props.compact ? null : (
+            {props.footerStart || props.compact || !enterSends ? null : (
               <div className="hidden min-w-0 font-sans text-xs leading-relaxed text-dashboard-text-muted md:block">
                 Enter to send · Shift+Enter for a new line
               </div>

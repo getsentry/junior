@@ -60,6 +60,7 @@ import {
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { getChatConfig } from "@/chat/config";
+import { turnInputTelemetry } from "@/chat/task-execution/turn-telemetry";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -688,17 +689,11 @@ export function createSlackConversationWorker(
       return { status: "completed" };
     }
 
-    const oldestRecord = records[0];
     const latestRecord = records[records.length - 1];
-    if (!oldestRecord || !latestRecord) {
+    const telemetry = turnInputTelemetry(records);
+    if (!latestRecord || !telemetry) {
       return { status: "completed" };
     }
-    const telemetry = {
-      count: records.length,
-      oldestCreatedAtMs: oldestRecord.createdAtMs,
-      oldestReceivedAtMs: oldestRecord.receivedAtMs,
-      traceContexts: records.flatMap((record) => record.traceContext ?? []),
-    };
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
       throw new Error(

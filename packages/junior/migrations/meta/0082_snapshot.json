@@ -1,5 +1,5 @@
 {
-  "id": "fa38de92-da9b-4145-be82-39801c42a917",
+  "id": "d5abaea4-86aa-4eb8-9763-4f44340f586c",
   "prevId": "8f6e6d82-8ecb-42f7-8b9a-0b8a19304e01",
   "version": "7",
   "dialect": "postgresql",
@@ -2273,13 +2273,6 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": false
-        },
-        "read_at": {
-          "name": "read_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
         }
       },
       "indexes": {
@@ -3273,6 +3266,102 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.junior_push_subscriptions": {
+      "name": "junior_push_subscriptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "p256dh": {
+          "name": "p256dh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth": {
+          "name": "auth",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "junior_push_subscriptions_endpoint_uidx": {
+          "name": "junior_push_subscriptions_endpoint_uidx",
+          "columns": [
+            {
+              "expression": "endpoint",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_push_subscriptions_user_idx": {
+          "name": "junior_push_subscriptions_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_push_subscriptions_user_id_junior_users_id_fk": {
+          "name": "junior_push_subscriptions_user_id_junior_users_id_fk",
+          "tableFrom": "junior_push_subscriptions",
+          "tableTo": "junior_users",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.junior_review_item_assignees": {
       "name": "junior_review_item_assignees",
       "schema": "",
@@ -4090,6 +4179,12 @@
         "customization": {
           "name": "customization",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notification_schedule": {
+          "name": "notification_schedule",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

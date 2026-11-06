@@ -41,7 +41,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import type { SlackTurnInputTelemetry } from "@/chat/providers/slack/turn-input-telemetry";
+import type { TurnInputTelemetry } from "@/chat/task-execution/turn-telemetry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
@@ -463,7 +463,7 @@ describe("Slack conversation work execution", () => {
       message: Message;
       skipped: Message[];
       thread: Thread;
-      telemetry?: SlackTurnInputTelemetry;
+      telemetry?: TurnInputTelemetry;
     }> = [];
 
     await handleSlackWebhookAndFlush({
