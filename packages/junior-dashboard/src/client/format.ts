@@ -16,6 +16,7 @@ import type {
 import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
+import { isChildConversation } from "./conversations/transcript";
 
 /** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
 export function getDashboardTimeZone(): string {
@@ -663,17 +664,14 @@ function compareTimeDesc(a: string | undefined, b: string | undefined): number {
   return (parseTime(b) ?? 0) - (parseTime(a) ?? 0);
 }
 
-/**
- * Return the title of a loaded Conversation. A child agent Conversation uses
- * its agent label from the agent tree, because it has no title of its own.
- */
+/** Return a loaded Conversation's title. A child uses its agent label. */
 export function conversationDetailTitle(
   detail:
     | Pick<ConversationTranscript, "agentTree" | "displayTitle">
     | undefined,
 ): string | undefined {
   return (
-    detail?.agentTree?.at(-1)?.label ??
+    (isChildConversation(detail) ? detail.agentTree.at(-1)?.label : null) ??
     (detail?.displayTitle?.trim() || undefined)
   );
 }
