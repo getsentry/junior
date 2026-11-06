@@ -45,6 +45,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
 import { Button } from "../components/ui/button";
@@ -361,7 +362,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         {...prefetch}
         {...drag?.listeners}
         className={cn(
-          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
+          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover data-popup-open:bg-dashboard-fill-hover",
           props.selected && "bg-dashboard-surface-active",
           drag?.dragging && "opacity-40",
         )}
@@ -516,6 +517,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           <Pencil aria-hidden="true" />
           Rename
         </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
           {archived ? (
             <ArchiveRestore aria-hidden="true" />
