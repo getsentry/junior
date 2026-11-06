@@ -439,18 +439,43 @@ function TranscriptEntryList(
   );
   const matchCount = searchQuery === undefined ? 0 : rows.length;
   const { match, onMatches } = search;
-  const firstMatch = useRef<{ key?: string; query?: string }>({});
+  // Search rows are all matches. Earlier history can put matches before
+  // the current one, so report how many, and the current match stays on
+  // its row. The current row stays mounted, so it can scroll into view like
+  // a reveal. Scroll only when the reader steps to another row. A new query
+  // or a loaded page does not scroll: a scroll to the top match shows the
+  // history sentinel, and each loaded page would then load the next one.
+  const shownMatch = useRef<{
+    firstKey?: string;
+    matchKey?: string;
+    query?: string;
+  }>({});
   useEffect(() => {
-    const previous = firstMatch.current;
-    firstMatch.current = { key: rows[0]?.key, query: searchQuery };
+    const previous = shownMatch.current;
+    const sameQuery = previous.query === searchQuery;
     const prepended =
-      matchCount > 0 &&
-      previous.query === searchQuery &&
-      previous.key !== undefined
-        ? (indexByKey.get(previous.key) ?? 0)
+      matchCount > 0 && sameQuery && previous.firstKey !== undefined
+        ? (indexByKey.get(previous.firstKey) ?? 0)
         : 0;
+    const current = Math.min(match + prepended, matchCount - 1);
+    const matchKey = matchCount > 0 ? rows[current]?.key : undefined;
+    shownMatch.current = {
+      firstKey: rows[0]?.key,
+      matchKey,
+      query: searchQuery,
+    };
     onMatches?.(matchCount, prepended);
-  }, [indexByKey, matchCount, onMatches, rows, searchQuery]);
+    if (
+      !sameQuery ||
+      matchKey === undefined ||
+      matchKey === previous.matchKey
+    ) {
+      return;
+    }
+    listRef.current
+      ?.querySelector(`[data-index="${current}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -477,22 +502,6 @@ function TranscriptEntryList(
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
   });
-  // Search rows are all matches. The current one stays mounted, so it can
-  // scroll into view like a reveal. Scroll only when the reader steps to
-  // another match. A new query or a loaded history page does not scroll,
-  // because a scroll to the top match shows the history sentinel, and each
-  // loaded page would then load the next one.
-  const shownMatch = useRef({ match, searchQuery });
-  useEffect(() => {
-    const previous = shownMatch.current;
-    shownMatch.current = { match, searchQuery };
-    if (previous.searchQuery !== searchQuery || previous.match === match) {
-      return;
-    }
-    listRef.current
-      ?.querySelector(`[data-index="${match}"]`)
-      ?.scrollIntoView({ block: "center" });
-  }, [match, searchQuery]);
   // Rows render again only when the renderers change, not on each scroll.
   const {
     renderAttachmentsDelivered,
