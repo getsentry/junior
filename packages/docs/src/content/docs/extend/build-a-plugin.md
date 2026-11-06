@@ -314,6 +314,7 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `afterMcpTool(ctx)`      | Run junior-owned side effects after a successful hosted MCP tool call. Prefer this for conversation annotations instead of inventing a parallel tool contract.                               |
 | `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
+| `identityLinked(ctx)`    | Update work the plugin already did after a person links an account of its provider. `ctx.user` has every linked Identity. Junior runs it once per link and does not retry it.                |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
 
@@ -356,6 +357,16 @@ identity or user. Call `ctx.users.resolveTimezone()` when a tool needs the
 active actor's IANA timezone. It returns the install default when Junior does
 not know the person's timezone. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
+
+When a tool does its work without the provider account of a person in the
+Run, but the account would make the work better, call
+`ctx.users.requestIdentityLink({ reason })` and continue. For example, GitHub
+cannot assign a pull request to a person with no linked GitHub login. Junior
+asks each person in the Run who has no account of your provider. It puts one
+Review notice per person and provider on the review desk, with a link to
+connect the account. The notice never blocks the turn. When the account
+links, Junior closes the notice and calls your `identityLinked` hook, so the
+plugin can update its earlier work. Make the hook idempotent.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
 `my-provider` tool `ping` is exposed as `myProvider_ping`.

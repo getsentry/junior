@@ -1,5 +1,5 @@
 import * as z from "zod";
-import type { PluginContext } from "./context";
+import type { Identity, PluginContext, User } from "./context";
 import { nonBlankStringSchema, pluginCredentialSubjectSchema } from "./schemas";
 
 const pluginProviderNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
@@ -222,6 +222,17 @@ export interface ResolveOAuthAccountHookContext extends PluginContext {
    * the authorized account in this body.
    */
   tokenResponse: Record<string, unknown>;
+}
+
+/**
+ * Context after a person links an account of this plugin's provider. Runs
+ * for every link, with or without an open Identity link request.
+ */
+export interface IdentityLinkedHookContext extends PluginContext {
+  /** The provider Identity that the person linked. */
+  identity: Identity;
+  /** The User that the Identity links to, with every Identity of that User. */
+  user: User;
 }
 
 export interface IssueCredentialHookContext extends PluginContext {

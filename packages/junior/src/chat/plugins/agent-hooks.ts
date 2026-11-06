@@ -93,6 +93,8 @@ import {
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
+import { requestIdentityLinks } from "@/chat/identities/link-request";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
 
 export interface ToolHookInput {
@@ -795,6 +797,20 @@ export function getPluginTools(
       state: createPluginState(pluginName),
       users: {
         resolveActor,
+        async requestIdentityLink(input: { reason: string }) {
+          // The current Actor can be in `actors` too. Junior asks each User once.
+          const actors = context.actors?.() ?? [];
+          return await requestIdentityLinks({
+            conversationId: context.conversationId,
+            provider: pluginName,
+            reason: input.reason,
+            requesters: [
+              await resolveActor(),
+              ...(await Promise.all(actors.map(readActorIdentity))),
+            ],
+            show: createSlackReviewItemShow(),
+          });
+        },
         async resolveTimezone() {
           const actor = context.actor;
           const resolved = await resolveActor();
