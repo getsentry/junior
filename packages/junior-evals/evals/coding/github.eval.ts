@@ -51,6 +51,30 @@ describe("GitHub Skill Workflows", () => {
     );
   });
 
+  test("when writing a PR body, say what changed and why without explaining how", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "/github-code Draft the PR body for this change, don't open anything. The setup runbook pipes our CLI installer into bash, and the installer is served from a CDN. The change makes the runbook download the installer to a temp file, hash it with sha256sum (or shasum on macOS), and run it only when the hash matches the checksum in the release registry. It reads the checksum from a Redis cache, rechecks it at most once a minute with a 3s timeout, and keeps the old pipe-to-bash command when no checksum is published. I added 6 tests and ran shellcheck.",
+      ),
+    );
+    await expect(conversation).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The body says the runbook checks the installer against the published checksum before it runs it.",
+          "The body says why: a tampered installer from the CDN would otherwise run.",
+        ],
+        fail: [
+          "Do not use headings or more than two short paragraphs in the body.",
+          "Do not explain how the code works, such as the cache, the recheck interval, the timeout, the temp file, or the hash commands.",
+          "Do not describe tests, shellcheck, or other checks in the body.",
+        ],
+      }),
+    );
+  });
+
   test("when CI stalls with no cause in the logs, check GitHub status before blaming an outage", async ({
     run,
   }) => {
