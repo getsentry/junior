@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useState,
 } from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
@@ -24,12 +25,17 @@ type TranscriptSearchContextValue = {
   normalizedQuery: string;
   /** True when the normalised query is non-empty. */
   active: boolean;
+  /** Index of the current match among the matching rows. */
+  match: number;
+  /** The transcript list reports how many rows match. */
+  onMatchCount?(count: number): void;
 };
 
 const defaultValue: TranscriptSearchContextValue = {
   query: "",
   normalizedQuery: "",
   active: false,
+  match: 0,
 };
 
 const TranscriptSearchContext =
@@ -37,15 +43,25 @@ const TranscriptSearchContext =
 
 export function TranscriptSearchProvider({
   children,
+  match = 0,
+  onMatchCount,
   query,
 }: {
   children: ReactNode;
+  match?: number;
+  onMatchCount?(count: number): void;
   query: string;
 }) {
   const normalizedQuery = query.trim().toLowerCase();
   return (
     <TranscriptSearchContext.Provider
-      value={{ query, normalizedQuery, active: normalizedQuery.length > 0 }}
+      value={{
+        query,
+        normalizedQuery,
+        active: normalizedQuery.length > 0,
+        match,
+        onMatchCount,
+      }}
     >
       {children}
     </TranscriptSearchContext.Provider>
@@ -54,6 +70,31 @@ export function TranscriptSearchProvider({
 
 export function useTranscriptSearch() {
   return useContext(TranscriptSearchContext);
+}
+
+/** The current match of one search box, and how many rows match. */
+export type TranscriptSearchMatch = ReturnType<typeof useTranscriptSearchMatch>;
+
+/**
+ * Track the current match for `query`. A new query starts at the first
+ * match. Steps wrap around at both ends.
+ */
+export function useTranscriptSearchMatch(query: string) {
+  const [position, setPosition] = useState({ index: 0, query });
+  const [count, setCount] = useState(0);
+  const index =
+    position.query === query
+      ? Math.max(0, Math.min(position.index, count - 1))
+      : 0;
+  return {
+    count,
+    index,
+    setCount,
+    step(delta: 1 | -1) {
+      if (count === 0) return;
+      setPosition({ index: (index + delta + count) % count, query });
+    },
+  };
 }
 
 // ─── Find shortcut ───────────────────────────────────────────────────────────

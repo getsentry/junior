@@ -1,12 +1,14 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { History } from "lucide-react";
+import { cn } from "../styles";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -399,7 +401,8 @@ type TranscriptEntryRenderers = {
  * Render transcript entries as list rows. Only the rows near the viewport
  * mount. These rows also stay mounted, because the scroll owner and the
  * page find them in the DOM: the row that holds the reader's place, the
- * "New" marker and the row after it, and the rows around `revealSeq`.
+ * "New" marker and the row after it, the rows around `revealSeq`, and the
+ * current search match.
  */
 function TranscriptEntryList(
   props: TranscriptEntryRenderers &
@@ -429,6 +432,11 @@ function TranscriptEntryList(
     () => new Map(rows.map((row, index) => [row.key, index])),
     [rows],
   );
+  const matchCount = searchQuery === undefined ? 0 : rows.length;
+  const { match, onMatchCount } = search;
+  useEffect(() => {
+    onMatchCount?.(matchCount);
+  }, [matchCount, onMatchCount]);
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -450,10 +458,19 @@ function TranscriptEntryList(
       markerIndex === undefined ? undefined : markerIndex + 1,
       revealIndex,
       revealIndex === undefined ? undefined : revealIndex - 1,
+      matchCount === 0 ? undefined : match,
     ],
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
   });
+  // Search rows are all matches. The current one stays mounted, so it can
+  // scroll into view like a reveal.
+  useEffect(() => {
+    if (matchCount === 0) return;
+    listRef.current
+      ?.querySelector(`[data-index="${match}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [match, matchCount, searchQuery]);
   // Rows render again only when the renderers change, not on each scroll.
   const {
     renderAttachmentsDelivered,
@@ -505,6 +522,7 @@ function TranscriptEntryList(
       >
         {virtualizer.getVirtualItems().map((item) => (
           <VirtualTranscriptRow
+            current={matchCount > 0 && item.index === match}
             index={item.index}
             key={item.key}
             measure={virtualizer.measureElement}
@@ -531,6 +549,8 @@ type TranscriptListPlacement = {
  * or offset changes, not when the mounted range changes.
  */
 const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
+  /** The current search match. */
+  current: boolean;
   index: number;
   measure: (element: HTMLElement | null) => void;
   offset: number;
@@ -540,7 +560,10 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   const { row } = props;
   return (
     <div
-      className="absolute left-0 top-0 w-full"
+      className={cn(
+        "absolute left-0 top-0 w-full rounded-lg",
+        props.current && "ring-1 ring-amber-400/40",
+      )}
       data-index={props.index}
       ref={props.measure}
       style={{ transform: `translateY(${props.offset}px)` }}

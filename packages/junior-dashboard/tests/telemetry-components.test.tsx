@@ -390,6 +390,12 @@ describe("dashboard canonical-event components", () => {
           }}
           privacy={null}
           search=""
+          searchMatch={{
+            count: 0,
+            index: 0,
+            setCount: () => {},
+            step: () => {},
+          }}
           title="Header QA"
           view="raw"
         />

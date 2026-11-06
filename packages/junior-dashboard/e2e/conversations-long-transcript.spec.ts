@@ -241,8 +241,20 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await page.keyboard.press("ControlOrMeta+f");
   const search = page.getByPlaceholder("Search transcript…");
   await expect(search).toBeFocused();
-  await search.fill("Transcript message 1234 with");
-  await expect(transcript.getByText("Transcript message 1234 ")).toBeVisible();
+  await search.fill("Transcript message 123");
+  await expect(page.getByText("1/11", { exact: true })).toBeVisible();
+  // Enter goes to the next match. Shift+Enter goes back and wraps around.
+  await search.press("Enter");
+  await expect(page.getByText("2/11", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1230 "),
+  ).toBeInViewport();
+  await search.press("Shift+Enter");
+  await search.press("Shift+Enter");
+  await expect(page.getByText("11/11", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1239 "),
+  ).toBeInViewport();
 
   // A second press goes to the browser's find.
   await page.evaluate(() => {

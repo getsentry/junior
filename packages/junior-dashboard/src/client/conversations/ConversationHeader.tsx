@@ -20,6 +20,7 @@ import {
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import type { TranscriptSearchMatch } from "./transcriptSearch";
 
 /**
  * Keep the conversation title and frequently used controls in the header.
@@ -47,6 +48,7 @@ export function ConversationHeader(props: {
   pin: ConversationPinAction;
   privacy: ReactNode;
   search: string;
+  searchMatch: TranscriptSearchMatch;
   sentryConversationUrl?: string;
   sidebarToggle?: ReactNode;
   title: string;
@@ -269,6 +271,7 @@ export function ConversationHeader(props: {
           <TranscriptSearchBar
             className="inset-x-3 md:left-auto md:right-4 md:w-[max(20rem,25vw)]"
             inputRef={searchInputRef}
+            match={props.searchMatch}
             onChange={props.onSearchChange}
             onClose={closeSearch}
             value={props.search}

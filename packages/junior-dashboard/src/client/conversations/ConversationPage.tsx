@@ -58,7 +58,10 @@ import {
   eventLogRows,
   filterEventLogRows,
 } from "./eventLog";
-import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TranscriptSearchProvider,
+  useTranscriptSearchMatch,
+} from "./transcriptSearch";
 import {
   TurnContextDetails,
   type TurnContextPanel,
@@ -232,6 +235,7 @@ export function ConversationPage(props: {
   );
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
+  const searchMatch = useTranscriptSearchMatch(search);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const onRead = props.onRead;
@@ -741,6 +745,7 @@ export function ConversationPage(props: {
                 />
               }
               search={search}
+              searchMatch={searchMatch}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
               sidebarToggle={props.sidebarToggle}
               title={title}
@@ -817,6 +822,8 @@ export function ConversationPage(props: {
                           onOpenSubagentTranscript={onOpenSubagentTranscript}
                           search={search}
                           onSearchChange={setSearch}
+                          searchMatch={searchMatch.index}
+                          onSearchMatchCount={searchMatch.setCount}
                           selectedEventSeq={selectedEventSeq}
                           startAtLink={startAtLink}
                           startAtUnread={startAtUnread}

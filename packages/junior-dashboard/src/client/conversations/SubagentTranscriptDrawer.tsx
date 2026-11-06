@@ -23,6 +23,7 @@ import {
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
+import { useTranscriptSearchMatch } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /** One child Conversation to show, with what its parent already knows. */
@@ -59,6 +60,7 @@ function SubagentTranscriptDrawerContent(props: {
   const query = useConversationData(props.target.conversationId);
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
+  const searchMatch = useTranscriptSearchMatch(search);
   const [searchOpen, setSearchOpen] = useState(false);
 
   const detail = query.data;
@@ -174,6 +176,7 @@ function SubagentTranscriptDrawerContent(props: {
             <TranscriptSearchBar
               className="inset-x-4 md:left-auto md:right-5 md:w-80"
               inputRef={searchInputRef}
+              match={searchMatch}
               onChange={setSearch}
               onClose={closeSearch}
               value={search}
@@ -211,6 +214,8 @@ function SubagentTranscriptDrawerContent(props: {
           onLoadPreviousPage={query.loadPreviousPage}
           search={search}
           onSearchChange={setSearch}
+          searchMatch={searchMatch.index}
+          onSearchMatchCount={searchMatch.setCount}
           transcript={detail}
           view={view}
         />
