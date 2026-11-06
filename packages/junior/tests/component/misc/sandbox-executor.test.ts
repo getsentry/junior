@@ -620,6 +620,39 @@ describe("createTestSandbox", () => {
     expect(resumingRunCommand).not.toHaveBeenCalled();
   });
 
+  it("creates a preview URL and keeps the ports that are already exposed", async () => {
+    const sandbox = makeSandbox("sbx_preview");
+    const routes = [{ port: 4000, subdomain: "sbx-preview-4000" }];
+    const update = vi.fn(async ({ ports }: { ports: number[] }) => {
+      routes.splice(
+        0,
+        routes.length,
+        ...ports.map((port) => ({ port, subdomain: `sbx-preview-${port}` })),
+      );
+    });
+    sandboxCreateMock.mockResolvedValueOnce({
+      ...sandbox,
+      update,
+      currentSession: () => ({
+        ...sandbox.session,
+        routes,
+        domain: (port: number) =>
+          `https://${routes.find((route) => route.port === port)!.subdomain}.vercel.run`,
+      }),
+    });
+    const workspace = await createTestSandbox().createSandbox();
+
+    await expect(workspace.createPreview!(3000)).resolves.toBe(
+      "https://sbx-preview-3000.vercel.run",
+    );
+    await expect(workspace.createPreview!(3000)).resolves.toBe(
+      "https://sbx-preview-3000.vercel.run",
+    );
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({ ports: [4000, 3000] });
+  });
+
   it("fails a stopped hinted session and reacquires it on a later call", async () => {
     const stoppedSandbox = makeSandbox("sbx_stopped", {
       writeFilesError: createApiError(

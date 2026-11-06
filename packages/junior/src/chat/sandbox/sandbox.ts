@@ -862,6 +862,18 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     }
   };
   const workspace: SandboxWorkspace = {
+    createPreview: async (port) =>
+      await runWorkspaceOperation(
+        "workspace.createPreview",
+        async (sandbox) => {
+          if (!sandbox.createPreview) {
+            throw new ToolInputError(
+              "This sandbox provider cannot create previews.",
+            );
+          }
+          return await sandbox.createPreview(port);
+        },
+      ),
     readFileToBuffer: async (input) =>
       await runWorkspaceOperation(
         "workspace.readFileToBuffer",
