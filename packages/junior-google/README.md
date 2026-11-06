@@ -26,4 +26,28 @@ not use the Google credentials of the people it helps.
 Anyone who can talk to Junior can read what the Junior account can see. Share
 calendars and files with that account only when that is acceptable.
 
+## Email requests
+
+Trial. People can send or forward email to the Junior account, or CC it, to
+ask for work. For example: "Junior, find us 30 minutes next week." Junior
+replies in the sender's Slack DM. It does not send email.
+
+1. Add the `gmail.readonly` scope to the consent screen and enable the Gmail
+   API.
+2. Set `GOOGLE_WORKSPACE_EMAIL_REQUESTS=true`.
+3. Connect the account again to grant Gmail access.
+
+The heartbeat reads new inbox mail every minute. Junior uses an email only when
+all of these are true:
+
+- Google's `Authentication-Results` header shows DMARC pass for the From
+  domain.
+- The From domain is in `GOOGLE_WORKSPACE_ALLOWED_DOMAINS`.
+- The From address is the primary email of a known User, and that User is a
+  current Slack member whose Slack profile shows the same email.
+- The email is not automated mail, a calendar reply, or mail from Junior.
+
+Junior ignores all other email. Quoted and forwarded text goes to the agent as
+external text, not as instructions.
+
 Plugin setup: https://junior.sentry.dev/extend/

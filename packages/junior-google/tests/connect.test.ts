@@ -225,6 +225,22 @@ describe("Google account setup", () => {
     expect(missing.status).toBe(400);
     expect(await missing.text()).toContain("calendar.events.owned");
 
+    // Email requests also need Gmail. Without them, the grant never asks for it.
+    vi.stubEnv("GOOGLE_WORKSPACE_EMAIL_REQUESTS", "true");
+    const emailApp = setupRoutes(fixture.db());
+    const withoutGmail = await startSignIn(emailApp);
+    expect(withoutGmail.location.searchParams.get("scope")).toContain(
+      "https://www.googleapis.com/auth/gmail.readonly",
+    );
+    googleTokenEndpoint({ email: ACCOUNT_EMAIL });
+    const noGmail = await callback(
+      emailApp,
+      withoutGmail.cookie,
+      withoutGmail.state,
+    );
+    expect(noGmail.status).toBe(400);
+    expect(await noGmail.text()).toContain("gmail.readonly");
+
     expect(await getGoogleAccount(fixture.db(), ACCOUNT_EMAIL)).toBeUndefined();
   });
 });

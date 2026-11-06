@@ -9,6 +9,8 @@ export const GOOGLE_CLIENT_ID_ENV = "GOOGLE_CLIENT_ID";
 export const GOOGLE_CLIENT_SECRET_ENV = "GOOGLE_CLIENT_SECRET";
 export const GOOGLE_ACCOUNT_EMAIL_ENV = "GOOGLE_WORKSPACE_ACCOUNT_EMAIL";
 export const GOOGLE_ALLOWED_DOMAINS_ENV = "GOOGLE_WORKSPACE_ALLOWED_DOMAINS";
+/** Set to `true` to read requests that people email to Junior's account. */
+export const GOOGLE_EMAIL_REQUESTS_ENV = "GOOGLE_WORKSPACE_EMAIL_REQUESTS";
 
 /**
  * API scopes the tools need. A connected grant must have all of them. Request
@@ -31,6 +33,14 @@ export const GOOGLE_API_SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
 ] as const;
 
+/**
+ * Read mail in Junior's inbox, for email requests only. Gmail has no narrower
+ * scope that includes message bodies. Only host code uses it: no tool or
+ * sandbox egress can read mail.
+ */
+export const GOOGLE_GMAIL_SCOPE =
+  "https://www.googleapis.com/auth/gmail.readonly";
+
 /** Identity scopes used only to verify which account signed in. */
 export const GOOGLE_IDENTITY_SCOPES = ["openid", "email"] as const;
 
@@ -41,6 +51,15 @@ export interface GoogleConfig {
   allowedDomains: string[];
   clientId: string;
   clientSecret: string;
+  /** Turn email from verified people into requests. */
+  emailRequests: boolean;
+}
+
+/** Return every API scope that a connected grant of this deployment needs. */
+export function googleApiScopes(config: GoogleConfig): string[] {
+  return config.emailRequests
+    ? [...GOOGLE_API_SCOPES, GOOGLE_GMAIL_SCOPE]
+    : [...GOOGLE_API_SCOPES];
 }
 
 function readEnv(name: string): string | undefined {
@@ -85,5 +104,6 @@ export function readGoogleConfig(): GoogleConfig | undefined {
     allowedDomains: allowedDomains.length ? allowedDomains : [accountDomain],
     clientId,
     clientSecret,
+    emailRequests: readEnv(GOOGLE_EMAIL_REQUESTS_ENV) === "true",
   };
 }
