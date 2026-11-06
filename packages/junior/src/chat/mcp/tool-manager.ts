@@ -219,20 +219,22 @@ function boundMcpContent(
   ];
 }
 
+// Keep the full text. The tool pipeline cuts long model-facing results and
+// saves the full text to a file, so the text is not lost here.
 function toModelVisibleMcpContent(
   result: PluginMcpToolCallResult,
 ): Array<TextContent | ImageContent> {
   const content = toAgentToolContent(result);
   if (content.some((part) => part.type === "image")) {
-    return boundMcpContent(content);
+    return content;
   }
 
   const structured = summarizeStructuredContent(result.structuredContent);
   if (structured) {
-    return boundMcpContent([{ type: "text", text: structured }]);
+    return [{ type: "text", text: structured }];
   }
 
-  return boundMcpContent(content);
+  return content;
 }
 
 function describeMcpTool(provider: string, tool: PluginMcpListedTool): string {

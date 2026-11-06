@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import { createLocalSource } from "@sentry/junior-plugin-api";
+import { http } from "msw";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
+import { createToolActionReview } from "@/chat/guardian/gate";
+import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
+import { mswServer } from "../../msw/server";
 
 const BIG_TEXT = "x".repeat(TOOL_RESULT_MAX_CHARS + 5_000);
 
@@ -27,15 +35,42 @@ const definitions = {
   }),
 } as Record<string, AnyToolDefinition>;
 
+const CONVERSATION_ID = "local:test:result-cap";
+
+/** MCP calls need action review. Guardian's model is faked to allow them. */
+const allowAll = createToolActionReview({
+  context: {
+    actor: { platform: "local", userId: "local-user" },
+    conversationId: CONVERSATION_ID,
+    destination: { platform: "local", conversationId: CONVERSATION_ID },
+    source: createLocalSource(CONVERSATION_ID),
+    userIntent: () => "Read the docs page.",
+  },
+  onDecision: async () => undefined,
+  onFatal: () => undefined,
+  reviewer: {
+    review: async () => ({
+      decision: "allow",
+      reason: "The user asked for this.",
+      riskLevel: "low",
+      rule: "none",
+      userAuthorization: "high",
+    }),
+  },
+});
+
 type SavedFile = { content: string | Uint8Array; path: string };
 
 function fakeWrite() {
   return vi.fn(async (_files: SavedFile[]) => undefined);
 }
 
-function agentTools(writeFiles: (files: SavedFile[]) => Promise<void>) {
+function agentTools(
+  writeFiles: (files: SavedFile[]) => Promise<void>,
+  toolDefinitions: Record<string, AnyToolDefinition> = definitions,
+) {
   const tools = createPiAgentTools(
-    definitions,
+    toolDefinitions,
     new SkillSandbox([], []),
     {},
     undefined,
@@ -45,7 +80,7 @@ function agentTools(writeFiles: (files: SavedFile[]) => Promise<void>) {
     undefined,
     "private",
     undefined,
-    undefined,
+    allowAll,
     { countToolCall: () => 1, workspace: { writeFiles } },
   );
   return (name: string) => {
@@ -58,6 +93,46 @@ function agentTools(writeFiles: (files: SavedFile[]) => Promise<void>) {
 function contentText(result: AgentToolResult<unknown>): string {
   const [first] = result.content as Array<{ text: string }>;
   return first!.text;
+}
+
+/** Connect a real MCP client to an in-process server with one large tool. */
+async function bigMcpTool(): Promise<{
+  callMcpTool: AnyToolDefinition;
+  close: () => Promise<void>;
+}> {
+  const mcpUrl = "https://mcp.docs.example.com/mcp";
+  const server = new McpServer({ name: "docs-test", version: "1.0.0" });
+  server.registerTool(
+    "page",
+    { description: "Read a page", inputSchema: {} },
+    () => ({ content: [{ type: "text", text: BIG_TEXT }] }),
+  );
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    enableJsonResponse: true,
+    sessionIdGenerator: () => "docs-test-session",
+  });
+  await server.connect(transport);
+  mswServer.use(
+    http.all(mcpUrl, async ({ request }) => transport.handleRequest(request)),
+  );
+  const manager = new McpToolManager([
+    {
+      dir: "/plugins/docs",
+      skillsDir: "/plugins/docs/skills",
+      manifest: {
+        name: "docs",
+        displayName: "Docs",
+        description: "Docs MCP provider",
+        configKeys: [],
+        mcp: { transport: "http", url: mcpUrl },
+      },
+    },
+  ]);
+  expect(await manager.activateProvider("docs")).toBe(true);
+  return {
+    callMcpTool: createCallMcpToolTool(manager) as AnyToolDefinition,
+    close: () => manager.close(),
+  };
 }
 
 /** Split cut text into the shown head and the one-line note after it. */
@@ -147,5 +222,34 @@ describe("tool result cap", () => {
 
     expect(result.details).toMatchObject({ ok: true, value: BIG_TEXT.length });
     expect(writeFiles).not.toHaveBeenCalled();
+  });
+
+  it("saves the full text of a large MCP result", async () => {
+    const mcp = await bigMcpTool();
+    try {
+      const writeFiles = fakeWrite();
+      const find = agentTools(writeFiles, { callMcpTool: mcp.callMcpTool });
+
+      const result = (await find("callMcpTool").execute("call-mcp", {
+        tool_name: "mcp__docs__page",
+      })) as AgentToolResult<unknown>;
+      const script = (await find(CODEMODE_TOOL_NAME).execute(
+        "call-mcp-script",
+        {
+          code: 'const r = await tools.callMcpTool({ tool_name: "mcp__docs__page" }); return r.result.length;',
+        },
+      )) as AgentToolResult<unknown>;
+
+      expect(writeFiles).toHaveBeenCalledOnce();
+      const file = writeFiles.mock.calls[0]![0][0]!;
+      expect(file.content === BIG_TEXT).toBe(true);
+      expect(splitNote(contentText(result))[1]).toContain(`full: ${file.path}`);
+      expect(script.details).toMatchObject({
+        ok: true,
+        value: BIG_TEXT.length,
+      });
+    } finally {
+      await mcp.close();
+    }
   });
 });
