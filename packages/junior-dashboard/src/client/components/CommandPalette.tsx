@@ -91,7 +91,8 @@ function CommandPaletteBody(props: {
   onClose(): void;
 }) {
   const [query, setQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
+  // Track the highlight by row id, so rows that load later keep it in place.
+  const [activeId, setActiveId] = useState<string | null>(null);
   const search = useDebouncedValue(query.trim());
   const feed = useConversationsData(search);
   const navigate = useNavigate();
@@ -118,10 +119,10 @@ function CommandPaletteBody(props: {
       search,
     ],
   );
-  const active = items[Math.min(activeIndex, items.length - 1)];
+  const active = items.find((item) => item.id === activeId) ?? items[0];
 
   useEffect(() => {
-    setActiveIndex(0);
+    setActiveId(null);
   }, [query, search]);
   const activeOptionId = active ? `${listId}-${active.id}` : undefined;
   useEffect(() => {
@@ -136,10 +137,9 @@ function CommandPaletteBody(props: {
       event.preventDefault();
       if (items.length === 0) return;
       const step = event.key === "ArrowDown" ? 1 : -1;
-      setActiveIndex(
-        (index) =>
-          (Math.min(index, items.length - 1) + step + items.length) %
-          items.length,
+      const index = active ? items.indexOf(active) : 0;
+      setActiveId(
+        items[(index + step + items.length) % items.length]?.id ?? null,
       );
     } else if (event.key === "Enter" && active) {
       event.preventDefault();
@@ -210,7 +210,7 @@ function CommandPaletteBody(props: {
                     id={`${listId}-${item.id}`}
                     key={item.id}
                     onClick={props.onClose}
-                    onMouseMove={() => setActiveIndex(items.indexOf(item))}
+                    onMouseMove={() => setActiveId(item.id)}
                     role="option"
                     tabIndex={-1}
                     to={item.to}
