@@ -1,7 +1,11 @@
 import webPush, { WebPushError } from "web-push";
 import type { JuniorDatabase } from "@/db/db";
-import { logInfo, logWarn } from "@/chat/logging";
-import { deletePushSubscriptionsById, listPushSubscriptions } from "./store";
+import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
+import {
+  deletePushSubscriptionsById,
+  listPushSubscriptions,
+  type StoredPushSubscription,
+} from "./store";
 
 /** VAPID settings that Junior uses to sign Web Push requests. */
 export interface WebPushConfig {
@@ -44,58 +48,109 @@ export function readWebPushConfig(): WebPushConfig | undefined {
   return { privateKey, publicKey, subject };
 }
 
+/** What caused a notification. A test send comes from the settings page. */
+export type PushNotificationKind = "reply" | "test";
+
+/** Device counts for one notification sent to one user. */
+export interface PushNotificationResult {
+  delivered: number;
+  devices: number;
+  failed: number;
+  removed: number;
+}
+
+type PushOutcome = "delivered" | "failed" | "gone";
+
+function pushErrorType(error: unknown): string {
+  if (error instanceof WebPushError) return `http_${error.statusCode}`;
+  return error instanceof Error ? error.name : "unknown";
+}
+
 /**
- * Send one notification to every browser of one user. A failed browser does
- * not stop the others, and the task is not retried, so a retry cannot send
- * duplicates. Subscriptions that the push service reports as gone are deleted.
+ * Send one notification to one browser in a `notification.push.send` span.
+ * The span records only the push service host: the endpoint path identifies
+ * the device.
  */
-export async function sendPushNotificationToUser(args: {
-  config: WebPushConfig;
-  db: JuniorDatabase;
-  payload: PushNotificationPayload;
-  userId: string;
-}): Promise<{ delivered: number; failed: number; removed: number }> {
-  const subscriptions = await listPushSubscriptions(args.db, args.userId);
-  const body = JSON.stringify(args.payload);
-  const gone: string[] = [];
-  let delivered = 0;
-  let failed = 0;
-  await Promise.all(
-    subscriptions.map(async (subscription) => {
+async function sendToDevice(
+  subscription: StoredPushSubscription,
+  body: string,
+  config: WebPushConfig,
+): Promise<PushOutcome> {
+  const serverAddress = new URL(subscription.endpoint).hostname;
+  return await withSpan(
+    "notification.push.send",
+    "notification.push.send",
+    {},
+    async (setSpanAttributes) => {
+      let outcome: PushOutcome;
+      let statusCode: number | undefined;
       try {
-        await webPush.sendNotification(subscription, body, {
+        ({ statusCode } = await webPush.sendNotification(subscription, body, {
           TTL: PUSH_TTL_SECONDS,
           contentEncoding: "aes128gcm",
           timeout: PUSH_TIMEOUT_MS,
           urgency: "normal",
-          vapidDetails: args.config,
-        });
-        delivered += 1;
+          vapidDetails: config,
+        }));
+        outcome = "delivered";
       } catch (error) {
-        if (
-          error instanceof WebPushError &&
-          (error.statusCode === 404 || error.statusCode === 410)
-        ) {
-          gone.push(subscription.id);
-          return;
+        statusCode =
+          error instanceof WebPushError ? error.statusCode : undefined;
+        outcome = statusCode === 404 || statusCode === 410 ? "gone" : "failed";
+        if (outcome === "failed") {
+          setSpanStatus("error");
+          logWarn("notification.push.failed", {
+            "error.type": pushErrorType(error),
+            "server.address": serverAddress,
+          });
         }
-        failed += 1;
-        logWarn("notification.push.failed", {
-          "error.type":
-            error instanceof WebPushError
-              ? `http_${error.statusCode}`
-              : error instanceof Error
-                ? error.name
-                : "unknown",
-        });
       }
-    }),
+      setSpanAttributes({ "app.notification.push.outcome": outcome });
+      if (statusCode) {
+        setSpanAttributes({ "http.response.status_code": statusCode });
+      }
+      return outcome;
+    },
+    { "server.address": serverAddress },
   );
+}
+
+/**
+ * Send one notification to every browser of one user. A failed browser does
+ * not stop the others or fail the call. Subscriptions that the push service
+ * reports as gone are deleted. When a queued task retries after a send, the
+ * payload tag replaces the earlier notification on the device.
+ */
+export async function sendPushNotificationToUser(args: {
+  config: WebPushConfig;
+  db: JuniorDatabase;
+  kind: PushNotificationKind;
+  payload: PushNotificationPayload;
+  userId: string;
+}): Promise<PushNotificationResult> {
+  const subscriptions = await listPushSubscriptions(args.db, args.userId);
+  const body = JSON.stringify(args.payload);
+  const outcomes = await Promise.all(
+    subscriptions.map((subscription) =>
+      sendToDevice(subscription, body, args.config),
+    ),
+  );
+  const gone = subscriptions
+    .filter((_, index) => outcomes[index] === "gone")
+    .map((subscription) => subscription.id);
   await deletePushSubscriptionsById(args.db, gone);
+  const result: PushNotificationResult = {
+    delivered: outcomes.filter((outcome) => outcome === "delivered").length,
+    devices: subscriptions.length,
+    failed: outcomes.filter((outcome) => outcome === "failed").length,
+    removed: gone.length,
+  };
   logInfo("notification.push.sent", {
-    "app.notification.delivered": delivered,
-    "app.notification.failed": failed,
-    "app.notification.removed": gone.length,
+    "app.notification.kind": args.kind,
+    "app.notification.devices": result.devices,
+    "app.notification.delivered": result.delivered,
+    "app.notification.failed": result.failed,
+    "app.notification.removed": result.removed,
   });
-  return { delivered, failed, removed: gone.length };
+  return result;
 }

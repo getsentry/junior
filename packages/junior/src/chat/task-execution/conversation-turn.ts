@@ -24,7 +24,12 @@ import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-life
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { logException, setTags, withLogContext } from "@/chat/logging";
+import { logException, setTags } from "@/chat/logging";
+import {
+  getTurnInputSpanAttributes,
+  turnInputTelemetry,
+  withTurnSpan,
+} from "@/chat/task-execution/turn-telemetry";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
@@ -369,7 +374,19 @@ export function createConversationTurnWorker(
     // lookup and reporting read Source for web and Event Turns.
     const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
 
-    return await withLogContext(
+    // Input timing applies to new input. A resumed slice continues the trace
+    // of its first slice.
+    const inputTelemetry =
+      resolved.kind === "mailbox"
+        ? turnInputTelemetry(resolved.batch.map((entry) => entry.message))
+        : undefined;
+    const turnTrace =
+      inputTelemetry ??
+      (savedTurn?.traceContext
+        ? { traceContexts: [savedTurn.traceContext] }
+        : undefined);
+
+    return await withTurnSpan(
       {
         conversationId: context.conversationId,
         platform: actor.platform,
@@ -382,7 +399,13 @@ export function createConversationTurnWorker(
             }
           : undefined),
       },
-      async () => {
+      turnTrace,
+      async (setTurnSpanAttributes) => {
+        if (inputTelemetry) {
+          setTurnSpanAttributes(
+            getTurnInputSpanAttributes(inputTelemetry, Date.now()),
+          );
+        }
         let acknowledged = isResume || context.attempt.messages.length === 0;
         const acknowledge = async (): Promise<void> => {
           if (acknowledged) {

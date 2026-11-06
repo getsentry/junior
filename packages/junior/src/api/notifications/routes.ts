@@ -128,6 +128,7 @@ export function createNotificationRoutes(): Hono<JuniorApiEnv> {
     const result = await sendPushNotificationToUser({
       config,
       db: getDb(),
+      kind: "test",
       payload: {
         body: "Notifications work on this device.",
         tag: "junior-test",

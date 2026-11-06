@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { isWithinNotificationSchedule } from "./schedule";
 import { readNotificationSchedule } from "./store";
@@ -69,8 +70,22 @@ async function readConversationTitle(
   return rows[0]?.title?.trim() || undefined;
 }
 
-function skip(context: PluginTaskContext, reason: string): void {
-  context.log.info("Reply notification skipped", { reason });
+type SkipReason =
+  | "has_location"
+  | "no_dashboard"
+  | "no_reply"
+  | "no_user"
+  | "not_configured"
+  | "outside_hours";
+
+function skip(reason: SkipReason): void {
+  setSpanAttributes({
+    "app.notification.outcome": "skipped",
+    "app.notification.skip_reason": reason,
+  });
+  logInfo("notification.reply.skipped", {
+    "app.notification.skip_reason": reason,
+  });
 }
 
 /**
@@ -81,16 +96,16 @@ function skip(context: PluginTaskContext, reason: string): void {
  */
 async function notifyReply(context: PluginTaskContext): Promise<void> {
   const config = readWebPushConfig();
-  if (!config) return skip(context, "not_configured");
+  if (!config) return skip("not_configured");
   const run = await context.run.load();
-  if (run.locationId) return skip(context, "has_location");
+  if (run.locationId) return skip("has_location");
   const url = getDashboardConversationLink(run.conversationId);
-  if (!url) return skip(context, "no_dashboard");
+  if (!url) return skip("no_dashboard");
   const reply = lastAssistantText(run);
-  if (!reply) return skip(context, "no_reply");
+  if (!reply) return skip("no_reply");
   const db = context.db as JuniorDatabase;
   const userId = await recipientUserId(db, run);
-  if (!userId) return skip(context, "no_user");
+  if (!userId) return skip("no_user");
 
   const nowMs = Date.now();
   const schedule = await readNotificationSchedule(db, userId);
@@ -101,7 +116,7 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
     userId,
   });
   if (!isWithinNotificationSchedule(schedule, timezone, nowMs)) {
-    return skip(context, "outside_hours");
+    return skip("outside_hours");
   }
 
   // The payload holds only a short plain-text preview. Logs hold only counts.
@@ -111,7 +126,27 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
     title: (await readConversationTitle(db, run.conversationId)) ?? "Junior",
     url,
   };
-  await sendPushNotificationToUser({ config, db, payload, userId });
+  const result = await sendPushNotificationToUser({
+    config,
+    db,
+    kind: "reply",
+    payload,
+    userId,
+  });
+  // The wait that the user sees: from the completed Turn to the end of the
+  // pushes. A queued task can run on another host, so a negative value is
+  // clock skew and is left out.
+  const replyLagMs = Date.now() - run.completedAtMs;
+  setSpanAttributes({
+    "app.notification.outcome": "sent",
+    "app.notification.devices": result.devices,
+    "app.notification.delivered": result.delivered,
+    "app.notification.failed": result.failed,
+    "app.notification.removed": result.removed,
+    ...(replyLagMs >= 0
+      ? { "app.notification.reply_lag_ms": Math.round(replyLagMs) }
+      : undefined),
+  });
 }
 
 /** Core task that sends reply notifications to installed dashboard apps. */
