@@ -182,6 +182,7 @@ export function TranscriptSubagentGroup(props: {
           key={entry.key}
           lane={span ? laneStyle(entry, span, nowMs) : undefined}
           onOpenTranscript={props.onOpenTranscript}
+          searchActive={searchActive}
         />
       ))}
       {!open && completedCount > 0 ? (
@@ -202,12 +203,16 @@ function SubagentGroupRow(props: {
   entry: RenderedSubagentEntry;
   lane?: { left: string; width: string };
   onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
+  searchActive: boolean;
 }) {
   const { part } = props.entry;
   const label = agentLabel(part);
   // A row that needs attention keeps its task title, like the single card.
+  // Search also matches the title and task, so show the text that matched.
   const headline =
-    part.status === "completed" ? undefined : (part.title ?? part.task);
+    part.status === "completed" && !props.searchActive
+      ? undefined
+      : (part.title ?? part.task);
   const duration = formatElapsedDuration(
     props.entry.timestamp,
     part.finishedTimestamp,

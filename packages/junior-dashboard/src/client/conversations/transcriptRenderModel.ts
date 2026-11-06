@@ -1,4 +1,7 @@
-import { messageCardText } from "@sentry/junior/api/schema";
+import {
+  isAgentInvocationResultEventType,
+  messageCardText,
+} from "@sentry/junior/api/schema";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -16,21 +19,19 @@ import type {
 } from "../types";
 import { memoryRecallContent } from "./turnContext";
 
-// Core sends each agent invocation result to the parent mailbox with this
-// Event type prefix (`agent-invocations/result.ts`).
-const AGENT_INVOCATION_RESULT_EVENT_PREFIX = "agent_invocation.";
-
 /**
  * True for the parent Event message that delivers agent invocation results.
- * Its child agent card already shows each outcome, so the transcript shows
- * this message only for the memories its Turn recalled.
+ * Core writes `subagent_ended` before it sends the result, so the child agent
+ * card always shows the outcome. The transcript keeps this message only for
+ * the memories its Turn recalled, folded into activity.
  */
 export function isAgentInvocationResultMessage(
   message: Pick<TranscriptViewMessage, "eventType" | "role">,
 ): boolean {
   return (
     message.role === "user" &&
-    message.eventType?.startsWith(AGENT_INVOCATION_RESULT_EVENT_PREFIX) === true
+    message.eventType !== undefined &&
+    isAgentInvocationResultEventType(message.eventType)
   );
 }
 

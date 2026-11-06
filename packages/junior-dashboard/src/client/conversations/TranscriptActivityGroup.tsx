@@ -11,7 +11,10 @@ import {
 import { formatMs } from "../format";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
-import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
+import {
+  isAgentInvocationResultMessage,
+  type RenderedTranscriptEntry,
+} from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
@@ -31,7 +34,11 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "attachments_delivered") return false;
   // Child agent rows stay in the main view. A run of them is one group card.
   if (entry.kind === "subagent") return false;
-  if (entry.kind === "message") return false;
+  // An agent invocation result left only for its recalled memories is
+  // activity of the Turn it started. Its child agent card shows the outcome.
+  if (entry.kind === "message") {
+    return isAgentInvocationResultMessage(entry.message);
+  }
   // A Turn's captured memories stay visible, so the reader sees what it saved.
   if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
     return false;

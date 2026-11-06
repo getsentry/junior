@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Brain, History, Network } from "lucide-react";
+import { History, Network } from "lucide-react";
 import { cn } from "../styles";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
@@ -60,10 +60,7 @@ import {
   TranscriptAutomationTriggerView,
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
-import {
-  groupTranscriptMessages,
-  isAgentInvocationResultMessage,
-} from "./transcriptRenderModel";
+import { groupTranscriptMessages } from "./transcriptRenderModel";
 import { useTranscriptSearch } from "./transcriptSearch";
 import {
   TranscriptOpenRows,
@@ -326,12 +323,6 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
             />
             <TranscriptRecalledMemories message={entry.message} />
           </div>
-        ) : isAgentInvocationResultMessage(entry.message) ? (
-          // The child agent cards show the results. Keep what the Turn
-          // recalled, the only thing this message adds.
-          <TranscriptRailEvent icon={Brain} kind="event">
-            <TranscriptRecalledMemories message={entry.message} />
-          </TranscriptRailEvent>
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
             kind="event"
