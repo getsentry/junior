@@ -625,6 +625,12 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 
+  // Back leaves the event log for its Conversation, then the list.
+  await page
+    .getByRole("button", { name: "Back to conversation", exact: true })
+    .click();
+  await expect(page.getByPlaceholder("Search events…")).toBeHidden();
+  await expect(page).toHaveURL(/\/conversations\//);
   await page.getByRole("link", { name: "Back to conversations" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
