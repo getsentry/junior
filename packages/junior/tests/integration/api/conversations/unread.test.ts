@@ -102,6 +102,8 @@ describe("conversation unread API", () => {
       `http://localhost/api/conversations/${conversationId}`,
     );
     expect(detail.status).toBe(200);
+    // The detail carries the flag too, for pages opened outside the feed.
+    expect(await detail.json()).toMatchObject({ unread: true });
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
 
     const markRead = await setUnread(app, conversationId, false);

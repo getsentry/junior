@@ -353,12 +353,11 @@ export function ConversationPage(props: {
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
-  // The detail report has no unread flag, so read it from the feed row.
-  const unread = Boolean(feedConversation?.unread);
   const conversation = applyPendingArchiveUpdate(
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
+  const unread = Boolean(conversation?.unread);
   const participants = conversationParticipants(conversation);
   const identity =
     participants.length > 0 ? (
@@ -711,10 +710,10 @@ export function ConversationPage(props: {
               read={{
                 // Unread tracks idle conversations only, like the sidebar row.
                 disabled:
-                  !feedConversation ||
+                  !conversation ||
                   !detail.data?.isParticipant ||
                   markUnread.isPending ||
-                  (!unread && feedConversation.status !== "completed"),
+                  (!unread && conversation.status !== "completed"),
                 error: Boolean(markUnread.error),
                 onClick: () => markUnread.mutate(!unread),
                 unread,

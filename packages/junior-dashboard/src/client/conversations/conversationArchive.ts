@@ -191,15 +191,23 @@ export function archiveConversationMutationOptions(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Match the API: archive also unpins.
+      // Match the API: archive also unpins and marks it read. Restore keeps
+      // the read state, because auto-archive does not mark it read.
       const viewerMarks = args.archived
-        ? { archivedAt, pinnedAt: null }
+        ? { archivedAt, pinnedAt: null, unread: undefined }
         : { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
-      const archivedSnapshot =
+      const snapshot =
         buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
         previousArchivedSnapshot;
+      const archivedSnapshot =
+        snapshot && args.archived
+          ? {
+              ...snapshot,
+              conversation: { ...snapshot.conversation, unread: undefined },
+            }
+          : snapshot;
 
       previousFeeds.forEach(([queryKey, feed]) => {
         if (!feed) return;
@@ -216,22 +224,15 @@ export function archiveConversationMutationOptions(
           ? [
               ...feed.conversations,
               // The archive cleared the pin, so the restored row is unpinned.
-              // The archive also marked it read.
               {
                 ...archivedSnapshot!.conversation,
                 archivedAt: null,
                 pinnedAt: null,
-                unread: false,
               },
             ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
           : feed.conversations.map((conversation) =>
               conversation.conversationId === conversationId
-                ? {
-                    ...conversation,
-                    ...viewerMarks,
-                    // Match the API: archive also marks it read.
-                    unread: args.archived ? false : conversation.unread,
-                  }
+                ? { ...conversation, ...viewerMarks }
                 : conversation,
             );
         queryClient.setQueryData<ConversationFeed>(queryKey, {

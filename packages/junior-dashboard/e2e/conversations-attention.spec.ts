@@ -272,8 +272,10 @@ test.describe("conversation sections", () => {
         });
       },
     );
-    await page.goto(dashboard.baseURL);
-    await page.getByRole("link", { name: /Closed issue summary/ }).click();
+    // A deep link, so the menu cannot lean on a loaded feed row.
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("agent-dispatch:event-1")}`,
+    );
     await expect(
       page.getByRole("heading", { name: "Closed issue summary" }),
     ).toBeVisible();

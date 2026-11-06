@@ -49,6 +49,7 @@ function projectConversationDetail(args: {
   appended?: boolean;
   archivedAtMs?: number;
   pinnedAtMs?: number;
+  readAtMs?: number;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
@@ -83,6 +84,7 @@ function projectConversationDetail(args: {
       access: args.access,
       archivedAtMs: args.archivedAtMs,
       pinnedAtMs: args.pinnedAtMs,
+      readAtMs: args.readAtMs,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
