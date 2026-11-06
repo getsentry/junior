@@ -399,7 +399,6 @@ export function QuickQuestionPanel(props: {
               <TranscriptMessageShell
                 actor={message.role === "user" ? viewerName : agentName}
                 avatarUrl={message.role === "user" ? me?.avatarUrl : undefined}
-                compact
                 key={index}
                 role={message.role}
               >
@@ -417,7 +416,7 @@ export function QuickQuestionPanel(props: {
             ))
           )}
           {thinking ? (
-            <TranscriptMessageShell actor={agentName} compact role="assistant">
+            <TranscriptMessageShell actor={agentName} role="assistant">
               <span className="text-sm font-semibold text-dashboard-accent-text">
                 {agentName}
               </span>

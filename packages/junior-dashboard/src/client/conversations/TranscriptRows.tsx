@@ -19,11 +19,6 @@ export const transcriptColumnsClass =
 /** Align an avatar with the author row at either breakpoint. */
 export const transcriptAvatarClass = "mt-1 size-6 md:mt-0 md:size-8";
 
-/** The small-screen columns and avatar at every width, for narrow side panels. */
-export const transcriptCompactColumnsClass =
-  "grid-cols-[1.5rem_minmax(0,1fr)] gap-2";
-export const transcriptCompactAvatarClass = "mt-1 size-6";
-
 /** Keep row padding and the gap between transcript entries in one place. */
 export function TranscriptRows({
   className,
