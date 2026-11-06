@@ -85,15 +85,12 @@ When a person wants to open the UI that you changed, send a preview URL:
 
 Rules:
 
-- Anyone with the URL can open it. Serve mock data only. Do not give the
-  server provider credentials.
-- While the Sandbox runs, the server and the URL stay up between Turns. After
-  more edits, run the `curl` check first. If it returns `200`, do not restart
-  the server: it reloads your edits, so tell the person to refresh the same
-  URL.
-- The URL stops working when the Sandbox stops. When the person asks to
-  refresh the preview, check out the branch, start the server again, and send
-  the new URL.
+- Serve mock data only. Do not give the server provider credentials.
+- After more edits, run the `curl` check first. If it returns `200`, do not
+  restart the server: it reloads your edits, so tell the person to refresh the
+  same URL.
+- When the person asks to refresh the preview after the Sandbox stopped, check
+  out the branch, start the server again, and send the new URL.
 
 ## Docker Sandbox QA
 
