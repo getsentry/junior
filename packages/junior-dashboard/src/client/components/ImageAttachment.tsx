@@ -1,6 +1,8 @@
 import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import {
   type MouseEvent,
+  type PointerEvent,
+  useRef,
   useState,
   type ComponentPropsWithoutRef,
 } from "react";
@@ -195,11 +197,10 @@ function ImagePreview(props: {
               <span>Close</span>
             </DialogClose>
           </header>
-          <div className="grid min-h-0 place-items-center overflow-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6">
-            <img
+          <div className="grid min-h-0 place-items-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6">
+            <ZoomableImage
               alt={image.filename}
-              className="max-h-full max-w-full object-contain"
-              key={image.src}
+              key={`${image.src}\n${image.filename}`}
               src={image.src}
             />
           </div>
@@ -207,4 +208,122 @@ function ImagePreview(props: {
       </DialogContent>
     </Dialog>
   );
+}
+
+const MAX_ZOOM = 4;
+const DOUBLE_TAP_ZOOM = 2.5;
+const DOUBLE_TAP_MS = 300;
+
+type Zoom = { scale: number; x: number; y: number };
+type Point = { x: number; y: number };
+
+const NO_ZOOM: Zoom = { scale: 1, x: 0, y: 0 };
+
+/**
+ * Let touch readers pinch, drag, and double-tap to zoom one image. The page
+ * viewport blocks browser zoom, so the preview owns these gestures.
+ */
+function ZoomableImage(props: { alt: string; src: string }) {
+  const [zoom, setZoom] = useState(NO_ZOOM);
+  const pointers = useRef(new Map<number, Point>());
+  const gesture = useRef<{ distance: number; start: Point; zoom: Zoom }>(
+    undefined,
+  );
+  const lastTapAt = useRef(0);
+
+  const startGesture = (from: Zoom) => {
+    const points = [...pointers.current.values()];
+    gesture.current = {
+      distance: pointDistance(points),
+      start: midpoint(points),
+      zoom: from,
+    };
+  };
+
+  const onPointerDown = (event: PointerEvent<HTMLImageElement>) => {
+    if (event.pointerType === "mouse") return;
+    pointers.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (pointers.current.size === 1) {
+      if (event.timeStamp - lastTapAt.current < DOUBLE_TAP_MS) {
+        lastTapAt.current = 0;
+        const next =
+          zoom.scale > 1 ? NO_ZOOM : { scale: DOUBLE_TAP_ZOOM, x: 0, y: 0 };
+        setZoom(next);
+        startGesture(next);
+        return;
+      }
+      lastTapAt.current = event.timeStamp;
+    }
+    startGesture(zoom);
+  };
+
+  const onPointerMove = (event: PointerEvent<HTMLImageElement>) => {
+    const start = gesture.current;
+    if (!start || !pointers.current.has(event.pointerId)) return;
+    pointers.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    const points = [...pointers.current.values()];
+    const scale =
+      points.length > 1 && start.distance > 0
+        ? clamp(
+            (start.zoom.scale * pointDistance(points)) / start.distance,
+            1,
+            MAX_ZOOM,
+          )
+        : start.zoom.scale;
+    const center = midpoint(points);
+    // Keep the image edges inside the frame while it is dragged.
+    const maxX = ((scale - 1) * event.currentTarget.offsetWidth) / 2;
+    const maxY = ((scale - 1) * event.currentTarget.offsetHeight) / 2;
+    setZoom({
+      scale,
+      x: clamp(start.zoom.x + center.x - start.start.x, -maxX, maxX),
+      y: clamp(start.zoom.y + center.y - start.start.y, -maxY, maxY),
+    });
+  };
+
+  const onPointerEnd = (event: PointerEvent<HTMLImageElement>) => {
+    if (!pointers.current.delete(event.pointerId)) return;
+    const next = zoom.scale < 1.05 ? NO_ZOOM : zoom;
+    if (next !== zoom) setZoom(next);
+    if (pointers.current.size > 0) startGesture(next);
+    else gesture.current = undefined;
+  };
+
+  return (
+    <img
+      alt={props.alt}
+      className="max-h-full max-w-full touch-none object-contain select-none"
+      draggable={false}
+      onPointerCancel={onPointerEnd}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      src={props.src}
+      style={{
+        transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`,
+      }}
+    />
+  );
+}
+
+function midpoint(points: readonly Point[]): Point {
+  const x = points.reduce((sum, point) => sum + point.x, 0);
+  const y = points.reduce((sum, point) => sum + point.y, 0);
+  return { x: x / points.length, y: y / points.length };
+}
+
+function pointDistance(points: readonly Point[]): number {
+  const [first, second] = points;
+  if (!first || !second) return 0;
+  return Math.hypot(second.x - first.x, second.y - first.y);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }

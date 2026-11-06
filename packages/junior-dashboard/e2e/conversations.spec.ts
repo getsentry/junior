@@ -193,6 +193,22 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(detailPreview.getByText("2 of 2")).toBeVisible();
   await page.keyboard.press("ArrowRight");
   await expect(preview.getByText("1 of 2")).toBeVisible();
+
+  // Touch readers can pinch to zoom.
+  const previewImage = preview.getByRole("img", { name: "chart.png" });
+  const touch = (type: string, pointerId: number, clientX: number) =>
+    previewImage.dispatchEvent(type, {
+      clientX,
+      clientY: 300,
+      pointerId,
+      pointerType: "touch",
+    });
+  await touch("pointerdown", 1, 180);
+  await touch("pointerdown", 2, 220);
+  await touch("pointermove", 2, 260);
+  await touch("pointerup", 1, 180);
+  await touch("pointerup", 2, 260);
+  await screenshot(page, "conversation-attachment-zoom");
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();
 });
