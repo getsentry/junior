@@ -39,7 +39,7 @@ function parseRangeHeader(
     // `bytes=-N` asks for the last N bytes.
     if (!last) return undefined;
     const suffix = Number(last);
-    if (suffix === 0) return "unsatisfiable";
+    if (suffix === 0 || size === 0) return "unsatisfiable";
     return { start: Math.max(0, size - suffix), end: size - 1 };
   }
   const start = Number(first);

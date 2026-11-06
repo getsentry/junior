@@ -141,6 +141,25 @@ describe("conversation attachment API", () => {
     expect(unsatisfiable.status).toBe(416);
     expect(unsatisfiable.headers.get("content-range")).toBe("bytes */10");
 
+    const empty = await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 0,
+        data: Buffer.alloc(0),
+        filename: "empty.mp4",
+        mimeType: "video/mp4",
+        path: "/tmp/empty.mp4",
+      },
+      storage,
+    });
+    const emptySuffix = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${empty.id}`,
+      { headers: { range: "bytes=-3" } },
+    );
+    expect(emptySuffix.status).toBe(416);
+    expect(emptySuffix.headers.get("content-range")).toBe("bytes */0");
+
     // HTTP lets a server ignore a range header it does not support.
     for (const range of ["bytes=0-1,4-5", "bytes=5-2", "items=0-1"]) {
       const ignored = await read(range);
