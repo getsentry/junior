@@ -216,8 +216,11 @@ test.describe("conversation sections", () => {
       name: /Closed issue summary/,
     });
     const unreadDot = finishedRow.getByRole("img", { name: "Unread" });
+    const finishedSection = () =>
+      sidebarSectionOf(sidebar, /Closed issue summary/);
     await expect(finishedRow).toBeVisible();
     await expect(unreadDot).toHaveCount(0);
+    await expect.poll(finishedSection).toMatch(/^(?!Needs attention)/);
 
     const unreadRequest = page.waitForRequest(
       (request) =>
@@ -227,12 +230,7 @@ test.describe("conversation sections", () => {
     await page.getByRole("menuitem", { name: "Mark as unread" }).click();
     expect((await unreadRequest).postDataJSON()).toEqual({ unread: true });
     await expect(unreadDot).toBeVisible();
-    await expect(sidebar.getByRole("button").first()).toHaveText(
-      /^Needs attention/,
-    );
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
-    );
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
 
     // The server keeps it, so a reload or another device sees it too.
     await page.reload();
@@ -242,9 +240,7 @@ test.describe("conversation sections", () => {
     await finishedRow.click();
     await expect(finishedRow).toHaveAttribute("aria-current", "page");
     await expect(unreadDot).toBeVisible();
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
-    );
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
     await screenshot(page, "conversation-open-unread", { view: "desktop" });
     await sidebar
       .getByRole("link", { name: /Checkout latency triage/ })
@@ -265,9 +261,7 @@ test.describe("conversation sections", () => {
     });
     await page.getByRole("menuitem", { name: "Mark as read" }).click();
     await expect(unreadDot).toHaveCount(0);
-    await expect(sidebar.getByRole("button").first()).not.toHaveText(
-      /^Needs attention/,
-    );
+    await expect.poll(finishedSection).toMatch(/^(?!Needs attention)/);
 
     await page.reload();
     await expect(finishedRow).toBeVisible();
