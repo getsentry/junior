@@ -16,8 +16,9 @@
  *   period
  *
  * A user can also archive all of their done conversations once, from
- * Settings. That run has no grace period, does not need auto-archive on, and
- * skips conversations where the user turned auto-archive off.
+ * Settings. That run uses the same checks and grace period, does not need
+ * auto-archive on, and skips conversations where the user turned
+ * auto-archive off.
  *
  * Archive stays per user. A new human message restores it, and a manual
  * restore turns auto-archive off for that conversation.
@@ -386,14 +387,18 @@ export async function runAutoArchiveSweep(args: {
 }
 
 /**
- * Archive all of the viewer's done conversations now, with no grace period.
- * It skips conversations where the viewer turned auto-archive off.
+ * Archive all of the viewer's done conversations now. It uses the viewer's
+ * grace period and skips conversations where the viewer turned auto-archive
+ * off.
  */
 export async function archiveViewerDoneConversations(
   viewer: User,
 ): Promise<{ archived: number }> {
+  const settings = await readUserAutoArchiveSettings(viewer.id);
   const { archived } = await archiveUserDoneConversations({
-    graceHours: 0,
+    graceHours:
+      settings?.autoArchiveGraceHours ??
+      DEFAULT_AUTO_ARCHIVE_SETTINGS.autoArchiveGraceHours,
     kind: "manual",
     now: new Date(),
     userId: viewer.id,

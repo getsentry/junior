@@ -491,26 +491,31 @@ describe("conversation archive API", () => {
     const waitingId = "local:test:archive-done-waiting";
     const optedOutId = "local:test:archive-done-opted-out";
     const unfinishedId = "local:test:archive-done-unfinished";
-    const ids = [doneId, waitingId, optedOutId, unfinishedId];
+    const recentId = "local:test:archive-done-recent";
+    const ids = [doneId, waitingId, optedOutId, unfinishedId, recentId];
+    // Past the default 24-hour wait time.
+    const staleMs = nowMs - 25 * 60 * 60 * 1000;
+    const activityMsById = (id: string) =>
+      id === recentId ? nowMs - 60_000 : staleMs;
     for (const conversationId of ids) {
       await getConversationStore().recordActivity({
         destination: { platform: "local" as const, conversationId },
         conversationId,
-        nowMs: nowMs - 60_000,
+        nowMs: activityMsById(conversationId),
         source: "internal",
       });
     }
     const viewer = await addParticipant({
       conversationId: doneId,
       email: "archive-now@example.com",
-      lastMessageAt: new Date(nowMs - 60_000),
+      lastMessageAt: new Date(staleMs),
     });
     for (const conversationId of ids.slice(1)) {
       await getDb()
         .insert(juniorConversationParticipants)
         .values({
           autoArchive: conversationId === optedOutId ? false : null,
-          lastMessageAt: new Date(nowMs - 60_000),
+          lastMessageAt: new Date(activityMsById(conversationId)),
           rootConversationId: conversationId,
           userId: viewer.id,
         });
@@ -539,8 +544,9 @@ describe("conversation archive API", () => {
       title: "Follow-up",
       visibility: "private",
     });
-    // Work finished a minute ago. The manual run has no wait time.
-    const finishedAt = new Date(nowMs - 60_000).toISOString();
+    // The manual run waits the same time as the scheduled sweep. The recent
+    // conversation has no work but had activity a minute ago, so it stays.
+    const finishedAt = new Date(staleMs).toISOString();
     await createApp({
       dashboard: { disabled: true },
       plugins: defineJuniorPlugins([
@@ -579,7 +585,13 @@ describe("conversation archive API", () => {
     const feed = await readConversationFeedFromSql({ limit: 1, viewer });
     expect(
       feed.conversations.map((conversation) => conversation.conversationId),
-    ).toEqual([optedOutId, waitingId]);
+    ).toEqual([recentId, waitingId]);
+    const fullFeed = await readConversationFeedFromSql({ viewer });
+    expect(
+      fullFeed.conversations
+        .map((conversation) => conversation.conversationId)
+        .sort(),
+    ).toEqual([optedOutId, recentId, unfinishedId, waitingId].sort());
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(doneId, { viewer }),
