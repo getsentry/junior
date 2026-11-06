@@ -494,6 +494,7 @@ export async function readConversationFeedFromSql(
     );
   const assignedWork = new Set(conversationWork.assignedIds);
   const unfinishedWork = new Set(conversationWork.unfinishedIds);
+  const attentionWork = new Set(conversationWork.attentionIds);
   return {
     conversations: conversations.map((conversation, index) => {
       const row = rows[index]!;
@@ -534,6 +535,9 @@ export async function readConversationFeedFromSql(
           : undefined),
         ...(unfinishedWork.has(conversation.conversationId)
           ? { unfinishedWork: true as const }
+          : undefined),
+        ...(attentionWork.has(conversation.conversationId)
+          ? { workNeedsAttention: true as const }
           : undefined),
       };
       const annotations = access?.canViewPrivateContent

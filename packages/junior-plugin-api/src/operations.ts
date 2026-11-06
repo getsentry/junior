@@ -48,6 +48,12 @@ export interface UnfinishedWorkResult {
    */
   assignedConversationIds?: string[];
   /**
+   * Candidate conversations whose unfinished work waits on a person, such
+   * as a pull request that is ready to merge, has failed checks, or has a
+   * change request. The dashboard shows them in Needs attention.
+   */
+  attentionConversationIds?: string[];
+  /**
    * Latest time when all known work finished, keyed by conversation id.
    * ISO-8601 timestamps. Used with conversation activity to decide whether
    * finished work still belongs in Priority, and whether auto-archive may

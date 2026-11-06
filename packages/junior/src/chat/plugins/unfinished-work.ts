@@ -8,6 +8,8 @@ import { juniorConversations } from "@/db/schema";
 
 export type ConversationWork = {
   assignedIds: string[];
+  /** Conversations whose work waits on a person, for Needs attention. */
+  attentionIds: string[];
   /**
    * A plugin hook failed, so missing work may be unreported. Feed Priority
    * fails open; auto-archive must not read missing work as done.
@@ -53,6 +55,7 @@ export async function listConversationWork(
   if (conversationIds.length === 0) {
     return {
       assignedIds: [],
+      attentionIds: [],
       failed: false,
       finishedAtById: {},
       unfinishedIds: [],
@@ -61,6 +64,7 @@ export async function listConversationWork(
   const owners = await readWorkOwners(conversationIds);
   const queriedIds = [...owners.keys()];
   const assigned = new Set<string>();
+  const attention = new Set<string>();
   const finishedAtById = new Map<string, string>();
   const unfinished = new Set<string>();
   let failed = false;
@@ -84,6 +88,10 @@ export async function listConversationWork(
       for (const workId of result.assignedConversationIds ?? []) {
         const conversationId = owners.get(workId);
         if (conversationId) assigned.add(conversationId);
+      }
+      for (const workId of result.attentionConversationIds ?? []) {
+        const conversationId = owners.get(workId);
+        if (conversationId) attention.add(conversationId);
       }
       for (const [workId, finishedAt] of Object.entries(
         result.finishedWorkAtByConversationId ?? {},
@@ -111,6 +119,9 @@ export async function listConversationWork(
   return {
     assignedIds: conversationIds.filter((conversationId) =>
       assigned.has(conversationId),
+    ),
+    attentionIds: conversationIds.filter((conversationId) =>
+      attention.has(conversationId),
     ),
     failed,
     finishedAtById: Object.fromEntries(

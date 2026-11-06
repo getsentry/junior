@@ -19,6 +19,7 @@ import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import {
   listGitHubAssignedWork,
+  listGitHubAttentionWork,
   listGitHubFinishedWork,
   listGitHubUnfinishedWork,
 } from "../src/pull-request-outcomes/store";
@@ -102,6 +103,7 @@ it("combines open, merged, and closed pull requests into conversation work", asy
           state: "open",
           conversationIds: ["conversation-open", "conversation-shared"],
           openedAt: at,
+          readyToMergeAt: at,
           updatedAt: at,
         },
         {
@@ -111,6 +113,8 @@ it("combines open, merged, and closed pull requests into conversation work", asy
           number: 2,
           state: "merged",
           conversationIds: ["conversation-merged", "conversation-shared"],
+          // A merged pull request waits on nobody.
+          failingCheckSuiteIds: ["1"],
           openedAt: at,
           mergedAt: at,
           updatedAt: at,
@@ -135,6 +139,13 @@ it("combines open, merged, and closed pull requests into conversation work", asy
         "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
+      ]),
+    ).resolves.toEqual(["conversation-open", "conversation-shared"]);
+    await expect(
+      listGitHubAttentionWork(fixture.db(), [
+        "conversation-merged",
+        "conversation-shared",
+        "conversation-open",
       ]),
     ).resolves.toEqual(["conversation-open", "conversation-shared"]);
     await expect(
@@ -1897,6 +1908,7 @@ describe("GitHub-owned pull request outcomes", () => {
         "0007_shallow_millenium_guard.sql",
         "0009_nostalgic_thing.sql",
         "0010_sleepy_slayback.sql",
+        "0011_pull_request_attention.sql",
       ]) {
         await fixture.execute(await migrationSql(migration));
       }
@@ -1905,8 +1917,10 @@ describe("GitHub-owned pull request outcomes", () => {
         fixture.db().select().from(juniorGitHubPullRequests),
       ).resolves.toEqual([
         expect.objectContaining({
+          changesRequestedBy: [],
           commitComposition: null,
           conversationIds: [],
+          failingCheckSuiteIds: [],
           pullRequestId: "legacy-pr",
         }),
       ]);
@@ -2920,6 +2934,116 @@ describe("GitHub-owned pull request outcomes", () => {
         ["octocat", "none"],
       ]);
       expect(roleLogins).toEqual(["dcramer", "dcramer", "burak", "octocat"]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("tracks failed check suites and change requests until a push", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const route = webhookRoute(fixture);
+      const send = async (body: unknown, eventName: string) =>
+        expect(
+          (await route.handler(signedRequest(body, eventName))).status,
+        ).toBe(202);
+      const suite = (id: number, headSha: string, conclusion: string) => ({
+        action: "completed",
+        check_suite: {
+          conclusion,
+          head_sha: headSha,
+          id,
+          pull_requests: [checkSuitePullRequest(946, "getsentry/junior", 2001)],
+        },
+        repository: checkSuiteRepository("getsentry/junior", 2001),
+      });
+      const review = (action: string, state: string, login: string) => ({
+        action,
+        pull_request: { number: 946 },
+        repository: { full_name: "getsentry/junior", id: 2001 },
+        review: { state, user: { login } },
+        sender: { login },
+      });
+      const attention = async () => {
+        const [row] = await fixture
+          .db()
+          .select({
+            changesRequestedBy: juniorGitHubPullRequests.changesRequestedBy,
+            failingCheckSuiteIds: juniorGitHubPullRequests.failingCheckSuiteIds,
+          })
+          .from(juniorGitHubPullRequests);
+        return row;
+      };
+      const waiting = async () =>
+        await listGitHubAttentionWork(fixture.db(), [
+          "slack:C123:1712345.0001",
+        ]);
+
+      await send(pullRequestPayload(), "pull_request");
+      await expect(waiting()).resolves.toEqual([]);
+
+      // One app's suite fails; another app's suite passing does not clear it.
+      await send(suite(11, "aaaaaaa", "failure"), "check_suite");
+      await send(suite(12, "aaaaaaa", "success"), "check_suite");
+      await send(
+        review("submitted", "changes_requested", "Octocat"),
+        "pull_request_review",
+      );
+      await send(
+        review("submitted", "commented", "hubot"),
+        "pull_request_review",
+      );
+      await expect(attention()).resolves.toEqual({
+        changesRequestedBy: ["octocat"],
+        failingCheckSuiteIds: ["11"],
+      });
+      await expect(waiting()).resolves.toEqual(["slack:C123:1712345.0001"]);
+
+      // A push answers both. A late suite of the old commit changes nothing.
+      await send(
+        pullRequestPayload({
+          action: "synchronize",
+          pull_request: {
+            ...(pullRequestPayload().pull_request as Record<string, unknown>),
+            head: { sha: "bbbbbbb" },
+          },
+        }),
+        "pull_request",
+      );
+      await send(suite(11, "aaaaaaa", "failure"), "check_suite");
+      await expect(attention()).resolves.toEqual({
+        changesRequestedBy: [],
+        failingCheckSuiteIds: [],
+      });
+
+      await send(suite(13, "bbbbbbb", "timed_out"), "check_suite");
+      await send(
+        review("submitted", "changes_requested", "octocat"),
+        "pull_request_review",
+      );
+      await expect(waiting()).resolves.toEqual(["slack:C123:1712345.0001"]);
+      // A re-run that passes clears the suite, and a dismissal clears the
+      // change request.
+      await send(suite(13, "bbbbbbb", "success"), "check_suite");
+      await send(
+        review("dismissed", "dismissed", "octocat"),
+        "pull_request_review",
+      );
+      await expect(attention()).resolves.toEqual({
+        changesRequestedBy: [],
+        failingCheckSuiteIds: [],
+      });
+      await expect(waiting()).resolves.toEqual([]);
+
+      await send(
+        review("submitted", "changes_requested", "octocat"),
+        "pull_request_review",
+      );
+      await send(
+        review("submitted", "approved", "octocat"),
+        "pull_request_review",
+      );
+      await expect(waiting()).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

@@ -34,6 +34,7 @@ export async function createGitHubFixture(): Promise<GitHubFixture> {
     "0007_shallow_millenium_guard.sql",
     "0009_nostalgic_thing.sql",
     "0010_sleepy_slayback.sql",
+    "0011_pull_request_attention.sql",
   ]) {
     await fixture.execute(await migrationSql(migrationFile));
   }

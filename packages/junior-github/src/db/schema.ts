@@ -105,6 +105,24 @@ export const juniorGitHubPullRequests = pgTable(
     readySyncId: integer("ready_sync_id"),
     /** When the current check started. */
     readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
+    /**
+     * Head commit that `failingCheckSuiteIds` belongs to. A push moves it
+     * and clears the failures, so a late suite of an old commit is ignored.
+     */
+    checksHeadSha: text("checks_head_sha"),
+    /** Check suites on the head commit whose latest run failed. */
+    failingCheckSuiteIds: text("failing_check_suite_ids")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
+    /**
+     * Lowercase logins whose latest review requests changes, with no push
+     * since. A push, an approval, or a dismissal removes the login.
+     */
+    changesRequestedBy: text("changes_requested_by")
+      .array()
+      .notNull()
+      .default(sql`ARRAY[]::text[]`),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),

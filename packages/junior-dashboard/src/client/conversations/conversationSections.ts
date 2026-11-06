@@ -21,8 +21,9 @@ const ATTENTION_SECTION = {
  * section per month.
  *
  * A pinned conversation shows only in Pinned, even when it needs attention.
- * Conversations in `attentionIds` go to Needs attention. Pinned follows the
- * viewer's order; every other section lists the newest first.
+ * Conversations in `attentionIds` or with `workNeedsAttention` go to Needs
+ * attention. Pinned follows the viewer's order; every other section lists
+ * the newest first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
@@ -41,7 +42,7 @@ export function buildConversationSections(
   for (const conversation of sorted) {
     const section = conversation.pinnedAt
       ? PINNED_SECTION
-      : options.attentionIds?.has(conversation.id)
+      : needsAttention(conversation, options.attentionIds)
         ? ATTENTION_SECTION
         : conversationSection(
             activityTime(conversation),
@@ -63,6 +64,20 @@ export function buildConversationSections(
     .map(({ order: _order, ...section }) => section);
 }
 
+/**
+ * True when the conversation waits on a person: its id is in `attentionIds`,
+ * or its work, such as a pull request, waits on a person.
+ */
+function needsAttention(
+  conversation: Conversation,
+  attentionIds: ReadonlySet<string> | undefined,
+): boolean {
+  return (
+    conversation.workNeedsAttention === true ||
+    attentionIds?.has(conversation.id) === true
+  );
+}
+
 /** Join the conversations that wait on the viewer or finished unseen. */
 export function attentionConversationIds(
   waitingConversationIds: ReadonlySet<string>,
@@ -82,7 +97,11 @@ export function pinnedAndAttentionFirst(
   attentionIds: ReadonlySet<string>,
 ): Conversation[] {
   const rank = (conversation: Conversation) =>
-    conversation.pinnedAt ? 0 : attentionIds.has(conversation.id) ? 1 : 2;
+    conversation.pinnedAt
+      ? 0
+      : needsAttention(conversation, attentionIds)
+        ? 1
+        : 2;
   return [...conversations].sort(
     (left, right) =>
       rank(left) - rank(right) ||

@@ -1184,6 +1184,8 @@ function longConversation(nowMs: number): ConversationDetailReport {
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
+    // The pull request has failed checks, so it waits on a person.
+    workNeedsAttention: true,
     sidebarAnnotations: [
       {
         icon: "circle-dashed",

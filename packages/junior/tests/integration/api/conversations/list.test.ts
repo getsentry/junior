@@ -265,6 +265,8 @@ describe("conversation list API", () => {
                   finishedId,
                   finishedUpdatedId,
                 ],
+                // The open pull request waits on a person.
+                attentionConversationIds: [unfinishedId],
                 conversationIds: [unfinishedId],
                 finishedWorkAtByConversationId: {
                   [finishedId]: new Date(nowMs - 120_000).toISOString(),
@@ -289,6 +291,7 @@ describe("conversation list API", () => {
             assignedWork: true,
             unfinishedWork: true,
             isPriority: true,
+            workNeedsAttention: true,
           }),
           expect.objectContaining({
             conversationId: finishedId,

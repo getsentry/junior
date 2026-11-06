@@ -68,13 +68,18 @@ describe("conversation activity sections", () => {
         conversation("yesterday", "2026-08-02T12:00:00-07:00"),
         conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
         conversation("saturday", "2026-08-01T12:00:00-07:00"),
+        // A pull request that is ready to merge or needs fixes.
+        {
+          ...conversation("pr-waiting", "2026-07-30T12:00:00-07:00"),
+          workNeedsAttention: true,
+        },
       ],
       { ...NOW, attentionIds: new Set(["today-unread", "waiting-old"]) },
     );
 
     expect(sectionIds(sections)).toEqual([
       {
-        conversations: ["today-unread", "waiting-old"],
+        conversations: ["today-unread", "waiting-old", "pr-waiting"],
         label: "Needs attention",
       },
       { conversations: ["today"], label: "Today" },
@@ -143,9 +148,10 @@ describe("conversation activity sections", () => {
       conversation(id, "2026-08-03T12:00:00-07:00"),
     );
     feed[4] = { ...feed[4]!, pinnedAt: "2026-08-03T08:00:00-07:00" };
+    feed[2] = { ...feed[2]!, workNeedsAttention: true };
 
     expect(
       pinnedAndAttentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
-    ).toEqual(["e", "b", "d", "a", "c"]);
+    ).toEqual(["e", "b", "c", "d", "a"]);
   });
 });
