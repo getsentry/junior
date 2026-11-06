@@ -140,18 +140,20 @@ export function ConversationSidebar(props: {
   );
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
-      <div className="px-3 pb-1 pt-3">
-        {/* Same grid as the rows, so the pen and label line up with them. */}
+      <div className="px-3 pb-1.5 pt-2.5">
+        {/* The chip centers on the rows' icon column, so the label lines up
+          with the conversation titles below. */}
         <Button
-          className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-1.5 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-text"
+          className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-2 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-accent-text hover:[&_svg]:text-dashboard-accent-text focus-visible:[&_svg]:text-dashboard-accent-text"
           onClick={props.onNewConversation}
           size="menu"
         >
-          <SquarePen
+          <span
             aria-hidden="true"
-            className="size-3.5 justify-self-center"
-            strokeWidth={2.25}
-          />
+            className="grid size-5 place-items-center justify-self-center rounded-md bg-dashboard-accent/[0.14]"
+          >
+            <SquarePen className="size-3" strokeWidth={2.25} />
+          </span>
           New conversation
         </Button>
       </div>

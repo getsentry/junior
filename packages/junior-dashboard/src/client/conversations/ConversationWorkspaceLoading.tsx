@@ -48,9 +48,9 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
 function ConversationSidebarLoading() {
   return (
     <aside className="hidden h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel md:grid">
-      <div className="px-3 pb-1 pt-3">
-        <div className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-2 px-3 py-1.5 text-sm leading-snug">
-          <Skeleton className="size-3.5" />
+      <div className="px-3 pb-1.5 pt-2.5">
+        <div className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-sm leading-snug">
+          <Skeleton className="size-5 justify-self-center rounded-md" />
           <span className="flex h-[1lh] items-center">
             <Skeleton className="h-3 w-28" />
           </span>
