@@ -38,14 +38,13 @@ import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
-import { SearchInput } from "../components/SearchInput";
-import { Button } from "../components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
+import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Tooltip,
@@ -72,7 +71,7 @@ const ROW_ACTION_BUTTON_CLASS =
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
-/** Render the compact personal conversation picker used by the home workspace. */
+/** Render the compact personal conversation picker beside the workspace. */
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
@@ -80,22 +79,13 @@ export function ConversationSidebar(props: {
   /** Opened while unread; keeps its unread place until another one opens. */
   heldConversationId?: string;
   loading: boolean;
-  query: string;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
-  /**
-   * `panel` = split-pane dock with internal scroll.
-   * `landing` = flow nav under create compose (parent owns scroll).
-   */
-  variant?: "panel" | "landing";
   onNewConversation(): void;
-  onQueryChange(value: string): void;
   onReorderPins: ReorderPins;
   onUnreadChange(conversation: Conversation, unread: boolean): void;
 }) {
-  const variant = props.variant ?? "panel";
-  const isLanding = variant === "landing";
   const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
   const handlePinError = useCallback(
@@ -149,58 +139,25 @@ export function ConversationSidebar(props: {
     [showActionError],
   );
   return (
-    <aside
-      className={cn(
-        "relative min-w-0",
-        isLanding
-          ? "border-t border-dashboard-border bg-transparent"
-          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel",
-      )}
-    >
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="m-0 font-display text-base font-medium leading-tight text-dashboard-text">
-            {isLanding ? "Your conversations" : "Conversations"}
-          </h2>
-          <div className="flex items-center gap-0.5">
-            {isLanding ? null : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label="New conversation"
-                      className="size-7"
-                      onClick={props.onNewConversation}
-                      size="icon"
-                    >
-                      <SquarePen aria-hidden="true" size={15} />
-                    </Button>
-                  }
-                />
-                <TooltipContent size="compact">New conversation</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
+    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
+      <div className="px-3 pb-1.5 pt-2.5">
+        {/* The chip centers on the rows' icon column, so the label lines up
+          with the conversation titles below. */}
+        <Button
+          className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-2 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-accent-text hover:[&_svg]:text-dashboard-accent-text focus-visible:[&_svg]:text-dashboard-accent-text"
+          onClick={props.onNewConversation}
+          size="menu"
+        >
+          <span
+            aria-hidden="true"
+            className="grid size-[1.125rem] place-items-center justify-self-center rounded-md bg-dashboard-accent/[0.14] dark:bg-dashboard-accent/[0.22]"
+          >
+            <SquarePen className="size-3" strokeWidth={2.25} />
+          </span>
+          New conversation
+        </Button>
       </div>
-      <div className="px-4 pb-2">
-        <SearchInput
-          className="border-dashboard-border-subtle bg-transparent hover:border-dashboard-border hover:bg-dashboard-fill-faint"
-          label="Search your conversations"
-          onChange={props.onQueryChange}
-          placeholder="Search conversations…"
-          size="compact"
-          value={props.query}
-        />
-      </div>
-      <div
-        className={cn(
-          "px-3",
-          isLanding
-            ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : "thin-scrollbar min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
-        )}
-      >
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -211,7 +168,7 @@ export function ConversationSidebar(props: {
           <PinnedConversationOrder
             conversations={pinnedConversations}
             onError={handleReorderError}
-            reorder={props.query ? undefined : props.onReorderPins}
+            reorder={props.onReorderPins}
           >
             <AnimatedList
               ariaLabel="Your conversations"
@@ -266,13 +223,17 @@ export function ConversationSidebar(props: {
 /** Match the usual conversation row density while the first feed loads. */
 function ConversationRowsLoading() {
   return (
-    <div
-      aria-busy="true"
-      aria-live="polite"
-      className="grid gap-0.5"
-      role="status"
-    >
+    <div aria-busy="true" aria-live="polite" role="status">
       <span className="sr-only">Loading your conversations</span>
+      <ConversationRowSkeletons />
+    </div>
+  );
+}
+
+/** Draw placeholder rows in the sidebar row geometry. Callers own the status text. */
+export function ConversationRowSkeletons() {
+  return (
+    <div aria-hidden="true" className="grid gap-0.5">
       <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 10 }, (_, index) => (
         <div

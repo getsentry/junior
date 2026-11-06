@@ -6,35 +6,31 @@ test("finds an old archived conversation by title and restores it", async ({
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(dashboard.baseURL);
-  // The landing view keeps a hidden mobile sidebar mounted alongside the
-  // visible desktop one; scope to the desktop (first) instance throughout.
-  const conversationLink = page
-    .getByRole("link", {
-      name: /Archived restore target/,
-    })
-    .first();
-  await expect(conversationLink).toHaveCount(0);
+  const sidebarLink = page.getByRole("link", {
+    name: /Archived restore target/,
+  });
+  await expect(sidebarLink).toHaveCount(0);
 
-  await page
-    .getByLabel("Search your conversations")
-    .first()
-    .fill("archived restore");
-  await expect(conversationLink).toBeVisible();
-  await conversationLink.hover();
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Search" });
+  await palette.getByRole("combobox").fill("archived restore");
+  await palette
+    .getByRole("option", { name: /Archived restore target.*Archived/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Archived restore target" }),
+  ).toBeVisible();
+
   const restoreRequest = page.waitForRequest(
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
-  await page
-    .getByRole("button", { name: "Restore Archived restore target" })
-    .first()
-    .click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Unarchive" }).click();
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
-
-  await page.getByLabel("Search your conversations").first().fill("");
-  await expect(conversationLink).toBeVisible();
+  await expect(sidebarLink).toBeVisible();
 });
 
 test("archives and restores a conversation from the sidebar", async ({
