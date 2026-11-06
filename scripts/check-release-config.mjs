@@ -55,10 +55,10 @@ function collectPublishablePackages() {
         );
       }
 
-      return packageJson.name;
+      return packageJson;
     })
-    .filter((name) => name !== null)
-    .sort();
+    .filter((packageJson) => packageJson !== null)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function collectBumpPackages() {
@@ -122,10 +122,28 @@ assert.equal(
   "The tag workflow must be the only GitHub Release publisher.",
 );
 
+const publishablePackages = collectPublishablePackages();
+
+// Lockstep releases need one source version. The pack job asserts this too,
+// but it runs only on main, so check here to fail the pull request instead.
+const [releasePackage] = publishablePackages;
+const offVersion = publishablePackages.filter(
+  (pkg) => pkg.version !== releasePackage.version,
+);
+if (offVersion.length > 0) {
+  console.error(
+    `Release config check failed: expected every package at ${releasePackage.name}@${releasePackage.version}.`,
+  );
+  for (const pkg of offVersion) {
+    console.error(`  ${pkg.name}: ${pkg.version}`);
+  }
+  process.exit(1);
+}
+
 const sources = [
   {
     label: "packages/*/package.json",
-    packages: collectPublishablePackages(),
+    packages: publishablePackages.map((pkg) => pkg.name),
   },
   {
     label: "scripts/bump-release-versions.mjs",
