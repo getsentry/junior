@@ -273,8 +273,10 @@ export function conversationSummaryFromStoredConversation(args: {
     canViewPrivateContent,
   );
   const status = statusFromConversation(conversation);
-  // Only an idle Conversation waits on the reader.
-  const unread = status === "completed" && args.unreadReply === true;
+  // Only an idle Conversation waits on the reader. A stopped one is idle too.
+  const unread =
+    (status === "completed" || status === "stopped") &&
+    args.unreadReply === true;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,

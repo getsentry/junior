@@ -28,6 +28,7 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
+  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { formatCompactAge } from "./conversationAge";
@@ -359,7 +360,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const emphasized = unread || Boolean(props.waiting);
   const drag = props.drag;
   // Unread tracks idle conversations only.
-  const canMarkUnread = props.conversation.status === "completed";
+  const canMarkUnread = isIdleConversation(props.conversation);
   const archived = Boolean(props.conversation.archivedAt);
   // The leading marker toggles read state. A waiting row's marker is about
   // its review item, so it stays a plain marker.

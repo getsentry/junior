@@ -90,6 +90,7 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
+  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
@@ -731,7 +732,7 @@ export function ConversationPage(props: {
                   !conversation ||
                   !detail.data?.isParticipant ||
                   markUnread.isPending ||
-                  (!unread && conversation.status !== "completed"),
+                  (!unread && !isIdleConversation(conversation)),
                 error: Boolean(markUnread.error),
                 onClick: () => markUnread.mutate(!unread),
                 unread,

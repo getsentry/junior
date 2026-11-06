@@ -523,6 +523,39 @@ describe("conversation stop API", () => {
       },
       { conversationStore, queue, state },
     );
+    // The root already read the result of a child agent that finished.
+    const read = await createAgentInvocation({
+      ...invocationInput,
+      idempotencyKey: "late-root-read-child",
+      parentConversationId: created.conversationId,
+    });
+    const lease = await startConversationWork({
+      conversationId: created.conversationId,
+      conversationStore,
+      state,
+    });
+    if (lease.status !== "acquired") throw new Error("Expected work lease");
+    await enqueueAgentInvocationResult(
+      (await completeAgentInvocation({
+        invocationId: read.invocationId,
+        result: "Read fact: 42.",
+        status: "completed",
+      })) as TerminalAgentInvocation,
+      { queue, state },
+    );
+    await ackMessages({
+      conversationId: created.conversationId,
+      conversationStore,
+      inboundMessageIds: [getAgentInvocationResultMessageId(read.invocationId)],
+      leaseToken: lease.leaseToken,
+      state,
+    });
+    await completeConversationWork({
+      conversationId: created.conversationId,
+      conversationStore,
+      leaseToken: lease.leaseToken,
+      state,
+    });
     const processing = work.process(
       queue.takeMessageFor(created.conversationId),
     );
@@ -550,5 +583,18 @@ describe("conversation stop API", () => {
     await expect(
       getConversationStoppedAtMs(missed.childConversationId),
     ).resolves.toBeDefined();
+    // The late cascade keeps the result that the root already read.
+    await expect(getAgentInvocation(read.invocationId)).resolves.toMatchObject({
+      parentMailboxStatus: "appended",
+      status: "completed",
+    });
+    await expect(
+      listChildAgents(created.conversationId),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        childConversationId: read.childConversationId,
+        lastResult: "completed",
+      }),
+    );
   });
 });

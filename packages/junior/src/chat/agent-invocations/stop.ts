@@ -85,10 +85,14 @@ export async function stopChildAgentsOf(
   if (stoppedAtMs === undefined) {
     return;
   }
-  const tree = await stopAgentInvocationTree(conversationId, Date.now(), {
-    includeRoot: true,
+  const nowMs = Date.now();
+  // The Conversation's own work already ended. Leave its read results as they
+  // are, so `listChildAgents` still shows them.
+  const tree = await stopAgentInvocationTree(conversationId, nowMs, {
+    includeRoot: false,
     taskedAfterMs: stoppedAtMs,
   });
+  await skipUnreadResults(conversationId, nowMs, state);
   await finishStoppedTree(
     tree,
     tree.conversationIds.filter((id) => id !== conversationId),

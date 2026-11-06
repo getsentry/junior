@@ -41,6 +41,13 @@ function isActiveConversation(conversation: Conversation): boolean {
   return conversation.status === "active";
 }
 
+/** Whether no work runs: the Conversation finished or a person stopped it. */
+export function isIdleConversation(conversation: Conversation): boolean {
+  return (
+    conversation.status === "completed" || conversation.status === "stopped"
+  );
+}
+
 function isFailedConversation(conversation: Conversation): boolean {
   return conversation.status === "failed";
 }

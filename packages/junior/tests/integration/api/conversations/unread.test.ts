@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -15,7 +16,11 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+  juniorIdentities,
+} from "@/db/schema";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -266,6 +271,16 @@ describe("conversation unread API", () => {
     // counts from its start.
     expect((await setUnread(app, conversationId, true)).status).toBe(200);
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
+
+    // A stopped Conversation is idle too, so its reply stays unread.
+    await getDb()
+      .update(juniorConversations)
+      .set({ stoppedAt: new Date() })
+      .where(eq(juniorConversations.conversationId, conversationId));
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      status: "stopped",
+      unread: true,
+    });
   });
 
   it("rejects a viewer who is not a participant", async () => {
