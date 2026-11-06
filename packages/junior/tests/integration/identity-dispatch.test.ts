@@ -1,5 +1,6 @@
 import {
   defineJuniorPlugin,
+  type HeartbeatHookContext,
   type RouteRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -9,6 +10,7 @@ import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { usersInfoOk } from "../fixtures/slack/factories/api";
+import { createWaitUntilCollector } from "../fixtures/wait-until";
 import {
   createConversationWorkQueueTestAdapter,
   type ConversationWorkQueueTestAdapter,
@@ -41,17 +43,23 @@ async function seedSlackUser(args: {
   });
 }
 
-describe("plugin route Identity dispatch", () => {
+describe("plugin Identity dispatch", () => {
   let agent: RouteRegistrationHookContext["agent"];
   let googleAgent: RouteRegistrationHookContext["agent"];
+  let onGoogleHeartbeat: (
+    agent: HeartbeatHookContext["agent"],
+  ) => Promise<void> = async () => {};
+  let app: Awaited<ReturnType<typeof createApp>>;
   let queue: ConversationWorkQueueTestAdapter;
+  const waitUntil = createWaitUntilCollector();
 
   async function startApp(allowedDomains?: string[]): Promise<void> {
     await disconnectStateAdapter();
     queue = createConversationWorkQueueTestAdapter();
-    await createApp({
+    app = await createApp({
       ...(allowedDomains ? { allowedDomains } : undefined),
       conversationWorkQueue: () => queue,
+      waitUntil: waitUntil.fn,
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: { name: "demo", displayName: "Demo", description: "Demo" },
@@ -70,6 +78,9 @@ describe("plugin route Identity dispatch", () => {
             description: "Google",
           },
           hooks: {
+            async heartbeat(ctx) {
+              await onGoogleHeartbeat(ctx.agent);
+            },
             routes(ctx) {
               googleAgent = ctx.agent;
               return [];
@@ -81,6 +92,7 @@ describe("plugin route Identity dispatch", () => {
   }
 
   beforeEach(async () => {
+    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
     await startApp();
   });
 
@@ -210,5 +222,62 @@ describe("plugin route Identity dispatch", () => {
     ).resolves.toEqual({ status: "not_linked" });
     expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
     expect(queue.sentRecords()).toEqual([]);
+  });
+
+  it("starts DM work from a heartbeat for a verified email of a current member", async () => {
+    await seedSlackUser({ email: "maya@example.com", slackUserId: "U900" });
+    await seedSlackUser({ email: "stale@example.com", slackUserId: "U901" });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U900", email: "Maya@Example.com" }),
+    });
+    // The person changed the email of their Slack profile.
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U901", email: "new@example.com" }),
+    });
+    const results: unknown[] = [];
+    // The Google plugin shares a native provider name. That blocks only
+    // `subjectId`, not a verified email.
+    onGoogleHeartbeat = async (heartbeatAgent) => {
+      for (const verifiedEmail of [
+        "MAYA@example.com",
+        "nobody@example.com",
+        "stale@example.com",
+      ]) {
+        results.push(
+          await heartbeatAgent.dispatchForIdentity({
+            idempotencyKey: `email-${verifiedEmail}`,
+            input: "Find us 30 minutes next week.",
+            verifiedEmail,
+          }),
+        );
+      }
+    };
+
+    const response = await app.request("/api/internal/heartbeat", {
+      headers: { authorization: "Bearer heartbeat-secret" },
+    });
+    expect(response.status).toBe(202);
+    await waitUntil.flush();
+
+    expect(results).toEqual([
+      { id: expect.any(String), status: "created" },
+      { status: "not_linked" },
+      { status: "not_linked" },
+    ]);
+    expect(
+      getCapturedSlackApiCalls("conversations.open").map(
+        (call) => call.params.users,
+      ),
+    ).toEqual(["U900"]);
+    const [created] = results as { id: string }[];
+    await expect(getDispatchRecord(created!.id)).resolves.toMatchObject({
+      credentialSubject: {
+        type: "user",
+        userId: "U900",
+        allowedWhen: "private-direct-conversation",
+      },
+      destinationVisibility: "private",
+      plugin: "google",
+    });
   });
 });

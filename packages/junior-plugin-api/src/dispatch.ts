@@ -25,7 +25,7 @@ export interface DispatchResult {
 
 /**
  * Result of an Identity dispatch. `not_linked` means core found no current
- * Slack member linked to the Identity, so it started no work.
+ * Slack member for that person, so it started no work.
  */
 export type IdentityDispatchResult = DispatchResult | { status: "not_linked" };
 

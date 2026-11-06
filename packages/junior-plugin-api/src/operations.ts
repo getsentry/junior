@@ -22,6 +22,13 @@ export interface HeartbeatHookContext extends PluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
+    /**
+     * Start private work in a Slack DM for one person. The work counts toward
+     * the dispatch limit of this heartbeat. See the route context version.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
   };
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
@@ -171,10 +178,12 @@ export type PluginRouteApp = {
 export interface RouteRegistrationHookContext extends PluginContext {
   agent: {
     /**
-     * Start private work in a Slack DM for the person behind one Identity of
-     * this plugin's provider. Core starts work only when the Identity is linked
-     * through the OAuth account-linking flow to exactly one current Slack
-     * member. Otherwise it returns `not_linked` and calls no model.
+     * Start private work in a Slack DM for one person. Core starts work only
+     * when the person maps to exactly one current Slack member on the allowed
+     * domains: through an Identity of this plugin's provider that the OAuth
+     * account-linking flow linked, or through a verified email that is the
+     * User's primary email and the member's Slack email. Otherwise it returns
+     * `not_linked` and calls no model.
      */
     dispatchForIdentity(
       options: IdentityDispatchOptions,

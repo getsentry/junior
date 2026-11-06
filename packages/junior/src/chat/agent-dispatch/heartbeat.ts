@@ -5,7 +5,7 @@ import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createHeartbeatContext } from "./context";
+import { createHeartbeatContext, type IdentityDispatcher } from "./context";
 import {
   listPendingAgentInvocationMailboxAppends,
   listPendingAgentInvocationResults,
@@ -53,6 +53,7 @@ async function runWithTimeout<T>(
 /** Run plugin heartbeat hooks with bounded per-invocation work. */
 export async function runPluginHeartbeats(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   limit?: number;
   nowMs: number;
 }): Promise<void> {
@@ -73,6 +74,7 @@ export async function runPluginHeartbeats(args: {
           heartbeat(
             createHeartbeatContext({
               conversationWorkQueue: args.conversationWorkQueue,
+              dispatchForIdentity: args.dispatchForIdentity,
               plugin,
               nowMs: args.nowMs,
             }),
@@ -186,6 +188,7 @@ export async function recoverPendingAgentInvocationResults(args: {
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   nowMs: number;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
@@ -229,6 +232,7 @@ export async function runHeartbeat(args: {
   }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,
+    dispatchForIdentity: args.dispatchForIdentity,
     nowMs: args.nowMs,
   });
 }

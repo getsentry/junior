@@ -9,8 +9,6 @@ import {
   eventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
-  IdentityDispatchOptions,
-  IdentityDispatchResult,
   InvocationContext,
   PluginMcp,
   PluginMcpContent,
@@ -93,6 +91,7 @@ import {
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/context";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
@@ -974,10 +973,7 @@ function requirePublishedEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  dispatchForIdentity(
-    plugin: string,
-    request: IdentityDispatchOptions,
-  ): Promise<IdentityDispatchResult>;
+  dispatchForIdentity: IdentityDispatcher;
   /** Shows a Review item that a plugin route changed. App setup supplies it. */
   showReviewItem?: ShowReviewItem;
   events: {

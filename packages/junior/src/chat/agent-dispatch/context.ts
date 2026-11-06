@@ -14,7 +14,10 @@ import {
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { createEventTeamIdResolver } from "@/chat/events/workspace";
 import { isNativeIdentityProvider } from "@/chat/identities/identity";
-import { findLinkedSlackUserId } from "@/chat/identities/sql";
+import {
+  findLinkedSlackUserId,
+  findSlackUserIdByPrimaryEmail,
+} from "@/chat/identities/sql";
 import { isSlackProfileDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
 import { logInfo } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -101,12 +104,18 @@ async function dispatch(args: {
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   nowMs: number;
   plugin: string | PluginRegistration;
 }): HeartbeatHookContext {
   const pluginName =
     typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;
   let dispatchCount = 0;
+  const assertDispatchBudget = () => {
+    if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
+      throw new Error("Plugin heartbeat exceeded the dispatch limit");
+    }
+  };
   return {
     plugin: { name: pluginName },
     cache: createPluginCache(pluginName),
@@ -122,9 +131,7 @@ export function createHeartbeatContext(args: {
           options,
           pluginName,
         );
-        if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
-          throw new Error("Plugin heartbeat exceeded the dispatch limit");
-        }
+        assertDispatchBudget();
         const result = await dispatch({
           conversationWorkQueue: args.conversationWorkQueue,
           nowMs: args.nowMs,
@@ -133,6 +140,13 @@ export function createHeartbeatContext(args: {
         });
         dispatchCount += 1;
         return result;
+      },
+      async dispatchForIdentity(options) {
+        assertDispatchBudget();
+        // Count every attempt, so one heartbeat cannot make unbounded Slack
+        // lookups for people who do not match.
+        dispatchCount += 1;
+        return await args.dispatchForIdentity(pluginName, options);
       },
       async get(id) {
         return await getPluginDispatchProjection({
@@ -146,27 +160,32 @@ export function createHeartbeatContext(args: {
 
 // Core owns native identities and the email-keyed `junior` web identities.
 // They are not accounts from a plugin's OAuth account-linking flow, so they
-// never start Identity dispatches.
+// never match a `subjectId`.
 function isCoreIdentityProvider(provider: string): boolean {
   return provider === "junior" || isNativeIdentityProvider(provider);
 }
 
+/** Start private DM work for one person on behalf of one plugin. */
+export type IdentityDispatcher = (
+  plugin: string,
+  options: IdentityDispatchOptions,
+) => Promise<IdentityDispatchResult>;
+
 /**
- * Build the plugin route entry point that starts private DM work for the
- * person behind one provider Identity.
+ * Build the one entry point that starts private DM work for a person whom a
+ * plugin names, from a webhook route or a heartbeat.
  *
- * The provider is always the calling plugin. Work starts only when the
- * Identity is linked to exactly one Slack user in the bot's workspace, that
- * user is a current human member, and the user's Slack email is on the allowed
- * domains, as for Slack ingress. Without a Slack bot, nothing is linked.
+ * A `subjectId` matches only an Identity of the calling plugin's provider that
+ * the OAuth account-linking flow linked. A `verifiedEmail` matches only the
+ * User with that primary email, and the Slack profile of the member must still
+ * show that email. In both cases the person must map to exactly one Slack user
+ * in the bot's workspace who is a current human member on the allowed domains,
+ * as for Slack ingress. Without a Slack bot, nothing matches.
  */
 export function createIdentityDispatcher(args: {
   allowedDomains: readonly string[];
   conversationWorkQueue: () => ConversationWorkQueue;
-}): (
-  plugin: string,
-  options: IdentityDispatchOptions,
-) => Promise<IdentityDispatchResult> {
+}): IdentityDispatcher {
   const resolveSlackTeamId = createEventTeamIdResolver();
   const notLinked = (plugin: string, reason: string) => {
     logInfo("dispatch.identity.not_linked", {
@@ -178,7 +197,13 @@ export function createIdentityDispatcher(args: {
 
   return async (plugin, options) => {
     const request = identityDispatchOptionsSchema.parse(options);
-    if (isCoreIdentityProvider(plugin)) {
+    // The schema accepts only a valid address, so lowercase is the whole
+    // normalization.
+    const email =
+      "verifiedEmail" in request
+        ? request.verifiedEmail.toLowerCase()
+        : undefined;
+    if ("subjectId" in request && isCoreIdentityProvider(plugin)) {
       return notLinked(plugin, "core_provider");
     }
     const teamId = await resolveSlackTeamId();
@@ -186,11 +211,16 @@ export function createIdentityDispatcher(args: {
       return notLinked(plugin, "no_slack_bot");
     }
     const slackUserId = parseSlackUserId(
-      await findLinkedSlackUserId(getSqlExecutor(), {
-        provider: plugin,
-        providerSubjectId: request.subjectId,
-        slackTeamId: teamId,
-      }),
+      "subjectId" in request
+        ? await findLinkedSlackUserId(getSqlExecutor(), {
+            provider: plugin,
+            providerSubjectId: request.subjectId,
+            slackTeamId: teamId,
+          })
+        : await findSlackUserIdByPrimaryEmail(getSqlExecutor(), {
+            normalizedEmail: request.verifiedEmail.toLowerCase(),
+            slackTeamId: teamId,
+          }),
     );
     if (!slackUserId) {
       return notLinked(plugin, "no_single_link");
@@ -198,6 +228,10 @@ export function createIdentityDispatcher(args: {
     const member = await lookupActiveSlackWorkspaceMember(slackUserId, teamId);
     if (!member) {
       return notLinked(plugin, "inactive_member");
+    }
+    // A stored primary email can be stale. Slack must still show the address.
+    if (email && member.email?.trim().toLowerCase() !== email) {
+      return notLinked(plugin, "email_changed");
     }
     if (!isSlackProfileDomainAllowed(member, args.allowedDomains)) {
       return notLinked(plugin, "domain_not_allowed");

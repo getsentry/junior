@@ -3,7 +3,10 @@ import {
   defineJuniorPlugin,
   type Destination,
 } from "@sentry/junior-plugin-api";
-import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
+import {
+  createHeartbeatContext,
+  createIdentityDispatcher,
+} from "@/chat/agent-dispatch/context";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
@@ -33,24 +36,33 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue"
+    "conversationWorkQueue" | "dispatchForIdentity"
   >,
 ) {
   return createHeartbeatContext({
     ...args,
     conversationWorkQueue,
+    dispatchForIdentity: createIdentityDispatcher({
+      allowedDomains: [],
+      conversationWorkQueue: () => conversationWorkQueue,
+    }),
   });
 }
 
 function testHeartbeat(
   request: Parameters<typeof heartbeat>[0],
   waitUntil: Parameters<typeof heartbeat>[1],
-  options: Parameters<typeof heartbeat>[2] = {},
+  options: Partial<Parameters<typeof heartbeat>[2]> = {},
 ) {
+  const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
-    ...options,
-    conversationWorkQueue:
-      options.conversationWorkQueue ?? conversationWorkQueue,
+    conversationWorkQueue: queue,
+    dispatchForIdentity:
+      options.dispatchForIdentity ??
+      createIdentityDispatcher({
+        allowedDomains: [],
+        conversationWorkQueue: () => queue,
+      }),
   });
 }
 

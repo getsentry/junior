@@ -310,6 +310,33 @@ export async function findLinkedSlackUserId(
   return rows.length === 1 ? rows[0]?.slackUserId : undefined;
 }
 
+/**
+ * Find the one Slack user in a workspace whose User has this primary email.
+ *
+ * The caller must have verified that the person sent from this address.
+ * Return undefined when no Slack user or more than one Slack user matches.
+ */
+export async function findSlackUserIdByPrimaryEmail(
+  executor: JuniorSqlDatabase,
+  args: { normalizedEmail: string; slackTeamId: string },
+): Promise<string | undefined> {
+  const rows = await executor
+    .db()
+    .select({ slackUserId: juniorIdentities.providerSubjectId })
+    .from(juniorUsers)
+    .innerJoin(juniorIdentities, eq(juniorIdentities.userId, juniorUsers.id))
+    .where(
+      and(
+        eq(juniorUsers.primaryEmailNormalized, args.normalizedEmail),
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerTenantId, args.slackTeamId),
+      ),
+    )
+    .limit(2);
+  return rows.length === 1 ? rows[0]?.slackUserId : undefined;
+}
+
 /** Remove one exact provider identity owned by a workspace Slack user. */
 export async function deleteProviderIdentityForSlackUser(
   executor: JuniorSqlDatabase,

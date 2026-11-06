@@ -77,6 +77,7 @@ function memoryHeartbeatContext(args: {
   return {
     agent: {
       dispatch: vi.fn(),
+      dispatchForIdentity: vi.fn(),
       get: vi.fn(),
     },
     cache: {
