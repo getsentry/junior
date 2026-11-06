@@ -98,6 +98,7 @@ export function ReplyRatingActions(props: {
       [ratings],
     ),
     read,
+    read,
   );
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
