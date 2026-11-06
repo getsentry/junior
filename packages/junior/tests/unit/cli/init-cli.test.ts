@@ -96,6 +96,7 @@ describe("init cli", () => {
     );
     expect(workflow).toContain("pnpm check");
     expect(workflow).toContain("pnpm build");
+    expect(workflow).toContain('JUNIOR_SKIP_SNAPSHOT: "1"');
     expect(workflow).toContain("pnpm install");
 
     const vercelConfig = readJsonFile<Record<string, unknown>>(
