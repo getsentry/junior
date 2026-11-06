@@ -396,32 +396,6 @@ export async function archiveViewerDoneConversations(
   return { archived };
 }
 
-/** Read the viewer's effective auto-archive choice for a conversation root. */
-export async function readConversationAutoArchive(
-  viewer: User,
-  rootConversationId: string,
-): Promise<boolean> {
-  const [user] = await getDb()
-    .select({
-      autoArchive: juniorConversationParticipants.autoArchive,
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
-    })
-    .from(juniorUsers)
-    .leftJoin(
-      juniorConversationParticipants,
-      and(
-        eq(juniorConversationParticipants.userId, juniorUsers.id),
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          rootConversationId,
-        ),
-      ),
-    )
-    .where(eq(juniorUsers.id, viewer.id))
-    .limit(1);
-  return user?.autoArchive ?? user?.autoArchiveDefault ?? false;
-}
-
 /** Turn auto-archive on or off for one conversation and the signed-in viewer. */
 export async function setConversationAutoArchive(
   viewer: User,

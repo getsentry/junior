@@ -1,7 +1,7 @@
 import type { Attachment } from "chat";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 
@@ -78,12 +78,11 @@ export async function matchSlackAttachments(args: {
  * return for a Conversation. It changes when one is stored or deleted, so a
  * reader can tell that stored messages may now show other files.
  */
-export async function readSlackAttachmentsVersion(
-  db: JuniorSqlDatabase,
+export function slackAttachmentsVersionQuery(
+  db: JuniorDatabase,
   conversationId: string,
-): Promise<string> {
-  const [row] = await db
-    .db()
+) {
+  return db
     .select({
       version: sql<string>`coalesce(md5(string_agg(${juniorAttachments.id}, ',' order by ${juniorAttachments.id})), '')`,
     })
@@ -95,7 +94,6 @@ export async function readSlackAttachmentsVersion(
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );
-  return row?.version ?? "";
 }
 
 /** Read the Slack file identity retained by the Chat SDK. */

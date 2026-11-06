@@ -17,7 +17,10 @@ import {
   type ConversationPendingMessage,
   type ConversationPendingMessagesReport,
 } from "../schema/conversation-pending-messages";
-import { readConversationAccessFromSql } from "./access";
+import {
+  createConversationAccessReader,
+  type ConversationAccessReader,
+} from "./access";
 import { webActorUserIds } from "@/chat/conversations/legacy-web-actor-id";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";
 import {
@@ -228,18 +231,19 @@ async function findViewerWebAuthorization(
  */
 export async function readConversationPendingMessages(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
 ): Promise<ConversationPendingMessagesReport | undefined> {
-  const conversation = await getConversationStore().get({ conversationId });
+  // A detail request passes its reader, so it reads access only once.
+  const readAccess =
+    options.readAccess ??
+    createConversationAccessReader(getDb(), options.viewer);
+  const [conversation, accessById] = await Promise.all([
+    getConversationStore().get({ conversationId }),
+    readAccess([conversationId]),
+  ]);
   if (!conversation) return undefined;
 
-  const access = (
-    await readConversationAccessFromSql(
-      getDb(),
-      [conversationId],
-      options.viewer,
-    )
-  ).get(conversationId);
+  const access = accessById.get(conversationId);
   const canExposePayload = access?.canViewPrivateContent ?? false;
   const isParticipant = access?.isParticipant ?? false;
   const authorization =
@@ -286,7 +290,7 @@ export async function readConversationPendingMessages(
 /** Load pending mailbox messages or throw a standard API not-found error. */
 export async function requireConversationPendingMessages(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { readAccess?: ConversationAccessReader; viewer?: User } = {},
 ): Promise<ConversationPendingMessagesReport> {
   const report = await readConversationPendingMessages(conversationId, options);
   if (!report) throwApiError(404, "Conversation not found.");

@@ -29,13 +29,13 @@ async function readParentConversationId(
  * they can see private content.
  */
 export async function readConversationAgentTree(
-  conversationId: string,
+  conversation: { conversationId: string; parentConversationId?: string },
   readAccess: ConversationAccessReader,
 ): Promise<ConversationAgentTreeNode[] | undefined> {
   // Read only parent ids. Every detail request calls this, and a root
-  // Conversation must not need a full Conversation record.
-  const ids = [conversationId];
-  let parentId = await readParentConversationId(conversationId);
+  // Conversation must not need any read.
+  const ids = [conversation.conversationId];
+  let parentId = conversation.parentConversationId;
   while (
     parentId &&
     !ids.includes(parentId) &&

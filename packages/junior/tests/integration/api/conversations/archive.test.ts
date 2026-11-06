@@ -106,6 +106,19 @@ describe("conversation archive API", () => {
       await readConversationDetail(conversationId, { viewer }),
     );
     expect(archivedDetail.archivedAt).toEqual(expect.any(String));
+    // The mark lives on the root, so a child agent's detail shows it too.
+    const childConversationId = `${conversationId}:child`;
+    await getConversationStore().createChild({
+      childConversationId,
+      nowMs: Date.parse(lastSeenAt),
+      parentConversationId: conversationId,
+    });
+    const childDetail = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(childConversationId)}`,
+    );
+    expect(
+      conversationDetailReportSchema.parse(await childDetail.json()).archivedAt,
+    ).toBe(archivedDetail.archivedAt);
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer: otherViewer }),
