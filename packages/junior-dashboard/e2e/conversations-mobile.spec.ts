@@ -53,6 +53,25 @@ test("records focused mobile conversation composer", async ({
     },
     view: "mobile",
   });
+
+  // A downward swipe puts the keyboard away. An upward swipe keeps it.
+  const touch = await page.context().newCDPSession(page);
+  const swipe = async (from: { x: number; y: number }, dy: number) => {
+    const send = (
+      type: "touchStart" | "touchMove" | "touchEnd",
+      points: { id: number; x: number; y: number }[],
+    ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+    await send("touchStart", [{ id: 1, ...from }]);
+    for (const step of [0.25, 0.5, 0.75, 1]) {
+      await send("touchMove", [{ id: 1, x: from.x, y: from.y + dy * step }]);
+    }
+    await send("touchEnd", []);
+  };
+  await swipe({ x: 200, y: 400 }, -120);
+  await expect(composer).toBeFocused();
+  await swipe({ x: 200, y: 300 }, 120);
+  await expect(composer).not.toBeFocused();
+  await touch.detach();
 });
 
 /**
