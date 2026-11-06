@@ -77,8 +77,10 @@ export function ConversationWorkspace(props: {
   const sidebarGroup = useRef<HTMLDivElement>(null);
   const sidebarId = useId();
   // Only the stacked home has a search box. The sidebar lists every
-  // conversation; the command palette searches them.
-  const search = useDebouncedValue(sidebarFits ? "" : query.trim());
+  // conversation; the command palette searches them. Debounce only the typed
+  // text, so the sidebar drops a stale search at once.
+  const debouncedQuery = useDebouncedValue(query.trim());
+  const search = sidebarFits ? "" : debouncedQuery;
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
