@@ -230,6 +230,7 @@ export function conversationSummaryFromStoredConversation(args: {
   firstHumanMessageText?: string;
   locationId?: string;
   pinnedAtMs?: number;
+  pinPosition?: number;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -299,6 +300,9 @@ export function conversationSummaryFromStoredConversation(args: {
       args.pinnedAtMs === undefined
         ? null
         : new Date(args.pinnedAtMs).toISOString(),
+    ...(args.pinPosition === undefined
+      ? undefined
+      : { pinPosition: args.pinPosition }),
     ...(slackThread ? { channel: slackThread.channelId } : undefined),
     ...(channelName ? { channelName } : undefined),
     ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),

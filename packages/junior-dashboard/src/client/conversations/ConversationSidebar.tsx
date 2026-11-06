@@ -13,6 +13,12 @@ import { Link } from "react-router";
 import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { usePinConversation } from "./usePinConversation";
+import {
+  PinnedConversationOrder,
+  usePinnedRowDrag,
+  type PinnedRowDrag,
+} from "./PinnedConversationOrder";
+import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
@@ -77,6 +83,7 @@ export function ConversationSidebar(props: {
   variant?: "panel" | "landing";
   onNewConversation(): void;
   onQueryChange(value: string): void;
+  onReorderPins: ReorderPins;
 }) {
   const variant = props.variant ?? "panel";
   const isLanding = variant === "landing";
@@ -117,6 +124,20 @@ export function ConversationSidebar(props: {
       props.timeZone,
       props.waitingConversations,
     ],
+  );
+  const pinnedConversations = useMemo(
+    () =>
+      entries.flatMap((entry) =>
+        entry.kind === "conversation" && entry.conversation.pinnedAt
+          ? [entry.conversation]
+          : [],
+      ),
+    [entries],
+  );
+  const handleReorderError = useCallback(
+    (conversation: Conversation) =>
+      showActionError(conversation, "Could not reorder"),
+    [showActionError],
   );
   return (
     <aside
@@ -178,48 +199,54 @@ export function ConversationSidebar(props: {
         ) : props.loading && entries.length === 0 ? (
           <ConversationRowsLoading />
         ) : (
-          <AnimatedList
-            ariaLabel="Your conversations"
-            className="grid gap-0.5"
-            empty={
-              !props.loading ? (
-                <div className="p-2">
-                  <EmptyTelemetry>
-                    No conversations match this view.
-                  </EmptyTelemetry>
-                </div>
-              ) : undefined
-            }
-            getKey={conversationEntryKey}
-            items={entries}
-            renderItem={(entry) =>
-              entry.kind === "section" ? (
-                <ConversationSectionHeading
-                  className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
-                  collapsed={entry.collapsed}
-                  count={entry.count}
-                  label={entry.label}
-                  onToggle={() => toggleSection(entry.sectionKey)}
-                />
-              ) : (
-                <ConversationSidebarRow
-                  conversation={entry.conversation}
-                  onArchiveError={showArchiveError}
-                  onArchived={showArchived}
-                  onPinError={handlePinError}
-                  onPinned={clearActionError}
-                  selected={entry.conversation.id === props.selectedId}
-                  unread={props.finishedConversationIds.has(
-                    entry.conversation.id,
-                  )}
-                  waiting={props.waitingConversations.get(
-                    entry.conversation.id,
-                  )}
-                />
-              )
-            }
-            role="navigation"
-          />
+          <PinnedConversationOrder
+            conversations={pinnedConversations}
+            onError={handleReorderError}
+            reorder={props.query ? undefined : props.onReorderPins}
+          >
+            <AnimatedList
+              ariaLabel="Your conversations"
+              className="grid gap-0.5"
+              empty={
+                !props.loading ? (
+                  <div className="p-2">
+                    <EmptyTelemetry>
+                      No conversations match this view.
+                    </EmptyTelemetry>
+                  </div>
+                ) : undefined
+              }
+              getKey={conversationEntryKey}
+              items={entries}
+              renderItem={(entry) =>
+                entry.kind === "section" ? (
+                  <ConversationSectionHeading
+                    className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
+                    collapsed={entry.collapsed}
+                    count={entry.count}
+                    label={entry.label}
+                    onToggle={() => toggleSection(entry.sectionKey)}
+                  />
+                ) : (
+                  <ConversationSidebarEntryRow
+                    conversation={entry.conversation}
+                    onArchiveError={showArchiveError}
+                    onArchived={showArchived}
+                    onPinError={handlePinError}
+                    onPinned={clearActionError}
+                    selected={entry.conversation.id === props.selectedId}
+                    unread={props.finishedConversationIds.has(
+                      entry.conversation.id,
+                    )}
+                    waiting={props.waitingConversations.get(
+                      entry.conversation.id,
+                    )}
+                  />
+                )
+              }
+              role="navigation"
+            />
+          </PinnedConversationOrder>
         )}
       </div>
     </aside>
@@ -277,8 +304,10 @@ function conversationSidebarEntries(
   });
 }
 
-const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
+type ConversationSidebarRowProps = {
   conversation: Conversation;
+  /** Set on pinned rows, which drag to reorder. */
+  drag?: PinnedRowDrag;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
@@ -286,7 +315,27 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   selected: boolean;
   unread: boolean;
   waiting?: WaitingConversation;
-}) {
+};
+
+/** Render one sidebar row. Only pinned rows join the drag order. */
+function ConversationSidebarEntryRow(
+  props: Omit<ConversationSidebarRowProps, "drag">,
+) {
+  return props.conversation.pinnedAt ? (
+    <PinnedSidebarRow {...props} />
+  ) : (
+    <ConversationSidebarRow {...props} />
+  );
+}
+
+function PinnedSidebarRow(props: Omit<ConversationSidebarRowProps, "drag">) {
+  const drag = usePinnedRowDrag(props.conversation.id);
+  return <ConversationSidebarRow {...props} drag={drag} />;
+}
+
+const ConversationSidebarRow = memo(function ConversationSidebarRow(
+  props: ConversationSidebarRowProps,
+) {
   const archive = useArchiveConversation(props.conversation.id, {
     // Read the attempted direction from the mutation call, not the (possibly
     // already optimistically updated) conversation prop, so a failed archive
@@ -310,17 +359,29 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const emphasized = props.unread || Boolean(props.waiting);
+  const drag = props.drag;
   return (
     <div
       {...prefetch}
+      {...drag?.listeners}
       className={cn(
         "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
         props.selected && "bg-dashboard-surface-active",
+        drag?.dragging && "opacity-40",
       )}
+      onKeyDown={drag?.onKeyDown}
+      ref={drag?.setNodeRef}
     >
       <Link
         aria-current={props.selected ? "page" : undefined}
-        className="grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10"
+        aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+        className={cn(
+          "grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+          // A long press drags the row instead of opening the link menu.
+          drag && "[-webkit-touch-callout:none]",
+        )}
+        // The browser's own link drag would take the pointer from the reorder.
+        draggable={drag ? false : undefined}
         to={conversationPath(props.conversation.id)}
       >
         <span className="grid place-items-center">

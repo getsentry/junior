@@ -192,13 +192,14 @@ export function viewerConversationMembership(args: {
   return args.actorMatch ?? args.participantMatch;
 }
 
-/** One person's archive and pin times on a conversation root. */
+/** One person's archive and pin marks on a conversation root. */
 export type ConversationViewerMarks = {
   archivedAtMs?: number;
   pinnedAtMs?: number;
+  pinPosition?: number;
 };
 
-/** Read personal archive and pin times for a bounded set of conversation roots. */
+/** Read personal archive and pin marks for a bounded set of conversation roots. */
 export async function conversationViewerMarks(
   db: JuniorDatabase,
   conversationIds: readonly string[],
@@ -218,6 +219,7 @@ export async function conversationViewerMarks(
     .select({
       archivedAt: juniorConversationParticipants.archivedAt,
       pinnedAt: juniorConversationParticipants.pinnedAt,
+      pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId: juniorConversationParticipants.rootConversationId,
     })
     .from(juniorConversationParticipants);
@@ -245,6 +247,9 @@ export async function conversationViewerMarks(
           ? { archivedAtMs: row.archivedAt.getTime() }
           : undefined),
         ...(row.pinnedAt ? { pinnedAtMs: row.pinnedAt.getTime() } : undefined),
+        ...(row.pinnedAt && row.pinPosition !== null
+          ? { pinPosition: row.pinPosition }
+          : undefined),
       },
     ]),
   );

@@ -58,6 +58,7 @@ async function setViewerArchive(args: {
           set: {
             archivedAt,
             pinnedAt: null,
+            pinPosition: null,
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
           },
         });
