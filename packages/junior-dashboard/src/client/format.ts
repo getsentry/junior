@@ -665,18 +665,17 @@ function compareTimeDesc(a: string | undefined, b: string | undefined): number {
 }
 
 /**
- * Return the title of a loaded Conversation. A child agent Conversation uses
- * its agent label from the agent tree, because it has no title of its own.
+ * Return the title of a loaded Conversation. A Thread has its own title. A
+ * Task uses its agent label from the agent tree, because it has no title.
  */
 export function conversationDetailTitle(
   detail:
-    | Pick<ConversationTranscript, "agentTree" | "displayTitle">
+    | Pick<ConversationTranscript, "agentTree" | "displayTitle" | "kind">
     | undefined,
 ): string | undefined {
-  return (
-    detail?.agentTree?.at(-1)?.label ??
-    (detail?.displayTitle?.trim() || undefined)
-  );
+  const title = detail?.displayTitle?.trim() || undefined;
+  const label = detail?.agentTree?.at(-1)?.label;
+  return detail?.kind === "thread" ? (title ?? label) : (label ?? title);
 }
 
 /** Return the display title prepared by the reporting API. */

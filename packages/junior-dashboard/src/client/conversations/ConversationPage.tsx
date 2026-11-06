@@ -579,6 +579,8 @@ export function ConversationPage(props: {
       {showDetails ? (
         <ConversationMemoryContext value={memoryState}>
           <ConversationDetails
+            agentTree={agentTree}
+            feedConversations={conversations}
             autoArchive={
               detail.data?.autoArchive === undefined ? null : (
                 <AutoArchiveToggle
