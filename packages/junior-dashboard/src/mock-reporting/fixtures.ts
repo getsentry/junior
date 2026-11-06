@@ -1055,6 +1055,16 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         role: "assistant",
         text: "I mean the empty, loading, and failed transcript states.",
       }),
+      // The reviewer card already shows this result, so the transcript
+      // hides the row.
+      reportEvent(20, iso(Date.parse(startedAt), 70_000), {
+        type: "message",
+        messageId: "qa-reviewer-result",
+        role: "user",
+        eventType: "agent_invocation.blocked",
+        trustedSummary: 'Child agent "reviewer" is blocked.',
+        text: "The reviewer needs access to the dashboard repository.",
+      }),
     ],
   });
 }

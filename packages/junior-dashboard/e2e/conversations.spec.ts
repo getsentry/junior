@@ -612,15 +612,24 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Subagent rows show in the main view, outside collapsed activity groups.
+  // Adjacent child agents share one group card in the main view. A blocked
+  // row stays visible; a completed row folds until the card opens.
+  const group = page.getByRole("button", { name: /^2 agents/ });
+  await expect(group).toContainText("1 blocked");
   const planner = page.getByRole("button", {
     name: "Open planner transcript",
   });
   const reviewer = page.getByRole("button", {
     name: "Open reviewer transcript",
   });
-  await expect(planner).toContainText("Review the dashboard plan");
   await expect(reviewer).toContainText("blocked");
+  await expect(planner).toBeHidden();
+  // The card already shows the result, so its Event row does not render.
+  await expect(
+    page.getByText('Child agent "reviewer" is blocked.'),
+  ).toBeHidden();
+  await page.getByRole("button", { name: "1 completed" }).click();
+  await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
   // Details lists child agents with the runtime status.

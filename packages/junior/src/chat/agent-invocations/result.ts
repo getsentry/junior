@@ -38,6 +38,10 @@ import {
 import { renderUntrustedTag } from "@/chat/input-tags";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { listUnreportedSiblingAgents } from "./list";
+import {
+  agentInvocationResultEventType,
+  isAgentInvocationResultEventType,
+} from "./result-event-type";
 import type {
   AgentInvocation,
   ChildAgent,
@@ -52,7 +56,6 @@ import {
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
 // can pause for input or auth instead of failing (#881).
-const AGENT_INVOCATION_EVENT_TYPE_PREFIX = "agent_invocation.";
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
 /** Event type of a message that a child agent sends to its parent. */
 const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
@@ -147,7 +150,7 @@ function buildResultInboundMessage(
     kind: "event",
     event: {
       eventKey: invocation.invocationId,
-      eventType: `${AGENT_INVOCATION_EVENT_TYPE_PREFIX}${invocation.status}`,
+      eventType: agentInvocationResultEventType(invocation.status),
       identifier: invocation.invocationId,
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
       trustedSummary: summary,
@@ -295,7 +298,7 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
   if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
     return { invocationId: metadata.event.identifier, kind: "message" };
   }
-  return metadata.event.eventType.startsWith(AGENT_INVOCATION_EVENT_TYPE_PREFIX)
+  return isAgentInvocationResultEventType(metadata.event.eventType)
     ? { invocationId: metadata.event.identifier, kind: "result" }
     : undefined;
 }
