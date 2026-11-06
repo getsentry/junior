@@ -24,14 +24,13 @@ import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import {
-  actOnReviewItem,
   expectAccepted,
   jsonRequest,
   steerQueuedWebMessage,
   webImage,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
-import { insertWebReviewItem } from "./insert";
+import { actOnWebReviewItem } from "./review-desk";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
@@ -405,9 +404,7 @@ export async function createFixtureAgent(
       if (record.surface !== "web" || !record.started) {
         throw new Error("A review item action continues a web Conversation");
       }
-      const { viewerEmail } = record;
-      const { id } = await insertWebReviewItem({ ...input, ...record });
-      await actOnReviewItem(api, { ...input, id, viewerEmail });
+      await actOnWebReviewItem(api, input, record);
       return;
     }
     const started = record.started;
