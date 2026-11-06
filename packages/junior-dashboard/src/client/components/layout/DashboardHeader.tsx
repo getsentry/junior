@@ -1,8 +1,9 @@
-import { ArrowLeft, Menu, X } from "lucide-react";
+import { ArrowLeft, Menu, Search, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
+import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
@@ -49,6 +50,8 @@ export function DashboardHeader(props: {
   mobileSpend?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
+  /** Open the command palette. */
+  onSearch(): void;
   /** Spend and account control at the right of the tall desktop top bar. */
   profile?: ReactNode;
   version?: string;
@@ -120,9 +123,19 @@ export function DashboardHeader(props: {
             </NavLink>
           ))}
         </nav>
-        {props.profile ? (
-          <div className="justify-self-end">{props.profile}</div>
-        ) : null}
+        <div className="flex items-center gap-3 justify-self-end">
+          <button
+            aria-keyshortcuts="Meta+K Control+K"
+            className="flex h-9 w-56 cursor-pointer items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-surface-raised px-3 font-sans text-sm text-dashboard-text-faint transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+            onClick={props.onSearch}
+            type="button"
+          >
+            <Search aria-hidden="true" className="size-4 shrink-0" />
+            <span className="flex-1 text-left">Search…</span>
+            <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
+          </button>
+          {props.profile}
+        </div>
       </div>
       <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
         {conversationMode && props.mobileBackTo ? (
@@ -199,6 +212,18 @@ export function DashboardHeader(props: {
                 <div className="mb-3">{props.mobileSpend}</div>
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
+                <button
+                  className={cn(
+                    sheetLinkClass({ isActive: false }),
+                    "flex cursor-pointer items-center gap-2 border-0 bg-transparent text-left",
+                  )}
+                  data-mobile-nav-dismiss=""
+                  onClick={props.onSearch}
+                  type="button"
+                >
+                  <Search aria-hidden="true" className="size-4" />
+                  Search
+                </button>
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
                   className={sheetLinkClass({

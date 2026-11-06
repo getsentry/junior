@@ -20,6 +20,7 @@ import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
+import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
 import { NavRail, NavRailProvider } from "./components/layout/NavRail";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
@@ -216,6 +217,8 @@ const settingsRoutes: {
 export function DashboardShell() {
   const location = useLocation();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const openCommandPalette = () => setCommandPaletteOpen(true);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
   const data = query.data;
@@ -286,8 +289,14 @@ export function DashboardShell() {
   return (
     <DashboardChromeProvider>
       <NavRailProvider>
+        <CommandPalette
+          navItems={primaryNavItems}
+          onOpenChange={setCommandPaletteOpen}
+          open={commandPaletteOpen}
+        />
         <NavRail
           navItems={primaryNavItems}
+          onSearch={openCommandPalette}
           profile={
             loggedIn ? (
               <ProfileMenu
@@ -323,6 +332,7 @@ export function DashboardShell() {
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
+                onSearch={openCommandPalette}
                 profile={
                   loggedIn ? (
                     <ProfileMenu

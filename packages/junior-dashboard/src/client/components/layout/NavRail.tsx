@@ -1,13 +1,4 @@
-import {
-  Boxes,
-  Brain,
-  CodeXml,
-  Gauge,
-  Inbox,
-  MessagesSquare,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { MessagesSquare, Search, type LucideIcon } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useMatch } from "react-router";
 
@@ -26,15 +17,11 @@ import {
   SidebarProvider,
 } from "../ui/sidebar";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
+import { navItemIcon } from "./navIcons";
+import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 
-// Plugin primary pages without an entry here use the generic plugin icon.
-const NAV_ICONS: Record<string, LucideIcon> = {
-  automations: Zap,
-  code: CodeXml,
-  "memory:memories": Brain,
-  review: Inbox,
-  system: Gauge,
-};
+const RAIL_BUTTON_CLASS =
+  "justify-center rounded-lg text-dashboard-text-muted group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-0! data-active:bg-dashboard-accent/[0.12] data-active:font-normal data-active:text-dashboard-accent-text [&_svg]:size-5";
 
 // 56px rail with 40px targets, so the icons keep their size from the top bar.
 const RAIL_STYLE = { "--sidebar-width-icon": "3.5rem" } as CSSProperties;
@@ -67,7 +54,7 @@ function RailItem(props: {
     <SidebarMenuItem>
       <SidebarMenuButton
         aria-label={label}
-        className="justify-center rounded-lg text-dashboard-text-muted group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-0! data-active:bg-dashboard-accent/[0.12] data-active:font-normal data-active:text-dashboard-accent-text [&_svg]:size-5"
+        className={RAIL_BUTTON_CLASS}
         isActive={props.active}
         render={
           <Link
@@ -91,13 +78,35 @@ function RailItem(props: {
   );
 }
 
+function RailSearchItem(props: { onSearch(): void }) {
+  return (
+    <SidebarMenu className="mt-3 items-center">
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          aria-keyshortcuts="Meta+K Control+K"
+          aria-label="Search"
+          className={RAIL_BUTTON_CLASS}
+          onClick={props.onSearch}
+          tooltip={{
+            children: `Search ${COMMAND_PALETTE_SHORTCUT}`,
+            size: "compact",
+            sideOffset: 6,
+          }}
+        >
+          <Search aria-hidden="true" strokeWidth={1.9} />
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
 function RailNavItem(props: { item: DashboardHeaderNavItem }) {
   const active = useMatch({ end: false, path: props.item.to }) !== null;
   return (
     <RailItem
       active={active}
       count={props.item.count}
-      icon={NAV_ICONS[props.item.key] ?? Boxes}
+      icon={navItemIcon(props.item.key)}
       label={props.item.label}
       to={props.item.to}
     />
@@ -110,6 +119,7 @@ function RailNavItem(props: { item: DashboardHeaderNavItem }) {
  */
 export function NavRail(props: {
   navItems: DashboardHeaderNavItem[];
+  onSearch(): void;
   profile?: ReactNode;
   workspaceActive: boolean;
 }) {
@@ -128,6 +138,7 @@ export function NavRail(props: {
           >
             <JuniorLogo />
           </Link>
+          <RailSearchItem onSearch={props.onSearch} />
         </SidebarHeader>
         {/* Stock icon mode hides overflow; the rail stays collapsed, so let
           plugin pages scroll on short windows. */}
