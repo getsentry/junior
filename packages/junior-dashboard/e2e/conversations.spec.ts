@@ -26,7 +26,6 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await screenshot(page, "conversations");
 
   const composer = page.getByLabel("Start a conversation");
-  await composer.focus();
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
 
