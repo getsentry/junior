@@ -38,8 +38,6 @@ import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
-import { SearchInput } from "../components/SearchInput";
-import { Button } from "../components/ui/button";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -72,7 +70,7 @@ const ROW_ACTION_BUTTON_CLASS =
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
-/** Render the compact personal conversation picker used by the home workspace. */
+/** Render the compact personal conversation picker beside the workspace. */
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
@@ -80,22 +78,13 @@ export function ConversationSidebar(props: {
   /** Opened while unread; keeps its unread place until another one opens. */
   heldConversationId?: string;
   loading: boolean;
-  query: string;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
-  /**
-   * `panel` = split-pane dock with internal scroll.
-   * `landing` = flow nav under create compose (parent owns scroll).
-   */
-  variant?: "panel" | "landing";
   onNewConversation(): void;
-  onQueryChange(value: string): void;
   onReorderPins: ReorderPins;
   onUnreadChange(conversation: Conversation, unread: boolean): void;
 }) {
-  const variant = props.variant ?? "panel";
-  const isLanding = variant === "landing";
   const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
   const handlePinError = useCallback(
@@ -149,58 +138,23 @@ export function ConversationSidebar(props: {
     [showActionError],
   );
   return (
-    <aside
-      className={cn(
-        "relative min-w-0",
-        isLanding
-          ? "border-t border-dashboard-border bg-transparent"
-          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel",
-      )}
-    >
-      <div className="px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="m-0 font-display text-base font-medium leading-tight text-dashboard-text">
-            {isLanding ? "Your conversations" : "Conversations"}
-          </h2>
-          <div className="flex items-center gap-0.5">
-            {isLanding ? null : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label="New conversation"
-                      className="size-7"
-                      onClick={props.onNewConversation}
-                      size="icon"
-                    >
-                      <SquarePen aria-hidden="true" size={15} />
-                    </Button>
-                  }
-                />
-                <TooltipContent size="compact">New conversation</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
+    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
+      <div className="px-3 pb-1 pt-3">
+        {/* Same grid as the rows, so the pen and label line up with them. */}
+        <button
+          className="grid w-full cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-x-2 rounded-lg border-0 bg-transparent px-3 py-1.5 text-left font-sans text-sm font-medium leading-snug text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+          onClick={props.onNewConversation}
+          type="button"
+        >
+          <SquarePen
+            aria-hidden="true"
+            className="size-3.5 justify-self-center"
+            strokeWidth={2.25}
+          />
+          New conversation
+        </button>
       </div>
-      <div className="px-4 pb-2">
-        <SearchInput
-          className="border-dashboard-border-subtle bg-transparent hover:border-dashboard-border hover:bg-dashboard-fill-faint"
-          label="Search your conversations"
-          onChange={props.onQueryChange}
-          placeholder="Search conversations…"
-          size="compact"
-          value={props.query}
-        />
-      </div>
-      <div
-        className={cn(
-          "px-3",
-          isLanding
-            ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : "thin-scrollbar min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
-        )}
-      >
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -211,7 +165,7 @@ export function ConversationSidebar(props: {
           <PinnedConversationOrder
             conversations={pinnedConversations}
             onError={handleReorderError}
-            reorder={props.query ? undefined : props.onReorderPins}
+            reorder={props.onReorderPins}
           >
             <AnimatedList
               ariaLabel="Your conversations"

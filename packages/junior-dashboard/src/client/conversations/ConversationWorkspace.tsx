@@ -76,7 +76,9 @@ export function ConversationWorkspace(props: {
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const sidebarGroup = useRef<HTMLDivElement>(null);
   const sidebarId = useId();
-  const search = useDebouncedValue(query.trim());
+  // Only the stacked home has a search box. The sidebar lists every
+  // conversation; the command palette searches them.
+  const search = useDebouncedValue(sidebarFits ? "" : query.trim());
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
@@ -298,9 +300,7 @@ export function ConversationWorkspace(props: {
                 loading={feed.isPending}
                 onUnreadChange={setUnread}
                 onNewConversation={openCreate}
-                onQueryChange={setQuery}
                 onReorderPins={reorderPins}
-                query={query}
                 selectedId={selectedId}
                 timeZone={getDashboardTimeZone()}
                 waitingConversations={waitingConversations}
