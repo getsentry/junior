@@ -15,6 +15,7 @@ import {
 } from "../conversations/conversationRoutes";
 import { useDebouncedValue } from "../debouncedValue";
 import { buildConversations, conversationDisplayTitle } from "../format";
+import { isPlatformShortcut, platformShortcut } from "../keyboard";
 import type { Conversation } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
@@ -31,12 +32,8 @@ import {
 const RECENT_LIMIT = 5;
 const RESULT_LIMIT = 8;
 
-const isApple =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad/.test(navigator.userAgent);
-
 /** Shortcut text for command palette triggers on this platform. */
-export const COMMAND_PALETTE_SHORTCUT = isApple ? "⌘K" : "Ctrl K";
+export const COMMAND_PALETTE_SHORTCUT = platformShortcut("k");
 
 type PaletteItem = {
   group: string;
@@ -59,16 +56,7 @@ export function CommandPalette(props: {
   const { onOpenChange, open } = props;
   useEffect(() => {
     const toggle = (event: globalThis.KeyboardEvent) => {
-      // Only the advertised modifier: Ctrl+K on Apple is kill-line in text fields.
-      if (
-        event.key.toLowerCase() !== "k" ||
-        !(isApple ? event.metaKey : event.ctrlKey) ||
-        event.altKey ||
-        event.shiftKey ||
-        event.repeat
-      ) {
-        return;
-      }
+      if (!isPlatformShortcut(event, "k") || event.repeat) return;
       event.preventDefault();
       onOpenChange(!open);
     };
