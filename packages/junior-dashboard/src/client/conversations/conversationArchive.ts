@@ -216,15 +216,22 @@ export function archiveConversationMutationOptions(
           ? [
               ...feed.conversations,
               // The archive cleared the pin, so the restored row is unpinned.
+              // The archive also marked it read.
               {
                 ...archivedSnapshot!.conversation,
                 archivedAt: null,
                 pinnedAt: null,
+                unread: false,
               },
             ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
           : feed.conversations.map((conversation) =>
               conversation.conversationId === conversationId
-                ? { ...conversation, ...viewerMarks }
+                ? {
+                    ...conversation,
+                    ...viewerMarks,
+                    // Match the API: archive also marks it read.
+                    unread: args.archived ? false : conversation.unread,
+                  }
                 : conversation,
             );
         queryClient.setQueryData<ConversationFeed>(queryKey, {

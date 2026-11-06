@@ -389,6 +389,12 @@ describe("dashboard canonical-event components", () => {
             pinned: false,
           }}
           privacy={null}
+          read={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            unread: false,
+          }}
           search=""
           title="Header QA"
           view="raw"

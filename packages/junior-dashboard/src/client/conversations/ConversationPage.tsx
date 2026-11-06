@@ -24,6 +24,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
+import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { conversationIsResponding } from "./transcript";
 import {
   ConversationCatchUpContext,
@@ -278,6 +279,7 @@ export function ConversationPage(props: {
   const archive = useArchiveConversation(conversationId);
   const navigate = useNavigate();
   const pin = usePinConversation(conversationId);
+  const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const dropLink = useCallback(() => {
@@ -351,6 +353,8 @@ export function ConversationPage(props: {
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
+  // The detail report has no unread flag, so read it from the feed row.
+  const unread = Boolean(feedConversation?.unread);
   const conversation = applyPendingArchiveUpdate(
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
@@ -703,6 +707,17 @@ export function ConversationPage(props: {
                 error: Boolean(pin.error),
                 onClick: () => pin.mutate(!conversation?.pinnedAt),
                 pinned: Boolean(conversation?.pinnedAt),
+              }}
+              read={{
+                // Unread tracks idle conversations only, like the sidebar row.
+                disabled:
+                  !feedConversation ||
+                  !detail.data?.isParticipant ||
+                  markUnread.isPending ||
+                  (!unread && feedConversation.status !== "completed"),
+                error: Boolean(markUnread.error),
+                onClick: () => markUnread.mutate(!unread),
+                unread,
               }}
               archive={{
                 archived: Boolean(conversation?.archivedAt),

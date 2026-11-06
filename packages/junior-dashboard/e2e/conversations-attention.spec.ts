@@ -253,6 +253,48 @@ test.describe("conversation sections", () => {
     await expect(unreadDot).toHaveCount(0);
   });
 
+  test("marks a conversation read or unread from its menu on mobile", async ({
+    page,
+    dashboard,
+  }) => {
+    // Below 768px there is no sidebar, so the conversation menu is the way.
+    await page.setViewportSize({ height: 844, width: 390 });
+    // Only participants can mark read. Make the viewer one of this mock.
+    await page.route(
+      /\/api\/conversations\/agent-dispatch%3Aevent-1(?:\?.*)?$/,
+      async (route) => {
+        const response = await route.fetch();
+        if (response.status() !== 200) return route.fulfill({ response });
+        const detail = await response.json();
+        await route.fulfill({
+          response,
+          json: { ...detail, isParticipant: true },
+        });
+      },
+    );
+    await page.goto(dashboard.baseURL);
+    await page.getByRole("link", { name: /Closed issue summary/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "Closed issue summary" }),
+    ).toBeVisible();
+
+    const menu = page.getByRole("button", { name: "Conversation menu" });
+    const requests: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PATCH" && request.url().endsWith("/unread")) {
+        requests.push(request.postDataJSON());
+      }
+    });
+    // The menu stays open, like Pin, so the label flips in place.
+    await menu.click();
+    await page.getByRole("button", { name: "Mark as unread" }).click();
+    await page.getByRole("button", { name: "Mark as read" }).click();
+    await expect(
+      page.getByRole("button", { name: "Mark as unread" }),
+    ).toBeVisible();
+    expect(requests).toEqual([{ unread: true }, { unread: false }]);
+  });
+
   test("the sidebar review chip opens details at Needs you", async ({
     page,
     dashboard,

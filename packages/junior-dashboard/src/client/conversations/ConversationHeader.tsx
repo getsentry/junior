@@ -17,6 +17,7 @@ import {
   TranscriptSearchToggle,
   type ConversationArchiveAction,
   type ConversationPinAction,
+  type ConversationReadAction,
 } from "./ConversationHeaderActions";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -46,6 +47,7 @@ export function ConversationHeader(props: {
   onViewChange(value: TranscriptViewMode): void;
   pin: ConversationPinAction;
   privacy: ReactNode;
+  read: ConversationReadAction;
   search: string;
   sentryConversationUrl?: string;
   sidebarToggle?: ReactNode;
@@ -95,6 +97,7 @@ export function ConversationHeader(props: {
       archive={props.archive}
       conversationId={props.conversationId}
       pin={props.pin}
+      read={props.read}
       copyAction={props.copyAction}
       detailsOpen={detailsOpen}
       onDetailsClick={() => {
@@ -120,6 +123,7 @@ export function ConversationHeader(props: {
     searchOpenVisible ||
     props.archive.error ||
     props.pin.error ||
+    props.read.error ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -281,6 +285,11 @@ export function ConversationHeader(props: {
         {props.pin.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update pin.
+          </div>
+        ) : null}
+        {props.read.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not update read state.
           </div>
         ) : null}
       </header>
