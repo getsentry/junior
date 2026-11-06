@@ -721,6 +721,17 @@ export function restoreStoredDraftText(draftId: string, text: string): void {
   storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
 }
 
+/**
+ * Remove the saved draft text of a composer that is gone, to move it to
+ * another composer.
+ */
+export function takeStoredDraftText(draftId: string): string {
+  const storageKey = draftStorageKey(draftId);
+  const { text } = readStoredDraft(storageKey);
+  storeDraft(storageKey, { ...emptyDraft(), text: "" });
+  return text;
+}
+
 function storeDraft(storageKey: string, draft: ConversationDraft): void {
   if (typeof window === "undefined") return;
   try {

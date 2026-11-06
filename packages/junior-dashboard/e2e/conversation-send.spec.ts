@@ -224,6 +224,8 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(
     page.getByLabel("Conversation transcript").getByText("Check the deploy"),
   ).toBeVisible();
+  // The cursor stays in the reply box from send to the opened Conversation.
+  await expect(page.getByLabel("Continue this conversation")).toBeFocused();
   expect(createRequests).toHaveLength(2);
   expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
   expect(createRequests[1]?.message).toBe("Check the deploy");

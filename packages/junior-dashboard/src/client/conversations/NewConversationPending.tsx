@@ -1,11 +1,14 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ConversationTranscript } from "../types";
 import { ChatLayout } from "./ChatLayout";
 import { ComposerDock } from "./ComposerDock";
-import { ConversationComposer } from "./ConversationComposer";
+import {
+  ConversationComposer,
+  type ConversationComposerHandle,
+} from "./ConversationComposer";
 import { ConversationHeader } from "./ConversationHeader";
 import { ConversationPrivacyChip } from "./ConversationMeta";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
@@ -28,6 +31,14 @@ export type PendingNewConversation = {
 };
 
 const noop = () => {};
+
+/**
+ * The draft of the reply box shown while a new Conversation is created. The
+ * Conversation page takes it when it opens.
+ */
+export function newConversationDraftId(idempotencyKey: string): string {
+  return `pending:${idempotencyKey}`;
+}
 
 /**
  * Show a new Conversation as soon as its first message is sent, laid out
@@ -83,6 +94,9 @@ export function NewConversationPending(props: {
   // The page opens its details panel at this width. Open it here too, so
   // the transcript does not move when the page replaces this view. Its
   // content fills in on the page.
+  // The reader keeps typing in the reply box, as on the page.
+  const composerRef = useRef<ConversationComposerHandle>(null);
+  useEffect(() => composerRef.current?.focus(), []);
   const detailsDefaultOpen = useDetailsDefaultOpen();
   const [detailsClosed, setDetailsClosed] = useState(false);
   const showDetails = detailsDefaultOpen && !detailsClosed;
@@ -161,17 +175,17 @@ export function NewConversationPending(props: {
               </section>
             }
             dock={
-              // Inert until the Conversation exists: a reply here would have no
-              // Conversation to go to.
+              // Sends wait until the Conversation exists. Typed text moves to
+              // the page's reply box.
               <ComposerDock>
-                <div inert>
-                  <ConversationComposer
-                    draftId={`pending:${pending.idempotencyKey}`}
-                    label="Continue this conversation"
-                    submitLabel="Send"
-                    onSubmit={async () => {}}
-                  />
-                </div>
+                <ConversationComposer
+                  disabled
+                  draftId={newConversationDraftId(pending.idempotencyKey)}
+                  label="Continue this conversation"
+                  ref={composerRef}
+                  submitLabel="Send"
+                  onSubmit={async () => {}}
+                />
               </ComposerDock>
             }
           />

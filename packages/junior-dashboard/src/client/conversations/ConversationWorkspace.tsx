@@ -31,10 +31,16 @@ import {
 import { useCreateConversation, type ConversationData } from "./queries";
 import { prefetchConversationDetail } from "./conversationPrefetch";
 import {
+  newConversationDraftId,
   NewConversationPending,
   type PendingNewConversation,
 } from "./NewConversationPending";
-import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
+import { takeStoredDraftText } from "./ConversationComposer";
+import {
+  COMPOSER_DRAFT_FROM_STATE,
+  conversationPath,
+  NEW_CONVERSATION_PATH,
+} from "./conversationRoutes";
 import {
   attentionConversationIds,
   pinnedAndAttentionFirst,
@@ -192,16 +198,25 @@ export function ConversationWorkspace(props: {
           });
         } catch (error) {
           // Show home before the composer takes the failure, so it can
-          // focus the draft for a retry.
+          // focus the draft for a retry. A reply typed meanwhile has no
+          // Conversation to go to.
           flushSync(() => setPendingCreate(undefined));
+          takeStoredDraftText(newConversationDraftId(idempotencyKey));
           throw error;
         }
         // The page then opens with its transcript, not a skeleton. The
         // pending view stays until the route shows it.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
-        if (visit?.aborted) return;
+        if (visit?.aborted) {
+          takeStoredDraftText(newConversationDraftId(idempotencyKey));
+          return;
+        }
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
+          // The page's reply box takes focus and the text typed meanwhile.
+          state: {
+            [COMPOSER_DRAFT_FROM_STATE]: newConversationDraftId(idempotencyKey),
+          },
         });
       }}
     />

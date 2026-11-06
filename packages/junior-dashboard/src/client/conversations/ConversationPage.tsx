@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -37,6 +37,7 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  readComposerDraftFrom,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
@@ -148,6 +149,7 @@ export function ConversationPage(props: {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const composerDraftFrom = readComposerDraftFrom(useLocation().state);
   // The URL owns the open event log entry so readers can share that link.
   const selectedEventSeq = parseConversationEventSeq(
     searchParams.get(CONVERSATION_EVENT_PARAM),
@@ -830,6 +832,7 @@ export function ConversationPage(props: {
                 // Only pass committed ids for mailbox de-dupe. The full transcript is
                 // too large to re-enter the footer on every live poll while typing.
                 committedMessageIds={mailboxCommittedIds}
+                draftFrom={composerDraftFrom}
                 onPinRequest={requestPin}
                 pendingAuthorization={detail.pendingAuthorization}
                 // Keep the cancel watermark off props. Live polls refresh generatedAt
