@@ -256,10 +256,23 @@ function createdConversation(
     ({ data }) => data.type === "message" && data.messageId === messageId,
   );
   if (!source || !reply) return undefined;
+  // Like a real fork, also copy the end of each copied Turn, so the fork
+  // has no open Turn.
+  const copiedTurnIds = new Set(
+    source.events.flatMap(({ data, seq }) =>
+      seq <= reply.seq && data.type === "turn_lifecycle" ? [data.turnId] : [],
+    ),
+  );
   return {
     ...base,
     displayTitle: source.displayTitle,
-    events: source.events.filter((event) => event.seq <= reply.seq),
+    events: source.events.filter(
+      ({ data, seq }) =>
+        seq <= reply.seq ||
+        (data.type === "turn_lifecycle" &&
+          data.state !== "started" &&
+          copiedTurnIds.has(data.turnId)),
+    ),
     forkedFromConversationId: sourceConversationId,
     forkedFromTitle: source.displayTitle,
   };

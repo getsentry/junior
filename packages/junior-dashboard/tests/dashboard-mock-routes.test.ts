@@ -547,6 +547,23 @@ describe("dashboard mock sends", () => {
       ...accepted,
       status: "duplicate",
     });
+
+    // A fork at the reply copies the end of its Turn too.
+    const fork = await post(
+      `/conversations/${encodeURIComponent(accepted.conversationId)}/forks`,
+      {
+        idempotencyKey: "fork-1",
+        messageId: `mock-reply:${accepted.messageId}`,
+      },
+    );
+    const { conversationId: forkId } = (await fork.json()) as {
+      conversationId: string;
+    };
+    expect(
+      (await readDetail(forkId)).events.flatMap(({ data }) =>
+        data.type === "turn_lifecycle" ? [data.state] : [],
+      ),
+    ).toEqual(["started", "succeeded"]);
   });
 
   it("adds a send to a fixture Conversation", async () => {
