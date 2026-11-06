@@ -63,10 +63,12 @@ export function conversationAttemptForSubmit(
   };
 }
 
-/** Imperative composer actions for the reply footer. */
+/** Imperative composer actions for the reply footer and the create view. */
 export type ConversationComposerHandle = {
   /** True when the draft has room for these images right now. */
   canRestoreImages(images: readonly InputImage[]): boolean;
+  /** Put the cursor in the draft. */
+  focus(): void;
   /** Put queued text and images ahead of the draft. Queued images win. */
   restoreMessage(message: { images?: InputImage[]; text: string }): void;
 };
@@ -392,6 +394,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   useImperativeHandle(props.ref, () => ({
     canRestoreImages: (images) =>
       !images.length || composerImagesFit([...images, ...imagesRef.current]),
+    focus: () => textareaRef.current?.focus({ preventScroll: true }),
     restoreMessage: (message) => {
       // An image-only message has no text to put ahead of the draft.
       if (message.text.trim()) prependDraftText(message.text);

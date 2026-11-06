@@ -1,6 +1,5 @@
-import { useEffect } from "react";
 import { Archive, ArchiveRestore } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link } from "react-router";
 
 import {
   conversationDisplayTitle,
@@ -20,11 +19,7 @@ import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
-import {
-  useArchiveConversation,
-  useLatestArchiveStatus,
-  type ArchivedFromConversationState,
-} from "./conversationArchive";
+import { useArchiveConversation } from "./conversationArchive";
 import { DisplayText } from "../display-text/DisplayText";
 import {
   attentionConversationIds,
@@ -47,7 +42,6 @@ export function ConversationHomeList(props: {
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
   const { showArchiveError, showArchived } = useConversationActionToasts();
-  useConversationPageArchiveResult(showArchived, showArchiveError);
 
   if (props.loading && props.conversations.length === 0) {
     return <ConversationHomeListLoading label="Loading conversations" />;
@@ -87,39 +81,6 @@ export function ConversationHomeList(props: {
       ))}
     </div>
   );
-}
-
-/**
- * Report an archive started on the conversation page, which navigated home
- * before the request finished.
- */
-function useConversationPageArchiveResult(
-  onArchived: (conversation: Conversation) => void,
-  onArchiveError: (conversation: Conversation, wasArchiving: boolean) => void,
-) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const conversation = (location.state as ArchivedFromConversationState | null)
-    ?.archivedConversation;
-  const status = useLatestArchiveStatus(conversation?.id);
-  useEffect(() => {
-    if (!conversation || (status !== "success" && status !== "error")) return;
-    if (status === "success") onArchived(conversation);
-    else onArchiveError(conversation, true);
-    // Clear the state so a reload or a later restore does not report again.
-    navigate(
-      { hash: location.hash, search: location.search },
-      { replace: true, state: null },
-    );
-  }, [
-    conversation,
-    location.hash,
-    location.search,
-    navigate,
-    onArchiveError,
-    onArchived,
-    status,
-  ]);
 }
 
 /** Match the grouped card list while its first feed request is pending. */

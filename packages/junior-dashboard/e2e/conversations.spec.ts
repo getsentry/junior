@@ -15,7 +15,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     await route.fallback();
   });
   await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Loading conversations")).toBeAttached();
+  await expect(page.getByText("Loading your conversations")).toBeAttached();
   await expect(page.getByText("No conversations match this view.")).toHaveCount(
     0,
   );
@@ -238,7 +238,7 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page.getByRole("region", { name: "Conversations" }),
+    page.getByRole("navigation", { name: "Your conversations" }),
   ).toBeVisible();
   expect(requests).toBe(1);
 
