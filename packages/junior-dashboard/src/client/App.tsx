@@ -1,4 +1,11 @@
-import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  lazy,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { Navigate, Route, useLocation, useParams } from "react-router";
 
 import {
@@ -16,20 +23,27 @@ import {
   type PageContentSkeletonVariant,
 } from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
+import { UsageMeter } from "./components/UsageMeter";
 import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { NavRail, NavRailProvider } from "./components/layout/NavRail";
+import {
+  NavRail,
+  NavRailProvider,
+  useNavSidebar,
+} from "./components/layout/NavRail";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   automationPath,
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
+  peoplePath,
 } from "./format";
+import { useDesktopTopBar, useNavLayoutChoice } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -227,6 +241,9 @@ export function DashboardShell() {
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const [navLayout] = useNavLayoutChoice();
+  const desktopTopBar = useDesktopTopBar(navLayout);
+  const navSidebar = useNavSidebar(!desktopTopBar);
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -286,29 +303,46 @@ export function DashboardShell() {
     window.location.assign(data?.config.basePath ?? "/");
   }
 
+  const profileMenu = (
+    variant: ComponentProps<typeof ProfileMenu>["variant"],
+  ) =>
+    loggedIn ? (
+      <ProfileMenu
+        identity={data!.me}
+        onSignOut={signOut}
+        userPages={userPages}
+        variant={variant}
+      />
+    ) : undefined;
+  const usageMeter = (variant: ComponentProps<typeof UsageMeter>["variant"]) =>
+    loggedIn ? (
+      <UsageMeter
+        detailsTo={peoplePath(data!.me.user.email!)}
+        spend={personalSpendQuery.data}
+        unavailable={personalSpendQuery.isError}
+        variant={variant}
+      />
+    ) : undefined;
+
   return (
     <DashboardChromeProvider>
-      <NavRailProvider>
+      <NavRailProvider open={navSidebar.open}>
         <CommandPalette
           navItems={primaryNavItems}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        <NavRail
-          navItems={primaryNavItems}
-          onSearch={openCommandPalette}
-          profile={
-            loggedIn ? (
-              <ProfileMenu
-                identity={data!.me}
-                onSignOut={signOut}
-                spend={personalSpendQuery.data}
-                userPages={userPages}
-              />
-            ) : undefined
-          }
-          workspaceActive={workspace}
-        />
+        {desktopTopBar ? null : (
+          <NavRail
+            navItems={primaryNavItems}
+            onSearch={openCommandPalette}
+            onToggle={navSidebar.toggle}
+            open={navSidebar.open}
+            profile={profileMenu("popover")}
+            usage={usageMeter("sidebar")}
+            workspaceActive={workspace}
+          />
+        )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
@@ -319,6 +353,7 @@ export function DashboardShell() {
           }
         >
           <DashboardChrome
+            desktopHeader={desktopTopBar}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -327,56 +362,18 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
+                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
                 onSearch={openCommandPalette}
-                profile={
-                  loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
-                      spend={personalSpendQuery.data}
-                      userPages={userPages}
-                      variant="top-bar"
-                    />
-                  ) : undefined
-                }
-                mobileIdentity={
-                  loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
-                      spend={personalSpendQuery.data}
-                      userPages={userPages}
-                      variant="sheet-identity"
-                    />
-                  ) : undefined
-                }
-                mobileProfile={
-                  loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
-                      spend={personalSpendQuery.data}
-                      userPages={userPages}
-                      variant="sheet-links"
-                    />
-                  ) : undefined
-                }
-                mobileSpend={
-                  loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
-                      spend={personalSpendQuery.data}
-                      userPages={userPages}
-                      variant="sheet-spend"
-                    />
-                  ) : undefined
-                }
+                mobileIdentity={profileMenu("sheet-identity")}
+                mobileProfile={profileMenu("sheet-links")}
+                mobileUsage={usageMeter("sheet")}
+                profile={profileMenu("top-bar")}
+                usage={usageMeter("top-bar")}
                 version={data?.config.version}
                 workspaceActive={workspace}
               />

@@ -522,23 +522,116 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test("shows personal spend and groups profile and session actions", async ({
+test("keeps usage in the nav sidebar footer in both widths", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(dashboard.baseURL);
 
-  const topBarTrigger = page.getByRole("button", {
-    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
+  const sidebar = page.locator('[data-slot="sidebar"]').filter({
+    has: page.getByRole("navigation", { name: "Primary" }),
   });
-  await expect(topBarTrigger).toBeVisible();
-  await expect(topBarTrigger).toHaveAttribute("aria-expanded", "false");
-  await expect(topBarTrigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
+  const usage = sidebar.getByRole("button", {
+    name: "Usage: <1% of weekly soft cap. 7 days $0.46, 30 days $0.46.",
+  });
+  // The sidebar starts as the icon rail, with only the ring.
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect(usage.locator("[data-usage-ring]")).toBeVisible();
+  await expect(usage.locator("[data-usage-totals]")).toBeHidden();
+
+  // An expanded sidebar adds the totals, and the choice survives a reload.
+  await sidebar.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+  await expect(usage).toContainText(/7d\s*\$0\.46\s*·\s*30d\s*\$0\.46/, {
     useInnerText: true,
   });
+  await page.reload();
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
 
+  await usage.click();
+  const usagePopover = page.locator("#usage-popover");
+  await expect(usagePopover).toContainText("Weekly soft cap");
+  await expect(usagePopover).toContainText("$0.46 of $500");
+  await expect(usagePopover).toContainText("Monthly soft cap");
+  await expect(usagePopover).toContainText("$0.46 of $2,000");
+  await expect(
+    usagePopover.getByRole("link", { name: "Details" }),
+  ).toHaveAttribute("href", "/people/dev%40example.com");
+  await page.keyboard.press("Escape");
+
+  // Narrower desktop windows keep the choice and the toggle.
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+  await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect(usage).toBeVisible();
+});
+
+test("switches desktop navigation between adaptive, top bar, and sidebar", async ({
+  page,
+  dashboard,
+}) => {
+  // Adaptive tall windows use the top bar, with usage beside the avatar.
+  await page.setViewportSize({ width: 1440, height: 1150 });
+  await page.goto(dashboard.baseURL);
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  const sidebar = page
+    .locator('[data-slot="sidebar"]')
+    .filter({ has: primary });
+  const usage = page.getByRole("button", {
+    name: "Usage: <1% of weekly soft cap. 7 days $0.46, 30 days $0.46.",
+  });
+  await expect(primary).toBeVisible();
+  await expect(sidebar).toHaveCount(0);
+  await expect(usage).toContainText(/7d\s*\$0\.46\s*·\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+  await usage.click();
+  await expect(page.locator("#usage-popover")).toContainText("$0.46 of $500");
+  await page.keyboard.press("Escape");
+
+  const openMenu = async () => {
+    await page
+      .getByRole("button", {
+        name: "Open profile menu for Dashboard User",
+        exact: true,
+      })
+      .click();
+    return page.locator("#profile-popover");
+  };
+  const navigation = (await openMenu()).getByRole("group", {
+    name: "Navigation",
+  });
+  await expect(
+    navigation.getByRole("button", { name: "Adaptive navigation" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await navigation.getByRole("button", { name: "Sidebar navigation" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect(primary).toHaveCount(1);
+  await page.keyboard.press("Escape");
+
+  // The choice survives a reload, and the top bar choice ignores height.
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
+  await expect(sidebar).toBeVisible();
+  await (await openMenu())
+    .getByRole("button", { name: "Top bar navigation" })
+    .click();
+  await expect(sidebar).toHaveCount(0);
+  await expect(primary).toBeVisible();
+
+  // Settings shows the same choice.
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const setting = page.getByRole("radiogroup", { name: "Navigation" });
+  await expect(setting.getByRole("radio", { name: /^Top bar/ })).toBeChecked();
+  await setting.getByRole("radio", { name: /^Adaptive/ }).click();
+  await expect(sidebar).toBeVisible();
+});
+
+test("groups profile and session actions", async ({ page, dashboard }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.goto(dashboard.baseURL);
   const rail = page.locator('[data-slot="sidebar"]').filter({
     has: page.getByRole("navigation", { name: "Primary" }),
   });
@@ -552,8 +645,6 @@ test("shows personal spend and groups profile and session actions", async ({
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("dev@example.com")).toBeVisible();
-  await expect(popover).toContainText("7d $0.46");
-  await expect(popover).toContainText("30d $0.46");
   await expect(
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");

@@ -117,8 +117,10 @@ describe("personal spend API", () => {
       );
       const first = personalSpendReportSchema.parse(await firstResponse.json());
       expect(first).toMatchObject({
+        monthlySoftCapUsd: 2000,
         sevenDaysUsd: 0.3,
         thirtyDaysUsd: 0.7,
+        weeklySoftCapUsd: 500,
       });
 
       await fixture.sql

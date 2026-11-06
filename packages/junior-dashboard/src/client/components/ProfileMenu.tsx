@@ -1,20 +1,20 @@
 import {
   Boxes,
-  ChevronDown,
+  ChevronsUpDown,
   LogOut,
   Settings,
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
-import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
-import { formatCostSummary, peoplePath } from "../format";
+import { peoplePath } from "../format";
 import { pluginUserPagePath } from "../pages/user/pluginUserPageRoutes";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button, buttonVariants } from "./ui/button";
@@ -23,21 +23,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 type ProfileMenuProps = {
   identity: Identity;
   onSignOut(): Promise<void>;
-  spend?: PersonalSpendReport;
   userPages: PluginUserPageLink[];
   /**
-   * `popover` is the avatar control at the bottom of the desktop nav rail.
-   * `top-bar` is the spend and avatar control in the tall desktop top bar.
-   * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
+   * `popover` is the profile row at the bottom of the desktop nav sidebar.
+   * It shows only the avatar while the sidebar is collapsed.
+   * `top-bar` is the avatar control at the right of the desktop top bar.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?:
-    | "popover"
-    | "top-bar"
-    | "sheet-spend"
-    | "sheet-links"
-    | "sheet-identity";
+  variant?: "popover" | "top-bar" | "sheet-links" | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -76,81 +70,18 @@ function ProfileAvatar({
   );
 }
 
-const SPEND_COUNT_UP_MS = 700;
-
-/**
- * Show one spend total. When the total changes, count up from the last shown
- * value and tint the figure until the count ends.
- */
-function SpendAmount({ value }: { value?: number }) {
-  const [shown, setShown] = useState(value);
-  const [counting, setCounting] = useState(false);
-  const shownRef = useRef(value);
-
-  useEffect(() => {
-    const from = shownRef.current;
-    if (
-      value === undefined ||
-      from === undefined ||
-      from === value ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      shownRef.current = value;
-      setShown(value);
-      setCounting(false);
-      return;
-    }
-
-    const startedAt = performance.now();
-    let frame = 0;
-    const step = (time: number) => {
-      const progress = Math.min(1, (time - startedAt) / SPEND_COUNT_UP_MS);
-      const eased = 1 - (1 - progress) ** 3;
-      const next = progress < 1 ? from + (value - from) * eased : value;
-      shownRef.current = next;
-      setShown(next);
-      if (progress < 1) {
-        frame = requestAnimationFrame(step);
-      } else {
-        setCounting(false);
-      }
-    };
-    setCounting(true);
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [value]);
-
-  return (
-    <span
-      className={cn(
-        "transition-colors duration-700 motion-reduce:transition-none",
-        counting && "text-dashboard-accent-text",
-      )}
-    >
-      {shown === undefined ? "—" : formatCostSummary({ total: shown })}
-    </span>
-  );
-}
-
 const profileLinkClass = buttonVariants({ size: "menu" });
 
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
   identity,
   onSignOut,
-  spend,
   userPages,
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
-  const sevenDaySpend = spend
-    ? formatCostSummary({ total: spend.sevenDaysUsd })
-    : "—";
-  const thirtyDaySpend = spend
-    ? formatCostSummary({ total: spend.thirtyDaysUsd })
-    : "—";
   const profilePages = userPages.filter(
     (page) => page.navigation === "profile",
   );
@@ -169,24 +100,6 @@ export function ProfileMenu({
             </p>
           ) : null}
         </div>
-      </div>
-      <div
-        aria-label="Personal model spend"
-        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted"
-        role="group"
-      >
-        <span>
-          7d{" "}
-          <span className="font-semibold text-dashboard-text">
-            <SpendAmount value={spend?.sevenDaysUsd} />
-          </span>
-        </span>
-        <span>
-          30d{" "}
-          <span className="font-semibold text-dashboard-text">
-            <SpendAmount value={spend?.thirtyDaysUsd} />
-          </span>
-        </span>
       </div>
     </div>
   );
@@ -234,30 +147,6 @@ export function ProfileMenu({
       </Button>
     </>
   );
-
-  if (variant === "sheet-spend") {
-    // Vertical mobile callout pinned above every sheet destination.
-    return (
-      <div
-        aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
-        className="grid gap-1.5 rounded-lg border border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 font-sans text-xs tabular-nums text-dashboard-text-muted"
-      >
-        <span className="text-xs font-medium">Spend</span>
-        <span className="whitespace-nowrap">
-          7d{" "}
-          <span className="font-semibold text-dashboard-text">
-            <SpendAmount value={spend?.sevenDaysUsd} />
-          </span>
-        </span>
-        <span className="whitespace-nowrap">
-          30d{" "}
-          <span className="font-semibold text-dashboard-text">
-            <SpendAmount value={spend?.thirtyDaysUsd} />
-          </span>
-        </span>
-      </div>
-    );
-  }
 
   if (variant === "sheet-links") {
     // Match primary sheet rows exactly.
@@ -340,58 +229,31 @@ export function ProfileMenu({
       open={open}
     >
       <PopoverTrigger
-        aria-label={
-          topBar
-            ? `${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`
-            : menuLabel
-        }
+        aria-label={menuLabel}
         className={cn(
-          "cursor-pointer rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-          topBar
-            ? "group flex h-10 items-center gap-2 px-1.5"
-            : "grid size-10 place-items-center",
+          // The top bar and the collapsed nav sidebar show only the avatar.
+          "group/profile flex h-10 min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1.5 text-left text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
+          topBar ? "size-10 justify-center px-0" : "w-full",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         closeDelay={HOVER_CLOSE_DELAY_MS}
         delay={HOVER_OPEN_DELAY_MS}
         openOnHover
       >
-        {topBar ? (
-          <span className="flex items-center gap-2">
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                7d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.sevenDaysUsd} />
-              </span>
-            </span>
-            <span
-              aria-hidden="true"
-              className="h-3 w-px bg-dashboard-fill-strong"
-            />
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                30d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.thirtyDaysUsd} />
-              </span>
-            </span>
-          </span>
-        ) : null}
         <ProfileAvatar user={identity.user} />
-        {topBar ? (
-          <ChevronDown
-            aria-hidden="true"
-            className={cn(
-              "text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text",
-              open && "rotate-180 text-dashboard-text",
-            )}
-            size={14}
-            strokeWidth={2}
-          />
-        ) : null}
+        {topBar ? null : (
+          <>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium group-data-[collapsible=icon]:hidden">
+              {name}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="shrink-0 text-dashboard-text-muted transition-colors group-hover/profile:text-dashboard-text group-data-[collapsible=icon]:hidden"
+              size={14}
+              strokeWidth={2}
+            />
+          </>
+        )}
       </PopoverTrigger>
       <PopoverContent
         align="end"
@@ -400,7 +262,10 @@ export function ProfileMenu({
         id="profile-popover"
       >
         {identityBlock}
-        <ThemeSwitcher className="border-b border-dashboard-border-strong px-2.5 py-2" />
+        <div className="grid gap-1 border-b border-dashboard-border-strong px-2.5 py-2">
+          <ThemeSwitcher />
+          <NavLayoutSwitcher />
+        </div>
         {menuLinks(() => setOpen(false))}
       </PopoverContent>
     </Popover>

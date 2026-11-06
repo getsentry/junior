@@ -39,9 +39,12 @@ function NavCount(props: { count?: number }) {
 
 /**
  * Render the shell header: the mobile bar and navigation sheet, and the
- * desktop top bar on tall windows. Short desktop windows use `NavRail`.
+ * desktop top bar when `desktopTopBar` is set. Otherwise desktop uses
+ * `NavRail`.
  */
 export function DashboardHeader(props: {
+  /** Show the desktop top bar instead of the nav sidebar. */
+  desktopTopBar: boolean;
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
   mobileNavigationOpen: boolean;
@@ -50,14 +53,16 @@ export function DashboardHeader(props: {
   mobileIdentity?: ReactNode;
   /** Plain account destinations inside the mobile navigation sheet. */
   mobileProfile?: ReactNode;
-  /** Vertical spend callout pinned above every mobile sheet destination. */
-  mobileSpend?: ReactNode;
+  /** Usage meter pinned above the signed-in strip of the sheet. */
+  mobileUsage?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
   /** Open the command palette. */
   onSearch(): void;
-  /** Spend and account control at the right of the tall desktop top bar. */
+  /** Account control at the right of the desktop top bar. */
   profile?: ReactNode;
+  /** Usage meter beside the account control in the desktop top bar. */
+  usage?: ReactNode;
   version?: string;
   workspaceActive: boolean;
 }) {
@@ -104,43 +109,53 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg md:hidden md:tall:block">
-      <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:tall:grid">
-        <Link
-          aria-label={`${getDashboardAgentName()} home`}
-          className="flex items-center text-inherit no-underline"
-          to="/"
-        >
-          <JuniorLogo />
-        </Link>
-        <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
+    <header
+      className={cn(
+        "relative bg-dashboard-bg",
+        !props.desktopTopBar && "md:hidden",
+      )}
+    >
+      {props.desktopTopBar ? (
+        <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:grid">
           <Link
-            aria-current={props.workspaceActive ? "page" : undefined}
-            className={navLinkClass({ isActive: props.workspaceActive })}
+            aria-label={`${getDashboardAgentName()} home`}
+            className="flex items-center text-inherit no-underline"
             to="/"
           >
-            Conversations
+            <JuniorLogo />
           </Link>
-          {props.navItems.map((item) => (
-            <NavLink className={navLinkClass} key={item.key} to={item.to}>
-              {item.label}
-              <NavCount count={item.count} />
-            </NavLink>
-          ))}
-        </nav>
-        <div className="flex items-center gap-3 justify-self-end">
-          <Button
-            aria-keyshortcuts="Meta+K Control+K"
-            className="w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
-            onClick={props.onSearch}
-          >
-            <Search aria-hidden="true" className="size-4 shrink-0" />
-            <span className="flex-1 text-left">Search…</span>
-            <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
-          </Button>
-          {props.profile}
+          <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
+            <Link
+              aria-current={props.workspaceActive ? "page" : undefined}
+              className={navLinkClass({ isActive: props.workspaceActive })}
+              to="/"
+            >
+              Conversations
+            </Link>
+            {props.navItems.map((item) => (
+              <NavLink className={navLinkClass} key={item.key} to={item.to}>
+                {item.label}
+                <NavCount count={item.count} />
+              </NavLink>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2 justify-self-end">
+            <Button
+              aria-keyshortcuts="Meta+K Control+K"
+              className="mr-1 w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+              onClick={props.onSearch}
+            >
+              <Search aria-hidden="true" className="size-4 shrink-0" />
+              <span className="flex-1 text-left">Search…</span>
+              <kbd className="font-sans text-xs">
+                {COMMAND_PALETTE_SHORTCUT}
+              </kbd>
+            </Button>
+            {props.usage}
+            {props.profile}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
         {conversationMode && mobileBack ? (
           <button
@@ -223,9 +238,6 @@ export function DashboardHeader(props: {
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-              {props.mobileSpend ? (
-                <div className="mb-3">{props.mobileSpend}</div>
-              ) : null}
               <nav aria-label="Primary" className="grid gap-1">
                 <Button
                   className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
@@ -263,8 +275,11 @@ export function DashboardHeader(props: {
                 </div>
               ) : null}
             </div>
-            {props.mobileIdentity || props.version ? (
+            {props.mobileUsage || props.mobileIdentity || props.version ? (
               <div className="border-t border-dashboard-border-subtle px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {props.mobileUsage ? (
+                  <div className="-mx-1 mb-2">{props.mobileUsage}</div>
+                ) : null}
                 {props.mobileIdentity ? (
                   <div className={props.version ? "mb-2.5" : undefined}>
                     {props.mobileIdentity}

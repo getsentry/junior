@@ -119,9 +119,13 @@ export const actorProfileReportSchema = z
 export const personalSpendReportSchema = z
   .object({
     generatedAt: z.string(),
+    /** Informational 30-day soft cap. Junior does not enforce it. */
+    monthlySoftCapUsd: z.number().finite().positive(),
     sevenDaysUsd: z.number().finite().nonnegative(),
     source: z.literal("conversation_index"),
     thirtyDaysUsd: z.number().finite().nonnegative(),
+    /** Informational 7-day soft cap. Junior does not enforce it. */
+    weeklySoftCapUsd: z.number().finite().positive(),
     windowEnd: z.string(),
     windowStart: z.string(),
   })

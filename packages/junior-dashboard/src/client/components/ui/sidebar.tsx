@@ -32,8 +32,8 @@ function useSidebar() {
  * Own the sidebar state and width variables for the page frame.
  *
  * The dashboard keeps only the desktop sidebar. It drops the stock toggle
- * state, cookie, Cmd/Ctrl+B shortcut, and mobile sheet: the nav rail stays
- * collapsed, and `DashboardHeader` owns mobile navigation.
+ * state, cookie, Cmd/Ctrl+B shortcut, and mobile sheet: `useNavSidebar` owns
+ * the open state and shortcut, and `DashboardHeader` owns mobile navigation.
  */
 function SidebarProvider({
   open = true,
