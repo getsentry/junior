@@ -89,6 +89,7 @@ import {
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
+import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
@@ -440,6 +441,11 @@ export function ConversationPage(props: {
       setView(value);
     },
     [eventOpen, setSelectedEventSeq],
+  );
+  // The event log sits inside its Conversation, so mobile back leaves it.
+  useRegisterMobileHeaderBack(
+    view === "raw" ? "Back to conversation" : undefined,
+    () => onViewChange("rich"),
   );
   // A linked event, Turn, or memory can be outside the loaded rows. Then the
   // transcript opens at the page around it, which the server finds by the
