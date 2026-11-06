@@ -860,9 +860,11 @@ export function ConversationPage(props: {
             </section>
           }
           dock={
-            // A child Conversation takes input only from its parent agent, and it
-            // runs without interactive auth, so it has no approval to show.
-            view === "rich" && detail.data?.isParticipant && !agentTree ? (
+            // A Task takes input only from its parent agent, and it runs
+            // without interactive auth, so it has no approval to show.
+            view === "rich" &&
+            detail.data?.isParticipant &&
+            detail.data.kind !== "task" ? (
               <ConversationReplyFooter
                 authors={detail.data.authors}
                 conversationId={conversationId}

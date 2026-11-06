@@ -1098,6 +1098,8 @@ function advisorConversation(
   const conversation = detail(nowMs, {
     conversationId,
     displayTitle: "Advisor review",
+    // The viewer takes part, so QA shows that a Task still has no composer.
+    isParticipant: true,
     // A child keeps the Actor who started it, but that person did not write
     // its agent invocation input.
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -1142,6 +1144,8 @@ function threadConversation(
     conversationId,
     displayTitle,
     kind: "thread",
+    // The viewer takes part, so QA shows that a person can message a Thread.
+    isParticipant: true,
     parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
     childArchivedAt: mockChildArchivedAt.get(conversationId) ?? null,
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
