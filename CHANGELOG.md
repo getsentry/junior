@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.283.0
+
+Junior expands everyday workflows, strengthens dashboard and mobile dependability, clarifies conversations, improves composing, and keeps documentation and package releases aligned for smoother use.
+
+### New Features ✨
+
+Dashboard navigation, media handling, conversation actions, homepage setup, Restream integration, and sandbox previews expand Junior’s capabilities.
+
+#### Dashboard
+
+- Replace the sidebar search and title with a New conversation row by @thomasjiangcy with @sentry-junior in [#2801](https://github.com/getsentry/junior/pull/2801)
+- Add a command palette for search and navigation by @thomasjiangcy with @sentry-junior in [#2799](https://github.com/getsentry/junior/pull/2799)
+- Show transcript attachments in equal tiles by @sentry-junior in [#2804](https://github.com/getsentry/junior/pull/2804)
+- Play video attachments in the transcript by @thomasjiangcy with @sentry-junior in [#2795](https://github.com/getsentry/junior/pull/2795)
+- Mark sidebar conversations unread from a context menu by @sentry-junior in [#2773](https://github.com/getsentry/junior/pull/2773)
+- Make the conversation details panel resizable by @betegon with @sentry-junior in [#2780](https://github.com/getsentry/junior/pull/2780)
+- Put mobile conversation tags under the title by @betegon with @sentry-junior in [#2777](https://github.com/getsentry/junior/pull/2777)
+- Drag to reorder pinned conversations by @thomasjiangcy with @sentry-junior in [#2786](https://github.com/getsentry/junior/pull/2786)
+- Show the conversation list on the home page by @thomasjiangcy with @sentry-junior in [#2782](https://github.com/getsentry/junior/pull/2782)
+- Page through and zoom images in the image preview by @thomasjiangcy with @sentry-junior in [#2784](https://github.com/getsentry/junior/pull/2784)
+- Show conversation archive and action errors as toasts by @sentry-junior in [#2781](https://github.com/getsentry/junior/pull/2781)
+
+#### Other
+
+- (api) Serve conversation attachment byte ranges by @thomasjiangcy with @sentry-junior in [#2794](https://github.com/getsentry/junior/pull/2794)
+- (docs) Lead the homepage with Junior holding a notepad by @dcramer with @sentry-junior in [#2791](https://github.com/getsentry/junior/pull/2791)
+- (restream) Add Restream MCP plugin package by @dcramer with @sentry-junior in [#2752](https://github.com/getsentry/junior/pull/2752)
+- (sandbox) Add createPreview tool for sandbox servers by @sentry-junior in [#2775](https://github.com/getsentry/junior/pull/2775)
+
+### Bug Fixes 🐛
+
+Dashboard drafts and mobile layouts work more reliably, while documentation presentation and package release alignment are corrected.
+
+#### Dashboard
+
+- Widen the sidebar glyph column to align section headings by @thomasjiangcy with @sentry-junior in [#2798](https://github.com/getsentry/junior/pull/2798)
+- Open new conversations with the first message in place by @sentry-junior in [#2766](https://github.com/getsentry/junior/pull/2766)
+- Keep pinned conversations in place on new activity by @thomasjiangcy with @sentry-junior in [#2788](https://github.com/getsentry/junior/pull/2788)
+- Keep the mobile composer above the iOS keyboard by @MathurAditya724 with @sentry-junior in [#2658](https://github.com/getsentry/junior/pull/2658)
+- Open file attachments in a new window by @thomasjiangcy with @sentry-junior in [#2785](https://github.com/getsentry/junior/pull/2785)
+
+#### Other
+
+- (docs) Fill the homepage with the hero and drop the top bar by @dcramer with @sentry-junior in [#2793](https://github.com/getsentry/junior/pull/2793)
+- (restream) Align package version with the 0.282.0 release by @sentry-junior in [#2802](https://github.com/getsentry/junior/pull/2802)
+
+### Internal Changes 🔧
+
+- (dashboard) Fold long Quick question quotes and tighten the composer by @sentry-junior in [#2753](https://github.com/getsentry/junior/pull/2753)
+
 ## 0.282.0
 
 Users can navigate conversations, assign issues, trust approval status, and receive firewall alerts, while releases and data operations become safer and more predictable.
