@@ -67,7 +67,7 @@ type ConversationSidebarEntry =
   | { conversation: Conversation; key: string; kind: "conversation" };
 
 const ROW_ACTION_BUTTON_CLASS =
-  "absolute top-0.5 z-10 grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed";
+  "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
@@ -421,58 +421,59 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             />
           </Link>
         ) : null}
-        {/* Mobile rows pin from the conversation menu, so only the archive
-          button takes row space there. Archived rows restore before they pin. */}
-        {archived ? null : (
+        {/* One solid background behind both buttons, so the title does not
+          show between them. Mobile rows pin from the conversation menu, so
+          only the archive button takes row space there. Archived rows
+          restore before they pin. */}
+        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 rounded-md bg-dashboard-surface-active transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+          {archived ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
+                    aria-pressed={pinned}
+                    className={cn(ROW_ACTION_BUTTON_CLASS, "max-sm:hidden")}
+                    disabled={pin.isPending}
+                    onClick={togglePin}
+                    type="button"
+                  >
+                    <Pin
+                      aria-hidden="true"
+                      fill={pinned ? "currentColor" : "none"}
+                      size={14}
+                    />
+                  </button>
+                }
+              />
+              <TooltipContent size="compact">
+                {pinned ? "Unpin" : "Pin"}
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
-                  aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
-                  aria-pressed={pinned}
-                  className={cn(
-                    ROW_ACTION_BUTTON_CLASS,
-                    "right-9 max-sm:hidden",
-                  )}
-                  disabled={pin.isPending}
-                  onClick={togglePin}
+                  aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
+                  className={ROW_ACTION_BUTTON_CLASS}
+                  disabled={archive.isPending}
+                  onClick={toggleArchive}
                   type="button"
                 >
-                  <Pin
-                    aria-hidden="true"
-                    fill={pinned ? "currentColor" : "none"}
-                    size={14}
-                  />
+                  {archived ? (
+                    <ArchiveRestore aria-hidden="true" size={14} />
+                  ) : (
+                    <Archive aria-hidden="true" size={14} />
+                  )}
                 </button>
               }
             />
             <TooltipContent size="compact">
-              {pinned ? "Unpin" : "Pin"}
+              {archived ? "Restore" : "Archive"}
             </TooltipContent>
           </Tooltip>
-        )}
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
-                className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
-                disabled={archive.isPending}
-                onClick={toggleArchive}
-                type="button"
-              >
-                {archived ? (
-                  <ArchiveRestore aria-hidden="true" size={14} />
-                ) : (
-                  <Archive aria-hidden="true" size={14} />
-                )}
-              </button>
-            }
-          />
-          <TooltipContent size="compact">
-            {archived ? "Restore" : "Archive"}
-          </TooltipContent>
-        </Tooltip>
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
         {props.unread ? (
