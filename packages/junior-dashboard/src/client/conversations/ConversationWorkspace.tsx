@@ -157,6 +157,11 @@ export function ConversationWorkspace(props: {
     return () => visit.abort();
   }, [home]);
 
+  // Home exists to start a conversation, so the reader can type at once.
+  useEffect(() => {
+    if (home) createComposer.current?.focus();
+  }, [home]);
+
   const createView = (
     <NewConversationView
       composerRef={createComposer}

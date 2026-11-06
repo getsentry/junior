@@ -1,3 +1,4 @@
+import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { ChevronLeft, ChevronRight, ExternalLink, X } from "lucide-react";
 import {
   type MouseEvent,
@@ -117,6 +118,7 @@ function ImagePreview(props: {
   onClose(): void;
 }) {
   const sheet = useSheet(props.onClose);
+  const actions = useRef<DialogPrimitive.Root.Actions>(null);
   // Track the shown image, not its position. Transcript rows can load above
   // it while the preview is open, which moves its index.
   const [current, setCurrent] = useState(props.images[props.initialIndex]!);
@@ -132,7 +134,7 @@ function ImagePreview(props: {
     setCurrent(props.images[(next + count) % count]!);
 
   return (
-    <Dialog {...sheet.rootProps}>
+    <Dialog {...sheet.rootProps} actionsRef={actions}>
       <DialogContent
         {...sheet.contentProps}
         className="top-0 left-0 h-dvh w-screen max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-0 bg-dashboard-ink p-0 shadow-none max-h-none sm:top-0 sm:translate-y-0 md:top-1/2 md:left-1/2 md:h-[min(90dvh,960px)] md:w-[min(92vw,1440px)] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg md:border"
@@ -197,13 +199,16 @@ function ImagePreview(props: {
               <span>Close</span>
             </DialogClose>
           </header>
-          <div className="grid min-h-0 place-items-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6">
-            <ZoomableImage
-              alt={image.filename}
-              key={`${image.src}\n${image.filename}`}
-              src={image.src}
-            />
-          </div>
+          <ZoomableImage
+            alt={image.filename}
+            key={`${image.src}\n${image.filename}`}
+            onSwipe={(action) => {
+              if (action === "dismiss") actions.current?.close();
+              else show(index + (action === "next" ? 1 : -1));
+            }}
+            pageable={count > 1}
+            src={image.src}
+          />
         </div>
       </DialogContent>
     </Dialog>
@@ -213,6 +218,12 @@ function ImagePreview(props: {
 const MAX_ZOOM = 4;
 const DOUBLE_TAP_ZOOM = 2.5;
 const DOUBLE_TAP_MS = 300;
+/** Distance before a one-finger drag picks its axis. */
+const SWIPE_LOCK_PX = 10;
+/** Distance that pages or dismisses on release. Shorter drags spring back. */
+const SWIPE_COMMIT_PX = 64;
+/** Downward distance that fades the image to its lowest opacity. */
+const SWIPE_FADE_PX = 320;
 
 type Zoom = { scale: number; x: number; y: number };
 type Point = { x: number; y: number };
@@ -223,24 +234,39 @@ type Gesture = {
   start: Point;
   zoom: Zoom;
 };
+/** What a released swipe asks the preview to do. */
+type SwipeAction = "dismiss" | "next" | "previous";
+/** A one-finger drag on an unzoomed image. `settling` springs it back. */
+type Swipe = { axis: "x" | "y"; offset: number; settling?: boolean };
 
 const NO_ZOOM: Zoom = { scale: 1, x: 0, y: 0 };
 
 /**
  * Let touch readers pinch, drag, and double-tap to zoom one image. The page
- * viewport blocks browser zoom, so the preview owns these gestures.
+ * viewport blocks browser zoom, so the preview owns these gestures. On an
+ * unzoomed image, a sideways swipe pages and a downward swipe dismisses.
  */
-function ZoomableImage(props: { alt: string; src: string }) {
+function ZoomableImage(props: {
+  alt: string;
+  onSwipe(action: SwipeAction): void;
+  pageable: boolean;
+  src: string;
+}) {
   const [zoom, setZoom] = useState(NO_ZOOM);
+  const [swipe, setSwipe] = useState<Swipe>();
+  const image = useRef<HTMLImageElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef<Gesture>(undefined);
+  // "none" holds a touch that no swipe uses, such as an upward drag or a
+  // pinch, until every finger lifts.
+  const swipeAxis = useRef<"none" | "x" | "y">(undefined);
   const lastTapAt = useRef(0);
 
-  const startGesture = (element: HTMLElement, from: Zoom) => {
+  const startGesture = (from: Zoom) => {
     const points = [...pointers.current.values()];
     // The rendered rect still shows the current zoom, even when `from` is a
     // zoom that was just set.
-    const rect = element.getBoundingClientRect();
+    const rect = image.current!.getBoundingClientRect();
     gesture.current = {
       center: {
         x: rect.left + rect.width / 2 - zoom.x,
@@ -252,36 +278,33 @@ function ZoomableImage(props: { alt: string; src: string }) {
     };
   };
 
-  const onPointerDown = (event: PointerEvent<HTMLImageElement>) => {
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse") return;
-    // Keep move and end events when a finger slides off the image.
+    // Keep move and end events when a finger slides out of the frame.
     event.currentTarget.setPointerCapture(event.pointerId);
     const point = { x: event.clientX, y: event.clientY };
     pointers.current.set(event.pointerId, point);
+    swipeAxis.current = pointers.current.size > 1 ? "none" : undefined;
+    if (swipe) setSwipe(undefined);
     if (
       pointers.current.size === 1 &&
       event.timeStamp - lastTapAt.current < DOUBLE_TAP_MS
     ) {
       lastTapAt.current = 0;
-      startGesture(event.currentTarget, zoom);
+      startGesture(zoom);
       const next =
         zoom.scale > 1
           ? NO_ZOOM
-          : zoomAt(
-              gesture.current!,
-              point,
-              DOUBLE_TAP_ZOOM,
-              event.currentTarget,
-            );
+          : zoomAt(gesture.current!, point, DOUBLE_TAP_ZOOM, image.current!);
       setZoom(next);
-      startGesture(event.currentTarget, next);
+      startGesture(next);
       return;
     }
     if (pointers.current.size === 1) lastTapAt.current = event.timeStamp;
-    startGesture(event.currentTarget, zoom);
+    startGesture(zoom);
   };
 
-  const onPointerMove = (event: PointerEvent<HTMLImageElement>) => {
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const start = gesture.current;
     if (!start || !pointers.current.has(event.pointerId)) return;
     pointers.current.set(event.pointerId, {
@@ -289,36 +312,102 @@ function ZoomableImage(props: { alt: string; src: string }) {
       y: event.clientY,
     });
     const points = [...pointers.current.values()];
+    if (
+      points.length === 1 &&
+      start.zoom.scale === 1 &&
+      swipeAxis.current !== "none"
+    ) {
+      const dx = points[0]!.x - start.start.x;
+      const dy = points[0]!.y - start.start.y;
+      const axis = swipeAxis.current ?? lockSwipeAxis(dx, dy, props.pageable);
+      swipeAxis.current = axis;
+      if (axis === "x" || axis === "y") {
+        // A swipe is not the first tap of a double tap.
+        lastTapAt.current = 0;
+        setSwipe({ axis, offset: axis === "x" ? dx : Math.max(dy, 0) });
+      }
+      return;
+    }
     const scale =
       points.length > 1 && start.distance > 0
         ? (start.zoom.scale * pointDistance(points)) / start.distance
         : start.zoom.scale;
-    setZoom(zoomAt(start, midpoint(points), scale, event.currentTarget));
+    setZoom(zoomAt(start, midpoint(points), scale, image.current!));
   };
 
-  const onPointerEnd = (event: PointerEvent<HTMLImageElement>) => {
+  const onPointerEnd = (event: PointerEvent<HTMLDivElement>) => {
     if (!pointers.current.delete(event.pointerId)) return;
+    if (swipe && !swipe.settling) {
+      const action =
+        event.type === "pointerup" ? swipeAction(swipe) : undefined;
+      if (action) props.onSwipe(action);
+      else setSwipe({ ...swipe, offset: 0, settling: true });
+    }
     const next = zoom.scale < 1.05 ? NO_ZOOM : zoom;
     if (next !== zoom) setZoom(next);
-    if (pointers.current.size > 0) startGesture(event.currentTarget, next);
+    if (pointers.current.size > 0) startGesture(next);
     else gesture.current = undefined;
   };
 
   return (
-    <img
-      alt={props.alt}
-      className="max-h-full max-w-full touch-none object-contain select-none"
-      draggable={false}
+    <div
+      className="grid min-h-0 touch-none place-items-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6"
       onPointerCancel={onPointerEnd}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
-      src={props.src}
-      style={{
-        transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`,
-      }}
-    />
+    >
+      <img
+        alt={props.alt}
+        className={`max-h-full max-w-full object-contain select-none ${
+          swipe?.settling
+            ? "transition-[opacity,transform] duration-180 ease-out motion-reduce:transition-none"
+            : ""
+        }`}
+        draggable={false}
+        onTransitionEnd={() => {
+          if (swipe?.settling) setSwipe(undefined);
+        }}
+        ref={image}
+        src={props.src}
+        style={
+          swipe
+            ? {
+                opacity:
+                  swipe.axis === "y"
+                    ? 1 - 0.6 * Math.min(swipe.offset / SWIPE_FADE_PX, 1)
+                    : undefined,
+                transform:
+                  swipe.axis === "x"
+                    ? `translateX(${swipe.offset}px)`
+                    : `translateY(${swipe.offset}px)`,
+              }
+            : {
+                transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`,
+              }
+        }
+      />
+    </div>
   );
+}
+
+/** Pick the axis of a one-finger drag once it moves far enough. */
+function lockSwipeAxis(
+  dx: number,
+  dy: number,
+  pageable: boolean,
+): "none" | "x" | "y" | undefined {
+  if (Math.hypot(dx, dy) < SWIPE_LOCK_PX) return undefined;
+  if (Math.abs(dx) > Math.abs(dy)) return pageable ? "x" : "none";
+  return dy > 0 ? "y" : "none";
+}
+
+/** Return the action of a released swipe, or nothing when it is too short. */
+function swipeAction(swipe: Swipe): SwipeAction | undefined {
+  if (Math.abs(swipe.offset) < SWIPE_COMMIT_PX) return undefined;
+  if (swipe.axis === "y") return "dismiss";
+  // Drag the image left to bring in the next one.
+  return swipe.offset < 0 ? "next" : "previous";
 }
 
 /**

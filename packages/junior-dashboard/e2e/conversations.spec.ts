@@ -26,7 +26,6 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await screenshot(page, "conversations");
 
   const composer = page.getByLabel("Start a conversation");
-  await composer.focus();
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
 
@@ -212,14 +211,40 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await page.keyboard.press("ArrowRight");
   await expect(preview.getByText("1 of 2")).toBeVisible();
 
-  // Touch readers can pinch to zoom. Real touch input checks that the image
-  // keeps the gesture after a finger leaves it.
+  // Touch readers swipe to page and dismiss, and pinch to zoom. Real touch
+  // input checks that the frame keeps a gesture after a finger leaves it.
   await page.setViewportSize(mobile);
   const touch = await page.context().newCDPSession(page);
   const pinch = (
     type: "touchStart" | "touchMove" | "touchEnd",
     points: { id: number; x: number; y: number }[],
   ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
+  const swipe = async (
+    from: { x: number; y: number },
+    dx: number,
+    dy: number,
+  ) => {
+    await pinch("touchStart", [{ id: 1, ...from }]);
+    for (const step of [0.25, 0.5, 0.75, 1]) {
+      await pinch("touchMove", [
+        { id: 1, x: from.x + dx * step, y: from.y + dy * step },
+      ]);
+    }
+    await pinch("touchEnd", []);
+  };
+  await swipe({ x: 300, y: 450 }, -200, 0);
+  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
+  await swipe({ x: 100, y: 450 }, 200, 0);
+  await expect(preview.getByText("1 of 2")).toBeVisible();
+  // A short swipe springs back, so the preview still pages.
+  await swipe({ x: 200, y: 300 }, 0, 30);
+  await page.keyboard.press("ArrowRight");
+  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
+  await swipe({ x: 200, y: 300 }, 0, 250);
+  await expect(detailPreview).toBeHidden();
+
+  await image.click();
+  await expect(preview.getByText("1 of 2")).toBeVisible();
   await pinch("touchStart", [
     { id: 1, x: 180, y: 450 },
     { id: 2, x: 210, y: 450 },

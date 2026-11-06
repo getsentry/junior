@@ -11,7 +11,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+/** Replaces the mobile header back link while a page shows a nested view. */
+type MobileHeaderBack = { label: string; onClick(): void };
+
 type DashboardChromeContextValue = {
+  mobileHeaderBack: MobileHeaderBack | null;
   mobileHeaderActionsSlot: HTMLElement | null;
   mobileHeaderActionsSlotRef: RefCallback<HTMLDivElement>;
   mobileHeaderLiveSlot: HTMLElement | null;
@@ -24,6 +28,7 @@ type DashboardChromeContextValue = {
   registerOpenMobileNavigation(open: (() => void) | null): void;
   secondarySlot: HTMLElement | null;
   secondarySlotRef: RefCallback<HTMLDivElement>;
+  setMobileHeaderBack(back: MobileHeaderBack | null): void;
 };
 
 const DashboardChromeContext =
@@ -40,6 +45,8 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     useState<HTMLElement | null>(null);
   const [mobileHeaderTagsSlot, setMobileHeaderTagsSlot] =
     useState<HTMLElement | null>(null);
+  const [mobileHeaderBack, setMobileHeaderBack] =
+    useState<MobileHeaderBack | null>(null);
   const openMobileNavigationRef = useRef<(() => void) | null>(null);
   const secondarySlotRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
     setSecondarySlot(node);
@@ -79,6 +86,7 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
   }, []);
   const value = useMemo(
     () => ({
+      mobileHeaderBack,
       mobileHeaderActionsSlot,
       mobileHeaderActionsSlotRef,
       mobileHeaderLiveSlot,
@@ -91,8 +99,10 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
       registerOpenMobileNavigation,
       secondarySlot,
       secondarySlotRef,
+      setMobileHeaderBack,
     }),
     [
+      mobileHeaderBack,
       mobileHeaderActionsSlot,
       mobileHeaderActionsSlotRef,
       mobileHeaderLiveSlot,
@@ -105,6 +115,7 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
       registerOpenMobileNavigation,
       secondarySlot,
       secondarySlotRef,
+      setMobileHeaderBack,
     ],
   );
 
@@ -244,6 +255,30 @@ export function useRegisterOpenMobileNavigation(open?: () => void): void {
       chrome.registerOpenMobileNavigation(null);
     };
   }, [chrome, open]);
+}
+
+/** Read the back action that replaces the mobile header back link. */
+export function useMobileHeaderBack(): MobileHeaderBack | null {
+  return useContext(DashboardChromeContext)?.mobileHeaderBack ?? null;
+}
+
+/**
+ * Point the mobile header back control at `onClick` while `label` is set,
+ * such as from the event log back to its Conversation.
+ */
+export function useRegisterMobileHeaderBack(
+  label: string | undefined,
+  onClick: () => void,
+): void {
+  const setBack = useContext(DashboardChromeContext)?.setMobileHeaderBack;
+  const onClickRef = useRef(onClick);
+  onClickRef.current = onClick;
+
+  useEffect(() => {
+    if (!setBack || !label) return;
+    setBack({ label, onClick: () => onClickRef.current() });
+    return () => setBack(null);
+  }, [label, setBack]);
 }
 
 /** Mount page navigation into the desktop chrome and mobile drawer. */
