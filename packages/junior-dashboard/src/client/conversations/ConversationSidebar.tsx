@@ -273,10 +273,10 @@ function ConversationRowsLoading() {
       role="status"
     >
       <span className="sr-only">Loading your conversations</span>
-      <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
+      <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 10 }, (_, index) => (
         <div
-          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[1.625rem] pr-3"
+          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[2.125rem] pr-3"
           key={index}
         >
           <Skeleton
@@ -397,7 +397,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           aria-current={props.selected ? "page" : undefined}
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            "grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+            "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
             // A long press opens the row menu or drags a pin, not the iOS
             // link callout.
             "[-webkit-touch-callout:none]",
@@ -438,7 +438,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         </Link>
         {props.waiting ? (
           <Link
-            className="mb-1.5 ml-[1.625rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+            className="mb-1.5 ml-[2.125rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
             to={conversationPath(props.conversation.id, { reviewItems: true })}
           >
             <Inbox
