@@ -772,6 +772,7 @@ export const forkConversationResponseSchema = z
 export const conversationAgentTreeNodeSchema = z
   .object({
     conversationId: z.string().min(1),
+    kind: conversationKindSchema,
     label: z.string().min(1),
   })
   .strict();

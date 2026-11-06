@@ -171,6 +171,12 @@ describe("conversation archive API", () => {
     const threadId = "agent:thread-archive-thread";
     const taskId = "agent:thread-archive-task";
     const taskThreadId = "agent:thread-archive-task-thread";
+    // A Thread below a deep Task chain still nests under the root.
+    const taskChain = Array.from(
+      { length: 12 },
+      (_, index) => `agent:thread-archive-task-${index}`,
+    );
+    const deepTaskId = taskChain.at(-1)!;
     const lastSeenAt = "1970-01-01T00:00:01.000Z";
     await getConversationStore().recordActivity({
       destination: { platform: "local" as const, conversationId: rootId },
@@ -183,7 +189,11 @@ describe("conversation archive API", () => {
     for (const [childConversationId, parentConversationId, kind, nowMs] of [
       [threadId, rootId, "thread", 2_000],
       [taskId, rootId, "task", 3_000],
-      [taskThreadId, taskId, "thread", 4_000],
+      ...taskChain.map(
+        (id, index) =>
+          [id, taskChain[index - 1] ?? taskId, "task", 3_000] as const,
+      ),
+      [taskThreadId, deepTaskId, "thread", 4_000],
     ] as const) {
       await getConversationStore().createChild({
         childConversationId,
@@ -230,7 +240,7 @@ describe("conversation archive API", () => {
       {
         conversationId: taskThreadId,
         kind: "thread",
-        parentConversationId: taskId,
+        parentConversationId: deepTaskId,
         threadArchivedAt: null,
       },
       {
@@ -243,6 +253,43 @@ describe("conversation archive API", () => {
     await expect(feedThreads(viewer)).resolves.toEqual([
       { conversationId: rootId, threads: visibleThreads },
     ]);
+
+    // A Thread uses the access of its root. A non-member gets neither the
+    // private root nor its Threads, and a feed read for another person
+    // redacts Thread titles.
+    await getDb()
+      .update(juniorConversations)
+      .set({ title: "Thread secret plan" })
+      .where(eq(juniorConversations.conversationId, threadId));
+    const outsider = await resolveViewerUser("thread-outsider@example.com");
+    if (!outsider) throw new Error("missing outsider viewer");
+    const feedTitles = async (
+      options: Parameters<typeof readConversationFeedFromSql>[0],
+    ) =>
+      (await readConversationFeedFromSql(options)).conversations.map(
+        (conversation) => ({
+          displayTitle: conversation.displayTitle,
+          threads: conversation.threads?.map((thread) => thread.displayTitle),
+        }),
+      );
+    await expect(feedTitles({ viewer })).resolves.toEqual([
+      {
+        displayTitle: "Thread archive",
+        threads: [expect.any(String), "Thread secret plan"],
+      },
+    ]);
+    await expect(feedTitles({ viewer: outsider })).resolves.toEqual([]);
+    await expect(feedTitles({ actorEmail: viewer.email })).resolves.toEqual([
+      {
+        displayTitle: "Private Conversation",
+        threads: ["Private Conversation", "Private Conversation"],
+      },
+    ]);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(threadId, { viewer: outsider }),
+      ).displayTitle,
+    ).toBe("Private Conversation");
 
     const threadLastSeenAt = new Date(2_000).toISOString();
     expect((await archive(threadId, true, lastSeenAt)).status).toBe(409);

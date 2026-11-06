@@ -2295,6 +2295,7 @@ export function readMockConversationChildAgents(
         {
           ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
           conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
+          kind: "task",
           status: "completed",
           task: "Check one claim in the dashboard plan.",
           title: "Check one plan claim",
@@ -2307,11 +2308,36 @@ export function readMockConversationChildAgents(
   if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
     return { agents: [], conversationId };
   }
+  // Match the API: archived Threads stay in the report.
+  const thread = (childConversationId: string, task: string) => {
+    const child = conversations.find(
+      (candidate) => candidate.conversationId === childConversationId,
+    )!;
+    return {
+      ...childMetrics(childConversationId),
+      conversationId: childConversationId,
+      kind: "thread",
+      status: "completed",
+      task,
+      threadArchivedAt: child.threadArchivedAt ?? null,
+      title: child.displayTitle,
+      updatedAt: child.lastProgressAt,
+    } as const;
+  };
   return {
     agents: [
+      thread(
+        DASHBOARD_QA_THREAD_ID,
+        "Check pinned row order with the person who reported it.",
+      ),
+      thread(
+        DASHBOARD_QA_ARCHIVED_THREAD_ID,
+        "Compare the sidebar badges with the design.",
+      ),
       {
         ...childMetrics(DASHBOARD_QA_REVIEW_ID),
         conversationId: DASHBOARD_QA_REVIEW_ID,
+        kind: "task",
         error: "GitHub access is needed to read the pull request.",
         name: "reviewer",
         status: "blocked",
@@ -2321,6 +2347,7 @@ export function readMockConversationChildAgents(
       {
         ...childMetrics(DASHBOARD_QA_PLAN_ID),
         conversationId: DASHBOARD_QA_PLAN_ID,
+        kind: "task",
         status: "completed",
         task: "Review the dashboard plan before editing.",
         title: "Review the dashboard plan",
@@ -2349,13 +2376,18 @@ function mockAgentTree(
   }
   return chain.map((item) => {
     if (!item.parentConversationId) {
-      return { conversationId: item.conversationId, label: item.displayTitle };
+      return {
+        conversationId: item.conversationId,
+        kind: "root" as const,
+        label: item.displayTitle,
+      };
     }
     const agent = readMockConversationChildAgents(
       item.parentConversationId,
     )?.agents.find((child) => child.conversationId === item.conversationId);
     return {
       conversationId: item.conversationId,
+      kind: item.kind,
       label: agent?.title ?? agent?.name ?? "Subagent",
     };
   });

@@ -3,6 +3,7 @@ import {
   actorDirectoryReportSchema,
   codeOverviewReportSchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
+  conversationChildAgentsReportSchema,
   conversationDetailReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
   conversationEventPageSchema,
@@ -457,10 +458,46 @@ describe("dashboard canonical-event mock routes", () => {
         ).json(),
       );
       expect(archivedThread).toMatchObject({
+        agentTree: [
+          { conversationId: DASHBOARD_QA_CONVERSATION_ID, kind: "root" },
+          { conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID, kind: "thread" },
+        ],
         kind: "thread",
         parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
         threadArchivedAt: expect.any(String),
       });
+      // The child-agents report keeps archived Threads for "Show archived".
+      const childAgents = conversationChildAgentsReportSchema.parse(
+        await (
+          await app.fetch(
+            new Request(
+              `http://localhost/api/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}/agents`,
+            ),
+          )
+        ).json(),
+      );
+      expect(
+        childAgents.agents.map(
+          ({ conversationId, kind, threadArchivedAt }) => ({
+            conversationId,
+            kind,
+            threadArchivedAt,
+          }),
+        ),
+      ).toEqual([
+        {
+          conversationId: DASHBOARD_QA_THREAD_ID,
+          kind: "thread",
+          threadArchivedAt: null,
+        },
+        {
+          conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID,
+          kind: "thread",
+          threadArchivedAt: archivedThread.threadArchivedAt,
+        },
+        expect.objectContaining({ kind: "task" }),
+        expect.objectContaining({ kind: "task" }),
+      ]);
 
       expect((await archiveThread(DASHBOARD_QA_THREAD_ID, true)).status).toBe(
         200,

@@ -4,11 +4,14 @@ import type { Location } from "@/chat/conversations/location";
 import { getDb } from "@/chat/db";
 import { parseSessionSource } from "@/chat/source";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { conversationKindFromRow } from "./sql/conversation-row";
 import { locationFromRow, visibilityFromLocationRow } from "./sql/location";
+import type { ConversationKind } from "./store";
 
 /** One Conversation in a parent chain. */
 export interface ConversationLineageEntry {
   conversationId: string;
+  kind: ConversationKind;
   location?: Location;
   parentConversationId?: string;
   visibility?: ConversationPrivacy;
@@ -44,6 +47,7 @@ export async function readConversationLineage(
     .select({
       conversationId: juniorConversations.conversationId,
       destination: juniorDestinations,
+      kind: juniorConversations.kind,
       location: juniorConversations.location,
       parentConversationId: juniorConversations.parentConversationId,
       sessionSource: juniorConversations.sessionSource,
@@ -70,6 +74,7 @@ export async function readConversationLineage(
     const visibility = visibilityFromLocationRow(row.destination);
     return {
       conversationId: row.conversationId,
+      kind: conversationKindFromRow(row),
       ...(location ? { location } : undefined),
       ...(row.parentConversationId
         ? { parentConversationId: row.parentConversationId }
