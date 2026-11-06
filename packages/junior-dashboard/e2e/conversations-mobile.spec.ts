@@ -411,9 +411,9 @@ test("opens and closes a conversation on mobile", async ({
   // Focused reply input must stay docked at the bottom of the visual viewport.
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
-  // iOS Safari shrinks innerHeight with the keyboard but keeps the layout
-  // viewport (documentElement.clientHeight) tall and pans the visual viewport
-  // inside it. The shell must follow that pan, or it slides up off screen.
+  // iOS 18 Safari shrinks innerHeight with the keyboard but keeps
+  // documentElement.clientHeight tall and pans the visual viewport down. The
+  // shell must follow that pan, or it slides up off screen.
   await page.evaluate(() => {
     Object.defineProperty(window, "innerHeight", {
       configurable: true,
@@ -434,9 +434,9 @@ test("opens and closes a conversation on mobile", async ({
     .toBe("140px");
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
-  // When the layout viewport itself shrank for the keyboard
-  // (resizes-content), a leftover visual offset must not shove the fixed shell
-  // down (composer under the keyboard).
+  // When the whole page shrank for the keyboard (resizes-content), a leftover
+  // visual offset must not shove the fixed shell down (composer under the
+  // keyboard).
   await page.evaluate(() => {
     Object.defineProperty(document.documentElement, "clientHeight", {
       configurable: true,

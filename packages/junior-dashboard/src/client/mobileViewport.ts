@@ -28,23 +28,28 @@ export type MobileViewportMetrics = {
  * Contract:
  * - closed keyboard: shell = layout height, offset 0 (ignore rubber-band)
  * - open keyboard: shell height = visual height
- * - open keyboard offset: the visual pan inside the layout viewport
- *   (`layoutViewportHeight`). When the layout viewport already matches the
- *   visible band (`interactive-widget=resizes-content`), offset stays 0 so the
- *   fixed shell cannot slide under the keyboard.
+ * - open keyboard offset: the visual pan, capped so the shell stays inside the
+ *   page. When the page already shrank to the visible band
+ *   (`interactive-widget=resizes-content`), the cap is 0, so the fixed shell
+ *   cannot slide under the keyboard.
  *
- * `layoutHeight` is `window.innerHeight`. iOS Safari shrinks it with the
- * keyboard, but keeps the layout viewport tall and pans the visual viewport
- * inside it. So offset limits must come from `layoutViewportHeight`, not
- * `layoutHeight`, or the shell slides up off screen above the keyboard.
+ * Measured on iOS 18.7 Safari with the keyboard open: `innerHeight` and
+ * `visualViewport.height` drop to 404, `documentElement.clientHeight` stays
+ * 714, and Safari pans the visual viewport down 310px. The shell must follow
+ * that pan. Capping by `innerHeight` alone gives 0 and leaves the shell 310px
+ * above the screen, with a gap over the keyboard.
  *
  * No freeze / first-dock / source coalesce. The shell follows live geometry.
  * Body scroll lock stops document panning; the shell does not fight scrollY.
  */
 export function mobileViewportMetrics(input: {
+  /**
+   * `documentElement.clientHeight`. iOS 18 keeps it tall while the keyboard
+   * shrinks `innerHeight`. Both shrink under `resizes-content`.
+   */
+  documentClientHeight: number;
   editableFocused: boolean;
-  /** `documentElement.clientHeight`: the box fixed elements position in. */
-  layoutViewportHeight: number;
+  /** `window.innerHeight`. */
   layoutHeight: number;
   mobile: boolean;
   restingLayoutHeight: number;
@@ -81,13 +86,14 @@ export function mobileViewportMetrics(input: {
     };
   }
 
-  // When the layout viewport already matches the visible band, this cap is 0,
-  // so a leftover visual offset cannot push the composer under the keyboard.
-  const layoutViewportHeight = Math.max(
-    0,
-    Math.round(input.layoutViewportHeight),
+  // Cap by the taller of the two page heights. It is 0 only when both match
+  // the visible band, so a leftover offset cannot push the composer under the
+  // keyboard. It is never tighter than an `innerHeight`-only cap.
+  const pageHeight = Math.max(
+    layoutHeight,
+    Math.round(input.documentClientHeight),
   );
-  const maxOffsetTop = Math.max(0, layoutViewportHeight - visualHeight);
+  const maxOffsetTop = Math.max(0, pageHeight - visualHeight);
   return {
     heightPx: visualHeight,
     keyboardOpen: true,
@@ -167,7 +173,7 @@ export function useMobileViewportHeight(
         // Prefer visualViewport as the single geometry owner. Fall back to
         // layout height only when the browser has no visual viewport API.
         const layoutHeight = window.innerHeight;
-        const layoutViewportHeight =
+        const documentClientHeight =
           document.documentElement.clientHeight || layoutHeight;
         const visualHeight = viewport?.height ?? layoutHeight;
         const visualOffsetTop = viewport?.offsetTop ?? 0;
@@ -193,8 +199,8 @@ export function useMobileViewportHeight(
           wasMobile = true;
         }
         const metrics = mobileViewportMetrics({
+          documentClientHeight,
           editableFocused,
-          layoutViewportHeight,
           layoutHeight,
           mobile: true,
           restingLayoutHeight,
