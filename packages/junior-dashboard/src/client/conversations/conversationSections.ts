@@ -21,14 +21,13 @@ const ATTENTION_SECTION = {
  * section per month.
  *
  * A pinned conversation shows only in Pinned, even when it needs attention.
- * Conversations in `attentionIds` or with `workNeedsAttention` go to Needs
- * attention. Pinned follows the viewer's order; every other section lists
- * the newest first.
+ * Pinned follows the viewer's order; every other section, Needs attention
+ * too, lists the newest first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
   options: {
-    attentionIds?: ReadonlySet<string>;
+    attentionIds: ReadonlySet<string>;
     nowMs: number;
     timeZone: string;
   },
@@ -66,15 +65,16 @@ export function buildConversationSections(
 
 /**
  * True when the conversation waits on a person: its id is in `attentionIds`,
- * or its work, such as a pull request, waits on a person.
+ * or it has unfinished work, such as an open pull request, while Junior is
+ * not running in it.
  */
 function needsAttention(
   conversation: Conversation,
-  attentionIds: ReadonlySet<string> | undefined,
+  attentionIds: ReadonlySet<string>,
 ): boolean {
   return (
-    conversation.workNeedsAttention === true ||
-    attentionIds?.has(conversation.id) === true
+    attentionIds.has(conversation.id) ||
+    (conversation.unfinishedWork === true && conversation.status !== "active")
   );
 }
 

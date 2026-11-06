@@ -62,7 +62,6 @@ import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outco
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
   listGitHubAssignedWork,
-  listGitHubAttentionWork,
   listGitHubFinishedWork,
   listGitHubUnfinishedWork,
 } from "./pull-request-outcomes/store.js";
@@ -320,17 +319,14 @@ export function githubPlugin(
           conversationIds,
           assignedConversationIds,
           finishedWorkAtByConversationId,
-          attentionConversationIds,
         ] = await Promise.all([
           listGitHubUnfinishedWork(db, ctx.conversationIds),
           listGitHubAssignedWork(db, ctx.conversationIds),
           listGitHubFinishedWork(db, ctx.conversationIds),
-          listGitHubAttentionWork(db, ctx.conversationIds),
         ]);
         return {
           conversationIds,
           assignedConversationIds,
-          attentionConversationIds,
           finishedWorkAtByConversationId,
         };
       },

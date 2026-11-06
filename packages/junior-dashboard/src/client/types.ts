@@ -186,7 +186,6 @@ export type Conversation = {
   isPriority?: boolean;
   unfinishedWork?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
-  workNeedsAttention?: boolean;
 };
 
 export type Identity = DashboardIdentity;

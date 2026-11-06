@@ -25,7 +25,6 @@ describe("plugin unfinished work", () => {
                 "conversation-finished",
                 "not-a-candidate",
               ],
-              attentionConversationIds: ["conversation-a", "not-a-candidate"],
               conversationIds: ["conversation-a", "not-a-candidate"],
               finishedWorkAtByConversationId: {
                 "conversation-finished": "2026-08-03T11:30:00.000Z",
@@ -63,7 +62,6 @@ describe("plugin unfinished work", () => {
         "conversation-b",
         "conversation-finished",
       ],
-      attentionIds: ["conversation-a"],
       finishedAtById: {
         "conversation-finished": "2026-08-03T11:30:00.000Z",
       },
@@ -118,7 +116,6 @@ describe("plugin unfinished work", () => {
       ]),
     ).resolves.toEqual({
       assignedIds: ["conversation-a", "conversation-c"],
-      attentionIds: [],
       failed: true,
       finishedAtById: {},
       unfinishedIds: ["conversation-a"],

@@ -39,7 +39,6 @@ import {
   parseCheckSuitePublishTargets,
 } from "./check-suite.js";
 import { normalizeGitHubEvents } from "./events.js";
-import { recordGitHubPullRequestAttentionFromWebhook } from "./pull-request-attention.js";
 import {
   loadGitHubMergeConflictEvents,
   type GitHubPullRequestRef,
@@ -336,12 +335,6 @@ export function createGitHubWebhookRoute(args: {
             pullRequestLinkedIssues,
           )
         : false;
-
-      await recordGitHubPullRequestAttentionFromWebhook(
-        args.db,
-        eventName,
-        body,
-      );
 
       const checkSuitePublishTargets =
         eventName === "check_suite"

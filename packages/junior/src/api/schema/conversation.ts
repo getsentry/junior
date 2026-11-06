@@ -287,12 +287,6 @@ export const conversationSummaryReportSchema = z
      */
     isPriority: z.boolean().optional(),
     unfinishedWork: z.boolean().optional(),
-    /**
-     * Plugin-reported work waits on a person, such as a pull request that is
-     * ready to merge or needs fixes. The dashboard shows it in Needs
-     * attention.
-     */
-    workNeedsAttention: z.boolean().optional(),
   })
   .strict();
 

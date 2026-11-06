@@ -897,7 +897,6 @@ export function buildConversations(
       isPriority: summary.isPriority,
       unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,
-      workNeedsAttention: summary.workNeedsAttention,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
 }
