@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
 
@@ -17,7 +17,7 @@ import {
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
-import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
+import { useConversationActionToasts } from "./conversationActionToasts";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import {
@@ -46,34 +46,8 @@ export function ConversationHomeList(props: {
 }) {
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
-  const [archivedConversation, setArchivedConversation] =
-    useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<{
-    conversation: Conversation;
-    wasArchiving: boolean;
-  }>();
-  const handleArchiveError = useCallback(
-    (conversation: Conversation, wasArchiving: boolean) => {
-      setArchiveError({ conversation, wasArchiving });
-    },
-    [],
-  );
-  const handleArchived = useCallback((conversation: Conversation) => {
-    setArchiveError((current) =>
-      current?.conversation.id === conversation.id ? undefined : current,
-    );
-    setArchivedConversation(conversation);
-  }, []);
-  useConversationPageArchiveResult(handleArchived, handleArchiveError);
-  const notices = (
-    <ConversationArchiveNotices
-      archivedConversation={archivedConversation}
-      archiveError={archiveError}
-      className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 sm:left-auto sm:w-96"
-      onDismissError={() => setArchiveError(undefined)}
-      onRestored={() => setArchivedConversation(undefined)}
-    />
-  );
+  const { showArchiveError, showArchived } = useConversationActionToasts();
+  useConversationPageArchiveResult(showArchived, showArchiveError);
 
   if (props.loading && props.conversations.length === 0) {
     return <ConversationHomeListLoading label="Loading conversations" />;
@@ -81,14 +55,11 @@ export function ConversationHomeList(props: {
 
   if (props.conversations.length === 0) {
     return (
-      <>
-        <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
-          <EmptyTelemetry>
-            {props.emptyLabel ?? "No conversations match this view."}
-          </EmptyTelemetry>
-        </div>
-        {notices}
-      </>
+      <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
+        <EmptyTelemetry>
+          {props.emptyLabel ?? "No conversations match this view."}
+        </EmptyTelemetry>
+      </div>
     );
   }
 
@@ -101,23 +72,20 @@ export function ConversationHomeList(props: {
     timeZone: props.timeZone,
   });
   return (
-    <>
-      <div aria-label="Your conversations" className="grid gap-5" role="list">
-        {sections.map((section) => (
-          <ConversationCardSection
-            collapsed={collapsedKeys.has(section.key)}
-            finishedConversationIds={props.finishedConversationIds}
-            key={section.key}
-            onArchiveError={handleArchiveError}
-            onArchived={handleArchived}
-            onToggle={() => toggleSection(section.key)}
-            waitingConversationIds={props.waitingConversationIds}
-            section={section}
-          />
-        ))}
-      </div>
-      {notices}
-    </>
+    <div aria-label="Your conversations" className="grid gap-5" role="list">
+      {sections.map((section) => (
+        <ConversationCardSection
+          collapsed={collapsedKeys.has(section.key)}
+          finishedConversationIds={props.finishedConversationIds}
+          key={section.key}
+          onArchiveError={showArchiveError}
+          onArchived={showArchived}
+          onToggle={() => toggleSection(section.key)}
+          waitingConversationIds={props.waitingConversationIds}
+          section={section}
+        />
+      ))}
+    </div>
   );
 }
 

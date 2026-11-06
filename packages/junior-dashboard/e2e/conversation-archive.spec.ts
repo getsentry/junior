@@ -94,7 +94,7 @@ test("archives and restores a conversation from the sidebar", async ({
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
   expect(page.url()).toBe(currentUrl);
 
-  const undoNotice = page.getByRole("status").filter({
+  const undoNotice = page.getByRole("dialog").filter({
     hasText: "Conversation archived",
   });
   await expect(undoNotice).toBeVisible();
@@ -160,7 +160,7 @@ for (const outcome of ["success", "error"] as const) {
     releaseArchive();
 
     if (outcome === "success") {
-      const undoNotice = page.getByRole("status").filter({
+      const undoNotice = page.getByRole("dialog").filter({
         hasText: "Conversation archived",
       });
       await expect(undoNotice).toContainText("Dashboard QA edge cases");
