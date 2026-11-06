@@ -433,6 +433,31 @@ describe("agent invocation identity and concurrency", () => {
         status: "pending",
       });
       await harness.drainQueuedWork();
+
+      // A nested coordinator's own open work does not count as one of its
+      // children, so it can still start the full cap of children.
+      const coordinator = await harness.spawn({
+        idempotencyKey: "limit-coordinator",
+        input: "coordinate nested work",
+      });
+      await Promise.all(
+        Array.from(
+          { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
+          (_, index) =>
+            harness.spawn({
+              idempotencyKey: `limit-nested-${index}`,
+              input: `nested task ${index}`,
+              parentConversationId: coordinator.childConversationId,
+            }),
+        ),
+      );
+      await expect(
+        harness.spawn({
+          idempotencyKey: "limit-nested-overflow",
+          input: "one too many nested",
+          parentConversationId: coordinator.childConversationId,
+        }),
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
     } finally {
       await harness.close();
     }

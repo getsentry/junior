@@ -29,7 +29,7 @@ export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
  * Cap the non-terminal agent invocations of one child, including the one that
  * runs. Each message to a busy child queues one more.
  */
-export const MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD = 4;
+const MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD = 4;
 
 type NewAgentInvocation = Pick<
   AgentInvocation,
