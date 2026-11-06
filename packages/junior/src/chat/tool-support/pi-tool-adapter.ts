@@ -69,6 +69,8 @@ import {
   type CodeModeToolOptions,
 } from "@/chat/codemode/tool";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
+import { capToolResult } from "@/chat/tool-support/result-cap";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 /**
  * How long a preempted tool may take to return its own aborted result. Keep it
@@ -112,6 +114,19 @@ async function untilPreempted<T>(
 type NormalizedToolResult = ReturnType<typeof normalizeToolResult>;
 
 /**
+ * A tool that reports the shared `truncated` field bounds its own output and
+ * says how to read more: readFile pages, and codemode and webFetch save files.
+ * A second cut would hide that.
+ */
+function boundsOwnOutput(details: unknown): boolean {
+  return (
+    typeof details === "object" &&
+    details !== null &&
+    typeof (details as { truncated?: unknown }).truncated === "boolean"
+  );
+}
+
+/**
  * Add plugin guidance after the tool's own content. Details stay the same, so
  * structured (JSON) output is not changed.
  */
@@ -150,6 +165,8 @@ export interface ToolPipelineOptions {
   conversationPrivacy?: ConversationPrivacy;
   onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
   actionReview?: ToolActionReview;
+  /** Keeps the full text of a model-facing result that was cut. */
+  workspace?: Pick<SandboxWorkspace, "writeFiles">;
 }
 
 /** One tool call that a Code Mode script made. */
@@ -219,6 +236,7 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     conversationPrivacy,
     onToolResult,
     actionReview,
+    workspace,
   } = options;
   const shouldTrace = shouldEmitDevAgentTrace();
   const effectiveConversationPrivacy = conversationPrivacy ?? "private";
@@ -463,7 +481,14 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       signal: args.signal,
       setSpanAttributes: args.setSpanAttributes,
     });
-    return withToolResultNudges(result, nudges);
+    // Only model calls take this path. Scripts read the full result, and
+    // codemode cuts only the script's own output.
+    const capped = await capToolResult(result, {
+      toolCallId: args.toolCallId,
+      workspace,
+      bypass: () => boundsOwnOutput(result.details),
+    });
+    return withToolResultNudges(capped, nudges);
   };
   const reportStatus = async (
     executionToolName: string,
@@ -803,6 +828,8 @@ export function createPiAgentTools(
     conversationPrivacy,
     onToolResult,
     actionReview,
+    // Cut results go to the same workspace as cut script output.
+    workspace: codeMode?.workspace,
   });
   if (codeMode) {
     visibleTools[CODEMODE_TOOL_NAME] = createCodeModeTool({
