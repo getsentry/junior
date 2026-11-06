@@ -5,14 +5,34 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
+import type { AgentInstructionInput } from "@/chat/agent/types";
+import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import { loadReviewItemInput } from "@/chat/review-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 
-/** Join non-empty mailbox Message text for one Turn. */
-export function joinMailboxText(messages: readonly InboundMessage[]): string {
-  return messages
-    .map((message) => message.input.text.trim())
-    .filter(Boolean)
-    .join("\n\n");
+/**
+ * Return the Turn inputs of web Messages, one per non-empty Message, in
+ * order. Each one becomes its own prompt content part. A Message that
+ * records an answer or a dismiss becomes its Review item tag. A batch with
+ * only attachments keeps one empty input, so the prompt still has an
+ * instruction.
+ */
+export async function webTurnInputs(
+  messages: readonly {
+    reviewItemChange?: ReviewItemChangeRecord;
+    text: string;
+  }[],
+): Promise<AgentInstructionInput[]> {
+  const inputs = await Promise.all(
+    messages.map(async (message): Promise<AgentInstructionInput[]> => {
+      const reviewItem = await loadReviewItemInput(message.reviewItemChange);
+      if (reviewItem) return [{ kind: "runtime", text: reviewItem }];
+      const text = message.text.trim();
+      return text ? [{ kind: "person", text }] : [];
+    }),
+  );
+  const flat = inputs.flat();
+  return flat.length ? flat : [{ kind: "person", text: "" }];
 }
 
 /**

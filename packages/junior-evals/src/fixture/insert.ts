@@ -18,6 +18,7 @@ import { createWatch } from "@/chat/events/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import {
   insertReviewItem as insertStoredReviewItem,
   type ReviewItemContent,
@@ -28,7 +29,7 @@ import {
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
 import { fixtureId } from "./ids";
-import type { SlackAuthor } from "./inputs";
+import type { ReviewDeskItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
 
 /** A Slack channel that automations and mentions can target. */
@@ -291,6 +292,34 @@ export async function insertReviewItem(args: {
     ...(args.subject ? { subject: args.subject } : undefined),
   });
   if (!item) throw new Error(`Review item ${args.dedupeKey} is already open`);
+  return { id: item.id };
+}
+
+/**
+ * Store an open Review item that an earlier Turn of a web Conversation
+ * added. It is assigned to the dashboard person `viewerEmail`.
+ */
+export async function insertWebReviewItem(args: {
+  conversationId: string;
+  item: ReviewDeskItem;
+  viewerEmail: string;
+}): Promise<{ id: string }> {
+  const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
+  if (!user) throw new Error(`No Junior user for ${args.viewerEmail}`);
+  const item = await insertStoredReviewItem(getDb(), {
+    addedByConversationId: args.conversationId,
+    assignedToEveryone: false,
+    assigneeUserIds: [user.id],
+    body: args.item.body,
+    conversationIds: [args.conversationId],
+    dedupeKey: `ask:${fixtureId("review-item", 20)}`,
+    kind: args.item.request ? "action" : "notice",
+    nowMs: Date.now() - 60_000,
+    title: args.item.title,
+    visibility: "public",
+    ...(args.item.request ? { request: args.item.request } : undefined),
+  });
+  if (!item) throw new Error(`Review item ${args.item.title} is already open`);
   return { id: item.id };
 }
 

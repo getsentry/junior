@@ -26,6 +26,11 @@ import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
 } from "@/chat/slack/errors";
+import { getMessageReviewItemChange } from "@/chat/review-items/message-change";
+import {
+  loadReviewItemInput,
+  savedInputInstruction,
+} from "@/chat/review-items/prompt-input";
 import {
   buildSteeringPiMessage,
   withoutSavedSteeringMessages,
@@ -468,10 +473,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
+              // An answer or a dismiss steers in as its Review item tag.
+              const reviewItemInput = await loadReviewItemInput(
+                getMessageReviewItemChange(queued.message),
+              );
               return {
                 actor: inboundMessageActor(queued),
+                ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
                 provenance: inboundMessageProvenance(queued, teamId),
-                text: queued.userText,
+                text: reviewItemInput ?? queued.userText,
                 timestampMs: queued.message.metadata.dateSent.getTime(),
                 omittedImageAttachmentCount:
                   !canReadImages() && hasPotentialImageAttachment(attachments)
@@ -1053,6 +1063,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           const location = (
             await getConversationStore().get({ conversationId })
           )?.location;
+          const savedInput = await savedInputInstruction({
+            runtime: Boolean(options.execution?.dispatch),
+            reviewItemChange: getMessageReviewItemChange(message),
+            text: effectiveUserText,
+          });
           const run: AgentRun = {
             conversationId,
             turnId,
@@ -1068,7 +1083,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 ...(slackMessageTs ? { slackTs: slackMessageTs } : undefined),
               },
               includeConversationContextWithHistory: hasDurablePromptHistory,
-              text: effectiveUserText,
+              ...savedInput,
               context: promptConversationContext,
               inboundAttachmentCount: turnAttachments.length,
               omittedImageAttachmentCount,

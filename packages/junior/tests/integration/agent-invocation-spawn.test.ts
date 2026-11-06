@@ -480,7 +480,7 @@ describe("agent invocation spawn and result delivery", () => {
         state,
       });
       expect(parentWork?.messages[0]?.input.text).toContain(
-        'have not reported yet: "analyst"',
+        ' waiting_on="analyst"',
       );
     } finally {
       await fixture.close();
