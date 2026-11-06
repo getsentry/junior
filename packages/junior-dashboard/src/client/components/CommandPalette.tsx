@@ -1,12 +1,11 @@
 import {
   LockKeyhole,
   MessageSquare,
-  Search,
   SquarePen,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { useConversationsData } from "../api";
 import { formatCompactAge } from "../conversations/conversationAge";
@@ -16,11 +15,18 @@ import {
 } from "../conversations/conversationRoutes";
 import { useDebouncedValue } from "../debouncedValue";
 import { buildConversations, conversationDisplayTitle } from "../format";
-import { cn } from "../styles";
 import type { Conversation } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
-import { Dialog, DialogContent } from "./ui/dialog";
+import {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./ui/command";
 
 const RECENT_LIMIT = 5;
 const RESULT_LIMIT = 8;
@@ -71,17 +77,12 @@ export function CommandPalette(props: {
   }, [onOpenChange, open]);
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        aria-label="Search"
-        className="max-w-xl gap-0 overflow-hidden p-0 sm:top-[15vh] sm:translate-y-0"
-      >
-        <CommandPaletteBody
-          navItems={props.navItems}
-          onClose={() => onOpenChange(false)}
-        />
-      </DialogContent>
-    </Dialog>
+    <CommandDialog onOpenChange={onOpenChange} open={open} title="Search">
+      <CommandPaletteBody
+        navItems={props.navItems}
+        onClose={() => onOpenChange(false)}
+      />
+    </CommandDialog>
   );
 }
 
@@ -91,12 +92,10 @@ function CommandPaletteBody(props: {
   onClose(): void;
 }) {
   const [query, setQuery] = useState("");
-  // Track the highlight by row id, so rows that load later keep it in place.
-  const [activeId, setActiveId] = useState<string | null>(null);
   const search = useDebouncedValue(query.trim());
   const feed = useConversationsData(search);
   const navigate = useNavigate();
-  const listId = useId();
+  const list = useRef<HTMLDivElement>(null);
   // Hide conversation rows until they match the typed text, so stale or
   // placeholder rows never take Enter from a matching page.
   const conversationsCurrent =
@@ -119,35 +118,13 @@ function CommandPaletteBody(props: {
       search,
     ],
   );
-  const active = items.find((item) => item.id === activeId) ?? items[0];
-
+  // cmdk keeps the highlight on its row when rows load above it, but scrolls
+  // only on key moves. Keep the highlight in view when rows change.
   useEffect(() => {
-    setActiveId(null);
-  }, [query, search]);
-  const activeOptionId = active ? `${listId}-${active.id}` : undefined;
-  // Rerun when rows change too: rows that load above the highlight push it down.
-  useEffect(() => {
-    if (!activeOptionId) return;
-    document
-      .getElementById(activeOptionId)
+    list.current
+      ?.querySelector('[cmdk-item][data-selected="true"]')
       ?.scrollIntoView({ block: "nearest" });
-  }, [activeOptionId, items]);
-
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (items.length === 0) return;
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      const index = active ? items.indexOf(active) : 0;
-      setActiveId(
-        items[(index + step + items.length) % items.length]?.id ?? null,
-      );
-    } else if (event.key === "Enter" && active) {
-      event.preventDefault();
-      navigate(active.to);
-      props.onClose();
-    }
-  };
+  }, [items]);
 
   const groups = [...new Set(items.map((item) => item.group))].map(
     (group) => [group, items.filter((item) => item.group === group)] as const,
@@ -155,85 +132,48 @@ function CommandPaletteBody(props: {
   const searching = query.trim() !== search || feed.isFetching;
 
   return (
-    <>
-      <div className="flex items-center gap-3 border-b border-dashboard-border-subtle px-4">
-        <Search
-          aria-hidden="true"
-          className="size-4 shrink-0 text-dashboard-text-muted"
-        />
-        <input
-          aria-activedescendant={activeOptionId}
-          aria-autocomplete="list"
-          aria-controls={listId}
-          aria-expanded="true"
-          aria-label="Search conversations and pages"
-          autoComplete="off"
-          className="h-12 min-w-0 flex-1 border-0 bg-transparent font-sans text-sm text-dashboard-text outline-none placeholder:text-dashboard-text-faint"
-          onChange={(event) => setQuery(event.currentTarget.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Search conversations or jump to…"
-          role="combobox"
-          spellCheck={false}
-          value={query}
-        />
-        <kbd className="shrink-0 rounded border max-sm:hidden border-dashboard-border px-1.5 py-0.5 font-sans text-xs text-dashboard-text-faint">
+    // Rows are already filtered: pages here, conversations on the server.
+    <Command loop shouldFilter={false} vimBindings={false}>
+      <CommandInput
+        aria-label="Search conversations and pages"
+        onValueChange={setQuery}
+        placeholder="Search conversations or jump to…"
+        spellCheck={false}
+        value={query}
+      >
+        <kbd className="shrink-0 rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-xs text-dashboard-text-faint max-sm:hidden">
           esc
         </kbd>
-      </div>
-      <div
-        className="thin-scrollbar max-h-[min(24rem,60dvh)] overflow-y-auto overscroll-contain p-2"
-        id={listId}
-        role="listbox"
-      >
-        {items.length === 0 ? (
-          <p className="m-0 px-3 py-6 text-center font-sans text-sm text-dashboard-text-muted">
-            {searching ? "Searching…" : "No matches."}
-          </p>
-        ) : (
-          groups.map(([group, groupItems]) => (
-            <div aria-label={group} key={group} role="group">
-              <div
-                aria-hidden="true"
-                className="px-3 pb-1 pt-2 font-sans text-xs font-medium text-dashboard-text-muted"
-              >
-                {group}
-              </div>
-              {groupItems.map((item) => {
-                const Icon = item.icon;
-                const selected = item === active;
-                return (
-                  <Link
-                    aria-selected={selected}
-                    className={cn(
-                      "grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-3 py-2 font-sans text-sm text-dashboard-text no-underline",
-                      selected && "bg-dashboard-fill-hover",
-                    )}
-                    id={`${listId}-${item.id}`}
-                    key={item.id}
-                    onClick={props.onClose}
-                    onMouseMove={() => setActiveId(item.id)}
-                    role="option"
-                    tabIndex={-1}
-                    to={item.to}
-                  >
-                    <Icon
-                      aria-hidden="true"
-                      className="size-4 text-dashboard-text-muted"
-                    />
-                    <span className="min-w-0 truncate">{item.label}</span>
-                    {item.meta ? (
-                      <span className="text-xs tabular-nums text-dashboard-text-faint">
-                        {item.meta}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </div>
-          ))
-        )}
-      </div>
-    </>
+      </CommandInput>
+      <CommandList ref={list}>
+        <CommandEmpty>{searching ? "Searching…" : "No matches."}</CommandEmpty>
+        {groups.map(([group, groupItems]) => (
+          <CommandGroup heading={group} key={group}>
+            {groupItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <CommandItem
+                  key={item.id}
+                  onSelect={() => {
+                    navigate(item.to);
+                    props.onClose();
+                  }}
+                  value={item.id}
+                >
+                  <Icon aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.meta ? (
+                    <span className="text-xs tabular-nums text-dashboard-text-faint">
+                      {item.meta}
+                    </span>
+                  ) : null}
+                </CommandItem>
+              );
+            })}
+          </CommandGroup>
+        ))}
+      </CommandList>
+    </Command>
   );
 }
 

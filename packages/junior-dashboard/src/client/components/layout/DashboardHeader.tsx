@@ -5,6 +5,7 @@ import { Link, NavLink } from "react-router";
 import { getDashboardAgentName } from "../../agentName";
 import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { Button } from "../ui/button";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
@@ -124,16 +125,15 @@ export function DashboardHeader(props: {
           ))}
         </nav>
         <div className="flex items-center gap-3 justify-self-end">
-          <button
+          <Button
             aria-keyshortcuts="Meta+K Control+K"
-            className="flex h-9 w-56 cursor-pointer items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-surface-raised px-3 font-sans text-sm text-dashboard-text-faint transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+            className="w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
             onClick={props.onSearch}
-            type="button"
           >
             <Search aria-hidden="true" className="size-4 shrink-0" />
             <span className="flex-1 text-left">Search…</span>
             <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
-          </button>
+          </Button>
           {props.profile}
         </div>
       </div>
@@ -212,18 +212,15 @@ export function DashboardHeader(props: {
                 <div className="mb-3">{props.mobileSpend}</div>
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
-                <button
-                  className={cn(
-                    sheetLinkClass({ isActive: false }),
-                    "flex cursor-pointer items-center gap-2 border-0 bg-transparent text-left",
-                  )}
+                <Button
+                  className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
                   data-mobile-nav-dismiss=""
                   onClick={props.onSearch}
-                  type="button"
+                  size="menu"
                 >
                   <Search aria-hidden="true" className="size-4" />
                   Search
-                </button>
+                </Button>
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
                   className={sheetLinkClass({
