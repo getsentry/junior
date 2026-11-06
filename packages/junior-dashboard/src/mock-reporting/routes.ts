@@ -206,8 +206,16 @@ export function createMockReportingApi(): Hono<{
     if (!body.success) return errorResponse("Invalid request body.", 400);
     // About a real create's round trip, so the held draft shows.
     await new Promise((resolve) => setTimeout(resolve, 400));
+    const viewer = c.get("viewer");
     return jsonResponse(acceptedConversationMessageSchema, {
-      ...createMockConversation(body.data),
+      ...createMockConversation({
+        actorIdentity: {
+          email: viewer?.email,
+          fullName: viewer?.displayName,
+        },
+        message: body.data.message,
+        visibility: body.data.visibility,
+      }),
       status: "accepted",
     });
   });

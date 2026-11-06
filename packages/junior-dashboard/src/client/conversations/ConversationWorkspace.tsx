@@ -19,7 +19,6 @@ import { ConversationHomeList } from "./ConversationHomeList";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
-  CONVERSATION_COMPOSER_TRANSITION,
   ConversationComposer,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
@@ -30,6 +29,10 @@ import {
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
 import { prefetchConversationDetail } from "./conversationPrefetch";
+import {
+  NewConversationPending,
+  type PendingNewConversation,
+} from "./NewConversationPending";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
@@ -90,6 +93,10 @@ export function ConversationWorkspace(props: {
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
+  const [pendingCreate, setPendingCreate] = useState<PendingNewConversation>();
+  // A pending create shows only on home. Leaving home ends it, whether the
+  // route opened its Conversation or the reader went elsewhere.
+  if (!home && pendingCreate) setPendingCreate(undefined);
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const conversations = useMemo(
@@ -160,35 +167,34 @@ export function ConversationWorkspace(props: {
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
         const visit = homeVisit.current;
-        const accepted = await createConversation.mutateAsync({
+        // Show the Conversation at once. The create view stays mounted but
+        // hidden, so a failed create comes back with the draft and its key.
+        setPendingCreate({
+          createdAt: new Date().toISOString(),
           idempotencyKey,
-          message,
           images,
+          message,
           visibility,
         });
-        // Open the Conversation with its transcript and composer, not a
-        // skeleton. The draft stays on this page until the route changes, so
-        // the message moves from the composer to the transcript at once.
-        // The list read too, so the new row shows with the page change.
-        await Promise.all([
-          prefetchConversationDetail(queryClient, accepted.conversationId),
-          queryClient.refetchQueries({
-            queryKey: ["dashboard", "conversations"],
-            type: "active",
-          }),
-        ]);
-        if (visit?.aborted) return;
-        const open = () =>
-          navigate(conversationPath(accepted.conversationId), {
-            flushSync: true,
+        let accepted;
+        try {
+          accepted = await createConversation.mutateAsync({
+            idempotencyKey,
+            message,
+            images,
+            visibility,
           });
-        // Resolve after the new page is in place: the composer clears its
-        // draft when this resolves, and the old snapshot must keep the text.
-        if (document.startViewTransition) {
-          await document.startViewTransition(open).updateCallbackDone;
-        } else {
-          await open();
+        } catch (error) {
+          setPendingCreate(undefined);
+          throw error;
         }
+        // The page then opens with its transcript, not a skeleton. The
+        // pending view stays until the route shows it.
+        await prefetchConversationDetail(queryClient, accepted.conversationId);
+        if (visit?.aborted) return;
+        await navigate(conversationPath(accepted.conversationId), {
+          flushSync: true,
+        });
       }}
     />
   );
@@ -216,6 +222,7 @@ export function ConversationWorkspace(props: {
     <main
       className={cn(
         "h-full min-h-0 w-full",
+        pendingCreate && "hidden",
         sidebarFits
           ? "grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
           : "overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
@@ -309,9 +316,6 @@ export function ConversationWorkspace(props: {
                 !sidebarOpen && "hidden",
               )}
               id={sidebarId}
-              // Its own transition layer: the list stays put while the pane
-              // changes.
-              style={{ viewTransitionName: "conversation-sidebar" }}
             >
               <ConversationSidebar
                 conversations={conversations}
@@ -336,7 +340,15 @@ export function ConversationWorkspace(props: {
       ) : null}
       <ResizablePanel id="selected-conversation">
         {home ? (
-          homePane
+          <>
+            {pendingCreate ? (
+              <NewConversationPending
+                pending={pendingCreate}
+                sidebarToggle={sidebarToggle}
+              />
+            ) : null}
+            {homePane}
+          </>
         ) : (
           <section
             aria-label="Selected conversation"
@@ -413,7 +425,6 @@ function NewConversationView(props: {
         holdDraftUntilAccept
         ref={props.composerRef}
         submitLabel="Send"
-        viewTransitionName={CONVERSATION_COMPOSER_TRANSITION}
         onSubmit={(message, idempotencyKey, images) =>
           props.onSubmit(message, idempotencyKey, visibility, images)
         }

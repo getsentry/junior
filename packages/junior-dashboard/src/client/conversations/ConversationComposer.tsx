@@ -32,9 +32,6 @@ const DRAFT_STORAGE_PREFIX = "junior:dashboard:conversation-draft:";
 // Keep keystrokes off the storage path. Mobile Safari pays for every write.
 const DRAFT_STORAGE_DEBOUNCE_MS = 250;
 
-/** View transition name shared by the create composer and the reply dock. */
-export const CONVERSATION_COMPOSER_TRANSITION = "conversation-composer";
-
 type ConversationDraft = {
   /** Image bytes are not restored from localStorage; do not reuse their send key. */
   hasImages?: boolean;
@@ -100,11 +97,6 @@ type ConversationComposerProps = {
   /** Lets the parent put a message taken out of the queue back in the draft. */
   ref?: Ref<ConversationComposerHandle>;
   submitLabel: string;
-  /**
-   * Shared name for the page-change animation, so the create composer moves
-   * into the reply dock when a new Conversation opens.
-   */
-  viewTransitionName?: string;
   /**
    * Return a promise to ask the reader before a send. The draft stays when it
    * resolves false. Return undefined to send at once.
@@ -446,11 +438,6 @@ export const ConversationComposer = memo(function ConversationComposer(
           dashboardComposerSurfaceClass,
           dragging && "ring-2 ring-dashboard-focus",
         )}
-        style={
-          props.viewTransitionName
-            ? { viewTransitionName: props.viewTransitionName }
-            : undefined
-        }
         onDragOver={(event) => {
           if (!event.dataTransfer.types.includes("Files")) return;
           // Always cancel a file drop, or the browser opens the file.

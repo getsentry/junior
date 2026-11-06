@@ -84,7 +84,9 @@ export function ConversationSidePanelLayout(props: {
           </>
         ) : null}
       </ResizablePanelGroup>
-      <div className="contents" ref={sheetSlotRef} />
+      {/* Sheets are fixed. Out of flow, the slot takes no row in the page
+          grid, so a short transcript keeps the composer at the bottom. */}
+      <div className="absolute" ref={sheetSlotRef} />
       {open ? (host ? createPortal(props.side, host) : props.side) : null}
     </>
   );

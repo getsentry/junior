@@ -1572,6 +1572,7 @@ const createdMockConversations: MockConversation[] = [];
 
 /** Start a mock Conversation, so a local create opens with its message. */
 export function createMockConversation(args: {
+  actorIdentity: ActorIdentity;
   message: string;
   visibility?: "private" | "public";
 }): { conversationId: string; messageId: string } {
@@ -1588,14 +1589,14 @@ export function createMockConversation(args: {
       status: "active",
       surface: "internal",
       visibility: args.visibility ?? "public",
-      actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+      actorIdentity: args.actorIdentity,
       events: [
         reportEvent(0, startedAt, {
           type: "message",
           messageId,
           role: "user",
           text: args.message,
-          actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+          actorIdentity: args.actorIdentity,
         }),
         reportEvent(1, startedAt, {
           type: "turn_lifecycle",
