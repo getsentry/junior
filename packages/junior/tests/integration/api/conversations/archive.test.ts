@@ -280,6 +280,7 @@ describe("conversation archive API", () => {
     for (const parentConversationId of [childDoneId, childOpenId]) {
       await getConversationStore().createChild({
         childConversationId: `${parentConversationId}:child`,
+        kind: "task",
         nowMs: nowMs - 48 * hour,
         parentConversationId,
       });

@@ -152,6 +152,7 @@ describe("review item actions API", () => {
     await slackConversation("slack:CPUB:1.000004");
     await getConversationStore().createChild({
       childConversationId: "agent:child-of-4",
+      kind: "task",
       nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
       parentConversationId: "slack:CPUB:1.000004",
     });
