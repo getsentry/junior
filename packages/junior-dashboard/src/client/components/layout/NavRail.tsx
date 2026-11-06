@@ -18,6 +18,7 @@ import {
 } from "../ui/sidebar";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import { navItemIcon } from "./navIcons";
+import { Separator } from "../ui/separator";
 import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 
 const RAIL_BUTTON_CLASS =
@@ -139,6 +140,8 @@ export function NavRail(props: {
             <JuniorLogo />
           </Link>
           <RailSearchItem onSearch={props.onSearch} />
+          {/* Splits the global search from the page links below. */}
+          <Separator className="mt-1 bg-dashboard-border-strong data-horizontal:w-6" />
         </SidebarHeader>
         {/* Stock icon mode hides overflow; the rail stays collapsed, so let
           plugin pages scroll on short windows. */}
