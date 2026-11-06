@@ -14,6 +14,7 @@ import { peoplePath } from "../format";
 import { pluginUserPagePath } from "../pages/user/pluginUserPageRoutes";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button, buttonVariants } from "./ui/button";
@@ -26,10 +27,11 @@ type ProfileMenuProps = {
   /**
    * `popover` is the profile row at the bottom of the desktop nav sidebar.
    * It shows only the avatar while the sidebar is collapsed.
+   * `top-bar` is the avatar control at the right of the desktop top bar.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?: "popover" | "sheet-links" | "sheet-identity";
+  variant?: "popover" | "top-bar" | "sheet-links" | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -210,6 +212,7 @@ export function ProfileMenu({
     );
   }
 
+  const topBar = variant === "top-bar";
   const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
   return (
     <Popover
@@ -228,8 +231,9 @@ export function ProfileMenu({
       <PopoverTrigger
         aria-label={menuLabel}
         className={cn(
-          // The collapsed nav sidebar shows only the avatar.
-          "group/profile flex h-10 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1.5 text-left text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
+          // The top bar and the collapsed nav sidebar show only the avatar.
+          "group/profile flex h-10 min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1.5 text-left text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
+          topBar ? "size-10 justify-center px-0" : "w-full",
           open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         closeDelay={HOVER_CLOSE_DELAY_MS}
@@ -237,24 +241,31 @@ export function ProfileMenu({
         openOnHover
       >
         <ProfileAvatar user={identity.user} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium group-data-[collapsible=icon]:hidden">
-          {name}
-        </span>
-        <ChevronsUpDown
-          aria-hidden="true"
-          className="shrink-0 text-dashboard-text-muted transition-colors group-hover/profile:text-dashboard-text group-data-[collapsible=icon]:hidden"
-          size={14}
-          strokeWidth={2}
-        />
+        {topBar ? null : (
+          <>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium group-data-[collapsible=icon]:hidden">
+              {name}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="shrink-0 text-dashboard-text-muted transition-colors group-hover/profile:text-dashboard-text group-data-[collapsible=icon]:hidden"
+              size={14}
+              strokeWidth={2}
+            />
+          </>
+        )}
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        side="right"
+        side={topBar ? "bottom" : "right"}
         className="w-64 rounded-xl border-0 bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
         id="profile-popover"
       >
         {identityBlock}
-        <ThemeSwitcher className="border-b border-dashboard-border-strong px-2.5 py-2" />
+        <div className="grid gap-1 border-b border-dashboard-border-strong px-2.5 py-2">
+          <ThemeSwitcher />
+          <NavLayoutSwitcher />
+        </div>
         {menuLinks(() => setOpen(false))}
       </PopoverContent>
     </Popover>

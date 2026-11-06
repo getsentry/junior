@@ -5,16 +5,11 @@ import {
   Search,
   type LucideIcon,
 } from "lucide-react";
-import {
-  useEffect,
-  useState,
-  useSyncExternalStore,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useMatch } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
+import { useMediaQuery } from "../../navLayout";
 import { JuniorLogo } from "../JuniorLogo";
 import {
   Sidebar,
@@ -67,25 +62,15 @@ function writeOpenPreference(open: boolean) {
   }
 }
 
-function useWideWindow(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const media = window.matchMedia(WIDE_QUERY);
-      media.addEventListener("change", onChange);
-      return () => media.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia(WIDE_QUERY).matches,
-    () => false,
-  );
-}
-
 /**
  * Own the nav sidebar state. Wide windows use the icon rail until the viewer
  * expands the sidebar; narrower desktop windows always use the icon rail and
- * keep the saved choice for later. Cmd/Ctrl+B toggles it.
+ * keep the saved choice for later. Cmd/Ctrl+B toggles it while the sidebar
+ * is the desktop navigation (`shown`).
  */
-export function useNavSidebar() {
-  const wide = useWideWindow();
+export function useNavSidebar(shown: boolean) {
+  const wide = useMediaQuery(WIDE_QUERY);
+  const canExpand = shown && wide;
   const [preferOpen, setPreferOpen] = useState(readOpenPreference);
 
   const toggle = () => setPreferOpen((current) => !current);
@@ -95,7 +80,7 @@ export function useNavSidebar() {
   }, [preferOpen]);
 
   useEffect(() => {
-    if (!wide) return;
+    if (!canExpand) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -111,9 +96,9 @@ export function useNavSidebar() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [wide]);
+  }, [canExpand]);
 
-  return { canExpand: wide, open: wide && preferOpen, toggle };
+  return { canExpand, open: wide && preferOpen, toggle };
 }
 
 /**
@@ -230,8 +215,9 @@ function RailToggle(props: { open: boolean; onToggle(): void }) {
 }
 
 /**
- * Desktop primary navigation. Wide windows show icons and labels; narrower
- * desktop windows show the icon rail. Mobile uses `DashboardHeader`.
+ * Desktop primary navigation when the top bar is off. Wide windows can show
+ * icons and labels; narrower windows show the icon rail. `DashboardHeader`
+ * owns the top bar and mobile navigation.
  */
 export function NavRail(props: {
   canExpand: boolean;

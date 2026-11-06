@@ -3,6 +3,8 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
+import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
+import { JuniorLogo } from "../JuniorLogo";
 import { Button } from "../ui/button";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
@@ -37,10 +39,13 @@ function NavCount(props: { count?: number }) {
 }
 
 /**
- * Render the mobile shell header: the bar and the navigation sheet. Desktop
- * uses `NavRail`.
+ * Render the shell header: the mobile bar and navigation sheet, and the
+ * desktop top bar when `desktopTopBar` is set. Otherwise desktop uses
+ * `NavRail`.
  */
 export function DashboardHeader(props: {
+  /** Show the desktop top bar instead of the nav sidebar. */
+  desktopTopBar: boolean;
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
   mobileNavigationOpen: boolean;
@@ -55,6 +60,10 @@ export function DashboardHeader(props: {
   onMobileNavigationOpenChange(open: boolean): void;
   /** Open the command palette. */
   onSearch(): void;
+  /** Account control at the right of the desktop top bar. */
+  profile?: ReactNode;
+  /** Usage meter beside the account control in the desktop top bar. */
+  usage?: ReactNode;
   version?: string;
   workspaceActive: boolean;
 }) {
@@ -72,6 +81,13 @@ export function DashboardHeader(props: {
     onOpenChangeRef.current(true);
   });
 
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 font-sans text-sm font-medium tracking-normal no-underline transition-colors",
+      isActive
+        ? "bg-dashboard-accent/[0.1] text-dashboard-accent-text"
+        : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
+    );
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 font-sans text-sm font-medium no-underline transition-colors",
@@ -94,7 +110,53 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg md:hidden">
+    <header
+      className={cn(
+        "relative bg-dashboard-bg",
+        !props.desktopTopBar && "md:hidden",
+      )}
+    >
+      {props.desktopTopBar ? (
+        <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:grid">
+          <Link
+            aria-label={`${getDashboardAgentName()} home`}
+            className="flex items-center text-inherit no-underline"
+            to="/"
+          >
+            <JuniorLogo />
+          </Link>
+          <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
+            <Link
+              aria-current={props.workspaceActive ? "page" : undefined}
+              className={navLinkClass({ isActive: props.workspaceActive })}
+              to="/"
+            >
+              Conversations
+            </Link>
+            {props.navItems.map((item) => (
+              <NavLink className={navLinkClass} key={item.key} to={item.to}>
+                {item.label}
+                <NavCount count={item.count} />
+              </NavLink>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2 justify-self-end">
+            <Button
+              aria-keyshortcuts="Meta+K Control+K"
+              className="mr-1 w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+              onClick={props.onSearch}
+            >
+              <Search aria-hidden="true" className="size-4 shrink-0" />
+              <span className="flex-1 text-left">Search…</span>
+              <kbd className="font-sans text-xs">
+                {COMMAND_PALETTE_SHORTCUT}
+              </kbd>
+            </Button>
+            {props.usage}
+            {props.profile}
+          </div>
+        </div>
+      ) : null}
       <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
         {conversationMode && mobileBack ? (
           <button

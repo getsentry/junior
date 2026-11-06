@@ -201,17 +201,24 @@ function CapRow({ window }: { window: CapWindow }) {
   );
 }
 
+const POPOVER_SIDE = {
+  sheet: "top",
+  sidebar: "right",
+  "top-bar": "bottom",
+} as const;
+
 /**
  * Keep the viewer's rolling spend in view. `sidebar` is the nav sidebar
- * footer row (ring only when the sidebar is collapsed). `sheet` is the row in
- * the mobile navigation sheet. Click opens both windows against their caps.
+ * footer row (ring only when the sidebar is collapsed). `top-bar` sits beside
+ * the avatar in the desktop top bar. `sheet` is the row in the mobile
+ * navigation sheet. Click opens both windows against their caps.
  */
 export function UsageMeter(props: {
   /** Viewer's People page, which charts spend by day. */
   detailsTo: string;
   spend?: PersonalSpendReport;
   unavailable?: boolean;
-  variant: "sheet" | "sidebar";
+  variant: "sheet" | "sidebar" | "top-bar";
 }) {
   const [open, setOpen] = useState(false);
   const windows = props.spend ? capWindows(props.spend) : undefined;
@@ -277,7 +284,8 @@ export function UsageMeter(props: {
         <PopoverTrigger
           aria-label={label}
           className={cn(
-            "flex h-10 w-full cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1 text-left transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+            "flex h-10 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent text-left transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+            props.variant === "sheet" ? "w-full px-1" : "px-2",
             open && "bg-dashboard-fill-hover",
           )}
         >
@@ -288,7 +296,7 @@ export function UsageMeter(props: {
         align="end"
         className="grid w-72 gap-3 rounded-xl border-0 bg-dashboard-surface-raised/95 p-3.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
         id="usage-popover"
-        side={props.variant === "sidebar" ? "right" : "top"}
+        side={POPOVER_SIDE[props.variant]}
       >
         {windows ? (
           <>

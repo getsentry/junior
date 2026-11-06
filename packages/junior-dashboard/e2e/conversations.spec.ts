@@ -569,6 +569,60 @@ test("keeps usage in the nav sidebar footer in both widths", async ({
   await expect(usage).toBeVisible();
 });
 
+test("switches desktop navigation between adaptive, top bar, and sidebar", async ({
+  page,
+  dashboard,
+}) => {
+  // Adaptive tall windows use the top bar, with usage beside the avatar.
+  await page.setViewportSize({ width: 1440, height: 1150 });
+  await page.goto(dashboard.baseURL);
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  const sidebar = page
+    .locator('[data-slot="sidebar"]')
+    .filter({ has: primary });
+  const usage = page.getByRole("button", {
+    name: "Usage: <1% of weekly soft cap. 7 days $0.46, 30 days $0.46.",
+  });
+  await expect(primary).toBeVisible();
+  await expect(sidebar).toHaveCount(0);
+  await expect(usage).toContainText(/7d\s*\$0\.46\s*·\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+  await usage.click();
+  await expect(page.locator("#usage-popover")).toContainText("$0.46 of $500");
+  await page.keyboard.press("Escape");
+
+  const openMenu = async () => {
+    await page
+      .getByRole("button", {
+        name: "Open profile menu for Dashboard User",
+        exact: true,
+      })
+      .click();
+    return page.locator("#profile-popover");
+  };
+  const navigation = (await openMenu()).getByRole("group", {
+    name: "Navigation",
+  });
+  await expect(
+    navigation.getByRole("button", { name: "Adaptive navigation" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await navigation.getByRole("button", { name: "Sidebar navigation" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect(primary).toHaveCount(1);
+  await page.keyboard.press("Escape");
+
+  // The choice survives a reload, and the top bar choice ignores height.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.reload();
+  await expect(sidebar).toBeVisible();
+  await (await openMenu())
+    .getByRole("button", { name: "Top bar navigation" })
+    .click();
+  await expect(sidebar).toHaveCount(0);
+  await expect(primary).toBeVisible();
+});
+
 test("groups profile and session actions", async ({ page, dashboard }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await page.goto(dashboard.baseURL);
