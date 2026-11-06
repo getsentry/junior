@@ -54,8 +54,7 @@ export function useNavLayoutChoice(): [
   return [choice, saveChoice];
 }
 
-/** Follow one CSS media query. */
-export function useMediaQuery(query: string): boolean {
+function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
     (onChange) => {
       const media = window.matchMedia(query);

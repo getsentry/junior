@@ -560,12 +560,11 @@ test("keeps usage in the nav sidebar footer in both widths", async ({
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await page.keyboard.press("Escape");
 
-  // Narrower desktop windows always use the icon rail.
+  // Narrower desktop windows keep the choice and the toggle.
   await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+  await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  await expect(
-    sidebar.getByRole("button", { name: "Expand sidebar" }),
-  ).toHaveCount(0);
   await expect(usage).toBeVisible();
 });
 
@@ -621,6 +620,13 @@ test("switches desktop navigation between adaptive, top bar, and sidebar", async
     .click();
   await expect(sidebar).toHaveCount(0);
   await expect(primary).toBeVisible();
+
+  // Settings shows the same choice.
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const setting = page.getByRole("radiogroup", { name: "Navigation" });
+  await expect(setting.getByRole("radio", { name: /^Top bar/ })).toBeChecked();
+  await setting.getByRole("radio", { name: /^Adaptive/ }).click();
+  await expect(sidebar).toBeVisible();
 });
 
 test("groups profile and session actions", async ({ page, dashboard }) => {

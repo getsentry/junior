@@ -334,7 +334,6 @@ export function DashboardShell() {
         />
         {desktopTopBar ? null : (
           <NavRail
-            canExpand={navSidebar.canExpand}
             navItems={primaryNavItems}
             onSearch={openCommandPalette}
             onToggle={navSidebar.toggle}

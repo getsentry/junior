@@ -9,7 +9,6 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useMatch } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
-import { useMediaQuery } from "../../navLayout";
 import { JuniorLogo } from "../JuniorLogo";
 import {
   Sidebar,
@@ -30,9 +29,6 @@ import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 import { cn } from "../../styles";
 
 const OPEN_KEY = "junior:nav:sidebar-open";
-// From here the nav sidebar, conversation list, transcript, and details panel
-// all fit. At 1280px the details panel would squeeze the transcript to ~400px.
-const WIDE_QUERY = "(min-width: 90rem)";
 
 const RAIL_BUTTON_CLASS =
   "h-10 gap-3 rounded-lg px-2.5 text-dashboard-text-muted group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! data-active:bg-dashboard-accent/[0.12] data-active:font-normal data-active:text-dashboard-accent-text [&_svg]:size-5";
@@ -63,14 +59,11 @@ function writeOpenPreference(open: boolean) {
 }
 
 /**
- * Own the nav sidebar state. Wide windows use the icon rail until the viewer
- * expands the sidebar; narrower desktop windows always use the icon rail and
- * keep the saved choice for later. Cmd/Ctrl+B toggles it while the sidebar
+ * Own the nav sidebar state. It starts as the icon rail until the viewer
+ * expands it, and keeps that choice. Cmd/Ctrl+B toggles it while the sidebar
  * is the desktop navigation (`shown`).
  */
 export function useNavSidebar(shown: boolean) {
-  const wide = useMediaQuery(WIDE_QUERY);
-  const canExpand = shown && wide;
   const [preferOpen, setPreferOpen] = useState(readOpenPreference);
 
   const toggle = () => setPreferOpen((current) => !current);
@@ -80,7 +73,7 @@ export function useNavSidebar(shown: boolean) {
   }, [preferOpen]);
 
   useEffect(() => {
-    if (!canExpand) return;
+    if (!shown) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -96,9 +89,9 @@ export function useNavSidebar(shown: boolean) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canExpand]);
+  }, [shown]);
 
-  return { canExpand, open: wide && preferOpen, toggle };
+  return { open: shown && preferOpen, toggle };
 }
 
 /**
@@ -215,12 +208,11 @@ function RailToggle(props: { open: boolean; onToggle(): void }) {
 }
 
 /**
- * Desktop primary navigation when the top bar is off. Wide windows can show
- * icons and labels; narrower windows show the icon rail. `DashboardHeader`
- * owns the top bar and mobile navigation.
+ * Desktop primary navigation when the top bar is off: the icon rail, or icons
+ * and labels when expanded. `DashboardHeader` owns the top bar and mobile
+ * navigation.
  */
 export function NavRail(props: {
-  canExpand: boolean;
   navItems: DashboardHeaderNavItem[];
   onSearch(): void;
   onToggle(): void;
@@ -251,9 +243,7 @@ export function NavRail(props: {
               {getDashboardAgentName()}
             </span>
           </Link>
-          {props.canExpand ? (
-            <RailToggle onToggle={props.onToggle} open={props.open} />
-          ) : null}
+          <RailToggle onToggle={props.onToggle} open={props.open} />
         </div>
         <RailSearchItem onSearch={props.onSearch} />
         {/* Splits the global search from the page links below. */}
