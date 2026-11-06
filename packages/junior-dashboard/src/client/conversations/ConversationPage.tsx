@@ -408,9 +408,12 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   const agentTree = detail.data?.agentTree;
-  // A child Conversation takes input only from its parent agent, and it
-  // runs without interactive auth, so it has no approval to show.
-  const canReply = view === "rich" && detail.data?.isParticipant && !agentTree;
+  // A Task takes input only from its parent agent, and it runs without
+  // interactive auth, so it has no approval to show.
+  const canReply =
+    view === "rich" &&
+    detail.data?.isParticipant &&
+    detail.data.kind !== "task";
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
