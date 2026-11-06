@@ -14,6 +14,10 @@
     {
       "name": "display-text",
       "specifier": "./oxlint/display-text.ts"
+    },
+    {
+      "name": "text-control",
+      "specifier": "./oxlint/text-control.ts"
     }
   ],
   "ignorePatterns": [
@@ -61,6 +65,7 @@
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "display-text/no-raw-display-text": "error",
+    "text-control/no-raw-text-control": "error",
     "no-restricted-imports": [
       "error",
       {
@@ -95,6 +100,12 @@
     ]
   },
   "overrides": [
+    {
+      "files": ["src/client/components/ui/**"],
+      "rules": {
+        "text-control/no-raw-text-control": "off"
+      }
+    },
     {
       "files": ["src/client/display-text/**"],
       "rules": {
