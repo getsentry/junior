@@ -293,9 +293,9 @@ function arrayWith(column: SQL, value: string): SQL {
 /**
  * Save one change to the "needs fixes" state of a Junior pull request.
  * GitHub can deliver webhooks late or more than once, so:
- * - A push of a new head commit clears failures and change requests. A push
- *   of the saved head keeps them, and a push that is not newer than the
- *   saved one is ignored.
+ * - A newer push clears change requests. It clears failures too, unless
+ *   check suites already saved its commit as the head. A push that is not
+ *   newer than the saved one is ignored.
  * - A check suite of another commit than the saved head is ignored.
  * - A review submitted before the saved push is ignored. A dismissal always
  *   applies.
@@ -308,12 +308,14 @@ export async function recordGitHubPullRequestAttention(
 ): Promise<void> {
   const t = juniorGitHubPullRequests;
   if (change.kind === "push") {
-    // A check suite can save the head commit before its push arrives.
+    // A check suite can save the head commit before its push arrives. Only
+    // its failures belong to that commit; change requests do not record a
+    // commit, so the push answers them.
     const sameHead = sql`${t.checksHeadSha} is not distinct from ${change.headSha}`;
     await db
       .update(t)
       .set({
-        changesRequestedBy: sql`CASE WHEN ${sameHead} THEN ${t.changesRequestedBy} ELSE '{}'::text[] END`,
+        changesRequestedBy: [],
         checksHeadAt: change.pushedAt,
         checksHeadSha: change.headSha,
         failingCheckSuiteIds: sql`CASE WHEN ${sameHead} THEN ${t.failingCheckSuiteIds} ELSE '{}'::text[] END`,

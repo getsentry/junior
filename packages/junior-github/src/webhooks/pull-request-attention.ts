@@ -2,7 +2,8 @@
  * Webhook facts that decide whether a Junior pull request needs fixes, for
  * Needs attention. A pull request needs fixes while a check suite on its
  * head commit failed, or while a reviewer requests changes with no push
- * since. A push of a new head commit starts over: it is the answer to both.
+ * since. A newer push answers both, but keeps failures that check suites
+ * already saved for its own commit.
  */
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";

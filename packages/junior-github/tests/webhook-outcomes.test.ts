@@ -2991,13 +2991,22 @@ describe("GitHub-owned pull request outcomes", () => {
       await send(suite(11, "aaaaaaa", "failure"), "check_suite");
       await send(suite(12, "aaaaaaa", "success"), "check_suite");
       await send(
-        review("submitted", "changes_requested", "Octocat"),
+        review(
+          "submitted",
+          "changes_requested",
+          "Octocat",
+          "2026-07-01T08:00:00.000Z",
+        ),
         "pull_request_review",
       );
       await send(
         review("submitted", "commented", "hubot"),
         "pull_request_review",
       );
+      await expect(attention()).resolves.toEqual({
+        changesRequestedBy: ["octocat"],
+        failingCheckSuiteIds: ["11"],
+      });
       const push = (headSha: string, updatedAt: string) =>
         pullRequestPayload({
           action: "synchronize",
@@ -3008,10 +3017,10 @@ describe("GitHub-owned pull request outcomes", () => {
           },
         });
       // A late push of the commit that the suite already ran on keeps its
-      // state.
+      // failure, but answers the earlier change request.
       await send(push("aaaaaaa", "2026-07-01T09:00:00.000Z"), "pull_request");
       await expect(attention()).resolves.toEqual({
-        changesRequestedBy: ["octocat"],
+        changesRequestedBy: [],
         failingCheckSuiteIds: ["11"],
       });
       await expect(waiting()).resolves.toEqual(["slack:C123:1712345.0001"]);
