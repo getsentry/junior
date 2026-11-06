@@ -1,4 +1,6 @@
 import {
+  mutationOptions,
+  type QueryClient,
   useMutation,
   useMutationState,
   useQueryClient,
@@ -104,16 +106,32 @@ export function useLatestArchiveStatus(conversationId: string | undefined) {
   return conversationId ? statuses.at(-1) : undefined;
 }
 
+type ArchiveConversationOptions = {
+  onError?(): void;
+  onSuccess?(archivedAt: string | null): void;
+};
+
 /** Archive or restore one conversation with an immediate reversible cache update. */
 export function useArchiveConversation(
   conversationId: string,
-  options?: {
-    onError?(): void;
-    onSuccess?(archivedAt: string | null): void;
-  },
+  options?: ArchiveConversationOptions,
 ) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutation(
+    archiveConversationMutationOptions(queryClient, conversationId, options),
+  );
+}
+
+/**
+ * Build the archive mutation for callers that outlive a component, such as a
+ * toast action. The shared mutation key keeps pending-state readers in sync.
+ */
+export function archiveConversationMutationOptions(
+  queryClient: QueryClient,
+  conversationId: string,
+  options?: ArchiveConversationOptions,
+) {
+  return mutationOptions({
     mutationKey: [...archiveConversationMutationKey, conversationId],
     mutationFn: (args: ArchiveConversationVariables) =>
       patch(

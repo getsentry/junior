@@ -1,9 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo } from "react";
 import {
   Archive,
   ArchiveRestore,
   ChevronRight,
-  CircleAlert,
   Inbox,
   LockKeyhole,
   Pin,
@@ -12,6 +11,7 @@ import {
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./conversationArchive";
+import { useConversationActionToasts } from "./conversationActionToasts";
 import { usePinConversation } from "./usePinConversation";
 import { conversationPath } from "./conversationRoutes";
 import {
@@ -21,7 +21,6 @@ import {
 import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
-import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
 import {
   buildConversationSections,
@@ -54,10 +53,6 @@ type ConversationSidebarEntry =
     }
   | { conversation: Conversation; key: string; kind: "conversation" };
 
-// The title names the attempted action, so a failed archive or pin never
-// reads the row's already-optimistic state.
-type RowActionError = { conversation: Conversation; title: string };
-
 const ROW_ACTION_BUTTON_CLASS =
   "absolute top-0.5 z-10 grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed";
 
@@ -85,43 +80,16 @@ export function ConversationSidebar(props: {
 }) {
   const variant = props.variant ?? "panel";
   const isLanding = variant === "landing";
-  const [archivedConversation, setArchivedConversation] =
-    useState<Conversation>();
-  const [rowError, setRowError] = useState<RowActionError>();
-  const dismissArchivedConversation = useCallback(
-    () => setArchivedConversation(undefined),
-    [],
-  );
-  const handleArchiveError = useCallback(
-    (conversation: Conversation, wasArchiving: boolean) => {
-      setRowError({
-        conversation,
-        title: wasArchiving ? "Could not archive" : "Could not restore",
-      });
-    },
-    [],
-  );
+  const { clearActionError, showActionError, showArchiveError, showArchived } =
+    useConversationActionToasts();
   const handlePinError = useCallback(
     (conversation: Conversation, wasPinning: boolean) => {
-      setRowError({
+      showActionError(
         conversation,
-        title: wasPinning ? "Could not pin" : "Could not unpin",
-      });
+        wasPinning ? "Could not pin" : "Could not unpin",
+      );
     },
-    [],
-  );
-  // A later success on the same row replaces its error notice.
-  const clearRowError = useCallback((conversation: Conversation) => {
-    setRowError((current) =>
-      current?.conversation.id === conversation.id ? undefined : current,
-    );
-  }, []);
-  const handleArchived = useCallback(
-    (conversation: Conversation) => {
-      clearRowError(conversation);
-      setArchivedConversation(conversation);
-    },
-    [clearRowError],
+    [showActionError],
   );
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
@@ -236,10 +204,10 @@ export function ConversationSidebar(props: {
               ) : (
                 <ConversationSidebarRow
                   conversation={entry.conversation}
-                  onArchiveError={handleArchiveError}
-                  onArchived={handleArchived}
+                  onArchiveError={showArchiveError}
+                  onArchived={showArchived}
                   onPinError={handlePinError}
-                  onPinned={clearRowError}
+                  onPinned={clearActionError}
                   selected={entry.conversation.id === props.selectedId}
                   unread={props.finishedConversationIds.has(
                     entry.conversation.id,
@@ -254,33 +222,6 @@ export function ConversationSidebar(props: {
           />
         )}
       </div>
-      {archivedConversation || rowError ? (
-        <div
-          className={cn(
-            // Landing is content-tall (parent scrolls). Keep notices on the
-            // visible viewport instead of the end of the long list.
-            isLanding
-              ? "fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 grid gap-2"
-              : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2",
-          )}
-        >
-          {rowError ? (
-            <ConversationActionErrorNotice
-              conversation={rowError.conversation}
-              onDismiss={() => setRowError(undefined)}
-              title={rowError.title}
-            />
-          ) : null}
-          {archivedConversation ? (
-            <ArchivedConversationNotice
-              // Remount on each archive so the expiry timer and restore mutation reset.
-              key={archivedConversation.id}
-              conversation={archivedConversation}
-              onRestored={dismissArchivedConversation}
-            />
-          ) : null}
-        </div>
-      ) : null}
     </aside>
   );
 }
@@ -514,80 +455,5 @@ function ConversationRowState(props: {
     <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
       {formatCompactAge(props.lastSeenAt)}
     </span>
-  );
-}
-
-function ConversationActionErrorNotice(props: {
-  conversation: Conversation;
-  onDismiss(): void;
-  title: string;
-}) {
-  return (
-    <Notice
-      action={
-        <NoticeAction onClick={props.onDismiss} title="Dismiss" tone="error">
-          Dismiss
-        </NoticeAction>
-      }
-      detail={conversationDisplayTitle(props.conversation)}
-      icon={CircleAlert}
-      title={props.title}
-      tone="error"
-    />
-  );
-}
-
-function ArchivedConversationNotice(props: {
-  conversation: Conversation;
-  onRestored(): void;
-}) {
-  const restore = useArchiveConversation(props.conversation.id, {
-    onSuccess: (archived) => {
-      if (!archived) props.onRestored();
-    },
-  });
-  const title = conversationDisplayTitle(props.conversation);
-
-  useEffect(() => {
-    if (restore.isPending || restore.error) return;
-    const timeout = window.setTimeout(props.onRestored, 6_000);
-    return () => window.clearTimeout(timeout);
-  }, [
-    props.conversation.id,
-    props.onRestored,
-    restore.error,
-    restore.isPending,
-  ]);
-
-  return (
-    <Notice
-      action={
-        <NoticeAction
-          aria-label={`Undo archive for ${title}`}
-          disabled={restore.isPending}
-          onClick={() =>
-            restore.mutate({
-              archived: false,
-              lastSeenAt: props.conversation.lastSeenAt,
-            })
-          }
-          title={`Undo archive for ${title}`}
-        >
-          {restore.isPending ? "Restoring…" : "Undo"}
-        </NoticeAction>
-      }
-      detail={title}
-      icon={ArchiveRestore}
-      title="Conversation archived"
-    >
-      {restore.error ? (
-        <div
-          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-sans text-xs text-rose-50/85"
-          role="alert"
-        >
-          Could not restore the conversation.
-        </div>
-      ) : null}
-    </Notice>
   );
 }
