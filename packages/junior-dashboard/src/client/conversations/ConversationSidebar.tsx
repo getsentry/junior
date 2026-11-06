@@ -5,6 +5,8 @@ import {
   ChevronRight,
   Inbox,
   LockKeyhole,
+  Mail,
+  MailOpen,
   Pin,
   SquarePen,
 } from "lucide-react";
@@ -38,6 +40,12 @@ import { useCollapsedConversationSections } from "./useCollapsedConversationSect
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Tooltip,
@@ -84,6 +92,7 @@ export function ConversationSidebar(props: {
   onNewConversation(): void;
   onQueryChange(value: string): void;
   onReorderPins: ReorderPins;
+  onUnreadChange(conversation: Conversation, unread: boolean): void;
 }) {
   const variant = props.variant ?? "panel";
   const isLanding = variant === "landing";
@@ -234,6 +243,7 @@ export function ConversationSidebar(props: {
                     onArchived={showArchived}
                     onPinError={handlePinError}
                     onPinned={clearActionError}
+                    onUnreadChange={props.onUnreadChange}
                     selected={entry.conversation.id === props.selectedId}
                     unread={props.finishedConversationIds.has(
                       entry.conversation.id,
@@ -312,6 +322,7 @@ type ConversationSidebarRowProps = {
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
+  onUnreadChange(conversation: Conversation, unread: boolean): void;
   selected: boolean;
   unread: boolean;
   waiting?: WaitingConversation;
@@ -360,139 +371,182 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const emphasized = props.unread || Boolean(props.waiting);
   const drag = props.drag;
+  // Unread tracks idle conversations only.
+  const canMarkUnread = props.conversation.status === "completed";
+  const archived = Boolean(props.conversation.archivedAt);
+  const togglePin = () => pin.mutate(!pinned);
+  const toggleArchive = () =>
+    archive.mutate({
+      archived: !archived,
+      lastSeenAt: props.conversation.lastSeenAt,
+    });
   return (
-    <div
-      {...prefetch}
-      {...drag?.listeners}
-      className={cn(
-        "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
-        props.selected && "bg-dashboard-surface-active",
-        drag?.dragging && "opacity-40",
-      )}
-      onKeyDown={drag?.onKeyDown}
-      ref={drag?.setNodeRef}
-    >
-      <Link
-        aria-current={props.selected ? "page" : undefined}
-        aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+    <ContextMenu>
+      <ContextMenuTrigger
+        {...prefetch}
+        {...drag?.listeners}
         className={cn(
-          "grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
-          // A long press drags the row instead of opening the link menu.
-          drag && "[-webkit-touch-callout:none]",
+          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
+          props.selected && "bg-dashboard-surface-active",
+          drag?.dragging && "opacity-40",
         )}
-        // The browser's own link drag would take the pointer from the reorder.
-        draggable={drag ? false : undefined}
-        to={conversationPath(props.conversation.id)}
+        onKeyDown={drag?.onKeyDown}
+        ref={drag?.setNodeRef}
       >
-        <span className="grid place-items-center">
-          {emphasized ? (
-            <span
-              aria-label={props.waiting ? "Waiting on you" : "Unread"}
-              className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
-              role="img"
-            />
-          ) : props.conversation.visibility === "private" ? (
-            <LockKeyhole
-              aria-label="Private conversation"
-              className="size-3 shrink-0 text-dashboard-text-faint"
-            />
-          ) : null}
-        </span>
-        <span
-          className={cn(
-            "min-w-0 truncate font-sans text-sm leading-snug",
-            emphasized ? "font-semibold" : props.selected && "font-medium",
-            emphasized || props.selected || status === "active"
-              ? "text-dashboard-text"
-              : "text-dashboard-text-muted",
-          )}
-        >
-          {title}
-        </span>
-        <ConversationRowState
-          lastSeenAt={props.conversation.lastSeenAt}
-          status={status}
-        />
-      </Link>
-      {props.waiting ? (
         <Link
-          className="mb-1.5 ml-[1.625rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-          to={conversationPath(props.conversation.id, { reviewItems: true })}
+          aria-current={props.selected ? "page" : undefined}
+          aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+          className={cn(
+            "grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+            // A long press opens the row menu or drags a pin, not the iOS
+            // link callout.
+            "[-webkit-touch-callout:none]",
+          )}
+          // The browser's own link drag would take the pointer from the reorder.
+          draggable={drag ? false : undefined}
+          to={conversationPath(props.conversation.id)}
         >
-          <Inbox
-            aria-hidden="true"
-            className="size-3 shrink-0 text-dashboard-text-muted"
-          />
-          <span className="min-w-0 truncate">{props.waiting.title}</span>
-          {props.waiting.count > 1 ? (
-            <span className="ml-auto shrink-0 text-dashboard-text-faint">
-              +{props.waiting.count - 1} more
-            </span>
-          ) : null}
-          <ChevronRight
-            aria-hidden="true"
+          <span className="grid place-items-center">
+            {emphasized ? (
+              <span
+                aria-label={props.waiting ? "Waiting on you" : "Unread"}
+                className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
+                role="img"
+              />
+            ) : props.conversation.visibility === "private" ? (
+              <LockKeyhole
+                aria-label="Private conversation"
+                className="size-3 shrink-0 text-dashboard-text-faint"
+              />
+            ) : null}
+          </span>
+          <span
             className={cn(
-              "size-3 shrink-0 text-dashboard-text-muted",
-              props.waiting.count > 1 ? undefined : "ml-auto",
+              "min-w-0 truncate font-sans text-sm leading-snug",
+              emphasized ? "font-semibold" : props.selected && "font-medium",
+              emphasized || props.selected || status === "active"
+                ? "text-dashboard-text"
+                : "text-dashboard-text-muted",
             )}
+          >
+            {title}
+          </span>
+          <ConversationRowState
+            lastSeenAt={props.conversation.lastSeenAt}
+            status={status}
           />
         </Link>
-      ) : null}
-      {/* Mobile rows pin from the conversation menu, so only the archive
+        {props.waiting ? (
+          <Link
+            className="mb-1.5 ml-[1.625rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+            to={conversationPath(props.conversation.id, { reviewItems: true })}
+          >
+            <Inbox
+              aria-hidden="true"
+              className="size-3 shrink-0 text-dashboard-text-muted"
+            />
+            <span className="min-w-0 truncate">{props.waiting.title}</span>
+            {props.waiting.count > 1 ? (
+              <span className="ml-auto shrink-0 text-dashboard-text-faint">
+                +{props.waiting.count - 1} more
+              </span>
+            ) : null}
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-3 shrink-0 text-dashboard-text-muted",
+                props.waiting.count > 1 ? undefined : "ml-auto",
+              )}
+            />
+          </Link>
+        ) : null}
+        {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
-      {props.conversation.archivedAt ? null : (
+        {archived ? null : (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
+                  aria-pressed={pinned}
+                  className={cn(
+                    ROW_ACTION_BUTTON_CLASS,
+                    "right-9 max-sm:hidden",
+                  )}
+                  disabled={pin.isPending}
+                  onClick={togglePin}
+                  type="button"
+                >
+                  <Pin
+                    aria-hidden="true"
+                    fill={pinned ? "currentColor" : "none"}
+                    size={14}
+                  />
+                </button>
+              }
+            />
+            <TooltipContent size="compact">
+              {pinned ? "Unpin" : "Pin"}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <Tooltip>
           <TooltipTrigger
             render={
               <button
-                aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
-                aria-pressed={pinned}
-                className={cn(ROW_ACTION_BUTTON_CLASS, "right-9 max-sm:hidden")}
-                disabled={pin.isPending}
-                onClick={() => pin.mutate(!pinned)}
+                aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
+                className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
+                disabled={archive.isPending}
+                onClick={toggleArchive}
                 type="button"
               >
-                <Pin
-                  aria-hidden="true"
-                  fill={pinned ? "currentColor" : "none"}
-                  size={14}
-                />
+                {archived ? (
+                  <ArchiveRestore aria-hidden="true" size={14} />
+                ) : (
+                  <Archive aria-hidden="true" size={14} />
+                )}
               </button>
             }
           />
           <TooltipContent size="compact">
-            {pinned ? "Unpin" : "Pin"}
+            {archived ? "Restore" : "Archive"}
           </TooltipContent>
         </Tooltip>
-      )}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-              className={cn(ROW_ACTION_BUTTON_CLASS, "right-1.5")}
-              disabled={archive.isPending}
-              onClick={() =>
-                archive.mutate({
-                  archived: !props.conversation.archivedAt,
-                  lastSeenAt: props.conversation.lastSeenAt,
-                })
-              }
-              type="button"
-            >
-              {props.conversation.archivedAt ? (
-                <ArchiveRestore aria-hidden="true" size={14} />
-              ) : (
-                <Archive aria-hidden="true" size={14} />
-              )}
-            </button>
-          }
-        />
-        <TooltipContent size="compact">
-          {props.conversation.archivedAt ? "Restore" : "Archive"}
-        </TooltipContent>
-      </Tooltip>
-    </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {props.unread ? (
+          <ContextMenuItem
+            onClick={() => props.onUnreadChange(props.conversation, false)}
+          >
+            <MailOpen aria-hidden="true" />
+            Mark as read
+          </ContextMenuItem>
+        ) : (
+          <ContextMenuItem
+            disabled={!canMarkUnread}
+            onClick={() => props.onUnreadChange(props.conversation, true)}
+          >
+            <Mail aria-hidden="true" />
+            Mark as unread
+          </ContextMenuItem>
+        )}
+        {/* Archived rows restore before they pin, like the row buttons. */}
+        {archived ? null : (
+          <ContextMenuItem disabled={pin.isPending} onClick={togglePin}>
+            <Pin aria-hidden="true" />
+            {pinned ? "Unpin" : "Pin"}
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
+          {archived ? (
+            <ArchiveRestore aria-hidden="true" />
+          ) : (
+            <Archive aria-hidden="true" />
+          )}
+          {archived ? "Restore" : "Archive"}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 });
 

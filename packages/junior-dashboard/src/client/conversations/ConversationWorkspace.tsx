@@ -104,7 +104,7 @@ export function ConversationWorkspace(props: {
 
   const waitingConversations = useWaitingConversations();
   const waitingConversationIds = useWaitingConversationIds();
-  const { finishedConversationIds, heldConversationId, markRead } =
+  const { finishedConversationIds, heldConversationId, markRead, setUnread } =
     useConversationFinishedIndicators(
       conversations,
       selectedId,
@@ -296,6 +296,7 @@ export function ConversationWorkspace(props: {
                 finishedConversationIds={finishedConversationIds}
                 heldConversationId={heldConversationId}
                 loading={feed.isPending}
+                onUnreadChange={setUnread}
                 onNewConversation={openCreate}
                 onQueryChange={setQuery}
                 onReorderPins={reorderPins}
