@@ -335,6 +335,9 @@ describe("McpToolManager", () => {
       content: [{ type: "text", text: "Authorization pending." }],
     });
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
+
+    await manager.close();
+    expect(closeMock).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces MCP authorization challenges during tool discovery", async () => {
