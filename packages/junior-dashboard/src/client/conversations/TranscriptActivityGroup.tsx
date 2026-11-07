@@ -52,8 +52,9 @@ export function isCollapsibleActivityEntry(
 
 /**
  * Keys of message rows that fold into activity: each quiet reply and the
- * Event messages that started its Turn. Event messages wait for the next
- * reply; a message from a person clears them.
+ * Event messages that started its Turn, and each Event message whose Turn
+ * ended without a reply. Event messages wait for the next reply; a message
+ * from a person clears them.
  */
 export function quietTurnEntryKeys(
   entries: readonly RenderedTranscriptEntry[],
@@ -64,6 +65,10 @@ export function quietTurnEntryKeys(
     if (entry.kind !== "message") continue;
     const { message } = entry;
     if (message.role === "user") {
+      if (message.noReply) {
+        keys.add(entry.key);
+        continue;
+      }
       eventKeys = message.eventType ? [...eventKeys, entry.key] : [];
       continue;
     }

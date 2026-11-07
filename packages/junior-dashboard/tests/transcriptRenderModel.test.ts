@@ -226,11 +226,23 @@ describe("canonical event transcript reduction", () => {
           trustedSummary: "David merged PR #42.",
           text: "line one\nline two",
         }),
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "started",
+          inputMessageIds: ["event-1"],
+        }),
+        event(2, "2026-01-01T00:00:02.000Z", {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "no_reply",
+        }),
       ]),
     );
 
     expect(message).toMatchObject({
       eventType: "pull_request.merged",
+      noReply: true,
       trustedSummary: "David merged PR #42.",
       parts: [{ type: "text", text: "line one\nline two" }],
     });

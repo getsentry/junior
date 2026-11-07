@@ -12,7 +12,7 @@ describe("renderTaskInput", () => {
       <instructions>Post a digest. Summarize the latest state.</instructions>
       When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.
       When you reply, follow any reply format in the instructions.
-      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.
       </task>"
     `);
   });
@@ -44,7 +44,7 @@ describe("renderTaskInput", () => {
       </external-text>
       When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.
       When you reply, follow any reply format in the instructions.
-      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.
       </task>"
     `);
   });
@@ -87,7 +87,7 @@ describe("renderTaskInput", () => {
         "</external-text>",
         "When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.",
         "When you reply, follow any reply format in the instructions.",
-        "When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.",
+        "When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.",
         "</task>",
       ].join("\n"),
     );
@@ -165,7 +165,7 @@ describe("renderTaskBatchInput", () => {
       </watch>
       When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.
       When you reply, follow any reply format in the instructions.
-      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.
       </task>"
     `);
   });
