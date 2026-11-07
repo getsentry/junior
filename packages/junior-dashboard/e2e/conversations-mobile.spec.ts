@@ -171,6 +171,15 @@ test("starts a new conversation from a centered compose empty state", async ({
   await expect(
     page.getByRole("searchbox", { name: "Search your conversations" }),
   ).toBeVisible();
+
+  // A short new transcript must not leave the reply composer mid-screen.
+  await composer.fill("Check the deploy");
+  await composer.press("Enter");
+  await expect(page).toHaveURL(/\/conversations\/.+/);
+  await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
+  const reply = page.getByPlaceholder("Message Junior…");
+  await reply.focus();
+  await expectFocusedComposerAtVisualViewportBottom(reply, 844);
 });
 
 test.describe("on a touch screen", () => {

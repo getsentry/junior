@@ -668,8 +668,13 @@ export function ConversationPage(props: {
     </>
   );
 
+  // Pin the transcript to one row. The mobile sheet slot is a grid item too, and
+  // an implicit row for it took height from short transcripts.
   return (
-    <div ref={pageRef} className="grid h-full min-h-0 min-w-0">
+    <div
+      ref={pageRef}
+      className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]"
+    >
       <ConversationSidePanelLayout
         side={
           showDetails || showEvent || turnContext || showQuickQuestion
