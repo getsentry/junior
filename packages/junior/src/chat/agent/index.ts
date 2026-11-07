@@ -73,7 +73,10 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
+import {
+  isTurnInputCommitLostError,
+  TurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
@@ -873,6 +876,17 @@ async function executeAgentRunInPrivacyContext(
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
       | undefined;
+    // A worker can stall past its Lease and come back after another worker
+    // took the Conversation. Check the Lease right before each side effect.
+    const requireConversationLease = async (
+      action: "reply" | "save",
+    ): Promise<void> => {
+      if (durability.checkIn && !(await durability.checkIn())) {
+        throw new TurnInputCommitLostError(
+          `Conversation Lease lost before ${action} for conversation=${conversationId} turn=${turnId}`,
+        );
+      }
+    };
     /** Deliver one completed tool-free visible message before the agent advances. */
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
@@ -882,6 +896,7 @@ async function executeAgentRunInPrivacyContext(
         return;
       }
       try {
+        await requireConversationLease("reply");
         await delivery(message);
         acceptedToolFreeAssistant = true;
       } catch (error) {
@@ -1130,9 +1145,18 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
-        return runResume
-          .persistSafeBoundary([...agent!.state.messages])
-          .then(() => undefined);
+        return requireConversationLease("save")
+          .then(() => runResume.persistSafeBoundary([...agent!.state.messages]))
+          .then(
+            () => undefined,
+            (error: unknown) => {
+              // Pi turns a listener error into a failed model message, so
+              // keep the error for the step to rethrow.
+              pendingPiHookError ??=
+                error instanceof Error ? error : new Error(String(error));
+              throw error;
+            },
+          );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         if (

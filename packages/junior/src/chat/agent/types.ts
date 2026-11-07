@@ -216,6 +216,11 @@ export type AgentDurability = {
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
+  /**
+   * Return false when the durable worker no longer holds the Conversation
+   * Lease. The run checks it before each saved step and each reply.
+   */
+  checkIn?: () => Promise<boolean>;
   drainSteeringMessages?: (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentSteeringMessage[]>;

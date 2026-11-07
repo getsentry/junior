@@ -103,6 +103,7 @@ import {
   ConversationTurnBoundaryError,
   CooperativeTurnYieldError,
   getConversationTurnBoundaryError,
+  isTurnInputCommitLostError,
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -275,6 +276,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         context?: { conversationContext?: string },
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
     },
   ) {
     if (message.author.isMe) {
@@ -1135,6 +1137,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               onInputCommitted: options.ack,
               drainSteeringMessages,
               shouldYield: options.shouldYield,
+              checkIn: options.checkIn,
               onSandboxRefChanged: async (sandboxRef) => {
                 await persistThreadStateById(conversationId, {
                   sandboxRef,
@@ -1454,6 +1457,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (error instanceof TurnInputDeferredError) {
             shouldPersistFailureState = false;
             throw error;
+          }
+          // Another worker holds the Lease and owns this Turn's outcome.
+          const leaseLoss =
+            error instanceof AgentRunError ? error.cause : error;
+          if (isTurnInputCommitLostError(leaseLoss)) {
+            shouldPersistFailureState = false;
+            throw leaseLoss;
           }
           if (error === turnWakeError) {
             shouldPersistFailureState = true;

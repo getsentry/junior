@@ -136,7 +136,7 @@ export function createConversationWork(
               }
             : undefined),
         },
-        { shouldYield: hooks.shouldYield },
+        { checkIn: hooks.checkIn, shouldYield: hooks.shouldYield },
       );
     },
     runTurn: runtime.runDispatchTurn,

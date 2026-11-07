@@ -96,6 +96,7 @@ export interface ReplyHooks {
   onTurnStatePersisted?: () => Promise<void>;
   isFinalAttempt?: boolean;
   shouldYield?: () => boolean;
+  checkIn?: () => Promise<boolean>;
   stopSignal?: AbortSignal;
 }
 
@@ -199,6 +200,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
         context?: SteeringDrainContext,
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
       stopSignal?: AbortSignal;
     },
   ) => Promise<void>;
@@ -800,6 +802,7 @@ export function createSlackTurnRuntime<
             drainSteeringMessages,
             onTurnStatePersisted: hooks.onTurnStatePersisted,
             shouldYield: hooks.shouldYield,
+            checkIn: hooks.checkIn,
             stopSignal: hooks.stopSignal,
           });
         });
@@ -1180,6 +1183,7 @@ export function createSlackTurnRuntime<
             drainSteeringMessages,
             onTurnStatePersisted: hooks.onTurnStatePersisted,
             shouldYield: hooks.shouldYield,
+            checkIn: hooks.checkIn,
             stopSignal: hooks.stopSignal,
           });
         });
