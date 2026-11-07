@@ -76,6 +76,7 @@ export async function readConversationLineage(
     const visibility = readConversationPrivacy({
       conversation: row.visibility,
       destination: row.destination?.visibility,
+      isRoot: row.parentConversationId === null,
     });
     return {
       conversationId: row.conversationId,

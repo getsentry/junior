@@ -230,6 +230,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const visibility = readConversationPrivacy({
     conversation: row.visibility,
     destination: readRow.destination?.visibility,
+    isRoot: row.parentConversationId === null,
   });
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");

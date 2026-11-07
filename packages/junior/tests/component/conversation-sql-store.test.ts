@@ -891,6 +891,7 @@ describe("conversation SQL store", () => {
       await migrateSchema(fixture.sql);
       const destination = inboundMessage("visibility").destination;
       const laterConversationId = "slack:C123:1712345.0002";
+      const childConversationId = "agent:visibility-thread";
       const readVisibility = async (conversationId: string) =>
         (await store.get({ conversationId }))?.visibility;
       const readStoredVisibility = async (conversationId: string) =>
@@ -945,6 +946,23 @@ describe("conversation SQL store", () => {
         "internal",
       );
 
+      // A child stores no value. With a Destination, it reads that value.
+      await store.createChild({
+        childConversationId: childConversationId,
+        kind: "thread",
+        parentConversationId: laterConversationId,
+        nowMs: 4_500,
+      });
+      await store.recordActivity({
+        conversationId: childConversationId,
+        destination,
+        nowMs: 4_600,
+      });
+      await expect(readVisibility(childConversationId)).resolves.toBe("public");
+      await expect(readStoredVisibility(childConversationId)).resolves.toBe(
+        null,
+      );
+
       // The channel becomes private. A message in another Conversation makes
       // every Conversation in the channel read private at once.
       await store.recordActivity({
@@ -954,6 +972,9 @@ describe("conversation SQL store", () => {
         nowMs: 5_000,
       });
       await expect(readVisibility(laterConversationId)).resolves.toBe(
+        "private",
+      );
+      await expect(readVisibility(childConversationId)).resolves.toBe(
         "private",
       );
 

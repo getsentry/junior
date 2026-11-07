@@ -66,13 +66,17 @@ export function nextVisibilitySql(
 export function readConversationPrivacy(args: {
   conversation: ConversationVisibility | null;
   destination: string | null | undefined;
+  isRoot: boolean;
 }): ConversationPrivacy | undefined {
   const destination = visibilityFromDestination(args.destination);
   if (destination && isBelowInternal(destination)) {
     return "private";
   }
-  if (!args.conversation) {
+  // Only roots store a value. Until slice 2 of #2380 moves children to their
+  // root, a child reads its own Destination value, as before this column.
+  const visibility = args.isRoot ? args.conversation : destination;
+  if (!visibility) {
     return undefined;
   }
-  return isBelowInternal(args.conversation) ? "private" : "public";
+  return isBelowInternal(visibility) ? "private" : "public";
 }
