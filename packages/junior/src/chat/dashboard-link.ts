@@ -87,6 +87,26 @@ export function getDashboardSettingsLink(): string | undefined {
   return resolveDashboardPath("/settings");
 }
 
+/** Return the Conversation id in a dashboard conversation URL, if it is one. */
+export function parseDashboardConversationLink(
+  url: string,
+): string | undefined {
+  const prefix = resolveDashboardPath("/conversations/");
+  if (!prefix || !URL.canParse(url)) return undefined;
+  const base = new URL(prefix);
+  const link = new URL(url);
+  if (link.origin !== base.origin || !link.pathname.startsWith(base.pathname)) {
+    return undefined;
+  }
+  const segment = link.pathname.slice(base.pathname.length);
+  if (!segment || segment.includes("/")) return undefined;
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Build the dashboard task detail URL when the core dashboard is enabled. */
 export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
