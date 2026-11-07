@@ -48,6 +48,7 @@ import {
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemWaitingConversationsSchema,
+  versionsSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationParamsSchema,
@@ -585,6 +586,16 @@ export function createMockReportingApi(): Hono<{
     }
     return errorResponse("Attachment not found.", 404);
   });
+  // Mock data changes only through this tab's writes, which refresh their
+  // own reads, so the tokens stay fixed. Mock details have no tree token, so
+  // the poll does not refresh them.
+  app.get("/versions", () =>
+    jsonResponse(versionsSchema, {
+      conversations: "mock",
+      reviewItems: "mock",
+      spend: "mock",
+    }),
+  );
   // Mock reporting has no Review items. Answer the reads here so the
   // dashboard does not query a database that has no review item tables.
   app.get("/review-items", () =>

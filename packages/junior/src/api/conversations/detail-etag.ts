@@ -3,6 +3,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -51,6 +52,37 @@ function subtreeDetailVersion(conversationId: string) {
       ),
     )
     .as("detail_subtree");
+}
+
+/**
+ * Format the change token of a Conversation and its child agents. It must
+ * match the token of `conversationVersionQuery`, so the dashboard can find a
+ * stale detail report without asking for the report.
+ */
+function conversationVersionToken(subtree: {
+  conversations: number;
+  version: string;
+}): string {
+  return `${subtree.conversations}:${subtree.version}`;
+}
+
+/**
+ * Return a query for the `conversationVersionToken` of a Conversation, or a
+ * null token when it is missing. It reads only the tree's detail versions,
+ * so a poll can check it beside other tokens in one statement.
+ */
+export function conversationVersionQuery(
+  db: JuniorDatabase,
+  conversationId: string,
+) {
+  const subtree = subtreeDetailVersion(conversationId);
+  return db
+    .select({
+      version: sql<
+        string | null
+      >`case when ${subtree.conversations} = 0 then null else concat_ws(':', ${subtree.conversations}, ${subtree.version}) end`,
+    })
+    .from(subtree);
 }
 
 /**
@@ -246,7 +278,15 @@ export async function readConversationDetailEtag(
     readAccess: ConversationAccessReader;
     viewer?: User;
   },
-): Promise<{ etag: string; state: ConversationDetailState } | undefined> {
+): Promise<
+  | {
+      etag: string;
+      state: ConversationDetailState;
+      /** `conversationVersionToken` of the same read. */
+      version: string;
+    }
+  | undefined
+> {
   const { state, subtree } = await readDetailState(
     conversationId,
     options.viewer,
@@ -263,5 +303,9 @@ export async function readConversationDetailEtag(
     subtree,
     viewerMarks: state.viewerMarks ?? null,
   });
-  return { etag: createHash("sha256").update(basis).digest("hex"), state };
+  return {
+    etag: createHash("sha256").update(basis).digest("hex"),
+    state,
+    version: conversationVersionToken(subtree),
+  };
 }

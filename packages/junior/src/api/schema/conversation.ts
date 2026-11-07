@@ -788,6 +788,13 @@ export const conversationEventPageSchema = z
  */
 export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
 
+/**
+ * Carries the change token of the Conversation tree that a detail report was
+ * built from. The dashboard compares it with the token of `GET /api/versions`
+ * and asks for the report only when they differ.
+ */
+export const CONVERSATION_VERSION_HEADER = "x-junior-conversation-version";
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     /**

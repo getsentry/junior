@@ -1,5 +1,6 @@
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   webMessageId,
 } from "@sentry/junior/api/schema";
 import type {
@@ -9,7 +10,7 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { withRequestedMailbox } from "./harness";
+import { routeConversationVersion, withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
 
@@ -380,6 +381,10 @@ test("hands web and external messages from queue to history without gaps", async
       },
     });
   });
+  // The tree token moves with the mailbox and history, as on the server.
+  const conversationVersion = () =>
+    JSON.stringify([queued, committed, active, started]);
+  await routeConversationVersion(page, conversationVersion);
   await page.route(`${path}*`, async (route) => {
     detailReads += 1;
     // Like the server, read the mailbox before history.
@@ -397,8 +402,13 @@ test("hands web and external messages from queue to history without gaps", async
       },
     });
     const detail = await response.json();
+    const { "content-length": _, ...headers } = response.headers();
     await route.fulfill({
       response,
+      headers: {
+        ...headers,
+        [CONVERSATION_VERSION_HEADER]: conversationVersion(),
+      },
       json: {
         ...detail,
         mailbox,
