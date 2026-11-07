@@ -25,7 +25,7 @@ import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
-import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
+import type { MessageAgent, SpawnAgent, StopAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
@@ -82,6 +82,7 @@ interface BaseToolRuntimeContext {
   conversationWorkQueue?: ConversationWorkQueue;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
+  stopAgent?: StopAgent;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.

@@ -221,7 +221,9 @@ export function createTools(
 
   if (context.spawnAgent) {
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
-    tools.stopAgent = createStopAgentTool(context.conversationId);
+    if (context.stopAgent) {
+      tools.stopAgent = createStopAgentTool(context.stopAgent);
+    }
   }
 
   // A child agent that is too deep to start child agents can still find its

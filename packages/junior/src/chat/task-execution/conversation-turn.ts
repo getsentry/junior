@@ -163,7 +163,7 @@ async function completeCancelledConversationTurn(args: {
   conversationId: string;
   sandboxRef?: SandboxRef;
   turnId: string;
-  userMessageId: string;
+  userMessageId: string | undefined;
 }): Promise<void> {
   const pendingAuthorization =
     args.conversation.processing.pendingAuth?.sessionId === args.turnId
@@ -203,6 +203,41 @@ async function completeCancelledConversationTurn(args: {
     turnId: args.turnId,
   });
   await args.acknowledge();
+}
+
+/**
+ * Cancel a Turn that waits for sign-in outside its worker, with the same
+ * cleanup as a stopped resume. A tree stop calls this, because its stop wake
+ * can go to queued input before the paused Turn.
+ */
+export async function cancelSignInPausedTurn(args: {
+  conversationId: string;
+  turnId: string;
+}): Promise<void> {
+  // Claim the Turn first. If a worker resumed it, the worker owns its end.
+  const claimed = await abandonTurnRecord({
+    conversationId: args.conversationId,
+    errorMessage: "Turn cancelled",
+    onlyIfAuthPaused: true,
+    turnId: args.turnId,
+  });
+  if (!claimed) return;
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(args.conversationId),
+  );
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: args.conversationId,
+  });
+  await completeCancelledConversationTurn({
+    // No worker holds this Turn's input.
+    acknowledge: async () => {},
+    conversation,
+    conversationId: args.conversationId,
+    turnId: args.turnId,
+    // A stranded Turn can lack its Message; the stop still ends the Turn.
+    userMessageId: getTurnUserMessage(conversation, args.turnId)?.id,
+  });
 }
 
 /**

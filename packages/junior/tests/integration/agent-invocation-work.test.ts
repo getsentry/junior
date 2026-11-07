@@ -23,6 +23,7 @@ import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { createEventTools } from "@/chat/tools/events";
+import { bindStopAgent } from "@/chat/agent-invocations/stop";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
@@ -596,10 +597,9 @@ describe("agent invocation conversation work", () => {
         if (stopBeforeWake) {
           // The stop request outlives the paused run. The stopped agent
           // invocation takes the resume wake and does not run again.
-          await createStopAgentTool(parentConversationId).execute!(
-            { conversation_id: childConversationId },
-            {},
-          );
+          await createStopAgentTool(
+            bindStopAgent({ conversationId: parentConversationId }, { queue }),
+          ).execute!({ conversation_id: childConversationId }, {});
         }
         if (failedResumes > 0) {
           run.mockRejectedValue(new Error("resume unavailable"));

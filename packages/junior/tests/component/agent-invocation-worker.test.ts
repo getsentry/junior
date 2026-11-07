@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
@@ -34,7 +35,19 @@ import type {
   InboxAttempt,
 } from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
+
+/** Build the worker with a queue for stops. These tests read no queue sends. */
+function createWorker(
+  agentRunner: AgentRunner,
+  options: { maxAgentDepth?: number } = {},
+) {
+  return createAgentInvocationWorker(agentRunner, {
+    ...options,
+    queue: createConversationWorkQueueTestAdapter(),
+  });
+}
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
   conversationId: PARENT_CONVERSATION_ID,
@@ -117,7 +130,7 @@ describe("agent invocation worker", () => {
         state: "running",
         surface: "internal",
       });
-      const worker = createAgentInvocationWorker(neverRunAgentRunner());
+      const worker = createWorker(neverRunAgentRunner());
       const context = {
         attempt: {
           ack: vi.fn(),
@@ -181,7 +194,7 @@ describe("agent invocation worker", () => {
         parentConversationId: created.childConversationId,
       });
       const stopRequest = new AbortController();
-      const worker = createAgentInvocationWorker({
+      const worker = createWorker({
         run: async () => {
           // The stop request arrives after the run finished.
           stopRequest.abort(new Error("Conversation work stopped"));
@@ -291,7 +304,7 @@ describe("agent invocation worker", () => {
       // The runner drains steering messages, as the agent does before its
       // next model call.
       const steered: AgentSteeringMessage[][] = [];
-      const worker = createAgentInvocationWorker({
+      const worker = createWorker({
         run: async (run) => {
           await run.durability?.drainSteeringMessages?.(async (messages) => {
             steered.push(messages);
@@ -479,7 +492,7 @@ describe("agent invocation worker", () => {
         parentToolCallId: "call-fork",
       });
       const histories: (readonly PiMessage[])[] = [];
-      const worker = createAgentInvocationWorker({
+      const worker = createWorker({
         run: async (run) => {
           histories.push(run.history ?? []);
           return {
@@ -542,7 +555,7 @@ describe("agent invocation worker", () => {
         parentConversationId: child.childConversationId,
       });
       const runs: AgentRun[] = [];
-      const worker = createAgentInvocationWorker(
+      const worker = createWorker(
         {
           run: async (run) => {
             runs.push(run);
@@ -590,7 +603,7 @@ describe("agent invocation worker", () => {
       const run = vi.fn(async () => {
         throw new Error("agent runner unavailable");
       });
-      const worker = createAgentInvocationWorker({ run });
+      const worker = createWorker({ run });
       const message = buildAgentInvocationInboundMessage(created);
       const context = (isFinalAttempt: boolean, ack: () => Promise<void>) =>
         ({
@@ -642,7 +655,7 @@ describe("agent invocation worker", () => {
         idempotencyKey: "invalid-child-1",
       });
       const ack = vi.fn();
-      const worker = createAgentInvocationWorker(neverRunAgentRunner());
+      const worker = createWorker(neverRunAgentRunner());
       const context = {
         attempt: {
           ack,

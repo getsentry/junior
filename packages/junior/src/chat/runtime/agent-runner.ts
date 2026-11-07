@@ -6,6 +6,7 @@ import {
   type AgentRun,
   type MessageAgent,
   type SpawnAgent,
+  type StopAgent,
 } from "@/chat/agent/types";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
@@ -26,6 +27,8 @@ export function createAgentRunner(
     backgroundCompactionQueue?: BackgroundCompactionQueue;
     bindMessageAgent?: (run: AgentRun) => MessageAgent | undefined;
     bindSpawnAgent?: (run: AgentRun) => SpawnAgent | undefined;
+    /** Bound with spawnAgent. Give it the queue that spawnAgent uses. */
+    bindStopAgent?: (run: AgentRun) => StopAgent;
     conversationWorkQueue?: ConversationWorkQueue;
     streamFn?: StreamFn;
     tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -38,6 +41,7 @@ export function createAgentRunner(
   const tracePropagation = options?.tracePropagation;
   const bindSpawnAgent = options?.bindSpawnAgent;
   const bindMessageAgent = options?.bindMessageAgent;
+  const bindStopAgent = options?.bindStopAgent;
   return {
     run: async (run) => {
       const spawnAgent =
@@ -72,6 +76,9 @@ export function createAgentRunner(
               durability: {
                 ...run.durability,
                 ...(spawnAgent ? { spawnAgent } : undefined),
+                ...(spawnAgent && bindStopAgent
+                  ? { stopAgent: bindStopAgent(run) }
+                  : undefined),
                 ...(messageAgent ? { messageAgent } : undefined),
               },
             }

@@ -89,6 +89,7 @@ import type {
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindStopAgent } from "@/chat/agent-invocations/stop";
 import {
   createVercelPluginTaskCallback,
   pluginTaskQueueConsumer,
@@ -607,6 +608,8 @@ export async function createApp(
       bindMessageAgent(request, { queue: conversationWorkQueue }),
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: conversationWorkQueue }),
+    bindStopAgent: (request) =>
+      bindStopAgent(request, { queue: conversationWorkQueue }),
     conversationWorkQueue,
     tracePropagation,
   });

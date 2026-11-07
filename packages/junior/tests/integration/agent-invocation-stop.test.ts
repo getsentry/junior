@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
@@ -28,6 +29,7 @@ import {
   hasConversationStop,
 } from "@/chat/task-execution/store";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { bindStopAgent } from "@/chat/agent-invocations/stop";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   invocationInput,
@@ -42,13 +44,13 @@ import {
 } from "../fixtures/conversation-work";
 
 async function stopAgent(
+  queue: ConversationWorkQueue,
   conversationId: string,
   parent = parentConversationId,
 ) {
-  return await createStopAgentTool(parent).execute!(
-    { conversation_id: conversationId },
-    {},
-  );
+  return await createStopAgentTool(
+    bindStopAgent({ conversationId: parent }, { queue }),
+  ).execute!({ conversation_id: conversationId }, {});
 }
 
 async function searchAgents() {
@@ -143,7 +145,9 @@ describe("stopping child agents", () => {
       const processing = harness.processNext(running.childConversationId);
       await runner.started();
 
-      await expect(stopAgent(running.childConversationId)).resolves.toEqual({
+      await expect(
+        stopAgent(harness.queue, running.childConversationId),
+      ).resolves.toEqual({
         conversation_id: running.childConversationId,
         stopped: true,
       });
@@ -202,7 +206,9 @@ describe("stopping child agents", () => {
         },
       ]);
       // A repeated stop finds no open work.
-      await expect(stopAgent(running.childConversationId)).resolves.toEqual({
+      await expect(
+        stopAgent(harness.queue, running.childConversationId),
+      ).resolves.toEqual({
         conversation_id: running.childConversationId,
         stopped: false,
       });
@@ -237,9 +243,15 @@ describe("stopping child agents", () => {
         input: "short task",
       });
       await expect(
-        stopAgent(pending.childConversationId, "local:test:other-parent"),
+        stopAgent(
+          harness.queue,
+          pending.childConversationId,
+          "local:test:other-parent",
+        ),
       ).rejects.toMatchObject({ name: "ToolInputError" });
-      await expect(stopAgent(pending.childConversationId)).resolves.toEqual({
+      await expect(
+        stopAgent(harness.queue, pending.childConversationId),
+      ).resolves.toEqual({
         conversation_id: pending.childConversationId,
         stopped: true,
       });
@@ -351,7 +363,9 @@ describe("stopping child agents", () => {
         }),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
 
-      await expect(stopAgent(child.childConversationId)).resolves.toEqual({
+      await expect(
+        stopAgent(harness.queue, child.childConversationId),
+      ).resolves.toEqual({
         conversation_id: child.childConversationId,
         stopped: true,
       });

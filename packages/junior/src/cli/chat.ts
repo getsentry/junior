@@ -245,6 +245,7 @@ async function prepareLocalChatRun(
   const { createLocalSandboxEgressSignalTransport } =
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
+  const { bindStopAgent } = await import("@/chat/agent-invocations/stop");
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
   const { createChildConversationWorker } =
     await import("@/chat/agent-invocations/result");
@@ -279,6 +280,8 @@ async function prepareLocalChatRun(
         : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>
       bindSpawnAgent(request, { queue: localConversationWork.queue }),
+    bindStopAgent: (request) =>
+      bindStopAgent(request, { queue: localConversationWork.queue }),
   });
   const oauthCallback = await startLocalOAuthCallbackServer();
   const deps: LocalAgentTurnDeps = {
