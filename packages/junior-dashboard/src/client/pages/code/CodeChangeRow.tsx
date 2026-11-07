@@ -18,11 +18,12 @@ export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
       <div className="min-w-0">
         <div className="truncate font-display text-sm text-dashboard-text">
           {change.url ? (
+            // Truncate the title, not the link, so the outbound icon stays.
             <OutboundLink
-              className="text-inherit no-underline hover:text-dashboard-accent-text"
+              className="inline-flex max-w-full items-center text-inherit no-underline hover:text-dashboard-accent-text"
               href={change.url}
             >
-              {title}
+              <span className="truncate">{title}</span>
             </OutboundLink>
           ) : (
             title
