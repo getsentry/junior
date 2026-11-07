@@ -1,7 +1,6 @@
 import path from "node:path";
 import {
   DEFAULT_SEARCH_COMMAND_TIMEOUT_MS,
-  MAX_TEXT_CHARS,
   RIPGREP_EXCLUDED_GLOBS,
   collectFiles,
   getRipgrepSearchLocation,
@@ -9,7 +8,6 @@ import {
   missingPathSearchResult,
   positiveInteger,
   resolveWorkspacePath,
-  truncateText,
   type SandboxCommandRunner,
   type SandboxFileSystem,
   type SandboxSearchTelemetry,
@@ -80,31 +78,24 @@ export async function findFiles(params: {
   const relativePaths = files.map((filePath) =>
     path.posix.relative(root, filePath),
   );
-  const bounded = truncateText(
+  const body =
     relativePaths.length > 0
       ? relativePaths.join("\n")
-      : "No files found matching pattern",
-  );
+      : "No files found matching pattern";
   const notices: string[] = [];
   if (limitReached) {
     notices.push(
       `${limit} results limit reached. Refine pattern or raise limit.`,
     );
   }
-  if (bounded.truncated) {
-    notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
-  }
 
-  const text =
-    notices.length > 0
-      ? `${bounded.content}\n\n[${notices.join(" ")}]`
-      : bounded.content;
+  const text = notices.length > 0 ? `${body}\n\n[${notices.join(" ")}]` : body;
 
   return makeStructuredToolOutput(
     {
       target: params.path ?? ".",
       path: params.path ?? ".",
-      truncated: limitReached || bounded.truncated,
+      truncated: limitReached,
       files: relativePaths,
       file_count: relativePaths.length,
       ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
@@ -193,30 +184,23 @@ async function findFilesWithRipgrep(params: {
     });
   const limitReached = allPaths.length > params.limit;
   const relativePaths = allPaths.slice(0, params.limit);
-  const bounded = truncateText(
+  const body =
     relativePaths.length > 0
       ? relativePaths.join("\n")
-      : "No files found matching pattern",
-  );
+      : "No files found matching pattern";
   const notices: string[] = [];
   if (limitReached) {
     notices.push(
       `${params.limit} results limit reached. Refine pattern or raise limit.`,
     );
   }
-  if (bounded.truncated) {
-    notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
-  }
-  const text =
-    notices.length > 0
-      ? `${bounded.content}\n\n[${notices.join(" ")}]`
-      : bounded.content;
+  const text = notices.length > 0 ? `${body}\n\n[${notices.join(" ")}]` : body;
 
   const response = makeStructuredToolOutput(
     {
       target: params.path ?? ".",
       path: params.path ?? ".",
-      truncated: limitReached || bounded.truncated,
+      truncated: limitReached,
       files: relativePaths,
       file_count: relativePaths.length,
       ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),

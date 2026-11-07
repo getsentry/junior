@@ -137,7 +137,6 @@ export function createTools(
     ),
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
-      sandbox: context.workspace,
     }),
     ...createEventTools(context, eventCatalog),
     ...createAutomationTools(context, eventCatalog),

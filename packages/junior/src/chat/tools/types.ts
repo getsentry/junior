@@ -38,7 +38,6 @@ export interface ImageGenerateToolDeps {
 export interface WebFetchToolDeps {
   execute?: (input: {
     url: string;
-    max_chars?: number;
   }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 

@@ -266,7 +266,7 @@ describe("McpToolManager", () => {
     await manager.close();
   });
 
-  it("middle-truncates oversized MCP output before exposing it to the model", async () => {
+  it("keeps the full MCP text for the model and bounds wrapped-tool content", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
     await manager.activateProvider("demo");
@@ -278,9 +278,10 @@ describe("McpToolManager", () => {
     });
 
     const result = await manager.getResolvedActiveTools()[0]!.execute({});
-    const text = result.content[0];
 
-    expect(text).toMatchObject({ type: "text" });
+    // The tool pipeline cuts the model-facing text and saves the full text.
+    expect(result.content).toEqual([{ type: "text", text: `${head}${tail}` }]);
+    const text = result.providerContent?.[0];
     if (text?.type !== "text") {
       throw new Error("expected bounded text content");
     }

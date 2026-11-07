@@ -1,11 +1,9 @@
 import path from "node:path";
 import {
-  MAX_TEXT_CHARS,
   isMissingPathError,
   missingPathSearchResult,
   positiveInteger,
   resolveWorkspacePath,
-  truncateText,
   type SandboxFileSystem,
   type TextSearchResultDetails,
   type TextSearchToolResult,
@@ -92,27 +90,19 @@ export async function listDir(params: {
     }
   }
 
-  const bounded = truncateText(
-    output.length > 0 ? output.join("\n") : "(empty directory)",
-  );
+  const body = output.length > 0 ? output.join("\n") : "(empty directory)";
   const notices: string[] = [];
   if (entryLimitReached) {
     notices.push(
       `${limit} entries limit reached. Use a higher limit to continue.`,
     );
   }
-  if (bounded.truncated) {
-    notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
-  }
 
   return makeStructuredToolOutput({
     target: params.path ?? ".",
     path: params.path ?? ".",
-    truncated: entryLimitReached || bounded.truncated,
-    entries:
-      bounded.content === "(empty directory)"
-        ? []
-        : bounded.content.split("\n"),
+    truncated: entryLimitReached,
+    entries: body === "(empty directory)" ? [] : body.split("\n"),
     entry_count: output.length,
     total_entries: entries.length,
     ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
