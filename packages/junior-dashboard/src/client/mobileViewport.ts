@@ -16,10 +16,9 @@ const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 100;
 const COMPOSER_DOCK_PADDING_KEYBOARD_OPEN = "0.375rem";
 // Keyboard closed: with viewport-fit=cover (and always in the standalone web
 // app) the shell reaches the screen edge, so the composer must clear the home
-// indicator and the rounded screen corners. Sit slightly inside the full inset,
-// like native chat apps do, so the gap stays small.
+// indicator and the rounded screen corners.
 const COMPOSER_DOCK_PADDING_KEYBOARD_CLOSED =
-  "max(0.375rem, calc(env(safe-area-inset-bottom) - 0.5rem))";
+  "max(0.375rem, env(safe-area-inset-bottom))";
 
 export type MobileViewportMetrics = {
   heightPx: number;
