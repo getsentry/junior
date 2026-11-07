@@ -68,6 +68,7 @@ const RANKING_CASES = [
   ["stop watching a resource", "resource-watches", "stopWatchingResources"],
   ["find open review items", "review-desk", "searchReviewItems"],
   ["update a review item", "review-desk", "updateReviewItem"],
+  ["list automations", "automations", "searchAutomations"],
   // Synonyms and abbreviations.
   ["fetch issue details", "github", "github_getIssue"],
   ["view a pull request", "github", "github_getPullRequest"],
@@ -100,6 +101,20 @@ const NO_MATCH_CASES = [
   ["create repository", null],
   // Memory tools can create and archive, not edit.
   ["edit a memory", null],
+] as const;
+
+// Queries with two actions. The top two tools are the ones that do them.
+const TWO_ACTION_CASES = [
+  [
+    "automation list update channel",
+    "automations",
+    ["searchAutomations", "updateAutomation"],
+  ],
+  [
+    "list then update automation destination",
+    "automations",
+    ["searchAutomations", "updateAutomation"],
+  ],
 ] as const;
 
 // Word matches that cannot tell which tool fits, so the model decides.
@@ -238,6 +253,15 @@ describe("tool search ranking", () => {
       searchCatalogTools(catalog, query, source).matches[0],
     ]);
     expect(ranked).toEqual(RANKING_CASES);
+  });
+
+  it("ranks a tool for each action in a two-action query", () => {
+    const found = TWO_ACTION_CASES.map(([query, source]) => [
+      query,
+      source,
+      searchCatalogTools(catalog, query, source).matches.slice(0, 2).sort(),
+    ]);
+    expect(found).toEqual(TWO_ACTION_CASES);
   });
 
   it("sends only unclear word matches to the model", () => {

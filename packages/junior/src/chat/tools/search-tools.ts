@@ -53,6 +53,12 @@ const SEARCH_SYNONYM_GROUPS = [
   ["save", "store", "remember", "memorize"],
 ];
 
+// Query words that also match another action, in one direction only. A
+// search tool can also list, but a list tool cannot search by text.
+const ONE_WAY_SYNONYMS: Record<string, string[]> = {
+  list: ["search"],
+};
+
 // Short forms in queries that mean exactly the same as their long form. Only
 // the query is expanded: most tools have a `repo` parameter, so expanding
 // tool text would make "repository" match almost every tool.
@@ -243,7 +249,10 @@ function queryTerms(query: string): QueryTerm[] {
   ];
   return unique.map((term) => {
     const weights: QueryTerm = new Map();
-    for (const synonym of synonymsByTerm.get(term) ?? []) {
+    for (const synonym of [
+      ...(synonymsByTerm.get(term) ?? []),
+      ...(ONE_WAY_SYNONYMS[term] ?? []),
+    ]) {
       weights.set(synonym, SYNONYM_WEIGHT);
     }
     weights.set(term, 1);
