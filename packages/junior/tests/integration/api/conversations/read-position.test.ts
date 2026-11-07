@@ -7,7 +7,7 @@ import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
-  conversationReadPositionSchema,
+  conversationReadReportSchema,
 } from "@/api/schema";
 import {
   closeDb,
@@ -99,19 +99,25 @@ describe("conversation read position API", () => {
 
     const first = await putReadPosition(app, conversationId, 2);
     expect(first.status).toBe(200);
-    expect(conversationReadPositionSchema.parse(await first.json())).toEqual({
+    expect(
+      conversationReadReportSchema.parse(await first.json()),
+    ).toMatchObject({
       lastReadSeq: 2,
     });
 
     // Another device that reports an older place does not move it back.
     const older = await putReadPosition(app, conversationId, 1);
-    expect(conversationReadPositionSchema.parse(await older.json())).toEqual({
+    expect(
+      conversationReadReportSchema.parse(await older.json()),
+    ).toMatchObject({
       lastReadSeq: 2,
     });
 
     // A place after the last event stops at the last event.
     const ahead = await putReadPosition(app, conversationId, 99);
-    expect(conversationReadPositionSchema.parse(await ahead.json())).toEqual({
+    expect(
+      conversationReadReportSchema.parse(await ahead.json()),
+    ).toMatchObject({
       lastReadSeq: 4,
     });
 
@@ -261,9 +267,9 @@ describe("conversation read position API", () => {
     // The viewer wrote Message 3 after reading Message 1, so it and the rows
     // before it are not new. Message 5 is from someone else, so it is new.
     const reported = await putReadPosition(app, conversationId, 1);
-    expect(conversationReadPositionSchema.parse(await reported.json())).toEqual(
-      { lastReadSeq: 3 },
-    );
+    expect(
+      conversationReadReportSchema.parse(await reported.json()),
+    ).toMatchObject({ lastReadSeq: 3 });
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer }),

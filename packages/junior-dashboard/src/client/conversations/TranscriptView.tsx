@@ -36,7 +36,7 @@ export function Transcript(props: {
   historyError?: Error | null;
   historyVersion?: string;
   live?: boolean;
-  /** The read position when the Conversation opened. */
+  /** The stored read position of the viewer. */
   lastReadSeq?: number;
   loadingPreviousPage?: boolean;
   /**
@@ -48,6 +48,8 @@ export function Transcript(props: {
   onLoadPreviousPage?: () => void;
   /** Receive the last event sequence the reader saw in the transcript. */
   onRead?: (seq: number) => void;
+  /** The reader acted outside the transcript, such as in the composer. */
+  readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[];
@@ -100,6 +102,7 @@ export function Transcript(props: {
   // results skip rows, so they do not move the read position.
   useTranscriptReadReporter({
     content: bottomPinning.contentElement,
+    engaged: props.readEngaged,
     lastReadSeq: props.lastReadSeq,
     onRead: props.onRead,
     paused: view !== "rich" || search.trim().length > 0,

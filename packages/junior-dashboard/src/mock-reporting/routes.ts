@@ -16,6 +16,7 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  markConversationUnreadBodySchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
   renameConversationBodySchema,
@@ -31,7 +32,11 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
   conversationReadPositionSchema,
+  conversationReadReportSchema,
+  conversationUnreadSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
@@ -48,6 +53,7 @@ import {
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemWaitingConversationsSchema,
+  versionsSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationParamsSchema,
@@ -64,6 +70,7 @@ import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import {
   markMockConversationRead,
+  setMockConversationReadState,
   withMockReadPosition,
 } from "./read-positions";
 import {
@@ -72,6 +79,7 @@ import {
 } from "./code-repository";
 import {
   readMockConversationChildAgents,
+  continueMockConversationInSlack,
   readMockConversationDetail,
   readMockConversationEvents,
   readMockConversationEventsAround,
@@ -434,7 +442,7 @@ export function createMockReportingApi(): Hono<{
       body.data.lastReadSeq,
     );
     return result
-      ? jsonResponse(conversationReadPositionSchema, result)
+      ? jsonResponse(conversationReadReportSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.post("/conversations/:conversationId/catch-up", async (c) => {
@@ -454,6 +462,22 @@ export function createMockReportingApi(): Hono<{
       summary:
         "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
     });
+  });
+  app.post("/conversations/:conversationId/continue-in-slack", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    const body = continueConversationInSlackBodySchema.safeParse(
+      await c.req.json(),
+    );
+    if (!params.success || !body.success) {
+      return errorResponse("Invalid request.", 400);
+    }
+    const result = continueMockConversationInSlack(
+      params.data.conversationId,
+      body.data.locationId,
+    );
+    return result
+      ? jsonResponse(continueConversationInSlackResponseSchema, result)
+      : errorResponse("Conversation or channel not found.", 404);
   });
   app.patch("/conversations/:conversationId/archive", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -488,6 +512,23 @@ export function createMockReportingApi(): Hono<{
     if (!result) return errorResponse("Conversation not found.", 404);
     if ("error" in result) return errorResponse(result.error, 409);
     return jsonResponse(pinConversationResponseSchema, result);
+  });
+  app.patch("/conversations/:conversationId/unread", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = markConversationUnreadBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationReadState(
+      params.data.conversationId,
+      body.data.unread,
+    );
+    return result
+      ? jsonResponse(conversationUnreadSchema, result)
+      : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/title", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -585,6 +626,16 @@ export function createMockReportingApi(): Hono<{
     }
     return errorResponse("Attachment not found.", 404);
   });
+  // Mock data changes only through this tab's writes, which refresh their
+  // own reads, so the tokens stay fixed. Mock details have no tree token, so
+  // the poll does not refresh them.
+  app.get("/versions", () =>
+    jsonResponse(versionsSchema, {
+      conversations: "mock",
+      reviewItems: "mock",
+      spend: "mock",
+    }),
+  );
   // Mock reporting has no Review items. Answer the reads here so the
   // dashboard does not query a database that has no review item tables.
   app.get("/review-items", () =>

@@ -231,6 +231,8 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number;
   pinPosition?: number;
+  /** A visible Junior reply is after the viewer's read position. */
+  unreadReply?: boolean;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -263,6 +265,9 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation,
     canViewPrivateContent,
   );
+  const status = statusFromConversation(conversation);
+  // Only an idle Conversation waits on the reader.
+  const unread = status === "completed" && args.unreadReply === true;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
@@ -281,7 +286,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ).toISOString(),
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
-    status: statusFromConversation(conversation),
+    status,
     surface,
     ...(args.auxiliaryCosts
       ? { auxiliaryCosts: args.auxiliaryCosts }
@@ -303,6 +308,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(args.pinPosition === undefined
       ? undefined
       : { pinPosition: args.pinPosition }),
+    ...(unread ? { unread: true } : undefined),
     ...(slackThread ? { channel: slackThread.channelId } : undefined),
     ...(channelName ? { channelName } : undefined),
     ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),

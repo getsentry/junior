@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  attentionConversationIds,
   buildConversationSections,
   pinnedAndAttentionFirst,
 } from "../src/client/conversations/conversationSections";
@@ -60,27 +61,31 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts attention conversations in Needs attention before Today", () => {
-    const sections = buildConversationSections(
-      [
-        conversation("today", "2026-08-03T11:00:00-07:00"),
-        conversation("today-unread", "2026-08-03T09:00:00-07:00"),
-        conversation("yesterday", "2026-08-02T12:00:00-07:00"),
-        conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
-        conversation("saturday", "2026-08-01T12:00:00-07:00"),
-        // An open pull request waits on a person once Junior stops running.
-        {
-          ...conversation("open-pr", "2026-08-02T08:00:00-07:00"),
-          unfinishedWork: true,
-        },
-        {
-          ...conversation("open-pr-running", "2026-08-03T10:00:00-07:00"),
-          status: "active",
-          unfinishedWork: true,
-        },
-      ],
-      { ...NOW, attentionIds: new Set(["today-unread", "waiting-old"]) },
-    );
+  it("puts unread, waiting, and open-PR conversations in Needs attention before Today", () => {
+    const conversations = [
+      conversation("today", "2026-08-03T11:00:00-07:00"),
+      {
+        ...conversation("today-unread", "2026-08-03T09:00:00-07:00"),
+        unread: true,
+      },
+      conversation("yesterday", "2026-08-02T12:00:00-07:00"),
+      conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
+      conversation("saturday", "2026-08-01T12:00:00-07:00"),
+      // An open pull request waits on a person once Junior stops running.
+      {
+        ...conversation("open-pr", "2026-08-02T08:00:00-07:00"),
+        unfinishedWork: true,
+      },
+      {
+        ...conversation("open-pr-running", "2026-08-03T10:00:00-07:00"),
+        status: "active" as const,
+        unfinishedWork: true,
+      },
+    ];
+    const sections = buildConversationSections(conversations, {
+      ...NOW,
+      attentionIds: attentionConversationIds(conversations, ["waiting-old"]),
+    });
 
     expect(sectionIds(sections)).toEqual([
       {

@@ -259,6 +259,13 @@ export const conversationSummaryReportSchema = z
     pinnedAt: z.string().datetime().nullable().optional(),
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
     pinPosition: z.number().int().optional(),
+    /**
+     * True when the conversation is idle and Junior's latest reply that the
+     * transcript shows is after the viewer's read position. Quiet replies do
+     * not count. Opening the conversation does not move the position; reading
+     * in it, replying, archiving, or Mark as read does.
+     */
+    unread: z.boolean().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
@@ -788,6 +795,13 @@ export const conversationEventPageSchema = z
  */
 export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
 
+/**
+ * Carries the change token of the Conversation tree that a detail report was
+ * built from. The dashboard compares it with the token of `GET /api/versions`
+ * and asks for the report only when they differ.
+ */
+export const CONVERSATION_VERSION_HEADER = "x-junior-conversation-version";
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     /**
@@ -799,6 +813,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     autoArchive: z.boolean().optional(),
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
+    /** The viewer can move this dashboard conversation to a Slack thread. */
+    canContinueInSlack: z.literal(true).optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
     readPosition: conversationReadPositionSchema.optional(),
     /**

@@ -15,6 +15,7 @@ import { Link } from "react-router";
 
 import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
+import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { usePinConversation } from "./usePinConversation";
 import { useRenameConversation } from "./useRenameConversation";
 import { RenameConversationDialog } from "./RenameConversationDialog";
@@ -34,6 +35,7 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import {
+  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
@@ -84,16 +86,12 @@ const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
-  finishedConversationIds: ReadonlySet<string>;
-  /** Opened while unread; keeps its unread place until another one opens. */
-  heldConversationId?: string;
   loading: boolean;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
   onNewConversation(): void;
   onReorderPins: ReorderPins;
-  onUnreadChange(conversation: Conversation, unread: boolean): void;
 }) {
   const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
@@ -102,6 +100,17 @@ export function ConversationSidebar(props: {
       showActionError(
         conversation,
         wasPinning ? "Could not pin" : "Could not unpin",
+      );
+    },
+    [showActionError],
+  );
+  const handleUnreadError = useCallback(
+    (conversation: Conversation, wasMarkingUnread: boolean) => {
+      showActionError(
+        conversation,
+        wasMarkingUnread
+          ? "Could not mark as unread"
+          : "Could not mark as read",
       );
     },
     [showActionError],
@@ -119,11 +128,10 @@ export function ConversationSidebar(props: {
     () =>
       conversationSidebarEntries(
         buildConversationSections(props.conversations, {
-          attentionIds: new Set([
-            ...props.waitingConversations.keys(),
-            ...props.finishedConversationIds,
-            ...(props.heldConversationId ? [props.heldConversationId] : []),
-          ]),
+          attentionIds: attentionConversationIds(
+            props.conversations,
+            props.waitingConversations.keys(),
+          ),
           nowMs: Date.now(),
           timeZone: props.timeZone,
         }),
@@ -132,8 +140,6 @@ export function ConversationSidebar(props: {
     [
       collapsedKeys,
       props.conversations,
-      props.finishedConversationIds,
-      props.heldConversationId,
       props.timeZone,
       props.waitingConversations,
     ],
@@ -214,12 +220,9 @@ export function ConversationSidebar(props: {
                     onArchived={showArchived}
                     onPinError={handlePinError}
                     onPinned={clearActionError}
+                    onUnreadError={handleUnreadError}
                     onRenameError={handleRenameError}
-                    onUnreadChange={props.onUnreadChange}
                     selected={entry.conversation.id === props.selectedId}
-                    unread={props.finishedConversationIds.has(
-                      entry.conversation.id,
-                    )}
                     waiting={props.waitingConversations.get(
                       entry.conversation.id,
                     )}
@@ -298,10 +301,9 @@ type ConversationSidebarRowProps = {
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
+  onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
   onRenameError(conversation: Conversation): void;
-  onUnreadChange(conversation: Conversation, unread: boolean): void;
   selected: boolean;
-  unread: boolean;
   waiting?: WaitingConversation;
 };
 
@@ -341,6 +343,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
     onError: (pinned) => props.onPinError(props.conversation, pinned),
     onSuccess: () => props.onPinned(props.conversation),
   });
+  const markUnread = useMarkConversationUnread(props.conversation.id, {
+    onError: (unread) => props.onUnreadError(props.conversation, unread),
+  });
   const rename = useRenameConversation(props.conversation.id, {
     onError: () => props.onRenameError(props.conversation),
   });
@@ -350,11 +355,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
-  const emphasized = props.unread || Boolean(props.waiting);
+  const unread = Boolean(props.conversation.unread);
+  const emphasized = unread || Boolean(props.waiting);
   const drag = props.drag;
   // Unread tracks idle conversations only.
   const canMarkUnread = props.conversation.status === "completed";
   const archived = Boolean(props.conversation.archivedAt);
+  // The leading marker toggles read state. A waiting row's marker is about
+  // its review item, so it stays a plain marker.
+  const canToggleRead = !props.waiting && (unread || canMarkUnread);
   const togglePin = () => pin.mutate(!pinned);
   const toggleArchive = () =>
     archive.mutate({
@@ -423,6 +432,35 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             status={status}
           />
         </Link>
+        {canToggleRead ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
+                  className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
+                  disabled={markUnread.isPending}
+                  onClick={() => markUnread.mutate(!unread)}
+                  type="button"
+                >
+                  {/* On hover, preview the state that a click sets. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "hidden size-1.5 rounded-full group-hover/read:block group-focus-visible/read:block",
+                      unread
+                        ? "border border-dashboard-text-muted"
+                        : "bg-dashboard-accent",
+                    )}
+                  />
+                </button>
+              }
+            />
+            <TooltipContent size="compact">
+              {unread ? "Mark as read" : "Mark as unread"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         {props.waiting ? (
           <Link
             className="mb-1.5 ml-[2.125rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
@@ -500,17 +538,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {props.unread ? (
-          <ContextMenuItem
-            onClick={() => props.onUnreadChange(props.conversation, false)}
-          >
+        {unread ? (
+          <ContextMenuItem onClick={() => markUnread.mutate(false)}>
             <MailOpen aria-hidden="true" />
             Mark as read
           </ContextMenuItem>
         ) : (
           <ContextMenuItem
             disabled={!canMarkUnread}
-            onClick={() => props.onUnreadChange(props.conversation, true)}
+            onClick={() => markUnread.mutate(true)}
           >
             <Mail aria-hidden="true" />
             Mark as unread

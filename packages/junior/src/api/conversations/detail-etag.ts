@@ -3,6 +3,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -22,6 +23,7 @@ import {
   type ConversationViewerMarks,
 } from "./membership";
 import { conversationReadPositionQuery } from "./read-position";
+import { readUnreadConversationIds } from "./unread";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
 
 const detailConversation = alias(juniorConversations, "detail_conversation");
@@ -51,6 +53,37 @@ function subtreeDetailVersion(conversationId: string) {
       ),
     )
     .as("detail_subtree");
+}
+
+/**
+ * Format the change token of a Conversation and its child agents. It must
+ * match the token of `conversationVersionQuery`, so the dashboard can find a
+ * stale detail report without asking for the report.
+ */
+function conversationVersionToken(subtree: {
+  conversations: number;
+  version: string;
+}): string {
+  return `${subtree.conversations}:${subtree.version}`;
+}
+
+/**
+ * Return a query for the `conversationVersionToken` of a Conversation, or a
+ * null token when it is missing. It reads only the tree's detail versions,
+ * so a poll can check it beside other tokens in one statement.
+ */
+export function conversationVersionQuery(
+  db: JuniorDatabase,
+  conversationId: string,
+) {
+  const subtree = subtreeDetailVersion(conversationId);
+  return db
+    .select({
+      version: sql<
+        string | null
+      >`case when ${subtree.conversations} = 0 then null else concat_ws(':', ${subtree.conversations}, ${subtree.version}) end`,
+    })
+    .from(subtree);
 }
 
 /**
@@ -101,6 +134,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       parentConversationId: detailConversation.parentConversationId,
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
+      rootConversationId: sql<string>`${rootConversationId}`,
       subtreeConversations: subtree.conversations,
       subtreeVersion: subtree.version,
     })
@@ -134,6 +168,8 @@ export type ConversationDetailState = {
    * so an `appendCursor` from before it cannot extend them.
    */
   transcriptVersion: string;
+  /** The root has a visible Junior reply after the viewer's read position. */
+  unreadReply?: boolean;
   viewerMarks?: ConversationViewerMarks;
 };
 
@@ -146,7 +182,7 @@ async function readDetailState(
   subtree: { conversations: number; version: string };
 }> {
   const rowRead = readDetailStateRow(conversationId, viewer);
-  const [accessById, row, forks, agentTree] = await Promise.all([
+  const [accessById, row, forks, agentTree, unreadIds] = await Promise.all([
     readAccess([conversationId]),
     rowRead,
     rowRead.then((stored) =>
@@ -178,6 +214,16 @@ async function readDetailState(
         readAccess,
       ),
     ),
+    // Unread belongs to the root, like the marks.
+    rowRead.then((stored) =>
+      viewer && stored
+        ? readUnreadConversationIds(
+            getDb(),
+            [stored.rootConversationId],
+            viewer.id,
+          )
+        : new Set<string>(),
+    ),
   ]);
   const access = accessById.get(conversationId);
   // Stored events only grow. Their projection changes with the viewer's
@@ -206,6 +252,9 @@ async function readDetailState(
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
       transcriptVersion,
+      ...(viewer && row
+        ? { unreadReply: unreadIds.has(row.rootConversationId) }
+        : undefined),
       ...(viewerMarks ? { viewerMarks } : undefined),
     },
     subtree: {
@@ -246,7 +295,15 @@ export async function readConversationDetailEtag(
     readAccess: ConversationAccessReader;
     viewer?: User;
   },
-): Promise<{ etag: string; state: ConversationDetailState } | undefined> {
+): Promise<
+  | {
+      etag: string;
+      state: ConversationDetailState;
+      /** `conversationVersionToken` of the same read. */
+      version: string;
+    }
+  | undefined
+> {
   const { state, subtree } = await readDetailState(
     conversationId,
     options.viewer,
@@ -261,7 +318,14 @@ export async function readConversationDetailEtag(
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
     subtree,
+    // The read position is not hashed, but whether it leaves a reply unread
+    // is, so the next poll after a read or a mark shows the new state.
+    unreadReply: state.unreadReply ?? false,
     viewerMarks: state.viewerMarks ?? null,
   });
-  return { etag: createHash("sha256").update(basis).digest("hex"), state };
+  return {
+    etag: createHash("sha256").update(basis).digest("hex"),
+    state,
+    version: conversationVersionToken(subtree),
+  };
 }

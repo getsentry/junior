@@ -10,6 +10,7 @@ import {
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
@@ -30,6 +31,10 @@ import {
   reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
 import {
+  conversationUnreadSchema,
+  markConversationUnreadBodySchema,
+} from "../schema/conversation-unread";
+import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   archiveDoneConversationsResponseSchema,
@@ -44,13 +49,20 @@ import {
   conversationPendingMessagesReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
-import { conversationReadPositionSchema } from "../schema/conversation-read-position";
+import {
+  conversationReadPositionSchema,
+  conversationReadReportSchema,
+} from "../schema/conversation-read-position";
 import {
   renameConversationBodySchema,
   renameConversationResponseSchema,
 } from "../schema/conversation-title";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
+import {
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
+} from "../schema/conversation-continue-in-slack";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
@@ -59,12 +71,14 @@ import { createConversationAccessReader } from "./access";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
+import { markConversationUnread, reportConversationRead } from "./unread";
 import { renameConversation } from "./rename";
 import {
   archiveViewerDoneConversations,
   setConversationAutoArchive,
 } from "./auto-archive";
 import { requireConversationChildAgents } from "./child-agents";
+import { continueConversationInSlackForViewer } from "./continue-in-slack";
 import { conversationAttachmentResponse } from "./attachments";
 import {
   appendConversationMessageForViewer,
@@ -76,7 +90,6 @@ import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
-import { markConversationRead } from "./read-position";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
@@ -192,6 +205,30 @@ export function createConversationRoutes(
   );
 
   app.post(
+    "/:conversationId/continue-in-slack",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      continueConversationInSlackBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        continueConversationInSlackResponseSchema,
+        await continueConversationInSlackForViewer(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.post(
     "/:conversationId/forks",
     requireViewer,
     // A Quick question quote is up to 4,000 characters.
@@ -280,6 +317,30 @@ export function createConversationRoutes(
   );
 
   app.patch(
+    "/:conversationId/unread",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      markConversationUnreadBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationUnreadSchema,
+        await markConversationUnread(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
     "/:conversationId/title",
     requireViewer,
     validateRequest(
@@ -321,8 +382,8 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
-        conversationReadPositionSchema,
-        await markConversationRead(viewer, conversationId, body),
+        conversationReadReportSchema,
+        await reportConversationRead(viewer, conversationId, body),
       );
     },
   );
@@ -604,6 +665,7 @@ export function createConversationRoutes(
         ? {
             "cache-control": "private, no-store",
             [CONVERSATION_DETAIL_VERSION_HEADER]: version.etag,
+            [CONVERSATION_VERSION_HEADER]: version.version,
           }
         : undefined;
       if (version && sentVersion === version.etag) {

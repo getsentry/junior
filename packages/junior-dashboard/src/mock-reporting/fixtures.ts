@@ -140,6 +140,8 @@ const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 const mockPinnedConversationIds = new Set<string>();
 /** Process-local Pinned order from drag reorders. */
 const mockPinPositions = new Map<string, number>();
+/** Process-local conversations that the viewer marked unread. */
+const mockUnreadConversationIds = new Set<string>();
 
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
@@ -147,25 +149,33 @@ const mockTitles = new Map<string, string>();
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
+/** Process-local Slack channels from Continue in Slack. */
+const mockSlackChannelByConversationId = new Map<
+  string,
+  { channel: string; channelName: string }
+>();
+
 /**
- * Restore process-local archive, pin, and auto-archive state so tests sharing
- * a worker do not leak state.
+ * Restore process-local archive, pin, unread, and auto-archive state so tests
+ * sharing a worker do not leak state.
  */
 export function resetMockConversationViewerState(): void {
   mockArchivedConversationIds.clear();
   mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
+  mockUnreadConversationIds.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
+  mockSlackChannelByConversationId.clear();
 }
 
 /**
- * Add the viewer's mock archive and pin times and any rename to one
+ * Add the viewer's mock archive, pin, and unread marks and any rename to one
  * conversation. Like the API, a child reports the pin of its root.
  */
 function withMockViewerState<
-  T extends { conversationId: string; displayTitle: string },
+  T extends { conversationId: string; displayTitle: string; status: string },
 >(
   report: T & { archivedAt?: string | null },
   pinConversationId = report.conversationId,
@@ -173,8 +183,13 @@ function withMockViewerState<
   archivedAt: string | undefined;
   pinnedAt: string | null;
   pinPosition?: number;
+  unread?: true;
 } {
   const pinPosition = mockPinPositions.get(pinConversationId);
+  // Match the API: only idle conversations are unread.
+  const unread =
+    report.status === "completed" &&
+    mockUnreadConversationIds.has(report.conversationId);
   return {
     ...report,
     displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
@@ -183,6 +198,7 @@ function withMockViewerState<
       : undefined,
     pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
     ...(pinPosition === undefined ? undefined : { pinPosition }),
+    ...(unread ? { unread: true as const } : undefined),
   };
 }
 
@@ -1984,9 +2000,10 @@ export function setMockConversationArchived(
   if (!exists) return undefined;
   if (archived) {
     mockArchivedConversationIds.add(conversationId);
-    // Match the API: archive also unpins.
+    // Match the API: archive also unpins and marks read.
     mockPinnedConversationIds.delete(conversationId);
     mockPinPositions.delete(conversationId);
+    mockUnreadConversationIds.delete(conversationId);
   } else {
     mockArchivedConversationIds.delete(conversationId);
     // Match the API: a manual restore turns auto-archive off.
@@ -2023,6 +2040,23 @@ export function setMockConversationPinned(
     mockPinnedConversationIds.delete(conversationId);
   }
   return { pinnedAt: pinned ? NOW : null };
+}
+
+/**
+ * Set the feed's unread flag of one mock conversation for local dashboard
+ * visual QA. The mock read position moves on its own, in `read-positions`.
+ */
+export function setMockConversationUnread(
+  conversationId: string,
+  unread: boolean,
+): boolean {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return false;
+  if (unread) mockUnreadConversationIds.add(conversationId);
+  else mockUnreadConversationIds.delete(conversationId);
+  return true;
 }
 
 /** Rename one mock conversation for local dashboard visual QA. */
@@ -2326,9 +2360,41 @@ export function readMockConversationDetail(
           previousCursor: mockBeforeCursor(conversationId, events[0].seq),
         }
       : withViewerState;
-  return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
-    ? { ...bounded, locationId: `mock:${bounded.channel}` }
-    : bounded;
+  const movedChannel = mockSlackChannelByConversationId.get(conversationId);
+  const located = movedChannel
+    ? { ...bounded, ...movedChannel }
+    : conversationId === DASHBOARD_QA_CONVERSATION_ID
+      ? // Stands in for a public dashboard conversation.
+        { ...bounded, canContinueInSlack: true as const }
+      : bounded;
+  return located.channel && PUBLIC_MOCK_CHANNEL_IDS.has(located.channel)
+    ? { ...located, locationId: `mock:${located.channel}` }
+    : located;
+}
+
+/** Move the mock dashboard conversation to a mock channel thread, once. */
+export function continueMockConversationInSlack(
+  conversationId: string,
+  locationId: string,
+):
+  | { channelName?: string; conversationId: string; locationUrl: string }
+  | undefined {
+  const channel = locationId.replace(/^mock:/, "");
+  const detail = readMockConversationDetail(conversationId);
+  const location = readMockLocationDirectory().locations.find(
+    (candidate) => candidate.id === locationId,
+  );
+  if (!detail?.canContinueInSlack || !location) return undefined;
+  const channelName = location.label.replace(/^#/, "");
+  mockSlackChannelByConversationId.set(conversationId, {
+    channel,
+    channelName,
+  });
+  return {
+    channelName,
+    conversationId,
+    locationUrl: `https://example.slack.com/archives/${channel}/p1770030000000100`,
+  };
 }
 
 /** Return the deterministic older page used to exercise transcript pagination. */

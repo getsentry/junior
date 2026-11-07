@@ -874,6 +874,7 @@ export function buildConversations(
       archivedAt: summary.archivedAt,
       pinnedAt: summary.pinnedAt,
       pinPosition: summary.pinPosition,
+      unread: summary.unread,
       auxiliaryCosts: summary.auxiliaryCosts,
       channel: summary.channel,
       channelName: summary.channelName,

@@ -28,6 +28,27 @@ export function withRequestedMailbox<T extends { conversationId: string }>(
     : report;
 }
 
+/**
+ * Answer the versions poll with a tree token for the open Conversation, so
+ * a mocked detail that sends the same token refreshes when it moves, as on
+ * the server. The other tokens stay fixed.
+ */
+export async function routeConversationVersion(
+  page: Page,
+  conversationVersion: () => string,
+): Promise<void> {
+  await page.route("**/api/versions*", (route) =>
+    route.fulfill({
+      json: {
+        conversation: conversationVersion(),
+        conversations: "mock",
+        reviewItems: "mock",
+        spend: "mock",
+      },
+    }),
+  );
+}
+
 export type DashboardE2eServer = {
   baseURL: string;
   close(): Promise<void>;

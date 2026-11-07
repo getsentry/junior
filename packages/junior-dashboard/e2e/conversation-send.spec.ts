@@ -1,5 +1,6 @@
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   webMessageId,
 } from "@sentry/junior/api/schema";
 import type {
@@ -9,7 +10,7 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { withRequestedMailbox } from "./harness";
+import { routeConversationVersion, withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
 
@@ -354,6 +355,7 @@ test("hands web and external messages from queue to history without gaps", async
   let active = false;
   let started = false;
   let detailReads = 0;
+  let detailReadsInFlight = 0;
   let releaseAccept!: () => void;
   const accept = new Promise<void>((resolve) => {
     releaseAccept = resolve;
@@ -380,8 +382,13 @@ test("hands web and external messages from queue to history without gaps", async
       },
     });
   });
+  // The tree token moves with the mailbox and history, as on the server.
+  const conversationVersion = () =>
+    JSON.stringify([queued, committed, active, started]);
+  await routeConversationVersion(page, conversationVersion);
   await page.route(`${path}*`, async (route) => {
     detailReads += 1;
+    detailReadsInFlight += 1;
     // Like the server, read the mailbox before history.
     const mailbox = {
       conversationId,
@@ -397,8 +404,13 @@ test("hands web and external messages from queue to history without gaps", async
       },
     });
     const detail = await response.json();
+    const { "content-length": _, ...headers } = response.headers();
     await route.fulfill({
       response,
+      headers: {
+        ...headers,
+        [CONVERSATION_VERSION_HEADER]: conversationVersion(),
+      },
       json: {
         ...detail,
         mailbox,
@@ -435,6 +447,7 @@ test("hands web and external messages from queue to history without gaps", async
         ],
       },
     });
+    detailReadsInFlight -= 1;
   });
   await page.route(`${path}/messages`, async (route) => {
     const body = route.request().postDataJSON();
@@ -578,7 +591,9 @@ test("hands web and external messages from queue to history without gaps", async
   await expect(thinking).toBeHidden();
 
   // The mailbox can empty before the slower history read returns. Publish both
-  // together, and do not hide the web message in the meantime.
+  // together, and do not hide the web message in the meantime. A read that is
+  // already past the hold would show the new history early.
+  await expect.poll(() => detailReadsInFlight).toBe(0);
   const readsBeforeCommit = detailReads;
   queued = [];
   committed = [waiting, web];

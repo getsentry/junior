@@ -24,6 +24,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
+import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { conversationIsResponding } from "./transcript";
 import {
   ConversationCatchUpContext,
@@ -40,6 +41,7 @@ import {
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
+import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
 import { AutoArchiveToggle } from "./AutoArchiveToggle";
@@ -148,7 +150,6 @@ export function ConversationPage(props: {
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
-  onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
@@ -236,9 +237,9 @@ export function ConversationPage(props: {
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
+  const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
-  const onRead = props.onRead;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   // The page keeps the start preference from when the Conversation opened.
@@ -284,7 +285,11 @@ export function ConversationPage(props: {
   const archive = useArchiveConversation(conversationId);
   const navigate = useNavigate();
   const pin = usePinConversation(conversationId);
+  const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
+  // Focus or a click in the composer counts as reading, like transcript input.
+  const [composerEngaged, setComposerEngaged] = useState(false);
+  const engageComposer = useCallback(() => setComposerEngaged(true), []);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const dropLink = useCallback(() => {
     setLinkStart(undefined);
@@ -361,6 +366,7 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
+  const unread = Boolean(conversation?.unread);
   const participants = conversationParticipants(conversation);
   const identity =
     participants.length > 0 ? (
@@ -377,10 +383,6 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   const agentTree = detail.data?.agentTree;
-  useEffect(() => {
-    if (!conversation) return;
-    onRead?.(conversation.id, conversation.lastSeenAt);
-  }, [conversation, onRead]);
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
@@ -661,6 +663,15 @@ export function ConversationPage(props: {
               }
               contextTags={conversationContextTags(conversation)}
               conversationId={conversationId}
+              continueInSlack={
+                detail.data?.canContinueInSlack
+                  ? {
+                      // The API refuses while a Turn runs.
+                      disabled: live,
+                      onClick: () => setContinueInSlackOpen(true),
+                    }
+                  : undefined
+              }
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               onDetailsClick={() => {
@@ -717,6 +728,17 @@ export function ConversationPage(props: {
                 error: Boolean(pin.error),
                 onClick: () => pin.mutate(!conversation?.pinnedAt),
                 pinned: Boolean(conversation?.pinnedAt),
+              }}
+              read={{
+                // Unread tracks idle conversations only, like the sidebar row.
+                disabled:
+                  !conversation ||
+                  !detail.data?.isParticipant ||
+                  markUnread.isPending ||
+                  (!unread && conversation.status !== "completed"),
+                error: Boolean(markUnread.error),
+                onClick: () => markUnread.mutate(!unread),
+                unread,
               }}
               archive={{
                 archived: Boolean(conversation?.archivedAt),
@@ -804,12 +826,13 @@ export function ConversationPage(props: {
                           hasPreviousPage={history.hasPreviousPage}
                           historyError={history.historyError}
                           historyVersion={history.historyVersion}
-                          lastReadSeq={readAtOpen.lastReadSeq}
+                          lastReadSeq={detail.data?.readPosition?.lastReadSeq}
                           live={live}
                           loadingPreviousPage={history.isLoadingPreviousPage}
                           newerHistory={history.newer}
                           onLoadPreviousPage={history.loadPreviousPage}
                           onRead={holdShown ? undefined : markRead}
+                          readEngaged={composerEngaged}
                           onSelectedEventSeqChange={setSelectedEventSeq}
                           // Sends and the thinking row belong after the latest event.
                           pendingMessages={
@@ -846,33 +869,39 @@ export function ConversationPage(props: {
             // A child Conversation takes input only from its parent agent, and it
             // runs without interactive auth, so it has no approval to show.
             view === "rich" && detail.data?.isParticipant && !agentTree ? (
-              <ConversationReplyFooter
-                authors={detail.data.authors}
-                conversationId={conversationId}
-                // Only pass committed ids for mailbox de-dupe. The full transcript is
-                // too large to re-enter the footer on every live poll while typing.
-                committedMessageIds={mailboxCommittedIds}
-                onPinRequest={requestPin}
-                pendingAuthorization={detail.pendingAuthorization}
-                // Keep the cancel watermark off props. Live polls refresh generatedAt
-                // every 2s; a prop would bust footer memo while the reader types.
-                pendingGeneratedAtRef={pendingGeneratedAtRef}
-                pendingMessages={detail.pendingMessages}
-                reviewItemId={reviewItemId}
-                // Without live history, an inline send would never leave the
-                // transcript tail. A started Turn reads a new send only later.
-                // Keep those sends in the queue. An earlier inline send that
-                // history does not have yet can start that Turn first. While
-                // newer pages are not loaded, the transcript tail is not the
-                // latest event, so a send waits in the queue too.
-                sendsInline={
-                  detail.data.eventHistory.status === "available" &&
-                  !history.newer &&
-                  !conversationIsResponding(detail.data) &&
-                  detail.inlineMessages.length === 0
-                }
-                stoppable={live}
-              />
+              <div
+                className="contents"
+                onFocusCapture={engageComposer}
+                onPointerDownCapture={engageComposer}
+              >
+                <ConversationReplyFooter
+                  authors={detail.data.authors}
+                  conversationId={conversationId}
+                  // Only pass committed ids for mailbox de-dupe. The full transcript is
+                  // too large to re-enter the footer on every live poll while typing.
+                  committedMessageIds={mailboxCommittedIds}
+                  onPinRequest={requestPin}
+                  pendingAuthorization={detail.pendingAuthorization}
+                  // Keep the cancel watermark off props. Live polls refresh generatedAt
+                  // every 2s; a prop would bust footer memo while the reader types.
+                  pendingGeneratedAtRef={pendingGeneratedAtRef}
+                  pendingMessages={detail.pendingMessages}
+                  reviewItemId={reviewItemId}
+                  // Without live history, an inline send would never leave the
+                  // transcript tail. A started Turn reads a new send only later.
+                  // Keep those sends in the queue. An earlier inline send that
+                  // history does not have yet can start that Turn first. While
+                  // newer pages are not loaded, the transcript tail is not the
+                  // latest event, so a send waits in the queue too.
+                  sendsInline={
+                    detail.data.eventHistory.status === "available" &&
+                    !history.newer &&
+                    !conversationIsResponding(detail.data) &&
+                    detail.inlineMessages.length === 0
+                  }
+                  stoppable={live}
+                />
+              </div>
             ) : undefined
           }
         />
@@ -889,6 +918,12 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+      {continueInSlackOpen ? (
+        <ContinueInSlackDialog
+          conversationId={conversationId}
+          onClose={() => setContinueInSlackOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

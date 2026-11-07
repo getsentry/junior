@@ -44,7 +44,6 @@ import {
   useWaitingConversations,
 } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
-import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import {
   readSidebarWidth,
@@ -108,13 +107,6 @@ export function ConversationWorkspace(props: {
 
   const waitingConversations = useWaitingConversations();
   const waitingConversationIds = useWaitingConversationIds();
-  const { finishedConversationIds, heldConversationId, markRead, setUnread } =
-    useConversationFinishedIndicators(
-      conversations,
-      selectedId,
-      Boolean(feed.data),
-      !search,
-    );
 
   const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
   const pagedConversations = useMemo(
@@ -122,15 +114,12 @@ export function ConversationWorkspace(props: {
       pageItems(
         pinnedAndAttentionFirst(
           conversations,
-          attentionConversationIds(
-            waitingConversationIds,
-            finishedConversationIds,
-          ),
+          attentionConversationIds(conversations, waitingConversationIds),
         ),
         page,
         CONVERSATION_PAGE_SIZE,
       ),
-    [conversations, finishedConversationIds, page, waitingConversationIds],
+    [conversations, page, waitingConversationIds],
   );
   useEffect(() => {
     setPage(1);
@@ -235,7 +224,6 @@ export function ConversationWorkspace(props: {
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
-              finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
               // Search, or more pins than one page holds, shows only some
               // pins, so a drop could not place the rest.
@@ -302,10 +290,7 @@ export function ConversationWorkspace(props: {
               <ConversationSidebar
                 conversations={conversations}
                 error={feed.error?.message}
-                finishedConversationIds={finishedConversationIds}
-                heldConversationId={heldConversationId}
                 loading={feed.isPending}
-                onUnreadChange={setUnread}
                 onNewConversation={openCreate}
                 onReorderPins={reorderPins}
                 selectedId={selectedId}
@@ -339,7 +324,6 @@ export function ConversationWorkspace(props: {
                       }
                     : undefined
                 }
-                onRead={markRead}
                 pendingArchiveUpdate={pendingArchiveUpdates.find(
                   (update) => update.conversationId === selectedId,
                 )}
