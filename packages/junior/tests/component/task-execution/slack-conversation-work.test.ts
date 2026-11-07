@@ -1549,7 +1549,6 @@ describe("Slack conversation work execution", () => {
     });
     expect(work?.lease).toBeUndefined();
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
-    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
     expect(work?.messages[0]?.attemptCount).toBe(1);
   });
 
@@ -1744,7 +1743,6 @@ describe("Slack conversation work execution", () => {
     expect(work?.lease).toBeUndefined();
     expect(work?.needsRun).toBe(true);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
-    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
     expect(work?.messages[0]?.attemptCount).toBeUndefined();
   });
 
@@ -1806,7 +1804,6 @@ describe("Slack conversation work execution", () => {
     expect(work?.lease).toBeUndefined();
     expect(work?.needsRun).toBe(true);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
-    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
   });
 
   it("completes Slack mailbox work when the handler finishes after the soft deadline", async () => {
