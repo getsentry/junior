@@ -1,5 +1,6 @@
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
   juniorIdentities,
@@ -33,25 +34,22 @@ function spendWindow(nowMs: number) {
 }
 
 /**
- * Read a cheap change marker for one viewer's spend window.
+ * Return a query for a cheap change marker of one viewer's spend window.
  *
  * Writes that record Conversation metrics also move `updated_at` forward, so
- * the marker changes when spend can change. The spend cache TTL bounds changes
- * that the marker misses, such as a day that leaves the window.
+ * the marker changes when spend can change. The window start is part of the
+ * marker, so it also changes when the window moves at UTC midnight.
  */
-export async function readPersonalSpendVersion(
+export function personalSpendVersionQuery(
+  db: JuniorDatabase,
   email: string,
-  nowMs = Date.now(),
-): Promise<string> {
+  nowMs: number,
+) {
   const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) return "";
   const { end, thirtyDayStart } = spendWindow(nowMs);
-  const [row] = await getDb()
+  return db
     .select({
-      conversations: sql<number>`count(*)::int`,
-      updatedAt: sql<
-        string | null
-      >`max(${juniorConversations.updatedAt})::text`,
+      version: sql<string>`concat_ws(':', ${thirtyDayStart.toISOString().slice(0, 10)}::text, count(*), max(${juniorConversations.updatedAt}))`,
     })
     .from(juniorConversations)
     .innerJoin(
@@ -60,13 +58,23 @@ export async function readPersonalSpendVersion(
     )
     .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(
-      and(
-        verifiedActorWhere(normalizedEmail),
-        gte(juniorConversations.lastActivityAt, thirtyDayStart),
-        lte(juniorConversations.lastActivityAt, end),
-      ),
+      normalizedEmail
+        ? and(
+            verifiedActorWhere(normalizedEmail),
+            gte(juniorConversations.lastActivityAt, thirtyDayStart),
+            lte(juniorConversations.lastActivityAt, end),
+          )
+        : sql`false`,
     );
-  return `${row?.conversations ?? 0}:${row?.updatedAt ?? ""}`;
+}
+
+/** Read the change marker of one viewer's spend window. */
+export async function readPersonalSpendVersion(
+  email: string,
+  nowMs = Date.now(),
+): Promise<string> {
+  const [row] = await personalSpendVersionQuery(getDb(), email, nowMs);
+  return row?.version ?? "";
 }
 
 /** Read one viewer's rolling model spend with one bounded aggregate query. */

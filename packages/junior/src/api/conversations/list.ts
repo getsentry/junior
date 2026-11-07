@@ -5,11 +5,13 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -19,6 +21,7 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorCodeChanges,
   juniorConversationBriefs,
+  juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -234,6 +237,70 @@ async function waitingRowsOutsidePage(
     limit: missing.length,
     status: "active",
   });
+}
+
+const feedTree = alias(juniorConversations, "feed_tree");
+
+/**
+ * Return a query for a token that changes when the viewer's default feed
+ * page can change. It reads the same newest page as the feed, so its cost
+ * does not grow with the viewer's history.
+ *
+ * A write that changes what a Conversation shows bumps its `detail_version`,
+ * so the sum over each page root's tree covers the rows and their child
+ * agents. A new or newly active root changes the page. Pins bump no detail
+ * version, so they are part of the token too. Waiting roots outside the
+ * page move the Review items token.
+ */
+export function conversationFeedVersionQuery(
+  db: JuniorDatabase,
+  userId: string,
+) {
+  const pin = juniorConversationParticipants;
+  const page = db
+    .select({
+      conversationId: juniorConversations.conversationId,
+      pinnedAt: pin.pinnedAt,
+      pinPosition: pin.pinPosition,
+    })
+    .from(juniorConversations)
+    .leftJoin(
+      pin,
+      and(
+        eq(pin.rootConversationId, juniorConversations.conversationId),
+        eq(pin.userId, userId),
+      ),
+    )
+    .where(
+      and(
+        isNull(juniorConversations.parentConversationId),
+        isNull(juniorConversations.quickQuestionAt),
+        conversationFeedMembershipFilter("active", { kind: "viewer", userId }),
+      ),
+    )
+    // The feed's order. The joined pin replaces its per-row pin lookup, which
+    // makes the plan cost high enough to start JIT compilation.
+    .orderBy(
+      desc(isNotNull(pin.pinnedAt)),
+      desc(juniorConversations.lastActivityAt),
+      asc(juniorConversations.conversationId),
+    )
+    .limit(CONVERSATION_FEED_LIMIT)
+    .as("feed_page");
+  const tree = db
+    .select({
+      version: sql<string>`concat_ws(':', count(*), sum(${feedTree.detailVersion}))`,
+    })
+    .from(feedTree)
+    .where(eq(feedTree.rootConversationId, page.conversationId));
+  return db
+    .select({
+      version: sql<string>`md5(coalesce(string_agg(
+        concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition}, (${tree})),
+        ',' order by ${page.conversationId}
+      ), ''))`,
+    })
+    .from(page);
 }
 
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */

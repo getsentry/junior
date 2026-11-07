@@ -18,6 +18,7 @@ import type {
 import {
   acceptedConversationMessageSchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   webMessageId,
   cancelConversationPendingMessagesResponseSchema,
   conversationDetailReportSchema,
@@ -91,6 +92,8 @@ const FAST_POLL_WINDOW_MS = 6_000;
 export type ConversationSnapshot = ConversationDetailReport & {
   mailbox?: ConversationPendingMessagesReport;
   detailEtag?: string;
+  /** Tree token that the report was built from, for the versions poll. */
+  conversationVersion?: string;
   /** Set by a list hover prefetch, so the next visit can use it as its open fetch. */
   prefetchedAtMs?: number;
 };
@@ -157,6 +160,20 @@ export function refreshSideReadsOnChange(
   void client.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
 }
 
+/**
+ * Whether the detail polls by itself: a Turn runs, input waits in the
+ * mailbox, or the viewer must authorize a connection.
+ */
+export function conversationDetailIsLive(
+  snapshot: ConversationSnapshot | undefined,
+): boolean {
+  return (
+    snapshot?.status === "active" ||
+    Boolean(snapshot?.mailbox?.messages.length) ||
+    Boolean(snapshot?.mailbox?.authorization)
+  );
+}
+
 /** Refresh history and mailbox as one visible snapshot, including idle input. */
 export function conversationDetailQueryOptions(
   conversationId: string | undefined,
@@ -166,6 +183,11 @@ export function conversationDetailQueryOptions(
     fastPollUntilMs?: number;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
+    /**
+     * The versions poll refreshes this Conversation while it is idle, so
+     * the detail does not poll then.
+     */
+    versionsPoll?: boolean;
   },
 ) {
   // `unreadPage` adds a page to one fetch. The detail in the cache is the
@@ -203,12 +225,11 @@ export function conversationDetailQueryOptions(
     refetchInterval: (query) =>
       options?.fastPollUntilMs && Date.now() < options.fastPollUntilMs
         ? FAST_POLL_INTERVAL_MS
-        : options?.awaitingMessage ||
-            query.state.data?.status === "active" ||
-            Boolean(query.state.data?.mailbox?.messages.length) ||
-            Boolean(query.state.data?.mailbox?.authorization)
+        : options?.awaitingMessage || conversationDetailIsLive(query.state.data)
           ? 2_000
-          : 10_000,
+          : options?.versionsPoll
+            ? false
+            : 10_000,
     retry: false,
   });
 }
@@ -550,6 +571,8 @@ export function useConversationData(
      * position. Polls do not ask, so the server reads that page once.
      */
     unreadPageAtOpen?: boolean;
+    /** See `conversationDetailQueryOptions`. */
+    versionsPoll?: boolean;
   },
 ) {
   const queryClient = useQueryClient();
@@ -609,6 +632,7 @@ export function useConversationData(
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
       unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
+      versionsPoll: options?.versionsPoll,
     }),
   });
   // A reopened Conversation shows the cached copy at once, but it can miss
@@ -938,9 +962,11 @@ function withCachedEvents(
 function withDetailEtag<T extends ConversationDetailReport>(
   report: T,
   response: Response,
-): T & { detailEtag?: string } {
+): T & { conversationVersion?: string; detailEtag?: string } {
   return {
     ...report,
+    conversationVersion:
+      response.headers.get(CONVERSATION_VERSION_HEADER) ?? undefined,
     detailEtag:
       response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
   };

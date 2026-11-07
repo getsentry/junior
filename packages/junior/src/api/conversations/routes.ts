@@ -10,6 +10,7 @@ import {
   conversationAttachmentParamsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventsQuerySchema,
@@ -664,6 +665,7 @@ export function createConversationRoutes(
         ? {
             "cache-control": "private, no-store",
             [CONVERSATION_DETAIL_VERSION_HEADER]: version.etag,
+            [CONVERSATION_VERSION_HEADER]: version.version,
           }
         : undefined;
       if (version && sentVersion === version.etag) {
