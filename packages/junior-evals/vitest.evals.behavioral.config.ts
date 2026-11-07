@@ -30,9 +30,10 @@ loadJuniorTestEnvFiles({
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
 // Run agent Turns on Luna at high reasoning to keep eval cost down. Prod
-// defaults to Opus; set AI_MODEL to eval another model.
-process.env.AI_MODEL ??= "openai/gpt-6-luna";
-process.env.AI_REASONING_LEVEL ??= "high";
+// defaults to Opus; set AI_MODEL to eval another model. `||=` because
+// apps/example/.env.example sets both to an empty string.
+process.env.AI_MODEL ||= "openai/gpt-6-luna";
+process.env.AI_REASONING_LEVEL ||= "high";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 // The agent test fixture calls the heartbeat route with this secret.
 process.env.JUNIOR_SCHEDULER_SECRET ??= "junior-test-scheduler-secret";
