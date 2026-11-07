@@ -1,8 +1,9 @@
 export const CLI_USAGE =
-  "usage: junior init <dir>\n       junior admin list|grant <email>|revoke <email>\n       junior service-account connect|status|disconnect <plugin>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat\n       junior chat -p <message>\n       junior briefs pull <conversationId...> --base-url <url> [--token <token>] --out <dir>\n       junior briefs run <snapshot...> [--model <id>] [--prompt <file>] [--turn-by-turn] [--out <dir>]\n       junior conversations list --base-url <url> [--status active|archived] [--token <token>]";
+  "usage: junior init <dir>\n       junior admin list|grant <email>|revoke <email>\n       junior service-account connect|status|disconnect <plugin>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat\n       junior chat -p <message>\n       junior briefs pull <conversationId...> --base-url <url> [--token <token>] --out <dir>\n       junior briefs run <snapshot...> [--model <id>] [--prompt <file>] [--turn-by-turn] [--out <dir>]\n       junior conversations list --base-url <url> [--status active|archived] [--token <token>]\n       junior automations list --base-url <url> [--token <token>]";
 
 interface CliHandlers {
   runAdmin: (argv: string[]) => Promise<number>;
+  runAutomations: (argv: string[]) => Promise<number>;
   runBriefs: (argv: string[]) => Promise<number>;
   runServiceAccount: (argv: string[]) => Promise<number>;
   runChat: (argv: string[]) => Promise<number>;
@@ -71,6 +72,12 @@ export async function runCli(
 
   if (command === "briefs") {
     return await handlers.runBriefs(
+      subcommand === undefined ? [] : [subcommand, ...rest],
+    );
+  }
+
+  if (command === "automations") {
+    return await handlers.runAutomations(
       subcommand === undefined ? [] : [subcommand, ...rest],
     );
   }

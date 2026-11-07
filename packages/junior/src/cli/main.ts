@@ -58,6 +58,11 @@ async function runBriefs(argv: string[]): Promise<number> {
   return await mod.runBriefs(argv);
 }
 
+async function runAutomations(argv: string[]): Promise<number> {
+  const mod = await import("./automations");
+  return await mod.runAutomations(argv);
+}
+
 async function runConversations(argv: string[]): Promise<number> {
   const mod = await import("./conversations");
   return await mod.runConversations(argv);
@@ -82,11 +87,14 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
-  // `briefs pull` and `conversations list` must work with only an API token,
-  // and `admin` only needs core SQL, so they skip app plugin loading like
-  // `init` does.
+  // `briefs pull`, `conversations list`, and `automations list` must work
+  // with only an API token, and `admin` only needs core SQL, so they skip app
+  // plugin loading like `init` does.
   const cliPluginsModule =
-    command && !["init", "briefs", "conversations", "admin"].includes(command)
+    command &&
+    !["init", "briefs", "conversations", "automations", "admin"].includes(
+      command,
+    )
       ? await import("./plugins")
       : undefined;
   const pluginSet = cliPluginsModule
@@ -100,6 +108,7 @@ export async function runMain(
     runBriefs,
     runServiceAccount,
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
+    runAutomations,
     runConversations,
     runInit,
     runSnapshotCreate,
