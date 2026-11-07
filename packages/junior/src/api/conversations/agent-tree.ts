@@ -33,6 +33,9 @@ export async function readConversationAgentTree(
     return undefined;
   }
   const ids = lineage.map((entry) => entry.conversationId);
+  const kindById = new Map(
+    lineage.map((entry) => [entry.conversationId, entry.kind]),
+  );
   // After a cycle or the depth bound, the first entry is still a child.
   const root = lineage[0]!.parentConversationId
     ? undefined
@@ -59,14 +62,20 @@ export async function readConversationAgentTree(
           durationMs: 0,
           firstHumanMessageText: firstHumanMessageTextByConversation.get(id),
         });
-        return { conversationId: id, label: summary.displayTitle };
+        return {
+          conversationId: id,
+          kind: "root" as const,
+          label: summary.displayTitle,
+        };
       }
+      const kind = kindById.get(id)!;
       if (!itemAccess?.canViewPrivateContent) {
-        return { conversationId: id, label: CHILD_LABEL };
+        return { conversationId: id, kind, label: CHILD_LABEL };
       }
       const agent = await getChildAgentLabel(id);
       return {
         conversationId: id,
+        kind,
         label: agent?.title ?? agent?.agentName ?? CHILD_LABEL,
       };
     }),

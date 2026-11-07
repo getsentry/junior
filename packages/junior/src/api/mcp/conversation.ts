@@ -33,7 +33,10 @@ export const mcpConversationSchema = z
       .describe(
         "Time of the newest activity. archiveConversation takes this value.",
       ),
-    archivedAt: z.string().optional().describe("Set when you archived it."),
+    archivedAt: z
+      .string()
+      .optional()
+      .describe("Set when you archived it, or when anyone archived a Thread."),
     pinnedAt: z.string().optional().describe("Set when you pinned it."),
     url: z.string().optional().describe("Dashboard link."),
   })
@@ -54,7 +57,10 @@ export function mcpConversation(
     locationUrl: summary.locationUrl,
     startedAt: summary.startedAt,
     lastSeenAt: summary.lastSeenAt,
-    archivedAt: summary.archivedAt ?? undefined,
+    archivedAt:
+      (summary.kind !== "root"
+        ? summary.childArchivedAt
+        : summary.archivedAt) ?? undefined,
     pinnedAt: summary.pinnedAt ?? undefined,
     url: getDashboardConversationLink(summary.conversationId),
   };

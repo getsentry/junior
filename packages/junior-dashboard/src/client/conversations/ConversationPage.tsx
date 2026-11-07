@@ -19,6 +19,8 @@ import type {
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
 import {
+  applyPendingArchiveUpdate,
+  conversationArchivedAt,
   useArchiveConversation,
   type ArchivedFromConversationState,
   type PendingArchiveConversationUpdate,
@@ -70,6 +72,7 @@ import {
   type TurnContextSelection,
 } from "./TranscriptTurnContextView";
 import { cn } from "../styles";
+import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { conversationContextTags } from "./ConversationContextTags";
@@ -100,6 +103,7 @@ import {
   conversationParticipants,
   ParticipantAvatarStack,
 } from "../components/ParticipantAvatarStack";
+import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationOutline } from "./ConversationOutline";
 import {
@@ -127,7 +131,6 @@ import {
   type SubagentTranscriptTarget,
 } from "./SubagentTranscriptDrawer";
 import type {
-  Conversation,
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
@@ -284,7 +287,25 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const [confirmChildArchive, setConfirmChildArchive] = useState(false);
   const navigate = useNavigate();
+  const setArchived = (archived: boolean) => {
+    archive.mutate({
+      // A child archive covers its children, so the confirm names them.
+      applyToChildren: conversation!.kind !== "root",
+      archived,
+      lastSeenAt: conversation!.lastSeenAt,
+    });
+    // Archiving hides this conversation, so go home at once. The mutation
+    // keeps running after this page unmounts.
+    if (archived) {
+      navigate("/", {
+        state: {
+          archivedConversation: conversation!,
+        } satisfies ArchivedFromConversationState,
+      });
+    }
+  };
   const pin = usePinConversation(conversationId);
   const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
@@ -738,23 +759,22 @@ export function ConversationPage(props: {
                 unread,
               }}
               archive={{
-                archived: Boolean(conversation?.archivedAt),
+                archived: Boolean(conversationArchivedAt(conversation)),
                 disabled: !conversation || archive.isPending,
-                error: Boolean(archive.error),
+                // A refused restore names the archived ancestor to restore
+                // first.
+                error: archive.error
+                  ? (archive.error instanceof DashboardApiError &&
+                      archive.error.apiError) ||
+                    "Could not update archive state."
+                  : undefined,
                 onClick: () => {
-                  const archived = !conversation!.archivedAt;
-                  archive.mutate({
-                    archived,
-                    lastSeenAt: conversation!.lastSeenAt,
-                  });
-                  // Archiving hides this conversation, so go home at once.
-                  // The mutation keeps running after this page unmounts.
-                  if (archived) {
-                    navigate("/", {
-                      state: {
-                        archivedConversation: conversation!,
-                      } satisfies ArchivedFromConversationState,
-                    });
+                  if (conversationArchivedAt(conversation)) {
+                    setArchived(false);
+                  } else if (conversation!.kind === "root") {
+                    setArchived(true);
+                  } else {
+                    setConfirmChildArchive(true);
                   }
                 },
                 pending: archive.isPending,
@@ -903,6 +923,16 @@ export function ConversationPage(props: {
           }
         />
       </ConversationSidePanelLayout>
+      {confirmChildArchive ? (
+        <ArchiveChildDialog
+          hasChildren={Boolean(detail.data?.childAgentTotals?.count)}
+          onClose={() => setConfirmChildArchive(false)}
+          onConfirm={() => {
+            setConfirmChildArchive(false);
+            setArchived(true);
+          }}
+        />
+      ) : null}
       <QuickQuestionSelectionButton
         onAsk={(selection) => {
           if (eventOpen) setSelectedEventSeq(undefined);
@@ -923,24 +953,6 @@ export function ConversationPage(props: {
       ) : null}
     </div>
   );
-}
-
-function applyPendingArchiveUpdate(
-  conversation: Conversation | undefined,
-  update: PendingArchiveConversationUpdate | undefined,
-): Conversation | undefined {
-  const updatedConversation =
-    conversation ??
-    (update?.conversation
-      ? buildConversations([update.conversation])[0]
-      : undefined);
-  if (!updatedConversation || !update) return updatedConversation;
-  return {
-    ...updatedConversation,
-    archivedAt: update.archived
-      ? (updatedConversation.archivedAt ?? updatedConversation.lastSeenAt)
-      : null,
-  };
 }
 
 function conversationIsLive(

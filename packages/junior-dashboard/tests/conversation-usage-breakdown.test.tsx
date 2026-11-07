@@ -10,6 +10,7 @@ function detail(
 ): ConversationDetailReport {
   const startedAt = "2026-01-01T00:00:00.000Z";
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",

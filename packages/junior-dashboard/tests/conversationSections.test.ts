@@ -9,6 +9,7 @@ import type { Conversation } from "../src/client/types";
 
 function conversation(id: string, lastSeenAt: string): Conversation {
   return {
+    kind: "root",
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,

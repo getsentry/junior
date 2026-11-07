@@ -503,6 +503,7 @@ test("scrolls long conversation and transcript panes independently", async ({
     conversationId: `long-${index}`,
     cumulativeDurationMs: 1_000 + index,
     displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -724,7 +725,8 @@ test("inspects and copies a child agent transcript", async ({
   await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
-  // Details lists child agents with the runtime status.
+  // Details lists child agents with the runtime status. The two mock Threads
+  // are newer than the Tasks, so they list first.
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
@@ -733,11 +735,11 @@ test("inspects and copies a child agent transcript", async ({
     exact: true,
   });
   await expect(
-    details.getByRole("heading", { name: "Subagents 2", exact: true }),
+    details.getByRole("heading", { name: "Subagents 4", exact: true }),
   ).toBeVisible();
   const subagents = details.getByRole("list", { name: "Subagents" });
-  await expect(subagents.getByRole("listitem")).toHaveCount(2);
-  await expect(subagents.getByRole("listitem").first()).toContainText(
+  await expect(subagents.getByRole("listitem")).toHaveCount(4);
+  await expect(subagents.getByRole("listitem").nth(2)).toContainText(
     "GitHub access is needed to read the pull request.",
   );
   await screenshot(page, "conversation-subagents");

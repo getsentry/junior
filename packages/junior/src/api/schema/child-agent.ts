@@ -12,6 +12,7 @@ import {
  * Viewers who cannot see private content get the status, time, and usage, but
  * not the name, task, title, or error. Usage covers the child Conversation and
  * all its own child agents, like the detail of that child Conversation.
+ * Archived children stay in the report.
  */
 export const conversationChildAgentSchema = z
   .object({
@@ -21,10 +22,13 @@ export const conversationChildAgentSchema = z
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
     error: z.string().min(1).optional(),
+    kind: z.enum(["thread", "task"]),
     name: z.string().min(1).optional(),
     redacted: z.literal(true).optional(),
     status: z.enum(AGENT_INVOCATION_STATUSES),
     task: z.string().optional(),
+    /** When the child was archived for everyone, or null. */
+    childArchivedAt: z.string().datetime().nullable(),
     title: z.string().min(1).optional(),
     updatedAt: z.string().datetime(),
   })
