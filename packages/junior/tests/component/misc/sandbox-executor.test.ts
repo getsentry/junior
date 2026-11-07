@@ -2616,8 +2616,8 @@ describe("createTestSandbox", () => {
   });
 
   it("returns tool errors when file-tool command streams end", async () => {
-    const sandbox = makeSandbox("sbx_find_files_interrupted");
-    sandbox.fs.stat.mockRejectedValueOnce(createStreamInterruptedError());
+    const sandbox = makeSandbox("sbx_read_file_interrupted");
+    sandbox.fs.readFile.mockRejectedValueOnce(createStreamInterruptedError());
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
     const executor = createTestSandbox();
@@ -2625,72 +2625,23 @@ describe("createTestSandbox", () => {
 
     const error = await executor
       .execute<StructuredSandboxResult>({
-        toolName: "findFiles",
-        input: { pattern: "*.ts" },
+        toolName: "readFile",
+        input: { path: "src/a.ts" },
       })
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(ToolInputError);
     expect(error).toMatchObject({
       message: expect.stringContaining(
-        "The sandbox command stream was interrupted during findFiles",
+        "The sandbox command stream was interrupted during readFile",
       ),
     });
-  });
-
-  it("preserves turn cancellation when ripgrep reports an interrupted stream", async () => {
-    const sandbox = makeSandbox("sbx_aborted_find_files");
-    const abortReason = new Error("agent turn cancelled");
-    let markCommandStarted: () => void = () => {};
-    const commandStarted = new Promise<void>((resolve) => {
-      markCommandStarted = resolve;
-    });
-    sandbox.fs.stat.mockResolvedValueOnce({ isDirectory: () => true });
-    sandbox.runCommand.mockImplementationOnce(
-      async (input: { signal?: AbortSignal }) =>
-        await new Promise<never>((_resolve, reject) => {
-          markCommandStarted();
-          const missingSignalTimeout = setTimeout(
-            () => reject(new Error("abort signal was not propagated")),
-            100,
-          );
-          input.signal?.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(missingSignalTimeout);
-              reject(createStreamInterruptedError());
-            },
-            { once: true },
-          );
-        }),
-    );
-    sandboxGetMock.mockResolvedValueOnce(sandbox);
-
-    const executor = createTestSandbox({
-      sandboxId: "sbx_aborted_find_files",
-    });
-    executor.configureSkills([]);
-    const controller = new AbortController();
-    const operation = executor.execute<StructuredSandboxResult>({
-      toolName: "findFiles",
-      input: { pattern: "*.ts" },
-      signal: controller.signal,
-    });
-    await commandStarted;
-
-    controller.abort(abortReason);
-
-    await expect(operation).rejects.toBe(abortReason);
-    expect(sandbox.fs.stat).toHaveBeenCalledTimes(1);
-    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
   });
 
   it("invalidates an unavailable sandbox and lets a later tool call recover", async () => {
     const closedSandbox = makeSandbox("sbx_closed_file_tools");
     const recoveredSandbox = makeSandbox("sbx_closed_file_tools");
-    closedSandbox.fs.stat.mockRejectedValueOnce(createClosedStreamError());
-    recoveredSandbox.fs.stat.mockResolvedValue({ isDirectory: () => true });
-    recoveredSandbox.fs.readdir.mockResolvedValue([]);
+    closedSandbox.fs.readFile.mockRejectedValueOnce(createClosedStreamError());
     hashMock.mockReturnValue("profile-v1");
     sandboxCreateMock.mockResolvedValueOnce(closedSandbox);
     sandboxGetMock.mockResolvedValueOnce(recoveredSandbox);
@@ -2702,27 +2653,27 @@ describe("createTestSandbox", () => {
 
     const unavailable = await executor
       .execute<StructuredSandboxResult>({
-        toolName: "grep",
-        input: { pattern: "needle" },
+        toolName: "readFile",
+        input: { path: "src/a.ts" },
       })
       .catch((error: unknown) => error);
 
     expect(unavailable).toBeInstanceOf(ToolInputError);
     expect(unavailable).toMatchObject({
       message: expect.stringContaining(
-        "The temporary sandbox became unavailable during grep",
+        "The temporary sandbox became unavailable during readFile",
       ),
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(sandboxGetMock).not.toHaveBeenCalled();
 
     const recovered = await executor.execute<StructuredSandboxResult>({
-      toolName: "grep",
-      input: { pattern: "needle" },
+      toolName: "readFile",
+      input: { path: "src/a.ts" },
     });
 
     expect(recovered.result.details).toMatchObject({
-      match_count: 0,
+      path: "src/a.ts",
     });
     expect(sandboxGetMock).toHaveBeenCalledTimes(1);
     expect(sandboxGetMock).toHaveBeenCalledWith({
@@ -2743,7 +2694,7 @@ describe("createTestSandbox", () => {
     const staleOperationStarted = new Promise<void>((resolve) => {
       markStaleOperationStarted = resolve;
     });
-    staleSandbox.fs.stat
+    staleSandbox.fs.readFile
       .mockImplementationOnce(
         async () =>
           await new Promise<never>((_resolve, reject) => {
@@ -2752,10 +2703,6 @@ describe("createTestSandbox", () => {
           }),
       )
       .mockRejectedValueOnce(unavailable);
-    recoveredSandbox.fs.stat.mockResolvedValue({
-      isDirectory: () => true,
-    });
-    recoveredSandbox.fs.readdir.mockResolvedValue([]);
     sandboxGetMock
       .mockResolvedValueOnce(staleSandbox)
       .mockResolvedValueOnce(recoveredSandbox);
@@ -2766,23 +2713,23 @@ describe("createTestSandbox", () => {
     executor.configureSkills([]);
 
     const staleOperation = executor.execute<StructuredSandboxResult>({
-      toolName: "findFiles",
-      input: { pattern: "*.ts" },
+      toolName: "readFile",
+      input: { path: "src/a.ts" },
     });
     await staleOperationStarted;
 
     const invalidatingError = await executor
       .execute<StructuredSandboxResult>({
-        toolName: "findFiles",
-        input: { pattern: "*.ts" },
+        toolName: "readFile",
+        input: { path: "src/a.ts" },
       })
       .catch((error: unknown) => error);
     expect(invalidatingError).toBeInstanceOf(ToolInputError);
 
     await expect(
       executor.execute<StructuredSandboxResult>({
-        toolName: "findFiles",
-        input: { pattern: "*.ts" },
+        toolName: "readFile",
+        input: { path: "src/a.ts" },
       }),
     ).resolves.toBeDefined();
 
@@ -2791,8 +2738,8 @@ describe("createTestSandbox", () => {
 
     await expect(
       executor.execute<StructuredSandboxResult>({
-        toolName: "findFiles",
-        input: { pattern: "*.ts" },
+        toolName: "readFile",
+        input: { path: "src/a.ts" },
       }),
     ).resolves.toBeDefined();
     expect(sandboxGetMock).toHaveBeenCalledTimes(2);

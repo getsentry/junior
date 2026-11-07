@@ -87,14 +87,6 @@ fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.
 sort=-gen_ai.tool.call.result.size
 ```
 
-Search tool volume, truncation, and raw output size.
-
-```text
-dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
-fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
-sort=-timestamp
-```
-
 Code Mode scripts, with their nested call counts and failures.
 
 ```text

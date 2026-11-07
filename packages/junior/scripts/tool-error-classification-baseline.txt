@@ -46,13 +46,7 @@ packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Failed to cr
 packages/junior/src/chat/tools/publish-image.ts	throw new Error( "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.", );
 packages/junior/src/chat/tools/sandbox/bash.ts	throw new Error("bash can only run when sandbox execution is enabled.");
 packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile can only run when sandbox execution is enabled.", );
-packages/junior/src/chat/tools/sandbox/find-files.ts	throw new Error( "findFiles can only run when sandbox execution is enabled.", );
-packages/junior/src/chat/tools/sandbox/find-files.ts	throw new Error(`ripgrep file search failed: ${detail}`);
 packages/junior/src/chat/tools/sandbox/generated-artifacts.ts	throw new Error( `failed to create generated artifact directory: ${mkdir.stderr}`, );
-packages/junior/src/chat/tools/sandbox/grep.ts	throw new Error("grep can only run when sandbox execution is enabled.");
-packages/junior/src/chat/tools/sandbox/grep.ts	throw new Error("ripgrep returned invalid JSON output", { cause: error });
-packages/junior/src/chat/tools/sandbox/grep.ts	throw new Error(`ripgrep search failed: ${detail}`);
-packages/junior/src/chat/tools/sandbox/list-dir.ts	throw new Error( "listDir can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/write-file.ts	throw new Error( "writeFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to load ${skill.name}`);

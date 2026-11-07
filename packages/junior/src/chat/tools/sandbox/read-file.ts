@@ -10,7 +10,7 @@ export {
 export function createReadFileTool() {
   return zodTool({
     description:
-      "Read a bounded line range from a file in the sandbox workspace. Use when you need exact file contents to verify facts or make edits safely. Prefer grep/findFiles/listDir for broad discovery.",
+      "Read a bounded line range from a file in the sandbox workspace. Use when you need exact file contents to verify facts or make edits safely. Use bash (rg, find, ls) for broad discovery.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

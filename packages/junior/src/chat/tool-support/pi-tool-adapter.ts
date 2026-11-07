@@ -358,9 +358,6 @@ export function createToolPipeline(options: ToolPipelineOptions) {
             toolName,
             input: sandboxInput,
             ...(signal ? { signal } : undefined),
-            ...(toolName === "grep" || toolName === "findFiles"
-              ? { setToolCallSpanAttributes: setSpanAttributes }
-              : undefined),
           })
         : Promise.resolve(
             // `prepareCall` checked that the executor exists.
