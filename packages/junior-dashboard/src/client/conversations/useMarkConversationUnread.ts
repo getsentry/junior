@@ -3,7 +3,7 @@ import type {
   ConversationDetailReport,
   ConversationFeed,
 } from "@sentry/junior/api/schema";
-import { conversationReadPositionSchema } from "@sentry/junior/api/schema";
+import { conversationUnreadSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
 import { conversationDetailQueryKey } from "./queries";
@@ -25,7 +25,7 @@ export function useMarkConversationUnread(
   return useMutation({
     mutationFn: (unread: boolean) =>
       patch(
-        conversationReadPositionSchema,
+        conversationUnreadSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/unread`,
         { unread },
       ),

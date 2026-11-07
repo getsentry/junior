@@ -105,8 +105,14 @@ export type {
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export { conversationReadPositionSchema } from "./schema/conversation-read-position";
-export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  conversationReadPositionSchema,
+  conversationReadReportSchema,
+} from "./schema/conversation-read-position";
+export type {
+  ConversationReadPosition,
+  ConversationReadReport,
+} from "./schema/conversation-read-position";
 export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -127,8 +133,14 @@ export type {
   ReorderPinnedConversationsBody,
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
-export { markConversationUnreadBodySchema } from "./schema/conversation-unread";
-export type { MarkConversationUnreadBody } from "./schema/conversation-unread";
+export {
+  conversationUnreadSchema,
+  markConversationUnreadBodySchema,
+} from "./schema/conversation-unread";
+export type {
+  ConversationUnread,
+  MarkConversationUnreadBody,
+} from "./schema/conversation-unread";
 export {
   CONVERSATION_TITLE_MAX_LENGTH,
   renameConversationBodySchema,

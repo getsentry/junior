@@ -16,7 +16,7 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  conversationReadPositionSchema,
+  conversationReadReportSchema,
   type ConversationDetailReport,
   type ConversationEventPage,
   type ConversationFeed,
@@ -182,34 +182,54 @@ export function useMarkConversationRead(conversationId: string) {
   const { mutate } = useMutation({
     mutationFn: (lastReadSeq: number) =>
       put(
-        conversationReadPositionSchema,
+        conversationReadReportSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/read-position`,
         { lastReadSeq },
       ),
-    onSuccess: (readPosition) => {
-      const detail = queryClient.setQueryData<ConversationDetailReport>(
-        conversationDetailQueryKey(conversationId),
-        (detail) => detail && withReadPosition(detail, readPosition),
-      );
-      // The read can clear the unread flag that the feed and detail show.
-      // Only the server knows which reply it counts, so refetch them.
+    onSuccess: async ({ unreadReply, ...readPosition }) => {
+      const detailQueryKey = conversationDetailQueryKey(conversationId);
       const feeds = { queryKey: ["dashboard", "conversations"] };
-      const feedUnread = queryClient
-        .getQueriesData<ConversationFeed>(feeds)
-        .some(([, feed]) =>
-          feed?.conversations.some(
-            (conversation) =>
-              conversation.conversationId === conversationId &&
-              conversation.unread,
-          ),
+      const clearsUnread =
+        !unreadReply &&
+        (queryClient.getQueryData<ConversationDetailReport>(detailQueryKey)
+          ?.unread ||
+          queryClient
+            .getQueriesData<ConversationFeed>(feeds)
+            .some(([, feed]) =>
+              feed?.conversations.some(
+                (conversation) =>
+                  conversation.conversationId === conversationId &&
+                  conversation.unread,
+              ),
+            ));
+      if (clearsUnread) {
+        // A poll that started before this read would put the unread flag
+        // back. The next poll reads after the write.
+        await Promise.all([
+          queryClient.cancelQueries(feeds),
+          queryClient.cancelQueries({ exact: true, queryKey: detailQueryKey }),
+        ]);
+        queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
+          feed
+            ? {
+                ...feed,
+                conversations: feed.conversations.map((conversation) =>
+                  conversation.conversationId === conversationId
+                    ? { ...conversation, unread: undefined }
+                    : conversation,
+                ),
+              }
+            : feed,
         );
-      if (detail?.unread || feedUnread) {
-        void queryClient.invalidateQueries(feeds);
-        void queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        });
       }
+      queryClient.setQueryData<ConversationDetailReport>(
+        detailQueryKey,
+        (detail) =>
+          detail && {
+            ...withReadPosition(detail, readPosition),
+            ...(clearsUnread ? { unread: undefined } : undefined),
+          },
+      );
     },
   });
   return useCallback(

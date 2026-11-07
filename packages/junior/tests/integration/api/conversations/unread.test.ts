@@ -5,7 +5,8 @@ import { readConversationFeed } from "@/api/conversations/list";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
-  conversationReadPositionSchema,
+  conversationReadReportSchema,
+  conversationUnreadSchema,
 } from "@/api/schema";
 import {
   closeDb,
@@ -156,7 +157,13 @@ describe("conversation unread API", () => {
     // Without a read position, the reply after the viewer's own message is
     // new. The release backfills a position for each existing root.
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
-    await putReadPosition(app, conversationId, 1);
+    // The report says when it reads past the reply, so the dashboard clears
+    // the flag without a refetch.
+    const report = await putReadPosition(app, conversationId, 1);
+    expect(conversationReadReportSchema.parse(await report.json())).toEqual({
+      lastReadSeq: 1,
+      unreadReply: false,
+    });
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
 
     // A quiet reply folds into activity, so it is not new.
@@ -179,9 +186,9 @@ describe("conversation unread API", () => {
     // Mark as read reads to the last event.
     const markRead = await setUnread(app, conversationId, false);
     expect(markRead.status).toBe(200);
-    expect(conversationReadPositionSchema.parse(await markRead.json())).toEqual(
-      { lastReadSeq: 3 },
-    );
+    expect(conversationUnreadSchema.parse(await markRead.json())).toEqual({
+      unreadReply: false,
+    });
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
     // Each viewer has its own position: the other one has not read it.
     await expect(unread(other.viewer, conversationId)).resolves.toBe(true);
@@ -202,10 +209,16 @@ describe("conversation unread API", () => {
 
     // Mark as unread moves the position back to just before that reply.
     const markUnread = await setUnread(app, conversationId, true);
-    expect(
-      conversationReadPositionSchema.parse(await markUnread.json()),
-    ).toEqual({ lastReadSeq: 2 });
+    expect(conversationUnreadSchema.parse(await markUnread.json())).toEqual({
+      unreadReply: true,
+    });
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
+    const reopened = await app.request(
+      `http://localhost/api/conversations/${conversationId}`,
+    );
+    expect(await reopened.json()).toMatchObject({
+      readPosition: { lastReadSeq: 2 },
+    });
 
     // Archive is an act on the conversation, so it reads it to the end.
     const archive = await app.request(
@@ -228,6 +241,31 @@ describe("conversation unread API", () => {
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
     await appendMessage(conversationId, { authorIdentityId: identity!.id }); // 5
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    // No reply follows the viewer's own Message, so there is nothing to mark
+    // unread.
+    expect((await setUnread(app, conversationId, true)).status).toBe(409);
+    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+  });
+
+  it("marks a reply at the first event unread", async () => {
+    const conversationId = "local:test:unread-first-event";
+    await recordActivity(conversationId, 1_000);
+    const { app, viewer } = await authenticatedApi("first-reader@example.com");
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: conversationId,
+        userId: viewer.id,
+      });
+    await appendMessage(conversationId, { role: "assistant" }); // 0
+    await putReadPosition(app, conversationId, 0);
+    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+
+    // No seq is before the reply, so the position goes and the conversation
+    // counts from its start.
+    expect((await setUnread(app, conversationId, true)).status).toBe(200);
+    await expect(unread(viewer, conversationId)).resolves.toBe(true);
   });
 
   it("rejects a viewer who is not a participant", async () => {

@@ -15,3 +15,16 @@ export const conversationReadPositionSchema = z
 export type ConversationReadPosition = z.infer<
   typeof conversationReadPositionSchema
 >;
+
+/**
+ * The reply to a read report: the stored read position and whether Junior's
+ * latest visible reply is still after it. The dashboard clears the unread
+ * flag from this, so it does not refetch the feed after each report.
+ */
+export const conversationReadReportSchema = conversationReadPositionSchema
+  .extend({ unreadReply: z.boolean() })
+  .strict();
+
+export type ConversationReadReport = z.infer<
+  typeof conversationReadReportSchema
+>;

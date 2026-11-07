@@ -1,6 +1,7 @@
 import type {
   ConversationDetailReport,
-  ConversationReadPosition,
+  ConversationReadReport,
+  ConversationUnread,
 } from "@sentry/junior/api/schema";
 import {
   readMockConversationDetail,
@@ -35,7 +36,7 @@ function latestVisibleReplySeq(conversationId: string): number | undefined {
 export function markMockConversationRead(
   conversationId: string,
   lastReadSeq: number,
-): ConversationReadPosition | undefined {
+): ConversationReadReport | undefined {
   const detail = readMockConversationDetail(conversationId);
   if (!detail) return undefined;
   const lastSeq = detail.events.at(-1)?.seq ?? 0;
@@ -45,10 +46,9 @@ export function markMockConversationRead(
   );
   mockReadPositions.set(conversationId, stored);
   const replySeq = latestVisibleReplySeq(conversationId);
-  if (replySeq !== undefined && stored >= replySeq) {
-    setMockConversationUnread(conversationId, false);
-  }
-  return { lastReadSeq: stored };
+  const unreadReply = replySeq !== undefined && stored < replySeq;
+  if (!unreadReply) setMockConversationUnread(conversationId, false);
+  return { lastReadSeq: stored, unreadReply };
 }
 
 /**
@@ -59,9 +59,11 @@ export function markMockConversationRead(
 export function setMockConversationReadState(
   conversationId: string,
   unread: boolean,
-): ConversationReadPosition | undefined {
+): ConversationUnread | undefined {
   if (!unread) {
-    return markMockConversationRead(conversationId, Number.MAX_SAFE_INTEGER);
+    return markMockConversationRead(conversationId, Number.MAX_SAFE_INTEGER)
+      ? { unreadReply: false }
+      : undefined;
   }
   const replySeq = latestVisibleReplySeq(conversationId);
   if (
@@ -70,9 +72,9 @@ export function setMockConversationReadState(
   ) {
     return undefined;
   }
-  const lastReadSeq = Math.max(replySeq - 1, 0);
-  mockReadPositions.set(conversationId, lastReadSeq);
-  return { lastReadSeq };
+  if (replySeq === 0) mockReadPositions.delete(conversationId);
+  else mockReadPositions.set(conversationId, replySeq - 1);
+  return { unreadReply: true };
 }
 
 /** Add the mock read position to a detail report. */

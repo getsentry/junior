@@ -33,6 +33,8 @@ import {
   conversationFeedSchema,
   conversationParamsSchema,
   conversationReadPositionSchema,
+  conversationReadReportSchema,
+  conversationUnreadSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
@@ -436,7 +438,7 @@ export function createMockReportingApi(): Hono<{
       body.data.lastReadSeq,
     );
     return result
-      ? jsonResponse(conversationReadPositionSchema, result)
+      ? jsonResponse(conversationReadReportSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.post("/conversations/:conversationId/catch-up", async (c) => {
@@ -505,7 +507,7 @@ export function createMockReportingApi(): Hono<{
       body.data.unread,
     );
     return result
-      ? jsonResponse(conversationReadPositionSchema, result)
+      ? jsonResponse(conversationUnreadSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/title", async (c) => {

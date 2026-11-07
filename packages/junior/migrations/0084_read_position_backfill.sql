@@ -11,7 +11,9 @@ FROM (
   SELECT "i"."user_id", "c"."conversation_id"
   FROM "junior_conversations" AS "c"
   INNER JOIN "junior_identities" AS "i" ON "i"."id" = "c"."actor_identity_id"
-  WHERE "c"."root_conversation_id" IS NULL AND "i"."user_id" IS NOT NULL
+  -- A root stores itself as its root. Older rows may leave it null.
+  WHERE coalesce("c"."root_conversation_id", "c"."conversation_id") = "c"."conversation_id"
+    AND "i"."user_id" IS NOT NULL
 ) AS "member"
 INNER JOIN LATERAL (
   SELECT max("e"."seq") AS "seq"
