@@ -184,6 +184,7 @@ export default defineConfig({
             { label: "junior chat", link: "/cli/chat/" },
             { label: "junior briefs", link: "/cli/briefs/" },
             { label: "junior conversations", link: "/cli/conversations/" },
+            { label: "junior automations", link: "/cli/automations/" },
             { label: "junior check", link: "/cli/check/" },
             {
               label: "junior snapshot create",
