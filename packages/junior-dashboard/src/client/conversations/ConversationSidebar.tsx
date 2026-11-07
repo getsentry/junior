@@ -38,6 +38,11 @@ import {
   type ConversationSection,
 } from "./conversationSections";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import {
+  ConversationSidebarThreadRow,
+  ConversationSidebarThreadToggle,
+} from "./ConversationSidebarThreadRow";
+import { sidebarThreads } from "./sidebarThreads";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -68,7 +73,15 @@ type ConversationSidebarEntry =
       label: string;
       sectionKey: string;
     }
-  | { conversation: Conversation; key: string; kind: "conversation" };
+  | { conversation: Conversation; key: string; kind: "conversation" }
+  | { conversation: Conversation; depth: number; key: string; kind: "thread" }
+  | {
+      expanded: boolean;
+      hiddenCount: number;
+      key: string;
+      kind: "thread-toggle";
+      rootId: string;
+    };
 
 const ROW_ACTION_BUTTON_CLASS =
   "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
@@ -113,6 +126,16 @@ export function ConversationSidebar(props: {
   );
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
+  const [expandedThreadRoots, setExpandedThreadRoots] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const toggleThreads = useCallback((rootId: string) => {
+    setExpandedThreadRoots((current) => {
+      const next = new Set(current);
+      if (!next.delete(rootId)) next.add(rootId);
+      return next;
+    });
+  }, []);
   // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
   // arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
@@ -128,9 +151,12 @@ export function ConversationSidebar(props: {
           timeZone: props.timeZone,
         }),
         collapsedKeys,
+        { expandedThreadRoots, selectedId: props.selectedId },
       ),
     [
       collapsedKeys,
+      expandedThreadRoots,
+      props.selectedId,
       props.conversations,
       props.finishedConversationIds,
       props.heldConversationId,
@@ -207,6 +233,21 @@ export function ConversationSidebar(props: {
                     label={entry.label}
                     onToggle={() => toggleSection(entry.sectionKey)}
                   />
+                ) : entry.kind === "thread-toggle" ? (
+                  <ConversationSidebarThreadToggle
+                    expanded={entry.expanded}
+                    hiddenCount={entry.hiddenCount}
+                    onToggle={() => toggleThreads(entry.rootId)}
+                  />
+                ) : entry.kind === "thread" ? (
+                  <ConversationSidebarThreadRow
+                    conversation={entry.conversation}
+                    depth={entry.depth}
+                    selected={entry.conversation.id === props.selectedId}
+                    waiting={props.waitingConversations.has(
+                      entry.conversation.id,
+                    )}
+                  />
                 ) : (
                   <ConversationSidebarEntryRow
                     conversation={entry.conversation}
@@ -268,6 +309,7 @@ export function ConversationRowSkeletons() {
 function conversationSidebarEntries(
   sections: ConversationSection[],
   collapsedKeys: ReadonlySet<string>,
+  threads: { expandedThreadRoots: ReadonlySet<string>; selectedId?: string },
 ): ConversationSidebarEntry[] {
   return sections.flatMap((section, index) => {
     const collapsed = collapsedKeys.has(section.key);
@@ -281,13 +323,47 @@ function conversationSidebarEntries(
         label: section.label,
         sectionKey: section.key,
       },
-      ...(collapsed ? [] : section.conversations).map((conversation) => ({
-        conversation,
-        key: `conversation-${conversation.id}`,
-        kind: "conversation" as const,
-      })),
+      ...(collapsed ? [] : section.conversations).flatMap((conversation) => [
+        {
+          conversation,
+          key: `conversation-${conversation.id}`,
+          kind: "conversation" as const,
+        },
+        ...threadEntries(
+          conversation,
+          threads.expandedThreadRoots.has(conversation.id),
+          threads.selectedId,
+        ),
+      ]),
     ];
   });
+}
+
+/** List the sidebar Threads under one root, then its show more or fewer row. */
+function threadEntries(
+  root: Conversation,
+  expanded: boolean,
+  selectedId: string | undefined,
+): ConversationSidebarEntry[] {
+  const { collapsible, hiddenCount, threads } = sidebarThreads(root.threads, {
+    expanded,
+    selectedId,
+  });
+  const entries: ConversationSidebarEntry[] = threads.map((thread) => ({
+    ...thread,
+    key: `thread-${thread.conversation.id}`,
+    kind: "thread" as const,
+  }));
+  if (collapsible && (expanded || hiddenCount > 0)) {
+    entries.push({
+      expanded,
+      hiddenCount,
+      key: `thread-toggle-${root.id}`,
+      kind: "thread-toggle",
+      rootId: root.id,
+    });
+  }
+  return entries;
 }
 
 type ConversationSidebarRowProps = {

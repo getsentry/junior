@@ -95,7 +95,15 @@ export function ConversationHeader(props: {
 
   const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
     <ConversationHeaderActions
-      archive={props.archive}
+      archive={{
+        ...props.archive,
+        // A child archive opens a confirm, and a restore keeps the page open,
+        // so close the menu here.
+        onClick: () => {
+          close();
+          props.archive.onClick();
+        },
+      }}
       conversationId={props.conversationId}
       pin={props.pin}
       copyAction={props.copyAction}
