@@ -13,6 +13,7 @@ import type {
   ArchiveConversationResponse,
 } from "../schema/conversation-archive";
 import { readConversationAccessFromSql } from "./access";
+import { markConversationRead } from "./read-position";
 
 async function setViewerArchive(args: {
   archived: boolean;
@@ -46,7 +47,6 @@ async function setViewerArchive(args: {
         .values({
           archivedAt,
           lastMessageAt,
-          readAt: archivedAt,
           rootConversationId: args.rootConversationId,
           userId: args.userId,
         })
@@ -56,10 +56,8 @@ async function setViewerArchive(args: {
             juniorConversationParticipants.rootConversationId,
           ],
           // Archive also unpins, so the Pinned section holds only active rows.
-          // It is an act on the conversation, so it also marks it read.
           set: {
             archivedAt,
-            readAt: archivedAt,
             pinnedAt: null,
             pinPosition: null,
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
@@ -116,6 +114,13 @@ export async function archiveConversation(
     userId: viewer.id,
   });
   if (result.status === "updated") {
+    // Archive acts on the conversation, so it also reads it to the end. The
+    // archive saw no newer activity, so the end is what the viewer saw.
+    if (body.archived) {
+      await markConversationRead(viewer, rootConversationId, {
+        lastReadSeq: Number.MAX_SAFE_INTEGER,
+      });
+    }
     return { archivedAt: result.archivedAt };
   }
   if (result.status === "missing") {

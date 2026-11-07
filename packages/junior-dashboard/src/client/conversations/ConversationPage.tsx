@@ -285,6 +285,9 @@ export function ConversationPage(props: {
   const pin = usePinConversation(conversationId);
   const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
+  // Focus or a click in the composer counts as reading, like transcript input.
+  const [composerEngaged, setComposerEngaged] = useState(false);
+  const engageComposer = useCallback(() => setComposerEngaged(true), []);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const dropLink = useCallback(() => {
     setLinkStart(undefined);
@@ -808,12 +811,13 @@ export function ConversationPage(props: {
                           hasPreviousPage={history.hasPreviousPage}
                           historyError={history.historyError}
                           historyVersion={history.historyVersion}
-                          lastReadSeq={readAtOpen.lastReadSeq}
+                          lastReadSeq={detail.data?.readPosition?.lastReadSeq}
                           live={live}
                           loadingPreviousPage={history.isLoadingPreviousPage}
                           newerHistory={history.newer}
                           onLoadPreviousPage={history.loadPreviousPage}
                           onRead={holdShown ? undefined : markRead}
+                          readEngaged={composerEngaged}
                           onSelectedEventSeqChange={setSelectedEventSeq}
                           // Sends and the thinking row belong after the latest event.
                           pendingMessages={
@@ -850,33 +854,39 @@ export function ConversationPage(props: {
             // A child Conversation takes input only from its parent agent, and it
             // runs without interactive auth, so it has no approval to show.
             view === "rich" && detail.data?.isParticipant && !agentTree ? (
-              <ConversationReplyFooter
-                authors={detail.data.authors}
-                conversationId={conversationId}
-                // Only pass committed ids for mailbox de-dupe. The full transcript is
-                // too large to re-enter the footer on every live poll while typing.
-                committedMessageIds={mailboxCommittedIds}
-                onPinRequest={requestPin}
-                pendingAuthorization={detail.pendingAuthorization}
-                // Keep the cancel watermark off props. Live polls refresh generatedAt
-                // every 2s; a prop would bust footer memo while the reader types.
-                pendingGeneratedAtRef={pendingGeneratedAtRef}
-                pendingMessages={detail.pendingMessages}
-                reviewItemId={reviewItemId}
-                // Without live history, an inline send would never leave the
-                // transcript tail. A started Turn reads a new send only later.
-                // Keep those sends in the queue. An earlier inline send that
-                // history does not have yet can start that Turn first. While
-                // newer pages are not loaded, the transcript tail is not the
-                // latest event, so a send waits in the queue too.
-                sendsInline={
-                  detail.data.eventHistory.status === "available" &&
-                  !history.newer &&
-                  !conversationIsResponding(detail.data) &&
-                  detail.inlineMessages.length === 0
-                }
-                stoppable={live}
-              />
+              <div
+                className="contents"
+                onFocusCapture={engageComposer}
+                onPointerDownCapture={engageComposer}
+              >
+                <ConversationReplyFooter
+                  authors={detail.data.authors}
+                  conversationId={conversationId}
+                  // Only pass committed ids for mailbox de-dupe. The full transcript is
+                  // too large to re-enter the footer on every live poll while typing.
+                  committedMessageIds={mailboxCommittedIds}
+                  onPinRequest={requestPin}
+                  pendingAuthorization={detail.pendingAuthorization}
+                  // Keep the cancel watermark off props. Live polls refresh generatedAt
+                  // every 2s; a prop would bust footer memo while the reader types.
+                  pendingGeneratedAtRef={pendingGeneratedAtRef}
+                  pendingMessages={detail.pendingMessages}
+                  reviewItemId={reviewItemId}
+                  // Without live history, an inline send would never leave the
+                  // transcript tail. A started Turn reads a new send only later.
+                  // Keep those sends in the queue. An earlier inline send that
+                  // history does not have yet can start that Turn first. While
+                  // newer pages are not loaded, the transcript tail is not the
+                  // latest event, so a send waits in the queue too.
+                  sendsInline={
+                    detail.data.eventHistory.status === "available" &&
+                    !history.newer &&
+                    !conversationIsResponding(detail.data) &&
+                    detail.inlineMessages.length === 0
+                  }
+                  stoppable={live}
+                />
+              </div>
             ) : undefined
           }
         />

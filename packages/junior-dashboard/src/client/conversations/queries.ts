@@ -204,14 +204,16 @@ export function conversationDetailQueryOptions(
  * finished must not put an older position back in the cache, nor the unread
  * cursor of that older position. The cache already holds the cursor for the
  * newer position: a read does not change the detail version, so no later poll
- * would bring it back.
+ * would bring it back. Mark as unread is the one backward move, on this or
+ * another device. The server then reports the Conversation unread, so take
+ * its position.
  */
 function keepLatestReadPosition(
   previous: ConversationSnapshot,
   next: ConversationSnapshot,
 ): ConversationSnapshot {
   const kept = previous.readPosition;
-  if (!kept) return next;
+  if (!kept || next.unread) return next;
   if ((next.readPosition?.lastReadSeq ?? -1) >= kept.lastReadSeq) return next;
   const { unreadCursor: _olderCursor, unreadPage: _olderPage, ...rest } = next;
   return {

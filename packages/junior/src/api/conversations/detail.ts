@@ -49,7 +49,7 @@ function projectConversationDetail(args: {
   appended?: boolean;
   archivedAtMs?: number;
   pinnedAtMs?: number;
-  readAtMs?: number;
+  unreadReply?: boolean;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
@@ -84,7 +84,7 @@ function projectConversationDetail(args: {
       access: args.access,
       archivedAtMs: args.archivedAtMs,
       pinnedAtMs: args.pinnedAtMs,
-      readAtMs: args.readAtMs,
+      unreadReply: args.unreadReply,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
@@ -298,6 +298,7 @@ async function readConversationDetailFromSql(
           }),
         }),
     ...state.viewerMarks,
+    unreadReply: state.unreadReply,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,

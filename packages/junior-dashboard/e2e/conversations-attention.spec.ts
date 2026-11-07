@@ -282,6 +282,15 @@ test.describe("conversation sections", () => {
       .getByRole("button", { name: /^Mark Closed issue summary.* as read$/ })
       .click();
     await expect(unreadDot).toHaveCount(0);
+
+    // Reading it is an act: input in the transcript reports the rows in view.
+    await markUnread.click();
+    await finishedRow.click();
+    await expect(unreadDot).toBeVisible();
+    await page.getByLabel("Conversation transcript").hover();
+    await page.mouse.wheel(0, 1);
+    await expect(unreadDot).toHaveCount(0);
+    await expect.poll(finishedSection).toMatch(/^(?!Needs attention)/);
   });
 
   test("marks a conversation read or unread from its menu on mobile", async ({

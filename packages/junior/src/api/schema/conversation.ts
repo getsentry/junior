@@ -260,9 +260,10 @@ export const conversationSummaryReportSchema = z
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
     pinPosition: z.number().int().optional(),
     /**
-     * True when the conversation is idle and has activity after the viewer
-     * last acted on it: sent a message, archived it, or marked it read.
-     * Opening it does not change this.
+     * True when the conversation is idle and Junior's latest reply that the
+     * transcript shows is after the viewer's read position. Quiet replies do
+     * not count. Opening the conversation does not move the position; reading
+     * in it, replying, archiving, or Mark as read does.
      */
     unread: z.boolean().optional(),
     channel: z.string().optional(),

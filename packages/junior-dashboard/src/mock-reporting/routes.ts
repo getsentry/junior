@@ -17,7 +17,6 @@ import {
   pinConversationBodySchema,
   pinConversationResponseSchema,
   markConversationUnreadBodySchema,
-  markConversationUnreadResponseSchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
   renameConversationBodySchema,
@@ -66,6 +65,7 @@ import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import {
   markMockConversationRead,
+  setMockConversationReadState,
   withMockReadPosition,
 } from "./read-positions";
 import {
@@ -93,7 +93,6 @@ import {
   readMockAutomationList,
   setMockConversationArchived,
   setMockConversationPinned,
-  setMockConversationUnread,
   setMockPinOrder,
   setMockConversationTitle,
   setMockConversationAutoArchive,
@@ -501,12 +500,12 @@ export function createMockReportingApi(): Hono<{
     if (!body.success) {
       return errorResponse("Invalid request body.", 400);
     }
-    const result = setMockConversationUnread(
+    const result = setMockConversationReadState(
       params.data.conversationId,
       body.data.unread,
     );
     return result
-      ? jsonResponse(markConversationUnreadResponseSchema, result)
+      ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/title", async (c) => {

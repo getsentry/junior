@@ -40,6 +40,7 @@ import {
   conversationNotArchivedForUser,
   viewerConversationMembership,
 } from "./membership";
+import { readUnreadConversationIds } from "./unread";
 import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import {
@@ -435,6 +436,7 @@ export async function readConversationFeedFromSql(
     activityPreviewByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
+    unreadConversationIds,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationViewerMarks(
@@ -471,6 +473,9 @@ export async function readConversationFeedFromSql(
     readConversationActivityPreviews(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
+    filter?.kind === "viewer"
+      ? readUnreadConversationIds(db, conversationIds, filter.userId)
+      : new Set<string>(),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
@@ -507,6 +512,7 @@ export async function readConversationFeedFromSql(
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const summary = conversationSummaryFromStoredConversation({
         ...viewerMarksByConversation.get(conversation.conversationId),
+        unreadReply: unreadConversationIds.has(conversation.conversationId),
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,
         ),

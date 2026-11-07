@@ -2025,18 +2025,21 @@ export function setMockConversationPinned(
   return { pinnedAt: pinned ? NOW : null };
 }
 
-/** Mark one mock conversation read or unread for local dashboard visual QA. */
+/**
+ * Set the feed's unread flag of one mock conversation for local dashboard
+ * visual QA. The mock read position moves on its own, in `read-positions`.
+ */
 export function setMockConversationUnread(
   conversationId: string,
   unread: boolean,
-): { readAt: string } | undefined {
+): boolean {
   const exists = mockConversations(NOW_MS).some(
     (conversation) => conversation.conversationId === conversationId,
   );
-  if (!exists) return undefined;
+  if (!exists) return false;
   if (unread) mockUnreadConversationIds.add(conversationId);
   else mockUnreadConversationIds.delete(conversationId);
-  return { readAt: NOW };
+  return true;
 }
 
 /** Rename one mock conversation for local dashboard visual QA. */

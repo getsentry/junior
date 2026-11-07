@@ -19,6 +19,7 @@ import {
   conversationReadPositionSchema,
   type ConversationDetailReport,
   type ConversationEventPage,
+  type ConversationFeed,
   type ConversationReadPosition,
 } from "@sentry/junior/api/schema";
 import { CONVERSATION_START_POSITION_STORAGE_KEY as START_POSITION_STORAGE_KEY } from "../../conversation-open";
@@ -29,6 +30,15 @@ import { scrollRootFor } from "./transcriptBottomPinning";
 const READ_REPORT_DELAY_MS = 750;
 const SEQ_ATTRIBUTE = "data-transcript-seq";
 const ROW_SELECTOR = `[${SEQ_ATTRIBUTE}]`;
+const SCROLL_KEYS = new Set([
+  " ",
+  "ArrowDown",
+  "ArrowUp",
+  "End",
+  "Home",
+  "PageDown",
+  "PageUp",
+]);
 
 /** Where a Conversation opens: at the first unread row or at the latest. */
 export type ConversationStartPosition = "unread" | "latest";
@@ -177,10 +187,29 @@ export function useMarkConversationRead(conversationId: string) {
         { lastReadSeq },
       ),
     onSuccess: (readPosition) => {
-      queryClient.setQueryData<ConversationDetailReport>(
+      const detail = queryClient.setQueryData<ConversationDetailReport>(
         conversationDetailQueryKey(conversationId),
         (detail) => detail && withReadPosition(detail, readPosition),
       );
+      // The read can clear the unread flag that the feed and detail show.
+      // Only the server knows which reply it counts, so refetch them.
+      const feeds = { queryKey: ["dashboard", "conversations"] };
+      const feedUnread = queryClient
+        .getQueriesData<ConversationFeed>(feeds)
+        .some(([, feed]) =>
+          feed?.conversations.some(
+            (conversation) =>
+              conversation.conversationId === conversationId &&
+              conversation.unread,
+          ),
+        );
+      if (detail?.unread || feedUnread) {
+        void queryClient.invalidateQueries(feeds);
+        void queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        });
+      }
     },
   });
   return useCallback(
@@ -203,12 +232,20 @@ export function useMarkConversationRead(conversationId: string) {
  * a short time and only move forward. A hidden or paused page does not
  * report. Leaving the page or hiding it sends the pending row at once, so a
  * quick exit keeps progress.
+ *
+ * Opening a Conversation is not reading it, so nothing reports until the
+ * reader acts in this visit: a wheel, touch, pointer, or key input in the
+ * transcript, or `engaged` from the composer. A scroll that the page makes,
+ * such as to the "New" marker or to follow new rows, does not count. After
+ * the first input, the rows in view and the rows that come into view report.
  */
 export function useTranscriptReadReporter(input: {
   content: HTMLElement | null;
-  /** The stored position when the Conversation opened. */
+  /** The stored position. Rows after it report. */
   lastReadSeq?: number;
   onRead?: (seq: number) => void;
+  /** The reader acted outside the transcript, such as in the composer. */
+  engaged?: boolean;
   /**
    * Stop reporting while the rows are not in reading order, such as search
    * results. This is read when a report is scheduled, so the render that
@@ -221,7 +258,27 @@ export function useTranscriptReadReporter(input: {
   const pausedRef = useRef(input.paused);
   pausedRef.current = input.paused;
   const reportedRef = useRef(input.lastReadSeq ?? -1);
+  // Once per visit: the page is keyed by Conversation.
+  const engagedRef = useRef(false);
+  const engageRef = useRef<() => void>(undefined);
+  const engagedInputRef = useRef(input.engaged);
+  engagedInputRef.current = input.engaged;
+
+  // Mark as unread moves the stored position back. A cached copy at open can
+  // also be ahead of the fetched one. Rows after it must report again.
+  useEffect(() => {
+    if (
+      input.lastReadSeq !== undefined &&
+      input.lastReadSeq < reportedRef.current
+    ) {
+      reportedRef.current = input.lastReadSeq;
+    }
+  }, [input.lastReadSeq]);
   const enabled = Boolean(input.onRead);
+
+  useEffect(() => {
+    if (input.engaged) engageRef.current?.();
+  }, [input.engaged]);
 
   useEffect(() => {
     const content = input.content;
@@ -242,7 +299,13 @@ export function useTranscriptReadReporter(input: {
       onReadRef.current?.(seq);
     };
     const schedule = () => {
-      if (pausedRef.current || document.visibilityState !== "visible") return;
+      if (
+        !engagedRef.current ||
+        pausedRef.current ||
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
       // Read the seq now: an activity group row moves its seq as it grows.
       for (const row of visibleRows) {
         const seq = Number(row.dataset.transcriptSeq);
@@ -302,9 +365,38 @@ export function useTranscriptReadReporter(input: {
       subtree: true,
     });
     observeRows(content);
+    // Rows already in view report on the first input, without a scroll.
+    const engage = () => {
+      if (engagedRef.current) return;
+      engagedRef.current = true;
+      schedule();
+    };
+    engageRef.current = engage;
+    // Input events, not `scroll`: the page scrolls on its own too.
+    const inputTarget = root === window ? content : (root as HTMLElement);
+    const inputEvents = ["wheel", "touchstart", "pointerdown", "keydown"];
+    for (const type of inputEvents) {
+      inputTarget.addEventListener(type, engage, { passive: true });
+    }
+    // Scroll keys go to the page when nothing has focus.
+    const onPageKey = (event: KeyboardEvent) => {
+      if (
+        document.activeElement === document.body &&
+        SCROLL_KEYS.has(event.key)
+      ) {
+        engage();
+      }
+    };
+    document.addEventListener("keydown", onPageKey);
+    if (engagedInputRef.current) engage();
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       send();
+      engageRef.current = undefined;
+      for (const type of inputEvents) {
+        inputTarget.removeEventListener(type, engage);
+      }
+      document.removeEventListener("keydown", onPageKey);
       intersections.disconnect();
       mutations.disconnect();
       document.removeEventListener("visibilitychange", onVisibilityChange);

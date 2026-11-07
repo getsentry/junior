@@ -289,15 +289,11 @@ class SqlConversationEventStore implements ConversationEventStore {
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
-      // A new human message is an act on the conversation: it restores an
-      // archived one and marks it read.
-      const humanMessage = eventUnarchivesConversation(data);
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
-        read: humanMessage,
-        restoreArchive: humanMessage,
+        restoreArchive: eventUnarchivesConversation(data),
       });
     }
   }

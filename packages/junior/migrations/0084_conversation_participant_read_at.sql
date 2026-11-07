@@ -1,1 +1,0 @@
-ALTER TABLE "junior_conversation_participants" ADD COLUMN "read_at" timestamp with time zone DEFAULT now() NOT NULL;

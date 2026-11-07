@@ -18,6 +18,7 @@ import { readConversationAgentTree } from "./agent-tree";
 import { readConversationAutoArchive } from "./auto-archive";
 import { readConversationForks } from "./fork";
 import { readConversationViewerMarks } from "./membership";
+import { readUnreadConversationIds } from "./unread";
 import { readConversationReadPosition } from "./read-position";
 
 /**
@@ -59,20 +60,30 @@ export type ConversationDetailState = {
    * so an `appendCursor` from before it cannot extend them.
    */
   transcriptVersion: string;
+  /** The root has a visible Junior reply after the viewer's read position. */
+  unreadReply?: boolean;
   viewerMarks?: Awaited<ReturnType<typeof readConversationViewerMarks>>;
 };
 
-/** Read the viewer's marks and auto-archive choice, which live on the root. */
+/**
+ * Read the viewer's marks, auto-archive choice, and unread state, which
+ * belong to the root.
+ */
 async function readViewerRootState(viewer: User, conversationId: string) {
   const rootConversationId = await resolveRootConversationId(
     getSqlExecutor(),
     conversationId,
   );
-  const [viewerMarks, autoArchive] = await Promise.all([
+  const [viewerMarks, autoArchive, unreadIds] = await Promise.all([
     readConversationViewerMarks(viewer, rootConversationId),
     readConversationAutoArchive(viewer, rootConversationId),
+    readUnreadConversationIds(getDb(), [rootConversationId], viewer.id),
   ]);
-  return { autoArchive, viewerMarks };
+  return {
+    autoArchive,
+    unreadReply: unreadIds.has(rootConversationId),
+    viewerMarks,
+  };
 }
 
 /** Read the detail state that the ETag hashes and the report shows. */
@@ -118,6 +129,7 @@ export async function readConversationDetailState(
     forks,
     readPosition,
     transcriptVersion,
+    unreadReply: viewerRootState?.unreadReply,
     viewerMarks: viewerRootState?.viewerMarks,
   };
 }
@@ -154,6 +166,9 @@ export async function readConversationDetailEtag(
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
     subtree,
+    // The read position is not hashed, but whether it leaves a reply unread
+    // is, so the next poll after a read or a mark shows the new state.
+    unreadReply: state.unreadReply ?? false,
     viewerMarks: state.viewerMarks ?? null,
   });
   return { etag: createHash("sha256").update(basis).digest("hex"), state };

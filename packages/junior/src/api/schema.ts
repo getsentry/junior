@@ -127,14 +127,8 @@ export type {
   ReorderPinnedConversationsBody,
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
-export {
-  markConversationUnreadBodySchema,
-  markConversationUnreadResponseSchema,
-} from "./schema/conversation-unread";
-export type {
-  MarkConversationUnreadBody,
-  MarkConversationUnreadResponse,
-} from "./schema/conversation-unread";
+export { markConversationUnreadBodySchema } from "./schema/conversation-unread";
+export type { MarkConversationUnreadBody } from "./schema/conversation-unread";
 export {
   CONVERSATION_TITLE_MAX_LENGTH,
   renameConversationBodySchema,

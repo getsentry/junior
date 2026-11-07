@@ -28,10 +28,7 @@ import {
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
-import {
-  markConversationUnreadBodySchema,
-  markConversationUnreadResponseSchema,
-} from "../schema/conversation-unread";
+import { markConversationUnreadBodySchema } from "../schema/conversation-unread";
 import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -297,7 +294,7 @@ export function createConversationRoutes(
     ),
     async (context) =>
       jsonResponse(
-        markConversationUnreadResponseSchema,
+        conversationReadPositionSchema,
         await markConversationUnread(
           context.get("viewer"),
           context.req.valid("param").conversationId,

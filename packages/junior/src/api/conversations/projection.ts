@@ -231,8 +231,8 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number;
   pinPosition?: number;
-  /** When the viewer last acted on the conversation. Unset: never unread. */
-  readAtMs?: number;
+  /** A visible Junior reply is after the viewer's read position. */
+  unreadReply?: boolean;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -266,10 +266,8 @@ export function conversationSummaryFromStoredConversation(args: {
     canViewPrivateContent,
   );
   const status = statusFromConversation(conversation);
-  const unread =
-    status === "completed" &&
-    args.readAtMs !== undefined &&
-    conversation.lastActivityAtMs > args.readAtMs;
+  // Only an idle Conversation waits on the reader.
+  const unread = status === "completed" && args.unreadReply === true;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,

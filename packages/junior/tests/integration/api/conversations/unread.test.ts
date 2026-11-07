@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import { readConversationFeed } from "@/api/conversations/list";
 import type { JuniorApiEnv } from "@/api/route";
-import { markConversationUnreadResponseSchema } from "@/api/schema";
+import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  conversationReadPositionSchema,
+} from "@/api/schema";
 import {
   closeDb,
   getConversationEventStore,
@@ -11,7 +14,7 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants } from "@/db/schema";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -36,6 +39,34 @@ async function recordActivity(conversationId: string, nowMs: number) {
   });
 }
 
+let nextMessage = 0;
+
+/** Append one Message. A user Message comes from `authorIdentityId`. */
+async function appendMessage(
+  conversationId: string,
+  message:
+    | { authorIdentityId: string }
+    | { quiet?: boolean; role: "assistant" },
+) {
+  const index = nextMessage++;
+  await getConversationEventStore().append(conversationId, [
+    {
+      createdAtMs: 10_000 + index,
+      data: {
+        messageId: `message-${index}`,
+        text: `Message ${index}`,
+        type: "message",
+        ...("authorIdentityId" in message
+          ? { authorIdentityId: message.authorIdentityId, role: "user" }
+          : {
+              role: "assistant",
+              ...(message.quiet ? { meta: { quiet: true } } : undefined),
+            }),
+      },
+    },
+  ]);
+}
+
 function setUnread(
   app: Hono<JuniorApiEnv>,
   conversationId: string,
@@ -51,7 +82,22 @@ function setUnread(
   );
 }
 
-async function unread(
+function putReadPosition(
+  app: Hono<JuniorApiEnv>,
+  conversationId: string,
+  lastReadSeq: number,
+) {
+  return app.request(
+    `http://localhost/api/conversations/${conversationId}/read-position`,
+    {
+      body: JSON.stringify({ lastReadSeq }),
+      headers: { "content-type": "application/json" },
+      method: "PUT",
+    },
+  );
+}
+
+async function feedSummary(
   viewer: Awaited<ReturnType<typeof authenticatedApi>>["viewer"],
   conversationId: string,
 ) {
@@ -63,7 +109,14 @@ async function unread(
     .flatMap((feed) => feed.conversations)
     .find((conversation) => conversation.conversationId === conversationId);
   if (!summary) throw new Error(`missing ${conversationId} in feed`);
-  return summary.unread ?? false;
+  return summary;
+}
+
+async function unread(
+  viewer: Awaited<ReturnType<typeof authenticatedApi>>["viewer"],
+  conversationId: string,
+) {
+  return (await feedSummary(viewer, conversationId)).unread ?? false;
 }
 
 describe("conversation unread API", () => {
@@ -71,59 +124,96 @@ describe("conversation unread API", () => {
     await closeDb();
   });
 
-  it("keeps a finished conversation unread until the viewer acts on it", async () => {
+  it("keeps a visible reply unread until the viewer reads or acts on it", async () => {
     const conversationId = "local:test:unread";
-    const startMs = Date.now() - 60_000;
-    await recordActivity(conversationId, startMs);
+    await recordActivity(conversationId, 1_000);
     const { app, viewer } = await authenticatedApi("reader@example.com");
     const other = await authenticatedApi("other-reader@example.com");
-    // Both viewers joined with the first message. Only `viewer` missed the
-    // reply after it.
+    const [identity] = await getDb()
+      .insert(juniorIdentities)
+      .values({
+        id: "identity-unread-reader",
+        createdAt: new Date(1_000),
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "UREADER",
+        updatedAt: new Date(1_000),
+        userId: viewer.id,
+      })
+      .returning({ id: juniorIdentities.id });
     await getDb()
       .insert(juniorConversationParticipants)
-      .values([
-        {
-          lastMessageAt: new Date(startMs),
-          readAt: new Date(startMs - 1_000),
+      .values(
+        [viewer, other.viewer].map((user) => ({
+          lastMessageAt: new Date(1_000),
           rootConversationId: conversationId,
-          userId: viewer.id,
-        },
-        {
-          lastMessageAt: new Date(startMs),
-          rootConversationId: conversationId,
-          userId: other.viewer.id,
-        },
-      ]);
-    await expect(unread(viewer, conversationId)).resolves.toBe(true);
-    await expect(unread(other.viewer, conversationId)).resolves.toBe(false);
+          userId: user.id,
+        })),
+      );
+    await appendMessage(conversationId, { authorIdentityId: identity!.id }); // 0
+    await appendMessage(conversationId, { role: "assistant" }); // 1
 
-    // Opening the conversation is not an act on it.
+    // Without a read position nothing is unread, so a release does not
+    // light up every old conversation.
+    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    await putReadPosition(app, conversationId, 1);
+    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+
+    // A quiet reply folds into activity, so it is not new.
+    await appendMessage(conversationId, { quiet: true, role: "assistant" }); // 2
+    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+
+    await appendMessage(conversationId, { role: "assistant" }); // 3
+    await expect(unread(viewer, conversationId)).resolves.toBe(true);
+    // Opening the conversation does not move the read position.
     const detail = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
     );
     expect(detail.status).toBe(200);
-    // The detail carries the flag too, for pages opened outside the feed.
-    expect(await detail.json()).toMatchObject({ unread: true });
-    await expect(unread(viewer, conversationId)).resolves.toBe(true);
-
-    const markRead = await setUnread(app, conversationId, false);
-    expect(markRead.status).toBe(200);
-    expect(
-      markConversationUnreadResponseSchema.parse(await markRead.json()),
-    ).toEqual({ readAt: expect.any(String) });
-    await expect(unread(viewer, conversationId)).resolves.toBe(false);
-
-    expect((await setUnread(app, conversationId, true)).status).toBe(200);
+    expect(await detail.json()).toMatchObject({
+      readPosition: { lastReadSeq: 1 },
+      unread: true,
+    });
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
     await expect(unread(other.viewer, conversationId)).resolves.toBe(false);
 
-    // Archive is an act, so a restored conversation comes back read.
+    // Mark as read reads to the last event.
+    const markRead = await setUnread(app, conversationId, false);
+    expect(markRead.status).toBe(200);
+    expect(conversationReadPositionSchema.parse(await markRead.json())).toEqual(
+      { lastReadSeq: 3 },
+    );
+    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    // The read position is not in the detail version, but its unread state
+    // is, so a poll gets the read detail.
+    const poll = await app.request(
+      `http://localhost/api/conversations/${conversationId}`,
+      {
+        headers: {
+          [CONVERSATION_DETAIL_VERSION_HEADER]: detail.headers.get(
+            CONVERSATION_DETAIL_VERSION_HEADER,
+          )!,
+        },
+      },
+    );
+    expect(poll.status).toBe(200);
+    expect(await poll.json()).not.toHaveProperty("unread");
+
+    // Mark as unread moves the position back to just before that reply.
+    const markUnread = await setUnread(app, conversationId, true);
+    expect(
+      conversationReadPositionSchema.parse(await markUnread.json()),
+    ).toEqual({ lastReadSeq: 2 });
+    await expect(unread(viewer, conversationId)).resolves.toBe(true);
+    await expect(unread(other.viewer, conversationId)).resolves.toBe(false);
+
+    // Archive is an act on the conversation, so it reads it to the end.
     const archive = await app.request(
       `http://localhost/api/conversations/${conversationId}/archive`,
       {
         body: JSON.stringify({
           archived: true,
-          lastSeenAt: new Date(startMs).toISOString(),
+          lastSeenAt: (await feedSummary(viewer, conversationId)).lastSeenAt,
         }),
         headers: { "content-type": "application/json" },
         method: "PATCH",
@@ -132,43 +222,11 @@ describe("conversation unread API", () => {
     expect(archive.status).toBe(200);
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
 
-    // Later activity on the idle conversation makes it unread again.
-    const replyMs = Date.now() + 60_000;
-    await recordActivity(conversationId, replyMs);
+    // A new reply is unread again. The viewer's reply after it, also from
+    // Slack, is an act on it.
+    await appendMessage(conversationId, { role: "assistant" }); // 4
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
-
-    // The viewer's next message that starts a Turn marks it read.
-    const messageMs = replyMs + 1_000;
-    await getConversationEventStore().append(conversationId, [
-      {
-        createdAtMs: messageMs,
-        data: {
-          messageId: "reader-msg-1",
-          meta: {
-            author: {
-              email: "reader@example.com",
-              isBot: false,
-              userId: viewer.id,
-            },
-          },
-          role: "user",
-          text: "thanks, one more thing",
-          type: "message",
-        },
-        idempotencyKey: "message:reader-msg-1",
-      },
-      {
-        createdAtMs: messageMs,
-        data: {
-          inputMessageIds: ["reader-msg-1"],
-          surface: "api",
-          turnId: "turn-reader-msg-1",
-          type: "turn_started",
-        },
-        idempotencyKey: "turn:turn-reader-msg-1:started",
-      },
-    ]);
-    await recordActivity(conversationId, messageMs);
+    await appendMessage(conversationId, { authorIdentityId: identity!.id }); // 5
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
   });
 
