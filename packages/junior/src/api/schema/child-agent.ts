@@ -17,6 +17,8 @@ import {
 export const conversationChildAgentSchema = z
   .object({
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
+    /** When the child was archived for everyone, or null. */
+    archivedAt: z.string().datetime().nullable(),
     childAgentTotals: conversationChildAgentTotalsSchema.optional(),
     conversationId: z.string().min(1),
     cumulativeDurationMs: z.number(),
@@ -27,8 +29,6 @@ export const conversationChildAgentSchema = z
     redacted: z.literal(true).optional(),
     status: z.enum(AGENT_INVOCATION_STATUSES),
     task: z.string().optional(),
-    /** When the child was archived for everyone, or null. */
-    childArchivedAt: z.string().datetime().nullable(),
     title: z.string().min(1).optional(),
     updatedAt: z.string().datetime(),
   })

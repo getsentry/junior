@@ -179,9 +179,7 @@ export function ConversationTasks(props: {
 /** Hide archived children until the reader asks for them. */
 function useShowArchived(children: readonly ConversationChildAgent[]) {
   const [showArchived, setShowArchived] = useState(false);
-  const archivedCount = children.filter(
-    (child) => child.childArchivedAt,
-  ).length;
+  const archivedCount = children.filter((child) => child.archivedAt).length;
   return {
     action:
       archivedCount > 0 ? (
@@ -195,7 +193,7 @@ function useShowArchived(children: readonly ConversationChildAgent[]) {
       ) : null,
     items: showArchived
       ? children
-      : children.filter((child) => !child.childArchivedAt),
+      : children.filter((child) => !child.archivedAt),
   };
 }
 
@@ -277,7 +275,7 @@ function ChildAgentRow(props: {
     <DetailsRow
       icon={
         <ChildAgentStatusIcon
-          archived={Boolean(agent.childArchivedAt)}
+          archived={Boolean(agent.archivedAt)}
           status={agent.status}
         />
       }

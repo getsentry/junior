@@ -2,6 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -21,10 +22,10 @@ import { readConversationAccessFromSql } from "./access";
  * A pin lives on the viewer's participant row, and that row grants send and
  * control access. So only a participant can pin, the same as archive. The
  * root actor may have no row yet, so pinning adds it. A pin also restores an
- * archived conversation, because the Pinned section shows only active
- * conversations. A pin on a child would be a fact of the child, not of the
- * viewer's root, and no list shows child pins yet, so only a root can be
- * pinned.
+ * archived conversation for everyone, because the Pinned section shows only
+ * active conversations. A pin on a child would be a fact of the child, not
+ * of the viewer's root, and no list shows child pins yet, so only a root can
+ * be pinned.
  */
 export async function pinConversation(
   viewer: User,
@@ -42,6 +43,7 @@ export async function pinConversation(
   const db = getSqlExecutor().db();
   const [conversation] = await db
     .select({
+      archivedAt: juniorConversations.archivedAt,
       kind: juniorConversations.kind,
       lastActivityAt: juniorConversations.lastActivityAt,
       parentConversationId: juniorConversations.parentConversationId,
@@ -75,6 +77,9 @@ export async function pinConversation(
     return { pinnedAt: null };
   }
 
+  if (conversation.archivedAt) {
+    await setArchivedAt(db, [conversationId], null);
+  }
   const pinnedAt = new Date();
   // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
   await db
@@ -91,7 +96,7 @@ export async function pinConversation(
         juniorConversationParticipants.rootConversationId,
       ],
       // A new pin has no place yet, so it sorts first in Pinned.
-      set: { archivedAt: null, pinnedAt, pinPosition: null },
+      set: { pinnedAt, pinPosition: null },
     });
   return { pinnedAt: pinnedAt.toISOString() };
 }

@@ -61,7 +61,7 @@ describe("conversation archive API", () => {
     await closeDb();
   });
 
-  it("archives a conversation only for the viewer and exposes archivedAt on detail", async () => {
+  it("archives a conversation for everyone and exposes archivedAt on detail", async () => {
     const conversationId = "local:test:archive-route";
     const lastSeenAt = "1970-01-01T00:00:01.000Z";
     await getConversationStore().recordActivity({
@@ -95,38 +95,17 @@ describe("conversation archive API", () => {
     expect(
       archiveConversationResponseSchema.parse(await archive.json()),
     ).toEqual({ archivedAt: expect.any(String) });
-    await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
-      conversations: [],
-    });
-    await expect(
-      readConversationFeed({ viewer: otherViewer }),
-    ).resolves.toMatchObject({
-      conversations: [expect.objectContaining({ conversationId })],
-    });
-
-    const archivedDetail = conversationDetailReportSchema.parse(
-      await readConversationDetail(conversationId, { viewer }),
-    );
-    expect(archivedDetail.archivedAt).toEqual(expect.any(String));
-    // The mark lives on the root, so a child agent's detail shows it too.
-    const childConversationId = `${conversationId}:child`;
-    await getConversationStore().createChild({
-      childConversationId,
-      kind: "task",
-      nowMs: Date.parse(lastSeenAt),
-      parentConversationId: conversationId,
-    });
-    const childDetail = await app.request(
-      `http://localhost/api/conversations/${encodeURIComponent(childConversationId)}`,
-    );
-    expect(
-      conversationDetailReportSchema.parse(await childDetail.json()).archivedAt,
-    ).toBe(archivedDetail.archivedAt);
-    expect(
-      conversationDetailReportSchema.parse(
-        await readConversationDetail(conversationId, { viewer: otherViewer }),
-      ).archivedAt,
-    ).toBeNull();
+    // Archive applies to everyone, so another participant sees it archived.
+    for (const feedViewer of [viewer, otherViewer]) {
+      await expect(
+        readConversationFeed({ viewer: feedViewer }),
+      ).resolves.toMatchObject({ conversations: [] });
+      expect(
+        conversationDetailReportSchema.parse(
+          await readConversationDetail(conversationId, { viewer: feedViewer }),
+        ).archivedAt,
+      ).toEqual(expect.any(String));
+    }
 
     await getConversationStore().recordActivity({
       destination: { platform: "local" as const, conversationId },
@@ -146,7 +125,9 @@ describe("conversation archive API", () => {
     expect(
       archiveConversationResponseSchema.parse(await restore.json()),
     ).toEqual({ archivedAt: null });
-    await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
+    await expect(
+      readConversationFeed({ viewer: otherViewer }),
+    ).resolves.toMatchObject({
       conversations: [expect.objectContaining({ conversationId })],
     });
     expect(
@@ -156,7 +137,7 @@ describe("conversation archive API", () => {
     ).toBeNull();
   });
 
-  it("archives a child and its children for everyone and keeps root archives per viewer", async () => {
+  it("archives a Conversation and its children for everyone", async () => {
     const rootId = "local:test:thread-archive-root";
     const threadId = "agent:thread-archive-thread";
     const taskId = "agent:thread-archive-task";
@@ -227,7 +208,7 @@ describe("conversation archive API", () => {
             conversationId: thread.conversationId,
             kind: thread.kind,
             parentConversationId: thread.parentConversationId,
-            childArchivedAt: thread.childArchivedAt,
+            archivedAt: thread.archivedAt,
           })),
         }),
       );
@@ -238,13 +219,13 @@ describe("conversation archive API", () => {
         conversationId: taskThreadId,
         kind: "thread",
         parentConversationId: deepTaskId,
-        childArchivedAt: null,
+        archivedAt: null,
       },
       {
         conversationId: threadId,
         kind: "thread",
         parentConversationId: rootId,
-        childArchivedAt: null,
+        archivedAt: null,
       },
     ];
     await expect(feedThreads(viewer)).resolves.toEqual([
@@ -295,7 +276,7 @@ describe("conversation archive API", () => {
     const readChildRows = () =>
       getDb()
         .select({
-          childArchivedAt: juniorConversations.childArchivedAt,
+          archivedAt: juniorConversations.archivedAt,
           conversationId: juniorConversations.conversationId,
           detailVersion: juniorConversations.detailVersion,
         })
@@ -309,7 +290,7 @@ describe("conversation archive API", () => {
         .orderBy(juniorConversations.conversationId);
     const archivedChildIds = async () =>
       (await readChildRows())
-        .filter((row) => row.childArchivedAt)
+        .filter((row) => row.archivedAt)
         .map((row) => row.conversationId)
         .sort();
     const taskSubtree = [
@@ -337,9 +318,9 @@ describe("conversation archive API", () => {
       await lastSeen(threadId),
     );
     expect(archivedThread.status).toBe(200);
-    const { archivedAt: childArchivedAt } =
+    const { archivedAt: threadArchivedAt } =
       archiveConversationResponseSchema.parse(await archivedThread.json());
-    expect(childArchivedAt).toEqual(expect.any(String));
+    expect(threadArchivedAt).toEqual(expect.any(String));
     for (const feedViewer of [viewer, otherViewer]) {
       await expect(feedThreads(feedViewer)).resolves.toEqual([
         { conversationId: rootId, threads: [visibleThreads[0]] },
@@ -350,10 +331,9 @@ describe("conversation archive API", () => {
         await readConversationDetail(threadId, { viewer: otherViewer }),
       ),
     ).toMatchObject({
-      archivedAt: null,
+      archivedAt: threadArchivedAt,
       kind: "thread",
       parentConversationId: rootId,
-      childArchivedAt,
     });
 
     // A leaf under the Task archived on its own keeps its own archive.
@@ -368,7 +348,7 @@ describe("conversation archive API", () => {
     const leafArchiveTime = async () =>
       (await readChildRows())
         .find((row) => row.conversationId === taskThreadTaskId)
-        ?.childArchivedAt?.toISOString();
+        ?.archivedAt?.toISOString();
     // applyToChildren archives the Task and every descendant for everyone,
     // with one time for everything that this archive wrote.
     const archivedTask = await archive(
@@ -390,7 +370,7 @@ describe("conversation archive API", () => {
             taskSubtree.includes(row.conversationId) &&
             row.conversationId !== taskThreadTaskId,
         )
-        .map((row) => row.childArchivedAt?.toISOString()),
+        .map((row) => row.archivedAt?.toISOString()),
     );
     expect([...subtreeTimes]).toEqual([taskArchivedAt]);
     await expect(leafArchiveTime()).resolves.toBe(leafArchivedAt);
@@ -427,21 +407,29 @@ describe("conversation archive API", () => {
       { conversationId: rootId, threads: [visibleThreads[0]] },
     ]);
 
-    // A root archive hides the tree for this viewer with no child writes,
-    // even with applyToChildren.
-    const childRows = await readChildRows();
+    // A root follows the same rules: it refuses while a descendant is
+    // unarchived, and the flag archives the tree for everyone.
+    const refusedRoot = await archive(rootId, true, lastSeenAt);
+    expect(refusedRoot.status).toBe(409);
+    await expect(refusedRoot.json()).resolves.toEqual({
+      error:
+        "14 child conversations are not archived. Pass applyToChildren to archive them too.",
+    });
     expect((await archive(rootId, true, lastSeenAt, true)).status).toBe(200);
-    await expect(feedThreads(viewer)).resolves.toEqual([]);
-    await expect(feedThreads(otherViewer)).resolves.toEqual([
-      { conversationId: rootId, threads: [visibleThreads[0]] },
-    ]);
-    await expect(readChildRows()).resolves.toEqual(childRows);
-
-    // Restoring the root leaves the archived Thread archived.
-    expect((await archive(rootId, false, lastSeenAt)).status).toBe(200);
-    await expect(feedThreads(viewer)).resolves.toEqual([
-      { conversationId: rootId, threads: [visibleThreads[0]] },
-    ]);
+    for (const feedViewer of [viewer, otherViewer]) {
+      await expect(feedThreads(feedViewer)).resolves.toEqual([]);
+    }
+    // A cascade restore of the root leaves the Thread and the leaf, which
+    // were archived before, archived.
+    expect((await archive(rootId, false, lastSeenAt, true)).status).toBe(200);
+    await expect(archivedChildIds()).resolves.toEqual(
+      [threadId, taskThreadTaskId].sort(),
+    );
+    for (const feedViewer of [viewer, otherViewer]) {
+      await expect(feedThreads(feedViewer)).resolves.toEqual([
+        { conversationId: rootId, threads: [visibleThreads[0]] },
+      ]);
+    }
 
     const startTurn = (
       conversationId: string,
@@ -470,21 +458,11 @@ describe("conversation archive API", () => {
           idempotencyKey: `turn:${messageId}:started`,
         },
       ]);
-    // Archive a middle Task and everything below it, so the Thread has
-    // archived ancestors and an archived child.
-    const middleTaskId = taskChain[5]!;
-    expect(
-      (await archive(middleTaskId, true, await lastSeen(middleTaskId), true))
-        .status,
-    ).toBe(200);
-    const middleSubtree = [
-      ...taskChain.slice(5),
-      taskThreadId,
-      taskThreadTaskId,
-    ].sort();
-    await expect(archivedChildIds()).resolves.toEqual(
-      [threadId, ...middleSubtree].sort(),
-    );
+    // Archive the whole tree, so the Thread has archived ancestors up to the
+    // root and an archived child.
+    expect((await archive(rootId, true, lastSeenAt, true)).status).toBe(200);
+    const archivedTree = [threadId, ...taskSubtree].sort();
+    await expect(archivedChildIds()).resolves.toEqual(archivedTree);
 
     // The parent agent's input, as recordSubagentStarted stores it, is not a
     // person's message.
@@ -494,12 +472,11 @@ describe("conversation archive API", () => {
       { meta: { agentInvocationId: "invocation-1" }, text: "Keep going." },
       5_000,
     );
-    await expect(archivedChildIds()).resolves.toEqual(
-      [threadId, ...middleSubtree].sort(),
-    );
+    await expect(archivedChildIds()).resolves.toEqual(archivedTree);
+    await expect(feedThreads(viewer)).resolves.toEqual([]);
 
-    // A person's message restores the Thread and its archived ancestors for
-    // everyone. Its archived child stays archived.
+    // A person's message restores the Thread and its archived ancestors,
+    // the root too, for everyone. Its archived child stays archived.
     await startTurn(
       taskThreadId,
       "thread-archive-message",
@@ -515,9 +492,11 @@ describe("conversation archive API", () => {
     await expect(archivedChildIds()).resolves.toEqual(
       [threadId, taskThreadTaskId].sort(),
     );
-    await expect(feedThreads(viewer)).resolves.toEqual([
-      { conversationId: rootId, threads: [visibleThreads[0]] },
-    ]);
+    for (const feedViewer of [viewer, otherViewer]) {
+      await expect(feedThreads(feedViewer)).resolves.toEqual([
+        { conversationId: rootId, threads: [visibleThreads[0]] },
+      ]);
+    }
 
     // A Thread created under an archived Task has no archive of its own, but
     // its archived ancestor still hides it.

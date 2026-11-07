@@ -21,7 +21,6 @@ import {
   DASHBOARD_QA_THREAD_ID,
   NOW,
   resetMockConversationViewerState,
-  setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 
 const DASHBOARD_QA_CHILD_IDS = [
@@ -32,7 +31,7 @@ const DASHBOARD_QA_CHILD_IDS = [
 describe("dashboard canonical-event mock routes", () => {
   afterEach(() => {
     // Keep the default archived fixture available for later visual/mock runs.
-    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+    resetMockConversationViewerState();
   });
 
   it("derives public location bounds independently of summary order", () => {
@@ -161,7 +160,7 @@ describe("dashboard canonical-event mock routes", () => {
     expect(
       restoredBody.conversations.map((item) => item.conversationId),
     ).toContain(ARCHIVED_CONVERSATION_ID);
-    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+    resetMockConversationViewerState();
     expect(
       body.conversations
         .filter((item) => item.channel?.startsWith("C"))
@@ -472,7 +471,7 @@ describe("dashboard canonical-event mock routes", () => {
         ],
         kind: "thread",
         parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
-        childArchivedAt: expect.any(String),
+        archivedAt: expect.any(String),
       });
       // The child-agents report keeps archived Threads for "Show archived".
       const childAgents = conversationChildAgentsReportSchema.parse(
@@ -485,21 +484,21 @@ describe("dashboard canonical-event mock routes", () => {
         ).json(),
       );
       expect(
-        childAgents.agents.map(({ conversationId, kind, childArchivedAt }) => ({
+        childAgents.agents.map(({ conversationId, kind, archivedAt }) => ({
           conversationId,
           kind,
-          childArchivedAt,
+          archivedAt,
         })),
       ).toEqual([
         {
           conversationId: DASHBOARD_QA_THREAD_ID,
           kind: "thread",
-          childArchivedAt: null,
+          archivedAt: null,
         },
         {
           conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID,
           kind: "thread",
-          childArchivedAt: archivedThread.childArchivedAt,
+          archivedAt: archivedThread.archivedAt,
         },
         expect.objectContaining({ kind: "task" }),
         expect.objectContaining({ kind: "task" }),

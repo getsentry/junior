@@ -141,8 +141,6 @@ export const DASHBOARD_QA_ARCHIVED_THREAD_ID =
 /** A Thread whose parent is the Thread above, not the root. */
 const DASHBOARD_QA_NESTED_THREAD_ID =
   "junior:internal:dashboard-qa:thread:nested";
-/** Process-local archive state so mock restore can be exercised in visual QA. */
-const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 /** Process-local pins so the Pinned section can be exercised in visual QA. */
 const mockPinnedConversationIds = new Set<string>();
 /** Process-local Pinned order from drag reorders. */
@@ -156,12 +154,13 @@ const mockTitles = new Map<string, string>();
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
-/** Process-local child archives. A child archive applies to everyone. */
-const initialMockChildArchives: [string, string][] = [
+/** Process-local archives. Like the API, an archive applies to everyone. */
+const initialMockArchives: [string, string][] = [
+  [ARCHIVED_CONVERSATION_ID, iso(NOW_MS, -3 * 24 * 60 * 60_000)],
   [DASHBOARD_QA_ARCHIVED_THREAD_ID, iso(NOW_MS, -2 * 60 * 60_000)],
 ];
-const mockChildArchivedAt = new Map(initialMockChildArchives);
-let mockChildArchiveCount = 0;
+const mockArchivedAt = new Map(initialMockArchives);
+let mockArchiveCount = 0;
 
 /** Process-local Slack channels from Continue in Slack. */
 const mockSlackChannelByConversationId = new Map<
@@ -170,28 +169,24 @@ const mockSlackChannelByConversationId = new Map<
 >();
 
 /**
- * Restore process-local archive, pin, unread, auto-archive, and child
- * archive state so tests sharing a worker do not leak state.
+ * Restore process-local archive, pin, unread, and auto-archive state so
+ * tests sharing a worker do not leak state.
  */
 export function resetMockConversationViewerState(): void {
-  mockArchivedConversationIds.clear();
-  mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
   mockUnreadConversationIds.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
-  mockChildArchivedAt.clear();
-  mockChildArchiveCount = 0;
-  for (const [id, at] of initialMockChildArchives) {
-    mockChildArchivedAt.set(id, at);
-  }
+  mockArchivedAt.clear();
+  mockArchiveCount = 0;
+  for (const [id, at] of initialMockArchives) mockArchivedAt.set(id, at);
   mockSlackChannelByConversationId.clear();
 }
 
 /**
- * Add the viewer's mock archive, pin, and unread marks and any rename to one
- * conversation. Like the API, a child reports the pin of its root.
+ * Add the mock archive, the viewer's pin and unread marks, and any rename to
+ * one conversation. Like the API, a child reports the pin of its root.
  */
 function withMockViewerState<
   T extends { conversationId: string; displayTitle: string; status: string },
@@ -212,9 +207,7 @@ function withMockViewerState<
   return {
     ...report,
     displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
-    archivedAt: mockArchivedConversationIds.has(report.conversationId)
-      ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
-      : undefined,
+    archivedAt: mockArchivedAt.get(report.conversationId),
     pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
     ...(pinPosition === undefined ? undefined : { pinPosition }),
     ...(unread ? { unread: true as const } : undefined),
@@ -1168,7 +1161,7 @@ function advisorConversation(
     ...conversation,
     kind: "task",
     parentConversationId,
-    childArchivedAt: mockChildArchivedAt.get(conversationId) ?? null,
+    archivedAt: mockArchivedAt.get(conversationId) ?? null,
   };
 }
 
@@ -1189,7 +1182,7 @@ function threadConversation(
     // The viewer takes part, so QA shows that a person can message a Thread.
     isParticipant: true,
     parentConversationId,
-    childArchivedAt: mockChildArchivedAt.get(conversationId) ?? null,
+    archivedAt: mockArchivedAt.get(conversationId) ?? null,
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 12_000),
@@ -1794,7 +1787,6 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       conversationId: ARCHIVED_CONVERSATION_ID,
       displayTitle: "Archived restore target",
       surface: "internal",
-      archivedAt: iso(nowMs, -3 * 24 * 60 * 60_000),
     }),
   ];
 }
@@ -1865,7 +1857,7 @@ function mockThreadPlacement(
     ancestor = byId.get(ancestor.parentConversationId ?? "")
   ) {
     if (ancestor.kind === "root") return placement ?? ancestor.conversationId;
-    if (ancestor.childArchivedAt) return undefined;
+    if (ancestor.archivedAt) return undefined;
     if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
   }
   return undefined;
@@ -1883,7 +1875,7 @@ function mockThreadsByPlacement(
   );
   const threadsByPlacement = new Map<string, ConversationFeedItem[]>();
   for (const thread of conversations) {
-    if (thread.kind !== "thread" || thread.childArchivedAt) continue;
+    if (thread.kind !== "thread" || thread.archivedAt) continue;
     const placement = mockThreadPlacement(byId, thread);
     if (!placement) continue;
     threadsByPlacement.set(placement, [
@@ -2162,77 +2154,9 @@ export function readMockConversationFeed(
   return { ...feed, conversations };
 }
 
-/** Archive or restore one mock child with the API's tree rules. */
-function setMockChildArchived(
-  conversations: readonly MockConversation[],
-  conversationId: string,
-  archived: boolean,
-  applyToChildren: boolean,
-): { archivedAt: string | null } | { error: string } {
-  const parentOf = new Map(
-    conversations.map((item) => [
-      item.conversationId,
-      item.parentConversationId,
-    ]),
-  );
-  // Nearest first. A root never holds a child archive.
-  const ancestorsOf = (id: string) => {
-    const ancestors: string[] = [];
-    for (let parent = parentOf.get(id); parent; parent = parentOf.get(parent)) {
-      ancestors.push(parent);
-    }
-    return ancestors;
-  };
-  const descendantIds = conversations
-    .map((item) => item.conversationId)
-    .filter((id) => ancestorsOf(id).includes(conversationId));
-  if (archived) {
-    const unarchived = descendantIds.filter(
-      (id) => !mockChildArchivedAt.has(id),
-    );
-    if (unarchived.length > 0 && !applyToChildren) {
-      return {
-        error:
-          unarchived.length === 1
-            ? "1 child conversation is not archived. Pass applyToChildren to archive it too."
-            : `${unarchived.length} child conversations are not archived. Pass applyToChildren to archive them too.`,
-      };
-    }
-    // Like the API, one archive writes one time, so a restore can tell what
-    // this archive wrote.
-    const archivedAt = new Date(NOW_MS + ++mockChildArchiveCount).toISOString();
-    for (const id of [conversationId, ...unarchived]) {
-      mockChildArchivedAt.set(id, archivedAt);
-    }
-    return { archivedAt };
-  }
-  // Name the topmost archived ancestor, like the API.
-  const archivedAncestorId = ancestorsOf(conversationId)
-    .reverse()
-    .find((id) => mockChildArchivedAt.has(id));
-  if (archivedAncestorId) {
-    return {
-      error: `Conversation ${archivedAncestorId} above this one is archived. Restore it first.`,
-    };
-  }
-  const archivedAt = mockChildArchivedAt.get(conversationId);
-  for (const id of [
-    conversationId,
-    ...(applyToChildren && archivedAt
-      ? descendantIds.filter(
-          (descendantId) =>
-            mockChildArchivedAt.get(descendantId) === archivedAt,
-        )
-      : []),
-  ]) {
-    mockChildArchivedAt.delete(id);
-  }
-  return { archivedAt: null };
-}
-
 /**
- * Archive or restore one mock conversation for local dashboard visual QA.
- * Like the API, a root archive is per viewer and a child archive is shared.
+ * Archive or restore one mock conversation for local dashboard visual QA,
+ * with the API's tree rules. Like the API, an archive applies to everyone.
  */
 export function setMockConversationArchived(
   conversationId: string,
@@ -2244,26 +2168,68 @@ export function setMockConversationArchived(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  if (conversation.kind !== "root") {
-    return setMockChildArchived(
-      conversations,
-      conversationId,
-      archived,
-      applyToChildren,
-    );
-  }
+  const parentOf = new Map(
+    conversations.map((item) => [
+      item.conversationId,
+      item.parentConversationId,
+    ]),
+  );
+  // Nearest first.
+  const ancestorsOf = (id: string) => {
+    const ancestors: string[] = [];
+    for (let parent = parentOf.get(id); parent; parent = parentOf.get(parent)) {
+      ancestors.push(parent);
+    }
+    return ancestors;
+  };
+  const descendantIds = conversations
+    .map((item) => item.conversationId)
+    .filter((id) => ancestorsOf(id).includes(conversationId));
   if (archived) {
-    mockArchivedConversationIds.add(conversationId);
-    // Match the API: archive also unpins and marks read.
-    mockPinnedConversationIds.delete(conversationId);
-    mockPinPositions.delete(conversationId);
+    const unarchived = descendantIds.filter((id) => !mockArchivedAt.has(id));
+    if (unarchived.length > 0 && !applyToChildren) {
+      return {
+        error:
+          unarchived.length === 1
+            ? "1 child conversation is not archived. Pass applyToChildren to archive it too."
+            : `${unarchived.length} child conversations are not archived. Pass applyToChildren to archive them too.`,
+      };
+    }
+    // Like the API, one archive writes one time, so a restore can tell what
+    // this archive wrote.
+    const archivedAt = new Date(NOW_MS + ++mockArchiveCount).toISOString();
+    for (const id of [conversationId, ...unarchived]) {
+      mockArchivedAt.set(id, archivedAt);
+    }
+    // Match the API: archive also marks it read.
     mockUnreadConversationIds.delete(conversationId);
-  } else {
-    mockArchivedConversationIds.delete(conversationId);
-    // Match the API: a manual restore turns auto-archive off.
+    return { archivedAt };
+  }
+  // Name the topmost archived ancestor, like the API.
+  const archivedAncestorId = ancestorsOf(conversationId)
+    .reverse()
+    .find((id) => mockArchivedAt.has(id));
+  if (archivedAncestorId) {
+    return {
+      error: `Conversation ${archivedAncestorId} above this one is archived. Restore it first.`,
+    };
+  }
+  const archivedAt = mockArchivedAt.get(conversationId);
+  for (const id of [
+    conversationId,
+    ...(applyToChildren && archivedAt
+      ? descendantIds.filter(
+          (descendantId) => mockArchivedAt.get(descendantId) === archivedAt,
+        )
+      : []),
+  ]) {
+    mockArchivedAt.delete(id);
+  }
+  // Match the API: a manual root restore turns auto-archive off.
+  if (conversation.kind === "root") {
     mockAutoArchiveByConversationId.set(conversationId, false);
   }
-  return { archivedAt: archived ? NOW : null };
+  return { archivedAt: null };
 }
 
 /**
@@ -2289,7 +2255,7 @@ export function setMockConversationPinned(
   if (pinned) {
     mockPinnedConversationIds.add(conversationId);
     // Match the API: a pin also restores an archived conversation.
-    mockArchivedConversationIds.delete(conversationId);
+    mockArchivedAt.delete(conversationId);
   } else {
     mockPinnedConversationIds.delete(conversationId);
   }
@@ -2352,7 +2318,7 @@ export function archiveMockDoneConversations(): { archived: number } {
     ) {
       continue;
     }
-    mockArchivedConversationIds.add(summary.conversationId);
+    mockArchivedAt.set(summary.conversationId, NOW);
     archived += 1;
   }
   return { archived };
@@ -2499,7 +2465,7 @@ export function readMockConversationChildAgents(
       ...(child.childAgentTotals
         ? { childAgentTotals: child.childAgentTotals }
         : undefined),
-      childArchivedAt: child.childArchivedAt ?? null,
+      archivedAt: mockArchivedAt.get(childConversationId) ?? null,
       cumulativeDurationMs: child.cumulativeDurationMs,
       cumulativeUsage: child.cumulativeUsage,
     };

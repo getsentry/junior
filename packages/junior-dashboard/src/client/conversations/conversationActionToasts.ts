@@ -79,8 +79,6 @@ export function useConversationActionToasts() {
           archiveConversationMutationOptions(queryClient, conversation.id),
         )
           .mutate({
-            // Undo restores everything that the child archive archived.
-            applyToChildren: conversation.kind !== "root",
             archived: false,
             lastSeenAt: conversation.lastSeenAt,
           })

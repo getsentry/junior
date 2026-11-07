@@ -27,12 +27,10 @@ import { readAutomationTitlesByConversationId } from "@/chat/automations/executi
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
-  conversationArchivedFor,
   conversationPinnedForUser,
   conversationViewerMarks,
   conversationHasParticipantUser,
   conversationIsMemberRoot,
-  conversationNotArchivedFor,
   viewerConversationMembership,
   type ConversationMember,
 } from "./membership";
@@ -82,10 +80,10 @@ function conversationFeedMembershipFilter(
   return and(
     conversationIsMemberRoot(member),
     status === "archived"
-      ? conversationArchivedFor(member)
+      ? isNotNull(juniorConversations.archivedAt)
       : status === "all"
         ? undefined
-        : conversationNotArchivedFor(member),
+        : isNull(juniorConversations.archivedAt),
   );
 }
 
@@ -421,16 +419,12 @@ export async function readConversationFeedFromSql(
       conversationIds,
       visibleAnnotationsByConversation,
     ),
-    // A Thread shows only while the viewer has not archived its root.
+    // A Thread shows only while its root is not archived.
     readFeedThreads(
       db,
-      conversationIds
-        .filter(
-          (conversationId) =>
-            viewerMarksByConversation.get(conversationId)?.archivedAtMs ===
-            undefined,
-        )
-        .map((conversationId) => ({
+      conversations
+        .filter((conversation) => conversation.archivedAtMs === undefined)
+        .map(({ conversationId }) => ({
           access: accessByConversation.get(conversationId),
           conversationId,
         })),

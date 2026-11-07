@@ -26,14 +26,13 @@ import type { ConversationStatus } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import {
   juniorConversationBriefs,
-  juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
 
 /** One public top-level agent that the requester may find. */
 export interface TopLevelAgent {
-  /** The viewer archived this Conversation. */
+  /** The Conversation is archived, for everyone. */
   archived: boolean;
   conversationId: string;
   status: ConversationStatus;
@@ -48,7 +47,7 @@ export interface TopLevelAgentSearch {
   /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
   annotation?: string;
   conversationIds?: readonly string[];
-  /** Include Conversations that the person archived. */
+  /** Include archived Conversations. */
   includeArchived: boolean;
   limit: number;
   /** Words to match in the latest Brief or the title. */
@@ -57,8 +56,8 @@ export interface TopLevelAgentSearch {
 
 /**
  * Search public root Conversations in the tenant of `requesterConversationId`.
- * `viewer`, the person of the current Turn, only decides which ones are
- * archived. Newest activity first, or best match for a query.
+ * `viewer` is the person of the current Turn. Newest activity first, or best
+ * match for a query.
  */
 export async function searchTopLevelAgents(args: {
   requesterConversationId: string;
@@ -102,9 +101,7 @@ export async function searchTopLevelAgents(args: {
     search.conversationIds
       ? inArray(juniorConversations.conversationId, [...search.conversationIds])
       : undefined,
-    viewer && !search.includeArchived
-      ? isNull(juniorConversationParticipants.archivedAt)
-      : undefined,
+    search.includeArchived ? undefined : isNull(juniorConversations.archivedAt),
     query
       ? or(
           sql`${searchVector} @@ ${tsquery}`,
@@ -122,7 +119,7 @@ export async function searchTopLevelAgents(args: {
     : [newestFirst];
   const rows = await db
     .select({
-      archivedAt: juniorConversationParticipants.archivedAt,
+      archivedAt: juniorConversations.archivedAt,
       briefContent: briefs.content,
       conversationId: juniorConversations.conversationId,
       lastActivityAt: juniorConversations.lastActivityAt,
@@ -133,16 +130,6 @@ export async function searchTopLevelAgents(args: {
     .innerJoin(
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
-    .leftJoin(
-      juniorConversationParticipants,
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-        eq(juniorConversationParticipants.userId, viewer?.id ?? ""),
-      ),
     )
     .leftJoin(
       briefs,

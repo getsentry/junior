@@ -30,7 +30,6 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
 import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
@@ -51,10 +50,7 @@ import {
 } from "./location";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-type ConversationRow = Omit<
-  typeof juniorConversations.$inferSelect,
-  "legacyArchivedAt"
->;
+type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
@@ -291,8 +287,8 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
-    ...(row.childArchivedAt
-      ? { childArchivedAtMs: row.childArchivedAt.getTime() }
+    ...(row.archivedAt
+      ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
     ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
@@ -606,7 +602,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -741,7 +737,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,

@@ -82,7 +82,7 @@ function viewerStateVersion(
     .where(eq(versionConversation.conversationId, conversationId));
   const participant = db
     .select({
-      state: sql<string>`row(${versionParticipant.pinnedAt}, ${versionParticipant.pinPosition}, ${versionParticipant.archivedAt}, ${versionParticipant.autoArchive})::text`,
+      state: sql<string>`row(${versionParticipant.pinnedAt}, ${versionParticipant.pinPosition}, ${versionParticipant.autoArchive})::text`,
     })
     .from(versionParticipant)
     .where(
@@ -172,7 +172,6 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     : sql`false`;
   const [row] = await db
     .select({
-      archivedAt: juniorConversationParticipants.archivedAt,
       attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
       autoArchive: juniorConversationParticipants.autoArchive,
       autoArchiveDefault: juniorUsers.autoArchiveDefault,

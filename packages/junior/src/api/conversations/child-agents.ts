@@ -22,16 +22,14 @@ import {
 async function readChildKinds(
   db: JuniorDatabase,
   childIds: readonly string[],
-): Promise<
-  Map<string, Pick<ConversationChildAgent, "kind" | "childArchivedAt">>
-> {
+): Promise<Map<string, Pick<ConversationChildAgent, "archivedAt" | "kind">>> {
   if (childIds.length === 0) return new Map();
   const rows = await db
     .select({
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
+      archivedAt: juniorConversations.archivedAt,
       parentConversationId: juniorConversations.parentConversationId,
-      childArchivedAt: juniorConversations.childArchivedAt,
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, [...childIds]));
@@ -39,8 +37,8 @@ async function readChildKinds(
     rows.map((row) => [
       row.conversationId,
       {
+        archivedAt: row.archivedAt?.toISOString() ?? null,
         kind: conversationKindFromRow(row) === "thread" ? "thread" : "task",
-        childArchivedAt: row.childArchivedAt?.toISOString() ?? null,
       },
     ]),
   );
@@ -90,8 +88,8 @@ export async function requireConversationChildAgents(
       ...(childAgentTotals ? { childAgentTotals } : undefined),
       // A child row from before the kind column reads as a Task.
       ...(kindByChild.get(agent.childConversationId) ?? {
+        archivedAt: null,
         kind: "task",
-        childArchivedAt: null,
       }),
       status: agent.status,
       updatedAt: new Date(agent.updatedAtMs).toISOString(),

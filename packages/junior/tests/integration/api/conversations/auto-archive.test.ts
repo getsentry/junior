@@ -16,10 +16,13 @@ import {
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { insertReviewItem } from "@/chat/review-items/store";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 import { JUNIOR_AUTO_ARCHIVE_ROUTE } from "@/deployment";
 import { defineJuniorPlugins } from "@/plugins";
-import { eq } from "drizzle-orm";
+import { isNotNull } from "drizzle-orm";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -54,7 +57,7 @@ describe("conversation auto-archive API", () => {
     await closeDb();
   });
 
-  it("auto-archives finished work after each viewer's grace period and respects per-conversation choices", async () => {
+  it("auto-archives finished work for everyone after one viewer's grace period and respects per-conversation choices", async () => {
     const nowMs = Date.now();
     const hour = 60 * 60 * 1000;
     const doneId = "local:test:auto-archive-done";
@@ -126,15 +129,15 @@ describe("conversation auto-archive API", () => {
           userId: viewer.id,
         });
     }
+    // This viewer was active 30 hours ago, inside their 36-hour grace period.
     const otherViewer = await addParticipant({
       conversationId: doneId,
       email: "manual@example.com",
-      lastMessageAt: new Date(nowMs - 48 * hour),
+      lastMessageAt: new Date(nowMs - 30 * hour),
     });
     await updateUserAutoArchiveSettings(viewer.id, {
       autoArchiveDefault: true,
     });
-    // Work finished 30 hours ago, inside this viewer's 36-hour grace period.
     await updateUserAutoArchiveSettings(otherViewer.id, {
       autoArchiveDefault: true,
       autoArchiveGraceHours: 36,
@@ -218,28 +221,30 @@ describe("conversation auto-archive API", () => {
 
     await expect(sweep()).resolves.toEqual({
       archived: 4,
-      scanned: 7,
+      scanned: 6,
     });
-    const archivedIds = async (userId: string) =>
+    const archivedIds = async () =>
       (
         await getDb()
-          .select({
-            archivedAt: juniorConversationParticipants.archivedAt,
-            rootConversationId:
-              juniorConversationParticipants.rootConversationId,
-          })
-          .from(juniorConversationParticipants)
-          .where(eq(juniorConversationParticipants.userId, userId))
+          .select({ conversationId: juniorConversations.conversationId })
+          .from(juniorConversations)
+          .where(isNotNull(juniorConversations.archivedAt))
       )
-        .filter((row) => row.archivedAt)
-        .map((row) => row.rootConversationId);
+        .map((row) => row.conversationId)
+        .sort();
+    await expect(archivedIds()).resolves.toEqual(
+      [oldId, doneId, noWorkId, childDoneId].sort(),
+    );
+    // One viewer's grace period passed, so the root is archived for the
+    // other participant too.
     await expect(
-      archivedIds(viewer.id).then((ids) => ids.sort()),
-    ).resolves.toEqual([oldId, doneId, noWorkId, childDoneId].sort());
-    await expect(archivedIds(otherViewer.id)).resolves.toEqual([]);
+      readConversationFeedFromSql({ viewer: otherViewer }),
+    ).resolves.toMatchObject({ conversations: [] });
 
-    // A manual restore turns auto-archive off, so the next sweep keeps it.
-    const restore = await app.request(
+    // The other participant's manual restore turns auto-archive off for
+    // them, so this viewer's next sweep keeps it for everyone.
+    const { app: otherApp } = await authenticatedApi(otherViewer.email);
+    const restore = await otherApp.request(
       `http://localhost/api/conversations/${doneId}/archive`,
       {
         body: JSON.stringify({
@@ -253,13 +258,14 @@ describe("conversation auto-archive API", () => {
     expect(restore.status).toBe(200);
     expect(
       conversationDetailReportSchema.parse(
-        await readConversationDetail(doneId, { viewer }),
+        await readConversationDetail(doneId, { viewer: otherViewer }),
       ).autoArchive,
     ).toBe(false);
-    await sweep();
-    await expect(
-      archivedIds(viewer.id).then((ids) => ids.sort()),
-    ).resolves.toEqual([oldId, noWorkId, childDoneId].sort());
+    // The sweep reads only rows on unarchived roots.
+    await expect(sweep()).resolves.toEqual({ archived: 0, scanned: 2 });
+    await expect(archivedIds()).resolves.toEqual(
+      [oldId, noWorkId, childDoneId].sort(),
+    );
   });
 
   it("archives nothing when a plugin cannot report work", async () => {
