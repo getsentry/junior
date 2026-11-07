@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import {
   createSearchToolsTool,
+  searchCatalogTools,
   summarizeModelVisibleDescription,
 } from "@/chat/tools/search-tools";
 import { tool } from "@/chat/tools/definition";
@@ -321,7 +322,7 @@ describe("searchTools", () => {
     const searchTools = createSearchToolsTool(catalog());
 
     const result = await searchTools.execute!(
-      { source: "memory", query: "long-term" },
+      { source: "memory", query: "create a memory" },
       {},
     );
 
@@ -365,8 +366,9 @@ describe("searchTools", () => {
     });
   });
 
-  it("ranks production search variations by relevant catalog metadata", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+  // Unclear word matches go to the model, which these tests do not run. They
+  // check the word match itself.
+  it("ranks production search variations by relevant catalog metadata", () => {
     const cases = [
       ["clone repository", "github_cloneRepository", "github"],
       ["repository clone", "github_cloneRepository", "github"],
@@ -399,20 +401,17 @@ describe("searchTools", () => {
     ] as const;
 
     for (const [query, expectedTool, source] of cases) {
-      const result = await searchTools.execute!(
-        { query, source, max_results: 1 },
-        {},
+      const { matches } = searchCatalogTools(
+        mixedCatalog(),
+        query,
+        source ?? null,
       );
 
-      expect({
-        query,
-        tools: result.tools.map(({ tool_name }) => tool_name),
-      }).toEqual({ query, tools: [expectedTool] });
+      expect({ query, top: matches[0] }).toEqual({ query, top: expectedTool });
     }
   });
 
-  it("returns related candidates for broad production queries", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
+  it("returns related candidates for broad production queries", () => {
     const cases = [
       [
         "pull request checks details diff comments",
@@ -428,15 +427,12 @@ describe("searchTools", () => {
     ] as const;
 
     for (const [query, expectedTool, source] of cases) {
-      const result = await searchTools.execute!(
-        { query, source, max_results: 20 },
-        {},
-      );
+      const { matches } = searchCatalogTools(mixedCatalog(), query, source);
 
-      expect({
+      expect({ query, matches }).toEqual({
         query,
-        tools: result.tools.map(({ tool_name }) => tool_name),
-      }).toEqual({ query, tools: expect.arrayContaining([expectedTool]) });
+        matches: expect.arrayContaining([expectedTool]),
+      });
     }
   });
 
