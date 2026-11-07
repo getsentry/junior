@@ -98,10 +98,14 @@ function matchTypo(haystack: string, term: string): QuickOpenMatch | undefined {
   for (const word of haystack.matchAll(/[\p{L}\p{N}]+/gu)) {
     const distances = prefixDistances(
       term,
-      haystack.slice(word.index, word.index + term.length + 1),
+      haystack.slice(word.index, word.index + term.length + allowed),
     );
-    // The term's own length first, so a tie highlights the whole term.
-    for (const length of [term.length, term.length - 1, term.length + 1]) {
+    // Each extra or missing letter costs an edit, so lengths further than
+    // `allowed` from the term can't match. A tie keeps the length closest
+    // to the term's, so the highlight covers the whole term.
+    for (let offset = 0; offset <= 2 * allowed; offset++) {
+      const length =
+        term.length + (offset % 2 ? -1 : 1) * Math.ceil(offset / 2);
       const distance = distances[length];
       if (distance === undefined) continue;
       if (distance <= allowed && (!best || distance < best.distance)) {
