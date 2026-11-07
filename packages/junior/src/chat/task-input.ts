@@ -82,7 +82,9 @@ function quoted(values: readonly string[]): string {
  * agent can mention a person and then name them again by handle as if they
  * were someone else. The "you" rule covers doers outside `<people>` too,
  * because instructions can still ask to mention them, such as a requester who
- * reviews their own pull request.
+ * reviews their own pull request. A child agent replies to its parent, not to
+ * the person, so it writes the mention instead of the handle. That carries
+ * who the person is up each level to the agent that replies to them.
  */
 function peopleTags(
   people: readonly string[],
@@ -109,11 +111,11 @@ function peopleTags(
       .map((doer) => renderChildTag("done-by", escapeClosingTags(label(doer)))),
     ...doers.map((doer) =>
       escapeClosingTags(
-        `If you mention ${doer.mention}, write to them as "you"${
+        `If your reply is to ${doer.mention}, write to them as "you".${
           doer.handles.length > 0
-            ? `, and do not also call them ${quoted(doer.handles)}`
+            ? ` Otherwise call them ${doer.mention}, not ${quoted(doer.handles)}.`
             : ""
-        }.`,
+        }`,
       ),
     ),
   ];
