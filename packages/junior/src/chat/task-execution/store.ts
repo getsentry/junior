@@ -244,6 +244,24 @@ export async function appendInboundMessage(args: {
   return result;
 }
 
+/** Record an inbound message id that skips the mailbox. */
+export async function claimInboundMessage(args: {
+  message: InboundMessage;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.claimInboundMessage(args);
+  if (result.status === "claimed") {
+    await recordExecutionMetadata({
+      conversationId: args.message.conversationId,
+      conversationStore: args.conversationStore,
+      state: args.state,
+    });
+  }
+  return result;
+}
+
 async function enqueueAfterAppend(args: {
   appendResult: AppendExclusiveInboundMessageResult;
   message: InboundMessage;

@@ -25,17 +25,17 @@ import {
   getConversationStore,
   getSqlExecutor,
 } from "@/chat/db";
+import { appendConversationMessages } from "@/chat/conversations/messages";
 import {
-  appendConversationMessages,
-  appendNewConversationMessage,
-} from "@/chat/conversations/messages";
-import { stopConversation } from "@/chat/conversations/stop";
+  stopConversation,
+  type StopConversationResult,
+} from "@/chat/conversations/stop";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
   getConversationWorkState,
-  type StopConversationWorkResult,
 } from "@/chat/task-execution/store";
+import type { InboundMessage } from "@/chat/task-execution/state";
 import { withLock } from "@/chat/state/locks";
 import {
   buildSlackInboundMessage,
@@ -249,6 +249,35 @@ async function resolveSlackConversationId(args: {
   );
 }
 
+/**
+ * Build the mailbox input for one Slack message. A message and a `stop` get
+ * the same `inboundMessageId`, so each Slack message is handled once.
+ */
+async function buildSlackInput(args: {
+  adapter: SlackAdapter;
+  conversationId: string;
+  facts?: SlackInteractionInputFacts;
+  installation: SlackInstallationContext;
+  message: Message;
+  receivedAtMs: number;
+  route: SlackConversationRoute;
+  state: StateAdapter;
+}): Promise<{ inbound: InboundMessage; thread: ThreadImpl }> {
+  const thread = await buildThread(args);
+  return {
+    inbound: buildSlackInboundMessage({
+      conversationId: args.conversationId,
+      installation: args.installation,
+      reviewItemChange: args.facts?.reviewItemChange,
+      message: args.message,
+      receivedAtMs: args.receivedAtMs,
+      route: args.route,
+      thread,
+    }),
+    thread,
+  };
+}
+
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
   facts?: SlackInteractionInputFacts;
@@ -272,15 +301,9 @@ async function persistSlackMessage(args: {
       conversationStore: args.conversationStore,
       installation: args.installation,
     }));
-  const thread = await buildThread(args);
-  const inbound = buildSlackInboundMessage({
+  const { inbound, thread } = await buildSlackInput({
+    ...args,
     conversationId,
-    installation: args.installation,
-    reviewItemChange: args.facts?.reviewItemChange,
-    message: args.message,
-    receivedAtMs: args.receivedAtMs,
-    route: args.route,
-    thread,
   });
   const work = await getConversationWorkState({
     conversationId,
@@ -330,26 +353,29 @@ export const SLACK_STOP_ACK = "Stopped.";
  * that reaches the worker ends the stop. A keyword stop message is saved as
  * a skipped Message and never enters the mailbox. Slack does not leave the
  * `processing` status by itself, so clear the status even when no work runs.
+ *
+ * Slack sends one mention as both `message` and `app_mention`, and it retries
+ * events. The keyword stop claims its `inboundMessageId` in the mailbox, the
+ * same duplicate guard that ordinary messages get, so a second delivery stops
+ * nothing and posts no ack.
  * https://docs.slack.dev/reference/events/agent_session_stopped
  */
 async function handleSlackStop(args: {
   adapter: SlackAdapter;
   canonicalThreadId: string;
+  conversationId: string;
   conversationStore?: ConversationStore;
-  installation: SlackInstallationContext;
   queue: ConversationWorkQueue;
   state: StateAdapter;
   /** The `stop` keyword message. Omit it for the native stop button. */
-  stopMessage?: { message: Message; stopReason: string };
+  stopMessage?: {
+    inbound: InboundMessage;
+    message: Message;
+    stopReason: string;
+  };
 }): Promise<void> {
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId: args.canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
   if (args.stopMessage) {
     const { message, stopReason } = args.stopMessage;
-    await bindSlackAuthorIdentity(message, args.installation);
     const conversation = coerceThreadConversationState(undefined);
     recordSkippedConversationMessage({
       conversation,
@@ -357,35 +383,36 @@ async function handleSlackStop(args: {
       skippedReason: `${SubscribedReplyReason.ThreadOptOut}:${stopReason}`,
       text: parseContent(message).text,
     });
-    const [stopMessage] = conversation.messages;
-    // Slack sends one mention as both `message` and `app_mention`, and it
-    // retries events. Saving the stop message claims the stop, so a second
-    // delivery neither stops newer work nor posts a second ack.
-    if (
-      stopMessage &&
-      !(await appendNewConversationMessage(getConversationEventStore(), {
-        conversationId,
-        message: stopMessage,
-      }))
-    ) {
-      return;
-    }
+    // A redelivery saves nothing new: the Message id is the idempotency key.
+    await appendConversationMessages(getConversationEventStore(), {
+      conversation,
+      conversationId: args.conversationId,
+    });
   }
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
-  let stopped: StopConversationWorkResult;
+  let duplicate = false;
+  let stopped: StopConversationResult;
   try {
     stopped = await stopConversation({
-      conversationId,
+      conversationId: args.conversationId,
       conversationStore: args.conversationStore,
+      message: args.stopMessage?.inbound,
       queue: args.queue,
       state: args.state,
     });
+    duplicate = stopped.status === "duplicate";
   } finally {
     // The person asked to stop, so Slack stops showing the status either way.
-    await createSlackWebApiStatusSender({
-      channelId: providerThread?.channelId,
-      threadTs: providerThread?.threadTs,
-    })("");
+    // A duplicate leaves the status of newer work alone.
+    if (!duplicate) {
+      await createSlackWebApiStatusSender({
+        channelId: providerThread?.channelId,
+        threadTs: providerThread?.threadTs,
+      })("");
+    }
+  }
+  if (stopped.status === "duplicate") {
+    return;
   }
   if (stopped.status === "requested") {
     await clearSlackPendingReactions({
@@ -491,22 +518,6 @@ async function routeParsedMessage(args: {
     text: args.event.text ?? "",
     isExplicitMention: isMention,
   });
-  if (stopDecision) {
-    await handleSlackStop({
-      adapter: args.adapter,
-      canonicalThreadId,
-      conversationStore: args.conversationStore,
-      installation: args.installation,
-      queue: args.queue,
-      state: args.state,
-      stopMessage: {
-        message,
-        stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
-      },
-    });
-    return;
-  }
-
   const isAuthorDomainAllowed = () =>
     isSlackAuthorDomainAllowed({
       allowedBotUserIds: args.allowedBotUserIds,
@@ -515,8 +526,12 @@ async function routeParsedMessage(args: {
       teamId: args.installation.teamId,
       user: args.event.user,
     });
-  // Passive thread messages are not checked for the allowed domains yet.
-  if (route === "mention" && !(await isAuthorDomainAllowed())) {
+  // Passive thread messages and stops are not checked for the allowed domains.
+  if (
+    !stopDecision &&
+    route === "mention" &&
+    !(await isAuthorDomainAllowed())
+  ) {
     return;
   }
 
@@ -526,6 +541,32 @@ async function routeParsedMessage(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
+
+  if (stopDecision) {
+    const { inbound } = await buildSlackInput({
+      adapter: args.adapter,
+      conversationId,
+      installation: args.installation,
+      message,
+      receivedAtMs: args.receivedAtMs,
+      route,
+      state: args.state,
+    });
+    await handleSlackStop({
+      adapter: args.adapter,
+      canonicalThreadId,
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      state: args.state,
+      stopMessage: {
+        inbound,
+        message,
+        stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
+      },
+    });
+    return;
+  }
 
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
@@ -695,15 +736,21 @@ async function handleSlackEvent(args: {
           const routed = await withLock(
             state,
             `slack:ingress:slack:${channelId}:${threadTs}`,
-            () =>
-              handleSlackStop({
+            async () => {
+              const canonicalThreadId = `slack:${channelId}:${threadTs}`;
+              await handleSlackStop({
                 adapter,
-                canonicalThreadId: `slack:${channelId}:${threadTs}`,
+                canonicalThreadId,
+                conversationId: await resolveSlackConversationId({
+                  canonicalThreadId,
+                  conversationStore: args.services.conversationStore,
+                  installation,
+                }),
                 conversationStore: args.services.conversationStore,
-                installation,
                 queue: args.services.queue,
                 state,
-              }),
+              });
+            },
             { keepAlive: true, waitMs: 10_000 },
           );
           if (!routed.acquired) {

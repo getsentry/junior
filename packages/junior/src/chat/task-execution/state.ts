@@ -235,6 +235,11 @@ export type StopConversationWorkResult =
   | { status: "no_work" }
   | { runId: string; status: "requested"; pendingMessages: InboundMessage[] };
 
+/** Result of recording an inbound message id outside the mailbox. */
+export interface ClaimInboundMessageResult {
+  status: "claimed" | "duplicate";
+}
+
 /** Result of clearing one stop observed by the matching leased run. */
 export interface CompleteConversationStopResult {
   status: "cleared" | "lost_lease" | "none";
@@ -1166,6 +1171,29 @@ export function hasRunnableConversationWork(
   return hasRunnableWork(conversation);
 }
 
+/** Read the Conversation of an inbound message, or a new one for it. */
+async function readInboundConversation(
+  state: StateAdapter,
+  message: InboundMessage,
+  nowMs: number,
+): Promise<Conversation> {
+  const existing = await readConversation(state, message.conversationId);
+  if (!existing) {
+    return emptyConversation({
+      conversationId: message.conversationId,
+      destination: message.destination,
+      nowMs,
+      source: message.source,
+    });
+  }
+  assertSameOptionalConversationDestination({
+    conversationId: message.conversationId,
+    current: existing.destination,
+    next: message.destination,
+  });
+  return existing;
+}
+
 async function appendInboundMessageWithAdmission(args: {
   exclusive: boolean;
   message: InboundMessage;
@@ -1176,25 +1204,7 @@ async function appendInboundMessageWithAdmission(args: {
   return await withConversationMutation(
     { conversationId: args.message.conversationId, state: args.state },
     async (state, lock) => {
-      const existing = await readConversation(
-        state,
-        args.message.conversationId,
-      );
-      const current =
-        existing ??
-        emptyConversation({
-          conversationId: args.message.conversationId,
-          destination: args.message.destination,
-          nowMs,
-          source: args.message.source,
-        });
-      if (existing) {
-        assertSameOptionalConversationDestination({
-          conversationId: args.message.conversationId,
-          current: current.destination,
-          next: args.message.destination,
-        });
-      }
+      const current = await readInboundConversation(state, args.message, nowMs);
       const existingPending = current.execution.pendingMessages.some(
         (message) => message.inboundMessageId === args.message.inboundMessageId,
       );
@@ -1289,6 +1299,54 @@ export async function appendInboundMessage(args: {
     throw new Error("Non-exclusive mailbox append returned active");
   }
   return result;
+}
+
+/**
+ * Record an inbound message id without adding the message to the mailbox.
+ * Ingress uses it for input that it handles itself, such as a Slack `stop`.
+ * The id is a duplicate after that, for this claim and for the mailbox, so
+ * one message is handled once.
+ */
+export async function claimInboundMessage(args: {
+  message: InboundMessage;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<ClaimInboundMessageResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(
+    { conversationId: args.message.conversationId, state: args.state },
+    async (state, lock) => {
+      const current = await readInboundConversation(state, args.message, nowMs);
+      if (
+        current.execution.inboundMessageIds.includes(
+          args.message.inboundMessageId,
+        )
+      ) {
+        return { status: "duplicate" };
+      }
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          {
+            ...current,
+            destination: current.destination ?? args.message.destination,
+            source: current.source ?? args.message.source,
+            lastActivityAtMs: nowMs,
+          },
+          {
+            ...current.execution,
+            inboundMessageIds: [
+              ...current.execution.inboundMessageIds,
+              args.message.inboundMessageId,
+            ],
+          },
+          nowMs,
+        ),
+      );
+      return { status: "claimed" };
+    },
+  );
 }
 
 /** Append only when the Conversation has no other runnable work. */

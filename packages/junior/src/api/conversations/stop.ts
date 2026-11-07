@@ -45,7 +45,7 @@ export async function stopConversationTurnForViewer(
       conversationStore,
       queue: services.queue,
     });
-    if (result.status === "no_work") {
+    if (result.status !== "requested") {
       return {
         conversationId,
         status: "no_work",

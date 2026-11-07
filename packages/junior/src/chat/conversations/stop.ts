@@ -4,7 +4,9 @@ import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { InboundMessage } from "@/chat/task-execution/state";
 import {
+  claimInboundMessage,
   ensureConversationWake,
   getConversation,
   requestConversationWork,
@@ -62,12 +64,23 @@ export async function stopConversationTurn(args: {
   return result;
 }
 
+/** Result of a person's stop. A `duplicate` stop message changed nothing. */
+export type StopConversationResult =
+  | StopConversationWorkResult
+  | { status: "duplicate" };
+
 /**
  * Stop a Conversation for a person, on every stop path. Every child agent
  * below it stops, then it and they are stopped Conversations until a person
  * sends input, and then its Turn stops. Their Watch Events are saved and
  * start no Turn. Nothing above it changes: a stopped child agent's worker
  * reports the stop to its parent.
+ *
+ * A stop that comes from a message, such as the Slack `stop` keyword, passes
+ * that message. Its id is claimed in the mailbox first, so a redelivery
+ * returns `duplicate` and stops nothing, not even newer work. If the stop
+ * then fails, a redelivery stops nothing either, and the person sends a new
+ * stop.
  *
  * The child agents and sessions stop first, so a failure leaves the Turn
  * running and the stop can be retried. A child agent can outlive the parent
@@ -76,9 +89,23 @@ export async function stopConversationTurn(args: {
 export async function stopConversation(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
+  /** The message that asked for the stop, if any. */
+  message?: InboundMessage;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
-}): Promise<StopConversationWorkResult> {
+}): Promise<StopConversationResult> {
+  if (
+    args.message &&
+    (
+      await claimInboundMessage({
+        conversationStore: args.conversationStore,
+        message: args.message,
+        state: args.state,
+      })
+    ).status === "duplicate"
+  ) {
+    return { status: "duplicate" };
+  }
   // One stop time for the whole tree, so a late cascade of a child agent
   // knows which Conversations this stop already reached.
   const nowMs = Date.now();
