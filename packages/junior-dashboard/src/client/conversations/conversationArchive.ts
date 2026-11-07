@@ -75,7 +75,10 @@ const archiveConversationMutationKey = [
 ] as const;
 
 type ArchiveConversationVariables = {
-  /** Child Conversations only: also archive or restore every descendant. */
+  /**
+   * Child Conversations only: also archive or restore every descendant. The
+   * dashboard sends it for every child, so it also marks a child archive.
+   */
   applyToChildren?: boolean;
   archived: boolean;
   lastSeenAt: string;
@@ -227,12 +230,11 @@ export function archiveConversationMutationOptions(
       // Match the API: a child archive is shared. A root archive also unpins
       // and marks it read; restore keeps the read state, because auto-archive
       // does not mark it read.
-      const viewerMarks =
-        previousDetail && previousDetail.kind !== "root"
-          ? { childArchivedAt: archivedAt }
-          : args.archived
-            ? { archivedAt, pinnedAt: null, unread: undefined }
-            : { archivedAt };
+      const viewerMarks = args.applyToChildren
+        ? { childArchivedAt: archivedAt }
+        : args.archived
+          ? { archivedAt, pinnedAt: null, unread: undefined }
+          : { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
       const snapshot =
@@ -341,10 +343,7 @@ export function archiveConversationMutationOptions(
       }
       options?.onSuccess?.(result.archivedAt);
     },
-    onSettled: async (_result, _error, _args, context) => {
-      const childArchive = Boolean(
-        context?.previousDetail && context.previousDetail.kind !== "root",
-      );
+    onSettled: async (_result, _error, args) => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["dashboard", "conversations"],
@@ -354,7 +353,7 @@ export function archiveConversationMutationOptions(
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
         queryClient.invalidateQueries(
-          childArchive
+          args.applyToChildren
             ? { predicate: isTreeArchiveRead }
             : {
                 exact: true,
