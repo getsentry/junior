@@ -10,9 +10,9 @@ import type { VisualStatus } from "../types";
  * ended one.
  */
 export function ConversationListStatusIcon(props: {
-  finishedSinceSeen: boolean;
   isPrivate: boolean;
   status: VisualStatus;
+  unread: boolean;
   waitingOnViewer: boolean;
 }) {
   if (props.waitingOnViewer) {
@@ -29,10 +29,10 @@ export function ConversationListStatusIcon(props: {
     return <Spinner aria-label="Running" className="size-3 text-emerald-300" />;
   }
 
-  if (props.finishedSinceSeen) {
+  if (props.unread) {
     return (
       <span
-        aria-label="Finished since last viewed"
+        aria-label="Unread"
         className="size-1.5 shrink-0 rounded-full bg-orange-300"
         role="img"
       />

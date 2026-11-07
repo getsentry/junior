@@ -30,6 +30,10 @@ import {
   reorderPinnedConversationsResponseSchema,
 } from "../schema/conversation-pin";
 import {
+  conversationUnreadSchema,
+  markConversationUnreadBodySchema,
+} from "../schema/conversation-unread";
+import {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   archiveDoneConversationsResponseSchema,
@@ -44,7 +48,10 @@ import {
   conversationPendingMessagesReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
-import { conversationReadPositionSchema } from "../schema/conversation-read-position";
+import {
+  conversationReadPositionSchema,
+  conversationReadReportSchema,
+} from "../schema/conversation-read-position";
 import {
   renameConversationBodySchema,
   renameConversationResponseSchema,
@@ -63,6 +70,7 @@ import { createConversationAccessReader } from "./access";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
+import { markConversationUnread, reportConversationRead } from "./unread";
 import { renameConversation } from "./rename";
 import {
   archiveViewerDoneConversations,
@@ -81,7 +89,6 @@ import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
-import { markConversationRead } from "./read-position";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
@@ -309,6 +316,30 @@ export function createConversationRoutes(
   );
 
   app.patch(
+    "/:conversationId/unread",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      markConversationUnreadBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        conversationUnreadSchema,
+        await markConversationUnread(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
     "/:conversationId/title",
     requireViewer,
     validateRequest(
@@ -350,8 +381,8 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
-        conversationReadPositionSchema,
-        await markConversationRead(viewer, conversationId, body),
+        conversationReadReportSchema,
+        await reportConversationRead(viewer, conversationId, body),
       );
     },
   );

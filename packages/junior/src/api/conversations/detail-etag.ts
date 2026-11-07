@@ -22,6 +22,7 @@ import {
   type ConversationViewerMarks,
 } from "./membership";
 import { conversationReadPositionQuery } from "./read-position";
+import { readUnreadConversationIds } from "./unread";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
 
 const detailConversation = alias(juniorConversations, "detail_conversation");
@@ -101,6 +102,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       parentConversationId: detailConversation.parentConversationId,
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
+      rootConversationId: sql<string>`${rootConversationId}`,
       subtreeConversations: subtree.conversations,
       subtreeVersion: subtree.version,
     })
@@ -134,6 +136,8 @@ export type ConversationDetailState = {
    * so an `appendCursor` from before it cannot extend them.
    */
   transcriptVersion: string;
+  /** The root has a visible Junior reply after the viewer's read position. */
+  unreadReply?: boolean;
   viewerMarks?: ConversationViewerMarks;
 };
 
@@ -146,7 +150,7 @@ async function readDetailState(
   subtree: { conversations: number; version: string };
 }> {
   const rowRead = readDetailStateRow(conversationId, viewer);
-  const [accessById, row, forks, agentTree] = await Promise.all([
+  const [accessById, row, forks, agentTree, unreadIds] = await Promise.all([
     readAccess([conversationId]),
     rowRead,
     rowRead.then((stored) =>
@@ -178,6 +182,16 @@ async function readDetailState(
         readAccess,
       ),
     ),
+    // Unread belongs to the root, like the marks.
+    rowRead.then((stored) =>
+      viewer && stored
+        ? readUnreadConversationIds(
+            getDb(),
+            [stored.rootConversationId],
+            viewer.id,
+          )
+        : new Set<string>(),
+    ),
   ]);
   const access = accessById.get(conversationId);
   // Stored events only grow. Their projection changes with the viewer's
@@ -206,6 +220,9 @@ async function readDetailState(
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
       transcriptVersion,
+      ...(viewer && row
+        ? { unreadReply: unreadIds.has(row.rootConversationId) }
+        : undefined),
       ...(viewerMarks ? { viewerMarks } : undefined),
     },
     subtree: {
@@ -261,6 +278,9 @@ export async function readConversationDetailEtag(
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
     subtree,
+    // The read position is not hashed, but whether it leaves a reply unread
+    // is, so the next poll after a read or a mark shows the new state.
+    unreadReply: state.unreadReply ?? false,
     viewerMarks: state.viewerMarks ?? null,
   });
   return { etag: createHash("sha256").update(basis).digest("hex"), state };

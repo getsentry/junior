@@ -13,6 +13,7 @@ import type {
   ArchiveConversationResponse,
 } from "../schema/conversation-archive";
 import { readConversationAccessFromSql } from "./access";
+import { markConversationRead } from "./read-position";
 
 async function setViewerArchive(args: {
   archived: boolean;
@@ -113,6 +114,13 @@ export async function archiveConversation(
     userId: viewer.id,
   });
   if (result.status === "updated") {
+    // Archive acts on the conversation, so it also reads it to the end. The
+    // archive saw no newer activity, so the end is what the viewer saw.
+    if (body.archived) {
+      await markConversationRead(viewer, rootConversationId, {
+        lastReadSeq: Number.MAX_SAFE_INTEGER,
+      });
+    }
     return { archivedAt: result.archivedAt };
   }
   if (result.status === "missing") {

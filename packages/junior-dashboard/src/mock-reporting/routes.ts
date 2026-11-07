@@ -16,6 +16,7 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  markConversationUnreadBodySchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
   renameConversationBodySchema,
@@ -34,6 +35,8 @@ import {
   continueConversationInSlackBodySchema,
   continueConversationInSlackResponseSchema,
   conversationReadPositionSchema,
+  conversationReadReportSchema,
+  conversationUnreadSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
@@ -66,6 +69,7 @@ import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import {
   markMockConversationRead,
+  setMockConversationReadState,
   withMockReadPosition,
 } from "./read-positions";
 import {
@@ -437,7 +441,7 @@ export function createMockReportingApi(): Hono<{
       body.data.lastReadSeq,
     );
     return result
-      ? jsonResponse(conversationReadPositionSchema, result)
+      ? jsonResponse(conversationReadReportSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.post("/conversations/:conversationId/catch-up", async (c) => {
@@ -506,6 +510,23 @@ export function createMockReportingApi(): Hono<{
     );
     return result
       ? jsonResponse(pinConversationResponseSchema, result)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/unread", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = markConversationUnreadBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationReadState(
+      params.data.conversationId,
+      body.data.unread,
+    );
+    return result
+      ? jsonResponse(conversationUnreadSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/title", async (c) => {

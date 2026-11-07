@@ -388,6 +388,12 @@ describe("dashboard canonical-event components", () => {
             pinned: false,
           }}
           privacy={null}
+          read={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            unread: false,
+          }}
           search=""
           searchMatch={{
             count: 0,

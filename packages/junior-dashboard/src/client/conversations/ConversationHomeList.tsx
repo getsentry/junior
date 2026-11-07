@@ -41,7 +41,6 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string;
-  finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
   /** Leave unset when the list shows only some pins. */
   onReorderPins?: ReorderPins;
@@ -74,8 +73,8 @@ export function ConversationHomeList(props: {
 
   const sections = buildConversationSections(props.conversations, {
     attentionIds: attentionConversationIds(
+      props.conversations,
       props.waitingConversationIds,
-      props.finishedConversationIds,
     ),
     nowMs: Date.now(),
     timeZone: props.timeZone,
@@ -91,7 +90,6 @@ export function ConversationHomeList(props: {
         {sections.map((section) => (
           <ConversationCardSection
             collapsed={collapsedKeys.has(section.key)}
-            finishedConversationIds={props.finishedConversationIds}
             key={section.key}
             onArchiveError={showArchiveError}
             onArchived={showArchived}
@@ -168,7 +166,6 @@ function ConversationCardLoading(props: { index: number }) {
 
 function ConversationCardSection(props: {
   collapsed: boolean;
-  finishedConversationIds: ReadonlySet<string>;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   onToggle(): void;
@@ -190,9 +187,6 @@ function ConversationCardSection(props: {
           {props.section.conversations.map((conversation) => {
             const card = {
               conversation,
-              finishedSinceSeen: props.finishedConversationIds.has(
-                conversation.id,
-              ),
               onArchiveError: props.onArchiveError,
               onArchived: props.onArchived,
               waitingOnViewer: props.waitingConversationIds.has(
@@ -215,7 +209,6 @@ type ConversationCardProps = {
   conversation: Conversation;
   /** Set on pinned cards, which drag to reorder. */
   drag?: PinnedRowDrag;
-  finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   waitingOnViewer: boolean;
@@ -270,9 +263,9 @@ function ConversationCard(props: ConversationCardProps) {
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
             <ConversationListStatusIcon
-              finishedSinceSeen={props.finishedSinceSeen}
               isPrivate={isPrivate}
               status={status}
+              unread={Boolean(conversation.unread)}
               waitingOnViewer={props.waitingOnViewer}
             />
           </span>
