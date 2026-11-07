@@ -6,7 +6,7 @@ Calls now handle large results safely, conversations support shared archiving an
 
 ### New Features ✨
 
-For calls using webFetch max\_chars, remove it; all model calls truncate large results, while conversations gain tree archiving and dashboard controls.
+For calls using webFetch max_chars, remove it; all model calls truncate large results, while conversations gain tree archiving and dashboard controls.
 
 #### Conversations
 

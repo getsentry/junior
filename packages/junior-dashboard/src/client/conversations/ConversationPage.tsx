@@ -25,7 +25,7 @@ import {
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
 import { useMarkConversationUnread } from "./useMarkConversationUnread";
-import { conversationIsResponding } from "./transcript";
+import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
   useConversationCatchUp,
@@ -42,9 +42,8 @@ import {
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
-import { ConversationReplyFooter } from "./ConversationReplyFooter";
-import { ConversationDetails } from "./ConversationDetails";
-import { AutoArchiveToggle } from "./AutoArchiveToggle";
+import { ConversationPageDock } from "./ConversationPageDock";
+import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -79,13 +78,7 @@ import {
   ConversationAnnotations,
   conversationCost,
   ConversationPrivacyChip,
-  ConversationStats,
-  hasConversationStats,
 } from "./ConversationMeta";
-import {
-  ConversationUsageBreakdown,
-  hasConversationUsageBreakdown,
-} from "./ConversationUsageBreakdown";
 import {
   buildConversations,
   conversationDetailTitle,
@@ -97,21 +90,15 @@ import {
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
-import {
-  conversationParticipants,
-  ParticipantAvatarStack,
-} from "../components/ParticipantAvatarStack";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChatLayout } from "./ChatLayout";
 import type { ConversationComposerHandle } from "./ConversationComposer";
 import { ConversationOutline } from "./ConversationOutline";
-import { committedMessageIds } from "./conversationOutbox";
 import {
   QuickQuestionPanel,
   QuickQuestionSelectionButton,
   useQuickQuestionThread,
 } from "./QuickQuestion";
-import { latestReviewItemId } from "../review-desk/reviewItemFormat";
 import { Transcript } from "./TranscriptView";
 import {
   readConversationStartPosition,
@@ -389,22 +376,12 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const unread = Boolean(conversation?.unread);
-  const participants = conversationParticipants(conversation);
-  const identity =
-    participants.length > 0 ? (
-      <ParticipantAvatarStack participants={participants} size="detail" />
-    ) : null;
   const conversationDetail = detail.data;
   const links = conversationLinks(conversationDetail);
-  const showUsageBreakdown = hasConversationUsageBreakdown({
-    conversation,
-    detail: conversationDetail,
-  });
   const title =
     conversationDetailTitle(detail.data) ??
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
-  const agentTree = detail.data?.agentTree;
   // A Task takes input only from its parent agent, and it runs without
   // interactive auth, so it has no approval to show.
   const canReply =
@@ -434,20 +411,6 @@ export function ConversationPage(props: {
     : undefined;
   // History and mailbox use the same deferred server snapshot.
   const live = conversationIsLive(visualStatus, detail.data);
-  // Key on the event array, not the whole detail object. Metadata-only polls
-  // reuse events via structural sharing, so the footer keeps a stable id list.
-  const mailboxCommittedIds = useMemo(
-    () => committedMessageIds(detail.data?.events),
-    [detail.data?.events],
-  );
-  const reviewItemId = useMemo(
-    () => latestReviewItemId(detail.data?.events),
-    [detail.data?.events],
-  );
-  // Cancel needs the latest mailbox watermark, but not as a render prop. Live
-  // polls refresh generatedAt every 2s even when the queue is unchanged.
-  const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
-  pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
   const setSelectedEventSeq = useCallback(
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
@@ -587,61 +550,30 @@ export function ConversationPage(props: {
   const sidePanel = (
     <>
       {showDetails ? (
-        <ConversationMemoryContext value={memoryState}>
-          <ConversationDetails
-            agentTree={agentTree}
-            feedConversations={conversations}
-            autoArchive={
-              detail.data?.autoArchive === undefined ? null : (
-                <AutoArchiveToggle
-                  autoArchive={detail.data.autoArchive}
-                  conversationId={conversationId}
-                />
-              )
-            }
-            brief={detail.data?.brief}
-            conversationId={conversationId}
-            highlightReview={reviewOpen}
-            identity={identity}
-            onClose={closeDetails}
-            onOpenSubagent={setSubagentTarget}
-            onSelectMemory={(entry) => {
-              // Memory rows show only in the Conversation view, and search
-              // can hide them.
-              if (view !== "rich") onViewChange("rich");
-              setSearch("");
-              setRevealSeq(entry.seq);
-              setMemoryJump({
-                memoryId: entry.memory.id,
-                seq: entry.seq,
-                source: entry.source,
-                turnId: entry.turnId,
-              });
-            }}
-            links={links}
-            overview={
-              hasConversationStats({
-                conversation,
-                detail: detail.data,
-                showUsageBreakdown,
-              }) ? (
-                <ConversationStats
-                  conversation={conversation}
-                  detail={detail.data}
-                  showUsageBreakdown={showUsageBreakdown}
-                />
-              ) : null
-            }
-            usage={
-              showUsageBreakdown ? (
-                <ConversationUsageBreakdown
-                  conversation={conversation}
-                  detail={detail.data}
-                />
-              ) : null
-            }
-          />
-        </ConversationMemoryContext>
+        <ConversationDetailsPanel
+          conversation={conversation}
+          conversationId={conversationId}
+          detail={conversationDetail}
+          feedConversations={conversations}
+          highlightReview={reviewOpen}
+          links={links}
+          memoryState={memoryState}
+          onClose={closeDetails}
+          onOpenSubagent={setSubagentTarget}
+          onSelectMemory={(entry) => {
+            // Memory rows show only in the Conversation view, and search
+            // can hide them.
+            if (view !== "rich") onViewChange("rich");
+            setSearch("");
+            setRevealSeq(entry.seq);
+            setMemoryJump({
+              memoryId: entry.memory.id,
+              seq: entry.seq,
+              source: entry.source,
+              turnId: entry.turnId,
+            });
+          }}
+        />
       ) : null}
       {showEvent ? (
         <ConversationEventDetails
@@ -694,7 +626,9 @@ export function ConversationPage(props: {
           header={
             <ConversationHeader
               agentTree={
-                agentTree ? <ConversationAgentTree nodes={agentTree} /> : null
+                isChildConversation(conversationDetail) ? (
+                  <ConversationAgentTree nodes={conversationDetail.agentTree} />
+                ) : null
               }
               contextTags={conversationContextTags(conversation)}
               conversationId={conversationId}
@@ -758,7 +692,7 @@ export function ConversationPage(props: {
                 disabled:
                   !conversation ||
                   !detail.data?.isParticipant ||
-                  Boolean(agentTree) ||
+                  isChildConversation(conversationDetail) ||
                   pin.isPending,
                 error: Boolean(pin.error),
                 onClick: () => pin.mutate(!conversation?.pinnedAt),
@@ -900,39 +834,19 @@ export function ConversationPage(props: {
             </section>
           }
           dock={
-            canReply && detail.data ? (
+            canReply ? (
               <div
                 className="contents"
                 onFocusCapture={engageComposer}
                 onPointerDownCapture={engageComposer}
               >
-                <ConversationReplyFooter
-                  authors={detail.data.authors}
+                <ConversationPageDock
                   conversationId={conversationId}
-                  // Only pass committed ids for mailbox de-dupe. The full transcript is
-                  // too large to re-enter the footer on every live poll while typing.
-                  committedMessageIds={mailboxCommittedIds}
+                  detail={detail}
+                  hasNewerPage={Boolean(history.newer)}
+                  live={live}
                   onPinRequest={requestPin}
-                  pendingAuthorization={detail.pendingAuthorization}
-                  // Keep the cancel watermark off props. Live polls refresh generatedAt
-                  // every 2s; a prop would bust footer memo while the reader types.
-                  pendingGeneratedAtRef={pendingGeneratedAtRef}
-                  pendingMessages={detail.pendingMessages}
                   ref={replyRef}
-                  reviewItemId={reviewItemId}
-                  // Without live history, an inline send would never leave the
-                  // transcript tail. A started Turn reads a new send only later.
-                  // Keep those sends in the queue. An earlier inline send that
-                  // history does not have yet can start that Turn first. While
-                  // newer pages are not loaded, the transcript tail is not the
-                  // latest event, so a send waits in the queue too.
-                  sendsInline={
-                    detail.data.eventHistory.status === "available" &&
-                    !history.newer &&
-                    !conversationIsResponding(detail.data) &&
-                    detail.inlineMessages.length === 0
-                  }
-                  stoppable={live}
                 />
               </div>
             ) : undefined
