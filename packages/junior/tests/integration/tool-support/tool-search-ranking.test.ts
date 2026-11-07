@@ -56,7 +56,7 @@ const RANKING_CASES = [
   ["view a pull request", "github", "github_getPullRequest"],
   ["look up a repo", "github", "github_getRepository"],
   ["modify an issue", "github", "github_updateIssue"],
-  ["file a bug", "github", "github_createIssue"],
+  ["add an issue", "github", "github_createIssue"],
   ["reply to an issue", "github", "github_commentOnIssue"],
   ["show my memories", "memory", "memory_listMemories"],
   ["unsubscribe from a resource", "resource-watches", "stopWatchingResources"],

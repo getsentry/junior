@@ -28,7 +28,7 @@ const SYNONYM_WEIGHT = 0.6;
 const SEARCH_SYNONYM_GROUPS = [
   ["get", "fetch", "read", "view", "show", "retrieve", "look"],
   ["update", "edit", "change", "modify", "set", "rename"],
-  ["create", "add", "new", "make", "file", "write"],
+  ["create", "add", "new", "make", "write"],
   ["delete", "remove", "archive", "forget", "drop", "discard"],
   ["search", "find", "query", "lookup", "look"],
   ["list", "show", "all", "enumerate"],
