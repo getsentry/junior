@@ -7,7 +7,7 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
-import { readConversationLineage } from "@/chat/conversations/lineage";
+import { readLineageRoot } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -633,24 +633,6 @@ async function saveAgentInvocationResult(args: {
 }
 
 /**
- * Read how many parents a child Conversation has and the root Conversation's
- * Location. A child of the root has depth 1.
- */
-async function readChildDepthAndRootLocation(
-  conversationId: string,
-): Promise<{ depth: number; location?: Location }> {
-  const lineage = await readConversationLineage(conversationId);
-  const root = lineage[0];
-  if (!root) {
-    return { depth: 0 };
-  }
-  // A broken chain also counts the link to the parent that it could not read.
-  return root.parentConversationId
-    ? { depth: lineage.length }
-    : { depth: lineage.length - 1, location: root.location };
-}
-
-/**
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
@@ -782,12 +764,12 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, tree] = await Promise.all([
+      const [persisted, projection, root] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
-        readChildDepthAndRootLocation(invocation.childConversationId),
+        readLineageRoot(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       // Some types start with the parent's history. Later agent invocations
@@ -797,8 +779,8 @@ export function createAgentInvocationWorker(
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
-      location = tree.location;
-      canSpawn = tree.depth <= maxAgentDepth;
+      location = root.location;
+      canSpawn = root.depth <= maxAgentDepth;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };

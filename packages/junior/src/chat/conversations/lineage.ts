@@ -78,3 +78,33 @@ export async function readConversationLineage(
     };
   });
 }
+
+/** The root of a parent chain, and how far the Conversation is below it. */
+export interface LineageRoot {
+  /**
+   * Parent links above the Conversation. A root has depth 0. A broken chain
+   * also counts the link to the parent that it could not read.
+   */
+  depth: number;
+  /** Location of the root. Its provider defaults apply to every child. */
+  location?: Location;
+  /** Visibility of the root. A child stores none of its own. */
+  visibility?: ConversationPrivacy;
+}
+
+/**
+ * Read the depth and the root facts of a root or child Conversation. For a
+ * broken chain, return only the depth of the rows found, with no Location or
+ * visibility.
+ */
+export async function readLineageRoot(
+  conversationId: string,
+): Promise<LineageRoot> {
+  const lineage = await readConversationLineage(conversationId);
+  const root = lineage[0]?.parentConversationId ? undefined : lineage[0];
+  return {
+    depth: root ? lineage.length - 1 : lineage.length,
+    ...(root?.location ? { location: root.location } : undefined),
+    ...(root?.visibility ? { visibility: root.visibility } : undefined),
+  };
+}
