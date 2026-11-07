@@ -123,8 +123,14 @@ export function sliceFileContent(params: {
     startIndex > 0 || endLine < lines.length || characterLimitReached;
   const rangeRequested =
     requestedOffset !== undefined || requestedLimit !== undefined;
+  // Keep the original line endings only when they also fit the page limit.
+  // CRLF is four chars in JSON text, and the page counts only LF.
   const returnedContent =
-    !rangeRequested && !truncated ? params.content : returnedLines.join("\n");
+    !rangeRequested &&
+    !truncated &&
+    jsonLength(params.content) <= MAX_READ_CHARS
+      ? params.content
+      : returnedLines.join("\n");
   const truncationReasons: string[] = [];
   if (characterLimitReached) {
     truncationReasons.push(`${MAX_READ_CHARS} character output limit reached.`);

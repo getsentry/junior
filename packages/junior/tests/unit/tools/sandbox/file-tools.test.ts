@@ -135,6 +135,20 @@ describe("sandbox file tools", () => {
     );
   });
 
+  it("keeps a whole CRLF file under the tool result cap", () => {
+    const lines = Array.from({ length: 1000 }, () => "a".repeat(27));
+    const result = sliceFileContent({
+      content: lines.join("\r\n"),
+      path: "windows.txt",
+    });
+
+    expect(result.details).toMatchObject({ truncated: false, end_line: 1000 });
+    expect(result.details.content).toBe(lines.join("\n"));
+    expect(result.content[0].text.length).toBeLessThanOrEqual(
+      TOOL_RESULT_MAX_CHARS,
+    );
+  });
+
   it("bounds and reports an individually oversized readFile line", () => {
     // Each quote is two chars in JSON text.
     const result = sliceFileContent({
