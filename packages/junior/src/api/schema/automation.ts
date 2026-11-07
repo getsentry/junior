@@ -394,7 +394,6 @@ export const automationEditSchema = z.discriminatedUnion("kind", [
 /** Partial edits require the revision returned by the edit read. */
 export const automationUpdateSchema = z.discriminatedUnion("kind", [
   scheduledAutomationEditSchema
-    .omit({ status: true })
     .extend({
       kind: z.literal("scheduled"),
       revision: automationRevisionSchema,
