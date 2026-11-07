@@ -58,6 +58,7 @@ import {
   ReviewDeskPage,
 } from "./review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "./review-desk/queries";
+import { useVersionsPoll } from "./versions";
 import type { DashboardCoreData } from "./types";
 
 // Pages outside the conversation workspace load on first visit, so the
@@ -241,7 +242,9 @@ export function DashboardShell() {
   // page mounts. One fetch for each visit also brings the unread page.
   const conversationDetail = useConversationData(conversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
+    versionsPoll: true,
   });
+  useVersionsPoll(conversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -290,6 +293,7 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <NavRailProvider>
         <CommandPalette
+          currentConversationId={conversationId}
           navItems={primaryNavItems}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}

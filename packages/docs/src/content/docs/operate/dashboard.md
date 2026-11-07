@@ -152,7 +152,7 @@ When `SENTRY_DSN` is set, dashboard pages also send browser performance spans to
 The conversation stats endpoint is separate from the recent feed. PostgreSQL computes complete 90-day counts, locations, actors, status, runtime, token usage, and estimated cost directly from durable conversation-index records; those aggregates are not derived from a bounded recent-row sample.
 Dashboard dates use the viewer's browser timezone. `JUNIOR_TIMEZONE` does not change them.
 
-For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real conversation records.
+For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are reporting fixtures and appear before real conversation records. Messages that you send get a fixed reply, and no agent runs.
 
 ## Configure Google auth
 

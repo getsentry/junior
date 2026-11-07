@@ -125,6 +125,33 @@ export default defineConfig({
     __SENTRY_DEBUG__: "false",
   },
   outputOptions: {
+    // Deploys change app code far more often than dependencies. Keep the
+    // third-party code that the first load needs out of the entry, so its
+    // files keep their hashes and stay cached across deploys. `$initial`
+    // limits each group to code that the entry imports statically, so lazy
+    // pages, grammars, and wasm stay lazy. Workspace packages are app code.
+    codeSplitting: {
+      groups: [
+        {
+          name: "vendor-react",
+          test: /node_modules[\\/](?:react|react-dom|react-router|scheduler)[\\/]/,
+          tags: ["$initial"],
+          priority: 2,
+        },
+        {
+          name: "vendor-sentry",
+          test: /node_modules[\\/]@sentry[\\/](?!junior)/,
+          tags: ["$initial"],
+          priority: 2,
+        },
+        {
+          name: "vendor",
+          test: /node_modules[\\/](?!@sentry[\\/]junior)/,
+          tags: ["$initial"],
+          priority: 1,
+        },
+      ],
+    },
     entryFileNames: "[name]-[hash:8].js",
     chunkFileNames: "chunks/[name]-[hash:8].js",
     assetFileNames: "[name]-[hash:8][extname]",

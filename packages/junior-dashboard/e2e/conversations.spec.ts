@@ -411,6 +411,7 @@ test("scrolls long conversation and transcript panes independently", async ({
     conversationId: `long-${index}`,
     cumulativeDurationMs: 1_000 + index,
     displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -612,18 +613,27 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Subagent rows show in the main view, outside collapsed activity groups.
+  // Adjacent child agents share one group card in the main view. A blocked
+  // row stays visible; a completed row folds until the card opens.
+  const group = page.getByRole("button", { name: /^2 agents/ });
+  await expect(group).toContainText("1 blocked");
   const planner = page.getByRole("button", {
     name: "Open planner transcript",
   });
   const reviewer = page.getByRole("button", {
     name: "Open reviewer transcript",
   });
-  await expect(planner).toContainText("Review the dashboard plan");
   await expect(reviewer).toContainText("blocked");
+  await expect(planner).toBeHidden();
+  // The card already shows the result, so its Event row does not render.
+  await expect(
+    page.getByText('Child agent "reviewer" is blocked.'),
+  ).toBeHidden();
+  await page.getByRole("button", { name: "1 completed" }).click();
+  await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
-  // Details lists child agents with the runtime status.
+  // Details lists Tasks with the runtime status.
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
@@ -632,16 +642,16 @@ test("inspects and copies a child agent transcript", async ({
     exact: true,
   });
   await expect(
-    details.getByRole("heading", { name: "Subagents 2", exact: true }),
+    details.getByRole("heading", { name: "Tasks 2", exact: true }),
   ).toBeVisible();
-  const subagents = details.getByRole("list", { name: "Subagents" });
-  await expect(subagents.getByRole("listitem")).toHaveCount(2);
-  await expect(subagents.getByRole("listitem").first()).toContainText(
+  const tasks = details.getByRole("region", { name: "Tasks" });
+  await expect(tasks.getByRole("listitem")).toHaveCount(2);
+  await expect(tasks.getByRole("listitem").first()).toContainText(
     "GitHub access is needed to read the pull request.",
   );
   await screenshot(page, "conversation-subagents");
-  // A row opens the same child transcript drawer as the transcript row.
-  await subagents
+  // A row opens the same Task transcript drawer as the transcript row.
+  await tasks
     .getByRole("button", {
       name: /^blocked Review the open dashboard pull requests/,
     })
@@ -704,6 +714,21 @@ test("inspects and copies a child agent transcript", async ({
     "Review complete; no blocking issues found.",
   );
 
+  // The shortcut searches the drawer's transcript, not the page behind it.
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(
+    drawer.getByRole("searchbox", { name: "Search transcript" }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(1);
+  // Escape closes only the search, not the drawer.
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("searchbox", { name: "Search transcript" }),
+  ).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+
   await drawer.getByRole("button", { name: "Event log" }).click();
   const entry = drawer.getByRole("button", {
     name: "Event 0: message",
@@ -734,6 +759,117 @@ test("inspects and copies a child agent transcript", async ({
       ),
   );
   await expect(entry).toBeFocused();
+
+  // A child uses its root's pin, so its own page cannot pin, even for a
+  // participant of the root. The QA root has none, so mark the viewer as one.
+  const childDetailPath = `/api/conversations/${encodeURIComponent(childConversationId)}`;
+  await page.route(
+    (url) => url.pathname === childDetailPath,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        json: { ...(await response.json()), isParticipant: true },
+        response,
+      });
+    },
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(
+    page.getByRole("button", { name: "Pin", exact: true }),
+  ).toBeDisabled();
+});
+
+test("rates a Junior Reply once, with time to change it", async ({
+  page,
+  dashboard,
+}) => {
+  const feedback: Record<string, unknown>[] = [];
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@sentry.example/1",
+        tracesSampleRate: 0,
+      },
+    });
+  });
+  await page.route("https://sentry.example/**", async (route) => {
+    const item = route.request().postData()?.split("\n").at(-1) ?? "";
+    if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+    await route.fulfill({ json: {} });
+  });
+  const open = () =>
+    page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+  const transcript = page.getByLabel("Conversation transcript");
+  const good = transcript.getByRole("button", { name: "Good reply" });
+  const bad = transcript.getByRole("button", { name: "Bad reply" });
+
+  // Good waits before it sends. The reader can clear it or switch to Bad,
+  // and a mistaken Bad can switch back to Good.
+  await page.clock.install();
+  await open();
+  await good.hover();
+  await good.click();
+  await good.click();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await bad.click();
+  const why = page.getByRole("dialog", { name: "What went wrong?" });
+  await expect(why).toBeVisible();
+  await expect(good).toHaveAttribute("aria-pressed", "false");
+  await good.click();
+  await expect(why).toHaveCount(0);
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  expect(feedback).toHaveLength(0);
+  await page.clock.runFor(5000);
+  await expect(bad).toHaveCount(0);
+  await good.click();
+  await expect.poll(() => feedback.length).toBe(1);
+  expect(feedback[0]).toMatchObject({
+    contexts: {
+      feedback: {
+        contact_email: "dev@example.com",
+        message: "Good reply",
+        name: "Dashboard User",
+      },
+    },
+  });
+
+  // Leaving the Conversation sends a pending Good at once.
+  await open();
+  await good.hover();
+  await good.click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Checkout latency triage" })
+    .click();
+  await expect.poll(() => feedback.length).toBe(2);
+  await open();
+
+  // Bad asks for an optional comment. Escape sends nothing.
+  await bad.hover();
+  await bad.click();
+  await expect(why.getByRole("textbox", { name: "Comment" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(why).toHaveCount(0);
+  await expect(bad).toHaveAttribute("aria-pressed", "false");
+  await bad.click();
+  await why
+    .getByRole("textbox", { name: "Comment" })
+    .fill("It read the wrong repo");
+  await why.getByRole("button", { name: "Send" }).click();
+  await expect(bad).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toBeFocused();
+  await expect(good).toHaveCount(0);
+  await expect.poll(() => feedback.length).toBe(3);
+  expect(feedback[2]).toMatchObject({
+    contexts: { feedback: { message: "Bad reply: It read the wrong repo" } },
+    tags: { "app.reply.rating": "bad" },
+  });
 });
 
 test("shows the agent tree of a child agent conversation", async ({

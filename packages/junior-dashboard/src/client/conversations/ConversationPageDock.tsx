@@ -1,13 +1,13 @@
-import { useMemo, useRef } from "react";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import { useMemo, useRef, type Ref } from "react";
 
 import type { ConversationData } from "./queries";
+import type { ConversationComposerHandle } from "./ConversationComposer";
+import { committedMessageIds } from "./conversationOutbox";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
-import { conversationIsResponding, isChildConversation } from "./transcript";
-import type { TranscriptViewMode } from "./transcriptRenderModel";
+import { conversationIsResponding } from "./transcript";
 import { latestReviewItemId } from "../review-desk/reviewItemFormat";
 
-/** Render the reply composer below a Conversation transcript, when the viewer may reply. */
+/** Render the reply composer under the transcript. The page decides who may reply. */
 export function ConversationPageDock(props: {
   conversationId: string;
   detail: ConversationData;
@@ -15,7 +15,7 @@ export function ConversationPageDock(props: {
   hasNewerPage: boolean;
   live: boolean;
   onPinRequest(): void;
-  view: TranscriptViewMode;
+  ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
 }) {
   const { detail } = props;
   // Key on the event array, not the whole detail object. Metadata-only polls
@@ -33,15 +33,7 @@ export function ConversationPageDock(props: {
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
 
-  // A child Conversation takes input only from its parent agent, and it
-  // runs without interactive auth, so it has no approval to show.
-  if (
-    props.view !== "rich" ||
-    !detail.data?.isParticipant ||
-    isChildConversation(detail.data)
-  ) {
-    return null;
-  }
+  if (!detail.data) return null;
   return (
     <ConversationReplyFooter
       authors={detail.data.authors}
@@ -55,6 +47,7 @@ export function ConversationPageDock(props: {
       // every 2s; a prop would bust footer memo while the reader types.
       pendingGeneratedAtRef={pendingGeneratedAtRef}
       pendingMessages={detail.pendingMessages}
+      ref={props.ref}
       reviewItemId={reviewItemId}
       // Without live history, an inline send would never leave the
       // transcript tail. A started Turn reads a new send only later.
@@ -72,16 +65,3 @@ export function ConversationPageDock(props: {
     />
   );
 }
-
-function committedMessageIds(
-  events: ConversationDetailReport["events"] | undefined,
-): readonly string[] {
-  if (!events) return EMPTY_MESSAGE_IDS;
-  const ids: string[] = [];
-  for (const event of events) {
-    if (event.data.type === "message") ids.push(event.data.messageId);
-  }
-  return ids;
-}
-
-const EMPTY_MESSAGE_IDS: readonly string[] = [];

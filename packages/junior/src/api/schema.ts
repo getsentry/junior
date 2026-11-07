@@ -7,6 +7,7 @@ export {
   MAX_INPUT_IMAGE_BYTES,
 } from "../chat/attachments/input";
 export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export { isAgentInvocationResultEventType } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
@@ -55,6 +56,7 @@ export {
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventHistorySchema,
@@ -103,9 +105,23 @@ export type {
   GuardianStats,
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
+export {
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
+} from "./schema/conversation-continue-in-slack";
+export type {
+  ContinueConversationInSlackBody,
+  ContinueConversationInSlackResponse,
+} from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export { conversationReadPositionSchema } from "./schema/conversation-read-position";
-export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  conversationReadPositionSchema,
+  conversationReadReportSchema,
+} from "./schema/conversation-read-position";
+export type {
+  ConversationReadPosition,
+  ConversationReadReport,
+} from "./schema/conversation-read-position";
 export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -126,6 +142,23 @@ export type {
   ReorderPinnedConversationsBody,
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
+export {
+  conversationUnreadSchema,
+  markConversationUnreadBodySchema,
+} from "./schema/conversation-unread";
+export type {
+  ConversationUnread,
+  MarkConversationUnreadBody,
+} from "./schema/conversation-unread";
+export {
+  CONVERSATION_TITLE_MAX_LENGTH,
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "./schema/conversation-title";
+export type {
+  RenameConversationBody,
+  RenameConversationResponse,
+} from "./schema/conversation-title";
 export type {
   AcceptedConversationMessage,
   ActorIdentity,
@@ -137,6 +170,7 @@ export type {
   ConversationEventPage,
   ConversationEventHistory,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -343,3 +377,5 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export { versionsSchema } from "./schema/versions";
+export type { Versions } from "./schema/versions";

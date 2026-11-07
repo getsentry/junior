@@ -102,8 +102,8 @@ export async function updateConversationBrief(
   const conversation = await createSqlStore(executor).get({
     conversationId: run.conversationId,
   });
-  if (conversation?.parentConversationId) {
-    logSkip(context, run.conversationId, "child_conversation");
+  if (conversation?.kind === "task") {
+    logSkip(context, run.conversationId, "task_conversation");
     return;
   }
   if (conversation?.transcriptPurgedAtMs !== undefined) {

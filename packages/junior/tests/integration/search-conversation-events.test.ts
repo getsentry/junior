@@ -121,7 +121,6 @@ describe("searchConversationEvents", () => {
       conversation_id: CURRENT_CONVERSATION_ID,
       has_older: true,
       has_newer: false,
-      truncated: false,
       events: [
         { seq: 1, data: { type: "message", text: "second" } },
         {
@@ -228,43 +227,6 @@ describe("searchConversationEvents", () => {
       }),
     ]);
     expect(oversized.events[0]!.data).not.toHaveProperty("json_preview");
-
-    await events.append(
-      CURRENT_CONVERSATION_ID,
-      Array.from({ length: 10 }, (_, index) => ({
-        createdAtMs: 5 + index,
-        data: {
-          type: "message" as const,
-          messageId: `large-${index}`,
-          role: "assistant" as const,
-          text: "y".repeat(3_500),
-        },
-      })),
-    );
-    const bounded = await executeTool({
-      conversation_id: CURRENT_CONVERSATION_ID,
-      types: ["message"],
-    });
-
-    expect(bounded.omitted_event_count).toBeGreaterThan(0);
-    expect(bounded.has_older).toBe(true);
-    expect(bounded.events.at(-1)?.data).toMatchObject({
-      messageId: "large-9",
-    });
-    expect(
-      new TextEncoder().encode(JSON.stringify(bounded.events)).byteLength,
-    ).toBeLessThanOrEqual(20_000);
-
-    const boundedNewer = await executeTool({
-      conversation_id: CURRENT_CONVERSATION_ID,
-      after_seq: 3,
-      types: ["message"],
-    });
-    expect(boundedNewer.omitted_event_count).toBeGreaterThan(0);
-    expect(boundedNewer.has_newer).toBe(true);
-    expect(boundedNewer.events[0]?.data).toMatchObject({
-      messageId: "large-0",
-    });
   });
 
   it("omits replacement history from unknown event versions", async () => {

@@ -15,12 +15,15 @@ import {
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
 import { attachConversationMentions } from "./mentions";
-import { readConversationRecordFromSql } from "./list";
+import { readConversationRecordFromSql } from "./record";
 import {
   conversationEventHistory,
   conversationSummaryFromStoredConversation,
 } from "./projection";
-import type { ConversationAccess } from "./access";
+import {
+  createConversationAccessReader,
+  type ConversationAccess,
+} from "./access";
 import {
   readConversationDetailState,
   type ConversationDetailState,
@@ -40,6 +43,7 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
+import { canContinueInSlack } from "./continue-in-slack";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -47,8 +51,8 @@ function projectConversationDetail(args: {
   appendCursor?: string;
   /** Events hold only the events after the request's `after` cursor. */
   appended?: boolean;
-  archivedAtMs?: number;
   pinnedAtMs?: number;
+  unreadReply?: boolean;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
@@ -81,8 +85,8 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
-      archivedAtMs: args.archivedAtMs,
       pinnedAtMs: args.pinnedAtMs,
+      unreadReply: args.unreadReply,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
@@ -151,7 +155,11 @@ async function readConversationDetailFromSql(
   const [record, state] = await Promise.all([
     readConversationRecordFromSql(conversationId),
     options.state ??
-      readConversationDetailState(conversationId, options.viewer),
+      readConversationDetailState(
+        conversationId,
+        options.viewer,
+        createConversationAccessReader(getDb(), options.viewer),
+      ),
   ]);
   if (!record) return undefined;
   const { access, readPosition } = state;
@@ -296,6 +304,7 @@ async function readConversationDetailFromSql(
           }),
         }),
     ...state.viewerMarks,
+    unreadReply: state.unreadReply,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,
@@ -340,6 +349,9 @@ async function readConversationDetailFromSql(
     ...(state.agentTree ? { agentTree: state.agentTree } : undefined),
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }
+      : undefined),
+    ...(canContinueInSlack(record.conversation, access)
+      ? { canContinueInSlack: true as const }
       : undefined),
   };
 }

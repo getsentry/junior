@@ -110,8 +110,8 @@ async function ensureConversationTitleOnce(args: {
     if (stored?.title?.trim()) {
       return undefined;
     }
-    // Conversations with a parent are execution machinery, not listable threads.
-    if (stored?.parentConversationId) {
+    // A Task is execution machinery that people do not list or message.
+    if (stored?.kind === "task") {
       return undefined;
     }
     // Only dispatched runs use bot-authored input as the title source.

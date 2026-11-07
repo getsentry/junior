@@ -14,7 +14,7 @@ related:
   - /operate/observability/
 ---
 
-Use `junior snapshot create` when your deployment needs the sandbox runtime dependencies ready before the app starts handling work. This is the command you wire into build-time snapshot warmup.
+`junior snapshot create` prepares the sandbox runtime dependencies before the app handles work. The scaffolded `pnpm build` script runs it on every deploy, so you do not run it by hand. It needs Vercel credentials, so run it directly only from a linked project after `vercel env pull`.
 
 ## Usage
 
@@ -53,9 +53,7 @@ Building sandbox snapshot...
 Sandbox snapshot create complete: runtime=node22 resolve_outcome=rebuilt cache_hit=false dependency_count=2 profile_hash=abc snapshot_id=snap_123 rebuild_reason=cache_miss
 ```
 
-If there is nothing to snapshot, the command still reports the empty profile and completion outcome.
-
-The common case is a Vercel build command:
+The profile always includes Junior's core sandbox tools, so every build resolves a snapshot. The scaffolded build script runs it:
 
 ```json title="package.json"
 {
@@ -65,7 +63,9 @@ The common case is a Vercel build command:
 }
 ```
 
-Use this when your enabled plugins declare runtime dependencies or postinstall steps that should be prepared ahead of request handling.
+To build without warmup, such as in CI without Vercel credentials, set
+`JUNIOR_SKIP_SNAPSHOT=1`. The scaffolded CI workflow does this. Sandboxes then
+build their dependencies on first use.
 
 ## Failure behavior
 
@@ -79,12 +79,11 @@ Treat that as a real deploy blocker. The usual checks are the build environment,
 
 ## Verification
 
-After adding the command to your build:
+In the Vercel build log:
 
-1. Run `pnpm exec junior snapshot create` locally or in CI.
-2. Confirm the final log line includes `Sandbox snapshot create complete`.
-3. Verify the reported dependency counts match the plugins you enabled.
+1. Confirm the final snapshot line includes `Sandbox snapshot create complete`.
+2. Verify the reported dependency counts match the plugins you enabled.
 
 ## Next step
 
-Run [junior check](/cli/check/) before snapshot warmup when you change `plugin.yaml` or `SKILL.md`, then wire the command into Vercel from [Quickstart](/start-here/quickstart/).
+Run [junior check](/cli/check/) when you change `plugin.yaml` or `SKILL.md`, then deploy with [Deploy to Vercel](/start-here/deploy-to-vercel/).

@@ -10,7 +10,10 @@ import {
   type McpToolContext,
 } from "../tool-context";
 
-/** Register `stopConversation`, which stops the active Turn. */
+/**
+ * Register `stopConversation`, which stops the Conversation and every child
+ * agent below it until the person sends the Conversation input.
+ */
 export function registerStopConversationTool(
   server: McpServer,
   { queue, user }: McpToolContext,
@@ -20,13 +23,13 @@ export function registerStopConversationTool(
     {
       title: "Stop conversation",
       description:
-        "Stop the running turn of one of your conversations. Messages that wait for the turn are dropped. It starts no new work.",
+        "Stop one of your conversations: its running turn and every child agent below it. Until you send the conversation a message, watch events of it and its child agents are saved to the conversation but start no turn. Messages that wait for the turn are dropped. It starts no new work.",
       inputSchema: { conversationId: mcpConversationIdSchema },
       outputSchema: {
         status: z
           .enum(["no_work", "requested"])
           .describe(
-            "`requested` when the running turn was asked to stop. `no_work` when nothing was running.",
+            "`requested` when the running turn was asked to stop. `no_work` when no turn was running. Child agents are stopped in both cases.",
           ),
         droppedMessages: z
           .number()

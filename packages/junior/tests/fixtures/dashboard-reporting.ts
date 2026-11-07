@@ -282,6 +282,7 @@ export async function createChild(args: {
   if (!parent?.rootConversationId) throw new Error("Missing conversation root");
   await getDb().insert(juniorConversations).values({
     conversationId: args.childConversationId,
+    kind: "task",
     parentConversationId: args.parentConversationId,
     rootConversationId: parent.rootConversationId,
     createdAt: at,

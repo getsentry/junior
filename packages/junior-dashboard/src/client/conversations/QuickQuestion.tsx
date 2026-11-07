@@ -2,6 +2,7 @@ import { GitFork } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type RefObject,
@@ -30,6 +31,11 @@ import {
   conversationDetailQueryKey,
   conversationDetailQueryOptions,
 } from "./queries";
+import {
+  isDeliberateSelection,
+  markdownQuote,
+  selectionMarkdown,
+} from "./selectionQuote";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
 
 const HIGHLIGHT_NAME = "quick-question";
@@ -76,7 +82,7 @@ function readSelection(
   if (!root || !selection || selection.isCollapsed || !selection.rangeCount)
     return undefined;
   const quote = selection.toString().trim().slice(0, MAX_QUOTE_CHARS).trim();
-  if (!quote) return undefined;
+  if (!isDeliberateSelection(quote)) return undefined;
   const range = selection.getRangeAt(0);
   const node = range.commonAncestorContainer;
   const element = node instanceof Element ? node : node.parentElement;
@@ -88,65 +94,176 @@ function readSelection(
   return { messageId, quote, range: range.cloneRange() };
 }
 
+// Touch selection ends with no mouseup, and iOS moves the selection while
+// the reader drags its handles. Show the menu once the selection holds still.
+const SELECTION_SETTLE_MS = 300;
+// On touch, iOS shows its own menu above the selection and a drag handle
+// below it. Keep the buttons clear of both.
+const TOUCH_GAP_PX = 24;
+
+/** The selection that the menu acts on, and where the menu shows. */
+type SelectionMenu = {
+  rect: DOMRect;
+  selection: QuickQuestionSelection;
+  touch: boolean;
+};
+
+function sameRange(a: Range, b: Range): boolean {
+  return (
+    a.compareBoundaryPoints(Range.START_TO_START, b) === 0 &&
+    a.compareBoundaryPoints(Range.END_TO_END, b) === 0
+  );
+}
+
 /**
- * Show a "Quick question" button above a text selection in a Junior reply.
- * It hides on scroll, because its position would go stale.
+ * Show "Quick question" and "Respond" buttons next to a text selection in a
+ * Junior reply. A scroll hides them until the selection settles again.
  */
 export function QuickQuestionSelectionButton(props: {
   rootRef: RefObject<HTMLElement | null>;
   onAsk(selection: QuickQuestionSelection): void;
+  /** Take the selection as a Markdown quote. Absent without a message box. */
+  onRespond?(quote: string): void;
 }) {
-  const { rootRef, onAsk } = props;
-  const [anchor, setAnchor] = useState<DOMRect>();
+  const { rootRef, onAsk, onRespond } = props;
+  const [menu, setMenu] = useState<SelectionMenu>();
+  const shownRef = useRef<SelectionMenu>(undefined);
+  // A tap can clear the selection before its click. Until a new press, ignore
+  // the selection events that the tap sends, and keep the menu.
+  const pressingMenuRef = useRef(false);
+  const place = useCallback((next: SelectionMenu | undefined) => {
+    shownRef.current = next;
+    setMenu(next);
+  }, []);
   useEffect(() => {
-    const update = () =>
-      setAnchor(readSelection(rootRef.current)?.range.getBoundingClientRect());
-    const clearIfEmpty = () => {
-      if (!readSelection(rootRef.current)) setAnchor(undefined);
+    let timer: number | undefined;
+    let touch = false;
+    // A mouse drag shows the menu on mouseup, not when it pauses.
+    let mousePressed = false;
+    const show = () => {
+      if (pressingMenuRef.current) return;
+      window.clearTimeout(timer);
+      const selection = readSelection(rootRef.current);
+      place(
+        selection && {
+          rect: selection.range.getBoundingClientRect(),
+          selection,
+          touch,
+        },
+      );
     };
-    const hide = () => setAnchor(undefined);
-    document.addEventListener("mouseup", update);
-    document.addEventListener("keyup", update);
-    document.addEventListener("selectionchange", clearIfEmpty);
-    document.addEventListener("scroll", hide, true);
+    const hideUntilSettled = () => {
+      if (pressingMenuRef.current) return;
+      place(undefined);
+      window.clearTimeout(timer);
+      if (!mousePressed) timer = window.setTimeout(show, SELECTION_SETTLE_MS);
+    };
+    const onSelectionChange = () => {
+      if (pressingMenuRef.current) return;
+      const next = readSelection(rootRef.current);
+      if (!next) {
+        window.clearTimeout(timer);
+        place(undefined);
+      } else if (
+        !shownRef.current ||
+        !sameRange(shownRef.current.selection.range, next.range)
+      ) {
+        hideUntilSettled();
+      }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      touch = event.pointerType !== "mouse";
+      mousePressed = event.pointerType === "mouse";
+      // The menu sets this again in its own handler, which runs later.
+      pressingMenuRef.current = false;
+    };
+    const onPointerUp = () => {
+      mousePressed = false;
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("pointercancel", onPointerUp, true);
+    document.addEventListener("mouseup", show);
+    document.addEventListener("keyup", show);
+    document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("scroll", hideUntilSettled, true);
     return () => {
-      document.removeEventListener("mouseup", update);
-      document.removeEventListener("keyup", update);
-      document.removeEventListener("selectionchange", clearIfEmpty);
-      document.removeEventListener("scroll", hide, true);
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointerup", onPointerUp, true);
+      document.removeEventListener("pointercancel", onPointerUp, true);
+      document.removeEventListener("mouseup", show);
+      document.removeEventListener("keyup", show);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("scroll", hideUntilSettled, true);
     };
-  }, [rootRef]);
-  if (!anchor) return null;
-  // Show the button above the selection, or below it near the top edge.
-  const above = anchor.top >= 56;
+  }, [place, rootRef]);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Keep the menu on screen when the selection is near a side edge.
+  useLayoutEffect(() => {
+    const element = menuRef.current;
+    if (!element) return;
+    element.style.marginLeft = "0px";
+    const { left, right } = element.getBoundingClientRect();
+    const shift = Math.max(
+      8 - left,
+      Math.min(0, window.innerWidth - 8 - right),
+    );
+    element.style.marginLeft = `${shift}px`;
+  }, [menu]);
+  if (!menu) return null;
+  const take = (act: (selection: QuickQuestionSelection) => void) => {
+    pressingMenuRef.current = false;
+    place(undefined);
+    window.getSelection()?.removeAllRanges();
+    act(menu.selection);
+  };
+  const { rect } = menu;
+  // Show the buttons above the selection. On touch or near the top edge,
+  // show them below it.
+  const below = menu.touch || rect.top < 56;
   return createPortal(
     <div
       className={cn(
-        "fixed z-50 -translate-x-1/2 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised p-1 shadow-lg",
-        above && "-translate-y-full",
+        "fixed z-50 flex -translate-x-1/2 gap-1 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised p-1 shadow-lg",
+        !below && "-translate-y-full",
       )}
+      // Keep the selection while a button takes the click or tap.
+      onMouseDown={(event) => event.preventDefault()}
+      onPointerDown={() => {
+        pressingMenuRef.current = true;
+      }}
+      ref={menuRef}
       style={{
-        left: anchor.left + anchor.width / 2,
-        top: above
-          ? anchor.top - 8
-          : Math.min(anchor.bottom + 8, window.innerHeight - 56),
+        left: rect.left + rect.width / 2,
+        top: below
+          ? Math.min(
+              rect.bottom + (menu.touch ? TOUCH_GAP_PX : 8),
+              window.innerHeight - 56,
+            )
+          : rect.top - 8,
       }}
     >
       <Button
         className="h-8 text-dashboard-text"
-        // Keep the selection while the button takes the click.
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          const selection = readSelection(rootRef.current);
-          setAnchor(undefined);
-          if (!selection) return;
-          window.getSelection()?.removeAllRanges();
-          onAsk(selection);
-        }}
+        onClick={() => take(onAsk)}
         variant="quiet"
       >
         Quick question
       </Button>
+      {onRespond ? (
+        <Button
+          className="h-8 text-dashboard-text"
+          onClick={() =>
+            take(({ range }) =>
+              onRespond(markdownQuote(selectionMarkdown(range))),
+            )
+          }
+          variant="quiet"
+        >
+          Respond
+        </Button>
+      ) : null}
     </div>,
     document.body,
   );
@@ -359,11 +476,13 @@ export function QuickQuestionPanel(props: {
       }
     >
       <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+        {/* One shrinkable column: a long word in the quote or an answer must
+            wrap, not widen the panel into a horizontal scroll. */}
         <div
-          className="grid content-start gap-5 overflow-y-auto px-5 py-4"
+          className="grid content-start grid-cols-[minmax(0,1fr)] gap-5 overflow-y-auto px-4 py-4"
           ref={scrollerRef}
         >
-          <blockquote className="m-0 border-l-2 border-dashboard-accent pl-3 text-sm text-dashboard-text-muted">
+          <blockquote className="m-0 border-l-2 border-dashboard-accent pl-2.5 text-sm text-dashboard-text-muted">
             {/* Long selections fold, so the questions stay in view. */}
             <ClampedPreview
               className="leading-relaxed break-words whitespace-pre-wrap"

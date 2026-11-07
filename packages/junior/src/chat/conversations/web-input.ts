@@ -26,6 +26,7 @@ import {
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
+import { sameDestination } from "@/chat/destination";
 import { webMessageId } from "./web-message-id";
 
 type EnqueueOptions = {
@@ -239,8 +240,9 @@ export async function recordWebConversationActivity(args: {
   await store.recordActivity({
     conversationId: args.conversationId,
     // TODO(dcramer): Remove the Conversation destination write after all
-    // readers use its stored Location.
-    destination,
+    // readers use its stored Location. A stored Destination is not resent:
+    // Continue in Slack may replace it after the read above.
+    ...(existing?.destination ? undefined : { destination }),
     nowMs: args.nowMs,
     actor: storedActorFromWeb(args.actor),
     // A dashboard continuation does not replace the root Source.
@@ -323,28 +325,46 @@ export async function appendAndEnqueueWebMessage(
   const enqueue = options.exclusive
     ? appendAndEnqueueExclusiveInboundMessage
     : appendAndEnqueueInboundMessage;
-  const result = await enqueue({
-    message: buildWebInboundMessage({
-      actor: input.actor,
-      authorIdentityId: await resolveActorIdentityId(
-        getSqlExecutor(),
-        input.actor,
-      ),
-      conversationId: input.conversationId,
-      destination,
-      message: text,
-      attachments,
-      messageId,
-      nowMs,
-      ...(input.reviewItemChange && {
-        reviewItemChange: input.reviewItemChange,
+  const authorIdentityId = await resolveActorIdentityId(
+    getSqlExecutor(),
+    input.actor,
+  );
+  const enqueueTo = (destination: Destination) =>
+    enqueue({
+      message: buildWebInboundMessage({
+        actor: input.actor,
+        authorIdentityId,
+        conversationId: input.conversationId,
+        destination,
+        message: text,
+        attachments,
+        messageId,
+        nowMs,
+        ...(input.reviewItemChange && {
+          reviewItemChange: input.reviewItemChange,
+        }),
       }),
-    }),
-    conversationStore: options.conversationStore,
-    nowMs,
-    queue: options.queue,
-    state: options.state,
-  });
+      conversationStore: options.conversationStore,
+      nowMs,
+      queue: options.queue,
+      state: options.state,
+    });
+  let result: Awaited<ReturnType<typeof enqueueTo>>;
+  try {
+    result = await enqueueTo(destination);
+  } catch (error) {
+    // Continue in Slack can move an idle Conversation between the read
+    // above and the mailbox lock. The Message follows the move.
+    const stored = await (
+      options.conversationStore ?? getConversationStore()
+    ).get({ conversationId: input.conversationId });
+    const current = resolveConversationDestination({
+      conversationId: input.conversationId,
+      existing: stored?.destination,
+    });
+    if (sameDestination(current, destination)) throw error;
+    result = await enqueueTo(current);
+  }
   const status = result.status === "appended" ? "accepted" : result.status;
   return {
     conversationId: input.conversationId,

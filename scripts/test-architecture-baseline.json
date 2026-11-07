@@ -10,7 +10,7 @@
     "packages/junior/tests/component/runtime/agent-run-sandbox.test.ts": 3,
     "packages/junior/tests/component/runtime/agent-run-tool-timeout-continuation.test.ts": 3,
     "packages/junior/tests/component/task-execution/slack-conversation-work.test.ts": 3,
-    "packages/junior/tests/component/task-execution/slack-stop-reaction.test.ts": 3,
+    "packages/junior/tests/component/task-execution/slack-stop-reaction.test.ts": 2,
     "packages/junior/tests/component/workspace-tools.test.ts": 4,
     "packages/junior/tests/fixtures/agent-runner.ts": 10,
     "packages/junior/tests/fixtures/agent.ts": 4,

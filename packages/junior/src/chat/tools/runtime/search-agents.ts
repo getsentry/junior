@@ -20,6 +20,7 @@ import {
   CHILD_AGENT_RESULTS,
   type ChildAgent,
 } from "@/chat/agent-invocations/types";
+import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 
 const TASK_MAX_LENGTH = 1_000;
 const ERROR_MAX_LENGTH = 500;
@@ -128,9 +129,7 @@ const listedAgentSchema = z
     archived: z
       .literal(true)
       .optional()
-      .describe(
-        "You archived this conversation. Only a root conversation can be archived.",
-      ),
+      .describe("The conversation is archived."),
     error: z
       .string()
       .optional()
@@ -245,7 +244,7 @@ const searchAgentsInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "Include conversations that you archived. Default false. Child agents cannot be archived, so this changes only top_level results.",
+        "Include archived conversations. Default false. This changes only top_level results.",
       ),
     limit: z
       .number()
@@ -271,6 +270,8 @@ export function createSearchAgentsTool(context: {
   parentConversationId?: string;
 }) {
   return zodTool({
+    exposure: "deferred",
+    source: AGENTS_TOOL_SOURCE,
     description:
       "Search the agents that this conversation can see, with the state recorded by the runtime. Relatives are the child agents it started and, for a child agent, itself, its parent, and its siblings. Top-level agents are other public root conversations in this workspace. messageAgent can send to one only when this conversation is public too. Results of child agents arrive as new tasks, not through this tool.",
     annotations: {

@@ -4,10 +4,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
-import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
-import { createGrepTool } from "@/chat/tools/sandbox/grep";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
-import { createListDirTool } from "@/chat/tools/sandbox/list-dir";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
@@ -127,9 +124,6 @@ export function createTools(
     bash: createBashTool(),
     readFile: createReadFileTool(),
     editFile: createEditFileTool(),
-    grep: createGrepTool(),
-    findFiles: createFindFilesTool(),
-    listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
     webSearch: createWebSearchTool(
       botConfig.webSearchModelId,
@@ -137,7 +131,6 @@ export function createTools(
     ),
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
-      sandbox: context.workspace,
     }),
     ...createEventTools(context, eventCatalog),
     ...createAutomationTools(context, eventCatalog),
@@ -238,8 +231,8 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  // A child agent reports to its parent, whatever input started this Turn.
-  if (context.parentConversationId) {
+  // An Agent invocation reports to its parent.
+  if (context.agentInvocationId) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
 
@@ -369,7 +362,7 @@ export function createTools(
           reviewItemServices,
         ),
       },
-      context.parentConversationId
+      context.agentInvocationId
         ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`
         : undefined,
     ),

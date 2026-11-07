@@ -1,26 +1,29 @@
 /**
- * Auto-archive archives a user's conversation when its work is done.
+ * Auto-archive archives a conversation when its work is done.
  *
  * A user turns it on with `autoArchiveDefault` and can override it for one
  * conversation on their participant row. The user also picks the grace
  * period in `autoArchiveGraceHours`. The scheduled sweep archives only for
  * users whose effective choice is on. A conversation is done when:
  *
- * - a plugin reported assigned work, none of it is unfinished, and all of it
- *   finished at least the grace period ago
- * - no human message arrived after the work finished
+ * - no plugin reported unfinished work on it or a child conversation
+ * - any reported work finished at least the grace period ago, and no human
+ *   message arrived after it finished
  * - the root and every child conversation are idle
- * - no open Review item on it waits on the user
- * - the user did not pin it
+ * - no open Review item on it waits on a person
+ * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
  *   period
  *
  * A user can also archive all of their done conversations once, from
- * Settings. That run has no grace period, does not need auto-archive on, and
- * skips conversations where the user turned auto-archive off.
+ * Settings. That run uses the same checks and grace period, does not need
+ * auto-archive on, and skips conversations where the user turned
+ * auto-archive off.
  *
- * Archive stays per user. A new human message restores it, and a manual
- * restore turns auto-archive off for that conversation.
+ * Archive applies to everyone, so one opted-in user's run archives the root
+ * for every participant. A new human message restores it. A manual restore
+ * turns auto-archive off for that conversation and that user, which then
+ * keeps it from every run.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -28,6 +31,7 @@ import {
   asc,
   eq,
   gt,
+  isNotNull,
   isNull,
   lte,
   ne,
@@ -39,8 +43,9 @@ import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
-import { reviewItemNeedsUser } from "@/chat/review-items/access";
+import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -79,13 +84,15 @@ export const DEFAULT_AUTO_ARCHIVE_SETTINGS: AutoArchiveSettings = {
 
 /**
  * Decide whether a conversation's work is done long enough to auto-archive.
- * Conversations without plugin-reported work are never done.
+ * A conversation without plugin-reported work has nothing to wait for, so
+ * the quiet-tree checks alone decide it.
  */
 export function isConversationWorkDone(
   conversation: ConversationDoneInput,
   cutoffMs: number,
 ): boolean {
-  if (!conversation.assignedWork || conversation.unfinishedWork) return false;
+  if (conversation.unfinishedWork) return false;
+  if (!conversation.assignedWork) return true;
   const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
   if (!Number.isFinite(finishedAt) || finishedAt > cutoffMs) return false;
   const lastUserMessageAt = Date.parse(conversation.lastUserMessageAt ?? "");
@@ -148,10 +155,10 @@ function treeIsQuiet(cutoff: Date) {
 
 /**
  * True when no open Review item on the participant row's root or a child
- * conversation needs the user. Such a conversation waits on them, so it must
- * stay in their feed.
+ * conversation needs a person. Archive applies to everyone, so a
+ * conversation that waits on anyone must stay in the feed.
  */
-function notWaitingOnUser(userId: string) {
+function notWaitingOnAnyone() {
   const linked = alias(juniorConversations, "linked_conversation");
   const waiting = getDb()
     .select({ itemId: juniorReviewItemConversations.itemId })
@@ -166,7 +173,7 @@ function notWaitingOnUser(userId: string) {
     )
     .where(
       and(
-        reviewItemNeedsUser(userId),
+        reviewItemNeedsSomeone(),
         or(
           eq(
             linked.conversationId,
@@ -183,6 +190,46 @@ function notWaitingOnUser(userId: string) {
 }
 
 /**
+ * True when no participant of the row's root pinned it or turned
+ * auto-archive off for it. Archive applies to everyone, so one person's run
+ * must not undo another person's pin or manual restore.
+ */
+function noParticipantKeepsRoot() {
+  const keeper = alias(juniorConversationParticipants, "keeping_participant");
+  const keeping = getDb()
+    .select({ userId: keeper.userId })
+    .from(keeper)
+    .where(
+      and(
+        eq(
+          keeper.rootConversationId,
+          juniorConversationParticipants.rootConversationId,
+        ),
+        or(isNotNull(keeper.pinnedAt), eq(keeper.autoArchive, false)),
+      ),
+    );
+  return sql`not exists (${keeping})`;
+}
+
+/** True when the participant row's root is not archived. */
+function rootIsUnarchived() {
+  const root = alias(juniorConversations, "archive_root");
+  const unarchived = getDb()
+    .select({ conversationId: root.conversationId })
+    .from(root)
+    .where(
+      and(
+        eq(
+          root.conversationId,
+          juniorConversationParticipants.rootConversationId,
+        ),
+        isNull(root.archivedAt),
+      ),
+    );
+  return sql`exists (${unarchived})`;
+}
+
+/**
  * Conditions that a participant row must meet when it is selected and again
  * when it is archived, so new activity, a new run, a new Review item, or a
  * changed setting wins over a stale read.
@@ -190,9 +237,9 @@ function notWaitingOnUser(userId: string) {
 function archivableRow(run: ArchiveRun) {
   return and(
     eq(juniorConversationParticipants.userId, run.userId),
-    isNull(juniorConversationParticipants.archivedAt),
+    rootIsUnarchived(),
     // A pin keeps the conversation in the feed on purpose.
-    isNull(juniorConversationParticipants.pinnedAt),
+    noParticipantKeepsRoot(),
     // The user's own message or a root activity snapshot sets
     // `lastMessageAt`. A later value means the tree had activity after the
     // cutoff, so this cheap indexed check removes most rows first.
@@ -202,18 +249,18 @@ function archivableRow(run: ArchiveRun) {
       ? sql`${juniorUsers.autoArchiveGraceHours} <= ${run.graceHours}`
       : undefined,
     treeIsQuiet(runCutoff(run)),
-    notWaitingOnUser(run.userId),
+    notWaitingOnAnyone(),
   );
 }
 
-/** Keyset position in the user's unarchived rows, ordered by last message. */
+/** Keyset position in the user's rows, ordered by last message. */
 type CandidateCursor = { lastMessageAt: string; rootConversationId: string };
 
 /**
- * One page of the user's unarchived participant rows that may be done. Pages
- * follow `junior_conversation_participants_unarchived_activity_idx`, so a run
- * reads only rows older than the cutoff. Archive writes during the run do not
- * move `lastMessageAt`, so they do not skip rows.
+ * One page of the user's participant rows on unarchived roots that may be
+ * done. Pages follow `junior_conversation_participants_user_activity_idx`, so
+ * a run reads only rows older than the cutoff. Archive writes during the run
+ * do not move `lastMessageAt`, so they do not skip rows.
  */
 async function selectCandidateRoots(run: ArchiveRun, after?: CandidateCursor) {
   return await getDb()
@@ -243,14 +290,17 @@ async function selectCandidateRoots(run: ArchiveRun, after?: CandidateCursor) {
 }
 
 /**
- * Keep the roots whose work is done. Work comes first because most roots
- * have none, so the message history read covers only finished work.
+ * Keep the roots whose work is done. Work comes first, so the message
+ * history read covers only roots with finished work.
  */
 async function selectDoneRoots(
   rootIds: string[],
   cutoffMs: number,
 ): Promise<string[]> {
   const work = await listConversationWork(rootIds);
+  // A failed plugin may hide open work, so archive nothing in this page.
+  if (work.failed) return [];
+  const assigned = new Set(work.assignedIds);
   const unfinished = new Set(work.unfinishedIds);
   const finished = work.assignedIds.filter(
     (id) =>
@@ -260,44 +310,58 @@ async function selectDoneRoots(
         cutoffMs,
       ),
   );
-  if (finished.length === 0) return [];
   const lastUserMessageAtById = await readLastUserMessageAtByConversation(
     getDb(),
     finished,
   );
-  return finished.filter((id) =>
+  return rootIds.filter((id) =>
     isConversationWorkDone(
       {
-        assignedWork: true,
+        assignedWork: assigned.has(id),
         finishedWorkAt: work.finishedAtById[id],
         lastUserMessageAt: lastUserMessageAtById.get(id),
+        unfinishedWork: unfinished.has(id),
       },
       cutoffMs,
     ),
   );
 }
 
-/** Archive one root for the run's user when it is still archivable. */
+/**
+ * Archive one root for everyone when it is still archivable for the run's
+ * user.
+ */
 async function archiveRoot(
   run: ArchiveRun,
   rootConversationId: string,
 ): Promise<boolean> {
-  // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
-  const updated = await getDb()
-    .update(juniorConversationParticipants)
-    .set({ archivedAt: run.now })
-    .from(juniorUsers)
+  const archivable = getDb()
+    .select({ userId: juniorConversationParticipants.userId })
+    .from(juniorConversationParticipants)
+    .innerJoin(
+      juniorUsers,
+      eq(juniorUsers.id, juniorConversationParticipants.userId),
+    )
     .where(
       and(
-        eq(juniorUsers.id, juniorConversationParticipants.userId),
         eq(
           juniorConversationParticipants.rootConversationId,
           rootConversationId,
         ),
         archivableRow(run),
       ),
+    );
+  const updated = await getDb()
+    .update(juniorConversations)
+    .set({ archivedAt: run.now, detailVersion: nextDetailVersion })
+    .where(
+      and(
+        eq(juniorConversations.conversationId, rootConversationId),
+        isNull(juniorConversations.archivedAt),
+        sql`exists (${archivable})`,
+      ),
     )
-    .returning({ userId: juniorConversationParticipants.userId });
+    .returning({ conversationId: juniorConversations.conversationId });
   return updated.length > 0;
 }
 
@@ -335,7 +399,7 @@ async function selectAutoArchiveUsers() {
       and(
         eq(juniorConversationParticipants.userId, juniorUsers.id),
         eq(juniorConversationParticipants.autoArchive, true),
-        isNull(juniorConversationParticipants.archivedAt),
+        rootIsUnarchived(),
       ),
     );
   return await getDb()
@@ -355,7 +419,7 @@ async function selectAutoArchiveUsers() {
 
 /**
  * Run one auto-archive sweep over every user who wants it and return how
- * many participant rows it checked and archived.
+ * many participant rows it checked and how many roots it archived.
  */
 export async function runAutoArchiveSweep(args: {
   nowMs: number;
@@ -381,45 +445,23 @@ export async function runAutoArchiveSweep(args: {
 }
 
 /**
- * Archive all of the viewer's done conversations now, with no grace period.
- * It skips conversations where the viewer turned auto-archive off.
+ * Archive all of the viewer's done conversations now. It uses the viewer's
+ * grace period and skips conversations where the viewer turned auto-archive
+ * off.
  */
 export async function archiveViewerDoneConversations(
   viewer: User,
 ): Promise<{ archived: number }> {
+  const settings = await readUserAutoArchiveSettings(viewer.id);
   const { archived } = await archiveUserDoneConversations({
-    graceHours: 0,
+    graceHours:
+      settings?.autoArchiveGraceHours ??
+      DEFAULT_AUTO_ARCHIVE_SETTINGS.autoArchiveGraceHours,
     kind: "manual",
     now: new Date(),
     userId: viewer.id,
   });
   return { archived };
-}
-
-/** Read the viewer's effective auto-archive choice for a conversation root. */
-export async function readConversationAutoArchive(
-  viewer: User,
-  rootConversationId: string,
-): Promise<boolean> {
-  const [user] = await getDb()
-    .select({
-      autoArchive: juniorConversationParticipants.autoArchive,
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
-    })
-    .from(juniorUsers)
-    .leftJoin(
-      juniorConversationParticipants,
-      and(
-        eq(juniorConversationParticipants.userId, juniorUsers.id),
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          rootConversationId,
-        ),
-      ),
-    )
-    .where(eq(juniorUsers.id, viewer.id))
-    .limit(1);
-  return user?.autoArchive ?? user?.autoArchiveDefault ?? false;
 }
 
 /** Turn auto-archive on or off for one conversation and the signed-in viewer. */

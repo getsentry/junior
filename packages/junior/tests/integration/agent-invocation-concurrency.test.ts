@@ -4,9 +4,9 @@ import type { AgentRun } from "@/chat/agent/types";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
   createAgentInvocationForMessage,
-  getAgentInvocation,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
-} from "@/chat/agent-invocations/store";
+} from "@/chat/agent-invocations/create";
+import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocation,
   createAndEnqueueAgentInvocation,
@@ -17,7 +17,16 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
 import { createEventTools } from "@/chat/tools/events";
-import { getConversationEventStore } from "@/chat/db";
+import type { User } from "@sentry/junior-plugin-api";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { actOnReviewItem } from "@/chat/review-items/actions";
+import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
+import { createAddReviewItemTool } from "@/chat/tools/review-items";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -25,6 +34,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
@@ -106,17 +116,17 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
       idempotencyKey: string;
       input: string;
     }) => {
-      const { invocation } = await createAgentInvocationForMessage({
+      const created = await createAgentInvocationForMessage({
         ...baseInput,
         ...args,
         parentToolCallId: args.idempotencyKey,
       });
-      await enqueueAgentInvocation(invocation, {
+      await enqueueAgentInvocation(created.invocation, {
         conversationStore,
         queue,
         state,
       });
-      return invocation;
+      return created;
     },
     queue,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
@@ -183,7 +193,7 @@ describe("agent invocation identity and concurrency", () => {
         reasoningLevel: "high",
       });
       await harness.drainQueuedWork();
-      const second = await harness.message({
+      const { invocation: second } = await harness.message({
         childConversationId: first.childConversationId,
         idempotencyKey: "named-2",
         input: "second named task",
@@ -232,9 +242,9 @@ describe("agent invocation identity and concurrency", () => {
       ).resolves.toMatchObject({
         agentName: "researcher",
         reasoningLevel: "high",
-        // The child sees the parent's message labeled as agent-written.
+        // The child sees the parent's message as a parent agent task.
         result: expect.stringMatching(
-          /^result:\[parent agent task\][\s\S]*\nsecond named task$/,
+          /^result:<parent-agent-task>\n[\s\S]*second named task\n<\/parent-agent-task>$/,
         ),
         status: "completed",
       });
@@ -360,6 +370,12 @@ describe("agent invocation identity and concurrency", () => {
   it("rejects new children once the parent concurrent active limit is reached", async () => {
     const harness = await createHarness(taskModel);
     try {
+      const idle = await harness.spawn({
+        idempotencyKey: "limit-idle",
+        input: "idle task",
+      });
+      await harness.drainQueuedWork();
+
       const active = await Promise.all(
         Array.from(
           { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
@@ -389,6 +405,24 @@ describe("agent invocation identity and concurrency", () => {
         invocationId: active[0]?.invocationId,
       });
 
+      // A message to an idle child makes it active, so it needs room.
+      await expect(
+        harness.message({
+          childConversationId: idle.childConversationId,
+          idempotencyKey: "limit-idle-message",
+          input: "wake the idle child",
+        }),
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+
+      // A busy child already counts, so a message to it queues.
+      await expect(
+        harness.message({
+          childConversationId: active[0]!.childConversationId,
+          idempotencyKey: "limit-busy-message",
+          input: "more for the busy child",
+        }),
+      ).resolves.toMatchObject({ queued: true });
+
       await harness.drainQueuedWork();
 
       await expect(
@@ -400,6 +434,31 @@ describe("agent invocation identity and concurrency", () => {
         status: "pending",
       });
       await harness.drainQueuedWork();
+
+      // A nested coordinator's own open work does not count as one of its
+      // children, so it can still start the full cap of children.
+      const coordinator = await harness.spawn({
+        idempotencyKey: "limit-coordinator",
+        input: "coordinate nested work",
+      });
+      await Promise.all(
+        Array.from(
+          { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
+          (_, index) =>
+            harness.spawn({
+              idempotencyKey: `limit-nested-${index}`,
+              input: `nested task ${index}`,
+              parentConversationId: coordinator.childConversationId,
+            }),
+        ),
+      );
+      await expect(
+        harness.spawn({
+          idempotencyKey: "limit-nested-overflow",
+          input: "one too many nested",
+          parentConversationId: coordinator.childConversationId,
+        }),
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
     } finally {
       await harness.close();
     }
@@ -561,8 +620,8 @@ describe("agent invocation identity and concurrency", () => {
       });
 
       // A stop of the idle child ends its watches and records the stop, so
-      // a timer event that already reached it is dropped, and a later timer
-      // never fires.
+      // a timer event that already reached it is saved to its transcript
+      // with no Turn, and a later timer never fires.
       await execute(
         childTools.watchTimer!,
         { after_ms: 60_000, intent: "Check once more." },
@@ -586,6 +645,9 @@ describe("agent invocation identity and concurrency", () => {
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
       await harness.drainQueuedWork();
       expect(harness.requests()).toHaveLength(2);
+      await expect(
+        stoppedConversationMessageTexts(child.childConversationId),
+      ).resolves.toEqual([expect.stringContaining("Check once more.")]);
       await expect(searchAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });
@@ -623,6 +685,80 @@ describe("agent invocation identity and concurrency", () => {
       ]);
     } finally {
       clock.mockRestore();
+      await harness.close();
+    }
+  });
+
+  it("gives a child the Review item tag for an answer to its item", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const harness = await createHarness(taskModel);
+    try {
+      const child = await harness.spawn({
+        agentName: "asker",
+        idempotencyKey: "ask-1",
+        input: "Ask who owns the login bug.",
+      });
+      await harness.drainQueuedWork();
+
+      // A private item goes only to people in its Conversation, and a child
+      // has none, so make the child public.
+      await getConversationStore().recordActivity({
+        conversationId: child.childConversationId,
+        destination,
+        nowMs: clock(),
+        source: "local",
+        visibility: "public",
+      });
+      const alice = (await resolveViewerUserFromSql(
+        getDb(),
+        "alice@example.com",
+      )) as User;
+      // The child opened the item, so it is the only linked Conversation.
+      const added = (await (
+        createAddReviewItemTool(
+          {
+            conversationId: child.childConversationId,
+            resolveActorIdentity: async () => undefined,
+            source: { kind: "scheduled_automation" },
+          },
+          createSlackReviewItemToolServices(() => harness.queue),
+        ) as any
+      ).execute(
+        {
+          kind: "action",
+          title: "Pick an owner",
+          body: "The bug has no owner.",
+          assignees: ["alice@example.com"],
+          request: {
+            question: "Who should own the login bug?",
+            fields: [{ id: "owner", kind: "text", label: "Owner" }],
+          },
+        },
+        {},
+      )) as { item: { id: string } };
+      const id = added.item.id;
+      await actOnReviewItem({
+        action: "submit",
+        answer: { requestId: id, values: { owner: ["Bob"] } },
+        delivery: { queue: harness.queue, show: async () => {} },
+        id,
+        user: alice,
+      });
+      // The Event batch waits for its burst window, as on a root.
+      clock.mockReturnValue(clock() + 120_000);
+      await harness.drainQueuedWork();
+
+      const requests = harness.requests();
+      expect(requests).toHaveLength(2);
+      expect(requests[1]!.instruction.text).toBe(
+        [
+          `<review-item-answer id="${id}">`,
+          "Question: Who should own the login bug?",
+          "Owner (owner): Bob",
+          "</review-item-answer>",
+        ].join("\n"),
+      );
+    } finally {
       await harness.close();
     }
   });

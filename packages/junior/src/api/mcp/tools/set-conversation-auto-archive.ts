@@ -27,7 +27,7 @@ export function registerSetConversationAutoArchiveTool(
         autoArchive: z
           .boolean()
           .describe(
-            "True archives the conversation for you after its work is done. False keeps it in your list.",
+            "True lets auto-archive archive the conversation for everyone after its work is done. False keeps it from auto-archive for everyone.",
           ),
       },
       outputSchema: { autoArchive: z.boolean() },

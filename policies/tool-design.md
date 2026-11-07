@@ -54,6 +54,10 @@ contradictory or unsafe requests.
   Files under `tools` are concrete tools only, one tool per file.
 - Prefer direct imports over injected ports. Inject only when production needs
   more than one implementation.
+- Make a tool direct only when many Conversations use it or the system prompt
+  names it. Each direct tool adds its schema to every Turn. Give other tools
+  `exposure: "deferred"` and a `source`, so `searchTools` lists the source.
+  Core tools are direct when `exposure` is not set.
 
 ### Descriptions and params
 

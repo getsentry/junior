@@ -757,6 +757,7 @@ describe("conversation report event projection", () => {
           role: "user",
           text: "event details",
           meta: {
+            eventNamespace: "github",
             eventType: "pull_request.merged",
             trustedSummary: "David merged PR #42.",
             provider: "private-provider",
@@ -772,6 +773,7 @@ describe("conversation report event projection", () => {
       role: "user",
       source: "web",
       eventType: "pull_request.merged",
+      eventNamespace: "github",
       trustedSummary: "David merged PR #42.",
       text: "event details",
     });
@@ -1459,6 +1461,7 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-1",
+      kind: "root" as const,
       status: "completed" as const,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",
@@ -1503,6 +1506,7 @@ describe("conversation report event projection", () => {
       displayTitle: "Report",
       cumulativeDurationMs: 0,
       conversationId: "conversation-privacy",
+      kind: "root" as const,
       status: "completed" as const,
       startedAt: "2026-07-15T12:00:00.000Z",
       lastSeenAt: "2026-07-15T12:00:00.000Z",

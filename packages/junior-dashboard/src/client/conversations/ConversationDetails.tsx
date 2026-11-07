@@ -1,6 +1,7 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CornerLeftUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type {
+  ConversationAgentTreeNode,
   ConversationDetailReport,
   ConversationWatch,
 } from "@sentry/junior/api/schema";
@@ -9,11 +10,14 @@ import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { formatRelativeTime, formatTime } from "../format";
 import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
 import { Button } from "../components/ui/button";
+import type { Conversation } from "../types";
 import { ConversationBrief } from "./ConversationBrief";
 import {
-  ConversationChildAgents,
+  ConversationTasks,
+  ConversationThreads,
   useConversationChildAgents,
 } from "./ConversationChildAgents";
+import { conversationPath } from "./conversationRoutes";
 import {
   ConversationLinkedWork,
   type ConversationLink,
@@ -31,7 +35,7 @@ import {
   ConversationWatches,
   useConversationWatches,
 } from "./ConversationWatches";
-import { DetailsCard } from "./DetailsList";
+import { DetailsCard, DetailsRow } from "./DetailsList";
 import type { SubagentTranscriptTarget } from "./SubagentTranscriptDrawer";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
@@ -40,16 +44,20 @@ type Brief = NonNullable<ConversationDetailReport["brief"]>;
  * Surface work that needs the reader, then the Brief and its linked work.
  */
 export function ConversationDetails(props: {
+  /** Parent chain of a child Conversation, root first, this one last. */
+  agentTree?: readonly ConversationAgentTreeNode[];
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
   brief?: Brief;
   conversationId: string;
+  /** The loaded feed. Its Threads carry their own titles. */
+  feedConversations: readonly Conversation[];
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
   links: ConversationLink[];
   onClose(): void;
-  /** Open one child agent transcript. A details sheet closes first. */
+  /** Open one Task transcript. A details sheet closes first. */
   onOpenSubagent(target: SubagentTranscriptTarget): void;
   /** Show one memory where its Turn recalled or captured it. */
   onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
@@ -67,6 +75,10 @@ export function ConversationDetails(props: {
     setMemoriesOpen(false);
   }
   const agents = useConversationChildAgents(props.conversationId).data?.agents;
+  const threads = agents?.filter((agent) => agent.kind === "thread") ?? [];
+  const tasks = agents?.filter((agent) => agent.kind === "task") ?? [];
+  // The last node is this Conversation, so the one before it is the parent.
+  const parent = props.agentTree?.at(-2);
   const allWatches =
     useConversationWatches(props.conversationId).data?.watches ?? [];
   // A Watch on linked work shows in that row, so the resource shows once.
@@ -152,6 +164,15 @@ export function ConversationDetails(props: {
       onClose={props.onClose}
     >
       <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        {parent ? (
+          <DetailsCard flat title="Parent">
+            <DetailsRow
+              icon={<CornerLeftUp aria-hidden="true" size={14} />}
+              title={parent.label}
+              to={conversationPath(parent.conversationId)}
+            />
+          </DetailsCard>
+        ) : null}
         <ConversationReviewItems
           conversationId={props.conversationId}
           highlight={props.highlightReview}
@@ -160,6 +181,12 @@ export function ConversationDetails(props: {
           <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
+        ) : null}
+        {threads.length > 0 ? (
+          <ConversationThreads
+            feedConversations={props.feedConversations}
+            threads={threads}
+          />
         ) : null}
         {props.links.length > 0 || watches.length > 0 ? (
           // A Watch waits on something. It shows with linked work, so the
@@ -189,17 +216,15 @@ export function ConversationDetails(props: {
         {props.autoArchive != null ? (
           <DetailsCard>{props.autoArchive}</DetailsCard>
         ) : null}
-        {agents?.length ? (
-          <DetailsCard count={agents.length} flat title="Subagents">
-            <ConversationChildAgents
-              conversationId={props.conversationId}
-              onOpenAgent={(target) => {
-                // The panel stays beside the drawer. A modal sheet cannot.
-                if (!panel) props.onClose();
-                props.onOpenSubagent(target);
-              }}
-            />
-          </DetailsCard>
+        {tasks.length > 0 ? (
+          <ConversationTasks
+            onOpenTask={(target) => {
+              // The panel stays beside the drawer. A modal sheet cannot.
+              if (!panel) props.onClose();
+              props.onOpenSubagent(target);
+            }}
+            tasks={tasks}
+          />
         ) : null}
         {props.overview != null ? (
           <DetailsCard flat>{props.overview}</DetailsCard>

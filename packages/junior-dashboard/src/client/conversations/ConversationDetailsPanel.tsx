@@ -25,6 +25,7 @@ export function ConversationDetailsPanel(props: {
   conversation: Conversation | undefined;
   conversationId: string;
   detail: ConversationDetailReport | undefined;
+  feedConversations: readonly Conversation[];
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   links: ConversationLink[];
@@ -42,6 +43,8 @@ export function ConversationDetailsPanel(props: {
   return (
     <ConversationMemoryContext value={props.memoryState}>
       <ConversationDetails
+        agentTree={detail?.agentTree}
+        feedConversations={props.feedConversations}
         autoArchive={
           detail?.autoArchive === undefined ? null : (
             <AutoArchiveToggle

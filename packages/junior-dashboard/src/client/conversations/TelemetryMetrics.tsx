@@ -90,7 +90,7 @@ function agentSplitLines(
     { value: "By agent", valueStyle: "heading" },
     { label: "this agent", value: format(total - subagents) },
     {
-      label: plural("subagent", childAgentTotals.count),
+      label: plural("child conversation", childAgentTotals.count),
       value: format(subagents),
     },
   ];
@@ -458,7 +458,7 @@ export function SubagentsMetric(props: {
   childAgentTotals: ConversationChildAgentTotals | undefined;
 }) {
   if (!props.childAgentTotals) return null;
-  const label = plural("subagent", props.childAgentTotals.count);
+  const label = plural("child conversation", props.childAgentTotals.count);
   return (
     <MetricValue
       tooltip={[

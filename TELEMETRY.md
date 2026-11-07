@@ -87,14 +87,6 @@ fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.
 sort=-gen_ai.tool.call.result.size
 ```
 
-Search tool volume, truncation, and raw output size.
-
-```text
-dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
-fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
-sort=-timestamp
-```
-
 Code Mode scripts, with their nested call counts and failures.
 
 ```text
@@ -247,18 +239,17 @@ attributes below.
 
 Attributes on the `codemode` span:
 
-| Attribute                                      | Type    | Meaning                                                |
-| ---------------------------------------------- | ------- | ------------------------------------------------------ |
-| `app.codemode.script.bytes`                    | int     | script size in UTF-8 bytes                             |
-| `app.codemode.call.count`                      | int     | nested calls made, including rejected calls            |
-| `app.codemode.call.peak_concurrency`           | int     | most nested calls that ran at the same time            |
-| `app.codemode.call.rejected_count`             | int     | nested calls not allowed by action review              |
-| `app.codemode.call.batch_limit_rejected_count` | int     | nested calls refused by the per-drain batch limit      |
-| `app.codemode.vm.start_ms`                     | int     | time until the VM was ready                            |
-| `app.codemode.run_ms`                          | int     | time from VM ready until the result settled            |
-| `app.codemode.output.bytes`                    | int     | script output in UTF-8 bytes, before truncation        |
-| `app.codemode.output.truncated`                | boolean | output was cut to the output limit                     |
-| `app.codemode.error.kind`                      | string  | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
+| Attribute                                      | Type   | Meaning                                                |
+| ---------------------------------------------- | ------ | ------------------------------------------------------ |
+| `app.codemode.script.bytes`                    | int    | script size in UTF-8 bytes                             |
+| `app.codemode.call.count`                      | int    | nested calls made, including rejected calls            |
+| `app.codemode.call.peak_concurrency`           | int    | most nested calls that ran at the same time            |
+| `app.codemode.call.rejected_count`             | int    | nested calls not allowed by action review              |
+| `app.codemode.call.batch_limit_rejected_count` | int    | nested calls refused by the per-drain batch limit      |
+| `app.codemode.vm.start_ms`                     | int    | time until the VM was ready                            |
+| `app.codemode.run_ms`                          | int    | time from VM ready until the result settled            |
+| `app.codemode.output.bytes`                    | int    | script output and return value in UTF-8 bytes          |
+| `app.codemode.error.kind`                      | string | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
 
 - `app.codemode.vm.start_ms` and `app.codemode.run_ms` are absent when the VM
   did not start. `app.codemode.error.kind` is absent when the script returned
@@ -484,8 +475,11 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   breadcrumbs, or replays.
 - A Reply rating is Sentry user feedback with `source`
   `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
-  `gen_ai.conversation.id`, and `messaging.message.id`. It has no Reply text
-  and no person. The dashboard hides the thumbs when it has no DSN.
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has the reader's
+  name and email, and the message is `Good reply` or `Bad reply`, plus the
+  reader's optional comment on a bad rating. It has no Reply text. Each Reply
+  sends at most one rating each time the reader opens its Conversation. The
+  dashboard hides the thumbs when it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their

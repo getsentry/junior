@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useParams } from "react-router";
 
 import {
@@ -36,6 +36,7 @@ import {
   RepositoryConversationsTab,
 } from "./RepositoryTabs";
 import { cn, dashboardInlineLinkClass } from "../../styles";
+import { OutboundLink } from "../../components/OutboundLink";
 
 const RECENT_ROWS = 5;
 const DESCRIPTION = "Conversations and code changes from Junior.";
@@ -98,18 +99,12 @@ export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
             <div className="flex flex-wrap items-center gap-2">
               <TimeRangeSelector onChange={setRange} value={range} />
               {repository.url ? (
-                <Link
+                <OutboundLink
                   className={buttonVariants()}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                  to={repository.url}
+                  href={repository.url}
                 >
                   Open repository
-                  <ExternalLink
-                    aria-hidden="true"
-                    className="size-3.5 shrink-0"
-                  />
-                </Link>
+                </OutboundLink>
               ) : null}
             </div>
           }

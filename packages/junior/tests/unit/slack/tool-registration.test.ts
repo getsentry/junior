@@ -328,10 +328,10 @@ describe("Slack tool registration", () => {
     expect(tools.addReviewItem?.exposure).not.toBe("deferred");
     expect(tools.addReviewItem?.disabledReason).toBeUndefined();
 
-    // A child agent reports the need to its parent, even in a Slack message
-    // Turn of its own.
+    // An Agent invocation reports the need to its parent.
     const childTools = createTools([], {}, {
       ...ctx("C12345"),
+      agentInvocationId: "invocation-1",
       parentConversationId: "slack:C12345:1700000000.000",
     } as ToolRuntimeContext);
     expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");

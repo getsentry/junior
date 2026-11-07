@@ -128,7 +128,7 @@ See [Dashboard](/operate/dashboard/#configure-phone-notifications).
 
 ## Build-time snapshot warmup
 
-If your build command runs `junior snapshot create`:
+The scaffolded build runs `junior snapshot create` on every deploy, so:
 
 - `REDIS_URL` must be available during build.
 - `VERCEL_OIDC_TOKEN` must be available during build (via Vercel OIDC settings).

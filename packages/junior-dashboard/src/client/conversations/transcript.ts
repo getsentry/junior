@@ -303,7 +303,7 @@ export function conversationIsResponding(
 
 type AgentTreeDetail = Pick<ConversationDetailReport, "agentTree">;
 
-/** True for a child Conversation, which takes input only from its parent agent. */
+/** True for a child Conversation (a Task or a Thread), which has an agent tree. */
 export function isChildConversation<T extends AgentTreeDetail>(
   detail: T | undefined,
 ): detail is T & Required<AgentTreeDetail> {

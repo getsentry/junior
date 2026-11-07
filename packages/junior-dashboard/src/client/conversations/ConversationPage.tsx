@@ -13,17 +13,18 @@ import { useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
-  ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
 import {
+  applyPendingArchiveUpdate,
   useArchiveConversation,
   type ArchivedFromConversationState,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
+import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
@@ -40,6 +41,7 @@ import {
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
+import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import {
@@ -57,13 +59,17 @@ import {
   eventLogRows,
   filterEventLogRows,
 } from "./eventLog";
-import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TranscriptSearchProvider,
+  useTranscriptSearchMatch,
+} from "./transcriptSearch";
 import {
   TurnContextDetails,
   type TurnContextPanel,
   type TurnContextSelection,
 } from "./TranscriptTurnContextView";
 import { cn } from "../styles";
+import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { conversationContextTags } from "./ConversationContextTags";
@@ -78,12 +84,15 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
+  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
+import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChatLayout } from "./ChatLayout";
+import type { ConversationComposerHandle } from "./ConversationComposer";
 import { ConversationOutline } from "./ConversationOutline";
 import {
   QuickQuestionPanel,
@@ -99,8 +108,9 @@ import {
 import { TranscriptLoading } from "./TranscriptLoading";
 import { recordTranscriptShown } from "../sentry";
 import {
+  unheldLinkStart,
   useHistoryAround,
-  type HistoryStart,
+  type ConversationLink,
   type TranscriptHistory,
 } from "./transcriptAroundHistory";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -109,7 +119,6 @@ import {
   type SubagentTranscriptTarget,
 } from "./SubagentTranscriptDrawer";
 import type {
-  Conversation,
   ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
@@ -133,7 +142,6 @@ export function ConversationPage(props: {
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
-  onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
@@ -143,6 +151,7 @@ export function ConversationPage(props: {
     () => false,
   );
   const pageRef = useRef<HTMLDivElement>(null);
+  const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
@@ -220,9 +229,10 @@ export function ConversationPage(props: {
   );
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
+  const searchMatch = useTranscriptSearchMatch(search);
+  const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
-  const onRead = props.onRead;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   // The page keeps the start preference from when the Conversation opened.
@@ -266,9 +276,29 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const [confirmChildArchive, setConfirmChildArchive] = useState(false);
   const navigate = useNavigate();
+  const setArchived = (archived: boolean) => {
+    archive.mutate({
+      archived,
+      lastSeenAt: conversation!.lastSeenAt,
+    });
+    // Archiving hides this conversation, so go home at once. The mutation
+    // keeps running after this page unmounts.
+    if (archived) {
+      navigate("/", {
+        state: {
+          archivedConversation: conversation!,
+        } satisfies ArchivedFromConversationState,
+      });
+    }
+  };
   const pin = usePinConversation(conversationId);
+  const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
+  // Focus or a click in the composer counts as reading, like transcript input.
+  const [composerEngaged, setComposerEngaged] = useState(false);
+  const engageComposer = useCallback(() => setComposerEngaged(true), []);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
   const dropLink = useCallback(() => {
     setLinkStart(undefined);
@@ -345,16 +375,19 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
+  const unread = Boolean(conversation?.unread);
   const conversationDetail = detail.data;
   const links = conversationLinks(conversationDetail);
   const title =
     conversationDetailTitle(detail.data) ??
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
-  useEffect(() => {
-    if (!conversation) return;
-    onRead?.(conversation.id, conversation.lastSeenAt);
-  }, [conversation, onRead]);
+  // A Task takes input only from its parent agent, and it runs without
+  // interactive auth, so it has no approval to show.
+  const canReply =
+    view === "rich" &&
+    detail.data?.isParticipant &&
+    detail.data.kind !== "task";
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
@@ -521,6 +554,7 @@ export function ConversationPage(props: {
           conversation={conversation}
           conversationId={conversationId}
           detail={conversationDetail}
+          feedConversations={conversations}
           highlightReview={reviewOpen}
           links={links}
           memoryState={memoryState}
@@ -574,8 +608,13 @@ export function ConversationPage(props: {
     </>
   );
 
+  // Pin the transcript to one row. The mobile sheet slot is a grid item too, and
+  // an implicit row for it took height from short transcripts.
   return (
-    <div ref={pageRef} className="grid h-full min-h-0 min-w-0">
+    <div
+      ref={pageRef}
+      className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]"
+    >
       <ConversationSidePanelLayout
         side={
           showDetails || showEvent || turnContext || showQuickQuestion
@@ -593,6 +632,15 @@ export function ConversationPage(props: {
               }
               contextTags={conversationContextTags(conversation)}
               conversationId={conversationId}
+              continueInSlack={
+                detail.data?.canContinueInSlack
+                  ? {
+                      // The API refuses while a Turn runs.
+                      disabled: live,
+                      onClick: () => setContinueInSlackOpen(true),
+                    }
+                  : undefined
+              }
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               onDetailsClick={() => {
@@ -639,36 +687,49 @@ export function ConversationPage(props: {
                 links.length ? <ConversationAnnotations links={links} /> : null
               }
               pin={{
-                // The API lets only participants pin, the same as archive.
+                // The API lets only participants pin a root, the same as
+                // archive. A child page has an agent tree.
                 disabled:
-                  !conversation || !detail.data?.isParticipant || pin.isPending,
+                  !conversation ||
+                  !detail.data?.isParticipant ||
+                  isChildConversation(conversationDetail) ||
+                  pin.isPending,
                 error: Boolean(pin.error),
                 onClick: () => pin.mutate(!conversation?.pinnedAt),
                 pinned: Boolean(conversation?.pinnedAt),
               }}
+              read={{
+                // Unread tracks idle conversations only, like the sidebar row.
+                disabled:
+                  !conversation ||
+                  !detail.data?.isParticipant ||
+                  markUnread.isPending ||
+                  (!unread && !isIdleConversation(conversation)),
+                error: Boolean(markUnread.error),
+                onClick: () => markUnread.mutate(!unread),
+                unread,
+              }}
               archive={{
                 archived: Boolean(conversation?.archivedAt),
                 disabled: !conversation || archive.isPending,
-                error: Boolean(archive.error),
+                // A refused restore names the archived ancestor to restore
+                // first.
+                error: archive.error
+                  ? (archive.error instanceof DashboardApiError &&
+                      archive.error.apiError) ||
+                    "Could not update archive state."
+                  : undefined,
                 onClick: () => {
-                  const archived = !conversation!.archivedAt;
-                  archive.mutate({
-                    archived,
-                    lastSeenAt: conversation!.lastSeenAt,
-                  });
-                  // Archiving hides this conversation, so go home at once.
-                  // The mutation keeps running after this page unmounts.
-                  if (archived) {
-                    navigate("/", {
-                      state: {
-                        archivedConversation: conversation!,
-                      } satisfies ArchivedFromConversationState,
-                    });
+                  if (conversation?.archivedAt) {
+                    setArchived(false);
+                  } else if (conversation!.kind === "root") {
+                    setArchived(true);
+                  } else {
+                    setConfirmChildArchive(true);
                   }
                 },
                 pending: archive.isPending,
               }}
-              live={live}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
               privacy={
@@ -677,6 +738,7 @@ export function ConversationPage(props: {
                 />
               }
               search={search}
+              searchMatch={searchMatch}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
               sidebarToggle={props.sidebarToggle}
               title={title}
@@ -732,12 +794,13 @@ export function ConversationPage(props: {
                           hasPreviousPage={history.hasPreviousPage}
                           historyError={history.historyError}
                           historyVersion={history.historyVersion}
-                          lastReadSeq={readAtOpen.lastReadSeq}
+                          lastReadSeq={detail.data?.readPosition?.lastReadSeq}
                           live={live}
                           loadingPreviousPage={history.isLoadingPreviousPage}
                           newerHistory={history.newer}
                           onLoadPreviousPage={history.loadPreviousPage}
                           onRead={holdShown ? undefined : markRead}
+                          readEngaged={composerEngaged}
                           onSelectedEventSeqChange={setSelectedEventSeq}
                           // Sends and the thinking row belong after the latest event.
                           pendingMessages={
@@ -753,6 +816,8 @@ export function ConversationPage(props: {
                           onOpenSubagentTranscript={onOpenSubagentTranscript}
                           search={search}
                           onSearchChange={setSearch}
+                          searchMatch={searchMatch.index}
+                          onSearchMatches={searchMatch.setMatches}
                           selectedEventSeq={selectedEventSeq}
                           startAtLink={startAtLink}
                           startAtUnread={startAtUnread}
@@ -769,49 +834,58 @@ export function ConversationPage(props: {
             </section>
           }
           dock={
-            <ConversationPageDock
-              conversationId={conversationId}
-              detail={detail}
-              hasNewerPage={Boolean(history.newer)}
-              live={live}
-              onPinRequest={requestPin}
-              view={view}
-            />
+            canReply ? (
+              <div
+                className="contents"
+                onFocusCapture={engageComposer}
+                onPointerDownCapture={engageComposer}
+              >
+                <ConversationPageDock
+                  conversationId={conversationId}
+                  detail={detail}
+                  hasNewerPage={Boolean(history.newer)}
+                  live={live}
+                  onPinRequest={requestPin}
+                  ref={replyRef}
+                />
+              </div>
+            ) : undefined
           }
         />
       </ConversationSidePanelLayout>
+      {confirmChildArchive ? (
+        <ArchiveChildDialog
+          hasChildren={Boolean(detail.data?.childAgentTotals?.count)}
+          onClose={() => setConfirmChildArchive(false)}
+          onConfirm={() => {
+            setConfirmChildArchive(false);
+            setArchived(true);
+          }}
+        />
+      ) : null}
       <QuickQuestionSelectionButton
         onAsk={(selection) => {
           if (eventOpen) setSelectedEventSeq(undefined);
           setTurnContext(undefined);
           quickQuestion.open(selection);
         }}
+        onRespond={
+          canReply ? (quote) => replyRef.current?.appendText(quote) : undefined
+        }
         rootRef={pageRef}
       />
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+      {continueInSlackOpen ? (
+        <ContinueInSlackDialog
+          conversationId={conversationId}
+          onClose={() => setContinueInSlackOpen(false)}
+        />
+      ) : null}
     </div>
   );
-}
-
-function applyPendingArchiveUpdate(
-  conversation: Conversation | undefined,
-  update: PendingArchiveConversationUpdate | undefined,
-): Conversation | undefined {
-  const updatedConversation =
-    conversation ??
-    (update?.conversation
-      ? buildConversations([update.conversation])[0]
-      : undefined);
-  if (!updatedConversation || !update) return updatedConversation;
-  return {
-    ...updatedConversation,
-    archivedAt: update.archived
-      ? (updatedConversation.archivedAt ?? updatedConversation.lastSeenAt)
-      : null,
-  };
 }
 
 function conversationIsLive(
@@ -820,22 +894,4 @@ function conversationIsLive(
 ): boolean {
   if (detail) return detail.status === "active";
   return visualStatus === "active";
-}
-
-type ConversationLink = { event: number } | { turn: string };
-
-/** The page to open for a link, or nothing when `events` hold its row. */
-function unheldLinkStart(
-  events: readonly ConversationReportEvent[] | undefined,
-  link: ConversationLink,
-): HistoryStart | undefined {
-  const seq =
-    "event" in link ? link.event : turnStartedEventSeq(events, link.turn);
-  const held =
-    seq !== undefined &&
-    events !== undefined &&
-    seq >= (events[0]?.seq ?? Infinity) &&
-    seq <= (events.at(-1)?.seq ?? -Infinity);
-  if (held) return undefined;
-  return "event" in link ? { event: String(link.event) } : { turn: link.turn };
 }

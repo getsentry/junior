@@ -107,11 +107,39 @@ app/
 
 Keep provider setup in plugin manifests and env vars, not in skill prose.
 
+## Add the build steps
+
+A scaffolded app gets migrations and snapshot warmup from its build. Add the
+same steps to your app. Set the build script:
+
+```json title="package.json"
+{
+  "scripts": {
+    "build": "junior snapshot create && nitro build"
+  }
+}
+```
+
+On Vercel, set the build command in `vercel.json` so each deploy migrates the
+database first:
+
+```json title="vercel.json"
+{
+  "framework": "nitro",
+  "buildCommand": "pnpm exec junior upgrade && pnpm build"
+}
+```
+
+On another host, run `pnpm exec junior upgrade` before you start the new
+release.
+
 ## Verify integration
 
-Run the same checks as a scaffolded app:
+Apply the schema to your local database, then run the same checks as a
+scaffolded app:
 
 ```bash
+pnpm exec junior upgrade
 pnpm exec junior check
 pnpm dev
 curl http://localhost:3000/health

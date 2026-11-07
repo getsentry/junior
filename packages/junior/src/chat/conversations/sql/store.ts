@@ -19,6 +19,7 @@ import type {
   Conversation,
   ConversationExecution,
   ConversationRunMetrics,
+  ConversationKind,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -29,7 +30,6 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
 import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
@@ -48,11 +48,9 @@ import {
   locationFromRow,
   visibilityFromLocationRow,
 } from "./location";
+import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-type ConversationRow = Omit<
-  typeof juniorConversations.$inferSelect,
-  "legacyArchivedAt"
->;
+type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
@@ -285,8 +283,12 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
       ...(row.metricRunId ? { runId: row.metricRunId } : undefined),
       ...(row.executionUsage ? { usage: row.executionUsage } : undefined),
     },
+    kind: conversationKindFromRow(row),
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
+      : undefined),
+    ...(row.archivedAt
+      ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
     ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
@@ -297,6 +299,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.title ? { title: row.title } : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
+      : undefined),
+    ...(msFromDate(row.stoppedAt) !== undefined
+      ? { stoppedAtMs: msFromDate(row.stoppedAt) }
       : undefined),
     ...(visibility ? { visibility } : undefined),
   };
@@ -313,6 +318,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
+    kind: "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -359,6 +365,7 @@ export class SqlStore implements ConversationStore {
 
   async createChild(args: {
     childConversationId: string;
+    kind: Exclude<ConversationKind, "root">;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
@@ -377,6 +384,11 @@ export class SqlStore implements ConversationStore {
                 `Conversation parent changed for ${args.childConversationId}`,
               );
             }
+            if (existing.kind !== args.kind) {
+              throw new Error(
+                `Conversation kind changed for ${args.childConversationId}`,
+              );
+            }
             return;
           }
           const parent = await this.get({
@@ -393,6 +405,7 @@ export class SqlStore implements ConversationStore {
               nowMs,
               source: args.source,
             }),
+            kind: args.kind,
             parentConversationId: args.parentConversationId,
           };
           await this.upsertConversation({ conversation: child });
@@ -541,6 +554,7 @@ export class SqlStore implements ConversationStore {
           schemaVersion: 1,
           conversationId: args.conversationId,
           createdAtMs: args.createdAtMs,
+          kind: existing?.kind ?? "root",
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
           ...(existing?.parentConversationId
@@ -588,7 +602,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -723,7 +737,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -747,6 +761,11 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
+    if ((conversation.kind === "root") !== !conversation.parentConversationId) {
+      throw new Error(
+        `Conversation ${conversation.conversationId} kind does not match its parent`,
+      );
+    }
     // Root Conversations set Destination on first write. A Conversation with a
     // parent can omit Destination. Later updates may omit Destination because
     // onConflict keeps the existing destination_id.
@@ -826,6 +845,7 @@ export class SqlStore implements ConversationStore {
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId: conversation.parentConversationId ?? null,
+        kind: conversation.kind,
         rootConversationId,
       })
       .onConflictDoUpdate({
@@ -851,6 +871,8 @@ export class SqlStore implements ConversationStore {
           lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
+          // Set once. This also fills a null kind left by an older deploy.
+          kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
           detailVersion: nextDetailVersion,
         },
       })
@@ -862,6 +884,15 @@ export class SqlStore implements ConversationStore {
     const row = rows[0];
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
+    }
+    // A conflict keeps the stored parent. A history append can create the row
+    // first under the event lock, so a new child can find a root row here.
+    if (
+      row.parentConversationId !== (conversation.parentConversationId ?? null)
+    ) {
+      throw new Error(
+        `Conversation parent changed for ${conversation.conversationId}`,
+      );
     }
     // Root actors stay in the personal feed even before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
