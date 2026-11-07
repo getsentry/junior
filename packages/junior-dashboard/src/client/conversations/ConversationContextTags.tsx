@@ -4,6 +4,7 @@ import { slackLocationLabel } from "../format";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { SlackMark } from "./SlackMark";
+import { OutboundLink } from "../components/OutboundLink";
 
 function githubRepositoryFromUrl(href: string) {
   const url = new URL(href);
@@ -49,18 +50,16 @@ function ContextTag(props: {
   );
 
   return props.href ? (
-    <a
+    <OutboundLink
       className={cn(
         className,
         "no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
       )}
       href={props.href}
-      rel="noreferrer"
-      target="_blank"
       title={props.title ?? props.label}
     >
       {content}
-    </a>
+    </OutboundLink>
   ) : (
     <span className={className} title={props.label}>
       {content}

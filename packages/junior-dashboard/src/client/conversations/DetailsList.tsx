@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 
 import { CollapsibleTrigger } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { OutboundIcon } from "../components/OutboundLink";
 
 /**
  * Group one kind of detail in a compact card. Conversation details and event
@@ -125,8 +126,9 @@ export function DetailsRow(props: {
       <span className="grid size-5 shrink-0 place-items-center text-dashboard-text-muted">
         {props.icon}
       </span>
-      <span className="min-w-0 truncate text-sm font-medium leading-5 text-dashboard-text">
-        {props.title}
+      <span className="flex min-w-0 items-center text-sm font-medium leading-5 text-dashboard-text">
+        <span className="truncate">{props.title}</span>
+        {props.href ? <OutboundIcon /> : null}
       </span>
       <span className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted">
         {props.meta}
