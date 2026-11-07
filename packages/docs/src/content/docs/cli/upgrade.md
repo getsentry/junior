@@ -16,9 +16,9 @@ by `DATABASE_URL`. The scaffolded `vercel.json` runs it before `pnpm build` on
 every Vercel deploy, so production migrates itself. Run it by hand for a local
 database, for a host whose build command does not run it, or for the bridge
 procedure below.
-For Neon, it connects to the direct endpoint: `DATABASE_URL_UNPOOLED` when set,
-else the `DATABASE_URL` host without `-pooler`. The migration lock does not work
-through a pooler.
+For Neon, it connects to the direct endpoint: the `DATABASE_URL` host without
+`-pooler`. It does not read `DATABASE_URL_UNPOOLED`. The migration lock does not
+work through a pooler.
 
 ## Usage
 
