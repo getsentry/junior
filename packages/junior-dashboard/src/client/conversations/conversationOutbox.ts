@@ -334,3 +334,17 @@ export function failConversationOutboxMessage(
       : message,
   );
 }
+
+const EMPTY_MESSAGE_IDS: readonly string[] = [];
+
+/** Ids of the messages in history, for de-dupe against the mailbox. */
+export function committedMessageIds(
+  events: readonly ConversationReportEvent[] | undefined,
+): readonly string[] {
+  if (!events) return EMPTY_MESSAGE_IDS;
+  const ids: string[] = [];
+  for (const event of events) {
+    if (event.data.type === "message") ids.push(event.data.messageId);
+  }
+  return ids;
+}
