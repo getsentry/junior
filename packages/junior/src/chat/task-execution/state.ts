@@ -1349,6 +1349,47 @@ export async function claimInboundMessage(args: {
   );
 }
 
+/**
+ * Release a claim from `claimInboundMessage`, so a redelivery of the message
+ * is new again. A message that waits in the mailbox keeps its id.
+ */
+export async function releaseInboundMessage(args: {
+  message: InboundMessage;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<void> {
+  const nowMs = args.nowMs ?? now();
+  const id = args.message.inboundMessageId;
+  await withConversationMutation(
+    { conversationId: args.message.conversationId, state: args.state },
+    async (state, lock) => {
+      const current = await readInboundConversation(state, args.message, nowMs);
+      if (
+        !current.execution.inboundMessageIds.includes(id) ||
+        current.execution.pendingMessages.some(
+          (message) => message.inboundMessageId === id,
+        )
+      ) {
+        return;
+      }
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          {
+            ...current.execution,
+            inboundMessageIds: current.execution.inboundMessageIds.filter(
+              (inboundMessageId) => inboundMessageId !== id,
+            ),
+          },
+          nowMs,
+        ),
+      );
+    },
+  );
+}
+
 /** Append only when the Conversation has no other runnable work. */
 export async function appendExclusiveInboundMessage(args: {
   message: InboundMessage;

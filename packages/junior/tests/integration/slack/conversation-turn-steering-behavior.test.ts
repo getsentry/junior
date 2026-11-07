@@ -24,15 +24,39 @@ import { SLACK_STOP_ACK } from "@/chat/ingress/slack-webhook";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import type { StateAdapter } from "chat";
+import { readProxyProperty } from "../../fixtures/proxy-property";
 
 const CHANNEL_ID = "CSTEER";
 const THREAD_TS = "1712345.000100";
 const CONVERSATION_ID = `slack:${CHANNEL_ID}:${THREAD_TS}`;
 
-function ingress() {
+/** Fail the first write of a Conversation's stop request. */
+function failFirstStopRequest(state: StateAdapter): StateAdapter {
+  let failed = false;
+  return new Proxy(state, {
+    get(target, prop) {
+      if (prop === "set") {
+        return async (key: string, value: unknown, ttlMs?: number) => {
+          if (
+            !failed &&
+            key === `junior:conversation:v2:stop:${CONVERSATION_ID}`
+          ) {
+            failed = true;
+            throw new Error("transient stop write failure");
+          }
+          return target.set(key, value, ttlMs);
+        };
+      }
+      const value = readProxyProperty(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as StateAdapter;
+}
+
+function ingress(state: StateAdapter = getStateAdapter()) {
   const adapter = createSlackAdapterFixture();
   const queue = createConversationWorkQueueTestAdapter();
-  const state = getStateAdapter();
   const services = {
     getSlackAdapter: () => adapter,
     queue,
@@ -201,12 +225,17 @@ describe("Slack ingress: thread messages", () => {
   });
 
   it("stops the active Turn and its child agents from the `stop` keyword the same way, once per message", async () => {
-    const harness = ingress();
+    const harness = ingress(failFirstStopRequest(getStateAdapter()));
     const child = await startThreadWork(harness);
     const stop = {
       text: `<@${SLACK_BOT_USER_ID}> stop`,
       ts: "1712345.000200",
     };
+    // A stop that fails asks Slack to retry, and the retry stops the work.
+    await expect(
+      harness.send({ ...stop, eventType: "message" }),
+    ).resolves.toMatchObject({ status: 503 });
+    expect(stopAcks()).toHaveLength(0);
     await expect(
       harness.send({ ...stop, eventType: "message" }),
     ).resolves.toMatchObject({ status: 200 });
@@ -216,7 +245,8 @@ describe("Slack ingress: thread messages", () => {
       harness.send({ ...stop, eventType: "app_mention" }),
     ).resolves.toMatchObject({ status: 200 });
 
-    expect(statusClears()).toHaveLength(1);
+    // The failed stop and its retry each clear the status.
+    expect(statusClears()).toHaveLength(2);
     await expectThreadWorkStopped(child, harness.state);
     await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
       stoppedAtMs,

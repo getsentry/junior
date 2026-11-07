@@ -2,6 +2,7 @@ import type { StateAdapter } from "chat";
 import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { logException } from "@/chat/logging";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { InboundMessage } from "@/chat/task-execution/state";
@@ -9,6 +10,7 @@ import {
   claimInboundMessage,
   ensureConversationWake,
   getConversation,
+  releaseInboundMessage,
   requestConversationWork,
   stopConversationWork,
   type StopConversationWorkResult,
@@ -78,9 +80,9 @@ export type StopConversationResult =
  *
  * A stop that comes from a message, such as the Slack `stop` keyword, passes
  * that message. Its id is claimed in the mailbox first, so a redelivery
- * returns `duplicate` and stops nothing, not even newer work. If the stop
- * then fails, a redelivery stops nothing either, and the person sends a new
- * stop.
+ * returns `duplicate` and stops nothing, not even newer work. A stop that
+ * fails releases its claim, so a redelivery can stop again. A failed reply
+ * after a stop is not released: the work is already stopped.
  *
  * The child agents and sessions stop first, so a failure leaves the Turn
  * running and the stop can be retried. A child agent can outlive the parent
@@ -106,17 +108,31 @@ export async function stopConversation(args: {
   ) {
     return { status: "duplicate" };
   }
-  // One stop time for the whole tree, so a late cascade of a child agent
-  // knows which Conversations this stop already reached.
-  const nowMs = Date.now();
-  await stopChildAgentsBelow(args.conversationId, {
-    nowMs,
-    state: args.state,
-  });
-  await markConversationsStopped([args.conversationId], {
-    cancelWatches: false,
-    nowMs,
-    state: args.state,
-  });
-  return await stopConversationTurn(args);
+  try {
+    // One stop time for the whole tree, so a late cascade of a child agent
+    // knows which Conversations this stop already reached.
+    const nowMs = Date.now();
+    await stopChildAgentsBelow(args.conversationId, {
+      nowMs,
+      state: args.state,
+    });
+    await markConversationsStopped([args.conversationId], {
+      cancelWatches: false,
+      nowMs,
+      state: args.state,
+    });
+    return await stopConversationTurn(args);
+  } catch (error) {
+    if (args.message) {
+      // The stop error is the one that matters, so a failed release does not
+      // replace it.
+      await releaseInboundMessage({
+        message: args.message,
+        state: args.state,
+      }).catch((releaseError: unknown) => {
+        logException(releaseError, "conversation.stop.release.failed");
+      });
+    }
+    throw error;
+  }
 }
