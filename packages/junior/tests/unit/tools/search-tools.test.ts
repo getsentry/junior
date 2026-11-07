@@ -262,12 +262,12 @@ describe("searchTools", () => {
     expect(searchTools.description).not.toContain("memory_createMemory");
 
     const result = await searchTools.execute!(
-      { query: "renewal risk", max_results: 1 },
+      { query: "lookup customer", max_results: 1 },
       {},
     );
 
     expect(result).toMatchObject({
-      query: "renewal risk",
+      query: "lookup customer",
       source: null,
       sources: [
         {
@@ -436,15 +436,13 @@ describe("searchTools", () => {
     }
   });
 
-  it("drops weak matches that share only common words", async () => {
-    const searchTools = createSearchToolsTool(mixedCatalog());
-
-    const result = await searchTools.execute!(
-      { query: "create pull request", source: "github", max_results: 20 },
-      {},
+  it("drops weak matches that share only common words", () => {
+    const { matches: names } = searchCatalogTools(
+      mixedCatalog(),
+      "create pull request",
+      "github",
     );
 
-    const names = result.tools.map(({ tool_name }) => tool_name);
     expect(names[0]).toBe("github_createPullRequest");
     // Every GitHub tool shares the source; only pull request tools fit.
     for (const unrelated of [
