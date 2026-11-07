@@ -188,19 +188,20 @@ export function resetMockConversationViewerState(): void {
 
 /**
  * Add the viewer's mock archive, pin, and unread marks and any rename to one
- * conversation.
+ * conversation. Like the API, a child reports the pin of its root.
  */
 function withMockViewerState<
   T extends { conversationId: string; displayTitle: string; status: string },
 >(
   report: T & { archivedAt?: string | null },
+  pinConversationId = report.conversationId,
 ): T & {
   archivedAt: string | undefined;
   pinnedAt: string | null;
   pinPosition?: number;
   unread?: true;
 } {
-  const pinPosition = mockPinPositions.get(report.conversationId);
+  const pinPosition = mockPinPositions.get(pinConversationId);
   // Match the API: only idle conversations are unread.
   const unread =
     (report.status === "completed" || report.status === "stopped") &&
@@ -211,7 +212,7 @@ function withMockViewerState<
     archivedAt: mockArchivedConversationIds.has(report.conversationId)
       ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
       : undefined,
-    pinnedAt: mockPinnedConversationIds.has(report.conversationId) ? NOW : null,
+    pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
     ...(pinPosition === undefined ? undefined : { pinPosition }),
     ...(unread ? { unread: true as const } : undefined),
   };
@@ -2229,15 +2230,24 @@ export function setMockConversationArchived(
   return { archivedAt: archived ? NOW : null };
 }
 
-/** Pin or unpin one mock conversation for local dashboard visual QA. */
+/**
+ * Pin or unpin one mock conversation for local dashboard visual QA. Like the
+ * API, it refuses a child and names its root.
+ */
 export function setMockConversationPinned(
   conversationId: string,
   pinned: boolean,
-): { pinnedAt: string | null } | undefined {
-  const exists = mockConversations(NOW_MS).some(
-    (conversation) => conversation.conversationId === conversationId,
+): { pinnedAt: string | null } | { error: string } | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
   );
-  if (!exists) return undefined;
+  if (!conversation) return undefined;
+  const rootId = mockAgentTree(conversation)?.[0]?.conversationId;
+  if (rootId) {
+    return {
+      error: `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${rootId}.`,
+    };
+  }
   // Match the API: a new or removed pin has no place.
   mockPinPositions.delete(conversationId);
   if (pinned) {
@@ -2586,7 +2596,10 @@ export function readMockConversationDetail(
         }
       : undefined),
   };
-  const withViewerState = withMockViewerState(detail);
+  const withViewerState = withMockViewerState(
+    detail,
+    agentTree?.[0]?.conversationId,
+  );
   const events = withViewerState.events.slice(-limit);
   const bounded =
     events.length < withViewerState.events.length && events[0]
