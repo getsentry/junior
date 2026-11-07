@@ -227,17 +227,21 @@ async function fetchAvatarImage(
   if (!data) return avatarFetchFailed(host, { "app.reason": "too_large" });
   // Check the bytes, not the provider header. sharp also reads SVG and other
   // formats that Junior does not accept as photos.
-  if (!detectImageMediaType(data)) {
+  const contentType = detectImageMediaType(data);
+  if (!contentType) {
     return avatarFetchFailed(host, { "app.reason": "not_an_image" });
   }
   try {
     return { contentType: "image/webp", data: await shrinkAvatar(data) };
   } catch (error) {
-    return avatarFetchFailed(host, {
-      "app.reason": "decode_failed",
+    // A large photo is better than no photo. This also covers a build that
+    // has no sharp native library.
+    logWarn("avatar.resize.failed", {
+      "server.address": host,
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
+    return { contentType, data: Buffer.from(data).toString("base64") };
   }
 }
 

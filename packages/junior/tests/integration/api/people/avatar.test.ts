@@ -16,7 +16,7 @@ const PNG = await sharp({
 })
   .png()
   .toBuffer();
-// A PNG signature without an image.
+// A PNG signature without an image. sharp cannot read it.
 const BROKEN_PNG = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01,
 ]);
@@ -155,16 +155,17 @@ describe("profile photo API", () => {
       expect(google.status).toBe(200);
       await expectSmallPhoto(google);
 
-      // A file that is not an image, an image that does not decode, a URL or
-      // redirect off the photo hosts, and an unknown Identity all have no
-      // photo.
-      for (const id of [
-        "U-TEXT",
-        "U-BROKEN",
-        "U-OTHER",
-        "G-OFF-HOST",
-        "U-MISSING",
-      ]) {
+      // When sharp fails, Junior sends the provider photo.
+      const unresized = await app.request(
+        "http://localhost/api/people/avatars/U-BROKEN",
+      );
+      expect(unresized.status).toBe(200);
+      expect(unresized.headers.get("content-type")).toBe("image/png");
+      expect(new Uint8Array(await unresized.arrayBuffer())).toEqual(BROKEN_PNG);
+
+      // A file that is not an image, a URL or redirect off the photo hosts,
+      // and an unknown Identity all have no photo.
+      for (const id of ["U-TEXT", "U-OTHER", "G-OFF-HOST", "U-MISSING"]) {
         const response = await app.request(
           `http://localhost/api/people/avatars/${id}`,
         );
@@ -173,8 +174,8 @@ describe("profile photo API", () => {
       expect(fetched).toEqual([
         "https://avatars.slack-edge.com/photo.png",
         "https://lh3.googleusercontent.com/a/photo",
-        "https://avatars.slack-edge.com/text.png",
         "https://avatars.slack-edge.com/broken.png",
+        "https://avatars.slack-edge.com/text.png",
         "https://lh3.googleusercontent.com/a/off-host",
       ]);
     } finally {
