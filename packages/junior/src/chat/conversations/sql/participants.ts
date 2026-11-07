@@ -33,7 +33,6 @@ export async function recordConversationParticipant(
     actorIdentityId: string;
     conversationId: string;
     atMs: number;
-    restoreArchive?: boolean;
   },
 ): Promise<boolean> {
   const [identity] = await executor
@@ -73,7 +72,6 @@ export async function recordConversationParticipant(
       ],
       set: {
         lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
-        ...(args.restoreArchive ? { archivedAt: null } : undefined),
       },
     });
   return true;

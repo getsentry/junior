@@ -9,6 +9,7 @@ import type {
 } from "../schema/conversation";
 
 export type ReportingConversationRow = {
+  archivedAt: Date | null;
   channelName: string | null;
   conversationId: string;
   createdAt: Date;
@@ -24,7 +25,6 @@ export type ReportingConversationRow = {
   parentConversationId: string | null;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
-  childArchivedAt: Date | null;
   stoppedAt: Date | null;
   title: string | null;
   updatedAt: Date;
@@ -119,8 +119,8 @@ export function summaryFromRow(
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
-    ...(row.childArchivedAt
-      ? { childArchivedAtMs: row.childArchivedAt.getTime() }
+    ...(row.archivedAt
+      ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
     ...(row.source ? { source: row.source } : undefined),
     ...(row.stoppedAt ? { stoppedAtMs: row.stoppedAt.getTime() } : undefined),

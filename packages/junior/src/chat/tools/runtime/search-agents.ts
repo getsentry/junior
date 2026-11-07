@@ -128,9 +128,7 @@ const listedAgentSchema = z
     archived: z
       .literal(true)
       .optional()
-      .describe(
-        "You archived this conversation. Only a root conversation can be archived.",
-      ),
+      .describe("The conversation is archived."),
     error: z
       .string()
       .optional()
@@ -245,7 +243,7 @@ const searchAgentsInputSchema = z
       .nullable()
       .optional()
       .describe(
-        "Include conversations that you archived. Default false. Child agents cannot be archived, so this changes only top_level results.",
+        "Include archived conversations. Default false. This changes only top_level results.",
       ),
     limit: z
       .number()

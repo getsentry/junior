@@ -1,4 +1,4 @@
-import { getTableColumns, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   check,
@@ -75,10 +75,9 @@ export const juniorConversations = pgTable(
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
-    // Set only on children, Threads and Tasks. A child is shared work, so its
-    // archive applies to everyone. Roots keep their per-viewer archive on
-    // participant rows.
-    childArchivedAt: timestamptz("child_archived_at"),
+    // Archive applies to everyone, on a root or a child. A Conversation shows
+    // only while it and every ancestor are unarchived.
+    archivedAt: timestamptz("archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(
@@ -109,8 +108,6 @@ export const juniorConversations = pgTable(
     // Detail reads compare it before they build the report. The
     // `junior/touch-conversation-detail` lint rule enforces the bump.
     detailVersion: integer("detail_version").notNull().default(0),
-    // Keep the legacy column in the schema. Runtime code must not read or write it.
-    legacyArchivedAt: timestamptz("archived_at"),
   },
   (table) => [
     check(
@@ -147,10 +144,3 @@ export const juniorConversations = pgTable(
     index("junior_conversations_root_idx").on(table.rootConversationId),
   ],
 );
-
-/** Select runtime conversation fields without reading the legacy archive column. */
-export function conversationReadColumns() {
-  const { legacyArchivedAt, ...columns } = getTableColumns(juniorConversations);
-  void legacyArchivedAt;
-  return columns;
-}

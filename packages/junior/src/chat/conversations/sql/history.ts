@@ -35,7 +35,7 @@ import {
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
-import { restoreArchivedChildPath } from "./conversation-tree";
+import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
@@ -287,22 +287,20 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         ),
       );
-    let restoresChild = false;
+    let restores = false;
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
-      const restoreArchive = eventUnarchivesConversation(data);
       const isPerson = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
-        restoreArchive,
       });
-      restoresChild ||= isPerson && restoreArchive;
+      restores ||= isPerson && eventUnarchivesConversation(data);
     }
-    // A child archive is shared, so any person's message restores it.
-    if (restoresChild) {
-      await restoreArchivedChildPath(this.executor.db(), conversationId);
+    // Archive is shared, so any person's message restores it for everyone.
+    if (restores) {
+      await restoreArchivedPath(this.executor.db(), conversationId);
     }
   }
 

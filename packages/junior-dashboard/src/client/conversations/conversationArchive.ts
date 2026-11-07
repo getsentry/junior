@@ -87,8 +87,8 @@ function withRestoredThread(
 }
 
 /**
- * A child archive also writes its descendants, which show in other detail
- * pages and in their ancestors' child-agents reports.
+ * An archive can also write descendants, which show in other detail pages
+ * and in their ancestors' child-agents reports.
  */
 function isTreeArchiveRead({ queryKey }: { queryKey: readonly unknown[] }) {
   return (
@@ -122,11 +122,6 @@ const archiveConversationMutationKey = [
 ] as const;
 
 type ArchiveConversationVariables = {
-  /**
-   * Child Conversations only: also archive or restore every descendant. The
-   * dashboard sends it for every child, so it also marks a child archive.
-   */
-  applyToChildren?: boolean;
   archived: boolean;
   lastSeenAt: string;
 };
@@ -255,11 +250,14 @@ export function archiveConversationMutationOptions(
 ) {
   return mutationOptions({
     mutationKey: [...archiveConversationMutationKey, conversationId],
+    // The dashboard archives a Conversation with its children, and restores
+    // the children archived with it. A child page confirms first. A root
+    // archive hid its tree before, so it needs no confirm.
     mutationFn: (args: ArchiveConversationVariables) =>
       patch(
         archiveConversationResponseSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
-        args,
+        { ...args, applyToChildren: true },
       ),
     onMutate: async (args) => {
       const conversationQueries = { queryKey: ["dashboard", "conversations"] };
@@ -278,14 +276,11 @@ export function archiveConversationMutationOptions(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Match the API: a child archive is shared. A root archive also unpins
-      // and marks it read; restore keeps the read state, because auto-archive
-      // does not mark it read.
-      const viewerMarks = args.applyToChildren
-        ? { childArchivedAt: archivedAt }
-        : args.archived
-          ? { archivedAt, pinnedAt: null, unread: undefined }
-          : { archivedAt };
+      // Match the API: archive also marks it read for this viewer; restore
+      // keeps the read state, because auto-archive does not mark it read.
+      const viewerMarks = args.archived
+        ? { archivedAt, unread: undefined }
+        : { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
       const snapshot =
@@ -320,16 +315,11 @@ export function archiveConversationMutationOptions(
           : restoreParentId
             ? withRestoredThread(feed.conversations, restoreParentId, {
                 ...archivedSnapshot!.conversation,
-                childArchivedAt: null,
+                archivedAt: null,
               })
             : [
                 ...feed.conversations,
-                // The archive cleared the pin, so the restored row is unpinned.
-                {
-                  ...archivedSnapshot!.conversation,
-                  archivedAt: null,
-                  pinnedAt: null,
-                },
+                { ...archivedSnapshot!.conversation, archivedAt: null },
               ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
         queryClient.setQueryData<ConversationFeed>(queryKey, {
           ...feed,
@@ -392,9 +382,7 @@ export function archiveConversationMutationOptions(
           detail
             ? {
                 ...detail,
-                ...(detail.kind === "root"
-                  ? { archivedAt: result.archivedAt }
-                  : { childArchivedAt: result.archivedAt }),
+                archivedAt: result.archivedAt,
                 detailEtag: undefined,
               }
             : detail,
@@ -407,7 +395,7 @@ export function archiveConversationMutationOptions(
       }
       options?.onSuccess?.(result.archivedAt);
     },
-    onSettled: async (_result, _error, args) => {
+    onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["dashboard", "conversations"],
@@ -416,14 +404,7 @@ export function archiveConversationMutationOptions(
           queryKey: ["dashboard", "locations"],
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
-        queryClient.invalidateQueries(
-          args.applyToChildren
-            ? { predicate: isTreeArchiveRead }
-            : {
-                exact: true,
-                queryKey: conversationDetailQueryKey(conversationId),
-              },
-        ),
+        queryClient.invalidateQueries({ predicate: isTreeArchiveRead }),
       ]);
     },
   });
@@ -465,19 +446,9 @@ export function applyPendingArchiveUpdate(
       : undefined);
   if (!updatedConversation || !update) return updatedConversation;
   const archivedAt = update.archived
-    ? (conversationArchivedAt(updatedConversation) ??
-      updatedConversation.lastSeenAt)
+    ? (updatedConversation.archivedAt ?? updatedConversation.lastSeenAt)
     : null;
-  return updatedConversation.kind === "root"
-    ? { ...updatedConversation, archivedAt }
-    : { ...updatedConversation, childArchivedAt: archivedAt };
-}
-
-/** A root archive is the viewer's own. A child archive is shared. */
-export function conversationArchivedAt(conversation: Conversation | undefined) {
-  return conversation?.kind === "root"
-    ? conversation.archivedAt
-    : conversation?.childArchivedAt;
+  return { ...updatedConversation, archivedAt };
 }
 
 /** Drop matching Threads from the nested `threads` of rows, at any depth. */

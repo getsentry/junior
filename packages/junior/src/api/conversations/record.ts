@@ -11,7 +11,6 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
 
 /**
  * Select Conversation rows with their Location and Actor names. Callers add
@@ -20,7 +19,7 @@ import { conversationReadColumns } from "@/db/schema/conversations";
 export function selectConversationRecords(db: JuniorDatabase) {
   return db
     .select({
-      conversation: conversationReadColumns(),
+      conversation: juniorConversations,
       location: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -103,8 +102,8 @@ export function conversationFromRecordRow(
     ...(value.parentConversationId
       ? { parentConversationId: value.parentConversationId }
       : undefined),
-    ...(value.childArchivedAt
-      ? { childArchivedAtMs: value.childArchivedAt.getTime() }
+    ...(value.archivedAt
+      ? { archivedAtMs: value.archivedAt.getTime() }
       : undefined),
     ...(actor ? { actor } : undefined),
     ...(location ? { location } : undefined),

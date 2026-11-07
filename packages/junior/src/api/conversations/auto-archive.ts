@@ -1,5 +1,5 @@
 /**
- * Auto-archive archives a user's conversation when its work is done.
+ * Auto-archive archives a conversation when its work is done.
  *
  * A user turns it on with `autoArchiveDefault` and can override it for one
  * conversation on their participant row. The user also picks the grace
@@ -20,8 +20,9 @@
  * auto-archive on, and skips conversations where the user turned
  * auto-archive off.
  *
- * Archive stays per user. A new human message restores it, and a manual
- * restore turns auto-archive off for that conversation.
+ * Archive applies to everyone, so one opted-in user's run archives the root
+ * for every participant. A new human message restores it, and a manual
+ * restore turns auto-archive off for that conversation and that user.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -40,6 +41,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { reviewItemNeedsUser } from "@/chat/review-items/access";
 import {
@@ -185,6 +187,24 @@ function notWaitingOnUser(userId: string) {
   return sql`not exists (${waiting})`;
 }
 
+/** True when the participant row's root is not archived. */
+function rootIsUnarchived() {
+  const root = alias(juniorConversations, "archive_root");
+  const unarchived = getDb()
+    .select({ conversationId: root.conversationId })
+    .from(root)
+    .where(
+      and(
+        eq(
+          root.conversationId,
+          juniorConversationParticipants.rootConversationId,
+        ),
+        isNull(root.archivedAt),
+      ),
+    );
+  return sql`exists (${unarchived})`;
+}
+
 /**
  * Conditions that a participant row must meet when it is selected and again
  * when it is archived, so new activity, a new run, a new Review item, or a
@@ -193,7 +213,7 @@ function notWaitingOnUser(userId: string) {
 function archivableRow(run: ArchiveRun) {
   return and(
     eq(juniorConversationParticipants.userId, run.userId),
-    isNull(juniorConversationParticipants.archivedAt),
+    rootIsUnarchived(),
     // A pin keeps the conversation in the feed on purpose.
     isNull(juniorConversationParticipants.pinnedAt),
     // The user's own message or a root activity snapshot sets
@@ -209,14 +229,14 @@ function archivableRow(run: ArchiveRun) {
   );
 }
 
-/** Keyset position in the user's unarchived rows, ordered by last message. */
+/** Keyset position in the user's rows, ordered by last message. */
 type CandidateCursor = { lastMessageAt: string; rootConversationId: string };
 
 /**
- * One page of the user's unarchived participant rows that may be done. Pages
- * follow `junior_conversation_participants_unarchived_activity_idx`, so a run
- * reads only rows older than the cutoff. Archive writes during the run do not
- * move `lastMessageAt`, so they do not skip rows.
+ * One page of the user's participant rows on unarchived roots that may be
+ * done. Pages follow `junior_conversation_participants_user_activity_idx`, so
+ * a run reads only rows older than the cutoff. Archive writes during the run
+ * do not move `lastMessageAt`, so they do not skip rows.
  */
 async function selectCandidateRoots(run: ArchiveRun, after?: CandidateCursor) {
   return await getDb()
@@ -283,27 +303,41 @@ async function selectDoneRoots(
   );
 }
 
-/** Archive one root for the run's user when it is still archivable. */
+/**
+ * Archive one root for everyone when it is still archivable for the run's
+ * user.
+ */
 async function archiveRoot(
   run: ArchiveRun,
   rootConversationId: string,
 ): Promise<boolean> {
-  // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
-  const updated = await getDb()
-    .update(juniorConversationParticipants)
-    .set({ archivedAt: run.now })
-    .from(juniorUsers)
+  const archivable = getDb()
+    .select({ userId: juniorConversationParticipants.userId })
+    .from(juniorConversationParticipants)
+    .innerJoin(
+      juniorUsers,
+      eq(juniorUsers.id, juniorConversationParticipants.userId),
+    )
     .where(
       and(
-        eq(juniorUsers.id, juniorConversationParticipants.userId),
         eq(
           juniorConversationParticipants.rootConversationId,
           rootConversationId,
         ),
         archivableRow(run),
       ),
+    );
+  const updated = await getDb()
+    .update(juniorConversations)
+    .set({ archivedAt: run.now, detailVersion: nextDetailVersion })
+    .where(
+      and(
+        eq(juniorConversations.conversationId, rootConversationId),
+        isNull(juniorConversations.archivedAt),
+        sql`exists (${archivable})`,
+      ),
     )
-    .returning({ userId: juniorConversationParticipants.userId });
+    .returning({ conversationId: juniorConversations.conversationId });
   return updated.length > 0;
 }
 
@@ -341,7 +375,7 @@ async function selectAutoArchiveUsers() {
       and(
         eq(juniorConversationParticipants.userId, juniorUsers.id),
         eq(juniorConversationParticipants.autoArchive, true),
-        isNull(juniorConversationParticipants.archivedAt),
+        rootIsUnarchived(),
       ),
     );
   return await getDb()
@@ -361,7 +395,7 @@ async function selectAutoArchiveUsers() {
 
 /**
  * Run one auto-archive sweep over every user who wants it and return how
- * many participant rows it checked and archived.
+ * many participant rows it checked and how many roots it archived.
  */
 export async function runAutoArchiveSweep(args: {
   nowMs: number;
