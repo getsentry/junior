@@ -10,11 +10,13 @@ import {
   inArray,
   isNull,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  juniorConversations,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItems,
@@ -626,8 +628,10 @@ export type WaitingConversation = {
 };
 
 /**
- * List the Conversations that wait on a User: each is linked to an open item
- * that needs the User (`reviewItemNeedsUser`).
+ * List the root Conversations that wait on a User: each root or one of its
+ * child conversations is linked to an open item that needs the User
+ * (`reviewItemNeedsUser`). An item that a child agent adds links the child,
+ * and the feed lists only roots.
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,
@@ -635,7 +639,7 @@ export async function listWaitingConversations(
 ): Promise<WaitingConversation[]> {
   const rows = await db
     .selectDistinct({
-      conversationId: juniorReviewItemConversations.conversationId,
+      conversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`,
       itemId: juniorReviewItems.id,
       title: juniorReviewItems.title,
       createdAt: juniorReviewItems.createdAt,
@@ -644,6 +648,13 @@ export async function listWaitingConversations(
     .innerJoin(
       juniorReviewItems,
       eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+    )
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItemConversations.conversationId,
+      ),
     )
     .where(reviewItemNeedsUser(userId))
     .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));

@@ -136,7 +136,7 @@ export function AutoArchiveSettings({
           ) : null}
         </div>
         <p className="m-0 text-xs text-dashboard-text-muted">
-          Archive every done conversation once, without the wait time. Skips
+          Archive every done conversation once, after the same wait time. Skips
           conversations where you turned auto-archive off.
         </p>
       </div>

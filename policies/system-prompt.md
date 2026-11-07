@@ -23,7 +23,9 @@ When this policy and the code do not agree, fix one of them in the same change.
 A Prompt mode (`conversation`, `automation`, `child_agent`) can replace the
 content of a block. It must not add or move a block. `<tool-call-style>`,
 `<conversation>`, and the conversation lines of `<context-trust>` are only in
-`conversation` mode. `<slack-actions>` is only in `conversation` mode on Slack.
+`conversation` mode. `child_agent` mode also gets the Review item line of
+`<context-trust>`, because a child gets answers to its own items.
+`<slack-actions>` is only in `conversation` mode on Slack.
 
 1. **Identity.** One header sentence with the role and the precedence rule,
    then the name and platform identity.

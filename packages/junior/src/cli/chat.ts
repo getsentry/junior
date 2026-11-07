@@ -272,9 +272,9 @@ async function prepareLocalChatRun(
   });
   agentRunner = createAgentRunner(executeAgentRun, {
     // The local CLI does not send child results or messages back to the
-    // root Conversation, so only the root gets messageAgent here.
+    // root Conversation, so an Agent invocation gets no messageAgent here.
     bindMessageAgent: (request) =>
-      request.parentConversationId
+      request.agentInvocationId
         ? undefined
         : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>

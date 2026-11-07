@@ -6,6 +6,7 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
+import { savedInputInstruction } from "@/chat/review-items/prompt-input";
 import {
   buildTurnFailureResponse,
   logException,
@@ -628,7 +629,13 @@ async function runPausedTurnInContext(
                 : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
-              text: userMessage.text,
+              ...(await savedInputInstruction({
+                runtime:
+                  Boolean(dispatchId) ||
+                  isEventConversationMessage(userMessage),
+                reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
+                text: userMessage.text,
+              })),
             },
             // A dispatch reads only history saved for this Turn. Other input
             // must not become part of a system Turn. Other Turns read

@@ -152,7 +152,7 @@ When `SENTRY_DSN` is set, dashboard pages also send browser performance spans to
 The conversation stats endpoint is separate from the recent feed. PostgreSQL computes complete 90-day counts, locations, actors, status, runtime, token usage, and estimated cost directly from durable conversation-index records; those aggregates are not derived from a bounded recent-row sample.
 Dashboard dates use the viewer's browser timezone. `JUNIOR_TIMEZONE` does not change them.
 
-For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real conversation records.
+For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are reporting fixtures and appear before real conversation records. Messages that you send get a fixed reply, and no agent runs.
 
 ## Configure Google auth
 
@@ -171,6 +171,43 @@ Set the required environment variables:
 
 Dashboard cookies are signed with `JUNIOR_SECRET` by default. Set `BETTER_AUTH_SECRET` only when you need a separate rotation boundary for browser sessions.
 Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `JUNIOR_BASE_URL` to the public origin users should visit. Alternate deployment origins redirect there before Google sign-in so the OAuth state and callback cookies share one host. Slack reply footers and other surfaces that include a dashboard conversation link use the same public origin.
+
+## Configure phone notifications
+
+The dashboard can send phone notifications through Web Push. When Junior
+replies in a dashboard Conversation, the person who sent the message gets a
+notification on each device that they turned on. A Conversation in a Slack
+thread does not send these notifications. Slack notifies people there.
+
+1. Create one VAPID key pair for the deployment:
+
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+
+2. Set the environment variables:
+
+   | Variable                      | Required | Purpose                                                                                                                                 |
+   | ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+   | `JUNIOR_WEB_PUSH_PUBLIC_KEY`  | Yes      | VAPID public key. The browser uses it to subscribe.                                                                                     |
+   | `JUNIOR_WEB_PUSH_PRIVATE_KEY` | Yes      | VAPID private key. Keep it secret.                                                                                                      |
+   | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to an `https:` `JUNIOR_BASE_URL`. Notifications stay off with an `http:` URL. |
+
+3. Redeploy. Each person opens **Settings** and selects **Turn on for this
+   device**.
+
+On iPhone and iPad, Web Push works only from a Home Screen app. Open the
+dashboard in Safari, select **Share**, then **Add to Home Screen**. Open Junior
+from the Home Screen and turn on notifications there.
+
+Each person sets working hours in **Settings**: days, a start time, an end
+time, and a timezone. The default is 09:00 to 18:00, Monday to Friday. Outside
+these hours, Junior does not send a notification. The reply still shows in the
+dashboard. The automatic timezone comes from the person's linked Slack profile,
+then the saved user timezone, then `JUNIOR_TIMEZONE`. Calendar working hours
+are not used, because Google Calendar does not make them available.
+
+If you change the key pair, every device must turn notifications on again.
 
 ## Verify
 

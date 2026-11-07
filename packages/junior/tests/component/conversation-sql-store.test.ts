@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { ensureConversationRow } from "@/chat/conversations/sql/conversation-row";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
@@ -162,6 +163,120 @@ describe("conversation SQL store", () => {
         lastActivityAtMs: 1,
         parentConversationId: "parent-without-root",
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps the kind that each Conversation gets at create", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordActivity({
+        conversationId: "kind-root",
+        destination: inboundMessage("activity").destination,
+        nowMs: 1,
+      });
+      await store.createChild({
+        childConversationId: "agent:kind-task",
+        kind: "task",
+        parentConversationId: "kind-root",
+        nowMs: 2,
+      });
+      await store.recordActivity({
+        conversationId: "agent:kind-task",
+        nowMs: 3,
+      });
+
+      await expect(
+        store.get({ conversationId: "kind-root" }),
+      ).resolves.toMatchObject({ kind: "root" });
+      await expect(
+        store.get({ conversationId: "agent:kind-task" }),
+      ).resolves.toMatchObject({ kind: "task" });
+      await expect(
+        store.createChild({
+          childConversationId: "agent:kind-task",
+          kind: "thread",
+          parentConversationId: "kind-root",
+        }),
+      ).rejects.toThrow("Conversation kind changed for agent:kind-task");
+
+      const at = new Date(4);
+      const row = {
+        createdAt: at,
+        lastActivityAt: at,
+        updatedAt: at,
+        executionStatus: "idle" as const,
+      };
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "agent:kind-root-child",
+            kind: "root",
+            parentConversationId: "kind-root",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining(
+            "junior_conversations_kind_parent_check",
+          ),
+        },
+      });
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "kind-task-root",
+            kind: "task",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining(
+            "junior_conversations_kind_parent_check",
+          ),
+        },
+      });
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorConversations)
+          .values({
+            ...row,
+            conversationId: "agent:kind-unknown",
+            kind: "unknown" as "task",
+            parentConversationId: "kind-root",
+          }),
+      ).rejects.toMatchObject({
+        cause: {
+          message: expect.stringContaining("junior_conversations_kind_check"),
+        },
+      });
+
+      // A history append creates a root row for the child id after
+      // createChild reads it and before createChild writes it.
+      const readChild = store.get.bind(store);
+      vi.spyOn(store, "get").mockImplementation(async (args) => {
+        const existing = await readChild(args);
+        if (args.conversationId === "agent:kind-raced") {
+          await ensureConversationRow(fixture.sql, args.conversationId, 5);
+        }
+        return existing;
+      });
+      await expect(
+        store.createChild({
+          childConversationId: "agent:kind-raced",
+          kind: "task",
+          parentConversationId: "kind-root",
+        }),
+      ).rejects.toThrow("Conversation parent changed for agent:kind-raced");
     } finally {
       await fixture.close();
     }

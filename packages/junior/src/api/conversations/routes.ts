@@ -45,6 +45,10 @@ import {
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
+import {
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "../schema/conversation-title";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import { conversationChildAgentsReportSchema } from "../schema/child-agent";
@@ -55,6 +59,7 @@ import { createConversationAccessReader } from "./access";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
+import { renameConversation } from "./rename";
 import {
   archiveViewerDoneConversations,
   setConversationAutoArchive,
@@ -267,6 +272,30 @@ export function createConversationRoutes(
       jsonResponse(
         pinConversationResponseSchema,
         await pinConversation(
+          context.get("viewer"),
+          context.req.valid("param").conversationId,
+          context.req.valid("json"),
+        ),
+      ),
+  );
+
+  app.patch(
+    "/:conversationId/title",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      renameConversationBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) =>
+      jsonResponse(
+        renameConversationResponseSchema,
+        await renameConversation(
           context.get("viewer"),
           context.req.valid("param").conversationId,
           context.req.valid("json"),

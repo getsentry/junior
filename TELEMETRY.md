@@ -222,6 +222,7 @@ attributes. Nested logs and spans inherit them.
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
+| Phone notification missing or late   | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
 
 ## Code Mode
 
@@ -418,9 +419,11 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
   They follow the Sentry queue span conventions. `queue.process` starts a new
   trace.
-- `chat.turn` continues the trace of the oldest input `slack.message.ingress`
-  span and links to the other inputs and to `queue.process`. A resumed slice
-  continues the trace of the first slice.
+- `chat.turn` continues the trace of the oldest input: the
+  `slack.message.ingress` span, or the dashboard `http.server` request that
+  sent the Message. It links to the other inputs and to `queue.process`. A
+  resumed slice continues the trace of the first slice. An Event Turn has no
+  input trace, so its `chat.turn` is a child of `queue.process`.
 - `app.turn.delivery_lag_ms`, `app.turn.wait_ms`, and the `chat.turn` duration
   are contiguous. The timing attributes are absent when the value is negative
   (clock skew) and on resumed slices.
@@ -439,6 +442,39 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it.
 
+## Plugin Tasks and Notifications
+
+- A `plugin.task` span runs each plugin task. `app.plugin.name`,
+  `app.plugin.task`, and `app.ai.turn.session_id` name the task and the
+  Turn. A web or Event Turn runs its tasks in its `chat.turn`, before the
+  queue message is acknowledged. A Slack Turn queues its tasks, so each task
+  is in its own trace. Find its Turn by `gen_ai.conversation.id`.
+- On `plugin.task` `notifyReply`, `app.notification.outcome` is `sent` or
+  `skipped`. `app.notification.skip_reason` says why it skipped, such as
+  `outside_hours` or `has_location`. A sent task has device counts and
+  `app.notification.reply_lag_ms`: the time from the completed Turn to the
+  end of the pushes.
+- A `notification.push.send` span sends to one browser. `server.address` is
+  the push service host. `app.notification.push.outcome` is `delivered`,
+  `gone` (the subscription is deleted), or `failed`. Spans, logs, and errors
+  keep no endpoint path, because the path identifies the device.
+- `notification.push.sent` logs the counts for one notification.
+  `app.notification.kind` is `reply` or `test`.
+
+Reply notification outcomes and lag.
+
+```text
+dataset=spans query='span.op:plugin.task app.plugin.task:notifyReply'
+fields=app.notification.outcome,app.notification.skip_reason,count(),p50(app.notification.reply_lag_ms),p95(app.notification.reply_lag_ms),p95(span.duration)
+```
+
+Push service latency and failures by host.
+
+```text
+dataset=spans query='span.op:notification.push.send'
+fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p95(span.duration)
+```
+
 ## Dashboard
 
 - When `SENTRY_DSN` is set, dashboard pages send browser spans to the same
@@ -448,8 +484,11 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
   breadcrumbs, or replays.
 - A Reply rating is Sentry user feedback with `source`
   `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
-  `gen_ai.conversation.id`, and `messaging.message.id`. It has no Reply text
-  and no person. The dashboard hides the thumbs when it has no DSN.
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has the reader's
+  name and email, and the message is `Good reply` or `Bad reply`, plus the
+  reader's optional comment on a bad rating. It has no Reply text. Each Reply
+  sends at most one rating each time the reader opens its Conversation. The
+  dashboard hides the thumbs when it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their

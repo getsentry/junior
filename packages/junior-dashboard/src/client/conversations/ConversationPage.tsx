@@ -58,7 +58,10 @@ import {
   eventLogRows,
   filterEventLogRows,
 } from "./eventLog";
-import { TranscriptSearchProvider } from "./transcriptSearch";
+import {
+  TranscriptSearchProvider,
+  useTranscriptSearchMatch,
+} from "./transcriptSearch";
 import {
   TurnContextDetails,
   type TurnContextPanel,
@@ -89,6 +92,7 @@ import {
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
+import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
@@ -231,6 +235,7 @@ export function ConversationPage(props: {
   );
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
+  const searchMatch = useTranscriptSearchMatch(search);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const onRead = props.onRead;
@@ -440,6 +445,11 @@ export function ConversationPage(props: {
       setView(value);
     },
     [eventOpen, setSelectedEventSeq],
+  );
+  // The event log sits inside its Conversation, so mobile back leaves it.
+  useRegisterMobileHeaderBack(
+    view === "raw" ? "Back to conversation" : undefined,
+    () => onViewChange("rich"),
   );
   // A linked event, Turn, or memory can be outside the loaded rows. Then the
   // transcript opens at the page around it, which the server finds by the
@@ -726,7 +736,6 @@ export function ConversationPage(props: {
                 },
                 pending: archive.isPending,
               }}
-              live={live}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
               privacy={
@@ -735,6 +744,7 @@ export function ConversationPage(props: {
                 />
               }
               search={search}
+              searchMatch={searchMatch}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
               sidebarToggle={props.sidebarToggle}
               title={title}
@@ -811,6 +821,8 @@ export function ConversationPage(props: {
                           onOpenSubagentTranscript={onOpenSubagentTranscript}
                           search={search}
                           onSearchChange={setSearch}
+                          searchMatch={searchMatch.index}
+                          onSearchMatches={searchMatch.setMatches}
                           selectedEventSeq={selectedEventSeq}
                           startAtLink={startAtLink}
                           startAtUnread={startAtUnread}

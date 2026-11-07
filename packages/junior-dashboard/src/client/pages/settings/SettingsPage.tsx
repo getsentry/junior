@@ -22,6 +22,7 @@ import {
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
+import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";
 import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
 import type { DashboardCoreData } from "../../types";
 import { AutoArchiveSettings } from "./AutoArchiveSettings";
@@ -110,6 +111,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
       <AutoArchiveSettings identity={identity} />
+      <NotificationSettingsCard />
       <CustomizationForm />
     </SettingsPageLayout>
   );

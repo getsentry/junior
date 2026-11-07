@@ -7,6 +7,7 @@ export {
   MAX_INPUT_IMAGE_BYTES,
 } from "../chat/attachments/input";
 export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export { isAgentInvocationResultEventType } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
@@ -126,6 +127,15 @@ export type {
   ReorderPinnedConversationsBody,
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
+export {
+  CONVERSATION_TITLE_MAX_LENGTH,
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "./schema/conversation-title";
+export type {
+  RenameConversationBody,
+  RenameConversationResponse,
+} from "./schema/conversation-title";
 export type {
   AcceptedConversationMessage,
   ActorIdentity,
@@ -218,6 +228,17 @@ export {
   disconnectConnectionResponseSchema,
   startConnectionResponseSchema,
 } from "./schema/connection";
+export {
+  DEFAULT_NOTIFICATION_SCHEDULE,
+  isWithinNotificationSchedule,
+  notificationScheduleSchema,
+  notificationSettingsSchema,
+  testNotificationResponseSchema,
+} from "./schema/notification";
+export type {
+  NotificationSchedule,
+  NotificationSettings,
+} from "./schema/notification";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,

@@ -63,6 +63,10 @@ deterministic reporting records that are hard to produce through a live local
 chat. Plugin report data is pass-through from the configured reporting provider
 and needs separate validation.
 
+Messages sent from the composer or a Quick question do not run the agent. The
+mock shows a working Turn for 2 seconds, then a fixed reply. Sent messages
+stay until the dev server restarts.
+
 The root dev command owns local auth-disabled defaults and the production-like
 Nitro preset. If it fails to start, diagnose or report the dev runner failure;
 do not change `apps/example/nitro.config.ts`, dashboard auth settings, or OAuth

@@ -87,6 +87,7 @@ export function PersonalTokensPage() {
   const tokens = tokensQuery.data?.tokens ?? [];
   const loading = tokensQuery.isPending;
   const busy = createTokenMutation.isPending || revokeTokenMutation.isPending;
+  const canCreate = !loading && !busy && Boolean(name.trim());
   const displayedError =
     (createTokenMutation.isError
       ? "Could not create the API token. Try again."
@@ -126,7 +127,16 @@ export function PersonalTokensPage() {
           </Button>
         </div>
       ) : (
-        <div className="flex gap-2">
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canCreate || createTokenStarted.current) return;
+            revokeTokenMutation.reset();
+            createTokenStarted.current = true;
+            createTokenMutation.mutate(name);
+          }}
+        >
           <Input
             aria-label="Token name"
             className="min-w-0 flex-1"
@@ -134,18 +144,10 @@ export function PersonalTokensPage() {
             onChange={(event) => setName(event.target.value)}
             value={name}
           />
-          <Button
-            disabled={loading || busy || !name.trim()}
-            onClick={() => {
-              if (createTokenStarted.current) return;
-              revokeTokenMutation.reset();
-              createTokenStarted.current = true;
-              createTokenMutation.mutate(name);
-            }}
-          >
+          <Button disabled={!canCreate} type="submit">
             Create token
           </Button>
-        </div>
+        </form>
       )}
 
       {displayedError ? <InlineError>{displayedError}</InlineError> : null}

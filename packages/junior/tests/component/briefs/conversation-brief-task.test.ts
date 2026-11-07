@@ -473,6 +473,7 @@ describe("Conversation Brief task", () => {
 
     const childConversationId = `local:briefs-child:${idSuffix}`;
     await getConversationStore().createChild({
+      kind: "task",
       childConversationId,
       parentConversationId: conversationId,
       nowMs: 10,
