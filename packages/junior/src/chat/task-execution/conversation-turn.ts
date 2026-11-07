@@ -384,8 +384,11 @@ export function createConversationTurnWorker(
     // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
-    // A child keeps its root's Location for provider config and Slack read
-    // tools, but only a root posts its reply to the Location.
+    // Only a root delivers to its Location. A child keeps its root's Location
+    // for provider config and Slack read tools, but never posts.
+    // TODO(dcramer): Remove this root check when each Run gets explicit
+    // Delivery (see the Source-based Delivery TODO above). A child Run then
+    // gets no Delivery.
     const deliverToProvider =
       Boolean(conversationLocation) &&
       isEventTurn &&
