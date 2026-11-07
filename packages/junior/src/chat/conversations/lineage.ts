@@ -93,8 +93,9 @@ export interface LineageRoot {
 }
 
 /**
- * Read the root of a root or child Conversation. A broken chain has no root,
- * so it has no Location or visibility.
+ * Read the depth and the root facts of a root or child Conversation. For a
+ * broken chain, return only the depth of the rows found, with no Location or
+ * visibility.
  */
 export async function readLineageRoot(
   conversationId: string,
