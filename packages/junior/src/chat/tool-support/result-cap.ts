@@ -42,8 +42,8 @@ function headAndTail(
 }
 
 /**
- * Pretty-print JSON so the saved file has many lines. readFile pages by line
- * and grep shows 500 chars of a line, so one long line is hard to read.
+ * Pretty-print JSON so the saved file has many lines. readFile pages by line,
+ * so one long line is hard to read.
  */
 function fileText(text: string): string {
   try {
