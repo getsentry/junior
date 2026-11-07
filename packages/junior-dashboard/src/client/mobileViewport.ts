@@ -26,7 +26,7 @@ export type MobileViewportMetrics = {
  * Map layout + visual viewport into shell geometry.
  *
  * Contract:
- * - closed keyboard: shell = page height, offset 0 (ignore rubber-band)
+ * - closed keyboard: shell = layout height, offset 0 (ignore rubber-band)
  * - open keyboard: shell height = visual height
  * - open keyboard offset: the visual pan, capped so the shell stays inside the
  *   page. When the page already shrank to the visible band
@@ -38,12 +38,6 @@ export type MobileViewportMetrics = {
  * 714, and Safari pans the visual viewport down 310px. The shell must follow
  * that pan. Capping by `innerHeight` alone gives 0 and leaves the shell 310px
  * above the screen, with a gap over the keyboard.
- *
- * Closed height uses the page height, not `innerHeight`. A new-Conversation
- * send unmounts the focused home composer with the keyboard still up. That
- * frame reads as closed (no focus, no pan) while `innerHeight` is still
- * keyboard-short, and the shell kept that short height with a blank band
- * under the composer. `clientHeight` does not shrink with the keyboard.
  *
  * No freeze / first-dock / source coalesce. The shell follows live geometry.
  * Body scroll lock stops document panning; the shell does not fight scrollY.
@@ -83,22 +77,22 @@ export function mobileViewportMetrics(input: {
   const resizesContentOpen =
     bothShrunkTogether && (input.editableFocused || visualOffsetTop > 0);
   const keyboardOpen = resizesVisualOpen || resizesContentOpen;
-  const pageHeight = Math.max(
-    layoutHeight,
-    Math.round(input.documentClientHeight),
-  );
 
   if (!keyboardOpen) {
     return {
-      heightPx: pageHeight,
+      heightPx: layoutHeight,
       keyboardOpen: false,
       offsetTopPx: 0,
     };
   }
 
-  // Cap by the page height. It is 0 only when both page heights match the
-  // visible band, so a leftover offset cannot push the composer under the
+  // Cap by the taller of the two page heights. It is 0 only when both match
+  // the visible band, so a leftover offset cannot push the composer under the
   // keyboard. It is never tighter than an `innerHeight`-only cap.
+  const pageHeight = Math.max(
+    layoutHeight,
+    Math.round(input.documentClientHeight),
+  );
   const maxOffsetTop = Math.max(0, pageHeight - visualHeight);
   return {
     heightPx: visualHeight,
@@ -223,7 +217,7 @@ export function useMobileViewportHeight(
 
         restingLayoutHeight = nextRestingLayoutHeight({
           keyboardOpen: metrics.keyboardOpen,
-          layoutHeight: metrics.heightPx,
+          layoutHeight,
           previousRestingLayoutHeight: restingLayoutHeight,
         });
 

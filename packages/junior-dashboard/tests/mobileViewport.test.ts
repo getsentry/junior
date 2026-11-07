@@ -151,26 +151,6 @@ describe("mobileViewportMetrics", () => {
     });
   });
 
-  it("uses the page height when focus leaves with innerHeight still keyboard-short", () => {
-    // A new-Conversation send unmounts the focused home composer while the
-    // iOS keyboard is open, so this frame reads as closed.
-    expect(
-      mobileViewportMetrics({
-        documentClientHeight: 714,
-        editableFocused: false,
-        layoutHeight: 404,
-        mobile: true,
-        restingLayoutHeight: 714,
-        visualHeight: 404,
-        visualOffsetTop: 0,
-      }),
-    ).toEqual({
-      heightPx: 714,
-      keyboardOpen: false,
-      offsetTopPx: 0,
-    });
-  });
-
   it("does not treat orientation shrink as a stuck keyboard open", () => {
     // Portrait resting height left behind after rotating closed to landscape.
     // Height alone must not lock keyboard-open forever without focus/offset.
