@@ -21,7 +21,7 @@ export function registerArchiveConversationTool(
     {
       title: "Archive conversation",
       description:
-        "Archive one of your conversations, or restore it. Archiving a top-level conversation hides it and its child conversations only for you, and writes nothing to the children. Archiving a child conversation, a Thread or a Task, hides it and its children for everyone. A child archive fails while any of its children is not archived, unless applyToChildren is true. A child restore fails while a conversation above it is archived. A new message from a person restores a child and the archived conversations above it.",
+        "Archive one of your conversations, or restore it. Archiving a top-level conversation hides it and its child conversations only for you, and writes nothing to the children. Archiving a child conversation, a Thread or a Task, hides it and its children for everyone. A child restore fails while a conversation above it is archived. A new message from a person restores a child and the archived conversations above it.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         archived: z
@@ -32,7 +32,7 @@ export function registerArchiveConversationTool(
           .boolean()
           .default(false)
           .describe(
-            "Child conversations only. True also archives, or restores, every child of this conversation at any depth. Ignored for a top-level conversation.",
+            "Child conversations only. True also archives, or restores, every child of this conversation at any depth. Without it, a child archive fails while any of its children is not archived. Ignored for a top-level conversation.",
           ),
         lastSeenAt: z
           .string()

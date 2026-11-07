@@ -68,6 +68,7 @@ import {
   type TurnContextSelection,
 } from "./TranscriptTurnContextView";
 import { cn } from "../styles";
+import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ConversationAgentTree } from "./ConversationAgentTree";
 import { conversationContextTags } from "./ConversationContextTags";
@@ -736,7 +737,13 @@ export function ConversationPage(props: {
               archive={{
                 archived: Boolean(conversationArchivedAt(conversation)),
                 disabled: !conversation || archive.isPending,
-                error: Boolean(archive.error),
+                // A refused restore names the archived ancestor to restore
+                // first.
+                error: archive.error
+                  ? (archive.error instanceof DashboardApiError &&
+                      archive.error.apiError) ||
+                    "Could not update archive state."
+                  : undefined,
                 onClick: () => {
                   if (conversationArchivedAt(conversation)) {
                     setArchived(false);
@@ -887,7 +894,7 @@ export function ConversationPage(props: {
       </ConversationSidePanelLayout>
       {confirmChildArchive ? (
         <ArchiveChildDialog
-          childCount={detail.data?.childAgentTotals?.count ?? 0}
+          hasChildren={Boolean(detail.data?.childAgentTotals?.count)}
           onClose={() => setConfirmChildArchive(false)}
           onConfirm={() => {
             setConfirmChildArchive(false);

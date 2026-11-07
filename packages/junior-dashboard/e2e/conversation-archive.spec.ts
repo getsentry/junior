@@ -188,7 +188,7 @@ test("confirms a child archive and archives its children too", async ({
   await page.getByRole("button", { name: "Archive", exact: true }).click();
 
   const confirm = page.getByRole("alertdialog", {
-    name: "Also archive 1 child conversation?",
+    name: "Also archive its child conversations?",
   });
   await expect(confirm).toContainText("for everyone");
   const archiveRequest = page.waitForRequest(
@@ -201,6 +201,20 @@ test("confirms a child archive and archives its children too", async ({
     archived: true,
   });
   await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+});
+
+test("shows why a child restore is refused", async ({ page, dashboard }) => {
+  const error =
+    "Conversation junior:internal:dashboard-qa:advisor-plan above this one is archived. Restore it first.";
+  await page.route("**/api/conversations/*/archive", (route) =>
+    route.fulfill({ json: { error }, status: 409 }),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:archived-thread")}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Unarchive", exact: true }).click();
+  await expect(page.getByText(error)).toBeVisible();
 });
 
 test.describe("expires the archive undo notice", () => {

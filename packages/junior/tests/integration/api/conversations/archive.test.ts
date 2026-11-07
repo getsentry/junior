@@ -490,6 +490,28 @@ describe("conversation archive API", () => {
     await expect(feedThreads(viewer)).resolves.toEqual([
       { conversationId: rootId, threads: [visibleThreads[0]] },
     ]);
+
+    // A Thread created under an archived Task has no archive of its own, but
+    // its archived ancestor still hides it.
+    const lateTaskId = "agent:thread-archive-late-task";
+    await getConversationStore().createChild({
+      childConversationId: lateTaskId,
+      kind: "task",
+      nowMs: 7_000,
+      parentConversationId: rootId,
+    });
+    expect(
+      (await archive(lateTaskId, true, await lastSeen(lateTaskId))).status,
+    ).toBe(200);
+    await getConversationStore().createChild({
+      childConversationId: "agent:thread-archive-late-thread",
+      kind: "thread",
+      nowMs: 8_000,
+      parentConversationId: lateTaskId,
+    });
+    await expect(feedThreads(viewer)).resolves.toEqual([
+      { conversationId: rootId, threads: [visibleThreads[0]] },
+    ]);
   });
 
   it("archives for a root actor without an existing participant row", async () => {

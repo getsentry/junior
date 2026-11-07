@@ -373,7 +373,6 @@ describe("dashboard canonical-event components", () => {
           archive={{
             archived: false,
             disabled: false,
-            error: false,
             onClick: () => {},
             pending: false,
           }}

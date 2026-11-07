@@ -186,7 +186,7 @@ export type Conversation = {
   isPriority?: boolean;
   kind: ConversationSummaryReport["kind"];
   parentConversationId?: string;
-  /** Set only on Threads. Null when the Thread is not archived. */
+  /** Set on Threads and Tasks. Null when the child is not archived. */
   childArchivedAt?: string | null;
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[];

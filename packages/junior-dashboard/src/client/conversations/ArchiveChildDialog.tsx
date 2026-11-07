@@ -10,19 +10,17 @@ import {
 
 /**
  * Confirm a child archive. It applies to everyone, and the dashboard always
- * archives the child's own children with it.
+ * archives the child's own children with it. It names no count, because some
+ * children can already be archived.
  */
 export function ArchiveChildDialog(props: {
-  childCount: number;
+  hasChildren: boolean;
   onClose(): void;
   onConfirm(): void;
 }) {
-  const title =
-    props.childCount === 0
-      ? "Archive for everyone?"
-      : `Also archive ${props.childCount} child ${
-          props.childCount === 1 ? "conversation" : "conversations"
-        }?`;
+  const title = props.hasChildren
+    ? "Also archive its child conversations?"
+    : "Archive for everyone?";
   return (
     <AlertDialog
       open
@@ -34,7 +32,7 @@ export function ArchiveChildDialog(props: {
         <AlertDialogTitle>{title}</AlertDialogTitle>
         <AlertDialogDescription>
           This hides the conversation
-          {props.childCount === 0 ? "" : " and its child conversations"} for
+          {props.hasChildren ? " and its child conversations" : ""} for
           everyone. A new message from a person restores it.
         </AlertDialogDescription>
         <AlertDialogFooter>

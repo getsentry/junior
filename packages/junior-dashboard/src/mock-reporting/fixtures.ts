@@ -12,6 +12,7 @@ import type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
@@ -1792,11 +1793,60 @@ function summaryFromConversation(
 }
 
 /**
+ * Find where a mock Thread nests, like the API: its nearest Thread or root
+ * ancestor. Returns undefined when an ancestor child is archived.
+ */
+function mockThreadPlacement(
+  byId: ReadonlyMap<string, MockConversation>,
+  thread: MockConversation,
+): string | undefined {
+  let placement: string | undefined;
+  for (
+    let ancestor = byId.get(thread.parentConversationId ?? "");
+    ancestor;
+    ancestor = byId.get(ancestor.parentConversationId ?? "")
+  ) {
+    if (ancestor.kind === "root") return placement ?? ancestor.conversationId;
+    if (ancestor.childArchivedAt) return undefined;
+    if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
+  }
+  return undefined;
+}
+
+/** Group shown mock Threads by where they nest. */
+function mockThreadsByPlacement(
+  conversations: readonly MockConversation[],
+): Map<string, ConversationFeedItem[]> {
+  const byId = new Map(
+    conversations.map((conversation) => [
+      conversation.conversationId,
+      conversation,
+    ]),
+  );
+  const threadsByPlacement = new Map<string, ConversationFeedItem[]>();
+  for (const thread of conversations) {
+    if (thread.kind !== "thread" || thread.childArchivedAt) continue;
+    const placement = mockThreadPlacement(byId, thread);
+    if (!placement) continue;
+    threadsByPlacement.set(placement, [
+      ...(threadsByPlacement.get(placement) ?? []),
+      summaryFromConversation(thread),
+    ]);
+  }
+  return threadsByPlacement;
+}
+
+/**
  * Match the API feed: roots only, each with its shown Threads nested under
- * it. Mock Threads sit directly under their root.
+ * their nearest shown ancestor.
  */
 function mockConversationFeed(nowMs: number): ConversationFeed {
   const conversations = mockConversations(nowMs);
+  const threadsByPlacement = mockThreadsByPlacement(conversations);
+  const nest = (item: ConversationFeedItem): ConversationFeedItem => {
+    const threads = threadsByPlacement.get(item.conversationId);
+    return threads ? { ...item, threads: threads.map(nest) } : item;
+  };
   return {
     source: "conversation_index",
     generatedAt: iso(nowMs),
@@ -1808,16 +1858,7 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
       )
       .map((root) => {
         const summary = summaryFromConversation(root);
-        if (summary.archivedAt) return summary;
-        const threads = conversations
-          .filter(
-            (conversation) =>
-              conversation.kind === "thread" &&
-              conversation.parentConversationId === root.conversationId &&
-              !conversation.childArchivedAt,
-          )
-          .map(summaryFromConversation);
-        return threads.length ? { ...summary, threads } : summary;
+        return summary.archivedAt ? summary : nest(summary);
       }),
   };
 }
