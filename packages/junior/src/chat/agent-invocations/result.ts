@@ -5,7 +5,6 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
-  eventBatchDoers,
   isEventMailboxMetadata,
   renderEventBatchInputs,
   timerWatchCredentialSubject,
@@ -25,21 +24,26 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
+import { createAgentInvocationFromLatest } from "./create";
 import {
-  createAgentInvocationFromLatest,
-  getAgentInvocation,
   getAgentInvocationIdForEvents,
   getAgentInvocationIdForMessage,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+} from "./ids";
+import {
+  getAgentInvocation,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
 } from "./store";
 import { renderUntrustedTag } from "@/chat/input-tags";
-import { renderEventDoerLines } from "@/chat/task-input";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { listUnreportedSiblingAgents } from "./list";
+import {
+  agentInvocationResultEventType,
+  isAgentInvocationResultEventType,
+} from "./result-event-type";
 import type {
   AgentInvocation,
   ChildAgent,
@@ -54,7 +58,6 @@ import {
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
 // can pause for input or auth instead of failing (#881).
-const AGENT_INVOCATION_EVENT_TYPE_PREFIX = "agent_invocation.";
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
 /** Event type of a message that a child agent sends to its parent. */
 const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
@@ -101,10 +104,8 @@ function trustedSummary(
 /**
  * Render the parent agent input for one terminal agent invocation as one
  * `<agent-result>`. A child agent wrote the output, so it is escaped data.
- * `status` and `waiting_on` are runtime facts. The child names the people who
- * did its watch events by provider handle, so the runtime adds who they are.
- * The system prompt says what to do for each status, so the input repeats no
- * guidance.
+ * `status` and `waiting_on` are runtime facts. The system prompt says what to
+ * do for each status, so the input repeats no guidance.
  */
 function renderResultInput(
   invocation: TerminalAgentInvocation,
@@ -133,7 +134,6 @@ function renderResultInput(
     },
     "A child agent that you started",
     output || "(empty)",
-    renderEventDoerLines(invocation.doneBy ?? []),
   );
 }
 
@@ -152,7 +152,7 @@ function buildResultInboundMessage(
     kind: "event",
     event: {
       eventKey: invocation.invocationId,
-      eventType: `${AGENT_INVOCATION_EVENT_TYPE_PREFIX}${invocation.status}`,
+      eventType: agentInvocationResultEventType(invocation.status),
       identifier: invocation.invocationId,
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
       trustedSummary: summary,
@@ -231,7 +231,6 @@ function renderMessageInput(sender: AgentInvocation, text: string): string {
     },
     "A child agent that you started",
     text.trim(),
-    renderEventDoerLines(sender.doneBy ?? []),
   );
 }
 
@@ -301,7 +300,7 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
   if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
     return { invocationId: metadata.event.identifier, kind: "message" };
   }
-  return metadata.event.eventType.startsWith(AGENT_INVOCATION_EVENT_TYPE_PREFIX)
+  return isAgentInvocationResultEventType(metadata.event.eventType)
     ? { invocationId: metadata.event.identifier, kind: "result" }
     : undefined;
 }
@@ -373,7 +372,6 @@ async function startAgentInvocationsForChildInput(
     // use the grants of the person who set it.
     const { actor, source } = events[0]!;
     const invocation = await createAgentInvocationFromLatest({
-      doneBy: eventBatchDoers(messages),
       // TODO(dcramer): Keep one content part per input after an agent
       // invocation stores its input as parts.
       input: renderEventBatchInputs(

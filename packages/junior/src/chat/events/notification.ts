@@ -5,10 +5,8 @@ import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
 import {
-  mergeEventDoers,
   renderTaskBatchInput,
   renderTaskInput,
-  type EventDoer,
   type EventDoneBy,
   type TaskBatchEvent,
 } from "@/chat/task-input";
@@ -204,15 +202,6 @@ function readEventTaskFacts(
   if (!watchId) return undefined;
   const parsed = eventTaskFactsSchema.safeParse(metadata.task);
   return parsed.success ? { facts: parsed.data, metadata, watchId } : undefined;
-}
-
-/** Return the linked people who did the Watch Events in one batch. */
-export function eventBatchDoers(
-  messages: readonly InboundMessage[],
-): EventDoer[] {
-  return mergeEventDoers(
-    messages.map((message) => readEventTaskFacts(message)?.facts.doneBy),
-  );
 }
 
 /**

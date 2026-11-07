@@ -1,1 +1,0 @@
-ALTER TABLE "junior_agent_invocations" ADD COLUMN "done_by_json" jsonb;

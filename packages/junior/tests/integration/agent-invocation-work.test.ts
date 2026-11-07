@@ -3,14 +3,18 @@ import * as z from "zod";
 import { createApp, defineJuniorPlugins } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  completeAgentInvocation,
   createAgentInvocation,
   createAgentInvocationForMessage,
-  getActiveAgentInvocationForConversation,
-  getAgentInvocation,
+} from "@/chat/agent-invocations/create";
+import {
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
+} from "@/chat/agent-invocations/ids";
+import {
+  completeAgentInvocation,
+  getActiveAgentInvocationForConversation,
+  getAgentInvocation,
   markAgentInvocationPaused,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
@@ -292,6 +296,8 @@ describe("agent invocation conversation work", () => {
       ]);
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
+        // Guardian intent, prompt mode, and reportBlocked read this field.
+        agentInvocationId: created.invocationId,
         conversationId: created.childConversationId,
         instruction: { text: slackInvocationInput.input },
         disabledFeatures: ["interactive-auth", "subagents"],

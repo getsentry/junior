@@ -20,6 +20,7 @@ import {
 import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/ui/button";
+import { BareTextarea } from "../components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -525,7 +526,7 @@ export const ConversationComposer = memo(function ConversationComposer(
         <label className="sr-only" htmlFor={id}>
           {props.label}
         </label>
-        <textarea
+        <BareTextarea
           // Chat is technical: ids, paths, code. Suppress browser IME assist
           // that fights identifiers, unless the user turns autocorrect on in
           // settings.

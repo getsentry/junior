@@ -4,9 +4,9 @@ import type { AgentRun } from "@/chat/agent/types";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
   createAgentInvocationForMessage,
-  getAgentInvocation,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
-} from "@/chat/agent-invocations/store";
+} from "@/chat/agent-invocations/create";
+import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocation,
   createAndEnqueueAgentInvocation,
@@ -115,17 +115,17 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
       idempotencyKey: string;
       input: string;
     }) => {
-      const { invocation } = await createAgentInvocationForMessage({
+      const created = await createAgentInvocationForMessage({
         ...baseInput,
         ...args,
         parentToolCallId: args.idempotencyKey,
       });
-      await enqueueAgentInvocation(invocation, {
+      await enqueueAgentInvocation(created.invocation, {
         conversationStore,
         queue,
         state,
       });
-      return invocation;
+      return created;
     },
     queue,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
@@ -192,7 +192,7 @@ describe("agent invocation identity and concurrency", () => {
         reasoningLevel: "high",
       });
       await harness.drainQueuedWork();
-      const second = await harness.message({
+      const { invocation: second } = await harness.message({
         childConversationId: first.childConversationId,
         idempotencyKey: "named-2",
         input: "second named task",
@@ -369,6 +369,12 @@ describe("agent invocation identity and concurrency", () => {
   it("rejects new children once the parent concurrent active limit is reached", async () => {
     const harness = await createHarness(taskModel);
     try {
+      const idle = await harness.spawn({
+        idempotencyKey: "limit-idle",
+        input: "idle task",
+      });
+      await harness.drainQueuedWork();
+
       const active = await Promise.all(
         Array.from(
           { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
@@ -398,6 +404,24 @@ describe("agent invocation identity and concurrency", () => {
         invocationId: active[0]?.invocationId,
       });
 
+      // A message to an idle child makes it active, so it needs room.
+      await expect(
+        harness.message({
+          childConversationId: idle.childConversationId,
+          idempotencyKey: "limit-idle-message",
+          input: "wake the idle child",
+        }),
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+
+      // A busy child already counts, so a message to it queues.
+      await expect(
+        harness.message({
+          childConversationId: active[0]!.childConversationId,
+          idempotencyKey: "limit-busy-message",
+          input: "more for the busy child",
+        }),
+      ).resolves.toMatchObject({ queued: true });
+
       await harness.drainQueuedWork();
 
       await expect(
@@ -409,6 +433,31 @@ describe("agent invocation identity and concurrency", () => {
         status: "pending",
       });
       await harness.drainQueuedWork();
+
+      // A nested coordinator's own open work does not count as one of its
+      // children, so it can still start the full cap of children.
+      const coordinator = await harness.spawn({
+        idempotencyKey: "limit-coordinator",
+        input: "coordinate nested work",
+      });
+      await Promise.all(
+        Array.from(
+          { length: MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT },
+          (_, index) =>
+            harness.spawn({
+              idempotencyKey: `limit-nested-${index}`,
+              input: `nested task ${index}`,
+              parentConversationId: coordinator.childConversationId,
+            }),
+        ),
+      );
+      await expect(
+        harness.spawn({
+          idempotencyKey: "limit-nested-overflow",
+          input: "one too many nested",
+          parentConversationId: coordinator.childConversationId,
+        }),
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
     } finally {
       await harness.close();
     }

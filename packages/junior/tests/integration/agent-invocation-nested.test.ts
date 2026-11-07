@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
-  completeAgentInvocation,
-  createAgentInvocation,
-  getAgentInvocation,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+} from "@/chat/agent-invocations/ids";
+import {
+  completeAgentInvocation,
+  getAgentInvocation,
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";

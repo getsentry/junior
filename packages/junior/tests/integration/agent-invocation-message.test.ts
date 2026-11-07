@@ -1,12 +1,14 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
-  completeAgentInvocation,
-  createAgentInvocation,
-  getAgentInvocation,
   getAgentInvocationId,
   getAgentInvocationIdForMessage,
+} from "@/chat/agent-invocations/ids";
+import {
+  completeAgentInvocation,
+  getAgentInvocation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
@@ -93,6 +95,7 @@ function topLevelRun(
 /** The Run of one child agent invocation, as the invocation worker builds it. */
 function childRun(invocation: AgentInvocation): AgentRun {
   return {
+    agentInvocationId: invocation.invocationId,
     actor: invocation.actor,
     conversationId: invocation.childConversationId,
     destination: invocation.destination,
@@ -667,6 +670,7 @@ describe("messageAgent", () => {
       // through a child agent.
       const publicChild = "agent:public-child";
       await getConversationStore().createChild({
+        kind: "task",
         childConversationId: publicChild,
         parentConversationId: publicTarget,
       });

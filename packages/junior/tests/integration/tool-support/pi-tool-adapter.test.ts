@@ -305,6 +305,7 @@ describe("Pi tool adapter integration", () => {
         ...runtimeContext(),
         automation: { sendsMessage: false },
         messageAgent,
+        agentInvocationId: "invocation-1",
         parentConversationId: "local:test:parent",
         spawnAgent,
       },

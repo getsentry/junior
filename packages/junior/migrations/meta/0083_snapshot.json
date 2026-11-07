@@ -1,5 +1,5 @@
 {
-  "id": "8f0c373b-f71c-43ca-917a-471159ff0b56",
+  "id": "8a2ddd49-b5da-4186-a155-a87fb14dfaec",
   "prevId": "d5abaea4-86aa-4eb8-9763-4f44340f586c",
   "version": "7",
   "dialect": "postgresql",
@@ -132,12 +132,6 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "done_by_json": {
-          "name": "done_by_json",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "destination_json": {
           "name": "destination_json",
@@ -2592,6 +2586,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "forked_from_conversation_id": {
           "name": "forked_from_conversation_id",
           "type": "text",
@@ -2868,7 +2868,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "junior_conversations_kind_check": {
+          "name": "junior_conversations_kind_check",
+          "value": "\"junior_conversations\".\"kind\" in ('root', 'thread', 'task')"
+        },
+        "junior_conversations_kind_parent_check": {
+          "name": "junior_conversations_kind_parent_check",
+          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" = 'root') = (\"junior_conversations\".\"parent_conversation_id\" is null))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.junior_destinations": {

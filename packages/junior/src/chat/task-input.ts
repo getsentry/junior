@@ -64,15 +64,12 @@ export interface EventDoneBy {
 }
 
 /** A linked Event doer, merged across the Events of one task message. */
-export interface EventDoer {
+interface Doer {
   mention: string;
-  /** Provider handles that the Event data uses for the same person. */
-  handles: string[];
-}
-
-interface Doer extends EventDoer {
   /** What the person did, such as "did Event 2". */
   did: string;
+  /** Provider handles that the Event data uses for the same person. */
+  handles: string[];
 }
 
 function quoted(values: readonly string[]): string {
@@ -120,31 +117,6 @@ function peopleTags(
       ),
     ),
   ];
-}
-
-/**
- * Render the linked people who did the Events that started a child agent's
- * work, for the parent that reads its result or message. The child reports
- * them by provider handle, so without this the parent can mention a person
- * and also name them as someone else.
- */
-export function renderEventDoerLines(doers: readonly EventDoer[]): string[] {
-  return peopleTags(
-    [],
-    doers.map((doer) => ({
-      ...doer,
-      did: "did the Events that started this work",
-    })),
-  );
-}
-
-/** Merge Event doers by mention, in first-Event order. */
-export function mergeEventDoers(
-  doneBy: readonly (EventDoneBy | undefined)[],
-): EventDoer[] {
-  return batchDoers(
-    doneBy.map((entry, index) => ({ doneBy: entry, number: index + 1 })),
-  ).map(({ mention, handles }) => ({ mention, handles }));
 }
 
 /** Merge the doers of numbered Events, in first-Event order. */
