@@ -22,6 +22,7 @@ import {
 } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { SANDBOX_TOOL_SOURCE } from "@/chat/sandbox/tool-source";
 
 const DEFAULT_FIND_LIMIT = 100;
 
@@ -228,6 +229,8 @@ async function findFilesWithRipgrep(params: {
 /** Create the sandbox file discovery tool definition exposed to the agent. */
 export function createFindFilesTool() {
   return zodTool({
+    exposure: "deferred",
+    source: SANDBOX_TOOL_SOURCE,
     description:
       "Find sandbox workspace files by glob pattern. Returns bounded paths relative to the search root and skips dependency/cache directories.",
     annotations: {

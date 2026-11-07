@@ -10,6 +10,7 @@ import {
 } from "@/chat/tools/sandbox/file-uploads";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { FILES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
 const outputSchema = juniorToolOutputSchema.extend({
   bytes: z.number().int().positive(),
@@ -27,6 +28,8 @@ export function createPublishImageTool(args: {
   workspace: SandboxWorkspace;
 }) {
   return zodTool({
+    exposure: "deferred",
+    source: FILES_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

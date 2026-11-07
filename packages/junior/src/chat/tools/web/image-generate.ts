@@ -12,6 +12,7 @@ import { generatedArtifactFileRefSchema } from "@/chat/tools/sandbox/file-upload
 import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { FILES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
 // AI Gateway rejects request bodies over 4.5 MB with HTTP 413. Base64 makes
 // images a third larger, so 3 MB of images keeps the body under that limit.
@@ -171,6 +172,8 @@ export function createImageGenerateTool(
   deps: ImageGenerateToolDeps = {},
 ) {
   return zodTool({
+    exposure: "deferred",
+    source: FILES_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: false,

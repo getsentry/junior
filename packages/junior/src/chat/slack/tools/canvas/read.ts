@@ -8,6 +8,7 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 const slackCanvasReadOutputSchema = juniorToolOutputSchema
   .extend({
@@ -51,6 +52,8 @@ function canvasLines(content: string, offset?: number, limit?: number) {
  */
 export function createSlackCanvasReadTool() {
   return zodTool({
+    exposure: "deferred",
+    source: SLACK_TOOL_SOURCE,
     description:
       "Read a Slack canvas as markdown. Returns the whole canvas unless you set offset or limit.",
     annotations: {

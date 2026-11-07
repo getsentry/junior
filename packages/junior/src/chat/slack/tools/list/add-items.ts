@@ -10,10 +10,13 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolState } from "@/chat/tools/types";
+import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 /** Create a tool that appends items to an explicit Slack list. */
 export function createSlackListAddItemsTool(state: ToolState) {
   return zodTool({
+    exposure: "deferred",
+    source: SLACK_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: false,

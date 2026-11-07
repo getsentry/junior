@@ -1,12 +1,17 @@
 import * as z from "zod";
 import { createTimerWatch } from "@/chat/events/store";
-import { RESOURCE_SUBSCRIPTION_MAX_TTL_MS } from "@/chat/events/tool-support";
+import {
+  RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
+  RESOURCE_WATCH_TOOL_SOURCE,
+} from "@/chat/events/tool-support";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /** Create one heartbeat-backed Watch in the current Conversation. */
 export function createWatchTimerTool(context: ToolRuntimeContext) {
   return zodTool({
+    exposure: "deferred",
+    source: RESOURCE_WATCH_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

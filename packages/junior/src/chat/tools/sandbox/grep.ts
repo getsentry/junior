@@ -22,6 +22,7 @@ import {
   juniorToolOutputSchema,
   makeStructuredToolOutput,
 } from "@/chat/tool-support/structured-result";
+import { SANDBOX_TOOL_SOURCE } from "@/chat/sandbox/tool-source";
 
 const DEFAULT_GREP_LIMIT = 100;
 const MAX_GREP_LINE_CHARS = 500;
@@ -473,6 +474,8 @@ async function grepFilesWithRipgrep(params: {
 /** Create the sandbox grep tool definition exposed to the agent. */
 export function createGrepTool() {
   return zodTool({
+    exposure: "deferred",
+    source: SANDBOX_TOOL_SOURCE,
     description:
       "Search sandbox workspace file contents. Returns bounded matching lines with file paths and line numbers. Respects path/glob filters and includes truncation notices.",
     annotations: {
