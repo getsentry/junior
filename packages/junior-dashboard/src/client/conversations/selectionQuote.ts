@@ -25,8 +25,8 @@ export function markdownQuote(text: string): string {
 }
 
 // A selection inside one of these elements clones only its contents. Put the
-// element back around them, so a bold word stays bold and list items keep
-// their list.
+// element back around them, so a bold word stays bold and a selection across
+// list items keeps its list. Words inside one item quote as plain text.
 const CONTEXT_TAGS = new Set([
   "A",
   "B",
@@ -51,8 +51,12 @@ const CONTEXT_TAGS = new Set([
 export function selectionMarkdown(range: Range): string {
   const start = range.commonAncestorContainer;
   let element = start instanceof Element ? start : start.parentElement;
-  const pre = element?.closest("pre");
-  if (pre) return fence(pre, range.toString());
+  // A drag from the padding of a code block selects from its wrapper, which
+  // holds the language. Quote only the code part.
+  const pre =
+    element?.closest("pre") ??
+    element?.closest("[data-code-language]")?.querySelector("pre");
+  if (pre) return fence(pre, clampedText(range, pre));
   let node: Node = range.cloneContents();
   while (element && CONTEXT_TAGS.has(element.tagName)) {
     const shell = element.cloneNode(false);
@@ -63,6 +67,17 @@ export function selectionMarkdown(range: Range): string {
   return render(node)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function clampedText(range: Range, element: Element): string {
+  const clamped = range.cloneRange();
+  if (!element.contains(clamped.startContainer)) {
+    clamped.setStart(element, 0);
+  }
+  if (!element.contains(clamped.endContainer)) {
+    clamped.setEnd(element, element.childNodes.length);
+  }
+  return clamped.toString();
 }
 
 function render(node: Node): string {
@@ -93,11 +108,12 @@ function render(node: Node): string {
         : text;
     }
     case "INPUT":
-      return node.getAttribute("type") === "checkbox"
-        ? node.hasAttribute("checked")
-          ? "[x] "
-          : "[ ] "
-        : "";
+      // React sets the `checked` property, not the attribute. A clone keeps
+      // the property.
+      if (!(node instanceof HTMLInputElement) || node.type !== "checkbox") {
+        return "";
+      }
+      return node.checked ? "[x] " : "[ ] ";
     case "PRE":
       return block(fence(node, node.textContent ?? ""));
     case "H1":
