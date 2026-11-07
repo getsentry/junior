@@ -15,7 +15,9 @@ const SEARCH_FIELD_WEIGHTS = [8, 4, 1] as const;
 // returns the tools that fit it instead of every tool that shares one word.
 const MIN_RELATIVE_SCORE = 0.3;
 const BM25_K1 = 1.2;
-const BM25_B = 0.75;
+// Length normalization per field. Long tool descriptions add usage guidance,
+// not more topics, so they get a weaker length penalty than the other fields.
+const BM25_B = [0.75, 0.3, 0.75] as const;
 
 const SEARCH_STOP_WORDS = new Set([
   "a",
@@ -97,23 +99,30 @@ interface SearchDocument {
   fields: [string[], string[], string[]];
 }
 
-// Fold common English plurals so "issues" matches "issue" and
-// "repositories" matches "repository". Both sides use the same fold, so an
-// odd stem such as "alway" still matches itself.
-function singular(term: string): string {
+// Fold plurals, "-ed", "-ing", and a final "e", so "issues" matches
+// "issue", "closed" matches "close", and "updating" matches "update". Both
+// the query and the tool text use the same fold, so an odd stem such as
+// "clos" still matches itself.
+function stem(term: string): string {
   if (term.length <= 3) {
     return term;
   }
-  if (term.endsWith("ies")) {
-    return `${term.slice(0, -3)}y`;
+  let stemmed = term;
+  if (stemmed.endsWith("ies")) {
+    stemmed = `${stemmed.slice(0, -3)}y`;
+  } else if (/(?:ss|us|ch|sh|x|z)es$/.test(stemmed)) {
+    stemmed = stemmed.slice(0, -2);
+  } else if (/[^sui]s$/.test(stemmed)) {
+    stemmed = stemmed.slice(0, -1);
   }
-  if (/(?:ss|us|ch|sh|x|z)es$/.test(term)) {
-    return term.slice(0, -2);
+  const verbSuffix = /(?:ed|ing)$/.exec(stemmed);
+  if (verbSuffix && stemmed.length - verbSuffix[0].length >= 3) {
+    stemmed = stemmed.slice(0, -verbSuffix[0].length);
   }
-  if (/[^sui]s$/.test(term)) {
-    return term.slice(0, -1);
+  if (stemmed.length > 3 && stemmed.endsWith("e")) {
+    stemmed = stemmed.slice(0, -1);
   }
-  return term;
+  return stemmed;
 }
 
 function rawTerms(value: string): string[] {
@@ -134,7 +143,7 @@ function rawTerms(value: string): string[] {
 }
 
 function terms(value: string): string[] {
-  return rawTerms(value).map(singular);
+  return rawTerms(value).map(stem);
 }
 
 function queryTerms(query: string): string[] {
@@ -142,7 +151,7 @@ function queryTerms(query: string): string[] {
     ...new Set(
       rawTerms(query)
         .filter((term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term))
-        .map(singular),
+        .map(stem),
     ),
   ];
 }
@@ -285,7 +294,8 @@ function scoreSearchDocument(
         return (
           weighted +
           SEARCH_FIELD_WEIGHTS[fieldIndex]! *
-            (termFrequency / (1 - BM25_B + BM25_B * lengthRatio))
+            (termFrequency /
+              (1 - BM25_B[fieldIndex]! + BM25_B[fieldIndex]! * lengthRatio))
         );
       },
       0,
