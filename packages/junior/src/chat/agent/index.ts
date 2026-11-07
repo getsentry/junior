@@ -1533,6 +1533,8 @@ async function executeAgentRunInPrivacyContext(
       unsubscribe();
     }
 
+    // The caller saves the completed Turn after this returns.
+    await requireConversationLease("save");
     await recordActiveMcpProviders();
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
@@ -1570,6 +1572,10 @@ async function executeAgentRunInPrivacyContext(
       error instanceof AssistantMessageDeliveryError
         ? error.originalError
         : error;
+    // Another worker holds the Lease. Do not complete or park the Turn.
+    if (isTurnInputCommitLostError(runError)) {
+      throw runError;
+    }
     if (
       runError instanceof AuthPausePersistenceError ||
       isTurnExecutionLimitExceededError(runError)
