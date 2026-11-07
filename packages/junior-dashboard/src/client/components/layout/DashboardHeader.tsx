@@ -110,9 +110,10 @@ export function DashboardHeader(props: {
     <header className="relative bg-dashboard-bg md:hidden md:tall:block">
       {/* Equal side tracks center the command palette trigger in the window,
           like an editor's title bar. When the nav needs more room, the
-          trigger shrinks, down to its icon, instead of covering it. */}
-      <div className="hidden w-full min-w-0 grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)] items-center gap-x-5 px-7 py-3 md:tall:grid">
-        <div className="flex items-center gap-5">
+          trigger shrinks instead of covering it. Below lg the nav can be
+          wider than the window, so it scrolls and the trigger is an icon. */}
+      <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:tall:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
+        <div className="flex items-center gap-5 max-lg:min-w-0">
           <Link
             aria-label={`${getDashboardAgentName()} home`}
             className="flex items-center text-inherit no-underline"
@@ -120,7 +121,10 @@ export function DashboardHeader(props: {
           >
             <JuniorLogo />
           </Link>
-          <nav aria-label="Primary" className="flex items-center gap-1">
+          <nav
+            aria-label="Primary"
+            className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
+          >
             <Link
               aria-current={props.workspaceActive ? "page" : undefined}
               className={navLinkClass({ isActive: props.workspaceActive })}
@@ -143,7 +147,9 @@ export function DashboardHeader(props: {
         >
           <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
             <Search aria-hidden="true" className="size-4 shrink-0" />
-            <span className="truncate">{COMMAND_PALETTE_LABEL}…</span>
+            <span className="truncate max-lg:sr-only">
+              {COMMAND_PALETTE_LABEL}…
+            </span>
           </span>
           <kbd className="font-sans text-xs max-xl:hidden">
             {COMMAND_PALETTE_SHORTCUT}
