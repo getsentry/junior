@@ -12,10 +12,8 @@ import {
   type ConversationBrief,
 } from "@/chat/briefs/schema";
 import {
-  mcpConversation,
   mcpConversationIdSchema,
   mcpCursorSchema,
-  mcpConversationSchema,
   mcpAuthorizationSchema,
   mcpMessages,
   mcpMessageSchema,
@@ -23,6 +21,10 @@ import {
   mcpPendingMessagesSchema,
   readMcpPendingWork,
 } from "../conversation";
+import {
+  mcpConversation,
+  mcpConversationSchema,
+} from "../conversation-summary";
 import {
   isConversationParticipant,
   mcpToolError,

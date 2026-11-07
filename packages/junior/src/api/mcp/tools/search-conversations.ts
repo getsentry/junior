@@ -2,7 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import { readConversationFeed } from "@/api/conversations/list";
 import { conversationFeedQuerySchema } from "@/api/schema/conversation";
-import { mcpConversation, mcpConversationSchema } from "../conversation";
+import {
+  mcpConversation,
+  mcpConversationSchema,
+} from "../conversation-summary";
 import { mcpToolResult, type McpToolContext } from "../tool-context";
 
 /** Register `searchConversations`, which searches the Conversations of the user. */

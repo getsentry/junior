@@ -35,6 +35,7 @@ describe("searchConversations MCP tool", () => {
           {
             conversationId: "slack:C123:1700000000.000100",
             title: "Viewer launch plan",
+            kind: "root",
             status: "completed",
             surface: "slack",
             startedAt: expect.any(String),
