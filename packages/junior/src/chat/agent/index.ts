@@ -411,6 +411,17 @@ async function executeAgentRunInPrivacyContext(
     }
     connectedMcpProviders.add(provider);
   };
+  // A worker can stall past its Lease and come back after another worker
+  // took the Conversation. Check the Lease right before each side effect.
+  const requireConversationLease = async (
+    action: "reply" | "save",
+  ): Promise<void> => {
+    if (durability.checkIn && !(await durability.checkIn())) {
+      throw new TurnInputCommitLostError(
+        `Conversation Lease lost before ${action} for conversation=${conversationId} turn=${turnId}`,
+      );
+    }
+  };
   const recordActiveMcpProviders = async () => {
     if (!mcpToolManager) {
       return;
@@ -876,17 +887,6 @@ async function executeAgentRunInPrivacyContext(
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
       | undefined;
-    // A worker can stall past its Lease and come back after another worker
-    // took the Conversation. Check the Lease right before each side effect.
-    const requireConversationLease = async (
-      action: "reply" | "save",
-    ): Promise<void> => {
-      if (durability.checkIn && !(await durability.checkIn())) {
-        throw new TurnInputCommitLostError(
-          `Conversation Lease lost before ${action} for conversation=${conversationId} turn=${turnId}`,
-        );
-      }
-    };
     /** Deliver one completed tool-free visible message before the agent advances. */
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
@@ -1594,6 +1594,8 @@ async function executeAgentRunInPrivacyContext(
     // continuable). Soft yield after delivery + steering still parks so the
     // steered work can run on the next slice.
     if (resume?.timedOut && acceptedToolFreeAssistant && agent) {
+      // The caller saves the completed Turn after this returns.
+      await requireConversationLease("save");
       await recordActiveMcpProviders();
       const piMessages = [...agent.state.messages];
       return {
