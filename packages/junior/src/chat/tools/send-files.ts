@@ -14,7 +14,6 @@ import {
 } from "@/chat/tools/sandbox/file-uploads";
 import type { ToolState } from "@/chat/tools/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { FILES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
 /** Read and validate a sandbox file before storage or delivery. */
 export type MaterializeFile = (
@@ -87,8 +86,6 @@ export function createSendFilesTool(
 ) {
   const { attachments, delivery } = output;
   return zodTool({
-    exposure: "deferred",
-    source: FILES_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: false,

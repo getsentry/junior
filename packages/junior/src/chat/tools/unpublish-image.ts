@@ -3,7 +3,7 @@ import { unpublishArtifact } from "@/chat/artifacts/store";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { FILES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
+import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
 const outputSchema = juniorToolOutputSchema.extend({
   filename: z.string().min(1),
@@ -17,7 +17,7 @@ export function createUnpublishImageTool(args: {
 }) {
   return zodTool({
     exposure: "deferred",
-    source: FILES_TOOL_SOURCE,
+    source: IMAGES_TOOL_SOURCE,
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

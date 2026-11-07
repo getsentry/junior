@@ -7,5 +7,5 @@ export const STOP_WATCHING_TOOL_NAME = "stopWatchingResources";
 export const RESOURCE_WATCH_TOOL_SOURCE = {
   id: "resource-watches",
   description:
-    "Create timer watches, find event types, and inspect or stop watches for the current conversation and its child agents.",
+    "Find event types, and inspect or stop watches for the current conversation and its child agents.",
 };
