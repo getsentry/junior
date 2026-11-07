@@ -14,6 +14,7 @@ function detail(
   events: ConversationDetailReport["events"] = [],
 ): ConversationDetailReport {
   return {
+    kind: "root",
     annotations: [],
     conversationId: "local:web:pending",
     cumulativeDurationMs: 0,

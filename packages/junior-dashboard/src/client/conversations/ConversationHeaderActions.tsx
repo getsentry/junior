@@ -31,7 +31,8 @@ import { ShareConversationButton } from "./ShareConversationButton";
 export type ConversationArchiveAction = {
   archived: boolean;
   disabled: boolean;
-  error: boolean;
+  /** The message to show when the last archive change failed. */
+  error?: string;
   onClick(): void;
   pending: boolean;
 };

@@ -428,6 +428,7 @@ test("opens far behind at the read position and loads newer pages after it", asy
     cumulativeDurationMs: 1_000,
     displayTitle: "Far behind",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,

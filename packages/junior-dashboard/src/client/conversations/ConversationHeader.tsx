@@ -135,7 +135,7 @@ export function ConversationHeader(props: {
 
   const showMobileHeader =
     searchOpenVisible ||
-    props.archive.error ||
+    Boolean(props.archive.error) ||
     props.pin.error ||
     props.read.error ||
     Boolean(props.forks) ||
@@ -280,7 +280,7 @@ export function ConversationHeader(props: {
         ) : null}
         {props.archive.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not update archive state.
+            {props.archive.error}
           </div>
         ) : null}
         {props.pin.error ? (

@@ -291,6 +291,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
+    ...(row.childArchivedAt
+      ? { childArchivedAtMs: row.childArchivedAt.getTime() }
+      : undefined),
     ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
     ...(actor ? { actor } : undefined),

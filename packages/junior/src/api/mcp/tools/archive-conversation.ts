@@ -8,7 +8,10 @@ import {
   type McpToolContext,
 } from "../tool-context";
 
-/** Register `archiveConversation`, which archives or restores for the user. */
+/**
+ * Register `archiveConversation`. It archives or restores a root for the
+ * user, or a child Conversation and optionally its children for everyone.
+ */
 export function registerArchiveConversationTool(
   server: McpServer,
   { user }: McpToolContext,
@@ -18,13 +21,19 @@ export function registerArchiveConversationTool(
     {
       title: "Archive conversation",
       description:
-        "Archive one of your conversations, or restore it. Archiving hides it only for you, and new activity restores it.",
+        "Archive one of your conversations, or restore it. Archiving a top-level conversation hides it and its child conversations only for you, and writes nothing to the children. Archiving a child conversation, a Thread or a Task, hides it and its children for everyone. A child restore fails while a conversation above it is archived. A new message from a person restores a child and the archived conversations above it.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         archived: z
           .boolean()
           .default(true)
           .describe("False restores an archived conversation."),
+        applyToChildren: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Child conversations only. On archive, true also archives every child of this conversation at any depth; without it, a child archive fails while any of its children is not archived. On restore, true also restores the children that were archived with this conversation. Ignored for a top-level conversation.",
+          ),
         lastSeenAt: z
           .string()
           .datetime()
@@ -45,10 +54,11 @@ export function registerArchiveConversationTool(
         readOnlyHint: false,
       },
     },
-    async ({ archived, conversationId, lastSeenAt }) => {
+    async ({ applyToChildren, archived, conversationId, lastSeenAt }) => {
       try {
         return mcpToolResult(
           await archiveConversation(user, conversationId, {
+            applyToChildren,
             archived,
             lastSeenAt,
           }),

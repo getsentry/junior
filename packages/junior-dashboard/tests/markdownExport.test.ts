@@ -23,6 +23,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     actorIdentity: { email: "alice@example.com" },
     channel: "C1",
     channelName: "proj-alpha",

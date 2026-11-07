@@ -75,6 +75,10 @@ export const juniorConversations = pgTable(
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
+    // Set only on children, Threads and Tasks. A child is shared work, so its
+    // archive applies to everyone. Roots keep their per-viewer archive on
+    // participant rows.
+    childArchivedAt: timestamptz("child_archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(

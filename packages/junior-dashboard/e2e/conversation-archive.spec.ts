@@ -173,6 +173,50 @@ for (const outcome of ["success", "error"] as const) {
   });
 }
 
+test("confirms a child archive and archives its children too", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route("**/api/conversations/*/archive", (route) =>
+    route.fulfill({ json: { archivedAt: "2026-08-21T16:45:00.000Z" } }),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-plan")}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
+
+  const confirm = page.getByRole("alertdialog", {
+    name: "Also archive its child conversations?",
+  });
+  await expect(confirm).toContainText("for everyone");
+  const archiveRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" && request.url().endsWith("/archive"),
+  );
+  await confirm.getByRole("button", { name: "Archive" }).click();
+  expect((await archiveRequest).postDataJSON()).toMatchObject({
+    applyToChildren: true,
+    archived: true,
+  });
+  await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+});
+
+test("shows why a child restore is refused", async ({ page, dashboard }) => {
+  const error =
+    "Conversation junior:internal:dashboard-qa:advisor-plan above this one is archived. Restore it first.";
+  await page.route("**/api/conversations/*/archive", (route) =>
+    route.fulfill({ json: { error }, status: 409 }),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:archived-thread")}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Unarchive", exact: true }).click();
+  await expect(page.getByText(error)).toBeVisible();
+});
+
 test.describe("expires the archive undo notice", () => {
   test.use({ controlTimers: true });
   test("expires the archive undo notice", async ({ page, dashboard }) => {

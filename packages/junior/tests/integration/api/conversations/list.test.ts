@@ -5,10 +5,8 @@ import { testViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import {
-  readConversationFeedFromSql,
-  readConversationRecordFromSql,
-} from "@/api/conversations/list";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { readConversationRecordFromSql } from "@/api/conversations/record";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";

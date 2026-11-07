@@ -693,6 +693,7 @@ test("keeps the message in view while earlier history and late content load", as
     cumulativeDurationMs: 1_000,
     displayTitle: "Long history",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
