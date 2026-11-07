@@ -1726,6 +1726,51 @@ describe("turn checkpoint", () => {
     expect(logException).not.toHaveBeenCalled();
   });
 
+  it("keeps a terminal turn terminal when a late worker saves progress", async () => {
+    const logException = vi.fn();
+    vi.doMock("@/chat/logging", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/chat/logging")>();
+      return { ...actual, logException };
+    });
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const committed = [userMessage("done")];
+    const late = [...committed, userMessage("late")];
+
+    await saveTurnCheckpoint({
+      mode: "completed",
+      conversationId: "conversation-late-worker",
+      turnId: "turn-late-worker",
+      sliceId: 1,
+      messages: committed,
+    });
+    await expect(
+      saveTurnCheckpoint({
+        mode: "running",
+        conversationId: "conversation-late-worker",
+        turnId: "turn-late-worker",
+        sliceId: 1,
+        messages: late,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      saveTurnCheckpoint({
+        mode: "paused",
+        reason: "timeout",
+        conversationId: "conversation-late-worker",
+        turnId: "turn-late-worker",
+        sliceId: 1,
+        messages: late,
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      getTurnRecord("conversation-late-worker", "turn-late-worker"),
+    ).resolves.toMatchObject({ piMessages: committed, state: "completed" });
+    expect(logException).not.toHaveBeenCalled();
+  });
+
   it("appends after in-place assistant envelope mutations on committed messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");

@@ -112,6 +112,19 @@ function definedProps<T extends Record<string, unknown>>(
 
 type TurnStatus = "running" | "paused" | "completed" | "failed" | "abandoned";
 
+/** A terminal Turn never runs again, so it absorbs later progress writes. */
+function isTerminalTurnState(state: TurnStatus): boolean {
+  return state === "completed" || state === "failed" || state === "abandoned";
+}
+
+/** A progress write reached a Turn that is already terminal. */
+export class TurnAlreadyTerminalError extends Error {
+  constructor(turnId: string, state: TurnStatus) {
+    super(`Turn ${turnId} is already ${state}`);
+    this.name = "TurnAlreadyTerminalError";
+  }
+}
+
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type TurnPauseReason = "timeout" | "auth" | "yield" | "retry";
@@ -780,7 +793,10 @@ async function updateTurnState(args: {
   });
 }
 
-/** Commit stable Pi state and advance the turn cursor. */
+/**
+ * Commit stable Pi state and advance the turn cursor. A running or paused
+ * write to a terminal Turn throws `TurnAlreadyTerminalError`.
+ */
 export async function upsertTurnRecord(args: {
   channelName?: string;
   conversationId: string;
@@ -830,6 +846,15 @@ async function upsertTurnRecordLocked(
     args.conversationId,
     args.turnId,
   );
+  // A late worker that lost its lease must not reopen a terminal Turn or
+  // commit more history to it.
+  if (
+    existingRecord &&
+    isTerminalTurnState(existingRecord.state) &&
+    !isTerminalTurnState(args.state)
+  ) {
+    throw new TurnAlreadyTerminalError(args.turnId, existingRecord.state);
+  }
   const conversationStore = args.conversationStore ?? getConversationStore();
   const conversation = await conversationStore.get({
     conversationId: args.conversationId,
@@ -1028,24 +1053,13 @@ async function recordTurnSummaryOwned(
     (summary) => summary.turnId === args.turnId,
   );
   const terminalSummary =
-    priorSummary &&
-    (priorSummary.state === "completed" ||
-      priorSummary.state === "failed" ||
-      priorSummary.state === "abandoned")
+    priorSummary && isTerminalTurnState(priorSummary.state)
       ? priorSummary
       : undefined;
   const terminalRecord =
-    stored &&
-    (stored.state === "completed" ||
-      stored.state === "failed" ||
-      stored.state === "abandoned")
-      ? stored
-      : undefined;
+    stored && isTerminalTurnState(stored.state) ? stored : undefined;
   const existing = terminalSummary ?? terminalRecord ?? stored ?? priorSummary;
-  if (
-    (terminalSummary || terminalRecord) &&
-    (args.state === "running" || args.state === "paused")
-  ) {
+  if ((terminalSummary || terminalRecord) && !isTerminalTurnState(args.state)) {
     return;
   }
   const existingDispatchId = existing?.dispatchId;
