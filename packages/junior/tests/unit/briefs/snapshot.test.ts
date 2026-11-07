@@ -33,6 +33,18 @@ const detail: ConversationDetailReport = {
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
+    {
+      kind: "object",
+      key: "getsentry/junior#43",
+      label: "getsentry/junior#43",
+      title: "Automate the release owner handoff",
+      url: "https://github.com/getsentry/junior/issues/43",
+      objectType: "task",
+      status: "open",
+      plugin: "github",
+      createdAt: "2026-01-01T00:00:01.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    },
   ],
   events: [
     {
@@ -231,6 +243,11 @@ describe("Brief snapshot", () => {
             "status": "warning",
             "url": "https://sentry.example.com/issues/1",
           },
+          {
+            "label": "getsentry/junior#43 · Automate the release owner handoff",
+            "status": "open",
+            "url": "https://github.com/getsentry/junior/issues/43",
+          },
         ],
         "title": "Release follow-up",
         "visibility": "public",
@@ -286,6 +303,10 @@ describe("Brief snapshot", () => {
     expect(generation.brief.decisions).toEqual([
       { text: "Use the private release owner.", kind: "assumed" },
     ]);
+    // A later Conversation finds the issue by its topic, not only its number.
+    expect(generation.searchText).toContain(
+      "getsentry/junior#43 · Automate the release owner handoff",
+    );
     expect(generation.evidence.droppedAttributionCount).toBe(1);
 
     // Replay through the turn start sees the pull request as still open.
