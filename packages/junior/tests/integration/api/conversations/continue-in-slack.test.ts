@@ -6,6 +6,7 @@ import {
   continueConversationInSlackResponseSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
+import type { ConversationStore } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import {
   appendAndEnqueueWebMessage,
@@ -219,6 +220,50 @@ describe("continue a dashboard conversation in Slack", () => {
         .slice(before)
         .map((message) => message.conversationId),
     ).toEqual([conversationId]);
+  });
+
+  it("sends a dashboard message that races the move to Slack", async () => {
+    const fixture = await createConversationFixture();
+    const { conversationId } = await createAndEnqueueConversation(
+      {
+        actor: fixture.actor,
+        idempotencyKey: "race-root",
+        message: "Draft the rollout plan.",
+      },
+      fixture,
+    );
+    const locationId = await publicChannelLocationId(fixture);
+    const app = viewerApp(fixture);
+    queueSlackMove();
+    // The move lands after the send reads the dashboard Destination.
+    let move: Response | undefined;
+    const store = fixture.conversationStore;
+    const conversationStore: ConversationStore = Object.create(store);
+    conversationStore.get = async (args) => {
+      const snapshot = await store.get(args);
+      move ??= await continueInSlack(app, conversationId, locationId);
+      return snapshot;
+    };
+
+    const sent = await appendAndEnqueueWebMessage(
+      {
+        actor: fixture.actor,
+        conversationId,
+        idempotencyKey: "during-move",
+        message: "Add a rollback step.",
+      },
+      { ...fixture, conversationStore },
+    );
+    expect(move?.status).toBe(200);
+    expect(sent.status).toBe("accepted");
+    const work = await getConversationWorkState({
+      conversationId,
+      state: fixture.state,
+    });
+    expect(work?.messages.map((message) => message.destination)).toEqual([
+      SLACK_DESTINATION,
+      SLACK_DESTINATION,
+    ]);
   });
 
   it("waits for a running Turn", async () => {

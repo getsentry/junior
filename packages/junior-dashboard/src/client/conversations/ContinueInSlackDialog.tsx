@@ -54,10 +54,19 @@ export function ContinueInSlackDialog(props: {
         `/api/conversations/${encodeURIComponent(props.conversationId)}/continue-in-slack`,
         { locationId: id },
       ),
+    // The feed and Location pages list the conversation under its Location.
     onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: conversationDetailQueryKey(props.conversationId),
-      }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "locations"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: conversationDetailQueryKey(props.conversationId),
+        }),
+      ]),
   });
   const error = move.error
     ? (move.error instanceof DashboardApiError && move.error.apiError) ||
