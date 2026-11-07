@@ -13,7 +13,7 @@ type ToolContent = Array<TextContent | ImageContent>;
 
 function fullResultPath(toolCallId: string): string {
   const id = createHash("sha256").update(toolCallId).digest("hex").slice(0, 8);
-  return `${FULL_RESULT_DIR}/${id}.txt`;
+  return `${FULL_RESULT_DIR}/${id}`;
 }
 
 /** Cut at a code point boundary, so the head never ends in half a pair. */

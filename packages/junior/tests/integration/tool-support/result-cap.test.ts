@@ -154,7 +154,7 @@ describe("tool result cap", () => {
     const fullText = JSON.stringify({ text: BIG_TEXT });
     expect(writeFiles).toHaveBeenCalledOnce();
     const file = writeFiles.mock.calls[0]![0][0]!;
-    expect(file.path).toMatch(/^\/tmp\/jr\/[0-9a-f]{8}\.txt$/);
+    expect(file.path).toMatch(/^\/tmp\/jr\/[0-9a-f]{8}$/);
     // Compare large strings as booleans, so a failure does not print them.
     expect(file.content === fullText).toBe(true);
     const [shown, note] = splitNote(contentText(result));
