@@ -1405,6 +1405,48 @@ export async function recordConversationActivity(args: {
   });
 }
 
+/**
+ * Move a Conversation that has no active Run to a new Destination.
+ *
+ * `move` commits the durable change while this holds the mutation lock, so
+ * no inbound Message can join with the old Destination in between. Pending
+ * Messages get the new Destination too. A Run that holds the lease or waits
+ * to resume keeps its own copy, so this returns `busy` without calling
+ * `move`.
+ */
+export async function moveIdleConversationDestination(args: {
+  conversationId: string;
+  destination: Destination;
+  move: () => Promise<boolean>;
+  state?: StateAdapter;
+}): Promise<"busy" | "moved" | "not_moved"> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (
+      existing &&
+      (existing.execution.lease ||
+        existing.execution.status === "running" ||
+        existing.execution.status === "paused")
+    ) {
+      return "busy";
+    }
+    if (!(await args.move())) return "not_moved";
+    if (existing) {
+      await writeConversation(state, lock, {
+        ...existing,
+        destination: args.destination,
+        execution: {
+          ...existing.execution,
+          pendingMessages: existing.execution.pendingMessages.map(
+            (message) => ({ ...message, destination: args.destination }),
+          ),
+        },
+      });
+    }
+    return "moved";
+  });
+}
+
 /** Store task-execution metadata for legacy SQL import. */
 export async function recordConversationExecution(args: {
   channelName?: string;

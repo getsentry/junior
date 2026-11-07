@@ -40,6 +40,7 @@ import {
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
+import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationReplyFooter } from "./ConversationReplyFooter";
 import { ConversationDetails } from "./ConversationDetails";
 import { AutoArchiveToggle } from "./AutoArchiveToggle";
@@ -236,6 +237,7 @@ export function ConversationPage(props: {
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
+  const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
   const onRead = props.onRead;
@@ -661,6 +663,15 @@ export function ConversationPage(props: {
               }
               contextTags={conversationContextTags(conversation)}
               conversationId={conversationId}
+              continueInSlack={
+                detail.data?.canContinueInSlack
+                  ? {
+                      // The API refuses while a Turn runs.
+                      disabled: live,
+                      onClick: () => setContinueInSlackOpen(true),
+                    }
+                  : undefined
+              }
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               onDetailsClick={() => {
@@ -885,6 +896,12 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+      {continueInSlackOpen ? (
+        <ContinueInSlackDialog
+          conversationId={conversationId}
+          onClose={() => setContinueInSlackOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

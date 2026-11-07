@@ -13,6 +13,7 @@ import {
   HeaderIconButton,
   TranscriptSearchToggle,
   type ConversationArchiveAction,
+  type ConversationContinueInSlackAction,
   type ConversationPinAction,
 } from "./ConversationHeaderActions";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
@@ -32,6 +33,7 @@ export function ConversationHeader(props: {
   copyAction?: ReactNode;
   archive: ConversationArchiveAction;
   conversationId: string;
+  continueInSlack?: ConversationContinueInSlackAction;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
   cost?: ReactNode;
   detailsOpen: boolean;
@@ -97,6 +99,15 @@ export function ConversationHeader(props: {
     <ConversationHeaderActions
       archive={props.archive}
       conversationId={props.conversationId}
+      continueInSlack={
+        props.continueInSlack && {
+          disabled: props.continueInSlack.disabled,
+          onClick: () => {
+            close();
+            props.continueInSlack?.onClick();
+          },
+        }
+      }
       pin={props.pin}
       copyAction={props.copyAction}
       detailsOpen={detailsOpen}

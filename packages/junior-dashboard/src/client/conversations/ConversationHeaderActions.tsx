@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   Info,
+  MessageSquareShare,
   MessagesSquare,
   Pin,
   PinOff,
@@ -33,6 +34,11 @@ export type ConversationArchiveAction = {
   pending: boolean;
 };
 
+export type ConversationContinueInSlackAction = {
+  disabled: boolean;
+  onClick(): void;
+};
+
 export type ConversationPinAction = {
   disabled: boolean;
   error: boolean;
@@ -48,6 +54,8 @@ export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
   pin: ConversationPinAction;
   conversationId: string;
+  /** Present only when the viewer can move this conversation to Slack. */
+  continueInSlack?: ConversationContinueInSlackAction;
   copyAction?: ReactNode;
   detailsOpen: boolean;
   onDetailsClick(): void;
@@ -91,6 +99,15 @@ export function ConversationHeaderActions(props: {
         conversationId={props.conversationId}
       />
       {props.copyAction}
+      {props.continueInSlack ? (
+        <MenuActionButton
+          disabled={props.continueInSlack.disabled}
+          label="Continue in Slack"
+          onClick={props.continueInSlack.onClick}
+        >
+          <MessageSquareShare aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+      ) : null}
       <MenuActionButton
         label={eventLogOpen ? "Back to conversation" : "Open event log"}
         onClick={() => props.onViewChange(eventLogOpen ? "rich" : "raw")}
