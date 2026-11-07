@@ -1,4 +1,7 @@
-import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
+import {
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
+} from "@sentry/junior/api/schema";
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
@@ -338,7 +341,13 @@ test("refreshes idle reads only when their version moves", async ({
     (url) => url.pathname === detailPath,
     async (route) => {
       detailReads += 1;
-      const response = await route.fetch();
+      // Request the full body because this test changes it.
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
+      });
       const report = withRequestedMailbox(route, await response.json());
       if (slackReply) {
         report.events.push({
