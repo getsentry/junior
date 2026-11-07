@@ -322,10 +322,9 @@ interface ScoredQueryTerm {
   inverseDocumentFrequency: number;
 }
 
-// Score a query word and its synonyms as one BM25 term, as Lucene's
-// SynonymQuery does: synonym matches add discounted term frequency, and the
-// document frequency counts tools that contain any of the words. A rare
-// synonym then cannot outscore a common exact word.
+// A query word and its synonyms share one document frequency: the count of
+// tools that contain any of the words. A rare synonym then cannot outscore a
+// common exact word.
 function scoreQueryTerms(
   query: QueryTerm[],
   documents: SearchDocument[],
@@ -348,41 +347,47 @@ function scoreQueryTerms(
   });
 }
 
+function weightedTermFrequency(
+  document: SearchDocument,
+  term: string,
+  averageLengths: number[],
+): number {
+  return document.fields.reduce((weighted, field, fieldIndex) => {
+    const termFrequency = field.filter(
+      (candidate) => candidate === term,
+    ).length;
+    if (termFrequency === 0) {
+      return weighted;
+    }
+    const averageLength = averageLengths[fieldIndex] ?? 0;
+    const lengthRatio = averageLength === 0 ? 1 : field.length / averageLength;
+    return (
+      weighted +
+      SEARCH_FIELD_WEIGHTS[fieldIndex]! *
+        (termFrequency /
+          (1 - BM25_B[fieldIndex]! + BM25_B[fieldIndex]! * lengthRatio))
+    );
+  }, 0);
+}
+
+// Each word gets its own BM25 saturation before its weight applies. Field
+// weights make most matches saturate, so a weight applied to term frequency
+// would make a synonym match score the same as an exact match.
 function scoreSearchDocument(
   document: SearchDocument,
   query: ScoredQueryTerm[],
   averageLengths: number[],
 ): number {
   return query.reduce((score, { weights, inverseDocumentFrequency }) => {
-    const weightedTermFrequency = document.fields.reduce(
-      (weighted, field, fieldIndex) => {
-        const termFrequency = field.reduce(
-          (total, candidate) => total + (weights.get(candidate) ?? 0),
-          0,
-        );
-        if (termFrequency === 0) {
-          return weighted;
-        }
-        const averageLength = averageLengths[fieldIndex] ?? 0;
-        const lengthRatio =
-          averageLength === 0 ? 1 : field.length / averageLength;
-        return (
-          weighted +
-          SEARCH_FIELD_WEIGHTS[fieldIndex]! *
-            (termFrequency /
-              (1 - BM25_B[fieldIndex]! + BM25_B[fieldIndex]! * lengthRatio))
-        );
-      },
-      0,
-    );
-    if (weightedTermFrequency === 0) {
-      return score;
+    let best = 0;
+    for (const [term, weight] of weights) {
+      const frequency = weightedTermFrequency(document, term, averageLengths);
+      best = Math.max(
+        best,
+        (weight * frequency * (BM25_K1 + 1)) / (frequency + BM25_K1),
+      );
     }
-    return (
-      score +
-      (inverseDocumentFrequency * weightedTermFrequency * (BM25_K1 + 1)) /
-        (weightedTermFrequency + BM25_K1)
-    );
+    return score + inverseDocumentFrequency * best;
   }, 0);
 }
 
