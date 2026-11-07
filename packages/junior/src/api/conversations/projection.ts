@@ -6,6 +6,7 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
@@ -258,6 +259,9 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation.conversationId,
   );
   const actorIdentity = actorIdentityReport(conversation.actor);
+  const dashboardUrl = getDashboardConversationLink(
+    conversation.conversationId,
+  );
   const locationUrl = locationUrlFromConversation({
     canViewPrivateContent,
     conversation,
@@ -320,6 +324,7 @@ export function conversationSummaryFromStoredConversation(args: {
       ? { childAgentTotals: args.childAgentTotals }
       : undefined),
     ...(actorIdentity ? { actorIdentity } : undefined),
+    ...(dashboardUrl ? { dashboardUrl } : undefined),
     ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:
       args.archivedAtMs === undefined

@@ -1,7 +1,6 @@
 /** Own the MCP view of one Automation, shared by the automation tools. */
 import * as z from "zod";
 import type { AutomationSummary } from "@/api/schema/automation";
-import { getDashboardTaskLink } from "@/chat/dashboard-link";
 
 /** MCP view of one Automation. It omits cost and run-count charts. */
 export const mcpAutomationSchema = z
@@ -40,7 +39,6 @@ function triggerText(automation: AutomationSummary): string {
 export function mcpAutomation(
   automation: AutomationSummary,
 ): z.output<typeof mcpAutomationSchema> {
-  const url = getDashboardTaskLink(automation.id);
   return {
     id: automation.id,
     kind: automation.kind,
@@ -64,6 +62,6 @@ export function mcpAutomation(
     ...(automation.lastConversationId
       ? { lastConversationId: automation.lastConversationId }
       : undefined),
-    ...(url ? { url } : undefined),
+    ...(automation.dashboardUrl ? { url: automation.dashboardUrl } : undefined),
   };
 }

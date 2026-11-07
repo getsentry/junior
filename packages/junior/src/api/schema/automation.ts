@@ -55,6 +55,8 @@ const automationSummaryBaseSchema = z.object({
   createdBy: z.string().min(1),
   createdByAvatarUrl: z.string().optional(),
   createdByEmail: z.string().trim().email().optional(),
+  /** Dashboard page, with the dashboard base path. Missing when the dashboard is off. */
+  dashboardUrl: z.string().url().optional(),
   destination: automationDestinationSchema,
   id: z.string().min(1),
   instruction: z.string().min(1),

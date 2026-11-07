@@ -4,9 +4,12 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
   isNotNull,
   isNull,
+  lt,
+  not,
   or,
   sql,
   type SQL,
@@ -24,6 +27,12 @@ import {
 } from "@/db/schema";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
+import { throwApiError } from "../http";
+import {
+  decodeConversationFeedCursor,
+  encodeConversationFeedCursor,
+  type ConversationFeedPosition,
+} from "./cursor";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
@@ -120,9 +129,44 @@ function conversationCodeRepositoryFilter(
   );
 }
 
+/**
+ * Keep rows after one feed position in the feed order: pins first when
+ * `pinned` is set, then `lastActivityAt DESC, conversationId ASC`. Writers
+ * store `lastActivityAt` from millisecond timestamps, so the cursor keeps the
+ * exact value.
+ */
+function conversationFeedAfter(
+  after: ConversationFeedPosition,
+  pinned: SQL | undefined,
+): SQL | undefined {
+  const lastActivityAt = new Date(after.lastActivityAtMs);
+  const later = or(
+    lt(juniorConversations.lastActivityAt, lastActivityAt),
+    and(
+      eq(juniorConversations.lastActivityAt, lastActivityAt),
+      gt(juniorConversations.conversationId, after.conversationId),
+    ),
+  );
+  if (!pinned) return later;
+  return after.pinned
+    ? or(and(pinned, later), not(pinned))
+    : and(not(pinned), later);
+}
+
+/** Pins sort first so an old pinned root stays inside the feed limit. */
+function conversationFeedPinOrder(
+  status: "active" | "archived" | "all",
+  filter: ConversationFeedMembership | undefined,
+): SQL | undefined {
+  return filter?.kind === "viewer" && status === "active"
+    ? conversationPinnedForUser(filter.userId)
+    : undefined;
+}
+
 async function conversationRows(
   db: JuniorDatabase,
   {
+    after,
     codeRepository,
     conversationIds,
     filter,
@@ -131,6 +175,8 @@ async function conversationRows(
     query,
     status,
   }: {
+    /** Read only rows after this position. */
+    after?: ConversationFeedPosition;
     codeRepository?: { id: string; viewerUserId?: string };
     /** Read only these root conversations. */
     conversationIds?: string[];
@@ -141,6 +187,7 @@ async function conversationRows(
     status: "active" | "archived" | "all";
   },
 ) {
+  const pinned = conversationFeedPinOrder(status, filter);
   return selectConversationRecords(db)
     .where(
       and(
@@ -148,6 +195,7 @@ async function conversationRows(
         // An unkept Quick question is a private side thread.
         isNull(juniorConversations.quickQuestionAt),
         conversationFeedMembershipFilter(status, filter),
+        after ? conversationFeedAfter(after, pinned) : undefined,
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
           : undefined,
@@ -178,10 +226,7 @@ async function conversationRows(
       ),
     )
     .orderBy(
-      // Pins sort first so an old pinned root stays inside the feed limit.
-      ...(filter?.kind === "viewer" && status === "active"
-        ? [desc(conversationPinnedForUser(filter.userId))]
-        : []),
+      ...(pinned ? [desc(pinned)] : []),
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
     )
@@ -304,11 +349,18 @@ function conversationFeedFilter(options: {
  * `codeRepositoryId` replaces membership with every root linked to that
  * repository's code changes. Private roots appear only for their members, and
  * per-person archive state does not hide rows.
+ *
+ * `cursor` resumes after the last row of a prior page, and `nextCursor` is set
+ * only when more rows remain. The cursor holds only a position, so callers send
+ * the same filters on each page. `lastActivityAt` only moves forward: a root
+ * with new activity during paging moves above the cursor, and later pages skip
+ * it.
  */
 export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
     codeRepositoryId?: string;
+    cursor?: string;
     limit?: number;
     q?: string;
     status?: "active" | "archived";
@@ -323,7 +375,16 @@ export async function readConversationFeedFromSql(
   const query = options.q?.trim().toLowerCase() || undefined;
   const status =
     query || options.codeRepositoryId ? "all" : (options.status ?? "active");
-  const rows = await conversationRows(db, {
+  const after = options.cursor
+    ? decodeConversationFeedCursor(options.cursor)
+    : undefined;
+  if (options.cursor && !after) {
+    throwApiError(400, "Invalid conversation cursor.");
+  }
+  const limit = options.limit ?? CONVERSATION_FEED_LIMIT;
+  // Read one extra row to learn whether another page exists.
+  const pageRows = await conversationRows(db, {
+    ...(after ? { after } : undefined),
     ...(options.codeRepositoryId
       ? {
           codeRepository: {
@@ -336,11 +397,15 @@ export async function readConversationFeedFromSql(
       : undefined),
     filter,
     includePrivateBriefs: filter?.kind === "viewer",
-    limit: options.limit ?? CONVERSATION_FEED_LIMIT,
+    limit: limit + 1,
     query,
     status,
   });
-  if (filter?.kind === "viewer" && status === "active") {
+  const rows = pageRows.slice(0, limit);
+  const lastRow = pageRows.length > limit ? rows.at(-1) : undefined;
+  // Only the first page adds waiting roots. They also show on their own later
+  // page, so a client that reads every page can see one of them twice.
+  if (filter?.kind === "viewer" && status === "active" && !after) {
     rows.push(...(await waitingRowsOutsidePage(db, filter, rows)));
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
@@ -518,6 +583,22 @@ export async function readConversationFeedFromSql(
         ),
       };
     }),
+    ...(lastRow
+      ? {
+          nextCursor: encodeConversationFeedCursor({
+            conversationId: lastRow.conversation.conversationId,
+            lastActivityAtMs: lastRow.conversation.lastActivityAt.getTime(),
+            ...(conversationFeedPinOrder(status, filter)
+              ? {
+                  pinned:
+                    viewerMarksByConversation.get(
+                      lastRow.conversation.conversationId,
+                    )?.pinnedAtMs !== undefined,
+                }
+              : undefined),
+          }),
+        }
+      : undefined),
     generatedAt: new Date(nowMs).toISOString(),
     source: "conversation_index",
   };
@@ -535,6 +616,7 @@ export async function readConversationFeed(
   options: {
     actorEmail?: string;
     codeRepositoryId?: string;
+    cursor?: string;
     q?: string;
     status?: "active" | "archived";
     viewer?: User;

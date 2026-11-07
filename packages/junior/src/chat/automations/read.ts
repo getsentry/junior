@@ -18,6 +18,7 @@ import {
 } from "./collection";
 import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
+import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import {
   emptyAutomationRunWindows,
   readAutomationExecutionByConversationId,
@@ -247,6 +248,11 @@ function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
   };
 }
 
+function dashboardUrlField(id: string): { dashboardUrl?: string } {
+  const dashboardUrl = getDashboardTaskLink(id);
+  return dashboardUrl ? { dashboardUrl } : {};
+}
+
 function scheduledAutomationSummary(
   task: ScheduledAutomation,
   ownedByViewer: boolean,
@@ -278,6 +284,7 @@ function scheduledAutomationSummary(
       teamId: task.destination.teamId,
       visibility: destination.visibility,
     },
+    ...dashboardUrlField(task.id),
     id: task.id,
     instruction,
     kind: "scheduled",
@@ -320,6 +327,7 @@ function eventAutomationSummary(
       teamId: task.destination.teamId,
       visibility: destination.visibility,
     },
+    ...dashboardUrlField(task.id),
     id: task.id,
     instruction,
     kind: "event",

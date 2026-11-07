@@ -8,7 +8,6 @@ import {
   type ConversationSummaryReport,
 } from "@/api/schema/conversation";
 import type { MessageAttachment } from "@/chat/attachments/input";
-import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { logException } from "@/chat/logging";
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationPendingMessages } from "@/api/conversations/pending-messages";
@@ -62,7 +61,7 @@ export function mcpConversation(
         ? summary.childArchivedAt
         : summary.archivedAt) ?? undefined,
     pinnedAt: summary.pinnedAt ?? undefined,
-    url: getDashboardConversationLink(summary.conversationId),
+    url: summary.dashboardUrl,
   };
 }
 
