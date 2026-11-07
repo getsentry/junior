@@ -153,9 +153,9 @@ describe("conversation unread API", () => {
     await appendMessage(conversationId, { authorIdentityId: identity!.id }); // 0
     await appendMessage(conversationId, { role: "assistant" }); // 1
 
-    // Without a read position nothing is unread, so a release does not
-    // light up every old conversation.
-    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    // Without a read position, the reply after the viewer's own message is
+    // new. The release backfills a position for each existing root.
+    await expect(unread(viewer, conversationId)).resolves.toBe(true);
     await putReadPosition(app, conversationId, 1);
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
 
@@ -175,7 +175,6 @@ describe("conversation unread API", () => {
       unread: true,
     });
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
-    await expect(unread(other.viewer, conversationId)).resolves.toBe(false);
 
     // Mark as read reads to the last event.
     const markRead = await setUnread(app, conversationId, false);
@@ -184,6 +183,8 @@ describe("conversation unread API", () => {
       { lastReadSeq: 3 },
     );
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    // Each viewer has its own position: the other one has not read it.
+    await expect(unread(other.viewer, conversationId)).resolves.toBe(true);
     // The read position is not in the detail version, but its unread state
     // is, so a poll gets the read detail.
     const poll = await app.request(
@@ -205,7 +206,6 @@ describe("conversation unread API", () => {
       conversationReadPositionSchema.parse(await markUnread.json()),
     ).toEqual({ lastReadSeq: 2 });
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
-    await expect(unread(other.viewer, conversationId)).resolves.toBe(false);
 
     // Archive is an act on the conversation, so it reads it to the end.
     const archive = await app.request(

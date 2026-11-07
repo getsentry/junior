@@ -49,9 +49,10 @@ function latestVisibleReply(db: JuniorDatabase) {
  * user's read position. The position is at least the user's own latest
  * Message, so a reply in Slack or the dashboard counts as read.
  *
- * A Conversation with no stored read position is never unread. Older
- * Conversations that the user never read in the dashboard stay quiet, and a
- * position starts once the user reads, archives, or marks one.
+ * A Conversation with no stored read position counts from its start. The
+ * read-position backfill migration gave each root in a user's feed a
+ * position at its last event, so only Conversations that start after it
+ * have none.
  */
 export async function readUnreadConversationIds(
   db: JuniorDatabase,
@@ -80,7 +81,7 @@ export async function readUnreadConversationIds(
   const rows = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
-    .innerJoin(
+    .leftJoin(
       juniorConversationReadPositions,
       and(
         eq(
@@ -94,7 +95,7 @@ export async function readUnreadConversationIds(
     .where(
       and(
         inArray(juniorConversations.conversationId, [...conversationIds]),
-        sql`${reply.seq} > greatest(${juniorConversationReadPositions.lastReadSeq}, coalesce((${viewerMessageSeq}), -1))`,
+        sql`${reply.seq} > greatest(coalesce(${juniorConversationReadPositions.lastReadSeq}, -1), coalesce((${viewerMessageSeq}), -1))`,
       ),
     );
   return new Set(rows.map((row) => row.conversationId));
