@@ -231,6 +231,21 @@ test("archives a nested Thread without its parent", async ({
   await expect(nestedRow).toHaveCount(0);
   await expect(threadRow).toBeVisible();
   archive.release();
+
+  // Undo puts the nested row back under its parent before the restore
+  // settles, so it does not wait on a feed refetch.
+  const restore = await holdArchives(page);
+  await page
+    .getByRole("button", { name: /Undo archive for Recheck pin order/ })
+    .click();
+  await expect.poll(() => restore.calls.length).toBe(1);
+  await expect(nestedRow).toBeVisible();
+  const rowNames = await sidebar.getByRole("link").allTextContents();
+  const parentIndex = rowNames.findIndex((name) =>
+    name.includes("Check pinned row order"),
+  );
+  expect(rowNames[parentIndex + 1]).toContain("Recheck pin order in Safari");
+  restore.release();
 });
 
 test("hides the composer on a Task page", async ({ page, dashboard }) => {
