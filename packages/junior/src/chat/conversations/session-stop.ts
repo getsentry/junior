@@ -125,6 +125,8 @@ export async function skipInputAfterConversationStop(
     // The batch can still hold input that the stop cancels. Only input sent
     // after the stop ends it. A Slack stop takes its time from Slack, so this
     // compares the time each message was sent, not when Junior received it.
+    // Known gap: input sent before the stop but received after it still runs,
+    // and the Conversation stays stopped.
     await resumeStoppedConversationTree(
       context.conversationId,
       Math.max(...personInput.map((message) => message.createdAtMs)),

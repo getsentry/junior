@@ -20,6 +20,7 @@ import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { getConversationStore } from "@/chat/db";
+import type { ConversationStore } from "@/chat/conversations/store";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
@@ -54,10 +55,41 @@ function failFirstStopRequest(state: StateAdapter): StateAdapter {
   }) as StateAdapter;
 }
 
-function ingress(state: StateAdapter = getStateAdapter()) {
+/** Fail the next execution metadata write once `failNext` is called. */
+function failNextExecutionWrite(store: ConversationStore) {
+  let armed = false;
+  return {
+    failNext: () => {
+      armed = true;
+    },
+    store: new Proxy(store, {
+      get(target, prop) {
+        if (prop === "recordExecution") {
+          return async (
+            ...args: Parameters<ConversationStore["recordExecution"]>
+          ) => {
+            if (armed) {
+              armed = false;
+              throw new Error("transient metadata write failure");
+            }
+            return await target.recordExecution(...args);
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as ConversationStore,
+  };
+}
+
+function ingress(
+  state: StateAdapter = getStateAdapter(),
+  conversationStore?: ConversationStore,
+) {
   const adapter = createSlackAdapterFixture();
   const queue = createConversationWorkQueueTestAdapter();
   const services = {
+    conversationStore,
     getSlackAdapter: () => adapter,
     queue,
     runtime: createSlackRuntime({ getSlackAdapter: () => adapter }),
@@ -294,6 +326,25 @@ describe("Slack ingress: thread messages", () => {
       inboundMessageIds: [first?.inboundMessageId],
     });
     expect(stopAcks()).toHaveLength(1);
+  });
+
+  it("lets Slack retry a `stop` keyword whose claim fails to save", async () => {
+    const metadata = failNextExecutionWrite(getConversationStore());
+    const harness = ingress(getStateAdapter(), metadata.store);
+    const child = await startThreadWork(harness);
+    const stop = {
+      eventType: "message" as const,
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.000200",
+    };
+    // The claim lands, then its metadata write fails.
+    metadata.failNext();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    expect(stopAcks()).toHaveLength(0);
+
+    // The failed claim is released, so the retry stops the work.
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
+    await expectThreadWorkStopped(child, harness.state);
   });
 
   it("keeps a `stop` keyword's claim when the stop fails after it landed", async () => {
