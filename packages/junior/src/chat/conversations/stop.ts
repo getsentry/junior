@@ -93,10 +93,11 @@ export type StopConversationResult =
  * A stop that comes from a message or a button press, such as the Slack
  * `stop` keyword or stop button, passes it. Its id is claimed in the mailbox
  * first, so a redelivery returns `duplicate` and stops nothing, not even
- * newer work. A stop that fails before its stop request is saved, the
- * claim included, releases its claim, so a redelivery can stop again. A
- * failure after that keeps the claim, as does a failed reply: the work is
- * already stopped, and a redelivery must not stop newer work. Its send time
+ * newer work. A stop that fails before its stop request is saved releases
+ * its claim, so a redelivery can stop again. A failed claim check keeps a
+ * claim that an earlier delivery saved. A failure after the stop request is
+ * saved keeps the claim, as does a failed reply: the work is already
+ * stopped, and a redelivery must not stop newer work. Its send time
  * is the stop time, and only person input sent at or before it is dropped.
  * So a retry writes the same stop and keeps input that the person sent after
  * it.
@@ -113,22 +114,23 @@ export async function stopConversation(args: {
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<StopConversationResult> {
+  // The claim stays outside the try. A failed claim leaves no claim of this
+  // call, because the store releases one whose metadata write fails. So a
+  // redelivery whose claim check fails keeps the first delivery's claim.
+  if (
+    args.message &&
+    (
+      await claimInboundMessage({
+        conversationStore: args.conversationStore,
+        message: args.message,
+        state: args.state,
+      })
+    ).status === "duplicate"
+  ) {
+    return { status: "duplicate" };
+  }
   let stopSaved = false;
   try {
-    // The claim is inside the try: its metadata write can fail after the
-    // claim landed, and that must release it too.
-    if (
-      args.message &&
-      (
-        await claimInboundMessage({
-          conversationStore: args.conversationStore,
-          message: args.message,
-          state: args.state,
-        })
-      ).status === "duplicate"
-    ) {
-      return { status: "duplicate" };
-    }
     // One stop time for the whole tree, so a late cascade of a child agent
     // knows which Conversations this stop already reached.
     const nowMs = Date.now();

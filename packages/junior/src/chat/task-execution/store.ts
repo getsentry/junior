@@ -1,5 +1,6 @@
 import type { StateAdapter } from "chat";
 import { getConversationStore } from "@/chat/db";
+import { logException } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   CONVERSATION_QUEUE_SCHEMA_VERSION,
@@ -245,7 +246,11 @@ export async function appendInboundMessage(args: {
   return result;
 }
 
-/** Record an inbound message id that skips the mailbox. */
+/**
+ * Record an inbound message id that skips the mailbox. When the claim is
+ * saved but its metadata write fails, this releases the claim, so a
+ * redelivery can claim it again. Any other failure saved no claim.
+ */
 export async function claimInboundMessage(args: {
   message: workState.InboundMessageClaim;
   conversationStore?: ConversationStore;
@@ -254,11 +259,22 @@ export async function claimInboundMessage(args: {
 }) {
   const result = await workState.claimInboundMessage(args);
   if (result.status === "claimed") {
-    await recordExecutionMetadata({
-      conversationId: args.message.conversationId,
-      conversationStore: args.conversationStore,
-      state: args.state,
-    });
+    try {
+      await recordExecutionMetadata({
+        conversationId: args.message.conversationId,
+        conversationStore: args.conversationStore,
+        state: args.state,
+      });
+    } catch (error) {
+      // The metadata error is the one that matters, so a failed release
+      // does not replace it.
+      await workState
+        .releaseInboundMessage({ message: args.message, state: args.state })
+        .catch((releaseError: unknown) => {
+          logException(releaseError, "conversation.stop.release.failed");
+        });
+      throw error;
+    }
   }
   return result;
 }

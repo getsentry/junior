@@ -236,7 +236,7 @@ export function createConversationWork(
       // only this cascade stops the late child agents. The run's own error
       // wins over a failed cascade.
       await stopLateChildAgents().catch((cascadeError: unknown) => {
-        logException(cascadeError, "conversation.stop.cascade.exception");
+        logException(cascadeError, "conversation.stop.cascade.failed");
       });
       throw error;
     }

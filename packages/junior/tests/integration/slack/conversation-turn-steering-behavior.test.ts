@@ -55,6 +55,31 @@ function failFirstStopRequest(state: StateAdapter): StateAdapter {
   }) as StateAdapter;
 }
 
+/** Fail the next read of a Conversation's work state once `failNext` is called. */
+function failNextConversationRead(state: StateAdapter) {
+  let armed = false;
+  return {
+    failNext: () => {
+      armed = true;
+    },
+    state: new Proxy(state, {
+      get(target, prop) {
+        if (prop === "get") {
+          return async (key: string) => {
+            if (armed && key === `junior:conversation:v2:${CONVERSATION_ID}`) {
+              armed = false;
+              throw new Error("transient work state read failure");
+            }
+            return target.get(key);
+          };
+        }
+        const value = readProxyProperty(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter,
+  };
+}
+
 /** Fail the next execution metadata write once `failNext` is called. */
 function failNextExecutionWrite(store: ConversationStore) {
   let armed = false;
@@ -348,7 +373,8 @@ describe("Slack ingress: thread messages", () => {
   });
 
   it("keeps a `stop` keyword's claim when the stop fails after it landed", async () => {
-    const harness = ingress();
+    const reads = failNextConversationRead(getStateAdapter());
+    const harness = ingress(reads.state);
     const child = await startThreadWork(harness);
     const stop = {
       eventType: "message" as const,
@@ -363,7 +389,11 @@ describe("Slack ingress: thread messages", () => {
     expect(stoppedAtMs).toBeDefined();
     await expectChildAgentStopped(child, harness.state);
 
-    // The redelivery is a duplicate, so it cannot stop newer work.
+    // A redelivery whose claim check fails keeps the saved claim.
+    reads.failNext();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+
+    // The next redelivery is a duplicate, so it cannot stop newer work.
     await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
     expect(stopAcks()).toHaveLength(0);
     await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
