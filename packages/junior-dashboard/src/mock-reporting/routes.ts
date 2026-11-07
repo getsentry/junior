@@ -510,9 +510,9 @@ export function createMockReportingApi(): Hono<{
       params.data.conversationId,
       body.data.pinned,
     );
-    return result
-      ? jsonResponse(pinConversationResponseSchema, result)
-      : errorResponse("Conversation not found.", 404);
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(pinConversationResponseSchema, result);
   });
   app.patch("/conversations/:conversationId/unread", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

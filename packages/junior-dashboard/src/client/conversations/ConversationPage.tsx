@@ -751,9 +751,13 @@ export function ConversationPage(props: {
                 links.length ? <ConversationAnnotations links={links} /> : null
               }
               pin={{
-                // The API lets only participants pin, the same as archive.
+                // The API lets only participants pin a root, the same as
+                // archive. A child page has an agent tree.
                 disabled:
-                  !conversation || !detail.data?.isParticipant || pin.isPending,
+                  !conversation ||
+                  !detail.data?.isParticipant ||
+                  Boolean(agentTree) ||
+                  pin.isPending,
                 error: Boolean(pin.error),
                 onClick: () => pin.mutate(!conversation?.pinnedAt),
                 pinned: Boolean(conversation?.pinnedAt),
