@@ -23,7 +23,6 @@ import {
 } from "@/chat/agent-invocations/result";
 import { botConfig } from "@/chat/config";
 import { skipInputBeforeConversationStop } from "@/chat/conversations/session-stop";
-import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
 import { resolveThreadTurnWork } from "@/chat/agent-invocations/thread-turn";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { endActiveAgentInvocations } from "@/chat/agent-invocations/work";
@@ -205,10 +204,9 @@ export function createConversationWork(
       // input does on a root. It waits behind a running or yielded one.
       if (threadTurn.kind === "mailbox") {
         await endActiveAgentInvocations(context.conversationId, {
-          report: async (terminal) => {
-            await recordSubagentEnded(terminal);
-            await enqueueResult(terminal);
-          },
+          enqueueResult,
+          errorMessage:
+            "A person sent a Message in this Thread, so this task ended without a result. Send messageAgent again if you still need this work.",
         });
       }
       return await conversationTurnWorker(context, threadTurn);

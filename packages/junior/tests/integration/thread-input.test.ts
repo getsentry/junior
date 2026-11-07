@@ -757,6 +757,38 @@ describe("Thread input", () => {
     }
   });
 
+  it("ends an Agent invocation that nothing resumes when a person's Message arrives", async () => {
+    const harness = await createHarness();
+    try {
+      const threadId = await startThread(harness, "thread-spawn");
+      await harness.process(threadId);
+      await finishInvocation(harness, threadId);
+      // The parent's next Agent invocation paused between slices, and no wake
+      // for its next slice is left.
+      const invocationId = await saveInvocationSlice(threadId, "paused");
+      await sendPersonMessage(harness, threadId, "person-1");
+      const runCount = harness.runs.length;
+      await harness.process(threadId);
+
+      expect(harness.runs.slice(runCount)).toMatchObject([
+        { actor: webTestActor },
+      ]);
+      await expect(readParentResults(harness, invocationId)).resolves.toEqual([
+        "agent_invocation.failed",
+      ]);
+      const parentWork = await getConversationWorkState({
+        conversationId: slackParentConversationId,
+        state: harness.state,
+      });
+      expect(parentWork?.messages.at(-1)?.input.text).toContain(
+        "A person sent a Message in this Thread, so this task ended without a result. Send messageAgent again if you still need this work.",
+      );
+      expect(harness.otherOpenTurns).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("recovers a lost Agent invocation in a Thread", async () => {
     const harness = await createHarness();
     try {
