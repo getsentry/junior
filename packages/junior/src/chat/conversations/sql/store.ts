@@ -220,21 +220,14 @@ function destinationFromRow(
 }
 
 /**
- * Copy what a new child needs from its parent. A root gives its own Location
- * and visibility. A child passes on its own copy one level deeper. A child
- * that has no copy passes on none, so its children are private too.
+ * Copy what a new child needs from its parent. A root gives its own Location.
+ * A child passes on what it saved.
  */
 function childSpawnFromParent(parent: Conversation): ChildSpawn | undefined {
   if (parent.parentConversationId) {
-    return parent.spawn
-      ? { ...parent.spawn, depth: parent.spawn.depth + 1 }
-      : undefined;
+    return parent.spawn;
   }
-  return {
-    depth: 1,
-    ...(parent.location ? { location: parent.location } : undefined),
-    visibility: parent.visibility ?? "private",
-  };
+  return parent.location ? { location: parent.location } : undefined;
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */

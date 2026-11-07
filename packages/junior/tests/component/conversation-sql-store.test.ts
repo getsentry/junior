@@ -195,22 +195,7 @@ describe("conversation SQL store", () => {
       ).resolves.toMatchObject({ kind: "root" });
       await expect(
         store.get({ conversationId: "agent:kind-task" }),
-      ).resolves.toMatchObject({
-        kind: "task",
-        // The root has no confirmed visibility, so the child copies private.
-        spawn: { depth: 1, visibility: "private" },
-      });
-      await store.createChild({
-        childConversationId: "agent:kind-grandchild",
-        kind: "task",
-        parentConversationId: "agent:kind-task",
-        nowMs: 3,
-      });
-      await expect(
-        store.get({ conversationId: "agent:kind-grandchild" }),
-      ).resolves.toMatchObject({
-        spawn: { depth: 2, visibility: "private" },
-      });
+      ).resolves.toMatchObject({ kind: "task" });
       await expect(
         store.createChild({
           childConversationId: "agent:kind-task",

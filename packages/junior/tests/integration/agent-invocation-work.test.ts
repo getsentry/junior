@@ -74,7 +74,7 @@ describe("agent invocation conversation work", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses the Location and visibility bound at spawn without delivering child output", async () => {
+  it("keeps the Location from creation and reads the root's current visibility without delivering child output", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
@@ -118,13 +118,11 @@ describe("agent invocation conversation work", () => {
       expect(child).not.toHaveProperty("location");
       expect(child).not.toHaveProperty("sessionSource");
       expect(child).not.toHaveProperty("visibility");
-      // The child copies the root's Location and visibility at spawn.
+      // The child saves the root's Location when it is created.
       expect(child?.spawn).toEqual({
-        depth: 1,
         location: expect.objectContaining({ threadTs: "1712345.0001" }),
-        visibility: "public",
       });
-      // A later change on the root does not reach the child.
+      // The root becomes private before the child runs.
       await conversationStore.recordActivity({
         conversationId: slackParentConversationId,
         destination: slackDestination,
@@ -332,7 +330,8 @@ describe("agent invocation conversation work", () => {
         runId: created.invocationId,
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
-      expect(observedVisibility).toBe("public");
+      // The child Run uses the root's new visibility.
+      expect(observedVisibility).toBe("private");
     } finally {
       await fixture.close();
     }

@@ -7,6 +7,7 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
+import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -787,7 +788,7 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, child] = await Promise.all([
+      const [persisted, projection, child, lineage] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
@@ -795,6 +796,7 @@ export function createAgentInvocationWorker(
         getConversationStore().get({
           conversationId: invocation.childConversationId,
         }),
+        readConversationLineage(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       // Some types start with the parent's history. Later agent invocations
@@ -804,10 +806,15 @@ export function createAgentInvocationWorker(
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
-      // The child uses what it saved when it was created, never its parent.
-      // Without that, it has no Location and cannot start agents.
+      // The child uses the Location it saved when it was created.
       location = child?.spawn?.location;
-      canSpawn = child?.spawn ? child.spawn.depth <= maxAgentDepth : false;
+      // Count parents now, so a moved child gets its new depth. A chain that
+      // does not end at a root, such as a cycle, cannot start agents.
+      const root = lineage[0];
+      canSpawn =
+        root !== undefined &&
+        !root.parentConversationId &&
+        lineage.length - 1 <= maxAgentDepth;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };

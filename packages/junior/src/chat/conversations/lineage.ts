@@ -4,10 +4,7 @@ import { juniorConversations } from "@/db/schema";
 import { conversationKindFromRow } from "./sql/conversation-row";
 import type { ConversationKind } from "./store";
 
-/**
- * One Conversation in a parent chain. Only the agent tree and Guardian use
- * the chain. A child Run reads its Location and visibility from its own row.
- */
+/** One Conversation in a parent chain. */
 export interface ConversationLineageEntry {
   conversationId: string;
   kind: ConversationKind;

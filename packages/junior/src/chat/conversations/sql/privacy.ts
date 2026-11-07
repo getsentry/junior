@@ -58,13 +58,14 @@ async function readRootCandidate(
 async function readCandidateVisibility(
   executor: Pick<JuniorSqlDatabase, "db">,
   candidate: PrivacyRootCandidate,
+  lock: boolean,
 ): Promise<RootConversationVisibility> {
-  const destinations = await executor
+  const query = executor
     .db()
     .select({ visibility: juniorDestinations.visibility })
     .from(juniorDestinations)
-    .where(eq(juniorDestinations.id, candidate.destinationId))
-    .for("share");
+    .where(eq(juniorDestinations.id, candidate.destinationId));
+  const destinations = lock ? await query.for("share") : await query;
   return {
     rootConversationId: candidate.rootConversationId,
     visibility: destinations[0]?.visibility ?? null,
@@ -87,5 +88,20 @@ export async function resolveRootVisibility(
     return { rootConversationId: conversationId, visibility: null };
   }
 
-  return readCandidateVisibility(executor, candidate);
+  return readCandidateVisibility(executor, candidate, true);
+}
+
+/**
+ * Read the current visibility of a Conversation's root, without a lock. A
+ * child gets its root's value, so a change on the root reaches its child
+ * Runs. Missing or invalid root data gives null.
+ */
+export async function readRootVisibility(
+  executor: Pick<JuniorSqlDatabase, "db">,
+  conversationId: string,
+): Promise<JuniorDestinationVisibility | null> {
+  const candidate = await readRootCandidate(executor, conversationId);
+  return candidate
+    ? (await readCandidateVisibility(executor, candidate, false)).visibility
+    : null;
 }
