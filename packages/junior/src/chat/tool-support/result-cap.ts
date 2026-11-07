@@ -23,6 +23,18 @@ function head(text: string, maxChars: number): string {
   return text.slice(0, end);
 }
 
+/**
+ * Pretty-print JSON so the saved file has many lines. readFile pages by line
+ * and grep shows 500 chars of a line, so one long line is hard to read.
+ */
+function fileText(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+
 async function saveFullText(
   workspace: Pick<SandboxWorkspace, "writeFiles"> | undefined,
   toolCallId: string,
@@ -32,7 +44,7 @@ async function saveFullText(
   const path = fullResultPath(toolCallId);
   try {
     // Sandbox writes create missing parent directories.
-    await workspace.writeFiles([{ content: text, path }]);
+    await workspace.writeFiles([{ content: fileText(text), path }]);
     return path;
   } catch (error) {
     logWarn("tool.result.full_text.write.failed", {

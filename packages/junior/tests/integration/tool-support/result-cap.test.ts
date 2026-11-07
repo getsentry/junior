@@ -156,7 +156,10 @@ describe("tool result cap", () => {
     const file = writeFiles.mock.calls[0]![0][0]!;
     expect(file.path).toMatch(/^\/tmp\/jr\/[0-9a-f]{8}$/);
     // Compare large strings as booleans, so a failure does not print them.
-    expect(file.content === fullText).toBe(true);
+    // JSON is saved pretty-printed, so readFile and grep can page through it.
+    expect(file.content === JSON.stringify({ text: BIG_TEXT }, null, 2)).toBe(
+      true,
+    );
     const [shown, note] = splitNote(contentText(result));
     expect(shown === fullText.slice(0, TOOL_RESULT_MAX_CHARS)).toBe(true);
     expect(note).toBe(
@@ -260,6 +263,7 @@ describe("tool result cap", () => {
 
       expect(writeFiles).toHaveBeenCalledOnce();
       const file = writeFiles.mock.calls[0]![0][0]!;
+      // Text that is not JSON is saved unchanged.
       expect(file.content === BIG_TEXT).toBe(true);
       expect(splitNote(contentText(result))[1]).toContain(`full: ${file.path}`);
       expect(script.details).toMatchObject({
