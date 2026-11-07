@@ -37,7 +37,7 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   ).toBeVisible();
   await screenshot(page, "settings-notifications");
 
-  const saturday = page.getByRole("button", { name: "Sat" });
+  const saturday = page.getByRole("button", { name: "Sat", exact: true });
   await expect(saturday).toHaveAttribute("aria-pressed", "false");
   await saturday.click();
   await page.getByLabel("Start").fill("08:30");
