@@ -13,7 +13,6 @@ import { useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
-  ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
@@ -123,8 +122,9 @@ import {
 import { TranscriptLoading } from "./TranscriptLoading";
 import { recordTranscriptShown } from "../sentry";
 import {
+  unheldLinkStart,
   useHistoryAround,
-  type HistoryStart,
+  type ConversationLink,
   type TranscriptHistory,
 } from "./transcriptAroundHistory";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -408,9 +408,12 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   const agentTree = detail.data?.agentTree;
-  // A child Conversation takes input only from its parent agent, and it
-  // runs without interactive auth, so it has no approval to show.
-  const canReply = view === "rich" && detail.data?.isParticipant && !agentTree;
+  // A Task takes input only from its parent agent, and it runs without
+  // interactive auth, so it has no approval to show.
+  const canReply =
+    view === "rich" &&
+    detail.data?.isParticipant &&
+    detail.data.kind !== "task";
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
@@ -589,6 +592,8 @@ export function ConversationPage(props: {
       {showDetails ? (
         <ConversationMemoryContext value={memoryState}>
           <ConversationDetails
+            agentTree={agentTree}
+            feedConversations={conversations}
             autoArchive={
               detail.data?.autoArchive === undefined ? null : (
                 <AutoArchiveToggle
@@ -978,22 +983,4 @@ function conversationIsLive(
 ): boolean {
   if (detail) return detail.status === "active";
   return visualStatus === "active";
-}
-
-type ConversationLink = { event: number } | { turn: string };
-
-/** The page to open for a link, or nothing when `events` hold its row. */
-function unheldLinkStart(
-  events: readonly ConversationReportEvent[] | undefined,
-  link: ConversationLink,
-): HistoryStart | undefined {
-  const seq =
-    "event" in link ? link.event : turnStartedEventSeq(events, link.turn);
-  const held =
-    seq !== undefined &&
-    events !== undefined &&
-    seq >= (events[0]?.seq ?? Infinity) &&
-    seq <= (events.at(-1)?.seq ?? -Infinity);
-  if (held) return undefined;
-  return "event" in link ? { event: String(link.event) } : { turn: link.turn };
 }

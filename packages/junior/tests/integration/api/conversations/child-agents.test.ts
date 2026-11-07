@@ -252,7 +252,7 @@ describe("conversation child agents API", () => {
     ).toEqual({
       conversationId: child.childConversationId,
       kind: "task",
-      label: "Subagent",
+      label: "Task",
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({

@@ -1,6 +1,7 @@
 import { getChildAgentLabel } from "@/chat/agent-invocations/store";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationLineage } from "@/chat/conversations/lineage";
+import type { ConversationKind } from "@/chat/conversations/store";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { ConversationAgentTreeNode } from "../schema/conversation";
 import type { ConversationAccessReader } from "./access";
@@ -9,7 +10,11 @@ import { conversationSummaryFromStoredConversation } from "./projection";
 
 /** Bound the parent chain that one agent tree reads. */
 const MAX_AGENT_TREE_DEPTH = 16;
-const CHILD_LABEL = "Subagent";
+
+/** Name a child the viewer cannot read, or one with no agent label. */
+function childLabel(kind: ConversationKind): string {
+  return kind === "thread" ? "Thread" : "Task";
+}
 
 /**
  * Read the agent tree of a child Conversation: its parent chain, root first,
@@ -70,13 +75,13 @@ export async function readConversationAgentTree(
       }
       const kind = kindById.get(id)!;
       if (!itemAccess?.canViewPrivateContent) {
-        return { conversationId: id, kind, label: CHILD_LABEL };
+        return { conversationId: id, kind, label: childLabel(kind) };
       }
       const agent = await getChildAgentLabel(id);
       return {
         conversationId: id,
         kind,
-        label: agent?.title ?? agent?.agentName ?? CHILD_LABEL,
+        label: agent?.title ?? agent?.agentName ?? childLabel(kind),
       };
     }),
   );

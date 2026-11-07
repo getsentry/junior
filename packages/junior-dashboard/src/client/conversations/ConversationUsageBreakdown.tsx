@@ -328,7 +328,7 @@ export function ConversationUsageBreakdown(props: {
               cost: formatCost(subagentCost),
               count: formatTokens(subagentTokens),
               key: "subagents",
-              label: `${formatCompactNumber(childAgentTotals.count)} subagent${childAgentTotals.count === 1 ? "" : "s"}`,
+              label: `${formatCompactNumber(childAgentTotals.count)} child conversation${childAgentTotals.count === 1 ? "" : "s"}`,
             },
           ]}
           total={{
@@ -412,7 +412,9 @@ export function ConversationUsageBreakdown(props: {
       ) : null}
       <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
         Estimated costs.
-        {childAgentTotals ? " Totals include subagents at any depth." : null}
+        {childAgentTotals
+          ? " Totals include child conversations at any depth."
+          : null}
         {compactions
           ? ` ${formatCompactNumber(compactions)} compaction${compactions === 1 ? "" : "s"}.`
           : null}

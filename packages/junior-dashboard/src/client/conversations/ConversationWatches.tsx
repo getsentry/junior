@@ -194,7 +194,7 @@ function WatchDetail(props: { watch: ConversationWatch }) {
         <p className="m-0 flex min-w-0 items-center gap-1">
           <Bot aria-hidden="true" className="size-3 shrink-0" />
           <span className="truncate">
-            via {watch.childAgent.name ?? "subagent"}
+            via {watch.childAgent.name ?? "child conversation"}
           </span>
         </p>
       ) : null}

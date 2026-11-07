@@ -138,6 +138,9 @@ const DASHBOARD_QA_PLAN_CHECK_ID =
 export const DASHBOARD_QA_THREAD_ID = "junior:internal:dashboard-qa:thread";
 export const DASHBOARD_QA_ARCHIVED_THREAD_ID =
   "junior:internal:dashboard-qa:archived-thread";
+/** A Thread whose parent is the Thread above, not the root. */
+const DASHBOARD_QA_NESTED_THREAD_ID =
+  "junior:internal:dashboard-qa:thread:nested";
 /** Process-local archive state so mock restore can be exercised in visual QA. */
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 /** Process-local pins so the Pinned section can be exercised in visual QA. */
@@ -1120,6 +1123,8 @@ function advisorConversation(
   const conversation = detail(nowMs, {
     conversationId,
     displayTitle: "Advisor review",
+    // The viewer takes part, so QA shows that a Task still has no composer.
+    isParticipant: true,
     // A child keeps the Actor who started it, but that person did not write
     // its agent invocation input.
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -1151,20 +1156,23 @@ function advisorConversation(
   };
 }
 
-/** A Thread under the dashboard QA root. Its messages come from a person. */
+/** A Thread in the dashboard QA tree. Its messages come from a person. */
 function threadConversation(
   nowMs: number,
   conversationId: string,
   displayTitle: string,
   text: string,
   offsetMs: number,
+  parentConversationId = DASHBOARD_QA_CONVERSATION_ID,
 ): MockConversation {
   const startedAt = iso(nowMs, offsetMs);
   return detail(nowMs, {
     conversationId,
     displayTitle,
     kind: "thread",
-    parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
+    // The viewer takes part, so QA shows that a person can message a Thread.
+    isParticipant: true,
+    parentConversationId,
     childArchivedAt: mockChildArchivedAt.get(conversationId) ?? null,
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
@@ -1717,12 +1725,24 @@ function fixtureConversations(nowMs: number): MockConversation[] {
         },
       },
     ),
+    {
+      ...threadConversation(
+        nowMs,
+        DASHBOARD_QA_THREAD_ID,
+        "Check pinned row order",
+        "Check that pinned rows keep their order after a reload.",
+        -3 * 60 * 60_000,
+      ),
+      // The nested Thread below.
+      childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
+    },
     threadConversation(
       nowMs,
+      DASHBOARD_QA_NESTED_THREAD_ID,
+      "Recheck pin order in Safari",
+      "Recheck the pinned row order in Safari.",
+      -2.9 * 60 * 60_000,
       DASHBOARD_QA_THREAD_ID,
-      "Check pinned row order",
-      "Check that pinned rows keep their order after a reload.",
-      -3 * 60 * 60_000,
     ),
     threadConversation(
       nowMs,
@@ -2484,9 +2504,6 @@ export function readMockConversationChildAgents(
       conversationId,
     };
   }
-  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
-    return { agents: [], conversationId };
-  }
   // Match the API: archived children stay in the report.
   const thread = (childConversationId: string, task: string) => {
     const child = conversations.find(
@@ -2502,6 +2519,20 @@ export function readMockConversationChildAgents(
       updatedAt: child.lastProgressAt,
     } as const;
   };
+  if (conversationId === DASHBOARD_QA_THREAD_ID) {
+    return {
+      agents: [
+        thread(
+          DASHBOARD_QA_NESTED_THREAD_ID,
+          "Recheck the pinned row order in Safari.",
+        ),
+      ],
+      conversationId,
+    };
+  }
+  if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
+    return { agents: [], conversationId };
+  }
   return {
     agents: [
       thread(
@@ -2566,7 +2597,10 @@ function mockAgentTree(
     return {
       conversationId: item.conversationId,
       kind: item.kind,
-      label: agent?.title ?? agent?.name ?? "Subagent",
+      label:
+        agent?.title ??
+        agent?.name ??
+        (item.kind === "thread" ? "Thread" : "Task"),
     };
   });
 }
