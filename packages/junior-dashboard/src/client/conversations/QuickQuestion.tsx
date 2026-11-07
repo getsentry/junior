@@ -128,7 +128,8 @@ export function QuickQuestionSelectionButton(props: {
   const { rootRef, onAsk, onRespond } = props;
   const [menu, setMenu] = useState<SelectionMenu>();
   const shownRef = useRef<SelectionMenu>(undefined);
-  // A tap can clear the selection before its click. Keep the menu until then.
+  // A tap can clear the selection before its click. Until a new press, ignore
+  // the selection events that the tap sends, and keep the menu.
   const pressingMenuRef = useRef(false);
   const place = useCallback((next: SelectionMenu | undefined) => {
     shownRef.current = next;
@@ -140,6 +141,7 @@ export function QuickQuestionSelectionButton(props: {
     // A mouse drag shows the menu on mouseup, not when it pauses.
     let mousePressed = false;
     const show = () => {
+      if (pressingMenuRef.current) return;
       window.clearTimeout(timer);
       const selection = readSelection(rootRef.current);
       place(
@@ -151,6 +153,7 @@ export function QuickQuestionSelectionButton(props: {
       );
     };
     const hideUntilSettled = () => {
+      if (pressingMenuRef.current) return;
       place(undefined);
       window.clearTimeout(timer);
       if (!mousePressed) timer = window.setTimeout(show, SELECTION_SETTLE_MS);
@@ -227,8 +230,7 @@ export function QuickQuestionSelectionButton(props: {
       )}
       // Keep the selection while a button takes the click or tap.
       onMouseDown={(event) => event.preventDefault()}
-      onPointerDown={(event) => {
-        event.preventDefault();
+      onPointerDown={() => {
         pressingMenuRef.current = true;
       }}
       ref={menuRef}

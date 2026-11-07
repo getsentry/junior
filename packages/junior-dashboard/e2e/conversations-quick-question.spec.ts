@@ -337,6 +337,15 @@ test.describe("on a touch screen", () => {
     await expect(respond).toBeVisible();
     await screenshot(page, "conversation-selection-touch", { view: "mobile" });
 
+    // iOS clears the selection when a tap lands outside it. The tap uses
+    // the selection that the menu showed for.
+    await page.evaluate(() =>
+      document.addEventListener(
+        "pointerdown",
+        () => window.getSelection()!.removeAllRanges(),
+        { once: true },
+      ),
+    );
     await respond.tap();
     await expect(
       page.getByRole("textbox", { name: "Continue this conversation" }),
