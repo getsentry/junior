@@ -256,9 +256,29 @@ function parameterText(schema: unknown): string[] {
   return text;
 }
 
+// A sentence that names another tool, such as "For issues, use
+// github_commentOnIssue", tells the model about that other tool. Its words
+// would make this tool match queries for the other tool, so ranking skips it.
+function withoutToolReferences(
+  text: string,
+  name: string,
+  toolNames: Set<string>,
+): string {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter(
+      (sentence) =>
+        !(sentence.match(/[\w-]+/g) ?? []).some(
+          (word) => word !== name && toolNames.has(word),
+        ),
+    )
+    .join(" ");
+}
+
 function searchableToolFields(
   name: string,
   definition: AnyToolDefinition,
+  toolNames: Set<string>,
 ): SearchDocument["fields"] {
   return [
     terms(
@@ -272,13 +292,17 @@ function searchableToolFields(
         .join(" "),
     ),
     terms(
-      [
-        definition.description,
-        definition.promptSnippet,
-        ...(definition.promptGuidelines ?? []),
-      ]
-        .filter(Boolean)
-        .join(" "),
+      withoutToolReferences(
+        [
+          definition.description,
+          definition.promptSnippet,
+          ...(definition.promptGuidelines ?? []),
+        ]
+          .filter(Boolean)
+          .join(" "),
+        name,
+        toolNames,
+      ),
     ),
     // The source description is the same for every tool in the source, so
     // it only adds noise to ranking. Source filtering uses the source id.
@@ -294,13 +318,14 @@ function prepareSearchDocuments(
   tools: Record<string, AnyToolDefinition>,
   source: string | null,
 ): SearchDocument[] {
+  const toolNames = new Set(Object.keys(tools));
   return Object.entries(tools)
     .filter(([, definition]) =>
       source ? definition.source?.id === source : true,
     )
     .map(([name, definition]) => ({
       name,
-      fields: searchableToolFields(name, definition),
+      fields: searchableToolFields(name, definition, toolNames),
     }));
 }
 
