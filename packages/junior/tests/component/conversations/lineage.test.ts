@@ -36,11 +36,13 @@ describe("Conversation lineage", () => {
     });
     await store.createChild({
       childConversationId: CHILD_ID,
+      kind: "task",
       parentConversationId: ROOT_ID,
       nowMs: 2_000,
     });
     await store.createChild({
       childConversationId: GRANDCHILD_ID,
+      kind: "task",
       parentConversationId: CHILD_ID,
       nowMs: 3_000,
     });
@@ -84,7 +86,7 @@ describe("Conversation lineage", () => {
     await fixture.sql
       .db()
       .update(juniorConversations)
-      .set({ parentConversationId: GRANDCHILD_ID })
+      .set({ kind: "task", parentConversationId: GRANDCHILD_ID })
       .where(eq(juniorConversations.conversationId, ROOT_ID));
 
     const lineage = await readConversationLineage(GRANDCHILD_ID);
