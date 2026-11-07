@@ -35,7 +35,7 @@ export const conversationReportStatusSchema = z.enum([
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
-const conversationKindSchema = z.enum(["root", "thread", "task"]);
+export const conversationKindSchema = z.enum(["root", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",

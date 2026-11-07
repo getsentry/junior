@@ -8,6 +8,7 @@ describe("cli command dispatch", () => {
       runBriefs: vi.fn(async () => 0),
       runServiceAccount: vi.fn(async () => 0),
       runChat: vi.fn(async () => 0),
+      runConversations: vi.fn(async () => 0),
       runInit: vi.fn(async () => undefined),
       runSnapshotCreate: vi.fn(async () => undefined),
       runCheck: vi.fn(async () => undefined),
