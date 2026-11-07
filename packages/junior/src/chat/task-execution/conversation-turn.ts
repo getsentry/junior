@@ -632,18 +632,9 @@ export function createConversationTurnWorker(
               instruction: {
                 ...instructionInputs,
                 storedAttachments: attachments,
-                // A Thread's own Messages are in its history. Each Turn
-                // reads the root's Messages again.
-                ...(thread
-                  ? {
-                      context: thread.rootContext,
-                      includeConversationContextWithHistory: true,
-                    }
-                  : {
-                      context: buildConversationContext(conversation, {
-                        excludeMessageIds: inputMessageIds,
-                      }),
-                    }),
+                context: buildConversationContext(conversation, {
+                  excludeMessageIds: inputMessageIds,
+                }),
               },
               history: piMessages,
               actor,

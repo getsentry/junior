@@ -106,17 +106,14 @@ interface PromptReplayArgs {
 /**
  * Keep host-owned thread history as one evidence-only block.
  *
- * Producers already emit `<thread-context>`. A Thread Turn's
- * `<root-conversation>` block starts with its one lead sentence. Only wrap
- * plain unstructured background text so ambient messages never look like
- * more instruction.
+ * Producers already emit `<thread-context>`. Only wrap plain unstructured
+ * background text so ambient messages never look like more instruction.
  */
 function renderThreadContextForPrompt(context: string): string {
   if (
     /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
       context,
-    ) ||
-    /^[^<\n][^\n]*\n<root-conversation\s/.test(context)
+    )
   ) {
     return context;
   }

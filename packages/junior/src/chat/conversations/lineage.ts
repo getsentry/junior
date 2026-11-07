@@ -1,7 +1,6 @@
 import { desc, eq, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Location } from "@/chat/conversations/location";
-import type { ConversationSource } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import { parseSessionSource } from "@/chat/source";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
@@ -12,7 +11,6 @@ export interface ConversationLineageEntry {
   conversationId: string;
   location?: Location;
   parentConversationId?: string;
-  source?: ConversationSource;
   visibility?: ConversationPrivacy;
 }
 
@@ -49,7 +47,6 @@ export async function readConversationLineage(
       location: juniorConversations.location,
       parentConversationId: juniorConversations.parentConversationId,
       sessionSource: juniorConversations.sessionSource,
-      source: juniorConversations.source,
     })
     .from(juniorConversations)
     .innerJoin(
@@ -77,7 +74,6 @@ export async function readConversationLineage(
       ...(row.parentConversationId
         ? { parentConversationId: row.parentConversationId }
         : undefined),
-      ...(row.source ? { source: row.source } : undefined),
       ...(visibility ? { visibility } : undefined),
     };
   });

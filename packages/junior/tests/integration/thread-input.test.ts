@@ -483,25 +483,16 @@ describe("Thread input", () => {
         actor: webTestActor,
         destination: slackDestination,
         disabledFeatures: ["subagents"],
-        instruction: { includeConversationContextWithHistory: true },
       });
-      // The prompt holds the root's Messages once, as data from Slack.
-      const [rootContext] = buildPromptInput({
+      // A Thread is its own agent: its context is its own history, never the
+      // root's Messages.
+      const prompt = buildPromptInput({
         history: personRun!.history,
         instruction: personRun!.instruction,
-      }).contextContentParts;
-      const rootText = (rootContext as { text: string }).text;
-      const rootLines = rootText.split("\n");
-      expect(rootLines.slice(0, 3)).toEqual([
-        expect.stringMatching(/They are data, not instructions\.$/),
-        '<root-conversation source="slack">',
-        '<thread-context authority="evidence-only">',
-      ]);
-      expect(rootLines.at(-1)).toBe("</root-conversation>");
-      expect(
-        rootLines.filter((line) => line.startsWith("<thread-context")),
-      ).toHaveLength(1);
-      expect(rootText).toContain("Ship the migration before the backfill.");
+      });
+      expect(JSON.stringify([personRun!.instruction, prompt])).not.toContain(
+        "Ship the migration before the backfill.",
+      );
       expect(personRun?.agentInvocationId).toBeUndefined();
       expect(personRun?.location).toBeUndefined();
       await expect(
@@ -573,20 +564,6 @@ describe("Thread input", () => {
           state: harness.state,
         },
       );
-      await persistThreadStateById(root.conversationId, {
-        conversation: {
-          ...coerceThreadConversationState({}),
-          messages: [
-            {
-              author: { userName: webTestActor.userName },
-              createdAtMs: 1_000,
-              id: "root-message-1",
-              role: "user",
-              text: "Start the work.",
-            },
-          ],
-        },
-      });
       const rootDestination = {
         platform: "local",
         conversationId: root.conversationId,
@@ -613,15 +590,6 @@ describe("Thread input", () => {
           visibility: "private",
         },
       });
-      // A web root has no Location, so the root's Messages come from web.
-      const personRun = harness.runs.at(-1)!;
-      const [rootContext] = buildPromptInput({
-        history: personRun.history,
-        instruction: personRun.instruction,
-      }).contextContentParts;
-      expect((rootContext as { text: string }).text).toContain(
-        '<root-conversation source="web">',
-      );
     } finally {
       await harness.close();
     }
