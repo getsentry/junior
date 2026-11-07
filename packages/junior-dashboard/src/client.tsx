@@ -108,7 +108,9 @@ navigator.serviceWorker?.addEventListener("message", (event) => {
 });
 function onDashboardVisible(): void {
   clearAppBadge();
-  void openTappedNotificationTarget();
+  // Cache Storage can be unavailable. The pickup is a fallback, so a failure
+  // leaves the page as it is instead of showing the error overlay.
+  void openTappedNotificationTarget().catch(() => undefined);
 }
 onDashboardVisible();
 document.addEventListener("visibilitychange", () => {

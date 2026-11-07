@@ -98,13 +98,16 @@ self.addEventListener("notificationclick", (event) => {
       // still suspended, for example behind the lock screen. navigate() and
       // postMessage() can then get lost, and the app resumes on its old page.
       // The page reads this entry when it becomes visible and opens the URL.
-      const cache = await caches.open(TARGET_CACHE);
-      await cache.put(
-        TARGET_KEY,
-        new Response(JSON.stringify({ atMs: Date.now(), url: url.href }), {
-          headers: { "content-type": "application/json" },
-        }),
-      );
+      // A Cache Storage failure must not stop the navigation below.
+      try {
+        const cache = await caches.open(TARGET_CACHE);
+        await cache.put(
+          TARGET_KEY,
+          new Response(JSON.stringify({ atMs: Date.now(), url: url.href }), {
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      } catch (_error) {}
       const windows = await self.clients.matchAll({
         includeUncontrolled: true,
         type: "window",
