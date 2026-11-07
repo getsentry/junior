@@ -33,7 +33,7 @@ Junior computes the snapshot profile from its global baseline and loaded plugin 
 
 | Input                | Source                                                                |
 | -------------------- | --------------------------------------------------------------------- |
-| Runtime              | Junior sandbox runtime, currently `node22`.                           |
+| Runtime              | Junior sandbox runtime, currently `node24`.                           |
 | npm dependencies     | Global and plugin `runtime-dependencies` entries with `type: npm`.    |
 | system dependencies  | Global and plugin `runtime-dependencies` entries with `type: system`. |
 | postinstall commands | Global and plugin `runtime-postinstall` entries.                      |
