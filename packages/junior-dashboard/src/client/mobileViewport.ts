@@ -10,11 +10,15 @@ export const composerDockPaddingProperty = "--dashboard-composer-dock-padding";
 // Ignore small visualViewport shrink from rubber-band and transient chrome.
 // Real software keyboards reduce height by much more than this.
 const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 100;
-// Tight closed/open pad. Safe-area is intentionally omitted: with
-// viewport-fit=cover + visualViewport shell docking, env(safe-area-inset-bottom)
-// stacks a large home-indicator gap (and Safari often keeps it while the
-// keyboard is open: https://bugs.webkit.org/show_bug.cgi?id=217754).
-const COMPOSER_DOCK_PADDING = "0.375rem";
+// Keyboard open: tight pad, no safe-area. Safari often keeps the home-indicator
+// inset while the keyboard is open, which floats the composer above it:
+// https://bugs.webkit.org/show_bug.cgi?id=217754.
+const COMPOSER_DOCK_PADDING_KEYBOARD_OPEN = "0.375rem";
+// Keyboard closed: with viewport-fit=cover (and always in the standalone web
+// app) the shell reaches the screen edge, so the composer must clear the home
+// indicator and the rounded screen corners.
+const COMPOSER_DOCK_PADDING_KEYBOARD_CLOSED =
+  "max(0.375rem, env(safe-area-inset-bottom))";
 
 export type MobileViewportMetrics = {
   heightPx: number;
@@ -227,7 +231,9 @@ export function useMobileViewportHeight(
         const nextHeight = `${metrics.heightPx}px`;
         const nextOffsetTop = `${metrics.offsetTopPx}px`;
         const nextKeyboardOpen = metrics.keyboardOpen ? "1" : "0";
-        const nextDockPadding = COMPOSER_DOCK_PADDING;
+        const nextDockPadding = metrics.keyboardOpen
+          ? COMPOSER_DOCK_PADDING_KEYBOARD_OPEN
+          : COMPOSER_DOCK_PADDING_KEYBOARD_CLOSED;
         if (lastHeight !== nextHeight) {
           root.style.setProperty(viewportHeightProperty, nextHeight);
           lastHeight = nextHeight;
