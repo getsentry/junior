@@ -68,6 +68,20 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "detail"] as const;
 }
 
+/**
+ * Read reports and Mark as unread for one conversation share this scope, so
+ * they reach the server one at a time, in order. A forward-only read report
+ * that is in flight can then not undo a later Mark as unread.
+ */
+export function conversationReadScope(conversationId: string) {
+  return { id: `conversation:${conversationId}:read` };
+}
+
+/** Return the mutation key for Mark as read or unread on one conversation. */
+export function conversationUnreadMutationKey(conversationId: string) {
+  return ["conversation", conversationId, "unread"] as const;
+}
+
 // Right after a send, Junior usually reads the message within a few seconds.
 // Poll fast for that window only, then fall back to the normal live interval.
 const FAST_POLL_INTERVAL_MS = 500;

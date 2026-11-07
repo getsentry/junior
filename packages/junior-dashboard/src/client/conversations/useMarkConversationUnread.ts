@@ -6,7 +6,11 @@ import type {
 import { conversationUnreadSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
-import { conversationDetailQueryKey } from "./queries";
+import {
+  conversationDetailQueryKey,
+  conversationReadScope,
+  conversationUnreadMutationKey,
+} from "./queries";
 
 type DetailCache = ConversationDetailReport & { detailEtag?: string };
 
@@ -23,6 +27,8 @@ export function useMarkConversationUnread(
   const feeds = { queryKey: ["dashboard", "conversations"] };
   const detailQueryKey = conversationDetailQueryKey(conversationId);
   return useMutation({
+    mutationKey: conversationUnreadMutationKey(conversationId),
+    scope: conversationReadScope(conversationId),
     mutationFn: (unread: boolean) =>
       patch(
         conversationUnreadSchema,

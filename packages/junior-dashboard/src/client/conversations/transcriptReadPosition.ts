@@ -24,7 +24,11 @@ import {
 } from "@sentry/junior/api/schema";
 import { CONVERSATION_START_POSITION_STORAGE_KEY as START_POSITION_STORAGE_KEY } from "../../conversation-open";
 import { put } from "../http";
-import { conversationDetailQueryKey } from "./queries";
+import {
+  conversationDetailQueryKey,
+  conversationReadScope,
+  conversationUnreadMutationKey,
+} from "./queries";
 import { scrollRootFor } from "./transcriptBottomPinning";
 
 const READ_REPORT_DELAY_MS = 750;
@@ -180,6 +184,7 @@ function withReadPosition(
 export function useMarkConversationRead(conversationId: string) {
   const queryClient = useQueryClient();
   const { mutate } = useMutation({
+    scope: conversationReadScope(conversationId),
     mutationFn: (lastReadSeq: number) =>
       put(
         conversationReadReportSchema,
@@ -189,8 +194,12 @@ export function useMarkConversationRead(conversationId: string) {
     onSuccess: async ({ unreadReply, ...readPosition }) => {
       const detailQueryKey = conversationDetailQueryKey(conversationId);
       const feeds = { queryKey: ["dashboard", "conversations"] };
+      // A Mark as read or unread queued after this report owns the flag.
       const clearsUnread =
         !unreadReply &&
+        queryClient.isMutating({
+          mutationKey: conversationUnreadMutationKey(conversationId),
+        }) === 0 &&
         (queryClient.getQueryData<ConversationDetailReport>(detailQueryKey)
           ?.unread ||
           queryClient
@@ -238,6 +247,14 @@ export function useMarkConversationRead(conversationId: string) {
         conversationDetailQueryKey(conversationId),
       )?.readPosition?.lastReadSeq;
       if (stored !== undefined && lastReadSeq <= stored) return;
+      // A row seen before Mark as unread must not read the conversation again.
+      if (
+        queryClient.isMutating({
+          mutationKey: conversationUnreadMutationKey(conversationId),
+        }) > 0
+      ) {
+        return;
+      }
       mutate(lastReadSeq);
     },
     [conversationId, mutate, queryClient],
