@@ -139,6 +139,23 @@ describe("conversation pin API", () => {
       { conversationId: newer, pinned: false },
       { conversationId: older, pinned: false },
     ]);
+    // A child pin is not a pin of its root, so the API refuses it.
+    const child = "agent:pin-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "task",
+      parentConversationId: newer,
+    });
+    const childPin = await setPin(app, child, true);
+    expect(childPin.status).toBe(409);
+    await expect(childPin.json()).resolves.toEqual({
+      error:
+        "Only a top-level conversation can be pinned. Pin its root instead.",
+    });
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: older, pinned: true },
+      { conversationId: newer, pinned: false },
+    ]);
     // A pin is viewer state, so an open detail page revalidates.
     const pinnedDetail = await app.request(detailPath, {
       headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: unpinnedEtag },

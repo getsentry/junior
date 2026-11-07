@@ -1,7 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -22,7 +22,9 @@ import { readConversationAccessFromSql } from "./access";
  * control access. So only a participant can pin, the same as archive. The
  * root actor may have no row yet, so pinning adds it. A pin also restores an
  * archived conversation, because the Pinned section shows only active
- * conversations.
+ * conversations. A pin on a child would be a fact of the child, not of the
+ * viewer's root, and no list shows child pins yet, so only a root can be
+ * pinned.
  */
 export async function pinConversation(
   viewer: User,
@@ -37,12 +39,23 @@ export async function pinConversation(
   if (!access.get(conversationId)?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  const executor = getSqlExecutor();
-  const rootConversationId = await resolveRootConversationId(
-    executor,
-    conversationId,
-  );
-  const db = executor.db();
+  const db = getSqlExecutor().db();
+  const [root] = await db
+    .select({
+      kind: juniorConversations.kind,
+      lastActivityAt: juniorConversations.lastActivityAt,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1);
+  if (!root) throwApiError(404, "Conversation not found.");
+  if (conversationKindFromRow(root) !== "root") {
+    throwApiError(
+      409,
+      "Only a top-level conversation can be pinned. Pin its root instead.",
+    );
+  }
   // Pins are viewer marks, which the detail ETag reads on each request, so
   // they need no detail version bump.
   if (!body.pinned) {
@@ -53,21 +66,12 @@ export async function pinConversation(
       .where(
         and(
           eq(juniorConversationParticipants.userId, viewer.id),
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            rootConversationId,
-          ),
+          eq(juniorConversationParticipants.rootConversationId, conversationId),
         ),
       );
     return { pinnedAt: null };
   }
 
-  const [root] = await db
-    .select({ lastActivityAt: juniorConversations.lastActivityAt })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, rootConversationId))
-    .limit(1);
-  if (!root) throwApiError(404, "Conversation not found.");
   const pinnedAt = new Date();
   // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
   await db
@@ -75,7 +79,7 @@ export async function pinConversation(
     .values({
       lastMessageAt: root.lastActivityAt,
       pinnedAt,
-      rootConversationId,
+      rootConversationId: conversationId,
       userId: viewer.id,
     })
     .onConflictDoUpdate({

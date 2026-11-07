@@ -1991,15 +1991,24 @@ export function setMockConversationArchived(
   return { archivedAt: archived ? NOW : null };
 }
 
-/** Pin or unpin one mock conversation for local dashboard visual QA. */
+/**
+ * Pin or unpin one mock conversation for local dashboard visual QA. Like the
+ * API, it refuses a child.
+ */
 export function setMockConversationPinned(
   conversationId: string,
   pinned: boolean,
-): { pinnedAt: string | null } | undefined {
-  const exists = mockConversations(NOW_MS).some(
-    (conversation) => conversation.conversationId === conversationId,
+): { pinnedAt: string | null } | { error: string } | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
   );
-  if (!exists) return undefined;
+  if (!conversation) return undefined;
+  if (conversation.parentConversationId) {
+    return {
+      error:
+        "Only a top-level conversation can be pinned. Pin its root instead.",
+    };
+  }
   // Match the API: a new or removed pin has no place.
   mockPinPositions.delete(conversationId);
   if (pinned) {

@@ -18,7 +18,7 @@ export function registerPinConversationTool(
     {
       title: "Pin conversation",
       description:
-        "Pin one of your conversations, or unpin it. A pin applies only to you, restores an archived conversation, and keeps auto-archive from archiving it.",
+        "Pin one of your top-level conversations, or unpin it. A child conversation cannot be pinned; pin its root instead. A pin applies only to you, restores an archived conversation, and keeps auto-archive from archiving it.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         pinned: z
