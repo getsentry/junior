@@ -1,4 +1,5 @@
 import { defineConfig } from "astro/config";
+import mdx from "@astrojs/mdx";
 import starlight from "@astrojs/starlight";
 import sentryStarlightTheme, {
   monochromeCodeTheme,
@@ -226,6 +227,11 @@ export default defineConfig({
       ],
       plugins: [sentryStarlightTheme(), sentryAgentMarkdown()],
     }),
+    // Starlight adds mdx({ optimize: true }). With Astro's Satteri MDX
+    // pipeline, that renders Expressive Code's inline <style> as an empty
+    // element with a literal set:html attribute, so .mdx pages lose code
+    // block styles. Keep the optimization but leave <style> alone.
+    mdx({ optimize: { ignoreElementNames: ["style"] } }),
   ],
   markdown: {
     shikiConfig: {
