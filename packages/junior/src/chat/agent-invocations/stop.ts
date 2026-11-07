@@ -115,9 +115,9 @@ export async function stopChildAgentsOf(
  */
 export async function stopChildAgentsBelow(
   conversationId: string,
-  options: { nowMs: number; state?: StateAdapter },
+  options: { nowMs: number; stoppedAtMs: number; state?: StateAdapter },
 ): Promise<void> {
-  const { nowMs, state } = options;
+  const { nowMs, stoppedAtMs, state } = options;
   const tree = await stopAgentInvocationTree(conversationId, nowMs, {
     includeRoot: false,
   });
@@ -125,7 +125,7 @@ export async function stopChildAgentsBelow(
   await finishStoppedTree(
     tree,
     tree.conversationIds.filter((id) => id !== conversationId),
-    { cancelWatches: false, nowMs, state },
+    { cancelWatches: false, nowMs: stoppedAtMs, state },
   );
 }
 

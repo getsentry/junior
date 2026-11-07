@@ -20,7 +20,7 @@ import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { getConversationStore } from "@/chat/db";
-import { SLACK_STOP_ACK } from "@/chat/ingress/slack-webhook";
+import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -80,16 +80,16 @@ function ingress(state: StateAdapter = getStateAdapter()) {
       ),
       services,
     });
-  const sendSessionStop = () =>
+  const sendSessionStop = (eventTs: string) =>
     handleSlackWebhookAndFlush({
       request: slackWebhookRequest({
         type: "event_callback",
         team_id: "T123",
-        event_id: "Ev_SESSION_STOP",
+        event_id: `Ev_SESSION_STOP_${eventTs}`,
         event: {
           type: "agent_session_stopped",
           channel: CHANNEL_ID,
-          event_ts: "1712345.000900",
+          event_ts: eventTs,
           streaming_message_ts: [],
           thread_ts: THREAD_TS,
           user: "U123",
@@ -209,19 +209,29 @@ describe("Slack ingress: thread messages", () => {
     const harness = ingress();
     // Slack leaves the session in `processing` until the app changes it, so
     // an idle stop still clears the status but has nothing to confirm.
-    await expect(harness.sendSessionStop()).resolves.toMatchObject({
-      status: 200,
-    });
+    await expect(
+      harness.sendSessionStop("1712345.000900"),
+    ).resolves.toMatchObject({ status: 200 });
     expect(statusClears()).toHaveLength(1);
     expect(stopAcks()).toHaveLength(0);
 
     const child = await startThreadWork(harness);
-    await expect(harness.sendSessionStop()).resolves.toMatchObject({
-      status: 200,
-    });
+    await expect(
+      harness.sendSessionStop("1712345.000950"),
+    ).resolves.toMatchObject({ status: 200 });
+    const stoppedAtMs = await getConversationStoppedAtMs(CONVERSATION_ID);
+    // Slack's retry of the same press stops nothing more.
+    await expect(
+      harness.sendSessionStop("1712345.000950"),
+    ).resolves.toMatchObject({ status: 200 });
 
     expect(statusClears()).toHaveLength(2);
     await expectThreadWorkStopped(child, harness.state);
+    // The press time is the stop time.
+    expect(stoppedAtMs).toBe(1_712_345_000);
+    await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+      stoppedAtMs,
+    );
   });
 
   it("stops the active Turn and its child agents from the `stop` keyword the same way, once per message", async () => {
@@ -251,6 +261,39 @@ describe("Slack ingress: thread messages", () => {
     await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
       stoppedAtMs,
     );
+  });
+
+  it("keeps a mention sent after a `stop` that Slack retries", async () => {
+    const harness = ingress(failFirstStopRequest(getStateAdapter()));
+    await startThreadWork(harness);
+    // Each message is sent at least 1 ms apart, the precision of a send time.
+    const stop = {
+      eventType: "message" as const,
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.0020",
+    };
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    await harness.send({
+      eventType: "app_mention",
+      text: `<@${SLACK_BOT_USER_ID}> check the logs`,
+      ts: "1712345.0030",
+    });
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
+
+    // The stop is as old as its message, so the retry drops only the mention
+    // sent before it. The worker runs the newer mention.
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state: harness.state,
+    });
+    const [first, newer] = work?.execution.pendingMessages ?? [];
+    expect(newer?.createdAtMs).toBe(1_712_345_003);
+    await expect(
+      harness.state.get(`junior:conversation:v2:stop:${CONVERSATION_ID}`),
+    ).resolves.toMatchObject({
+      inboundMessageIds: [first?.inboundMessageId],
+    });
+    expect(stopAcks()).toHaveLength(1);
   });
 
   it("keeps a `stop` keyword's claim when the stop fails after it landed", async () => {

@@ -247,7 +247,7 @@ export async function appendInboundMessage(args: {
 
 /** Record an inbound message id that skips the mailbox. */
 export async function claimInboundMessage(args: {
-  message: InboundMessage;
+  message: workState.InboundMessageClaim;
   conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
@@ -388,6 +388,8 @@ export async function stopConversationWork(args: {
   nowMs?: number;
   /** Runs once the stop request is saved, before its metadata write. */
   onStopSaved?: () => void;
+  /** Stop only person input sent at or before this time. */
+  sentAtOrBeforeMs?: number;
   state?: StateAdapter;
 }) {
   const result = await workState.stopConversationWork(args);

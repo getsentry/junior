@@ -23,6 +23,7 @@ import {
   getConversationStoppedAtMs,
   resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
+import { stopConversation } from "@/chat/conversations/stop";
 import { getConversationEventStore } from "@/chat/db";
 import { isEventMailboxMetadata } from "@/chat/events/notification";
 import {
@@ -348,12 +349,47 @@ describe("conversation stop API", () => {
     await expect(
       getConversationStoppedAtMs(child.childConversationId),
     ).resolves.toBeDefined();
+    const childStoppedAtMs = await getConversationStoppedAtMs(
+      child.childConversationId,
+    );
+    expect(childStoppedAtMs).toBeDefined();
     await expect(
       getConversationStoppedAtMs(helper.childConversationId),
-    ).resolves.toBeDefined();
+    ).resolves.toBe(childStoppedAtMs);
     await expect(
       getConversationStoppedAtMs(created.conversationId),
     ).resolves.toBeUndefined();
+
+    // A late stop message for the root was sent before the child's stop. The
+    // child keeps its later stop, also after input ends the root's stop.
+    const rootStopAtMs = childStoppedAtMs! - 1_000;
+    await stopConversation({
+      conversationId: created.conversationId,
+      conversationStore,
+      message: {
+        conversationId: created.conversationId,
+        createdAtMs: rootStopAtMs,
+        inboundMessageId: "late-root-stop",
+        source: "web",
+      },
+      queue,
+      state,
+    });
+    await expect(
+      getConversationStoppedAtMs(created.conversationId),
+    ).resolves.toBe(rootStopAtMs);
+    await resumeStoppedConversationTree(
+      created.conversationId,
+      rootStopAtMs + 1,
+    );
+    for (const conversationId of [
+      child.childConversationId,
+      helper.childConversationId,
+    ]) {
+      await expect(getConversationStoppedAtMs(conversationId)).resolves.toBe(
+        childStoppedAtMs,
+      );
+    }
   });
 
   it("starts no parent Turn for a child result that waits when a person stops the parent", async () => {

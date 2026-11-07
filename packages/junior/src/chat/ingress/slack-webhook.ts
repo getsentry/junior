@@ -7,6 +7,8 @@ import {
   type SlackInboundEvent,
 } from "./slack-payload";
 import { handleSlackForm } from "./slack-form";
+import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
 import {
@@ -20,16 +22,7 @@ import {
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
 import type { ConversationStore } from "@/chat/conversations/store";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getSqlExecutor,
-} from "@/chat/db";
-import { appendConversationMessages } from "@/chat/conversations/messages";
-import {
-  stopConversation,
-  type StopConversationResult,
-} from "@/chat/conversations/stop";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -39,7 +32,6 @@ import type { InboundMessage } from "@/chat/task-execution/state";
 import { withLock } from "@/chat/state/locks";
 import {
   buildSlackInboundMessage,
-  clearSlackPendingReactions,
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
 import {
@@ -55,12 +47,10 @@ import {
 } from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
-import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   getThreadStopDecision,
   SubscribedReplyReason,
 } from "@/chat/services/subscribed-decision";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
 import { stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import {
@@ -85,7 +75,6 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
-import { createSlackWebApiStatusSender } from "@/chat/slack/assistant-thread/status-send";
 import {
   logException,
   setSpanAttributes,
@@ -344,99 +333,6 @@ async function persistSlackMessage(args: {
   });
 }
 
-/** Acknowledge a Slack stop. */
-export const SLACK_STOP_ACK = "Stopped.";
-
-/**
- * Stop a Slack thread's Conversation for the `stop` keyword or Slack's native
- * agent stop button. The thread stays subscribed, and the next person input
- * that reaches the worker ends the stop. A keyword stop message is saved as
- * a skipped Message and never enters the mailbox. Slack does not leave the
- * `processing` status by itself, so clear the status even when no work runs.
- *
- * Slack sends one mention as both `message` and `app_mention`, and it retries
- * events. The keyword stop claims its `inboundMessageId` in the mailbox, the
- * same duplicate guard that ordinary messages get, so a second delivery stops
- * nothing and posts no ack.
- * https://docs.slack.dev/reference/events/agent_session_stopped
- */
-async function handleSlackStop(args: {
-  adapter: SlackAdapter;
-  canonicalThreadId: string;
-  conversationId: string;
-  conversationStore?: ConversationStore;
-  queue: ConversationWorkQueue;
-  state: StateAdapter;
-  /** The `stop` keyword message. Omit it for the native stop button. */
-  stopMessage?: {
-    inbound: InboundMessage;
-    message: Message;
-    stopReason: string;
-  };
-}): Promise<void> {
-  if (args.stopMessage) {
-    const { message, stopReason } = args.stopMessage;
-    const conversation = coerceThreadConversationState(undefined);
-    recordSkippedConversationMessage({
-      conversation,
-      message,
-      skippedReason: `${SubscribedReplyReason.ThreadOptOut}:${stopReason}`,
-      text: parseContent(message).text,
-    });
-    // A redelivery saves nothing new: the Message id is the idempotency key.
-    await appendConversationMessages(getConversationEventStore(), {
-      conversation,
-      conversationId: args.conversationId,
-    });
-  }
-  const providerThread = parseSlackThreadId(args.canonicalThreadId);
-  let duplicate = false;
-  let stopped: StopConversationResult;
-  try {
-    stopped = await stopConversation({
-      conversationId: args.conversationId,
-      conversationStore: args.conversationStore,
-      message: args.stopMessage?.inbound,
-      queue: args.queue,
-      state: args.state,
-    });
-    duplicate = stopped.status === "duplicate";
-  } finally {
-    // The person asked to stop, so Slack stops showing the status either way.
-    // A duplicate leaves the status of newer work alone.
-    if (!duplicate) {
-      await createSlackWebApiStatusSender({
-        channelId: providerThread?.channelId,
-        threadTs: providerThread?.threadTs,
-      })("");
-    }
-  }
-  if (stopped.status === "duplicate") {
-    return;
-  }
-  if (stopped.status === "requested") {
-    await clearSlackPendingReactions({
-      getSlackAdapter: () => args.adapter,
-      messages: stopped.pendingMessages,
-      state: args.state,
-    });
-  }
-
-  if (!args.stopMessage && stopped.status !== "requested") {
-    // A button press with no work to stop needs no reply.
-    return;
-  }
-
-  const thread = new ThreadImpl({
-    adapter: args.adapter,
-    stateAdapter: args.state,
-    id: args.canonicalThreadId,
-    channelId: args.adapter.channelIdFromThreadId(args.canonicalThreadId),
-    isDM: args.adapter.isDM(args.canonicalThreadId),
-  });
-  await thread.post(SLACK_STOP_ACK);
-}
-
 async function routeParsedMessage(args: {
   adapter: SlackAdapter;
   event: SlackInboundEvent;
@@ -558,9 +454,10 @@ async function routeParsedMessage(args: {
       conversationId,
       conversationStore: args.conversationStore,
       queue: args.queue,
+      request: inbound,
+      slackThread: parseSlackThreadId(canonicalThreadId),
       state: args.state,
       stopMessage: {
-        inbound,
         message,
         stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
       },
@@ -572,17 +469,10 @@ async function routeParsedMessage(args: {
   // worker when passive routing is off. Later explicit mentions still need them.
   // Write to the Conversation that owns the thread, which mention Turns read.
   if (isSubscribed && !isExperimentalFeatureEnabled("passive-routing")) {
-    const content = parseContent(message);
-    const conversation = coerceThreadConversationState(undefined);
-    recordSkippedConversationMessage({
-      conversation,
+    await saveSkippedSlackMessage({
+      conversationId,
       message,
       skippedReason: `${SubscribedReplyReason.PassiveDisabled}:passive-routing`,
-      text: content.text,
-    });
-    await appendConversationMessages(getConversationEventStore(), {
-      conversation,
-      conversationId,
     });
     return;
   }
@@ -738,16 +628,26 @@ async function handleSlackEvent(args: {
             `slack:ingress:slack:${channelId}:${threadTs}`,
             async () => {
               const canonicalThreadId = `slack:${channelId}:${threadTs}`;
+              const conversationId = await resolveSlackConversationId({
+                canonicalThreadId,
+                conversationStore: args.services.conversationStore,
+                installation,
+              });
               await handleSlackStop({
                 adapter,
                 canonicalThreadId,
-                conversationId: await resolveSlackConversationId({
-                  canonicalThreadId,
-                  conversationStore: args.services.conversationStore,
-                  installation,
-                }),
+                conversationId,
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
+                request: event.event_ts
+                  ? slackStopButtonRequest({
+                      channelId,
+                      conversationId,
+                      eventTs: event.event_ts,
+                      installation,
+                    })
+                  : undefined,
+                slackThread: { channelId, threadTs },
                 state,
               });
             },

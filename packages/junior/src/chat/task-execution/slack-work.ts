@@ -840,6 +840,20 @@ export function createSlackConversationWorker(
   };
 }
 
+/** Return the mailbox id of one Slack message or event in a Conversation. */
+export function slackInboundMessageId(args: {
+  conversationId: string;
+  installation?: SlackInstallationContext;
+  slackId: string;
+}): string {
+  return [
+    "slack",
+    args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
+    args.conversationId,
+    args.slackId,
+  ].join(":");
+}
+
 /** Serialize a Slack message and the active trace into the durable mailbox. */
 export function buildSlackInboundMessage(args: {
   conversationId: string;
@@ -863,12 +877,11 @@ export function buildSlackInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     destination,
-    inboundMessageId: [
-      "slack",
-      args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
-      args.conversationId,
-      args.message.id,
-    ].join(":"),
+    inboundMessageId: slackInboundMessageId({
+      conversationId: args.conversationId,
+      installation: args.installation,
+      slackId: args.message.id,
+    }),
     delivery:
       args.message.isMention || hasInterruptOverride ? "interrupt" : "defer",
     source: "slack",

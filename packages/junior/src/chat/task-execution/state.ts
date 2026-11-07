@@ -1171,10 +1171,16 @@ export function hasRunnableConversationWork(
   return hasRunnableWork(conversation);
 }
 
+/** The fields that claim an inbound message id for its Conversation. */
+export type InboundMessageClaim = Pick<
+  InboundMessage,
+  "conversationId" | "destination" | "inboundMessageId" | "source"
+>;
+
 /** Read the Conversation of an inbound message, or a new one for it. */
 async function readInboundConversation(
   state: StateAdapter,
-  message: InboundMessage,
+  message: InboundMessageClaim,
   nowMs: number,
 ): Promise<Conversation> {
   const existing = await readConversation(state, message.conversationId);
@@ -1308,7 +1314,7 @@ export async function appendInboundMessage(args: {
  * one message is handled once.
  */
 export async function claimInboundMessage(args: {
-  message: InboundMessage;
+  message: InboundMessageClaim;
   nowMs?: number;
   state?: StateAdapter;
 }): Promise<ClaimInboundMessageResult> {
@@ -1354,7 +1360,7 @@ export async function claimInboundMessage(args: {
  * is new again. A message that waits in the mailbox keeps its id.
  */
 export async function releaseInboundMessage(args: {
-  message: InboundMessage;
+  message: InboundMessageClaim;
   nowMs?: number;
   state?: StateAdapter;
 }): Promise<void> {
@@ -1931,6 +1937,8 @@ export async function hasConversationStop(args: {
 export async function stopConversationWork(args: {
   conversationId: string;
   nowMs?: number;
+  /** Stop only person input sent at or before this time. */
+  sentAtOrBeforeMs?: number;
   state?: StateAdapter;
 }): Promise<StopConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
@@ -1941,8 +1949,12 @@ export async function stopConversationWork(args: {
     }
 
     const runId = current.execution.runId ?? randomUUID();
-    const pendingMessages =
-      current.execution.pendingMessages.filter(isHumanFacingMessage);
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) =>
+        isHumanFacingMessage(message) &&
+        (args.sentAtOrBeforeMs === undefined ||
+          message.createdAtMs <= args.sentAtOrBeforeMs),
+    );
     const inboundMessageIds = pendingMessages.map(
       (message) => message.inboundMessageId,
     );

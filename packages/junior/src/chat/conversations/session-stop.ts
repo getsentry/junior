@@ -1,5 +1,5 @@
 import type { StateAdapter } from "chat";
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -31,7 +31,8 @@ const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
  * Stop each Conversation until a person sends it input or its parent gives
  * it new work. With `cancelWatches`, an agent stopped them, so their Watches
  * end first: a Watch delivers under its lock, so every Event of a cancelled
- * Watch was received before the stop.
+ * Watch was received before the stop. A Conversation that already stopped
+ * later keeps that stop, so a retried or cascaded stop does not move it back.
  */
 export async function markConversationsStopped(
   conversationIds: readonly string[],
@@ -45,14 +46,20 @@ export async function markConversationsStopped(
       await cancelSubscriptions({ conversationId, state: options.state });
     }
   }
+  const stoppedAt = new Date(options.nowMs ?? Date.now());
   await getSqlExecutor()
     .db()
     .update(juniorConversations)
-    .set({
-      stoppedAt: new Date(options.nowMs ?? Date.now()),
-      detailVersion: nextDetailVersion,
-    })
-    .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+    .set({ stoppedAt, detailVersion: nextDetailVersion })
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, [...conversationIds]),
+        or(
+          isNull(juniorConversations.stoppedAt),
+          lt(juniorConversations.stoppedAt, stoppedAt),
+        ),
+      ),
+    );
 }
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
@@ -70,17 +77,17 @@ export async function getConversationStoppedAtMs(
 
 /**
  * End the stop of a Conversation and of the child agents below it, for new
- * work that arrived at `receivedAtMs`. Nothing changes for work that arrived
- * at or before the stop, so the input that a stop drops does not undo it.
+ * work sent at `sentAtMs`. Nothing changes for work sent at or before the
+ * stop, so the input that a stop drops does not undo it.
  * Only Conversations that stopped no later than this Conversation change, so
  * a later stop of one child agent stays in effect.
  */
 export async function resumeStoppedConversationTree(
   conversationId: string,
-  receivedAtMs: number,
+  sentAtMs: number,
 ): Promise<void> {
   const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
-  if (stoppedAtMs === undefined || receivedAtMs <= stoppedAtMs) {
+  if (stoppedAtMs === undefined || sentAtMs <= stoppedAtMs) {
     return;
   }
   await getSqlExecutor()
@@ -116,10 +123,11 @@ export async function skipInputAfterConversationStop(
   const personInput = messages.filter(isPersonInput);
   if (personInput.length > 0) {
     // The batch can still hold input that the stop cancels. Only input sent
-    // after the stop ends it.
+    // after the stop ends it. A Slack stop takes its time from Slack, so this
+    // compares the time each message was sent, not when Junior received it.
     await resumeStoppedConversationTree(
       context.conversationId,
-      Math.max(...personInput.map((message) => message.receivedAtMs)),
+      Math.max(...personInput.map((message) => message.createdAtMs)),
     );
     return { context };
   }

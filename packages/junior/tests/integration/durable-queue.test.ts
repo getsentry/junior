@@ -3,7 +3,7 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
-import { SLACK_STOP_ACK } from "@/chat/ingress/slack-webhook";
+import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
 import {
   FUNCTION_TIMEOUT_BUFFER_SECONDS,
   botConfig,
