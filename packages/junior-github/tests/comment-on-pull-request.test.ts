@@ -46,6 +46,10 @@ describe("commentOnPullRequest", () => {
       repo: "getsentry/junior",
       number: 691,
       comment_id: 88,
+      reply: {
+        text: "Yes, see the new test.",
+        url: "https://github.com/getsentry/junior/pull/691#discussion_r88",
+      },
       url: "https://github.com/getsentry/junior/pull/691#discussion_r88",
     });
 

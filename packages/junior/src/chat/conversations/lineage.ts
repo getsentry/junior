@@ -1,6 +1,8 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
+import { conversationKindFromRow } from "./sql/conversation-row";
+import type { ConversationKind } from "./store";
 
 /**
  * One Conversation in a parent chain. The chain is for tree logic only. A
@@ -8,6 +10,7 @@ import { juniorConversations } from "@/db/schema";
  */
 export interface ConversationLineageEntry {
   conversationId: string;
+  kind: ConversationKind;
   parentConversationId?: string;
 }
 
@@ -40,6 +43,7 @@ export async function readConversationLineage(
   const rows = await getDb()
     .select({
       conversationId: juniorConversations.conversationId,
+      kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
     })
     .from(juniorConversations)
@@ -53,6 +57,7 @@ export async function readConversationLineage(
     .orderBy(desc(sql`conversation_lineage.depth`));
   return rows.map((row) => ({
     conversationId: row.conversationId,
+    kind: conversationKindFromRow(row),
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),

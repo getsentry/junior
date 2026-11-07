@@ -293,6 +293,7 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <NavRailProvider>
         <CommandPalette
+          currentConversationId={conversationId}
           navItems={primaryNavItems}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}

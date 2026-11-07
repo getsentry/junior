@@ -19,7 +19,10 @@ import {
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import { navItemIcon } from "./navIcons";
 import { Separator } from "../ui/separator";
-import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
+import {
+  COMMAND_PALETTE_LABEL,
+  COMMAND_PALETTE_SHORTCUT,
+} from "../CommandPalette";
 
 const RAIL_BUTTON_CLASS =
   "justify-center rounded-lg text-dashboard-text-muted group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:p-0! data-active:bg-dashboard-accent/[0.12] data-active:font-normal data-active:text-dashboard-accent-text [&_svg]:size-5";
@@ -85,11 +88,11 @@ function RailSearchItem(props: { onSearch(): void }) {
       <SidebarMenuItem>
         <SidebarMenuButton
           aria-keyshortcuts="Meta+K Control+K"
-          aria-label="Search"
+          aria-label={COMMAND_PALETTE_LABEL}
           className={RAIL_BUTTON_CLASS}
           onClick={props.onSearch}
           tooltip={{
-            children: `Search ${COMMAND_PALETTE_SHORTCUT}`,
+            children: `${COMMAND_PALETTE_LABEL} ${COMMAND_PALETTE_SHORTCUT}`,
             size: "compact",
             sideOffset: 6,
           }}

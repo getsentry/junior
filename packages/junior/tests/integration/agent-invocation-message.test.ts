@@ -681,13 +681,9 @@ describe("messageAgent", () => {
       ).resolves.toEqual([publicTarget]);
       // An archived conversation is hidden unless asked for.
       await getDb()
-        .insert(juniorConversationParticipants)
-        .values({
-          archivedAt: new Date(2),
-          lastMessageAt: new Date(1),
-          rootConversationId: publicTarget,
-          userId: ana!.id,
-        });
+        .update(juniorConversations)
+        .set({ archivedAt: new Date(2) })
+        .where(eq(juniorConversations.conversationId, publicTarget));
       await expect(
         searchTopLevel(privateSender, { conversation_ids: [publicTarget] }),
       ).resolves.toEqual([]);

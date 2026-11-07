@@ -30,14 +30,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  resolveMailboxTurnWork,
-  type MailboxTurnWork,
-} from "@/chat/task-execution/mailbox-turn";
-import type {
-  ConversationWorkerContext,
-  ConversationWorkerResult,
-} from "@/chat/task-execution/worker";
+import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import {
   createConversationWorkQueueTestAdapter,
   createSlackAdapterFixture,
@@ -100,24 +93,6 @@ export function emptyConversationTurnAttempt(args: {
     drain: async () => [],
     isFinalAttempt: false,
     messages: [],
-  };
-}
-
-/** Run a mailbox Turn worker on the work that the attempt resolves to. */
-export function requireConversationTurn(
-  worker: (
-    context: ConversationWorkerContext,
-    resolved: MailboxTurnWork,
-  ) => Promise<ConversationWorkerResult>,
-) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const resolved = await resolveMailboxTurnWork(context);
-    if (!resolved) {
-      throw new Error("Expected Conversation mailbox work");
-    }
-    return await worker(context, resolved);
   };
 }
 

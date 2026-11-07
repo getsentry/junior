@@ -12,7 +12,7 @@ import {
 import { useSetConversationAutoArchive } from "./autoArchiveQueries";
 
 const AUTO_ARCHIVE_HELP =
-  "Archive this conversation for you when its linked work is merged or closed and nobody replies during your wait time.";
+  "Archive this conversation for everyone when its linked work is merged or closed and nobody replies during your wait time.";
 
 /** Let a participant turn auto-archive on or off for this conversation. */
 export function AutoArchiveToggle(props: {

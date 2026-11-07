@@ -3,6 +3,7 @@ import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 
 const stopAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Stopped child conversation ID"),
@@ -16,6 +17,8 @@ const stopAgentOutputSchema = juniorToolOutputSchema.extend({
 /** Create the tool that stops one child agent of one conversation. */
 export function createStopAgentTool(conversationId: string) {
   return zodTool({
+    exposure: "deferred",
+    source: AGENTS_TOOL_SOURCE,
     description:
       "Stop a child agent that this conversation started, and every child agent it started. Use it when the child agent's work is no longer needed or goes in the wrong direction. A stopped child agent sends no result. To give it new work later, use messageAgent.",
     annotations: {

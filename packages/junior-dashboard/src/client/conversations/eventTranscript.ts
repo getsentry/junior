@@ -232,6 +232,9 @@ export function transcriptMessagesFromEvents(
           ? { agentInvocationId: data.agentInvocationId }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        ...(data.eventNamespace
+          ? { eventNamespace: data.eventNamespace }
+          : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
@@ -407,6 +410,16 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
+    if (data.type === "reply_posted") {
+      messages.push({
+        ...eventMessage(event, "assistant", [
+          { type: "text", text: data.text },
+        ]),
+        postedTo: data.plugin,
+      });
+      continue;
+    }
+
     if (data.type === "attachments_delivered") {
       messages.push(
         eventMessage(event, "system", [
@@ -435,6 +448,12 @@ export function transcriptMessagesFromEvents(
           },
         ]),
       );
+      continue;
+    }
+
+    if (data.type === "turn_lifecycle" && data.state === "no_reply") {
+      const message = latestUserMessageByTurn.get(data.turnId);
+      if (message?.eventType) message.noReply = true;
       continue;
     }
 

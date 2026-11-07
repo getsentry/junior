@@ -10,16 +10,38 @@ import {
   createConversationId,
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
+import {
+  resolveMailboxTurnWork,
+  type MailboxTurnWork,
+} from "@/chat/task-execution/mailbox-turn";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
 import {
   closeConversationFixture,
   createConversationFixture,
-  requireConversationTurn,
 } from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
+
+function requireConversationTurn(
+  worker: (
+    context: ConversationWorkerContext,
+    resolved: MailboxTurnWork,
+  ) => Promise<ConversationWorkerResult>,
+) {
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const resolved = await resolveMailboxTurnWork(context);
+    if (!resolved) throw new Error("Expected Conversation mailbox work");
+    return await worker(context, resolved);
+  };
+}
 
 describe("event wake delay", () => {
   afterEach(async () => {

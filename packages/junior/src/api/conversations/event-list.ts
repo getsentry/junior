@@ -9,7 +9,7 @@ import {
   readConversationEventPageAround,
 } from "./event-page";
 import { attachConversationMentions } from "./mentions";
-import { readConversationRecordFromSql } from "./list";
+import { readConversationRecordFromSql } from "./record";
 import { conversationEventHistory } from "./projection";
 import { throwApiError } from "../http";
 import type { JuniorSqlDatabase } from "@/db/db";

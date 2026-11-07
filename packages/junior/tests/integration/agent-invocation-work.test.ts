@@ -74,7 +74,7 @@ describe("agent invocation conversation work", () => {
     vi.restoreAllMocks();
   });
 
-  it("reads the parent Location and visibility without delivering child output", async () => {
+  it("uses the Location and visibility bound at spawn without delivering child output", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;

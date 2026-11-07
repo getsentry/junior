@@ -109,7 +109,7 @@ describe("versions API", () => {
       "conversations",
     ]);
 
-    // A pin writes no detail version, but the feed shows it.
+    // A pin writes no detail version, but the feed and the detail show it.
     const pinned = await app.request(
       `http://localhost/api/conversations/${OWN}/pin`,
       {
@@ -120,7 +120,11 @@ describe("versions API", () => {
     );
     expect(pinned.status).toBe(200);
     const withPin = await read();
-    expect(changed(withInput, withPin)).toEqual(["conversations"]);
+    expect(changed(withInput, withPin)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+    expect(await detailVersion()).toBe(withPin.conversation);
 
     const item = await insertReviewItem(getDb(), {
       addedByConversationId: OWN,

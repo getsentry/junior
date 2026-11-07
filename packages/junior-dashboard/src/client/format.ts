@@ -2,6 +2,7 @@ import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
+  ConversationFeedItem,
   ConversationModelUsage,
   ConversationSummaryReport,
   ConversationUsage,
@@ -671,18 +672,17 @@ function compareTimeDesc(a: string | undefined, b: string | undefined): number {
 }
 
 /**
- * Return the title of a loaded Conversation. A child agent Conversation uses
- * its agent label from the agent tree, because it has no title of its own.
+ * Return the title of a loaded Conversation. A Thread has its own title. A
+ * Task uses its agent label from the agent tree, because it has no title.
  */
 export function conversationDetailTitle(
   detail:
-    | Pick<ConversationTranscript, "agentTree" | "displayTitle">
+    | Pick<ConversationTranscript, "agentTree" | "displayTitle" | "kind">
     | undefined,
 ): string | undefined {
-  return (
-    detail?.agentTree?.at(-1)?.label ??
-    (detail?.displayTitle?.trim() || undefined)
-  );
+  const title = detail?.displayTitle?.trim() || undefined;
+  const label = detail?.agentTree?.at(-1)?.label;
+  return detail?.kind === "thread" ? (title ?? label) : (label ?? title);
 }
 
 /** Return the display title prepared by the reporting API. */
@@ -873,7 +873,7 @@ export function detectOutputLanguage(text: string): BundledLanguage {
 
 /** Convert SQL conversation summaries into dashboard rows. */
 export function buildConversations(
-  summaries: ConversationSummaryReport[],
+  summaries: ConversationFeedItem[],
 ): Conversation[] {
   return summaries
     .map((summary) => ({
@@ -905,6 +905,9 @@ export function buildConversations(
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,
+      kind: summary.kind,
+      parentConversationId: summary.parentConversationId,
+      threads: summary.threads && buildConversations(summary.threads),
       unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,
     }))

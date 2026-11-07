@@ -236,6 +236,7 @@ function createdConversation(
     eventHistory: { status: "available" as const },
     generatedAt: startedAt,
     isParticipant: true,
+    kind: "root" as const,
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,

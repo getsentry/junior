@@ -288,6 +288,40 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
+  test("when the merge guidance says to tell the person who asked, post it", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(`What does ${pullRequest} change?`),
+    );
+    // The Watch that Junior adds after it opens a pull request. The GitHub
+    // plugin guidance for the merge says to mention the person who asked.
+    await insertWatch({
+      conversation,
+      events: ["pull_request.merged"],
+      identifier: pullRequest,
+      intent:
+        "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push. Report completed work or blockers in the originating Slack thread. Report when the pull request closes unmerged. When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID from the originating thread, with the reviewer, the review outcome, and the pull request link. Otherwise stay silent.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(mergedWebhook());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says GitHub PR ${pullRequest} was merged.`,
+          "The reply mentions the person who asked in the thread.",
+        ],
+      }),
+    );
+
+    // The person must hear about the merge, so the reply is not quiet.
+    expect(delivery.quietReplies).toEqual([]);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
   test("when the person who asked reviews the PR, address them once as you", async ({
     run,
   }) => {

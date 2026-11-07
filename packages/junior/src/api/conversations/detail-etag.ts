@@ -55,33 +55,87 @@ function subtreeDetailVersion(conversationId: string) {
     .as("detail_subtree");
 }
 
+const versionConversation = alias(juniorConversations, "version_conversation");
+const versionFork = alias(juniorConversations, "version_fork");
+const versionParticipant = alias(
+  juniorConversationParticipants,
+  "version_participant",
+);
+const versionUser = alias(juniorUsers, "version_user");
+
 /**
- * Format the change token of a Conversation and its child agents. It must
- * match the token of `conversationVersionQuery`, so the dashboard can find a
- * stale detail report without asking for the report.
+ * Hash the detail state whose writes do not bump `detail_version`: the
+ * viewer's marks and auto-archive choice on the root, the forks, and the
+ * matched Slack files. Each part is a lookup by key, so the versions poll
+ * stays one cheap statement.
  */
-function conversationVersionToken(subtree: {
-  conversations: number;
-  version: string;
-}): string {
-  return `${subtree.conversations}:${subtree.version}`;
+function viewerStateVersion(
+  db: JuniorDatabase,
+  conversationId: string,
+  viewerId: string,
+) {
+  const root = db
+    .select({
+      id: sql<string>`coalesce(${versionConversation.rootConversationId}, ${versionConversation.conversationId})`,
+    })
+    .from(versionConversation)
+    .where(eq(versionConversation.conversationId, conversationId));
+  const participant = db
+    .select({
+      state: sql<string>`row(${versionParticipant.pinnedAt}, ${versionParticipant.pinPosition}, ${versionParticipant.autoArchive})::text`,
+    })
+    .from(versionParticipant)
+    .where(
+      and(
+        eq(versionParticipant.userId, viewerId),
+        eq(versionParticipant.rootConversationId, sql`(${root})`),
+      ),
+    );
+  const autoArchiveDefault = db
+    .select({ value: versionUser.autoArchiveDefault })
+    .from(versionUser)
+    .where(eq(versionUser.id, viewerId));
+  const forks = db
+    .select({
+      ids: sql<string>`string_agg(${versionFork.conversationId}, ',' order by ${versionFork.conversationId})`,
+    })
+    .from(versionFork)
+    .where(
+      and(
+        eq(versionFork.forkedFromConversationId, conversationId),
+        isNull(versionFork.quickQuestionAt),
+      ),
+    );
+  // A missing part keeps its place, so two different states cannot hash
+  // the same.
+  return sql<string>`md5(concat_ws('|',
+    coalesce((${participant}), ''),
+    coalesce((${autoArchiveDefault})::text, ''),
+    coalesce((${forks}), ''),
+    (${slackAttachmentsVersionQuery(db, conversationId)})
+  ))`;
 }
 
 /**
- * Return a query for the `conversationVersionToken` of a Conversation, or a
- * null token when it is missing. It reads only the tree's detail versions,
- * so a poll can check it beside other tokens in one statement.
+ * Return a query for the change token of a Conversation and its child
+ * agents, as the viewer sees it, or a null token when it is missing. The
+ * detail report sends the same token, so the dashboard can find a stale
+ * detail without asking for the report.
  */
 export function conversationVersionQuery(
   db: JuniorDatabase,
   conversationId: string,
+  viewerId: string | undefined,
 ) {
   const subtree = subtreeDetailVersion(conversationId);
+  const viewerState = viewerId
+    ? viewerStateVersion(db, conversationId, viewerId)
+    : sql`null`;
   return db
     .select({
       version: sql<
         string | null
-      >`case when ${subtree.conversations} = 0 then null else concat_ws(':', ${subtree.conversations}, ${subtree.version}) end`,
+      >`case when ${subtree.conversations} = 0 then null else concat_ws(':', ${subtree.conversations}, ${subtree.version}, ${viewerState}) end`,
     })
     .from(subtree);
 }
@@ -94,7 +148,6 @@ export function conversationVersionQuery(
  */
 async function readDetailStateRow(conversationId: string, viewer?: User) {
   const db = getDb();
-  const subtree = subtreeDetailVersion(conversationId);
   const rootConversationId = sql`coalesce(${detailConversation.rootConversationId}, ${detailConversation.conversationId})`;
   const forkIds = db
     .select({ conversationId: fork.conversationId })
@@ -119,7 +172,6 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     : sql`false`;
   const [row] = await db
     .select({
-      archivedAt: juniorConversationParticipants.archivedAt,
       attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
       autoArchive: juniorConversationParticipants.autoArchive,
       autoArchiveDefault: juniorUsers.autoArchiveDefault,
@@ -135,11 +187,11 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId: sql<string>`${rootConversationId}`,
-      subtreeConversations: subtree.conversations,
-      subtreeVersion: subtree.version,
+      version: sql<
+        string | null
+      >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
     })
     .from(detailConversation)
-    .crossJoin(subtree)
     .leftJoin(
       forkSource,
       eq(
@@ -179,7 +231,8 @@ async function readDetailState(
   readAccess: ConversationAccessReader,
 ): Promise<{
   state: ConversationDetailState;
-  subtree: { conversations: number; version: string };
+  /** `conversationVersionQuery` token, or undefined when missing. */
+  version: string | undefined;
 }> {
   const rowRead = readDetailStateRow(conversationId, viewer);
   const [accessById, row, forks, agentTree, unreadIds] = await Promise.all([
@@ -257,10 +310,7 @@ async function readDetailState(
         : undefined),
       ...(viewerMarks ? { viewerMarks } : undefined),
     },
-    subtree: {
-      conversations: row?.subtreeConversations ?? 0,
-      version: row?.subtreeVersion ?? "0",
-    },
+    version: row?.version ?? undefined,
   };
 }
 
@@ -299,17 +349,17 @@ export async function readConversationDetailEtag(
   | {
       etag: string;
       state: ConversationDetailState;
-      /** `conversationVersionToken` of the same read. */
+      /** `conversationVersionQuery` token of the same read. */
       version: string;
     }
   | undefined
 > {
-  const { state, subtree } = await readDetailState(
+  const { state, version } = await readDetailState(
     conversationId,
     options.viewer,
     options.readAccess,
   );
-  if (subtree.conversations === 0) return undefined;
+  if (!version) return undefined;
   const basis = JSON.stringify({
     access: state.access ?? null,
     agentTree: state.agentTree ?? null,
@@ -317,7 +367,7 @@ export async function readConversationDetailEtag(
     forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
-    subtree,
+    version,
     // The read position is not hashed, but whether it leaves a reply unread
     // is, so the next poll after a read or a mark shows the new state.
     unreadReply: state.unreadReply ?? false,
@@ -326,6 +376,6 @@ export async function readConversationDetailEtag(
   return {
     etag: createHash("sha256").update(basis).digest("hex"),
     state,
-    version: conversationVersionToken(subtree),
+    version,
   };
 }

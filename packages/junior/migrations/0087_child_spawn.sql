@@ -1,8 +1,9 @@
 ALTER TABLE "junior_conversations" ADD COLUMN "spawn_json" jsonb;--> statement-breakpoint
 -- Give each existing child the root Location, visibility, and depth that its
 -- Runs read from the root before, so children in flight keep working.
--- Missing or unknown visibility is private. A child whose chain does not end
--- at a root gets no copy, so its Runs fail closed. The Location follows
+-- Missing or unknown visibility is private. A child whose chain is broken or
+-- has a cycle never joins a root here, so it gets no copy. Its Runs are then
+-- private, with no Location, and cannot spawn. The Location follows
 -- locationFromRow: location_json, else a Slack destination row, with the
 -- session Source threadTs when the Location has none.
 WITH RECURSIVE "tree" ("conversation_id", "root_id", "depth", "path") AS (

@@ -6,7 +6,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import { briefEntriesFromReportEvents } from "./event-entries";
-import { parseBriefInput, type BriefInput } from "./schema";
+import { briefResourceLabel, parseBriefInput, type BriefInput } from "./schema";
 
 const EVENT_PAGE_SIZE = 500;
 
@@ -105,7 +105,7 @@ export async function briefInputFromSql(
         : undefined),
     })),
     resources: annotations.map((annotation) => ({
-      label: annotation.label,
+      label: briefResourceLabel(annotation),
       url: annotation.url,
       ...(annotation.status ? { status: annotation.status } : undefined),
     })),

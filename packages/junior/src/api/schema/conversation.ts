@@ -34,6 +34,9 @@ export const conversationReportStatusSchema = z.enum([
   "stopped",
 ]);
 
+/** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
+const conversationKindSchema = z.enum(["root", "thread", "task"]);
+
 export const conversationSurfaceSchema = z.enum([
   "api",
   "internal",
@@ -247,6 +250,9 @@ export const conversationSummaryReportSchema = z
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
     childAgentTotals: conversationChildAgentTotalsSchema.optional(),
     conversationId: z.string(),
+    kind: conversationKindSchema,
+    /** Present on Threads and Tasks. */
+    parentConversationId: z.string().min(1).optional(),
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
@@ -256,6 +262,10 @@ export const conversationSummaryReportSchema = z
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),
+    /**
+     * When this Conversation was archived for everyone, or null. It shows
+     * only while it and every ancestor are unarchived.
+     */
     archivedAt: z.string().datetime().nullable().optional(),
     pinnedAt: z.string().datetime().nullable().optional(),
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
@@ -320,6 +330,8 @@ const conversationReportMessageEventDataSchema = z
     /** Agent invocation whose input this is. An agent wrote it, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
+    /** Namespace of the first Event, such as `github`. */
+    eventNamespace: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),
@@ -545,6 +557,16 @@ const conversationReportAttachmentsDeliveredEventDataSchema = z
   })
   .strict();
 
+/** Junior text that a plugin tool posted to its provider. */
+const conversationReportReplyPostedEventDataSchema = z
+  .object({
+    type: z.literal("reply_posted"),
+    plugin: z.string().min(1),
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
@@ -591,6 +613,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
   conversationReportAttachmentsDeliveredEventDataSchema,
+  conversationReportReplyPostedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportSubagentEventDataSchema,
@@ -769,6 +792,7 @@ export const forkConversationResponseSchema = z
 export const conversationAgentTreeNodeSchema = z
   .object({
     conversationId: z.string().min(1),
+    kind: conversationKindSchema,
     label: z.string().min(1),
   })
   .strict();
@@ -870,9 +894,23 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
   .strict()
   .superRefine(validateConversationEvents);
 
+/** A feed row, with its visible Threads nested under their parents. */
+export type ConversationFeedItem = ConversationSummaryReport & {
+  threads?: ConversationFeedItem[];
+};
+
+/**
+ * A root in the feed, or one of its visible Threads. A Thread nests under
+ * its nearest visible Thread ancestor, or under the root. Tasks never show.
+ */
+const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
+  conversationSummaryReportSchema.extend({
+    threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
+  });
+
 export const conversationFeedSchema = z
   .object({
-    conversations: z.array(conversationSummaryReportSchema),
+    conversations: z.array(conversationFeedItemSchema),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
   })

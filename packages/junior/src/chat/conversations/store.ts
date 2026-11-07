@@ -73,6 +73,11 @@ export interface Conversation {
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
+  /**
+   * When the Conversation was archived for everyone. Only archive, auto-archive,
+   * pin, and a person's message write it; `upsertConversation` does not.
+   */
+  archivedAtMs?: number;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   /** Parent facts that a child copied at create. Roots have none. */

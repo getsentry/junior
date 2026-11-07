@@ -20,6 +20,7 @@ import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
+import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { appendInboundMessage } from "@/chat/task-execution/store";
@@ -39,10 +40,7 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
-import {
-  createConversationFixture,
-  requireConversationTurn,
-} from "../../fixtures/conversation";
+import { createConversationFixture } from "../../fixtures/conversation";
 
 /** Reply "done" without running the agent. */
 const doneAgentRunner = {
@@ -252,7 +250,11 @@ describe("conversation work telemetry", () => {
     await consumeConversationQueueMessage(queue.takeMessage(), {
       messageId: "msg_1",
       queue,
-      run: requireConversationTurn(worker),
+      run: async (context) => {
+        const resolved = await resolveMailboxTurnWork(context);
+        if (!resolved) throw new Error("Expected Conversation mailbox work");
+        return await worker(context, resolved);
+      },
       state,
     });
 

@@ -58,6 +58,7 @@ import {
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 type NewAutomation = {
   creator: ReturnType<typeof requireToolCreator>;
@@ -185,6 +186,8 @@ export function createAutomationTool(
 ) {
   const trigger = automationTriggerSchema(catalog);
   return zodTool({
+    exposure: "deferred",
+    source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
     annotations: {
       destructiveHint: false,

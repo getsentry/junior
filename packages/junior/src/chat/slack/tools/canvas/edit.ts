@@ -20,6 +20,7 @@ import {
 } from "@/chat/tools/sandbox/text-edits";
 import type { ToolState } from "@/chat/tools/types";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 function prepareCanvasEditArguments(input: unknown): {
   canvas: string;
@@ -55,6 +56,8 @@ const slackCanvasEditOutputSchema = juniorToolOutputSchema
 /** Create a tool that edits a Slack canvas like a markdown file. */
 export function createSlackCanvasEditTool(state: ToolState) {
   return zodTool({
+    exposure: "deferred",
+    source: SLACK_TOOL_SOURCE,
     annotations: {
       destructiveHint: true,
       idempotentHint: true,

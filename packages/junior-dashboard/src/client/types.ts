@@ -121,6 +121,8 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
@@ -130,6 +132,8 @@ export type TranscriptViewMessage = {
   explicitMention?: boolean;
   /** Quiet message: stored, but not delivered to the Location. */
   quiet?: true;
+  /** Event message whose Turn ended without a reply. */
+  noReply?: true;
   /** Person changes to Review items that this message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */
@@ -148,6 +152,8 @@ export type TranscriptViewMessage = {
   /** Local images of a pending send that the server has not stored yet. */
   images?: InputImage[];
   parts: TranscriptViewPart[];
+  /** Plugin whose tool posted this Junior reply, such as `github`. */
+  postedTo?: string;
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
   sourceSeq: number;
@@ -186,6 +192,10 @@ export type Conversation = {
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
   isPriority?: boolean;
+  kind: ConversationSummaryReport["kind"];
+  parentConversationId?: string;
+  /** Visible Threads under this row, newest first. */
+  threads?: Conversation[];
   unfinishedWork?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };

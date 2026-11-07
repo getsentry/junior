@@ -1,5 +1,5 @@
 {
-  "id": "98b646ab-b4c5-44e9-a412-46c85038d3fe",
+  "id": "ff567d34-57b2-44b8-adf8-c88d68e35eeb",
   "prevId": "92778f75-fd31-4609-bfed-da5a5a913247",
   "version": "7",
   "dialect": "postgresql",
@@ -2592,9 +2592,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "spawn_json": {
-          "name": "spawn_json",
-          "type": "jsonb",
+        "child_archived_at": {
+          "name": "child_archived_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

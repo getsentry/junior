@@ -10,6 +10,8 @@ import { RedactedMarker } from "./TranscriptRedacted";
 import type { TranscriptViewMessage } from "../types";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { SourceMark } from "./SourceMark";
+import { eventMessageSource } from "./transcriptSource";
 
 function EventTypeChip(props: { eventType: string }) {
   return (
@@ -42,6 +44,7 @@ export function TranscriptEventView(props: {
   const events = props.message.events ?? [];
   const mentions = props.message.mentions ?? [];
   const isBatch = events.length > 1;
+  const source = eventMessageSource(props.message);
   const summary = isBatch
     ? batchSummary(events)
     : (props.message.trustedSummary ?? props.message.eventType ?? "");
@@ -59,6 +62,7 @@ export function TranscriptEventView(props: {
             text={summary}
           />
         </span>
+        {source ? <SourceMark provider={source} /> : null}
         {!isBatch && props.message.eventType ? (
           <EventTypeChip eventType={props.message.eventType} />
         ) : null}

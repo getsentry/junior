@@ -27,11 +27,13 @@ import { cn } from "../styles";
 import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
+import { OutboundLink } from "../components/OutboundLink";
 
 export type ConversationArchiveAction = {
   archived: boolean;
   disabled: boolean;
-  error: boolean;
+  /** The message to show when the last archive change failed. */
+  error?: string;
   onClick(): void;
   pending: boolean;
 };
@@ -129,15 +131,13 @@ export function ConversationHeaderActions(props: {
         )}
       </MenuActionButton>
       {props.sentryConversationUrl ? (
-        <a
+        <OutboundLink
           className={buttonVariants({ size: "menu" })}
           href={props.sentryConversationUrl}
-          rel="noopener noreferrer"
-          target="_blank"
         >
           <SentryGlyph />
           Open in Sentry
-        </a>
+        </OutboundLink>
       ) : null}
       <Separator className="my-1 bg-dashboard-border-subtle" />
       <MenuActionButton

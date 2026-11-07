@@ -80,9 +80,9 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
 import {
   getEventBatchDelayMs,
+  listActiveMailboxTurns,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
   type MailboxTurnWork,
@@ -580,18 +580,46 @@ export function createConversationTurnWorker(
           if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
-          // Match Slack: new input supersedes every other open mailbox Turn.
-          // A second open Turn makes every later resume fail.
-          if (
-            !isResume &&
-            !(await supersedeOpenMailboxTurns({
-              conversation,
-              conversationId: context.conversationId,
-              isStopped: () => Boolean(stopSignal?.aborted),
-              keepTurnId: turnId,
-            }))
-          ) {
-            return await completeCancelledTurn();
+          if (!isResume) {
+            // Match Slack: new input supersedes every other open mailbox
+            // Turn. New input starts only when no yielded Turn waits, so an
+            // open Turn here waits for OAuth or was left open by a failed or
+            // stopped Run. A second open Turn makes every later resume fail.
+            const pendingAuthorizationActorId =
+              conversation.processing.pendingAuth?.actorId;
+            const superseded = (
+              await listActiveMailboxTurns(context.conversationId)
+            ).filter((record) => record.turnId !== turnId);
+            for (const stale of superseded) {
+              if (stopSignal?.aborted) {
+                return await completeCancelledTurn();
+              }
+              await abandonTurnRecord({
+                conversationId: context.conversationId,
+                turnId: stale.turnId,
+                errorMessage: "Turn superseded by new input",
+              });
+              // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
+              // connect and store credentials. The abandoned turn record makes a
+              // late callback a resume no-op, matching Slack supersede behavior.
+              markTurnClosed({
+                conversation,
+                nowMs: Date.now(),
+                sessionId: stale.turnId,
+              });
+            }
+            const authParked = superseded.some(
+              (record) =>
+                record.state === "paused" && record.resumeReason === "auth",
+            );
+            if (authParked && pendingAuthorizationActorId) {
+              // Drop the dashboard connect prompt so a superseded OAuth flow
+              // cannot leave a stale banner after the user moves on.
+              await deleteWebAuthorization({
+                actorId: pendingAuthorizationActorId,
+                conversationId: context.conversationId,
+              });
+            }
           }
           await persistThreadStateById(context.conversationId, {
             conversation,

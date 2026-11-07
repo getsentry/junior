@@ -87,6 +87,18 @@ export function reviewItemNeedsUser(userId: string): SQL {
 }
 
 /**
+ * SQL: the Review item needs some person: an open `action` item with an
+ * assigned User. It is `reviewItemNeedsUser` for any User.
+ */
+export function reviewItemNeedsSomeone(): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
+    sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id})`,
+  )!;
+}
+
+/**
  * SQL: the Review item is not assigned only to other people. It is assigned
  * to this User, to Everyone, or to no one. This is the assignee rule of
  * `canActOnReviewItem`; keep the two the same.

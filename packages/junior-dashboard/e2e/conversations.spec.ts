@@ -1,7 +1,3 @@
-import {
-  CONVERSATION_DETAIL_VERSION_HEADER,
-  CONVERSATION_VERSION_HEADER,
-} from "@sentry/junior/api/schema";
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
@@ -309,94 +305,6 @@ test("reuses the fresh conversation feed after window focus", async ({
   expect(requests).toBe(1);
 });
 
-test("refreshes idle reads only when their version moves", async ({
-  page,
-  dashboard,
-}) => {
-  // Real poll intervals.
-  test.setTimeout(60_000);
-  const detailPath = `/api/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`;
-  const versions = {
-    conversation: "1:1",
-    conversations: "feed-1",
-    reviewItems: "review-1",
-    spend: "spend-1",
-  };
-  let versionReads = 0;
-  let detailReads = 0;
-  let feedReads = 0;
-  let slackReply = false;
-  await page.route("**/api/versions*", async (route) => {
-    versionReads += 1;
-    await route.fulfill({ json: versions });
-  });
-  await page.route(
-    (url) => url.pathname === "/api/conversations",
-    async (route) => {
-      if (route.request().method() === "GET") feedReads += 1;
-      await route.fallback();
-    },
-  );
-  await page.route(
-    (url) => url.pathname === detailPath,
-    async (route) => {
-      detailReads += 1;
-      // Request the full body because this test changes it.
-      const response = await route.fetch({
-        headers: {
-          ...route.request().headers(),
-          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
-        },
-      });
-      const report = withRequestedMailbox(route, await response.json());
-      if (slackReply) {
-        report.events.push({
-          seq: 100_000,
-          createdAt: report.lastSeenAt,
-          data: {
-            type: "message",
-            messageId: "slack-reply",
-            role: "user",
-            text: "A reply from Slack",
-          },
-        });
-      }
-      const headers = response.headers();
-      delete headers["content-length"];
-      headers[CONVERSATION_VERSION_HEADER] = versions.conversation;
-      await route.fulfill({ headers, json: report });
-    },
-  );
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-  );
-  await expect.poll(() => versionReads).toBeGreaterThanOrEqual(2);
-  const settled = { detailReads, feedReads, versionReads };
-
-  // Unchanged tokens refresh nothing.
-  await expect
-    .poll(() => versionReads, { timeout: 15_000 })
-    .toBeGreaterThanOrEqual(settled.versionReads + 2);
-  expect({ detailReads, feedReads }).toEqual({
-    detailReads: settled.detailReads,
-    feedReads: settled.feedReads,
-  });
-
-  // Each moved token refreshes its own read.
-  slackReply = true;
-  versions.conversation = "1:2";
-  await expect(
-    page.getByText("A reply from Slack", { exact: true }),
-  ).toBeVisible({
-    timeout: 15_000,
-  });
-  expect(feedReads).toBe(settled.feedReads);
-  versions.conversations = "feed-2";
-  await expect
-    .poll(() => feedReads, { timeout: 15_000 })
-    .toBeGreaterThan(settled.feedReads);
-});
-
 test("keeps cached conversation and draft available through reconnect", async ({
   context,
   page,
@@ -503,6 +411,7 @@ test("scrolls long conversation and transcript panes independently", async ({
     conversationId: `long-${index}`,
     cumulativeDurationMs: 1_000 + index,
     displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -724,7 +633,7 @@ test("inspects and copies a child agent transcript", async ({
   await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
-  // Details lists child agents with the runtime status.
+  // Details lists Tasks with the runtime status.
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
@@ -733,16 +642,16 @@ test("inspects and copies a child agent transcript", async ({
     exact: true,
   });
   await expect(
-    details.getByRole("heading", { name: "Subagents 2", exact: true }),
+    details.getByRole("heading", { name: "Tasks 2", exact: true }),
   ).toBeVisible();
-  const subagents = details.getByRole("list", { name: "Subagents" });
-  await expect(subagents.getByRole("listitem")).toHaveCount(2);
-  await expect(subagents.getByRole("listitem").first()).toContainText(
+  const tasks = details.getByRole("region", { name: "Tasks" });
+  await expect(tasks.getByRole("listitem")).toHaveCount(2);
+  await expect(tasks.getByRole("listitem").first()).toContainText(
     "GitHub access is needed to read the pull request.",
   );
   await screenshot(page, "conversation-subagents");
-  // A row opens the same child transcript drawer as the transcript row.
-  await subagents
+  // A row opens the same Task transcript drawer as the transcript row.
+  await tasks
     .getByRole("button", {
       name: /^blocked Review the open dashboard pull requests/,
     })
@@ -850,6 +759,27 @@ test("inspects and copies a child agent transcript", async ({
       ),
   );
   await expect(entry).toBeFocused();
+
+  // A child uses its root's pin, so its own page cannot pin, even for a
+  // participant of the root. The QA root has none, so mark the viewer as one.
+  const childDetailPath = `/api/conversations/${encodeURIComponent(childConversationId)}`;
+  await page.route(
+    (url) => url.pathname === childDetailPath,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        json: { ...(await response.json()), isParticipant: true },
+        response,
+      });
+    },
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(
+    page.getByRole("button", { name: "Pin", exact: true }),
+  ).toBeDisabled();
 });
 
 test("rates a Junior Reply once, with time to change it", async ({

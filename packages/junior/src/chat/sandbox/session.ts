@@ -43,7 +43,13 @@ import {
   SANDBOX_COMMAND_PATH,
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
-const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
+/**
+ * Size limit on the stdout and stderr that one command keeps, each. It keeps
+ * a runaway command from filling the result and the Conversation history.
+ * The tool pipeline cuts what the model sees to a much smaller size. The
+ * providers still read all output before this limit applies.
+ */
+const MAX_CAPTURED_OUTPUT_CHARS = 1_000_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
@@ -124,13 +130,12 @@ interface SandboxRuntimeOptions {
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
-function truncateOutput(
-  output: string,
-  maxLength: number,
-): { value: string; truncated: boolean } {
-  if (output.length <= maxLength) return { value: output, truncated: false };
+function captureOutput(output: string): { value: string; truncated: boolean } {
+  if (output.length <= MAX_CAPTURED_OUTPUT_CHARS) {
+    return { value: output, truncated: false };
+  }
   return {
-    value: `${output.slice(0, maxLength)}\n\n[output truncated: ${output.length - maxLength} characters removed]`,
+    value: `${output.slice(0, MAX_CAPTURED_OUTPUT_CHARS)}\n\n[output over the ${MAX_CAPTURED_OUTPUT_CHARS} char size limit: ${output.length - MAX_CAPTURED_OUTPUT_CHARS} chars not kept]`,
     truncated: true,
   };
 }
@@ -724,16 +729,6 @@ export function createSandboxRuntime(
     }
   };
 
-  const getMaxOutputLength = (): number => {
-    const maxOutputLength = Number.parseInt(
-      process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "",
-      10,
-    );
-    return Number.isFinite(maxOutputLength) && maxOutputLength > 0
-      ? maxOutputLength
-      : DEFAULT_MAX_OUTPUT_LENGTH;
-  };
-
   const readCommandOutput = async (
     commandResult: SandboxCommandResult,
   ): Promise<{
@@ -743,11 +738,8 @@ export function createSandboxRuntime(
     stdoutTruncated: boolean;
     stderrTruncated: boolean;
   }> => {
-    const boundedOutputLength = getMaxOutputLength();
-    const stdoutRaw = commandResult.stdout;
-    const stderrRaw = commandResult.stderr;
-    const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
-    const stderr = truncateOutput(stderrRaw, boundedOutputLength);
+    const stdout = captureOutput(commandResult.stdout);
+    const stderr = captureOutput(commandResult.stderr);
     return {
       stdout: stdout.value,
       stderr: stderr.value,

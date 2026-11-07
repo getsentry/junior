@@ -1,4 +1,4 @@
-import { getTableColumns, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   check,
@@ -80,8 +80,15 @@ export const juniorConversations = pgTable(
     // visibility, and depth here, not from a parent. A writer of an older
     // deploy leaves it null, and child Runs then fail closed.
     // TODO(dcramer): After every deployed writer sets spawn_json, rerun the
-    // 0085 backfill for children with a null value.
+    // 0087 backfill for children with a null value.
     spawn: jsonb("spawn_json").$type<ChildSpawn>(),
+    // Archive applies to everyone, on a root or a child. A Conversation shows
+    // only while it and every ancestor are unarchived.
+    archivedAt: timestamptz("archived_at"),
+    // The old child archive, copied into `archived_at`. Runtime code must not
+    // read or write it. A later migration drops it, so the release before
+    // still reads it while it rolls out.
+    legacyChildArchivedAt: timestamptz("child_archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(
@@ -112,8 +119,6 @@ export const juniorConversations = pgTable(
     // Detail reads compare it before they build the report. The
     // `junior/touch-conversation-detail` lint rule enforces the bump.
     detailVersion: integer("detail_version").notNull().default(0),
-    // Keep the legacy column in the schema. Runtime code must not read or write it.
-    legacyArchivedAt: timestamptz("archived_at"),
   },
   (table) => [
     check(
@@ -150,10 +155,3 @@ export const juniorConversations = pgTable(
     index("junior_conversations_root_idx").on(table.rootConversationId),
   ],
 );
-
-/** Select runtime conversation fields without reading the legacy archive column. */
-export function conversationReadColumns() {
-  const { legacyArchivedAt, ...columns } = getTableColumns(juniorConversations);
-  void legacyArchivedAt;
-  return columns;
-}

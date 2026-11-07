@@ -42,7 +42,7 @@ describe("Conversation lineage", () => {
     });
     await store.createChild({
       childConversationId: GRANDCHILD_ID,
-      kind: "task",
+      kind: "thread",
       parentConversationId: CHILD_ID,
       nowMs: 3_000,
     });
@@ -54,15 +54,19 @@ describe("Conversation lineage", () => {
 
   it("reads the parent chain root first", async () => {
     await expect(readConversationLineage(GRANDCHILD_ID)).resolves.toEqual([
-      { conversationId: ROOT_ID },
-      { conversationId: CHILD_ID, parentConversationId: ROOT_ID },
-      { conversationId: GRANDCHILD_ID, parentConversationId: CHILD_ID },
+      { conversationId: ROOT_ID, kind: "root" },
+      { conversationId: CHILD_ID, kind: "task", parentConversationId: ROOT_ID },
+      {
+        conversationId: GRANDCHILD_ID,
+        kind: "thread",
+        parentConversationId: CHILD_ID,
+      },
     ]);
   });
 
   it("reads a root as a chain of one and a missing Conversation as no chain", async () => {
     await expect(readConversationLineage(ROOT_ID)).resolves.toEqual([
-      { conversationId: ROOT_ID },
+      { conversationId: ROOT_ID, kind: "root" },
     ]);
     await expect(readConversationLineage("agent:missing")).resolves.toEqual([]);
   });

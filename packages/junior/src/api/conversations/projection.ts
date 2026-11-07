@@ -26,12 +26,15 @@ const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 type ConversationProjectionSource = Pick<
   StoredConversation,
   | "actor"
+  | "archivedAtMs"
   | "channelName"
   | "conversationId"
   | "createdAtMs"
   | "execution"
+  | "kind"
   | "lastActivityAtMs"
   | "location"
+  | "parentConversationId"
   | "source"
   | "stoppedAtMs"
   | "title"
@@ -226,7 +229,6 @@ export function conversationEventHistory(args: {
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
-  archivedAtMs?: number;
   /** Name of the Automation that started this conversation, when known. */
   automationTitle?: string;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
@@ -288,6 +290,10 @@ export function conversationSummaryFromStoredConversation(args: {
       surface,
       visibility,
     }),
+    kind: conversation.kind,
+    ...(conversation.parentConversationId
+      ? { parentConversationId: conversation.parentConversationId }
+      : undefined),
     isParticipant: args.access?.isParticipant ?? false,
     ...(visibility ? { visibility } : undefined),
     lastProgressAt: new Date(
@@ -307,9 +313,9 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(actorIdentity ? { actorIdentity } : undefined),
     ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:
-      args.archivedAtMs === undefined
+      conversation.archivedAtMs === undefined
         ? null
-        : new Date(args.archivedAtMs).toISOString(),
+        : new Date(conversation.archivedAtMs).toISOString(),
     pinnedAt:
       args.pinnedAtMs === undefined
         ? null

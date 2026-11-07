@@ -12,7 +12,12 @@
  */
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
-import { getActiveTraceContext, logException, withSpan } from "@/chat/logging";
+import {
+  getActiveTraceContext,
+  logException,
+  logWarn,
+  withSpan,
+} from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
@@ -375,4 +380,53 @@ async function saveDone(
       state: args.mode,
     });
   });
+}
+
+/** Recovery resumes a turn at most once after its worker stops checking in. */
+const MAX_LOST_WORKER_RESUMES = 1;
+/**
+ * Saved on the paused turn when recovery resumes it. The resumed run replaces
+ * it at its first save.
+ */
+export const LOST_WORKER_RESUME_MESSAGE =
+  "Turn lost its worker; resuming from its last boundary";
+
+/** True when a resumed turn lost its worker again before it saved anything. */
+export function lostWorkerBeforeFirstSave(turn: TurnRecord): boolean {
+  return (
+    turn.errorMessage === LOST_WORKER_RESUME_MESSAGE &&
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES
+  );
+}
+
+/**
+ * Pause a turn whose worker stopped checking in, so it resumes from its last
+ * save. Returns false when the turn already used its resume or has no slice
+ * left.
+ */
+export async function pauseLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
+  if (
+    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES ||
+    // Past the slice limit, the save fails the turn without a reply.
+    turn.sliceId + 1 > botConfig.maxSlicesPerTurn
+  ) {
+    return false;
+  }
+  const paused = await saveTurnCheckpoint({
+    mode: "paused",
+    reason: "retry",
+    conversationId: turn.conversationId,
+    turnId: turn.turnId,
+    sliceId: turn.sliceId,
+    messages: turn.piMessages,
+    lostWorkerResumeCount: (turn.lostWorkerResumeCount ?? 0) + 1,
+    errorMessage: LOST_WORKER_RESUME_MESSAGE,
+  });
+  if (!paused) return false;
+  logWarn("agent.turn.lost_worker.resumed", {
+    "app.ai.conversation_id": turn.conversationId,
+    "app.ai.session_id": turn.turnId,
+    "app.ai.resume_slice_id": paused.sliceId,
+  });
+  return true;
 }

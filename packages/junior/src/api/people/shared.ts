@@ -228,6 +228,9 @@ export async function recentActorRows(email: string) {
       stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+      archivedAt: juniorConversations.archivedAt,
       // Web identities use the email as the subject. Only Slack fills these.
       handle: sql<
         string | null

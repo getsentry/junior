@@ -106,11 +106,7 @@ export async function runUpgrade(
 ): Promise<void> {
   const { sql } = getChatConfig();
   const sqlExecutor: JuniorSqlExecutor = createJuniorSqlExecutor({
-    connectionString: readMigrationDatabaseUrl({
-      databaseUrl: sql.databaseUrl,
-      driver: sql.driver,
-      env: process.env,
-    }),
+    connectionString: readMigrationDatabaseUrl(sql.databaseUrl),
     driver: sql.driver,
     statementTimeoutMs: false,
   });

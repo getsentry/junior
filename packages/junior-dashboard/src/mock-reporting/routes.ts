@@ -112,7 +112,7 @@ import {
 } from "./sends";
 import { readMockConversationWatches } from "./watches";
 
-function errorResponse(error: string, status: 400 | 401 | 404): Response {
+function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
 }
 
@@ -491,10 +491,11 @@ export function createMockReportingApi(): Hono<{
     const result = setMockConversationArchived(
       params.data.conversationId,
       body.data.archived,
+      body.data.applyToChildren,
     );
-    return result
-      ? jsonResponse(archiveConversationResponseSchema, result)
-      : errorResponse("Conversation not found.", 404);
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(archiveConversationResponseSchema, result);
   });
   app.patch("/conversations/:conversationId/pin", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -509,9 +510,9 @@ export function createMockReportingApi(): Hono<{
       params.data.conversationId,
       body.data.pinned,
     );
-    return result
-      ? jsonResponse(pinConversationResponseSchema, result)
-      : errorResponse("Conversation not found.", 404);
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(pinConversationResponseSchema, result);
   });
   app.patch("/conversations/:conversationId/unread", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
