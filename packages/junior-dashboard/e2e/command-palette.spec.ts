@@ -54,9 +54,9 @@ test("jumps to a page from the command palette", async ({
   const palette = page.getByRole("dialog", { name: "Go to conversation" });
   const input = palette.getByRole("combobox");
   await expect(palette.getByRole("group", { name: "Recent" })).toBeVisible();
-  // A page whose name starts with the text outranks looser conversation
-  // matches.
-  await input.fill("code");
+  // The highlighted recent conversation still matches "co" loosely, but the
+  // page whose name starts with it ranks first and takes Enter.
+  await input.fill("co");
   await input.press("Enter");
 
   await expect(page).toHaveURL(/\/code$/);
