@@ -23,6 +23,13 @@ const BM25_B = [0.75, 0.3, 0.75] as const;
 // the query's own word still ranks first.
 const SYNONYM_WEIGHT = 0.6;
 
+// A full action and object match on the tool name doubles the score. Names
+// say what a tool does more reliably than its description words do.
+const NAME_MATCH_BOOST = 1;
+
+const NO_MATCH_NOTE =
+  "No tool fits this query. Try other words, or search with only source to list its tools.";
+
 // Common action words that tools and queries use for the same action. These
 // are generic English, so they also apply to MCP and plugin tools.
 const SEARCH_SYNONYM_GROUPS = [
@@ -114,6 +121,7 @@ const searchToolsOutputSchema = juniorToolOutputSchema
     returned_tools: z.number().int().nonnegative(),
     execution_tool: z.literal("executeTool"),
     tools: z.array(searchToolsToolSchema),
+    note: z.string().optional(),
   })
   .strict();
 
@@ -125,6 +133,10 @@ interface SourceSummary {
 interface SearchDocument {
   name: string;
   fields: [string[], string[], string[]];
+  // From the tool name: `commentOnIssue` and `create_issue` have the action
+  // "comment" or "create" and the object "issue".
+  action: string | undefined;
+  objects: string[];
 }
 
 // Fold plurals, "-ed", "-ing", and a final "e", so "issues" matches
@@ -153,21 +165,36 @@ function stem(term: string): string {
   return stemmed;
 }
 
+function camelCaseWords(chunk: string): string[] {
+  return chunk
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/\s+/);
+}
+
 function rawTerms(value: string): string[] {
   const chunks = value.match(/[\p{L}\p{N}]+/gu) ?? [];
   const result: string[] = [];
   for (const chunk of chunks) {
     result.push(chunk.toLowerCase());
-    const expanded = chunk
-      .replace(/([a-z\d])([A-Z])/g, "$1 $2")
-      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-      .toLowerCase()
-      .split(/\s+/);
+    const expanded = camelCaseWords(chunk);
     if (expanded.length > 1) {
       result.push(...expanded);
     }
   }
   return result;
+}
+
+// Split a camelCase, snake_case, or kebab-case tool name into its action
+// word and object words. Plugin tools use the name without the source
+// prefix, so `github_createIssue` gives "create" and "issue".
+function nameParts(name: string): Pick<SearchDocument, "action" | "objects"> {
+  const words = (name.match(/[\p{L}\p{N}]+/gu) ?? [])
+    .flatMap(camelCaseWords)
+    .filter((word) => !SEARCH_STOP_WORDS.has(word))
+    .map(stem);
+  return { action: words[0], objects: words.slice(1) };
 }
 
 // Runs after stemming, so the long form is stemmed here to match tool text.
@@ -326,6 +353,7 @@ function prepareSearchDocuments(
     .map(([name, definition]) => ({
       name,
       fields: searchableToolFields(name, definition, toolNames),
+      ...nameParts(definition.identity?.name ?? name),
     }));
 }
 
@@ -416,6 +444,46 @@ function scoreSearchDocument(
   }, 0);
 }
 
+// Share of the tool's name that the query matches: the action weight (1, or
+// SYNONYM_WEIGHT for a synonym) times the share of object words that other
+// query words match. Zero unless the query has both the action and an object.
+function nameMatch(document: SearchDocument, query: QueryTerm[]): number {
+  const { action, objects } = document;
+  if (!action || objects.length === 0) {
+    return 0;
+  }
+  let best = 0;
+  query.forEach((term, actionIndex) => {
+    const actionWeight = term.get(action) ?? 0;
+    if (actionWeight === 0) {
+      return;
+    }
+    const covered = objects.filter((object) =>
+      query.some((other, index) => index !== actionIndex && other.has(object)),
+    ).length;
+    best = Math.max(best, (actionWeight * covered) / objects.length);
+  });
+  return best;
+}
+
+// True when one query word is the action of some tool and another is the
+// object of some tool. If no single tool has both, such as "create
+// repository" with createIssue and getRepository, every match is a guess.
+function namesActionAndObject(
+  documents: SearchDocument[],
+  query: QueryTerm[],
+): boolean {
+  const actionTerms = query.flatMap((term, index) =>
+    documents.some(({ action }) => action && term.has(action)) ? [index] : [],
+  );
+  return query.some(
+    (term, index) =>
+      documents.some(({ objects }) =>
+        objects.some((object) => term.has(object)),
+      ) && actionTerms.some((actionIndex) => actionIndex !== index),
+  );
+}
+
 /** Rank matching catalog tools while keeping source filtering deterministic. */
 function searchCatalogTools(
   tools: Record<string, AnyToolDefinition>,
@@ -435,12 +503,24 @@ function searchCatalogTools(
   }
   const scoredTerms = scoreQueryTerms(searchTerms, documents);
   const averageLengths = averageFieldLengths(documents);
-  const scored = documents
+  const matched = documents
     .map((document) => ({
-      name: document.name,
+      document,
       score: scoreSearchDocument(document, scoredTerms, averageLengths),
+      nameMatch: nameMatch(document, searchTerms),
     }))
-    .filter(({ score }) => score > 0)
+    .filter(({ score }) => score > 0);
+  if (
+    !matched.some(({ nameMatch }) => nameMatch > 0) &&
+    namesActionAndObject(documents, searchTerms)
+  ) {
+    return [];
+  }
+  const scored = matched
+    .map(({ document, score, nameMatch }) => ({
+      name: document.name,
+      score: score * (1 + NAME_MATCH_BOOST * nameMatch),
+    }))
     .sort(
       (left, right) =>
         right.score - left.score || left.name.localeCompare(right.name),
@@ -617,7 +697,7 @@ export function createSearchToolsTool(
       const renderedTools = matches.map((name) =>
         toolMetadata(name, catalogTools[name]!, includePerToolSource),
       );
-      return {
+      const result: z.infer<typeof searchToolsOutputSchema> = {
         query: query ?? null,
         source: requestedSource,
         sources,
@@ -628,6 +708,10 @@ export function createSearchToolsTool(
         execution_tool: "executeTool" as const,
         tools: renderedTools,
       };
+      if (allMatches.length === 0 && (query ?? "").trim()) {
+        result.note = NO_MATCH_NOTE;
+      }
+      return result;
     },
   });
 }
