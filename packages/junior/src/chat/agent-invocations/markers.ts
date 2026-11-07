@@ -2,7 +2,7 @@
  * Dashboard records for agent invocations. The parent Conversation gets one
  * `subagent_started` and one `subagent_ended` event for each agent invocation.
  * The child Conversation gets `message` events for its input and its result,
- * because a child has no Location that records visible messages.
+ * because a child posts nothing to its Location.
  */
 import { getConversationEventStore } from "@/chat/db";
 import { getAgentInvocationMessageId } from "./ids";

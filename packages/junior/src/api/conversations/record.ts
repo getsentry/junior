@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -17,28 +17,34 @@ import {
  * the filter, order, and limit.
  */
 export function selectConversationRecords(db: JuniorDatabase) {
-  return db
-    .select({
-      conversation: juniorConversations,
-      location: juniorDestinations,
-      identityDisplayName: juniorIdentities.displayName,
-      identityEmail: juniorIdentities.email,
-      identityHandle: juniorIdentities.handle,
-      identityProvider: juniorIdentities.provider,
-      identitySubjectId: juniorIdentities.providerSubjectId,
-      identityTenantId: juniorIdentities.providerTenantId,
-      userDisplayName: juniorUsers.displayName,
-    })
-    .from(juniorConversations)
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
-    .leftJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-    )
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId));
+  return (
+    db
+      .select({
+        conversation: juniorConversations,
+        location: juniorDestinations,
+        identityDisplayName: juniorIdentities.displayName,
+        identityEmail: juniorIdentities.email,
+        identityHandle: juniorIdentities.handle,
+        identityProvider: juniorIdentities.provider,
+        identitySubjectId: juniorIdentities.providerSubjectId,
+        identityTenantId: juniorIdentities.providerTenantId,
+        userDisplayName: juniorUsers.displayName,
+      })
+      .from(juniorConversations)
+      // A child shows under its root, with no Location of its own.
+      .leftJoin(
+        juniorDestinations,
+        and(
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+          isNull(juniorConversations.parentConversationId),
+        ),
+      )
+      .leftJoin(
+        juniorIdentities,
+        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+      )
+      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+  );
 }
 
 /** One row from `selectConversationRecords`. */
@@ -80,11 +86,9 @@ export function conversationFromRecordRow(
             : undefined),
         }
       : undefined;
-  const location = locationFromRow(
-    value.location,
-    row.location,
-    legacySessionSource,
-  );
+  const location = value.parentConversationId
+    ? undefined
+    : locationFromRow(value.location, row.location, legacySessionSource);
   return {
     schemaVersion: 1,
     conversationId: value.conversationId,

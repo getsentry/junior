@@ -218,16 +218,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[0]?.history).toEqual([]);
       expect(requests[0]?.reasoning).toBe("high");
-      expect(requests[0]?.disabledFeatures).toEqual([
-        "interactive-auth",
-        "subagents",
-      ]);
+      expect(requests[0]?.disabledFeatures).toEqual(["interactive-auth"]);
       // A message keeps the reasoning level of the child.
       expect(requests[1]?.reasoning).toBe("high");
-      expect(requests[1]?.disabledFeatures).toEqual([
-        "interactive-auth",
-        "subagents",
-      ]);
+      expect(requests[1]?.disabledFeatures).toEqual(["interactive-auth"]);
       expect(requests[1]?.history).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),

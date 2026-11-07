@@ -216,14 +216,12 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const conversation = await getConversationStore().get({
-    conversationId: run.conversationId,
-  });
-  // A child uses the visibility that it saved from its root.
+  // A child reads visibility from its own Destination row, the same as a root.
+  const visibility = (
+    await getConversationStore().get({ conversationId: run.conversationId })
+  )?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
-    visibility: conversation?.parentConversationId
-      ? conversation.spawn?.visibility
-      : conversation?.visibility,
+    visibility,
   });
   const actor = actorFromRun(run);
   const runLogContext: LogContext = {

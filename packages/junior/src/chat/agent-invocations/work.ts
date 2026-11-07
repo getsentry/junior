@@ -7,7 +7,6 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
-import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -114,15 +113,12 @@ type EnqueueOptions = {
   state?: StateAdapter;
 };
 
-/** Map a durable invocation's model settings and depth to the child Run policy. */
+/** Map a durable invocation's model settings to the child Run policy. */
 export function agentInvocationRunPolicy(
   invocation: AgentInvocation,
-  canSpawn: boolean,
 ): Pick<AgentRun, "disabledFeatures" | "reasoning"> {
   return {
-    disabledFeatures: canSpawn
-      ? ["interactive-auth"]
-      : ["interactive-auth", "subagents"],
+    disabledFeatures: ["interactive-auth"],
     ...(invocation.reasoningLevel
       ? { reasoning: invocation.reasoningLevel }
       : undefined),
@@ -616,7 +612,7 @@ async function saveAgentInvocationResult(args: {
     });
   } else if (args.invocation.source.kind !== "agent_invocation") {
     const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-    // A child has no Location, so this skips the notice and clears its claim.
+    // A child posts no notice, so this clears its claim.
     await maybePostAutomatedTurnLimitNotice({
       conversationId: args.invocation.childConversationId,
       maxTurns,
@@ -657,17 +653,13 @@ async function saveAgentInvocationResult(args: {
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
- * `maxAgentDepth` is the number of child agent levels that can start their
- * own child agents. The default, 0, lets only the root start child agents.
  */
 export function createAgentInvocationWorker(
   agentRunner: AgentRunner,
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
-    maxAgentDepth?: number;
   } = {},
 ) {
-  const maxAgentDepth = options.maxAgentDepth ?? 0;
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -736,7 +728,6 @@ export function createAgentInvocationWorker(
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     let location: Location | undefined;
-    let canSpawn = false;
     try {
       if (invocation.childConversationId !== context.conversationId) {
         throw new Error(
@@ -788,7 +779,7 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, child, lineage] = await Promise.all([
+      const [persisted, projection, child] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
@@ -796,7 +787,6 @@ export function createAgentInvocationWorker(
         getConversationStore().get({
           conversationId: invocation.childConversationId,
         }),
-        readConversationLineage(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       // Some types start with the parent's history. Later agent invocations
@@ -806,15 +796,7 @@ export function createAgentInvocationWorker(
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
-      // The child uses the Location it saved when it was created.
-      location = child?.spawn?.location;
-      // Count parents now, so a moved child gets its new depth. A chain that
-      // does not end at a root, such as a cycle, cannot start agents.
-      const root = lineage[0];
-      canSpawn =
-        root !== undefined &&
-        !root.parentConversationId &&
-        lineage.length - 1 <= maxAgentDepth;
+      location = child?.location;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };
@@ -862,7 +844,7 @@ export function createAgentInvocationWorker(
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
           // of pausing for an OAuth link.
-          ...agentInvocationRunPolicy(invocation, canSpawn),
+          ...agentInvocationRunPolicy(invocation),
           state: {
             sandboxRef,
           },

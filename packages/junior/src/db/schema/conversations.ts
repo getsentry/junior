@@ -14,7 +14,6 @@ import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { Location } from "@/chat/conversations/location";
-import type { ChildSpawn } from "@/chat/conversations/spawn";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type {
@@ -76,13 +75,6 @@ export const juniorConversations = pgTable(
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
-    // A child's copy of its root's Location and visibility, written when the
-    // child is created and again when the root changes. Its Runs read it
-    // here, not from a parent. A child that an older deploy created has none,
-    // so its Runs are private with no Location.
-    // TODO(dcramer): After every deployed writer sets spawn_json, rerun the
-    // 0087 backfill for children with a null value.
-    spawn: jsonb("spawn_json").$type<ChildSpawn>(),
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.
     archivedAt: timestamptz("archived_at"),

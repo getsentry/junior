@@ -137,12 +137,6 @@ describe("continue a dashboard conversation in Slack", () => {
       fixture,
     );
     const locationId = await publicChannelLocationId(fixture);
-    const childConversationId = `${conversationId}:task`;
-    await fixture.conversationStore.createChild({
-      childConversationId,
-      kind: "task",
-      parentConversationId: conversationId,
-    });
     const app = viewerApp(fixture);
     expect((await readDetail(app, conversationId)).canContinueInSlack).toBe(
       true,
@@ -175,20 +169,6 @@ describe("continue a dashboard conversation in Slack", () => {
     expect(
       (await fixture.conversationStore.get({ conversationId }))?.location,
     ).toMatchObject({ channelId: "C123", threadTs: THREAD_TS });
-    // A child saves the root's new Location.
-    expect(
-      (
-        await fixture.conversationStore.get({
-          conversationId: childConversationId,
-        })
-      )?.spawn,
-    ).toEqual({
-      location: expect.objectContaining({
-        channelId: "C123",
-        threadTs: THREAD_TS,
-      }),
-      visibility: "public",
-    });
 
     // The move is one-way and happens once.
     const again = await continueInSlack(app, conversationId, locationId);
