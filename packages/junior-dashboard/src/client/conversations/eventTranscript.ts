@@ -410,6 +410,16 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
+    if (data.type === "reply_posted") {
+      messages.push({
+        ...eventMessage(event, "assistant", [
+          { type: "text", text: data.text },
+        ]),
+        postedTo: data.plugin,
+      });
+      continue;
+    }
+
     if (data.type === "attachments_delivered") {
       messages.push(
         eventMessage(event, "system", [

@@ -128,6 +128,7 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
         target: "submitPullRequestReview",
         repo: repo.ref,
         number: review.number,
+        reply: { text: review.body, url: providerResult.html_url },
         review_id: providerResult.id,
         state: providerResult.state,
         url: providerResult.html_url,

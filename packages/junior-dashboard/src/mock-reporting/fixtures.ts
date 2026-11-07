@@ -1111,6 +1111,12 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         trustedSummary: "New review comment on getsentry/getsentry#21572.",
         text: "Can the empty state reuse the loading skeleton?",
       }),
+      reportEvent(22, iso(Date.parse(startedAt), 86_000), {
+        type: "reply_posted",
+        plugin: "github",
+        text: "Yes. The empty state now reuses the loading skeleton.",
+        url: "https://github.com/getsentry/getsentry/pull/21572#discussion_r7",
+      }),
     ],
   });
 }

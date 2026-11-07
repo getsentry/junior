@@ -358,6 +358,17 @@ const attachmentsDeliveredEventDataSchema = z
   })
   .strict();
 
+/** Host-owned transcript item for a reply that a plugin tool posted. */
+const replyPostedEventDataSchema = z
+  .object({
+    type: z.literal("reply_posted"),
+    plugin: z.string().min(1),
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+    toolCallId: z.string().min(1),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
@@ -456,6 +467,7 @@ const appendableConversationEventDataSchema = z.union([
   turnContextEventDataSchema,
   structuredConversationEventDataSchema,
   attachmentsDeliveredEventDataSchema,
+  replyPostedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
@@ -499,6 +511,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
+  "reply_posted",
   "turn_routed",
   "turn_completed",
   "turn_failed",

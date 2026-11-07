@@ -558,6 +558,16 @@ const conversationReportAttachmentsDeliveredEventDataSchema = z
   })
   .strict();
 
+/** Junior text that a plugin tool posted to its provider. */
+const conversationReportReplyPostedEventDataSchema = z
+  .object({
+    type: z.literal("reply_posted"),
+    plugin: z.string().min(1),
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
@@ -604,6 +614,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
   conversationReportAttachmentsDeliveredEventDataSchema,
+  conversationReportReplyPostedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportSubagentEventDataSchema,

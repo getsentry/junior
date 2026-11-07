@@ -152,6 +152,8 @@ export type TranscriptViewMessage = {
   /** Local images of a pending send that the server has not stored yet. */
   images?: InputImage[];
   parts: TranscriptViewPart[];
+  /** Plugin whose tool posted this Junior reply, such as `github`. */
+  postedTo?: string;
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
   sourceSeq: number;

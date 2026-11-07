@@ -631,6 +631,17 @@ describe("dashboard canonical-event components", () => {
             trustedSummary: "Child agent finished.",
             type: "message",
           }),
+          event(7, {
+            plugin: "github",
+            text: "Replied on the pull request.",
+            type: "reply_posted",
+            url: "https://github.com/getsentry/junior/pull/1#issuecomment-7",
+          }),
+          event(8, {
+            plugin: "forge",
+            text: "Replied somewhere without a mark.",
+            type: "reply_posted",
+          }),
         ],
         { surface: "slack" },
       ),
@@ -651,8 +662,10 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain(">Slack<");
     // Known Slack user + assistant only. Null/web stay unmarked.
     expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
-    // Only Event namespaces with a mark show one.
-    expect(slackHtml.match(/aria-label="GitHub"/g)).toHaveLength(1);
+    // The GitHub Event and the reply posted on GitHub. Plugins without a
+    // mark stay unmarked.
+    expect(slackHtml.match(/aria-label="GitHub"/g)).toHaveLength(2);
+    expect(slackHtml).toContain("Replied somewhere without a mark.");
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
