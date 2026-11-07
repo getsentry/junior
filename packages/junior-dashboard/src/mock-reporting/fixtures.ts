@@ -1101,6 +1101,16 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         trustedSummary: 'Child agent "reviewer" is blocked.',
         text: "The reviewer needs access to the dashboard repository.",
       }),
+      reportEvent(21, iso(Date.parse(startedAt), 80_000), {
+        type: "message",
+        messageId: "qa-github-review-comment",
+        role: "user",
+        eventType: "pull_request.review_comment.created",
+        eventNamespace: "github",
+        eventObjectType: "code_change",
+        trustedSummary: "New review comment on getsentry/getsentry#21572.",
+        text: "Can the empty state reuse the loading skeleton?",
+      }),
     ],
   });
 }

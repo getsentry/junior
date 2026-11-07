@@ -331,6 +331,8 @@ const conversationReportMessageEventDataSchema = z
     /** Agent invocation whose input this is. An agent wrote it, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
+    /** Namespace of the first Event, such as `github`. */
+    eventNamespace: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),

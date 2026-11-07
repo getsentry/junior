@@ -391,6 +391,9 @@ function reportEventData(args: {
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : undefined),
+        ...(typeof data.meta?.eventNamespace === "string"
+          ? { eventNamespace: data.meta.eventNamespace }
+          : undefined),
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
           : undefined),

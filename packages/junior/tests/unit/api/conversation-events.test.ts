@@ -757,6 +757,7 @@ describe("conversation report event projection", () => {
           role: "user",
           text: "event details",
           meta: {
+            eventNamespace: "github",
             eventType: "pull_request.merged",
             trustedSummary: "David merged PR #42.",
             provider: "private-provider",
@@ -772,6 +773,7 @@ describe("conversation report event projection", () => {
       role: "user",
       source: "web",
       eventType: "pull_request.merged",
+      eventNamespace: "github",
       trustedSummary: "David merged PR #42.",
       text: "event details",
     });

@@ -232,6 +232,9 @@ export function transcriptMessagesFromEvents(
           ? { agentInvocationId: data.agentInvocationId }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        ...(data.eventNamespace
+          ? { eventNamespace: data.eventNamespace }
+          : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }

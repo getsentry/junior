@@ -121,6 +121,8 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
