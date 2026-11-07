@@ -35,7 +35,8 @@ test("switches conversations from the command palette without a server search", 
   await expect(
     palette.getByRole("option", { name: /Checkout latency triage/ }),
   ).toHaveCount(0);
-  await input.fill("checkout");
+  // A typo still matches.
+  await input.fill("chekcout");
   await expect(
     palette.getByRole("option", { name: /Investigate checkout latency/ }),
   ).toHaveAttribute("aria-selected", "true");

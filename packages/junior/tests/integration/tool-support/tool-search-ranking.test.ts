@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createWebSource } from "@sentry/junior-plugin-api";
+import {
+  createWebSource,
+  defineJuniorPlugin,
+  definePluginTool,
+  pluginToolOutputSchema,
+} from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { createApp, defineJuniorPlugins } from "@/app";
@@ -54,19 +60,92 @@ const RANKING_CASES = [
   // Synonyms and abbreviations.
   ["fetch issue details", "github", "github_getIssue"],
   ["view a pull request", "github", "github_getPullRequest"],
+  // The tool name has both the action and the object.
+  ["get pull request diff", "github", "github_getPullRequest"],
   ["look up a repo", "github", "github_getRepository"],
   ["modify an issue", "github", "github_updateIssue"],
   ["add an issue", "github", "github_createIssue"],
   ["reply to an issue", "github", "github_commentOnIssue"],
   ["show my memories", "memory", "memory_listMemories"],
   ["unsubscribe from a resource", "resource-watches", "stopWatchingResources"],
+  // A second plugin with the same kind of tools, named in snake_case.
+  ["create an issue", "tracker", "tracker_create_issue"],
+  ["get issue details", "tracker", "tracker_get_issue"],
+  ["add a comment to an issue", "tracker", "tracker_comment_on_issue"],
+  ["reply to an issue", "tracker", "tracker_comment_on_issue"],
+  ["create an issue", "github", "github_createIssue"],
+  // Without a source, a provider name in the query picks the tool.
+  ["create a Tracker issue", null, "tracker_create_issue"],
+  ["create a GitHub issue", null, "github_createIssue"],
+  ["comment on a Tracker issue", null, "tracker_comment_on_issue"],
 ] as const;
 
 // Queries with no fitting tool in this catalog.
 const NO_MATCH_CASES = [
   ["search code", "github"],
   ["book a flight", "github"],
+  // One tool has the action and another has the object.
+  ["create repository", "github"],
+  ["create repository", null],
+  // Memory tools can create and archive, not edit.
+  ["edit a memory", null],
 ] as const;
+
+// Tools that only a source or provider name can tell apart.
+const COLLISION_CASES = [
+  ["create an issue", ["github_createIssue", "tracker_create_issue"]],
+  ["get issue details", ["github_getIssue", "tracker_get_issue"]],
+] as const;
+
+function trackerTool(description: string, inputSchema: z.ZodTypeAny) {
+  return definePluginTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
+    description,
+    inputSchema,
+    outputSchema: pluginToolOutputSchema,
+    async execute() {
+      return {};
+    },
+  });
+}
+
+const issueKey = z.string().describe("Issue key, such as ENG-123.");
+
+// An issue tracker plugin whose tools overlap GitHub's issue tools.
+const trackerPlugin = defineJuniorPlugin({
+  manifest: {
+    name: "tracker",
+    displayName: "Tracker",
+    description: "Issue tracking for project work",
+  },
+  hooks: {
+    tools: () => ({
+      create_issue: trackerTool(
+        "Create an issue in a Tracker project.",
+        z.object({
+          project: z.string().describe("Project key."),
+          title: z.string().describe("Issue title."),
+        }),
+      ),
+      get_issue: trackerTool(
+        "Get one Tracker issue by key.",
+        z.object({ key: issueKey }),
+      ),
+      comment_on_issue: trackerTool(
+        "Add a comment to a Tracker issue.",
+        z.object({
+          key: issueKey,
+          body: z.string().describe("Comment text."),
+        }),
+      ),
+    }),
+  },
+});
 
 type AgentTools = ReturnType<typeof createPiAgentTools>;
 
@@ -96,16 +175,18 @@ function catalogTools(): AgentTools {
 async function search(
   tools: AgentTools,
   query: string,
-  source: string | undefined,
-): Promise<string[]> {
+  source: string | null,
+): Promise<{ names: string[]; note?: string }> {
   const searchTools = tools.find(({ name }) => name === "searchTools");
   if (!searchTools) {
     throw new Error("searchTools was not registered");
   }
   const result = await searchTools.execute("tool-search", { query, source });
-  return (result.details as { tools: Array<{ tool_name: string }> }).tools.map(
-    ({ tool_name }) => tool_name,
-  );
+  const { tools: found, note } = result.details as {
+    tools: Array<{ tool_name: string }>;
+    note?: string;
+  };
+  return { names: found.map(({ tool_name }) => tool_name), note };
 }
 
 describe("tool search ranking", () => {
@@ -113,7 +194,11 @@ describe("tool search ranking", () => {
 
   beforeAll(async () => {
     await createApp({
-      plugins: defineJuniorPlugins([githubPlugin(), memoryPlugin()]),
+      plugins: defineJuniorPlugins([
+        githubPlugin(),
+        memoryPlugin(),
+        trackerPlugin,
+      ]),
     });
     tools = catalogTools();
   });
@@ -126,7 +211,7 @@ describe("tool search ranking", () => {
   it("ranks the fitting tool first", async () => {
     const ranked = [];
     for (const [query, source] of RANKING_CASES) {
-      const [top] = await search(tools, query, source);
+      const [top] = (await search(tools, query, source)).names;
       ranked.push([query, source, top]);
     }
     expect(ranked).toEqual(RANKING_CASES);
@@ -135,8 +220,25 @@ describe("tool search ranking", () => {
   it("returns nothing when no tool fits", async () => {
     const found = [];
     for (const [query, source] of NO_MATCH_CASES) {
-      found.push([query, await search(tools, query, source)]);
+      const { names, note } = await search(tools, query, source);
+      found.push([query, names, note]);
     }
-    expect(found).toEqual(NO_MATCH_CASES.map(([query]) => [query, []]));
+    expect(found).toEqual(
+      NO_MATCH_CASES.map(([query]) => [
+        query,
+        [],
+        expect.stringContaining("No tool fits"),
+      ]),
+    );
+  });
+
+  // Two-step search, which picks the source first, is meant to fix these.
+  it("ranks overlapping tools from two plugins together without a source", async () => {
+    const found = [];
+    for (const [query] of COLLISION_CASES) {
+      const top = (await search(tools, query, null)).names.slice(0, 2);
+      found.push([query, top.sort()]);
+    }
+    expect(found).toEqual(COLLISION_CASES);
   });
 });

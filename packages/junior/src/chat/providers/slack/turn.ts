@@ -103,6 +103,7 @@ import {
   ConversationTurnBoundaryError,
   CooperativeTurnYieldError,
   getConversationTurnBoundaryError,
+  isTurnInputCommitLostError,
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -275,6 +276,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         context?: { conversationContext?: string },
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
     },
   ) {
     if (message.author.isMe) {
@@ -793,7 +795,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             surface: options.execution?.surface ?? "slack",
           });
         };
-        let turnWakeError: unknown;
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
         let terminalDispatchFailureOutcome: "blocked" | undefined;
@@ -1135,6 +1136,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               onInputCommitted: options.ack,
               drainSteeringMessages,
               shouldYield: options.shouldYield,
+              checkIn: options.checkIn,
               onSandboxRefChanged: async (sandboxRef) => {
                 await persistThreadStateById(conversationId, {
                   sandboxRef,
@@ -1384,7 +1386,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 "app.ai.resume_session_version": outcome.resumeVersion,
               });
               shouldPersistFailureState = true;
-              turnWakeError = scheduleError;
               throw scheduleError;
             }
             return;
@@ -1455,8 +1456,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             shouldPersistFailureState = false;
             throw error;
           }
-          if (error === turnWakeError) {
-            shouldPersistFailureState = true;
+          // Another worker holds the Lease and owns this Turn's outcome.
+          const leaseLoss =
+            error instanceof AgentRunError ? error.cause : error;
+          if (isTurnInputCommitLostError(leaseLoss)) {
+            shouldPersistFailureState = false;
+            throw leaseLoss;
           }
           shouldPersistFailureState = true;
           const runFailure =

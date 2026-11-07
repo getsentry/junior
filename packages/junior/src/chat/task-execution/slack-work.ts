@@ -460,7 +460,11 @@ export interface CreateSlackConversationWorkerOptions {
   ) => Promise<SlackActorProfile | null | undefined>;
   runNextPausedTurn: (
     conversationId: string,
-    options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
+    options: {
+      checkIn: () => Promise<boolean>;
+      shouldYield: () => boolean;
+      stopSignal?: AbortSignal;
+    },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
@@ -675,6 +679,7 @@ export function createSlackConversationWorker(
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
               shouldYield: context.shouldYield,
+              checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
             });
           },
@@ -682,6 +687,9 @@ export function createSlackConversationWorker(
       } catch (error) {
         if (isCooperativeTurnYieldError(error)) {
           return { status: "yielded" } satisfies ConversationWorkerResult;
+        }
+        if (isTurnInputCommitLostError(error)) {
+          return { status: "lost_lease" } satisfies ConversationWorkerResult;
         }
         throw error;
       }
@@ -793,6 +801,7 @@ export function createSlackConversationWorker(
               ack,
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
+              checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
               telemetry,
             });
@@ -808,6 +817,7 @@ export function createSlackConversationWorker(
                 ack,
                 isFinalAttempt: context.attempt.isFinalAttempt,
                 shouldYield: context.shouldYield,
+                checkIn: context.checkIn,
                 stopSignal: context.stopSignal?.(),
                 telemetry,
               },

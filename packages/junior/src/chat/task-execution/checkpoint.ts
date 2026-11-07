@@ -38,6 +38,7 @@ import {
   getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
+  TurnAlreadyFinishedError,
   upsertTurnRecord,
   type AgentDispatchOutcome,
   type TurnPauseReason,
@@ -256,8 +257,12 @@ async function saveRunning(
       state: "running",
     });
   } catch (error) {
-    // Quiet only branch races on best-effort running checkpoints.
-    if (!(error instanceof AgentHistoryBranchError)) {
+    // Quiet only branch races and late workers on best-effort running
+    // checkpoints.
+    if (
+      !(error instanceof AgentHistoryBranchError) &&
+      !(error instanceof TurnAlreadyFinishedError)
+    ) {
       logException(error, "agent.turn.checkpoint.running.failed", {
         "app.ai.resume_conversation_id": args.conversationId,
         "app.ai.resume_session_id": args.turnId,
@@ -336,6 +341,10 @@ async function savePaused(
   } catch (error) {
     if (error instanceof TurnSliceLimitExceededError) {
       throw error;
+    }
+    // A late worker cannot pause a finished Turn. Callers see an unsaved pause.
+    if (error instanceof TurnAlreadyFinishedError) {
+      return undefined;
     }
     logException(error, "agent.turn.checkpoint.paused.failed", {
       "app.ai.resume_conversation_id": args.conversationId,

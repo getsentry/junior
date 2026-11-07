@@ -1181,7 +1181,7 @@ describe("createTestSandbox", () => {
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
-      runtime: "node22",
+      runtime: "node24",
       token: "sandbox-token",
       teamId: "team_123",
       projectId: "prj_123",
@@ -1518,7 +1518,7 @@ describe("createTestSandbox", () => {
 
     expect(getReadyWorkspaceMock).toHaveBeenCalledWith({
       workspace,
-      runtime: "node22",
+      runtime: "node24",
     });
     expect(resolveMock).not.toHaveBeenCalled();
     // The Workspace size wins over the app setting.
@@ -1789,7 +1789,7 @@ describe("createTestSandbox", () => {
 
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
-      runtime: "node22",
+      runtime: "node24",
     });
   });
 
@@ -1805,7 +1805,7 @@ describe("createTestSandbox", () => {
 
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
-      runtime: "node22",
+      runtime: "node24",
       resources: { vcpus: 4 },
     });
   });
@@ -3364,7 +3364,7 @@ describe("createTestSandbox", () => {
     expect(resolveMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        runtime: "node22",
+        runtime: "node24",
         timeoutMs: 1000 * 60 * 30,
         forceRebuild: true,
         staleSnapshotId: "snap_missing",
@@ -3516,7 +3516,7 @@ describe("createTestSandbox", () => {
     expect(getReadyWorkspaceMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        runtime: "node22",
+        runtime: "node24",
         staleSnapshotId: "snap_workspace_missing",
         workspace: expect.objectContaining({
           id: "workspace-missing-snapshot",
