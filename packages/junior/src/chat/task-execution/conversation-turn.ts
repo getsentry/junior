@@ -30,6 +30,7 @@ import {
   turnInputTelemetry,
   withTurnSpan,
 } from "@/chat/task-execution/turn-telemetry";
+import type { AgentFeature } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
@@ -80,9 +81,9 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
 import {
   getEventBatchDelayMs,
-  listActiveMailboxTurns,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
   type MailboxTurnWork,
@@ -105,6 +106,7 @@ import {
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { loadThreadTurnSetup } from "@/chat/agent-invocations/thread-turn";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
@@ -255,17 +257,26 @@ export function createConversationTurnWorker(
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
     });
+    const thread =
+      storedConversation?.kind === "thread"
+        ? await loadThreadTurnSetup(storedConversation)
+        : undefined;
+    const visibility = thread
+      ? thread.visibility
+      : storedConversation?.visibility;
     const mailboxDestination =
       resolved.kind === "mailbox"
         ? resolved.batch[0]?.message.destination
         : undefined;
-    const destination = resolveConversationDestination({
-      conversationId: context.conversationId,
-      existing:
-        context.destination ??
-        mailboxDestination ??
-        storedConversation?.destination,
-    });
+    const destination =
+      thread?.destination ??
+      resolveConversationDestination({
+        conversationId: context.conversationId,
+        existing:
+          context.destination ??
+          mailboxDestination ??
+          storedConversation?.destination,
+      });
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
       const messages = resolved.batch.map((entry) => entry.message);
@@ -374,9 +385,15 @@ export function createConversationTurnWorker(
     const source = sourceFromTurnInput({
       conversationId: context.conversationId,
       source: turnInputFacts.source,
-      visibility: storedConversation?.visibility,
+      visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
+    // A person's Turn in a Thread does not start or message child agents:
+    // their results would report to the parent as the wrong Actor.
+    const disabledFeatures: AgentFeature[] = [
+      ...(webActor ? [] : ["interactive-auth" as const]),
+      ...(thread ? ["subagents" as const] : []),
+    ];
     const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
     // cursor stores Event Source.
@@ -580,46 +597,18 @@ export function createConversationTurnWorker(
           if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
-          if (!isResume) {
-            // Match Slack: new input supersedes every other open mailbox
-            // Turn. New input starts only when no yielded Turn waits, so an
-            // open Turn here waits for OAuth or was left open by a failed or
-            // stopped Run. A second open Turn makes every later resume fail.
-            const pendingAuthorizationActorId =
-              conversation.processing.pendingAuth?.actorId;
-            const superseded = (
-              await listActiveMailboxTurns(context.conversationId)
-            ).filter((record) => record.turnId !== turnId);
-            for (const stale of superseded) {
-              if (stopSignal?.aborted) {
-                return await completeCancelledTurn();
-              }
-              await abandonTurnRecord({
-                conversationId: context.conversationId,
-                turnId: stale.turnId,
-                errorMessage: "Turn superseded by new input",
-              });
-              // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
-              // connect and store credentials. The abandoned turn record makes a
-              // late callback a resume no-op, matching Slack supersede behavior.
-              markTurnClosed({
-                conversation,
-                nowMs: Date.now(),
-                sessionId: stale.turnId,
-              });
-            }
-            const authParked = superseded.some(
-              (record) =>
-                record.state === "paused" && record.resumeReason === "auth",
-            );
-            if (authParked && pendingAuthorizationActorId) {
-              // Drop the dashboard connect prompt so a superseded OAuth flow
-              // cannot leave a stale banner after the user moves on.
-              await deleteWebAuthorization({
-                actorId: pendingAuthorizationActorId,
-                conversationId: context.conversationId,
-              });
-            }
+          // Match Slack: new input supersedes every other open mailbox Turn.
+          // A second open Turn makes every later resume fail.
+          if (
+            !isResume &&
+            !(await supersedeOpenMailboxTurns({
+              conversation,
+              conversationId: context.conversationId,
+              isStopped: () => Boolean(stopSignal?.aborted),
+              keepTurnId: turnId,
+            }))
+          ) {
+            return await completeCancelledTurn();
           }
           await persistThreadStateById(context.conversationId, {
             conversation,
@@ -669,7 +658,17 @@ export function createConversationTurnWorker(
                       conversationId: context.conversationId,
                     }),
                   }
-                : { disabledFeatures: ["interactive-auth"] as const }),
+                : undefined),
+              ...(disabledFeatures.length > 0
+                ? { disabledFeatures }
+                : undefined),
+              ...(thread?.locationConfiguration
+                ? {
+                    environment: {
+                      locationConfiguration: thread.locationConfiguration,
+                    },
+                  }
+                : undefined),
               state: {
                 pendingAuth: conversation.processing.pendingAuth,
                 sandboxRef,
@@ -812,7 +811,8 @@ export function createConversationTurnWorker(
             await acknowledge();
             return { status: "paused" };
           }
-          if (completedSuccessfully) {
+          // Memory is public, so only a root captures it; a Thread is a child.
+          if (completedSuccessfully && !thread) {
             try {
               await scheduleSessionCompletedPluginTasks(
                 {

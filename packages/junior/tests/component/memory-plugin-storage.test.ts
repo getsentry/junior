@@ -466,7 +466,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         actorEmail: "memory-viewer@example.com",
         idempotencyKey: "web-memory",
       });
-      const webDestination = await recordWebConversationActivity({
+      await recordWebConversationActivity({
         actor: webActor,
         conversationId: webConversationId,
         conversationStore: createSqlStore(fixture.sql),
@@ -483,7 +483,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       const webTools = getPluginTools({
         actor: webActor,
         conversationId: webConversationId,
-        destination: webDestination,
+        destination: { platform: "local", conversationId: webConversationId },
         egress: {
           async fetch() {
             return new Response("ok");

@@ -7,12 +7,12 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
-import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
+import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -55,6 +55,7 @@ import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import { readChildDepthAndRootLocation } from "./lineage";
 import {
   agentTypeInstructions,
   agentTypeStartsWithParentHistory,
@@ -65,7 +66,10 @@ import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
@@ -475,24 +479,68 @@ async function projectTerminalTurn(
 }
 
 /**
- * End an agent invocation that is still running or paused while other work
- * of its child starts. A saved finished Turn gives its result. Otherwise it
- * fails. The newer work does not continue this task, so the result goes to
- * the parent on its own.
+ * Record how an agent invocation ended and send its result to the parent.
+ * Run it before ack, so a failed parent append retries the work.
  */
-async function endOtherActiveAgentInvocation(
-  invocation: AgentInvocation,
-): Promise<AgentInvocation | undefined> {
-  return (
-    (await projectTerminalTurn(invocation, { reportNow: true })) ??
-    (await completeAgentInvocation({
-      invocationId: invocation.invocationId,
-      errorMessage:
-        "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
-      reportNow: true,
-      status: "failed",
-    }))
+async function reportAgentInvocationEnd(
+  terminal: TerminalAgentInvocation,
+  enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>,
+): Promise<void> {
+  await recordSubagentEnded(terminal);
+  await enqueueResult?.(terminal);
+}
+
+/**
+ * End every running or paused agent invocation of a child before other work
+ * opens a Turn there, so the child has one open Turn. A saved finished Turn
+ * gives its result. Every other one fails with `errorMessage`, because the
+ * newer work does not continue its task. Each reports on its own.
+ */
+export async function endActiveAgentInvocations(
+  conversationId: string,
+  options: {
+    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    errorMessage: string;
+    exceptInvocationId?: string;
+  },
+): Promise<void> {
+  for (const active of await listAgentInvocationsForConversation(
+    conversationId,
+    ACTIVE_AGENT_INVOCATION_STATUSES,
+  )) {
+    if (active.invocationId === options.exceptInvocationId) {
+      continue;
+    }
+    const terminal =
+      (await projectTerminalTurn(active, { reportNow: true })) ??
+      (await completeAgentInvocation({
+        invocationId: active.invocationId,
+        errorMessage: options.errorMessage,
+        reportNow: true,
+        status: "failed",
+      }));
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await persistTerminalLifecycle(terminal);
+      await reportAgentInvocationEnd(terminal, options.enqueueResult);
+    }
+  }
+}
+
+/**
+ * End a person's open Turn in a Thread before an agent invocation starts, as
+ * new input does on a root. Only a Turn that waits for sign-in or lost its
+ * worker can be open here: a yielded Turn resumes before new input.
+ */
+async function supersedeOpenPersonTurn(conversationId: string): Promise<void> {
+  if ((await listActiveMailboxTurns(conversationId)).length === 0) {
+    return;
+  }
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(conversationId),
   );
+  await hydrateConversationMessages({ conversation, conversationId });
+  await supersedeOpenMailboxTurns({ conversation, conversationId });
+  await persistThreadStateById(conversationId, { conversation });
 }
 
 /**
@@ -624,24 +672,6 @@ async function saveAgentInvocationResult(args: {
 }
 
 /**
- * Read how many parents a child Conversation has and the root Conversation's
- * Location. A child of the root has depth 1.
- */
-async function readChildDepthAndRootLocation(
-  conversationId: string,
-): Promise<{ depth: number; location?: Location }> {
-  const lineage = await readConversationLineage(conversationId);
-  const root = lineage[0];
-  if (!root) {
-    return { depth: 0 };
-  }
-  // A broken chain also counts the link to the parent that it could not read.
-  return root.parentConversationId
-    ? { depth: lineage.length }
-    : { depth: lineage.length - 1, location: root.location };
-}
-
-/**
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
@@ -665,10 +695,8 @@ export function createAgentInvocationWorker(
       throw new Error(`Agent invocation is missing for ${invocationId}`);
     }
     // Report the result before ack so a failed parent append retries this work.
-    const report = async (terminal: TerminalAgentInvocation): Promise<void> => {
-      await recordSubagentEnded(terminal);
-      await options.enqueueResult?.(terminal);
-    };
+    const report = async (terminal: TerminalAgentInvocation): Promise<void> =>
+      await reportAgentInvocationEnd(terminal, options.enqueueResult);
     const finish = async (
       terminal: AgentInvocation | undefined,
     ): Promise<void> => {
@@ -747,16 +775,15 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
-      // A child has at most one running or paused agent invocation. End any
-      // other active one first. Each one reports its own result.
-      for (const active of await listAgentInvocationsForConversation(
-        invocation.childConversationId,
-        ACTIVE_AGENT_INVOCATION_STATUSES,
-      )) {
-        if (active.invocationId !== invocation.invocationId) {
-          await finish(await endOtherActiveAgentInvocation(active));
-        }
-      }
+      // A child has one open Turn. End every other open agent invocation and
+      // a person's open Turn in a Thread first.
+      await endActiveAgentInvocations(invocation.childConversationId, {
+        enqueueResult: options.enqueueResult,
+        errorMessage:
+          "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
+        exceptInvocationId: invocation.invocationId,
+      });
+      await supersedeOpenPersonTurn(invocation.childConversationId);
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;

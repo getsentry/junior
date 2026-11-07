@@ -184,7 +184,7 @@ async function sendOne(args: {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
     });
-    if (acceptsWebMessages(args.conversationId, conversation?.destination)) {
+    if (conversation && acceptsWebMessages(conversation)) {
       // A person action comes from that person, like a reply in Slack.
       await appendAndEnqueueWebMessage(
         {

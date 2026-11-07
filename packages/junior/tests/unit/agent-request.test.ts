@@ -66,6 +66,25 @@ describe("agent run routing", () => {
     ).toThrow("Source and destination conversation IDs do not match");
   });
 
+  it("allows a Thread's web Turn only the Destination of its stored root", () => {
+    const run = {
+      conversationId: "agent:thread",
+      destination: { conversationId: "local:web:root", platform: "local" },
+      source: createWebSource("agent:thread"),
+    } as const;
+    expect(() =>
+      assertRunConsistency(run, { threadRootConversationId: "local:web:root" }),
+    ).not.toThrow();
+    expect(() =>
+      assertRunConsistency(run, {
+        threadRootConversationId: "local:web:other",
+      }),
+    ).toThrow("Source and destination conversation IDs do not match");
+    expect(() => assertRunConsistency(run)).toThrow(
+      "Source and destination conversation IDs do not match",
+    );
+  });
+
   it("allows a web continue on a Slack Location without external Delivery", () => {
     expect(() =>
       assertRunConsistency({

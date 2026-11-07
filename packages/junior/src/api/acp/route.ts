@@ -311,6 +311,12 @@ async function acceptPrompt(args: {
       "This ACP session already has an active prompt",
     );
   }
+  if (result.status === "refused") {
+    throw acp.RequestError.invalidParams(
+      { field: "sessionId" },
+      "This ACP session takes input only from its parent agent",
+    );
+  }
   return {
     output: {
       afterSeq: result.afterCursor,
