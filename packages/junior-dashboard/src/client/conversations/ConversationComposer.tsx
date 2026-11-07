@@ -530,9 +530,11 @@ export const ConversationComposer = memo(function ConversationComposer(
         <BareTextarea
           // Chat is technical: ids, paths, code. Suppress browser IME assist
           // that fights identifiers, unless the user turns autocorrect on in
-          // settings.
+          // settings. Android Chrome maps `autocomplete="off"` to
+          // TYPE_TEXT_FLAG_NO_SUGGESTIONS, which also turns off keyboard
+          // autocorrect, so leave it out when autocorrect is on.
           autoCapitalize={autocorrect ? "sentences" : "off"}
-          autoComplete="off"
+          autoComplete={autocorrect ? undefined : "off"}
           autoCorrect={autocorrect ? "on" : "off"}
           className={cn(
             "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint",

@@ -129,6 +129,7 @@ test("turns on composer autocorrect for this browser", async ({
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
   await expect(composer).toHaveAttribute("spellcheck", "false");
+  await expect(composer).toHaveAttribute("autocomplete", "off");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -138,6 +139,7 @@ test("turns on composer autocorrect for this browser", async ({
   await expect(composer).toHaveAttribute("autocorrect", "on");
   await expect(composer).toHaveAttribute("autocapitalize", "sentences");
   await expect(composer).toHaveAttribute("spellcheck", "true");
+  await expect(composer).not.toHaveAttribute("autocomplete");
 });
 
 test("saves the auto-archive default and wait time", async ({
