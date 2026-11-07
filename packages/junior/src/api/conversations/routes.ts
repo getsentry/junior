@@ -1,5 +1,6 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
@@ -55,6 +56,7 @@ import { conversationChildAgentsReportSchema } from "../schema/child-agent";
 import { conversationWatchesReportSchema } from "../schema/watch";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
+import { createConversationAccessReader } from "./access";
 import { archiveConversation } from "./archive";
 import { catchUpOnConversation } from "./catch-up";
 import { pinConversation, reorderPinnedConversations } from "./pin";
@@ -598,11 +600,17 @@ export function createConversationRoutes(
       const sentVersion = context.req.header(
         CONVERSATION_DETAIL_VERSION_HEADER,
       );
+      // The mailbox and the detail state share one access read.
+      const readAccess = createConversationAccessReader(getDb(), viewer);
       const readMailbox = () =>
-        requireConversationPendingMessages(conversationId, viewerOptions);
+        requireConversationPendingMessages(conversationId, {
+          readAccess,
+          ...viewerOptions,
+        });
       const readVersion = () =>
         readConversationDetailEtag(conversationId, {
           limit: query.limit,
+          readAccess,
           ...viewerOptions,
         });
       // Read the mailbox before history, as two separate reads would, so

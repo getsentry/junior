@@ -118,7 +118,7 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { getConversationStore } from "@/chat/db";
+import { readConversationLineage } from "@/chat/conversations/lineage";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -159,14 +159,14 @@ const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 async function readRunConversationVisibility(
   conversationId: string,
 ): Promise<ConversationPrivacy | undefined> {
-  const conversationStore = getConversationStore();
-  let conversation = await conversationStore.get({ conversationId });
-  while (!conversation?.visibility && conversation?.parentConversationId) {
-    conversation = await conversationStore.get({
-      conversationId: conversation.parentConversationId,
-    });
+  const lineage = await readConversationLineage(conversationId);
+  for (let index = lineage.length - 1; index >= 0; index -= 1) {
+    const visibility = lineage[index]!.visibility;
+    if (visibility) {
+      return visibility;
+    }
   }
-  return conversation?.visibility;
+  return undefined;
 }
 
 /** Preserve delivery-error ownership across the agent generation boundary. */

@@ -336,6 +336,65 @@ describe("Watches", () => {
     expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
   });
 
+  test("when a child agent reports a review by the person who asked, address them once as you", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `Use spawnAgent to start one child agent named "pr-watcher" with the task "Reply with only the word READY. A watch on ${pullRequest} sends you its reviews later." When it reports a review, @-mention me here with the reviewer, the review outcome, and the pull request link.`,
+      ),
+    );
+    const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+      (call) => toolOutput(call) as { conversation_id?: string },
+    );
+    expect(
+      spawned?.conversation_id,
+      "No child agent: this run does not test the relay",
+    ).toEqual(expect.any(String));
+    // The Slack person who asked also reviews on GitHub as this login. The
+    // child agent watches the PR, so the review reaches the thread only
+    // through its result.
+    await insertLinkedGitHubIdentity({ login: "octo-requester" });
+    await insertWatch({
+      conversation: { conversationId: spawned!.conversation_id! },
+      events: ["pull_request.review.changes_requested"],
+      identifier: pullRequest,
+      intent:
+        "Report each review to the parent agent with the reviewer, the review outcome, and the pull request link. Do not change the pull request.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Please add a regression test.",
+          state: "changes_requested",
+          user: { login: "octo-requester" },
+        },
+      }),
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says changes were requested on GitHub PR ${pullRequest}.`,
+          "The reply treats the person it mentions as the reviewer, for example by saying that you requested changes.",
+        ],
+        fail: [
+          "Do not present the reviewer as a different person from the person the reply mentions.",
+          'Do not name "octo-requester" as the reviewer.',
+        ],
+      }),
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
+  });
+
   test("when directly mentioned during a watch delivery, answer the mention in its own turn", async ({
     run,
   }) => {

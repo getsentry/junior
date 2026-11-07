@@ -115,11 +115,9 @@ Run validation before deploy:
 pnpm exec junior check
 ```
 
-If a plugin declares sandbox dependencies, also build its dependency snapshot:
-
-```bash
-pnpm exec junior snapshot create
-```
+The deploy build prepares sandbox dependencies with
+[junior snapshot create](/cli/snapshot-create/). Its build log lists the
+dependencies of each plugin.
 
 ## Next step
 

@@ -20,7 +20,10 @@ import {
   conversationEventHistory,
   conversationSummaryFromStoredConversation,
 } from "./projection";
-import type { ConversationAccess } from "./access";
+import {
+  createConversationAccessReader,
+  type ConversationAccess,
+} from "./access";
 import {
   readConversationDetailState,
   type ConversationDetailState,
@@ -153,7 +156,11 @@ async function readConversationDetailFromSql(
   const [record, state] = await Promise.all([
     readConversationRecordFromSql(conversationId),
     options.state ??
-      readConversationDetailState(conversationId, options.viewer),
+      readConversationDetailState(
+        conversationId,
+        options.viewer,
+        createConversationAccessReader(getDb(), options.viewer),
+      ),
   ]);
   if (!record) return undefined;
   const { access, readPosition } = state;

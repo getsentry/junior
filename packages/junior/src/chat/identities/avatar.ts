@@ -26,6 +26,9 @@ const AVATAR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const AVATAR_FAILURE_TTL_MS = 5 * 60 * 1000;
 const AVATAR_FETCH_TIMEOUT_MS = 5_000;
 const MAX_AVATAR_BYTES = 1024 * 1024;
+// The dashboard shows photos at 32 CSS pixels or less. 96 pixels stays sharp
+// on 3x screens. Slack sends 512 pixel photos of up to about 600 KB.
+const AVATAR_EDGE_PX = 96;
 // Google photo URLs redirect once to another Google photo host.
 const MAX_AVATAR_REDIRECTS = 3;
 
@@ -222,19 +225,43 @@ async function fetchAvatarImage(
     });
   }
   if (!data) return avatarFetchFailed(host, { "app.reason": "too_large" });
-  // Use the bytes, not the provider header, to pick the content type.
-  const contentType = detectImageMediaType(data);
-  if (!contentType) {
+  // Check the bytes, not the provider header. sharp also reads SVG and other
+  // formats that Junior does not accept as photos.
+  if (!detectImageMediaType(data)) {
     return avatarFetchFailed(host, { "app.reason": "not_an_image" });
   }
-  return { contentType, data: Buffer.from(data).toString("base64") };
+  try {
+    return { contentType: "image/webp", data: await shrinkAvatar(data) };
+  } catch (error) {
+    return avatarFetchFailed(host, {
+      "app.reason": "decode_failed",
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+// Resize the photo to the largest size the dashboard shows. Return base64.
+async function shrinkAvatar(data: Uint8Array): Promise<string> {
+  // sharp loads a native library, so load it only when a photo is fetched.
+  const { default: sharp } = await import("sharp");
+  const image = await sharp(data)
+    .rotate()
+    .resize({
+      width: AVATAR_EDGE_PX,
+      height: AVATAR_EDGE_PX,
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 80 })
+    .toBuffer();
+  return image.toString("base64");
 }
 
 /**
  * Read the saved photo of one Identity and its version. Junior fetches it
- * from the provider once and keeps it in the state cache for a day. Return
- * undefined when the Identity has no photo or the provider does not return
- * one.
+ * from the provider once, resizes it, and keeps it in the state cache for a
+ * day. Return undefined when the Identity has no photo or the provider does
+ * not return one.
  */
 export async function readAvatarImage(
   db: JuniorDatabase,
@@ -256,7 +283,8 @@ export async function readAvatarImage(
     .limit(1);
   const url = row ? parseAvatarUrl(row.avatarUrl, row.provider) : undefined;
   if (!row?.avatarUrl || !url) return undefined;
-  const key = `avatar:${avatarUrlHash(url)}`;
+  // The size is in the key, so a new size does not serve old cached photos.
+  const key = `avatar:${AVATAR_EDGE_PX}:${avatarUrlHash(url)}`;
   const image = await createCache(state, "core").getOrLoad(key, async () => {
     const loaded = await fetchAvatarImage(url, row.provider);
     return {

@@ -170,16 +170,11 @@ bot to a test channel, mention it, and confirm that it reacts and replies in the
 same thread. If URL validation or delivery fails, use:
   https://junior.sentry.dev/start-here/verify-and-troubleshoot/
 
-Also verify the Vercel deployment contains:
-- the /api/internal/heartbeat cron
-- Queue triggers for /api/internal/agent/continue and /api/internal/plugin/tasks
-
 ## Done
 
 Report only non-secret results:
 - local app directory
 - linked Vercel project and production URL
 - health result
-- heartbeat and Queue trigger result
 - Slack reply result
 - any optional setup left undone
