@@ -241,8 +241,10 @@ describe("conversation auto-archive API", () => {
       readConversationFeedFromSql({ viewer: otherViewer }),
     ).resolves.toMatchObject({ conversations: [] });
 
-    // A manual restore turns auto-archive off, so the next sweep keeps it.
-    const restore = await app.request(
+    // The other participant's manual restore turns auto-archive off for
+    // them, so this viewer's next sweep keeps it for everyone.
+    const { app: otherApp } = await authenticatedApi(otherViewer.email);
+    const restore = await otherApp.request(
       `http://localhost/api/conversations/${doneId}/archive`,
       {
         body: JSON.stringify({
@@ -256,7 +258,7 @@ describe("conversation auto-archive API", () => {
     expect(restore.status).toBe(200);
     expect(
       conversationDetailReportSchema.parse(
-        await readConversationDetail(doneId, { viewer }),
+        await readConversationDetail(doneId, { viewer: otherViewer }),
       ).autoArchive,
     ).toBe(false);
     // The sweep reads only rows on unarchived roots.

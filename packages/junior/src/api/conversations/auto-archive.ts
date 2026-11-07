@@ -10,8 +10,8 @@
  * - any reported work finished at least the grace period ago, and no human
  *   message arrived after it finished
  * - the root and every child conversation are idle
- * - no open Review item on it waits on the user
- * - the user did not pin it
+ * - no open Review item on it waits on a person
+ * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
  *   period
  *
@@ -21,8 +21,9 @@
  * auto-archive off.
  *
  * Archive applies to everyone, so one opted-in user's run archives the root
- * for every participant. A new human message restores it, and a manual
- * restore turns auto-archive off for that conversation and that user.
+ * for every participant. A new human message restores it. A manual restore
+ * turns auto-archive off for that conversation and that user, which then
+ * keeps it from every run.
  */
 import type { User } from "@sentry/junior-plugin-api";
 import {
@@ -30,6 +31,7 @@ import {
   asc,
   eq,
   gt,
+  isNotNull,
   isNull,
   lte,
   ne,
@@ -43,7 +45,7 @@ import { logInfo } from "@/chat/logging";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
-import { reviewItemNeedsUser } from "@/chat/review-items/access";
+import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -153,10 +155,10 @@ function treeIsQuiet(cutoff: Date) {
 
 /**
  * True when no open Review item on the participant row's root or a child
- * conversation needs the user. Such a conversation waits on them, so it must
- * stay in their feed.
+ * conversation needs a person. Archive applies to everyone, so a
+ * conversation that waits on anyone must stay in the feed.
  */
-function notWaitingOnUser(userId: string) {
+function notWaitingOnAnyone() {
   const linked = alias(juniorConversations, "linked_conversation");
   const waiting = getDb()
     .select({ itemId: juniorReviewItemConversations.itemId })
@@ -171,7 +173,7 @@ function notWaitingOnUser(userId: string) {
     )
     .where(
       and(
-        reviewItemNeedsUser(userId),
+        reviewItemNeedsSomeone(),
         or(
           eq(
             linked.conversationId,
@@ -185,6 +187,28 @@ function notWaitingOnUser(userId: string) {
       ),
     );
   return sql`not exists (${waiting})`;
+}
+
+/**
+ * True when no participant of the row's root pinned it or turned
+ * auto-archive off for it. Archive applies to everyone, so one person's run
+ * must not undo another person's pin or manual restore.
+ */
+function noParticipantKeepsRoot() {
+  const keeper = alias(juniorConversationParticipants, "keeping_participant");
+  const keeping = getDb()
+    .select({ userId: keeper.userId })
+    .from(keeper)
+    .where(
+      and(
+        eq(
+          keeper.rootConversationId,
+          juniorConversationParticipants.rootConversationId,
+        ),
+        or(isNotNull(keeper.pinnedAt), eq(keeper.autoArchive, false)),
+      ),
+    );
+  return sql`not exists (${keeping})`;
 }
 
 /** True when the participant row's root is not archived. */
@@ -215,7 +239,7 @@ function archivableRow(run: ArchiveRun) {
     eq(juniorConversationParticipants.userId, run.userId),
     rootIsUnarchived(),
     // A pin keeps the conversation in the feed on purpose.
-    isNull(juniorConversationParticipants.pinnedAt),
+    noParticipantKeepsRoot(),
     // The user's own message or a root activity snapshot sets
     // `lastMessageAt`. A later value means the tree had activity after the
     // cutoff, so this cheap indexed check removes most rows first.
@@ -225,7 +249,7 @@ function archivableRow(run: ArchiveRun) {
       ? sql`${juniorUsers.autoArchiveGraceHours} <= ${run.graceHours}`
       : undefined,
     treeIsQuiet(runCutoff(run)),
-    notWaitingOnUser(run.userId),
+    notWaitingOnAnyone(),
   );
 }
 

@@ -78,6 +78,10 @@ export const juniorConversations = pgTable(
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.
     archivedAt: timestamptz("archived_at"),
+    // The old child archive, copied into `archived_at`. Runtime code must not
+    // read or write it. A later migration drops it, so the release before
+    // still reads it while it rolls out.
+    legacyChildArchivedAt: timestamptz("child_archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(

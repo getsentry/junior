@@ -2564,8 +2564,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "archived_at": {
-          "name": "archived_at",
+        "child_archived_at": {
+          "name": "child_archived_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -2638,6 +2638,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
