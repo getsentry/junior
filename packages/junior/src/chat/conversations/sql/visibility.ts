@@ -55,6 +55,18 @@ export function nextVisibilitySql(
 }
 
 /**
+ * Select the stored visibility of the root of the current Conversation row.
+ * Roots reference themselves, so a root reads its own value.
+ */
+export function rootVisibilitySql(): SQL<ConversationVisibility | null> {
+  return sql<ConversationVisibility | null>`(
+    select visibility_root.visibility
+    from junior_conversations visibility_root
+    where visibility_root.conversation_id = coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})
+  )`;
+}
+
+/**
  * Read the legacy privacy of one Conversation row.
  *
  * A Destination below `internal` makes the Conversation private. Today a
@@ -64,17 +76,21 @@ export function nextVisibilitySql(
  * DM read as private.
  */
 export function readConversationPrivacy(args: {
-  conversation: ConversationVisibility | null;
   destination: string | null | undefined;
   isRoot: boolean;
+  rootVisibility: ConversationVisibility | null;
 }): ConversationPrivacy | undefined {
   const destination = visibilityFromDestination(args.destination);
   if (destination && isBelowInternal(destination)) {
     return "private";
   }
+  if (args.rootVisibility && isBelowInternal(args.rootVisibility)) {
+    return "private";
+  }
   // Only roots store a value. Until slice 2 of #2380 moves children to their
-  // root, a child reads its own Destination value, as before this column.
-  const visibility = args.isRoot ? args.conversation : destination;
+  // root, a child reads its own Destination value, as before this column, but
+  // never reads less private than its root.
+  const visibility = args.isRoot ? args.rootVisibility : destination;
   if (!visibility) {
     return undefined;
   }

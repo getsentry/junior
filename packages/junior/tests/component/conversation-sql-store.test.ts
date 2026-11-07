@@ -892,6 +892,7 @@ describe("conversation SQL store", () => {
       const destination = inboundMessage("visibility").destination;
       const laterConversationId = "slack:C123:1712345.0002";
       const childConversationId = "agent:visibility-thread";
+      const privateChildConversationId = "agent:visibility-private-task";
       const readVisibility = async (conversationId: string) =>
         (await store.get({ conversationId }))?.visibility;
       const readStoredVisibility = async (conversationId: string) =>
@@ -928,6 +929,23 @@ describe("conversation SQL store", () => {
       });
       await expect(readVisibility(CONVERSATION_ID)).resolves.toBe("private");
       await expect(readDestinationVisibility()).resolves.toBe("public");
+
+      // A child never reads less private than its root, even when its
+      // Destination is public.
+      await store.createChild({
+        childConversationId: privateChildConversationId,
+        kind: "task",
+        parentConversationId: CONVERSATION_ID,
+        nowMs: 2_500,
+      });
+      await store.recordActivity({
+        conversationId: privateChildConversationId,
+        destination,
+        nowMs: 2_600,
+      });
+      await expect(readVisibility(privateChildConversationId)).resolves.toBe(
+        "private",
+      );
 
       // A new Conversation without a signal starts with the known
       // Destination value. A public channel is the company audience.

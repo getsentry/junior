@@ -30,7 +30,10 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
+import {
+  conversationReadColumns,
+  type ConversationVisibility,
+} from "@/db/schema/conversations";
 import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
@@ -48,6 +51,7 @@ import { locationForWrite, locationFromRow } from "./location";
 import {
   nextVisibilitySql,
   readConversationPrivacy,
+  rootVisibilitySql,
   visibilityFromDestination,
   visibilityFromPrivacy,
 } from "./visibility";
@@ -64,6 +68,7 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
+  rootVisibility: ConversationVisibility | null;
 }
 
 interface DestinationUpsert {
@@ -228,9 +233,9 @@ function destinationFromRow(
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
   const visibility = readConversationPrivacy({
-    conversation: row.visibility,
     destination: readRow.destination?.visibility,
     isRoot: row.parentConversationId === null,
+    rootVisibility: readRow.rootVisibility,
   });
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
@@ -616,6 +621,7 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        rootVisibility: rootVisibilitySql(),
       })
       .from(juniorConversations)
       .leftJoin(
@@ -751,6 +757,7 @@ export class SqlStore implements ConversationStore {
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
+        rootVisibility: rootVisibilitySql(),
       })
       .from(juniorConversations)
       .leftJoin(
