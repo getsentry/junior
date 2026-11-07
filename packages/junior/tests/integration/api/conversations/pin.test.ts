@@ -139,19 +139,21 @@ describe("conversation pin API", () => {
       { conversationId: newer, pinned: false },
       { conversationId: older, pinned: false },
     ]);
-    // A child pin is not a pin of its root, so the API refuses it.
+    // A child uses its root's pin, so the API refuses a child pin or unpin
+    // and names the root.
     const child = "agent:pin-child";
     await getConversationStore().createChild({
       childConversationId: child,
       kind: "task",
       parentConversationId: newer,
     });
-    const childPin = await setPin(app, child, true);
-    expect(childPin.status).toBe(409);
-    await expect(childPin.json()).resolves.toEqual({
-      error:
-        "Only a top-level conversation can be pinned. Pin its root instead.",
-    });
+    for (const pinned of [true, false]) {
+      const childPin = await setPin(app, child, pinned);
+      expect(childPin.status).toBe(409);
+      await expect(childPin.json()).resolves.toEqual({
+        error: `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${newer}.`,
+      });
+    }
     await expect(feedIds({ viewer })).resolves.toEqual([
       { conversationId: older, pinned: true },
       { conversationId: newer, pinned: false },
@@ -256,12 +258,21 @@ describe("conversation pin API", () => {
       nowMs: 1_000,
       visibility: "private",
     });
+    // A child of a hidden conversation must not reveal it, so access comes
+    // before the child refusal, which names the root.
+    const hiddenChild = "agent:pin-private-child";
+    await getConversationStore().createChild({
+      childConversationId: hiddenChild,
+      kind: "task",
+      parentConversationId: hidden,
+    });
     const { app, viewer } = await authenticatedApi("reader@example.com");
 
     // A reader of a public conversation is not a participant. A pin would add
     // a participant row, which grants send and control access.
     expect((await setPin(app, shared, true)).status).toBe(404);
     expect((await setPin(app, hidden, true)).status).toBe(404);
+    expect((await setPin(app, hiddenChild, true)).status).toBe(404);
     await expect(feedIds({ viewer })).resolves.toEqual([]);
     expect(
       conversationDetailReportSchema.parse(

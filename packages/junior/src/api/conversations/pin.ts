@@ -40,20 +40,23 @@ export async function pinConversation(
     throwApiError(404, "Conversation not found.");
   }
   const db = getSqlExecutor().db();
-  const [root] = await db
+  const [conversation] = await db
     .select({
       kind: juniorConversations.kind,
       lastActivityAt: juniorConversations.lastActivityAt,
       parentConversationId: juniorConversations.parentConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
-  if (!root) throwApiError(404, "Conversation not found.");
-  if (conversationKindFromRow(root) !== "root") {
+  if (!conversation) throwApiError(404, "Conversation not found.");
+  // The viewer passed the access check above, so the root id is safe to name.
+  // MCP output has no root field, and the caller needs it to act.
+  if (conversationKindFromRow(conversation) !== "root") {
     throwApiError(
       409,
-      "Only a top-level conversation can be pinned. Pin its root instead.",
+      `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${conversation.rootConversationId ?? conversation.parentConversationId}.`,
     );
   }
   // Pins are viewer marks, which the detail ETag reads on each request, so
@@ -77,7 +80,7 @@ export async function pinConversation(
   await db
     .insert(juniorConversationParticipants)
     .values({
-      lastMessageAt: root.lastActivityAt,
+      lastMessageAt: conversation.lastActivityAt,
       pinnedAt,
       rootConversationId: conversationId,
       userId: viewer.id,

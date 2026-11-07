@@ -160,24 +160,28 @@ export function resetMockConversationViewerState(): void {
   mockAutoArchiveByConversationId.clear();
 }
 
-/** Add the viewer's mock archive and pin times and any rename to one conversation. */
+/**
+ * Add the viewer's mock archive and pin times and any rename to one
+ * conversation. Like the API, a child reports the pin of its root.
+ */
 function withMockViewerState<
   T extends { conversationId: string; displayTitle: string },
 >(
   report: T & { archivedAt?: string | null },
+  pinConversationId = report.conversationId,
 ): T & {
   archivedAt: string | undefined;
   pinnedAt: string | null;
   pinPosition?: number;
 } {
-  const pinPosition = mockPinPositions.get(report.conversationId);
+  const pinPosition = mockPinPositions.get(pinConversationId);
   return {
     ...report,
     displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
     archivedAt: mockArchivedConversationIds.has(report.conversationId)
       ? (report.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000))
       : undefined,
-    pinnedAt: mockPinnedConversationIds.has(report.conversationId) ? NOW : null,
+    pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
     ...(pinPosition === undefined ? undefined : { pinPosition }),
   };
 }
@@ -1993,7 +1997,7 @@ export function setMockConversationArchived(
 
 /**
  * Pin or unpin one mock conversation for local dashboard visual QA. Like the
- * API, it refuses a child.
+ * API, it refuses a child and names its root.
  */
 export function setMockConversationPinned(
   conversationId: string,
@@ -2003,10 +2007,10 @@ export function setMockConversationPinned(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  if (conversation.parentConversationId) {
+  const rootId = mockAgentTree(conversation)?.[0]?.conversationId;
+  if (rootId) {
     return {
-      error:
-        "Only a top-level conversation can be pinned. Pin its root instead.",
+      error: `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${rootId}.`,
     };
   }
   // Match the API: a new or removed pin has no place.
@@ -2309,7 +2313,10 @@ export function readMockConversationDetail(
         }
       : undefined),
   };
-  const withViewerState = withMockViewerState(detail);
+  const withViewerState = withMockViewerState(
+    detail,
+    agentTree?.[0]?.conversationId,
+  );
   const events = withViewerState.events.slice(-limit);
   const bounded =
     events.length < withViewerState.events.length && events[0]

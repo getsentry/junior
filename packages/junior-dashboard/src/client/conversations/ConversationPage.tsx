@@ -712,7 +712,7 @@ export function ConversationPage(props: {
                 disabled:
                   !conversation ||
                   !detail.data?.isParticipant ||
-                  Boolean(detail.data.agentTree) ||
+                  Boolean(agentTree) ||
                   pin.isPending,
                 error: Boolean(pin.error),
                 onClick: () => pin.mutate(!conversation?.pinnedAt),
