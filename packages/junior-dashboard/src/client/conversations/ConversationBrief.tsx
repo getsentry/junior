@@ -16,6 +16,7 @@ import {
 import { formatTime } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
+import { OutboundLink } from "../components/OutboundLink";
 
 type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
 
@@ -99,14 +100,12 @@ export function ConversationBrief(props: {
                       className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
                       key={`${link.kind}:${link.url}`}
                     >
-                      <a
+                      <OutboundLink
                         className="min-w-0 break-all font-medium text-dashboard-accent-text underline decoration-dashboard-accent/30 underline-offset-2 hover:text-dashboard-accent-text"
                         href={link.url}
-                        rel="noopener noreferrer"
-                        target="_blank"
                       >
                         {link.label}
-                      </a>
+                      </OutboundLink>
                       <span className="text-xs text-dashboard-text-muted">
                         {displayLabel(link.kind)}
                       </span>

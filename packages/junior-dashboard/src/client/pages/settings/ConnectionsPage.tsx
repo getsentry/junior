@@ -13,6 +13,7 @@ import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { SettingsPageLayout } from "./SettingsPageLayout";
+import { OutboundLink } from "../../components/OutboundLink";
 
 type Connection = z.infer<typeof connectionSchema>;
 
@@ -131,14 +132,12 @@ export function ConnectionsPage() {
                           <>
                             Connected as{" "}
                             {connection.account.url ? (
-                              <a
+                              <OutboundLink
                                 className="text-dashboard-text"
                                 href={connection.account.url}
-                                rel="noreferrer"
-                                target="_blank"
                               >
                                 {connection.account.label}
-                              </a>
+                              </OutboundLink>
                             ) : (
                               connection.account.label
                             )}

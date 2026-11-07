@@ -18,6 +18,7 @@ import {
 import { cn } from "../styles";
 import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { renderTextTokens } from "./mentions";
+import { OutboundLink } from "../components/OutboundLink";
 
 /**
  * Render display text Markdown as readable prose.
@@ -338,20 +339,23 @@ function TranscriptAnchor(props: { children: ReactNode; href?: string }) {
   // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
 
-  const opensNewTab = /^https?:/i.test(props.href);
+  const label =
+    typeof props.children === "string" ? (
+      <SearchAwareLinkLabel href={props.href} label={props.children} />
+    ) : (
+      props.children
+    );
+  if (!/^https?:/i.test(props.href)) {
+    return (
+      <a className={ANCHOR_CLASS} href={props.href}>
+        {label}
+      </a>
+    );
+  }
   return (
-    <a
-      className={ANCHOR_CLASS}
-      href={props.href}
-      rel={opensNewTab ? "noreferrer" : undefined}
-      target={opensNewTab ? "_blank" : undefined}
-    >
-      {typeof props.children === "string" ? (
-        <SearchAwareLinkLabel href={props.href} label={props.children} />
-      ) : (
-        props.children
-      )}
-    </a>
+    <OutboundLink className={ANCHOR_CLASS} href={props.href}>
+      {label}
+    </OutboundLink>
   );
 }
 

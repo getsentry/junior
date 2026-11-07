@@ -20,6 +20,7 @@ import { NativeSelect } from "../components/ui/native-select";
 import { useSheet } from "../components/ui/useSheet";
 import { DashboardApiError, post } from "../http";
 import { conversationDetailQueryKey } from "./queries";
+import { OutboundLink } from "../components/OutboundLink";
 
 /**
  * Move a public dashboard conversation to a thread in a public Slack channel
@@ -99,14 +100,12 @@ export function ContinueInSlackDialog(props: {
             <DialogFooter>
               <DialogClose render={<Button>Close</Button>} />
               {move.data.locationUrl ? (
-                <a
+                <OutboundLink
                   className={buttonVariants({ variant: "primary" })}
                   href={move.data.locationUrl}
-                  rel="noopener noreferrer"
-                  target="_blank"
                 >
                   Open in Slack
-                </a>
+                </OutboundLink>
               ) : null}
             </DialogFooter>
           </>
