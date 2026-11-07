@@ -127,7 +127,6 @@ export const inboundMessageSchema = z
     delivery: inboundMessageDeliverySchema,
     destination: destinationSchema.optional(),
     inboundMessageId: z.string().refine((value) => value.trim().length > 0),
-    injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
@@ -482,9 +481,6 @@ function normalizeExecution(
       const message = normalizeMessage(rawMessage);
       if (!message || message.conversationId !== conversationId) {
         return undefined;
-      }
-      if (message.injectedAtMs !== undefined) {
-        continue;
       }
       pendingMessages.push(message);
     }
@@ -1578,81 +1574,6 @@ export async function moveIdleConversationDestination(args: {
       });
     }
     return "moved";
-  });
-}
-
-/** Store task-execution metadata for legacy SQL import. */
-export async function recordConversationExecution(args: {
-  channelName?: string;
-  conversationId: string;
-  createdAtMs: number;
-  destination?: Destination;
-  execution: {
-    lastCheckpointAtMs?: number;
-    lastEnqueuedAtMs?: number;
-    runId?: string;
-    status: ExecutionStatus;
-    updatedAtMs?: number;
-  };
-  lastActivityAtMs: number;
-  actor?: StoredSlackActor;
-  source?: Source;
-  state?: StateAdapter;
-  title?: string;
-  updatedAtMs: number;
-}): Promise<void> {
-  const nowMs = args.updatedAtMs;
-  await withConversationMutation(args, async (state, lock) => {
-    const existing = await readConversation(state, args.conversationId);
-    if (existing && args.destination) {
-      assertSameConversationDestination({
-        conversationId: args.conversationId,
-        current: existing.destination,
-        next: args.destination,
-      });
-    }
-    const current =
-      existing ??
-      emptyConversation({
-        conversationId: args.conversationId,
-        destination: args.destination,
-        nowMs,
-        source: args.source,
-      });
-    await writeConversation(
-      state,
-      lock,
-      withExecutionUpdate(
-        {
-          ...current,
-          ...((current.destination ?? args.destination)
-            ? { destination: current.destination ?? args.destination }
-            : undefined),
-          ...((current.source ?? args.source)
-            ? { source: current.source ?? args.source }
-            : undefined),
-          ...((current.channelName ?? args.channelName)
-            ? { channelName: current.channelName ?? args.channelName }
-            : undefined),
-          ...((current.actor ?? args.actor)
-            ? { actor: current.actor ?? args.actor }
-            : undefined),
-          ...((current.title ?? args.title)
-            ? { title: current.title ?? args.title }
-            : undefined),
-          createdAtMs: Math.min(current.createdAtMs, args.createdAtMs),
-          lastActivityAtMs: Math.max(
-            current.lastActivityAtMs,
-            args.lastActivityAtMs,
-          ),
-        },
-        {
-          ...current.execution,
-          ...args.execution,
-        },
-        nowMs,
-      ),
-    );
   });
 }
 

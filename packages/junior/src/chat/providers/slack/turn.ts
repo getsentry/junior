@@ -795,7 +795,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             surface: options.execution?.surface ?? "slack",
           });
         };
-        let turnWakeError: unknown;
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
         let terminalDispatchFailureOutcome: "blocked" | undefined;
@@ -1387,7 +1386,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 "app.ai.resume_session_version": outcome.resumeVersion,
               });
               shouldPersistFailureState = true;
-              turnWakeError = scheduleError;
               throw scheduleError;
             }
             return;
@@ -1464,9 +1462,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (isTurnInputCommitLostError(leaseLoss)) {
             shouldPersistFailureState = false;
             throw leaseLoss;
-          }
-          if (error === turnWakeError) {
-            shouldPersistFailureState = true;
           }
           shouldPersistFailureState = true;
           const runFailure =
