@@ -108,39 +108,48 @@ export function DashboardHeader(props: {
 
   return (
     <header className="relative bg-dashboard-bg md:hidden md:tall:block">
-      <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:tall:grid">
-        <Link
-          aria-label={`${getDashboardAgentName()} home`}
-          className="flex items-center text-inherit no-underline"
-          to="/"
-        >
-          <JuniorLogo />
-        </Link>
-        <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
+      {/* Equal side tracks center the command palette trigger in the window,
+          like an editor's title bar. When the nav needs more room, the
+          trigger shrinks, down to its icon, instead of covering it. */}
+      <div className="hidden w-full min-w-0 grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)] items-center gap-x-5 px-7 py-3 md:tall:grid">
+        <div className="flex items-center gap-5">
           <Link
-            aria-current={props.workspaceActive ? "page" : undefined}
-            className={navLinkClass({ isActive: props.workspaceActive })}
+            aria-label={`${getDashboardAgentName()} home`}
+            className="flex items-center text-inherit no-underline"
             to="/"
           >
-            Conversations
+            <JuniorLogo />
           </Link>
-          {props.navItems.map((item) => (
-            <NavLink className={navLinkClass} key={item.key} to={item.to}>
-              {item.label}
-              <NavCount count={item.count} />
-            </NavLink>
-          ))}
-        </nav>
-        <div className="flex items-center gap-3 justify-self-end">
-          <Button
-            aria-keyshortcuts="Meta+K Control+K"
-            className="w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
-            onClick={props.onSearch}
-          >
+          <nav aria-label="Primary" className="flex items-center gap-1">
+            <Link
+              aria-current={props.workspaceActive ? "page" : undefined}
+              className={navLinkClass({ isActive: props.workspaceActive })}
+              to="/"
+            >
+              Conversations
+            </Link>
+            {props.navItems.map((item) => (
+              <NavLink className={navLinkClass} key={item.key} to={item.to}>
+                {item.label}
+                <NavCount count={item.count} />
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+        <Button
+          aria-keyshortcuts="Meta+K Control+K"
+          className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+          onClick={props.onSearch}
+        >
+          <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
             <Search aria-hidden="true" className="size-4 shrink-0" />
-            <span className="flex-1 text-left">{COMMAND_PALETTE_LABEL}…</span>
-            <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
-          </Button>
+            <span className="truncate">{COMMAND_PALETTE_LABEL}…</span>
+          </span>
+          <kbd className="font-sans text-xs max-xl:hidden">
+            {COMMAND_PALETTE_SHORTCUT}
+          </kbd>
+        </Button>
+        <div className="flex items-center gap-3 justify-self-end">
           {props.profile}
         </div>
       </div>
