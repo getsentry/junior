@@ -1,1 +1,0 @@
-ALTER TABLE "junior_conversations" ADD COLUMN "thread_archived_at" timestamp with time zone;

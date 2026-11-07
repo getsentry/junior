@@ -55,7 +55,7 @@ describe("archiveConversation MCP tool", () => {
     expect(restored.structuredContent).toEqual({ archivedAt: null });
   });
 
-  it("archives a Thread without archiving its root", async () => {
+  it("archives a Thread and its children without archiving its root", async () => {
     const threadId = "agent:mcp-archive-thread";
     await seedMcpConversation({
       conversationId: CONVERSATION_ID,
@@ -67,6 +67,11 @@ describe("archiveConversation MCP tool", () => {
       kind: "thread",
       parentConversationId: CONVERSATION_ID,
     });
+    await getConversationStore().createChild({
+      childConversationId: `${threadId}:task`,
+      kind: "task",
+      parentConversationId: threadId,
+    });
     const call = await connectMcpTools();
     const readConversation = async (conversationId: string) =>
       (
@@ -76,17 +81,32 @@ describe("archiveConversation MCP tool", () => {
         }
       ).conversation;
 
+    const lastSeenAt = (await readConversation(threadId)).lastSeenAt;
+    await expect(
+      call("archiveConversation", { conversationId: threadId, lastSeenAt }),
+    ).resolves.toMatchObject({
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: "1 child conversation is not archived. Pass applyToChildren to archive it too.",
+        },
+      ],
+    });
     const archived = await call("archiveConversation", {
+      applyToChildren: true,
       conversationId: threadId,
-      lastSeenAt: (await readConversation(threadId)).lastSeenAt,
+      lastSeenAt,
     });
 
     expect(archived.structuredContent).toEqual({
       archivedAt: expect.any(String),
     });
-    expect((await readConversation(threadId)).archivedAt).toEqual(
-      expect.any(String),
-    );
+    for (const conversationId of [threadId, `${threadId}:task`]) {
+      expect((await readConversation(conversationId)).archivedAt).toEqual(
+        expect.any(String),
+      );
+    }
     expect(
       (await readConversation(CONVERSATION_ID)).archivedAt,
     ).toBeUndefined();

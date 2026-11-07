@@ -44,6 +44,8 @@ const archiveConversationMutationKey = [
 ] as const;
 
 type ArchiveConversationVariables = {
+  /** Child Conversations only: also archive or restore every descendant. */
+  applyToChildren?: boolean;
   archived: boolean;
   lastSeenAt: string;
 };
@@ -191,10 +193,14 @@ export function archiveConversationMutationOptions(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Match the API: archive also unpins.
-      const viewerMarks = args.archived
-        ? { archivedAt, pinnedAt: null }
-        : { archivedAt };
+      // Match the API: a child archive is shared, and a root archive also
+      // unpins.
+      const viewerMarks =
+        previousDetail && previousDetail.kind !== "root"
+          ? { childArchivedAt: archivedAt }
+          : args.archived
+            ? { archivedAt, pinnedAt: null }
+            : { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
       const archivedSnapshot =
@@ -281,7 +287,9 @@ export function archiveConversationMutationOptions(
           detail
             ? {
                 ...detail,
-                archivedAt: result.archivedAt,
+                ...(detail.kind === "root"
+                  ? { archivedAt: result.archivedAt }
+                  : { childArchivedAt: result.archivedAt }),
                 detailEtag: undefined,
               }
             : detail,

@@ -3,9 +3,12 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import {
-  conversationDetailTouch,
-  nextDetailVersion,
-} from "@/chat/conversations/sql/detail-version";
+  conversationAncestors,
+  conversationDescendants,
+  readConversationTrees,
+  setChildArchivedAt,
+} from "@/chat/conversations/sql/conversation-tree";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -91,46 +94,96 @@ async function setViewerArchive(args: {
   });
 }
 
-/** Archive or restore one Thread for everyone. */
-async function setThreadArchive(args: {
+type ChildArchiveResult =
+  | { status: "conflict" | "missing" }
+  | { archivedAncestorId: string; status: "archived_ancestor" }
+  | { status: "unarchived_children"; unarchivedChildCount: number }
+  | { archivedAt: string | null; status: "updated" };
+
+/**
+ * Archive or restore one child for everyone. Archive refuses while any
+ * descendant is unarchived, unless `applyToChildren` archives them too.
+ * Restore changes only this child unless `applyToChildren` also restores its
+ * descendants, and it refuses while an ancestor child is archived.
+ */
+async function setChildArchive(args: {
+  applyToChildren: boolean;
   archived: boolean;
   conversationId: string;
   lastSeenAt: string;
-}): Promise<
-  | { status: "conflict" | "missing" }
-  | { archivedAt: string | null; status: "updated" }
-> {
+}): Promise<ChildArchiveResult> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
-    const [thread] = await db
-      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+    const [child] = await db
+      .select({
+        lastActivityAt: juniorConversations.lastActivityAt,
+        rootConversationId: juniorConversations.rootConversationId,
+      })
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, args.conversationId))
       .limit(1)
       .for("update");
-    if (!thread) return { status: "missing" as const };
+    if (!child?.rootConversationId) return { status: "missing" as const };
     if (
       args.archived &&
-      thread.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)
+      child.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)
     ) {
       return { status: "conflict" as const };
     }
-    const archivedAt = args.archived ? new Date() : null;
-    await db
-      .update(juniorConversations)
-      .set({ detailVersion: nextDetailVersion, threadArchivedAt: archivedAt })
-      .where(eq(juniorConversations.conversationId, args.conversationId));
-    return {
-      archivedAt: archivedAt?.toISOString() ?? null,
-      status: "updated" as const,
-    };
+    const tree = await readConversationTrees(db, [child.rootConversationId]);
+    const descendants = conversationDescendants(tree, args.conversationId);
+    if (args.archived) {
+      const unarchived = descendants.filter((node) => !node.childArchivedAt);
+      if (unarchived.length > 0 && !args.applyToChildren) {
+        return {
+          status: "unarchived_children" as const,
+          unarchivedChildCount: unarchived.length,
+        };
+      }
+      const archivedAt = new Date();
+      // Descendants that are already archived keep their own time.
+      await setChildArchivedAt(
+        db,
+        [args.conversationId, ...unarchived.map((node) => node.conversationId)],
+        archivedAt,
+      );
+      return {
+        archivedAt: archivedAt.toISOString(),
+        status: "updated" as const,
+      };
+    }
+    // The topmost archived ancestor child is the one to restore first.
+    const archivedAncestor = conversationAncestors(tree, args.conversationId)
+      .filter((node) => node.kind !== "root" && node.childArchivedAt)
+      .at(-1);
+    if (archivedAncestor) {
+      return {
+        archivedAncestorId: archivedAncestor.conversationId,
+        status: "archived_ancestor" as const,
+      };
+    }
+    await setChildArchivedAt(
+      db,
+      [
+        args.conversationId,
+        ...(args.applyToChildren
+          ? descendants
+              .filter((node) => node.childArchivedAt)
+              .map((node) => node.conversationId)
+          : []),
+      ],
+      null,
+    );
+    return { archivedAt: null, status: "updated" as const };
   });
 }
 
 /**
- * Archive or restore one conversation. A Thread archive applies to everyone.
- * A root archive applies only to the signed-in viewer.
+ * Archive or restore one conversation. A root archive applies only to the
+ * signed-in viewer and hides its whole tree for that viewer, so it writes no
+ * child rows and ignores `applyToChildren`. A child archive, Thread or Task,
+ * applies to everyone and follows the rules of `setChildArchive`.
  */
 export async function archiveConversation(
   viewer: User,
@@ -154,32 +207,38 @@ export async function archiveConversation(
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
   if (!target) throwApiError(404, "Conversation not found.");
-  const kind = conversationKindFromRow(target);
-  // A Task has no archive state of its own. Its root or Thread holds it.
-  if (kind === "task") {
-    throwApiError(
-      409,
-      "A Task cannot be archived. Archive its root or Thread instead.",
-    );
-  }
   const result =
-    kind === "thread"
-      ? await setThreadArchive({
-          archived: body.archived,
-          conversationId,
-          lastSeenAt: body.lastSeenAt,
-        })
-      : await setViewerArchive({
+    conversationKindFromRow(target) === "root"
+      ? await setViewerArchive({
           archived: body.archived,
           lastSeenAt: body.lastSeenAt,
           rootConversationId: conversationId,
           userId: viewer.id,
+        })
+      : await setChildArchive({
+          applyToChildren: body.applyToChildren ?? false,
+          archived: body.archived,
+          conversationId,
+          lastSeenAt: body.lastSeenAt,
         });
-  if (result.status === "updated") {
-    return { archivedAt: result.archivedAt };
+  switch (result.status) {
+    case "updated":
+      return { archivedAt: result.archivedAt };
+    case "missing":
+      throwApiError(404, "Conversation not found.");
+    case "conflict":
+      throwApiError(409, "Conversation received new activity.");
+    case "unarchived_children":
+      throwApiError(
+        409,
+        result.unarchivedChildCount === 1
+          ? "1 child conversation is not archived. Pass applyToChildren to archive it too."
+          : `${result.unarchivedChildCount} child conversations are not archived. Pass applyToChildren to archive them too.`,
+      );
+    case "archived_ancestor":
+      throwApiError(
+        409,
+        `Conversation ${result.archivedAncestorId} above this one is archived. Restore it first.`,
+      );
   }
-  if (result.status === "missing") {
-    throwApiError(404, "Conversation not found.");
-  }
-  throwApiError(409, "Conversation received new activity.");
 }

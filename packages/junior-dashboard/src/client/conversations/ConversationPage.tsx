@@ -97,6 +97,7 @@ import {
   conversationParticipants,
   ParticipantAvatarStack,
 } from "../components/ParticipantAvatarStack";
+import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationOutline } from "./ConversationOutline";
 import {
@@ -282,7 +283,25 @@ export function ConversationPage(props: {
     [memoryList, memoryPopover],
   );
   const archive = useArchiveConversation(conversationId);
+  const [confirmChildArchive, setConfirmChildArchive] = useState(false);
   const navigate = useNavigate();
+  const setArchived = (archived: boolean) => {
+    archive.mutate({
+      // A child archive covers its children, so the confirm names them.
+      applyToChildren: conversation!.kind !== "root",
+      archived,
+      lastSeenAt: conversation!.lastSeenAt,
+    });
+    // Archiving hides this conversation, so go home at once. The mutation
+    // keeps running after this page unmounts.
+    if (archived) {
+      navigate("/", {
+        state: {
+          archivedConversation: conversation!,
+        } satisfies ArchivedFromConversationState,
+      });
+    }
+  };
   const pin = usePinConversation(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   const readAtOpen = useReadPositionAtOpen(detail.data, detail.fetchedDetail);
@@ -715,27 +734,16 @@ export function ConversationPage(props: {
                 pinned: Boolean(conversation?.pinnedAt),
               }}
               archive={{
-                archived: Boolean(conversation?.archivedAt),
-                // The API refuses to archive a Task.
-                disabled:
-                  !conversation ||
-                  detail.data?.kind === "task" ||
-                  archive.isPending,
+                archived: Boolean(conversationArchivedAt(conversation)),
+                disabled: !conversation || archive.isPending,
                 error: Boolean(archive.error),
                 onClick: () => {
-                  const archived = !conversation!.archivedAt;
-                  archive.mutate({
-                    archived,
-                    lastSeenAt: conversation!.lastSeenAt,
-                  });
-                  // Archiving hides this conversation, so go home at once.
-                  // The mutation keeps running after this page unmounts.
-                  if (archived) {
-                    navigate("/", {
-                      state: {
-                        archivedConversation: conversation!,
-                      } satisfies ArchivedFromConversationState,
-                    });
+                  if (conversationArchivedAt(conversation)) {
+                    setArchived(false);
+                  } else if (conversation!.kind === "root") {
+                    setArchived(true);
+                  } else {
+                    setConfirmChildArchive(true);
                   }
                 },
                 pending: archive.isPending,
@@ -877,6 +885,16 @@ export function ConversationPage(props: {
           }
         />
       </ConversationSidePanelLayout>
+      {confirmChildArchive ? (
+        <ArchiveChildDialog
+          childCount={detail.data?.childAgentTotals?.count ?? 0}
+          onClose={() => setConfirmChildArchive(false)}
+          onConfirm={() => {
+            setConfirmChildArchive(false);
+            setArchived(true);
+          }}
+        />
+      ) : null}
       <QuickQuestionSelectionButton
         onAsk={(selection) => {
           if (eventOpen) setSelectedEventSeq(undefined);
@@ -903,12 +921,20 @@ function applyPendingArchiveUpdate(
       ? buildConversations([update.conversation])[0]
       : undefined);
   if (!updatedConversation || !update) return updatedConversation;
-  return {
-    ...updatedConversation,
-    archivedAt: update.archived
-      ? (updatedConversation.archivedAt ?? updatedConversation.lastSeenAt)
-      : null,
-  };
+  const archivedAt = update.archived
+    ? (conversationArchivedAt(updatedConversation) ??
+      updatedConversation.lastSeenAt)
+    : null;
+  return updatedConversation.kind === "root"
+    ? { ...updatedConversation, archivedAt }
+    : { ...updatedConversation, childArchivedAt: archivedAt };
+}
+
+/** A root archive is the viewer's own. A child archive is shared. */
+function conversationArchivedAt(conversation: Conversation | undefined) {
+  return conversation?.kind === "root"
+    ? conversation.archivedAt
+    : conversation?.childArchivedAt;
 }
 
 function conversationIsLive(

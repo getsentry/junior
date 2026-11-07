@@ -35,7 +35,7 @@ type ConversationProjectionSource = Pick<
   | "location"
   | "parentConversationId"
   | "source"
-  | "threadArchivedAtMs"
+  | "childArchivedAtMs"
   | "title"
   | "updatedAtMs"
 >;
@@ -281,12 +281,12 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(conversation.parentConversationId
       ? { parentConversationId: conversation.parentConversationId }
       : undefined),
-    ...(conversation.kind === "thread"
+    ...(conversation.kind !== "root"
       ? {
-          threadArchivedAt:
-            conversation.threadArchivedAtMs === undefined
+          childArchivedAt:
+            conversation.childArchivedAtMs === undefined
               ? null
-              : new Date(conversation.threadArchivedAtMs).toISOString(),
+              : new Date(conversation.childArchivedAtMs).toISOString(),
         }
       : undefined),
     isParticipant: args.access?.isParticipant ?? false,

@@ -150,14 +150,14 @@ const mockTitles = new Map<string, string>();
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
-/** Process-local Thread archives. A Thread archive applies to everyone. */
-const initialMockThreadArchives: [string, string][] = [
+/** Process-local child archives. A child archive applies to everyone. */
+const initialMockChildArchives: [string, string][] = [
   [DASHBOARD_QA_ARCHIVED_THREAD_ID, iso(NOW_MS, -2 * 60 * 60_000)],
 ];
-const mockThreadArchivedAt = new Map(initialMockThreadArchives);
+const mockChildArchivedAt = new Map(initialMockChildArchives);
 
 /**
- * Restore process-local archive, pin, auto-archive, and Thread archive state
+ * Restore process-local archive, pin, auto-archive, and child archive state
  * so tests sharing a worker do not leak state.
  */
 export function resetMockConversationViewerState(): void {
@@ -167,9 +167,9 @@ export function resetMockConversationViewerState(): void {
   mockPinPositions.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
-  mockThreadArchivedAt.clear();
-  for (const [id, at] of initialMockThreadArchives) {
-    mockThreadArchivedAt.set(id, at);
+  mockChildArchivedAt.clear();
+  for (const [id, at] of initialMockChildArchives) {
+    mockChildArchivedAt.set(id, at);
   }
 }
 
@@ -1120,7 +1120,12 @@ function advisorConversation(
       }),
     ],
   });
-  return { ...conversation, kind: "task", parentConversationId };
+  return {
+    ...conversation,
+    kind: "task",
+    parentConversationId,
+    childArchivedAt: mockChildArchivedAt.get(conversationId) ?? null,
+  };
 }
 
 /** A Thread under the dashboard QA root. Its messages come from a person. */
@@ -1137,7 +1142,7 @@ function threadConversation(
     displayTitle,
     kind: "thread",
     parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
-    threadArchivedAt: mockThreadArchivedAt.get(conversationId) ?? null,
+    childArchivedAt: mockChildArchivedAt.get(conversationId) ?? null,
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
     lastSeenAt: iso(Date.parse(startedAt), 12_000),
@@ -1809,7 +1814,7 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
             (conversation) =>
               conversation.kind === "thread" &&
               conversation.parentConversationId === root.conversationId &&
-              !conversation.threadArchivedAt,
+              !conversation.childArchivedAt,
           )
           .map(summaryFromConversation);
         return threads.length ? { ...summary, threads } : summary;
@@ -2058,27 +2063,86 @@ export function readMockConversationFeed(
   return { ...feed, conversations };
 }
 
+/** Archive or restore one mock child with the API's tree rules. */
+function setMockChildArchived(
+  conversations: readonly MockConversation[],
+  conversationId: string,
+  archived: boolean,
+  applyToChildren: boolean,
+): { archivedAt: string | null } | { error: string } {
+  const parentOf = new Map(
+    conversations.map((item) => [
+      item.conversationId,
+      item.parentConversationId,
+    ]),
+  );
+  // Nearest first. A root never holds a child archive.
+  const ancestorsOf = (id: string) => {
+    const ancestors: string[] = [];
+    for (let parent = parentOf.get(id); parent; parent = parentOf.get(parent)) {
+      ancestors.push(parent);
+    }
+    return ancestors;
+  };
+  const descendantIds = conversations
+    .map((item) => item.conversationId)
+    .filter((id) => ancestorsOf(id).includes(conversationId));
+  if (archived) {
+    const unarchived = descendantIds.filter(
+      (id) => !mockChildArchivedAt.has(id),
+    );
+    if (unarchived.length > 0 && !applyToChildren) {
+      return {
+        error:
+          unarchived.length === 1
+            ? "1 child conversation is not archived. Pass applyToChildren to archive it too."
+            : `${unarchived.length} child conversations are not archived. Pass applyToChildren to archive them too.`,
+      };
+    }
+    for (const id of [conversationId, ...unarchived]) {
+      mockChildArchivedAt.set(id, NOW);
+    }
+    return { archivedAt: NOW };
+  }
+  // Name the topmost archived ancestor, like the API.
+  const archivedAncestorId = ancestorsOf(conversationId)
+    .reverse()
+    .find((id) => mockChildArchivedAt.has(id));
+  if (archivedAncestorId) {
+    return {
+      error: `Conversation ${archivedAncestorId} above this one is archived. Restore it first.`,
+    };
+  }
+  for (const id of [
+    conversationId,
+    ...(applyToChildren ? descendantIds : []),
+  ]) {
+    mockChildArchivedAt.delete(id);
+  }
+  return { archivedAt: null };
+}
+
 /**
  * Archive or restore one mock conversation for local dashboard visual QA.
- * Like the API, it refuses a Task.
+ * Like the API, a root archive is per viewer and a child archive is shared.
  */
 export function setMockConversationArchived(
   conversationId: string,
   archived: boolean,
+  applyToChildren = false,
 ): { archivedAt: string | null } | { error: string } | undefined {
-  const conversation = mockConversations(NOW_MS).find(
+  const conversations = mockConversations(NOW_MS);
+  const conversation = conversations.find(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  if (conversation.kind === "task") {
-    return {
-      error: "A Task cannot be archived. Archive its root or Thread instead.",
-    };
-  }
-  if (conversation.kind === "thread") {
-    if (archived) mockThreadArchivedAt.set(conversationId, NOW);
-    else mockThreadArchivedAt.delete(conversationId);
-    return { archivedAt: mockThreadArchivedAt.get(conversationId) ?? null };
+  if (conversation.kind !== "root") {
+    return setMockChildArchived(
+      conversations,
+      conversationId,
+      archived,
+      applyToChildren,
+    );
   }
   if (archived) {
     mockArchivedConversationIds.add(conversationId);
@@ -2300,6 +2364,7 @@ export function readMockConversationChildAgents(
       ...(child.childAgentTotals
         ? { childAgentTotals: child.childAgentTotals }
         : undefined),
+      childArchivedAt: child.childArchivedAt ?? null,
       cumulativeDurationMs: child.cumulativeDurationMs,
       cumulativeUsage: child.cumulativeUsage,
     };
@@ -2323,7 +2388,7 @@ export function readMockConversationChildAgents(
   if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
     return { agents: [], conversationId };
   }
-  // Match the API: archived Threads stay in the report.
+  // Match the API: archived children stay in the report.
   const thread = (childConversationId: string, task: string) => {
     const child = conversations.find(
       (candidate) => candidate.conversationId === childConversationId,
@@ -2334,7 +2399,6 @@ export function readMockConversationChildAgents(
       kind: "thread",
       status: "completed",
       task,
-      threadArchivedAt: child.threadArchivedAt ?? null,
       title: child.displayTitle,
       updatedAt: child.lastProgressAt,
     } as const;

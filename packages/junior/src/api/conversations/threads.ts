@@ -1,6 +1,10 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
+import {
+  conversationAncestors,
+  type ConversationTreeNode,
+  readConversationTrees,
+} from "@/chat/conversations/sql/conversation-tree";
 import { juniorConversations } from "@/db/schema";
 import type { ConversationFeedItem } from "../schema/conversation";
 import type { ConversationAccess } from "./access";
@@ -8,67 +12,33 @@ import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { conversationFromRecordRow, selectConversationRecords } from "./record";
 
-type TreeEdge = { parentConversationId?: string; shownThread: boolean };
-
-/**
- * Read the parent edge of every descendant of the listed roots. Every
- * descendant shares `root_conversation_id`, so one indexed read covers trees
- * of any depth.
- */
-async function readTreeEdges(
-  db: JuniorDatabase,
-  rootIds: readonly string[],
-): Promise<Map<string, TreeEdge>> {
-  const rows = await db
-    .select({
-      conversationId: juniorConversations.conversationId,
-      kind: juniorConversations.kind,
-      parentConversationId: juniorConversations.parentConversationId,
-      threadArchivedAt: juniorConversations.threadArchivedAt,
-    })
-    .from(juniorConversations)
-    .where(inArray(juniorConversations.rootConversationId, [...rootIds]));
-  return new Map(
-    rows.map((row) => [
-      row.conversationId,
-      {
-        ...(row.parentConversationId
-          ? { parentConversationId: row.parentConversationId }
-          : undefined),
-        shownThread:
-          conversationKindFromRow(row) === "thread" && !row.threadArchivedAt,
-      },
-    ]),
-  );
-}
-
 /**
  * Find where a Thread nests: its nearest ancestor that is a listed root or a
- * shown Thread. A Thread under a Task or an archived Thread moves up. Returns
- * undefined when no shown ancestor exists.
+ * Thread. A Thread under a Task moves up. Returns undefined when an ancestor
+ * child is archived, because a child archive hides its whole subtree.
  */
 function findThreadPlacement(
   threadId: string,
-  edges: ReadonlyMap<string, TreeEdge>,
+  tree: ReadonlyMap<string, ConversationTreeNode>,
   rootIds: ReadonlySet<string>,
 ): string | undefined {
-  const seen = new Set([threadId]);
-  let ancestorId = edges.get(threadId)?.parentConversationId;
-  while (ancestorId && !seen.has(ancestorId)) {
-    const edge = edges.get(ancestorId);
-    if (rootIds.has(ancestorId) || edge?.shownThread) return ancestorId;
-    seen.add(ancestorId);
-    ancestorId = edge?.parentConversationId;
+  let placement: string | undefined;
+  for (const ancestor of conversationAncestors(tree, threadId)) {
+    if (rootIds.has(ancestor.conversationId)) {
+      return placement ?? ancestor.conversationId;
+    }
+    if (ancestor.childArchivedAt) return undefined;
+    if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
   }
   return undefined;
 }
 
 /**
  * Read the shown Threads of the listed roots for the feed, nested under
- * their nearest shown ancestor. A Thread shows when `thread_archived_at` is
- * null. The caller passes only roots that the viewer has not archived, so a
- * root archive hides its tree with no writes to the Threads. A Thread uses
- * the access of its root.
+ * their nearest shown ancestor. A Thread shows when it and every ancestor
+ * child have no `child_archived_at`. The caller passes only roots that the
+ * viewer has not archived, so a root archive hides its tree with no writes to
+ * the children. A Thread uses the access of its root.
  */
 export async function readFeedThreads(
   db: JuniorDatabase,
@@ -77,20 +47,20 @@ export async function readFeedThreads(
   if (roots.length === 0) return new Map();
   const rootIdList = roots.map((root) => root.conversationId);
   const rootIds = new Set(rootIdList);
-  const [rows, edges] = await Promise.all([
+  const [rows, tree] = await Promise.all([
     selectConversationRecords(db)
       .where(
         and(
           inArray(juniorConversations.rootConversationId, rootIdList),
           eq(juniorConversations.kind, "thread"),
-          isNull(juniorConversations.threadArchivedAt),
+          isNull(juniorConversations.childArchivedAt),
         ),
       )
       .orderBy(
         desc(juniorConversations.lastActivityAt),
         asc(juniorConversations.conversationId),
       ),
-    readTreeEdges(db, rootIdList),
+    readConversationTrees(db, rootIdList),
   ]);
   if (rows.length === 0) return new Map();
   const threads = rows.map((row) => ({
@@ -108,7 +78,7 @@ export async function readFeedThreads(
   for (const { conversation, row } of threads) {
     const parentId = findThreadPlacement(
       conversation.conversationId,
-      edges,
+      tree,
       rootIds,
     );
     if (!parentId) continue;

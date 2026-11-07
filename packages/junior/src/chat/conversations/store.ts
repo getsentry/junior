@@ -73,10 +73,10 @@ export interface Conversation {
   /** Immutable parent Conversation. */
   parentConversationId?: string;
   /**
-   * When a Thread was archived for everyone. Only Thread archive and a
-   * person's message write it; `upsertConversation` does not.
+   * When a child Conversation was archived for everyone. Only child archive
+   * and a person's message write it; `upsertConversation` does not.
    */
-  threadArchivedAtMs?: number;
+  childArchivedAtMs?: number;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the

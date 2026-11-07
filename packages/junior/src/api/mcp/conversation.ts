@@ -58,8 +58,8 @@ export function mcpConversation(
     startedAt: summary.startedAt,
     lastSeenAt: summary.lastSeenAt,
     archivedAt:
-      (summary.kind === "thread"
-        ? summary.threadArchivedAt
+      (summary.kind !== "root"
+        ? summary.childArchivedAt
         : summary.archivedAt) ?? undefined,
     pinnedAt: summary.pinnedAt ?? undefined,
     url: getDashboardConversationLink(summary.conversationId),

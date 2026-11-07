@@ -898,7 +898,7 @@ export function buildConversations(
       isPriority: summary.isPriority,
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
-      threadArchivedAt: summary.threadArchivedAt,
+      childArchivedAt: summary.childArchivedAt,
       threads: summary.threads && buildConversations(summary.threads),
       unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,

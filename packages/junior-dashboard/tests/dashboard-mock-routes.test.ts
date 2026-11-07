@@ -417,7 +417,7 @@ describe("dashboard canonical-event mock routes", () => {
     );
   });
 
-  it("nests shown Threads under their root and archives them for everyone", async () => {
+  it("nests shown Threads under their root and archives children for everyone", async () => {
     const app = createDashboardApp({
       authRequired: false,
       allowedDomains: [],
@@ -434,12 +434,20 @@ describe("dashboard canonical-event mock routes", () => {
           (item) => item.conversationId === DASHBOARD_QA_CONVERSATION_ID,
         )
         ?.threads?.map((thread) => thread.conversationId);
-    const archiveThread = (conversationId: string, archived: boolean) =>
+    const archiveThread = (
+      conversationId: string,
+      archived: boolean,
+      applyToChildren?: boolean,
+    ) =>
       app.fetch(
         new Request(
           `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/archive`,
           {
-            body: JSON.stringify({ archived, lastSeenAt: NOW }),
+            body: JSON.stringify({
+              applyToChildren,
+              archived,
+              lastSeenAt: NOW,
+            }),
             headers: { "content-type": "application/json" },
             method: "PATCH",
           },
@@ -464,7 +472,7 @@ describe("dashboard canonical-event mock routes", () => {
         ],
         kind: "thread",
         parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
-        threadArchivedAt: expect.any(String),
+        childArchivedAt: expect.any(String),
       });
       // The child-agents report keeps archived Threads for "Show archived".
       const childAgents = conversationChildAgentsReportSchema.parse(
@@ -477,23 +485,21 @@ describe("dashboard canonical-event mock routes", () => {
         ).json(),
       );
       expect(
-        childAgents.agents.map(
-          ({ conversationId, kind, threadArchivedAt }) => ({
-            conversationId,
-            kind,
-            threadArchivedAt,
-          }),
-        ),
+        childAgents.agents.map(({ conversationId, kind, childArchivedAt }) => ({
+          conversationId,
+          kind,
+          childArchivedAt,
+        })),
       ).toEqual([
         {
           conversationId: DASHBOARD_QA_THREAD_ID,
           kind: "thread",
-          threadArchivedAt: null,
+          childArchivedAt: null,
         },
         {
           conversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID,
           kind: "thread",
-          threadArchivedAt: archivedThread.threadArchivedAt,
+          childArchivedAt: archivedThread.childArchivedAt,
         },
         expect.objectContaining({ kind: "task" }),
         expect.objectContaining({ kind: "task" }),
@@ -509,6 +515,22 @@ describe("dashboard canonical-event mock routes", () => {
       await expect(qaThreads()).resolves.toEqual([
         DASHBOARD_QA_ARCHIVED_THREAD_ID,
       ]);
+
+      // Like the API, a Task with an unarchived child needs applyToChildren,
+      // and its child cannot be restored while the Task is archived.
+      const planId = DASHBOARD_QA_CHILD_IDS[0]!;
+      const refused = await archiveThread(planId, true);
+      expect(refused.status).toBe(409);
+      await expect(refused.json()).resolves.toEqual({
+        error:
+          "1 child conversation is not archived. Pass applyToChildren to archive it too.",
+      });
+      expect((await archiveThread(planId, true, true)).status).toBe(200);
+      const restoreChild = await archiveThread(`${planId}:claim-check`, false);
+      expect(restoreChild.status).toBe(409);
+      await expect(restoreChild.json()).resolves.toEqual({
+        error: `Conversation ${planId} above this one is archived. Restore it first.`,
+      });
     } finally {
       resetMockConversationViewerState();
     }

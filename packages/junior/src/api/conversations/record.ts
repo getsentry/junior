@@ -103,8 +103,8 @@ export function conversationFromRecordRow(
     ...(value.parentConversationId
       ? { parentConversationId: value.parentConversationId }
       : undefined),
-    ...(value.threadArchivedAt
-      ? { threadArchivedAtMs: value.threadArchivedAt.getTime() }
+    ...(value.childArchivedAt
+      ? { childArchivedAtMs: value.childArchivedAt.getTime() }
       : undefined),
     ...(actor ? { actor } : undefined),
     ...(location ? { location } : undefined),

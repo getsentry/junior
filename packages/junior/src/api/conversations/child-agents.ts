@@ -18,12 +18,12 @@ import {
   readConversationTreeMetricsFromSql,
 } from "./usage";
 
-/** Read the kind and Thread archive of each child Conversation. */
+/** Read the kind and archive of each child Conversation. */
 async function readChildKinds(
   db: JuniorDatabase,
   childIds: readonly string[],
 ): Promise<
-  Map<string, Pick<ConversationChildAgent, "kind" | "threadArchivedAt">>
+  Map<string, Pick<ConversationChildAgent, "kind" | "childArchivedAt">>
 > {
   if (childIds.length === 0) return new Map();
   const rows = await db
@@ -31,19 +31,17 @@ async function readChildKinds(
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
-      threadArchivedAt: juniorConversations.threadArchivedAt,
+      childArchivedAt: juniorConversations.childArchivedAt,
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, [...childIds]));
   return new Map(
     rows.map((row) => [
       row.conversationId,
-      conversationKindFromRow(row) === "thread"
-        ? {
-            kind: "thread",
-            threadArchivedAt: row.threadArchivedAt?.toISOString() ?? null,
-          }
-        : { kind: "task" },
+      {
+        kind: conversationKindFromRow(row) === "thread" ? "thread" : "task",
+        childArchivedAt: row.childArchivedAt?.toISOString() ?? null,
+      },
     ]),
   );
 }
@@ -51,7 +49,7 @@ async function readChildKinds(
 /**
  * Load the direct child agents of one Conversation, or throw a standard API
  * not-found error. Viewers who cannot see private content get only the status,
- * time, and usage of each child agent. Archived Threads stay in the report,
+ * time, and usage of each child agent. Archived children stay in the report,
  * so the dashboard can show and restore them.
  */
 export async function requireConversationChildAgents(
@@ -91,7 +89,10 @@ export async function requireConversationChildAgents(
         : undefined),
       ...(childAgentTotals ? { childAgentTotals } : undefined),
       // A child row from before the kind column reads as a Task.
-      ...(kindByChild.get(agent.childConversationId) ?? { kind: "task" }),
+      ...(kindByChild.get(agent.childConversationId) ?? {
+        kind: "task",
+        childArchivedAt: null,
+      }),
       status: agent.status,
       updatedAt: new Date(agent.updatedAtMs).toISOString(),
       ...(canExposePayload

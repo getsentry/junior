@@ -401,7 +401,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
       fullName: juniorUsers.displayName,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
-      threadArchivedAt: juniorConversations.threadArchivedAt,
+      childArchivedAt: juniorConversations.childArchivedAt,
       handle: juniorIdentities.handle,
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: sql<string | null>`CASE

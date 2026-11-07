@@ -24,7 +24,7 @@ export type ReportingConversationRow = {
   parentConversationId: string | null;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
-  threadArchivedAt: Date | null;
+  childArchivedAt: Date | null;
   title: string | null;
   updatedAt: Date;
   usage: (typeof juniorConversations.$inferSelect)["usage"];
@@ -118,8 +118,8 @@ export function summaryFromRow(
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
-    ...(row.threadArchivedAt
-      ? { threadArchivedAtMs: row.threadArchivedAt.getTime() }
+    ...(row.childArchivedAt
+      ? { childArchivedAtMs: row.childArchivedAt.getTime() }
       : undefined),
     ...(row.source ? { source: row.source } : undefined),
     ...(row.title ? { title: row.title } : undefined),

@@ -253,10 +253,10 @@ export const conversationSummaryReportSchema = z
     /** Present on Threads and Tasks. */
     parentConversationId: z.string().min(1).optional(),
     /**
-     * Present only on Threads: when the Thread was archived for everyone, or
-     * null. `archivedAt` stays the viewer's archive of the root.
+     * Present on Threads and Tasks: when the child was archived for everyone,
+     * or null. `archivedAt` stays the viewer's archive of the root.
      */
-    threadArchivedAt: z.string().datetime().nullable().optional(),
+    childArchivedAt: z.string().datetime().nullable().optional(),
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,

@@ -1,5 +1,5 @@
 {
-  "id": "841669b6-94ab-4bac-ac74-e60fa266dd9b",
+  "id": "29c2ea04-3656-4f50-8a8d-be6ac60af40c",
   "prevId": "8a2ddd49-b5da-4186-a155-a87fb14dfaec",
   "version": "7",
   "dialect": "postgresql",
@@ -2592,8 +2592,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "thread_archived_at": {
-          "name": "thread_archived_at",
+        "child_archived_at": {
+          "name": "child_archived_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

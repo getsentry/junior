@@ -187,7 +187,7 @@ export type Conversation = {
   kind: ConversationSummaryReport["kind"];
   parentConversationId?: string;
   /** Set only on Threads. Null when the Thread is not archived. */
-  threadArchivedAt?: string | null;
+  childArchivedAt?: string | null;
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[];
   unfinishedWork?: boolean;
