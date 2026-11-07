@@ -180,7 +180,7 @@ export async function mockDashboardApis(
           description: "Public memories Junior can use across conversations.",
           id: "memories",
           label: "Memories",
-          navigation: "primary",
+          navigation: "profile",
           pluginDisplayName: "Memory",
           pluginName: "memory",
         },
