@@ -94,6 +94,7 @@ import type {
 } from "./types";
 import { recordSubagentEnded, recordSubagentStarted } from "./markers";
 import { stopChildAgentsOf } from "./stop";
+import { resumeStoppedConversationTree } from "@/chat/conversations/session-stop";
 import { readBlockedReport } from "./blocked-report";
 
 const agentInvocationMailboxMetadataSchema = z
@@ -163,6 +164,14 @@ export async function enqueueAgentInvocation(
     return;
   }
   await recordSubagentStarted(invocation);
+  // New work from a parent tool call ends the stop of the child and of the
+  // child agents below it. A child's own Events and results do not.
+  if (invocation.parentToolCallId !== undefined) {
+    await resumeStoppedConversationTree(
+      invocation.childConversationId,
+      invocation.createdAtMs,
+    );
+  }
   const nowMs = options.nowMs ?? Date.now();
   await appendAndEnqueueInboundMessage({
     message: buildAgentInvocationInboundMessage(invocation, nowMs),

@@ -31,7 +31,11 @@ export const conversationReportStatusSchema = z.enum([
   "active",
   "completed",
   "failed",
+  "stopped",
 ]);
+
+/** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
+const conversationKindSchema = z.enum(["root", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",
@@ -246,6 +250,14 @@ export const conversationSummaryReportSchema = z
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
     childAgentTotals: conversationChildAgentTotalsSchema.optional(),
     conversationId: z.string(),
+    kind: conversationKindSchema,
+    /** Present on Threads and Tasks. */
+    parentConversationId: z.string().min(1).optional(),
+    /**
+     * Present on Threads and Tasks: when the child was archived for everyone,
+     * or null. `archivedAt` stays the viewer's archive of the root.
+     */
+    childArchivedAt: z.string().datetime().nullable().optional(),
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
@@ -768,6 +780,7 @@ export const forkConversationResponseSchema = z
 export const conversationAgentTreeNodeSchema = z
   .object({
     conversationId: z.string().min(1),
+    kind: conversationKindSchema,
     label: z.string().min(1),
   })
   .strict();
@@ -869,9 +882,23 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
   .strict()
   .superRefine(validateConversationEvents);
 
+/** A feed row, with its visible Threads nested under their parents. */
+export type ConversationFeedItem = ConversationSummaryReport & {
+  threads?: ConversationFeedItem[];
+};
+
+/**
+ * A root in the feed, or one of its visible Threads. A Thread nests under
+ * its nearest visible Thread ancestor, or under the root. Tasks never show.
+ */
+const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
+  conversationSummaryReportSchema.extend({
+    threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
+  });
+
 export const conversationFeedSchema = z
   .object({
-    conversations: z.array(conversationSummaryReportSchema),
+    conversations: z.array(conversationFeedItemSchema),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
   })

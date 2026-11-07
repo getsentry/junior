@@ -77,7 +77,7 @@ Subscribe to the events that match your usage:
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
 
-Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn. The thread stays subscribed. The `stop` keyword also makes Junior leave the thread.
+Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn, the same as the `stop` keyword. The thread stays subscribed.
 
 To make Junior join each new public channel, subscribe to `channel_created` and turn on the option. Junior does not join channels that existed before. The app needs `channels:join`.
 

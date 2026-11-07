@@ -85,6 +85,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 3_000,
     displayTitle: "Conversation",
@@ -372,7 +373,6 @@ describe("dashboard canonical-event components", () => {
           archive={{
             archived: false,
             disabled: false,
-            error: false,
             onClick: () => {},
             pending: false,
           }}
@@ -1327,6 +1327,7 @@ describe("dashboard canonical-event components", () => {
       ],
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
@@ -1499,6 +1500,7 @@ describe("dashboard canonical-event components", () => {
       providerDestinationId: "C1",
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
@@ -1929,6 +1931,7 @@ describe("dashboard canonical-event components", () => {
 
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
+      kind: "root",
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 1_000,
       displayTitle: "Cached conversation",

@@ -2,6 +2,7 @@ import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
+  ConversationFeedItem,
   ConversationModelUsage,
   ConversationSummaryReport,
   ConversationUsage,
@@ -39,6 +40,13 @@ export function isFailedConversationSummary(
 
 function isActiveConversation(conversation: Conversation): boolean {
   return conversation.status === "active";
+}
+
+/** Whether no work runs: the Conversation finished or a person stopped it. */
+export function isIdleConversation(conversation: Conversation): boolean {
+  return (
+    conversation.status === "completed" || conversation.status === "stopped"
+  );
 }
 
 function isFailedConversation(conversation: Conversation): boolean {
@@ -752,6 +760,7 @@ export function visualStatusForSummary(
 ): VisualStatus {
   if (isFailedConversationSummary(summary)) return "failed";
   if (isActiveSummary(summary)) return "active";
+  if (summary.status === "stopped") return "stopped";
   return "idle";
 }
 
@@ -761,6 +770,7 @@ export function visualStatusForConversation(
 ): VisualStatus {
   if (isActiveConversation(conversation)) return "active";
   if (isFailedConversation(conversation)) return "failed";
+  if (conversation.status === "stopped") return "stopped";
   return "idle";
 }
 
@@ -864,7 +874,7 @@ export function detectOutputLanguage(text: string): BundledLanguage {
 
 /** Convert SQL conversation summaries into dashboard rows. */
 export function buildConversations(
-  summaries: ConversationSummaryReport[],
+  summaries: ConversationFeedItem[],
 ): Conversation[] {
   return summaries
     .map((summary) => ({
@@ -896,6 +906,10 @@ export function buildConversations(
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,
+      kind: summary.kind,
+      parentConversationId: summary.parentConversationId,
+      childArchivedAt: summary.childArchivedAt,
+      threads: summary.threads && buildConversations(summary.threads),
       unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,
     }))

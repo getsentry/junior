@@ -170,6 +170,7 @@ export type {
   ConversationEventPage,
   ConversationEventHistory,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,

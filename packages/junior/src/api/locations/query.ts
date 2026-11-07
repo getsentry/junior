@@ -397,8 +397,12 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
         ${juniorIdentities.email}
       )`,
       executionStatus: juniorConversations.executionStatus,
+      stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+      childArchivedAt: juniorConversations.childArchivedAt,
       handle: juniorIdentities.handle,
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: sql<string | null>`CASE
@@ -449,106 +453,106 @@ export async function readLocationDetailFromSql(
 
   const [locationRows, dayRows, hourRows, actorRows, recentRows] =
     await Promise.all([
-    getDb()
-      .select({
-        ...locationColumns(),
-        ...treeAggregateColumns,
-        ...conversationRangeColumns(),
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
+      getDb()
+        .select({
+          ...locationColumns(),
+          ...treeAggregateColumns,
+          ...conversationRangeColumns(),
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(where)
+        .groupBy(...locationGroupBy()),
+      getDb()
+        .select({
+          date: activityDate,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(and(where, gte(juniorConversations.lastActivityAt, start)))
+        .groupBy(activityDate),
+      getDb()
+        .select({
+          date: activityHour,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(
+          and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
+        )
+        .groupBy(activityHour),
+      getDb()
+        .select({
+          actorIdentityId: juniorConversations.actorIdentityId,
+          email: juniorUsers.primaryEmailNormalized,
+          fullName: juniorUsers.displayName,
+          handle: juniorIdentities.handle,
+          identityEmail: juniorIdentities.email,
+          identityProvider: juniorIdentities.provider,
+          providerSubjectId: juniorIdentities.providerSubjectId,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .innerJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .leftJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .where(where)
+        .groupBy(
+          juniorConversations.actorIdentityId,
+          juniorUsers.primaryEmailNormalized,
+          juniorUsers.displayName,
+          juniorIdentities.handle,
+          juniorIdentities.email,
+          juniorIdentities.provider,
+          juniorIdentities.providerSubjectId,
         ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(where)
-      .groupBy(...locationGroupBy()),
-    getDb()
-      .select({
-        date: activityDate,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(and(where, gte(juniorConversations.lastActivityAt, start)))
-      .groupBy(activityDate),
-    getDb()
-      .select({
-        date: activityHour,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(
-        and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
-      )
-      .groupBy(activityHour),
-    getDb()
-      .select({
-        actorIdentityId: juniorConversations.actorIdentityId,
-        email: juniorUsers.primaryEmailNormalized,
-        fullName: juniorUsers.displayName,
-        handle: juniorIdentities.handle,
-        identityEmail: juniorIdentities.email,
-        identityProvider: juniorIdentities.provider,
-        providerSubjectId: juniorIdentities.providerSubjectId,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .innerJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .leftJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(where)
-      .groupBy(
-        juniorConversations.actorIdentityId,
-        juniorUsers.primaryEmailNormalized,
-        juniorUsers.displayName,
-        juniorIdentities.handle,
-        juniorIdentities.email,
-        juniorIdentities.provider,
-        juniorIdentities.providerSubjectId,
-      ),
-    recentLocationRows(getDb(), locationId),
-  ]);
+      recentLocationRows(getDb(), locationId),
+    ]);
 
   const locationRow = locationRows[0];
   const location = locationRow ? locationFromAggregate(locationRow) : undefined;

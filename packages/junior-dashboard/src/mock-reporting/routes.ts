@@ -491,10 +491,11 @@ export function createMockReportingApi(): Hono<{
     const result = setMockConversationArchived(
       params.data.conversationId,
       body.data.archived,
+      body.data.applyToChildren,
     );
-    return result
-      ? jsonResponse(archiveConversationResponseSchema, result)
-      : errorResponse("Conversation not found.", 404);
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(archiveConversationResponseSchema, result);
   });
   app.patch("/conversations/:conversationId/pin", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

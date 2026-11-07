@@ -5,10 +5,8 @@ import { testViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import {
-  readConversationFeedFromSql,
-  readConversationRecordFromSql,
-} from "@/api/conversations/list";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
+import { readConversationRecordFromSql } from "@/api/conversations/record";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -79,6 +77,11 @@ describe("conversation list API", () => {
         searchText: "hidden marigold launch",
         modelId: "test-model",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ stoppedAt: new Date() })
+        .where(eq(juniorConversations.conversationId, privateId));
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
       await fixture.sql
@@ -129,7 +132,12 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await privateTitleSearchResponse.json())
           .conversations,
-      ).toEqual([expect.objectContaining({ conversationId: privateId })]);
+      ).toEqual([
+        expect.objectContaining({
+          conversationId: privateId,
+          status: "stopped",
+        }),
+      ]);
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );

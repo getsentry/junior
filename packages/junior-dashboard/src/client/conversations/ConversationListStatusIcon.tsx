@@ -46,8 +46,19 @@ export function ConversationListStatusIcon(props: {
         className={cn(
           "size-3 shrink-0",
           props.status === "failed" && "text-rose-300",
-          props.status === "idle" && "text-dashboard-text-muted",
+          (props.status === "idle" || props.status === "stopped") &&
+            "text-dashboard-text-muted",
         )}
+      />
+    );
+  }
+
+  if (props.status === "stopped") {
+    return (
+      <span
+        aria-label="Stopped"
+        className="size-1.5 shrink-0 bg-dashboard-text-muted"
+        role="img"
       />
     );
   }

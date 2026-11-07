@@ -1,4 +1,5 @@
 import type { StoredSlackActor } from "@/chat/actor";
+import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { juniorConversations } from "@/db/schema";
 import type { ConversationAccess } from "./access";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -18,9 +19,13 @@ export type ReportingConversationRow = {
   executionUpdatedAt: Date | null;
   fullName: string | null;
   handle: string | null;
+  kind: (typeof juniorConversations.$inferSelect)["kind"];
   lastActivityAt: Date;
+  parentConversationId: string | null;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
+  childArchivedAt: Date | null;
+  stoppedAt: Date | null;
   title: string | null;
   updatedAt: Date;
   usage: (typeof juniorConversations.$inferSelect)["usage"];
@@ -100,6 +105,7 @@ export function summaryFromRow(
   const conversation = {
     conversationId: row.conversationId,
     createdAtMs: row.createdAt.getTime(),
+    kind: conversationKindFromRow(row),
     lastActivityAtMs: row.lastActivityAt.getTime(),
     updatedAtMs: row.updatedAt.getTime(),
     execution: {
@@ -110,7 +116,14 @@ export function summaryFromRow(
     },
     ...(actor ? { actor } : undefined),
     ...(row.channelName ? { channelName: row.channelName } : undefined),
+    ...(row.parentConversationId
+      ? { parentConversationId: row.parentConversationId }
+      : undefined),
+    ...(row.childArchivedAt
+      ? { childArchivedAtMs: row.childArchivedAt.getTime() }
+      : undefined),
     ...(row.source ? { source: row.source } : undefined),
+    ...(row.stoppedAt ? { stoppedAtMs: row.stoppedAt.getTime() } : undefined),
     ...(row.title ? { title: row.title } : undefined),
   };
   return conversationSummaryFromStoredConversation({

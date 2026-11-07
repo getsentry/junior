@@ -75,6 +75,10 @@ export const juniorConversations = pgTable(
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
+    // Set only on children, Threads and Tasks. A child is shared work, so its
+    // archive applies to everyone. Roots keep their per-viewer archive on
+    // participant rows.
+    childArchivedAt: timestamptz("child_archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(
@@ -90,7 +94,11 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
-    /** Latest session stop. Automated input received before it is dropped. */
+    /**
+     * Set while the Conversation is stopped. Its Watch Events are then saved
+     * as Messages that start no Turn. A person's later input, or new work
+     * from its parent, clears it.
+     */
     stoppedAt: timestamptz("stopped_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),

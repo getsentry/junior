@@ -3,6 +3,8 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import {
   FUNCTION_TIMEOUT_BUFFER_SECONDS,
   botConfig,
@@ -629,28 +631,56 @@ describe("durable queue contract", () => {
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({ state: "paused" });
 
-      await expect(
-        q.send({
-          eventType: "message",
-          text: "stop",
-          threadTs: "1712345.0001",
-          ts: "1712345.0002",
-        }),
-      ).resolves.toMatchObject({ status: 200 });
+      const stop = {
+        eventType: "message" as const,
+        text: "stop",
+        threadTs: "1712345.0001",
+        ts: "1712345.0100",
+      };
+      await expect(q.send(stop)).resolves.toMatchObject({ status: 200 });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
 
       await expect(
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({ state: "abandoned" });
       // Only the stop acknowledgment posts. The paused turn never replies.
-      expect(q.replies()).toEqual([
-        expect.stringContaining("stay out of this thread"),
-      ]);
+      expect(q.replies()).toEqual([SLACK_STOP_ACK]);
       // The stop queued its own wake. It finds no work left.
       await expect(q.next()).resolves.toEqual({ status: "no_work" });
-      // A later mention still gets a normal reply. Stop timestamps compare in
-      // milliseconds, so the mention must be at least one millisecond later.
-      await expectNextTurn(q, "1712346.0001");
+      // A mention sent before the stop but delivered after it runs, but it
+      // does not end the stop: only input sent after the stop does. A Slack
+      // retry of the old stop does not stop the Turn that the mention starts.
+      await expect(
+        q.send({
+          text: `<@${SLACK_BOT_USER_ID}> check the deploy`,
+          threadTs: "1712345.0001",
+          ts: "1712345.0050",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      await expect(q.send(stop)).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(q.replies()).toEqual([SLACK_STOP_ACK, "Deploy checked."]);
+      await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+        1_712_345_010,
+      );
+
+      // A later mention ends the stop.
+      await expect(
+        q.send({
+          text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
+          threadTs: "1712345.0001",
+          ts: "1712346.0001",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      await expect(
+        getConversationStoppedAtMs(CONVERSATION_ID),
+      ).resolves.toBeUndefined();
     }, 30_000);
   });
 

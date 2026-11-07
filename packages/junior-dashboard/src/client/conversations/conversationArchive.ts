@@ -8,18 +8,49 @@ import {
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import { archiveConversationResponseSchema } from "@sentry/junior/api/schema";
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 
+import { buildConversations } from "../format";
 import { patch } from "../http";
 import type { Conversation } from "../types";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "./queries";
+
+/** Apply archive marks to one feed row, at any depth of nested Threads. */
+function markFeedConversation(
+  items: ConversationFeedItem[],
+  conversationId: string,
+  marks: Partial<ConversationFeedItem>,
+): ConversationFeedItem[] {
+  return items.map((item) =>
+    item.conversationId === conversationId
+      ? { ...item, ...marks }
+      : item.threads
+        ? {
+            ...item,
+            threads: markFeedConversation(item.threads, conversationId, marks),
+          }
+        : item,
+  );
+}
+
+/**
+ * A child archive also writes its descendants, which show in other detail
+ * pages and in their ancestors' child-agents reports.
+ */
+function isTreeArchiveRead({ queryKey }: { queryKey: readonly unknown[] }) {
+  return (
+    queryKey[0] === "conversation" &&
+    (queryKey[2] === "detail" || queryKey[2] === "agents")
+  );
+}
 
 function archivedConversationQueryKey(conversationId: string) {
   return ["dashboard", "archived-conversation", conversationId] as const;
@@ -44,6 +75,11 @@ const archiveConversationMutationKey = [
 ] as const;
 
 type ArchiveConversationVariables = {
+  /**
+   * Child Conversations only: also archive or restore every descendant. The
+   * dashboard sends it for every child, so it also marks a child archive.
+   */
+  applyToChildren?: boolean;
   archived: boolean;
   lastSeenAt: string;
 };
@@ -191,11 +227,14 @@ export function archiveConversationMutationOptions(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Match the API: archive also unpins and marks it read. Restore keeps
-      // the read state, because auto-archive does not mark it read.
-      const viewerMarks = args.archived
-        ? { archivedAt, pinnedAt: null, unread: undefined }
-        : { archivedAt };
+      // Match the API: a child archive is shared. A root archive also unpins
+      // and marks it read; restore keeps the read state, because auto-archive
+      // does not mark it read.
+      const viewerMarks = args.applyToChildren
+        ? { childArchivedAt: archivedAt }
+        : args.archived
+          ? { archivedAt, pinnedAt: null, unread: undefined }
+          : { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
       const snapshot =
@@ -230,10 +269,10 @@ export function archiveConversationMutationOptions(
                 pinnedAt: null,
               },
             ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-          : feed.conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, ...viewerMarks }
-                : conversation,
+          : markFeedConversation(
+              feed.conversations,
+              conversationId,
+              viewerMarks,
             );
         queryClient.setQueryData<ConversationFeed>(queryKey, {
           ...feed,
@@ -289,7 +328,9 @@ export function archiveConversationMutationOptions(
           detail
             ? {
                 ...detail,
-                archivedAt: result.archivedAt,
+                ...(detail.kind === "root"
+                  ? { archivedAt: result.archivedAt }
+                  : { childArchivedAt: result.archivedAt }),
                 detailEtag: undefined,
               }
             : detail,
@@ -302,7 +343,7 @@ export function archiveConversationMutationOptions(
       }
       options?.onSuccess?.(result.archivedAt);
     },
-    onSettled: async () => {
+    onSettled: async (_result, _error, args) => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["dashboard", "conversations"],
@@ -311,10 +352,14 @@ export function archiveConversationMutationOptions(
           queryKey: ["dashboard", "locations"],
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
+        queryClient.invalidateQueries(
+          args.applyToChildren
+            ? { predicate: isTreeArchiveRead }
+            : {
+                exact: true,
+                queryKey: conversationDetailQueryKey(conversationId),
+              },
+        ),
       ]);
     },
   });
@@ -335,4 +380,34 @@ function buildArchivedConversationSnapshot(
     feedQueryHashes.push(JSON.stringify(queryKey));
   }
   return conversation ? { conversation, feedQueryHashes } : undefined;
+}
+
+/**
+ * Show a pending archive change on the conversation page before the server
+ * confirms it.
+ */
+export function applyPendingArchiveUpdate(
+  conversation: Conversation | undefined,
+  update: PendingArchiveConversationUpdate | undefined,
+): Conversation | undefined {
+  const updatedConversation =
+    conversation ??
+    (update?.conversation
+      ? buildConversations([update.conversation])[0]
+      : undefined);
+  if (!updatedConversation || !update) return updatedConversation;
+  const archivedAt = update.archived
+    ? (conversationArchivedAt(updatedConversation) ??
+      updatedConversation.lastSeenAt)
+    : null;
+  return updatedConversation.kind === "root"
+    ? { ...updatedConversation, archivedAt }
+    : { ...updatedConversation, childArchivedAt: archivedAt };
+}
+
+/** A root archive is the viewer's own. A child archive is shared. */
+export function conversationArchivedAt(conversation: Conversation | undefined) {
+  return conversation?.kind === "root"
+    ? conversation.archivedAt
+    : conversation?.childArchivedAt;
 }
