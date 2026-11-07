@@ -6,12 +6,18 @@ import {
   conversationTurnIdForMessage,
   createAndEnqueueConversation,
 } from "@/chat/conversations/web-input";
+import {
+  createWebAuthorization,
+  getWebAuthorization,
+} from "@/chat/conversations/web-authorization";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
   getTurnRecord,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
+import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -101,6 +107,98 @@ describe("Conversation mailbox Turn after a stopped Turn", () => {
         ...context,
         attempt: emptyConversationTurnAttempt({ conversationId, destination }),
       }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("ends every other open Turn and its sign-in, unless the Conversation stops", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createConversationFixture();
+    const { conversationId } = await createAndEnqueueConversation(
+      { actor, idempotencyKey: "supersede-1", message: "First request." },
+      { conversationStore, queue, state },
+    );
+    const destination = { platform: "local" as const, conversationId };
+    // Each checkpoint extends the committed Conversation history.
+    const history: Parameters<typeof saveTurnCheckpoint>[0]["messages"] = [];
+    const pause = async (turnId: string, reason: "auth" | "yield") => {
+      history.push({
+        role: "user",
+        content: [{ type: "text", text: turnId }],
+        timestamp: Date.now(),
+      });
+      await saveTurnCheckpoint({
+        mode: "paused",
+        conversationId,
+        turnId,
+        sliceId: 1,
+        reason,
+        messages: [...history],
+        destination,
+        source: createWebSource(conversationId),
+        actor,
+        surface: "api",
+      });
+    };
+    const states = async (turnIds: string[]) =>
+      await Promise.all(
+        turnIds.map(
+          async (turnId) =>
+            (await getTurnRecord(conversationId, turnId))?.state,
+        ),
+      );
+    await pause("turn-kept", "yield");
+    await pause("turn-yield-1", "yield");
+    await pause("turn-yield-2", "yield");
+    const conversation = coerceThreadConversationState({});
+
+    // A stop after the first abandon leaves the rest open.
+    let checks = 0;
+    await expect(
+      supersedeOpenMailboxTurns({
+        conversation,
+        conversationId,
+        isStopped: () => checks++ > 0,
+        keepTurnId: "turn-kept",
+      }),
+    ).resolves.toBe(false);
+    expect((await states(["turn-yield-1", "turn-yield-2"])).sort()).toEqual([
+      "abandoned",
+      "paused",
+    ]);
+
+    await pause("turn-auth", "auth");
+    conversation.processing.activeTurnId = "turn-auth";
+    conversation.processing.pendingAuth = {
+      actorId: actor.userId,
+      kind: "plugin",
+      linkSentAtMs: Date.now(),
+      provider: "github",
+      sessionId: "turn-auth",
+    };
+    await createWebAuthorization({
+      actorId: actor.userId,
+      conversationId,
+    }).deliver({
+      authorizationUrl: "https://example.com/oauth",
+      completionText: "Connected.",
+      label: "GitHub",
+    });
+
+    await expect(
+      supersedeOpenMailboxTurns({
+        conversation,
+        conversationId,
+        isStopped: () => false,
+        keepTurnId: "turn-kept",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      states(["turn-kept", "turn-yield-1", "turn-yield-2", "turn-auth"]),
+    ).resolves.toEqual(["paused", "abandoned", "abandoned", "abandoned"]);
+    // The superseded Turn is closed, and its dashboard sign-in prompt is gone.
+    expect(conversation.processing.activeTurnId).toBeUndefined();
+    await expect(
+      getWebAuthorization({ actorId: actor.userId, conversationId }),
     ).resolves.toBeUndefined();
   });
 });

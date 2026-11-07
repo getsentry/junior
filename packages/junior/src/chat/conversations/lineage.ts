@@ -1,8 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-import {
-  resolveConversationPrivacy,
-  type ConversationPrivacy,
-} from "@/chat/conversation-privacy";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Location } from "@/chat/conversations/location";
 import { getDb } from "@/chat/db";
 import { parseSessionSource } from "@/chat/source";
@@ -82,31 +79,31 @@ export async function readConversationLineage(
   });
 }
 
-/** Where a Run in one Conversation takes its config and visibility from. */
-export interface RunPlacement {
-  /** Location of the root, whose provider defaults the Run uses. */
-  configLocation?: Location;
+/** The root of a parent chain, and how far the Conversation is below it. */
+export interface LineageRoot {
   /**
    * Parent links above the Conversation. A root has depth 0. A broken chain
    * also counts the link to the parent that it could not read.
    */
   depth: number;
-  /** Visibility of the root. Missing or unknown visibility is private. */
-  visibility: ConversationPrivacy;
+  /** Location of the root. Its provider defaults apply to every child. */
+  location?: Location;
+  /** Visibility of the root. A child stores none of its own. */
+  visibility?: ConversationPrivacy;
 }
 
 /**
- * Resolve the placement of a root or child Conversation from its root. A
- * child row stores no Location or visibility of its own.
+ * Read the root of a root or child Conversation. A broken chain has no root,
+ * so it has no Location or visibility.
  */
-export async function resolveRunPlacement(
+export async function readLineageRoot(
   conversationId: string,
-): Promise<RunPlacement> {
+): Promise<LineageRoot> {
   const lineage = await readConversationLineage(conversationId);
   const root = lineage[0]?.parentConversationId ? undefined : lineage[0];
   return {
-    ...(root?.location ? { configLocation: root.location } : undefined),
     depth: root ? lineage.length - 1 : lineage.length,
-    visibility: resolveConversationPrivacy({ visibility: root?.visibility }),
+    ...(root?.location ? { location: root.location } : undefined),
+    ...(root?.visibility ? { visibility: root.visibility } : undefined),
   };
 }

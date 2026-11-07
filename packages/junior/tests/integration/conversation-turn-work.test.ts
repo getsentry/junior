@@ -13,21 +13,15 @@ import {
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
-import {
-  resolveMailboxTurnWork,
-  type MailboxTurnWork,
-} from "@/chat/task-execution/mailbox-turn";
+import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import type { AgentRun } from "@/chat/agent/types";
+import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import type {
-  ConversationWorkerContext,
-  ConversationWorkerResult,
-} from "@/chat/task-execution/worker";
 import {
   getTurnRecord,
   saveTurnCheckpoint,
@@ -37,26 +31,10 @@ import {
   closeConversationFixture,
   createConversationFixture,
   emptyConversationTurnAttempt,
+  requireConversationTurn,
 } from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-
-function requireConversationTurn(
-  worker: (
-    context: ConversationWorkerContext,
-    resolved: MailboxTurnWork,
-  ) => Promise<ConversationWorkerResult>,
-) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const resolved = await resolveMailboxTurnWork(context);
-    if (!resolved) {
-      throw new Error("Expected Conversation mailbox work");
-    }
-    return await worker(context, resolved);
-  };
-}
 
 describe("Conversation mailbox Turn work", () => {
   afterEach(async () => {
@@ -284,11 +262,18 @@ describe("Conversation mailbox Turn work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
+    let observedPrivacy: string | undefined;
     const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
-          { type: "text", text: "Private reply stays in Junior." },
+          {
+            type: "text",
+            text: "Private reply stays in Junior.",
+            onRequest: () => {
+              observedPrivacy = getCurrentConversationPrivacy();
+            },
+          },
         ]);
       }),
     );
@@ -306,6 +291,8 @@ describe("Conversation mailbox Turn work", () => {
     expect(agentRuns[0]?.source).toEqual(
       createWebSource(accepted.conversationId, "private"),
     );
+    // The Run takes its privacy from the root's stored visibility.
+    expect(observedPrivacy).toBe("private");
   });
 
   it("reports a lost lease when cancelled input acknowledgement fails", async () => {

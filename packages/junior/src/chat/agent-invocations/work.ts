@@ -7,7 +7,7 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
-import { resolveRunPlacement } from "@/chat/conversations/lineage";
+import { readLineageRoot } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -764,12 +764,12 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, placement] = await Promise.all([
+      const [persisted, projection, root] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
-        resolveRunPlacement(invocation.childConversationId),
+        readLineageRoot(invocation.childConversationId),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       // Some types start with the parent's history. Later agent invocations
@@ -779,8 +779,8 @@ export function createAgentInvocationWorker(
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
-      location = placement.configLocation;
-      canSpawn = placement.depth <= maxAgentDepth;
+      location = root.location;
+      canSpawn = root.depth <= maxAgentDepth;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };

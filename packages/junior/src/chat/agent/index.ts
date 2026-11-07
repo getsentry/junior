@@ -112,12 +112,13 @@ import {
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import {
+  resolveConversationPrivacy,
   runWithConversationPrivacy,
   toCanonicalOutputMessage,
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { resolveRunPlacement } from "@/chat/conversations/lineage";
+import { readLineageRoot } from "@/chat/conversations/lineage";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -212,8 +213,8 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const { visibility: conversationPrivacy } = await resolveRunPlacement(
-    run.conversationId,
+  const conversationPrivacy = resolveConversationPrivacy(
+    await readLineageRoot(run.conversationId),
   );
   const actor = actorFromRun(run);
   const runLogContext: LogContext = {
