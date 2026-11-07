@@ -82,7 +82,7 @@ function viewerStateVersion(
     .where(eq(versionConversation.conversationId, conversationId));
   const participant = db
     .select({
-      state: sql<string>`row(${versionParticipant.pinnedAt}, ${versionParticipant.pinPosition}, ${versionParticipant.archivedAt}, ${versionParticipant.autoArchive})::text`,
+      state: sql<string>`row(${versionParticipant.pinnedAt}, ${versionParticipant.pinPosition}, ${versionParticipant.autoArchive})::text`,
     })
     .from(versionParticipant)
     .where(
