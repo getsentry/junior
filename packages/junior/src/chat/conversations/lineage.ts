@@ -1,5 +1,8 @@
 import { desc, eq, sql } from "drizzle-orm";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import {
+  resolveConversationPrivacy,
+  type ConversationPrivacy,
+} from "@/chat/conversation-privacy";
 import type { Location } from "@/chat/conversations/location";
 import { getDb } from "@/chat/db";
 import { parseSessionSource } from "@/chat/source";
@@ -77,4 +80,33 @@ export async function readConversationLineage(
       ...(visibility ? { visibility } : undefined),
     };
   });
+}
+
+/** Where a Run in one Conversation takes its config and visibility from. */
+export interface RunPlacement {
+  /** Location of the root, whose provider defaults the Run uses. */
+  configLocation?: Location;
+  /**
+   * Parent links above the Conversation. A root has depth 0. A broken chain
+   * also counts the link to the parent that it could not read.
+   */
+  depth: number;
+  /** Visibility of the root. Missing or unknown visibility is private. */
+  visibility: ConversationPrivacy;
+}
+
+/**
+ * Resolve the placement of a root or child Conversation from its root. A
+ * child row stores no Location or visibility of its own.
+ */
+export async function resolveRunPlacement(
+  conversationId: string,
+): Promise<RunPlacement> {
+  const lineage = await readConversationLineage(conversationId);
+  const root = lineage[0]?.parentConversationId ? undefined : lineage[0];
+  return {
+    ...(root?.location ? { configLocation: root.location } : undefined),
+    depth: root ? lineage.length - 1 : lineage.length,
+    visibility: resolveConversationPrivacy({ visibility: root?.visibility }),
+  };
 }

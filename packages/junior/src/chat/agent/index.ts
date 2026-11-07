@@ -112,13 +112,12 @@ import {
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import {
-  resolveConversationPrivacy,
   runWithConversationPrivacy,
   toCanonicalOutputMessage,
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { readConversationLineage } from "@/chat/conversations/lineage";
+import { resolveRunPlacement } from "@/chat/conversations/lineage";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -154,20 +153,6 @@ import {
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
-
-/** Read visibility from the Conversation, or from its nearest parent with one. */
-async function readRunConversationVisibility(
-  conversationId: string,
-): Promise<ConversationPrivacy | undefined> {
-  const lineage = await readConversationLineage(conversationId);
-  for (let index = lineage.length - 1; index >= 0; index -= 1) {
-    const visibility = lineage[index]!.visibility;
-    if (visibility) {
-      return visibility;
-    }
-  }
-  return undefined;
-}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -227,10 +212,9 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const visibility = await readRunConversationVisibility(run.conversationId);
-  const conversationPrivacy = resolveConversationPrivacy({
-    visibility,
-  });
+  const { visibility: conversationPrivacy } = await resolveRunPlacement(
+    run.conversationId,
+  );
   const actor = actorFromRun(run);
   const runLogContext: LogContext = {
     conversationId: run.conversationId,

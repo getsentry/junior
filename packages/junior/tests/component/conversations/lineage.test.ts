@@ -1,7 +1,10 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readConversationLineage } from "@/chat/conversations/lineage";
+import {
+  readConversationLineage,
+  resolveRunPlacement,
+} from "@/chat/conversations/lineage";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore, type SqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations } from "@/db/schema";
@@ -68,6 +71,12 @@ describe("Conversation lineage", () => {
       channelId: "C123",
       threadTs: "1700000000.000100",
     });
+    // A child Run takes its config Location and visibility from the root.
+    await expect(resolveRunPlacement(GRANDCHILD_ID)).resolves.toEqual({
+      configLocation: root!.location,
+      depth: 2,
+      visibility: "public",
+    });
   });
 
   it("reads a root as a chain of one and a missing Conversation as no chain", async () => {
@@ -79,6 +88,14 @@ describe("Conversation lineage", () => {
       },
     ]);
     await expect(readConversationLineage("agent:missing")).resolves.toEqual([]);
+    await expect(resolveRunPlacement(ROOT_ID)).resolves.toMatchObject({
+      depth: 0,
+      visibility: "public",
+    });
+    await expect(resolveRunPlacement("agent:missing")).resolves.toEqual({
+      depth: 0,
+      visibility: "private",
+    });
   });
 
   it("stops a parent cycle at the first repeated Conversation", async () => {
@@ -98,5 +115,11 @@ describe("Conversation lineage", () => {
     ]);
     // The first entry still has a parent, so callers read a broken chain.
     expect(lineage[0]).toMatchObject({ parentConversationId: GRANDCHILD_ID });
+    // A broken chain has no root: no config Location, private, and the
+    // unread parent link still counts.
+    await expect(resolveRunPlacement(GRANDCHILD_ID)).resolves.toEqual({
+      depth: 3,
+      visibility: "private",
+    });
   });
 });
