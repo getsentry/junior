@@ -8,6 +8,7 @@ import {
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import { archiveConversationResponseSchema } from "@sentry/junior/api/schema";
@@ -20,6 +21,35 @@ import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "./queries";
+
+/** Apply archive marks to one feed row, at any depth of nested Threads. */
+function markFeedConversation(
+  items: ConversationFeedItem[],
+  conversationId: string,
+  marks: Partial<ConversationFeedItem>,
+): ConversationFeedItem[] {
+  return items.map((item) =>
+    item.conversationId === conversationId
+      ? { ...item, ...marks }
+      : item.threads
+        ? {
+            ...item,
+            threads: markFeedConversation(item.threads, conversationId, marks),
+          }
+        : item,
+  );
+}
+
+/**
+ * A child archive also writes its descendants, which show in other detail
+ * pages and in their ancestors' child-agents reports.
+ */
+function isTreeArchiveRead({ queryKey }: { queryKey: readonly unknown[] }) {
+  return (
+    queryKey[0] === "conversation" &&
+    (queryKey[2] === "detail" || queryKey[2] === "agents")
+  );
+}
 
 function archivedConversationQueryKey(conversationId: string) {
   return ["dashboard", "archived-conversation", conversationId] as const;
@@ -228,10 +258,10 @@ export function archiveConversationMutationOptions(
                 pinnedAt: null,
               },
             ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-          : feed.conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, ...viewerMarks }
-                : conversation,
+          : markFeedConversation(
+              feed.conversations,
+              conversationId,
+              viewerMarks,
             );
         queryClient.setQueryData<ConversationFeed>(queryKey, {
           ...feed,
@@ -302,7 +332,10 @@ export function archiveConversationMutationOptions(
       }
       options?.onSuccess?.(result.archivedAt);
     },
-    onSettled: async () => {
+    onSettled: async (_result, _error, _args, context) => {
+      const childArchive = Boolean(
+        context?.previousDetail && context.previousDetail.kind !== "root",
+      );
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["dashboard", "conversations"],
@@ -311,10 +344,14 @@ export function archiveConversationMutationOptions(
           queryKey: ["dashboard", "locations"],
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
+        queryClient.invalidateQueries(
+          childArchive
+            ? { predicate: isTreeArchiveRead }
+            : {
+                exact: true,
+                queryKey: conversationDetailQueryKey(conversationId),
+              },
+        ),
       ]);
     },
   });
