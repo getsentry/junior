@@ -19,6 +19,34 @@ const BM25_K1 = 1.2;
 // not more topics, so they get a weaker length penalty than the other fields.
 const BM25_B = [0.75, 0.3, 0.75] as const;
 
+// A synonym match counts for less than an exact match, so a tool that uses
+// the query's own word still ranks first.
+const SYNONYM_WEIGHT = 0.6;
+
+// Common action words that tools and queries use for the same action. These
+// are generic English, so they also apply to MCP and plugin tools.
+const SEARCH_SYNONYM_GROUPS = [
+  ["get", "fetch", "read", "view", "show", "retrieve", "look"],
+  ["update", "edit", "change", "modify", "set", "rename"],
+  ["create", "add", "new", "make", "file", "write"],
+  ["delete", "remove", "archive", "forget", "drop", "discard"],
+  ["search", "find", "query", "lookup", "look"],
+  ["list", "show", "all", "enumerate"],
+  ["comment", "reply", "respond"],
+  ["stop", "cancel", "unwatch", "unsubscribe"],
+  ["watch", "subscribe", "monitor", "follow"],
+  ["save", "store", "remember", "memorize"],
+];
+
+// Short forms in queries that mean exactly the same as their long form. Only
+// the query is expanded: most tools have a `repo` parameter, so expanding
+// tool text would make "repository" match almost every tool.
+const SEARCH_ABBREVIATIONS: Record<string, string[]> = {
+  pr: ["pull", "request"],
+  repo: ["repository"],
+  msg: ["message"],
+};
+
 const SEARCH_STOP_WORDS = new Set([
   "a",
   "an",
@@ -142,18 +170,50 @@ function rawTerms(value: string): string[] {
   return result;
 }
 
+// Runs after stemming, so the long form is stemmed here to match tool text.
+function expandAbbreviation(term: string): string[] {
+  return SEARCH_ABBREVIATIONS[term]?.map(stem) ?? [term];
+}
+
 function terms(value: string): string[] {
   return rawTerms(value).map(stem);
 }
 
-function queryTerms(query: string): string[] {
-  return [
+const synonymsByTerm = new Map<string, Set<string>>();
+for (const group of SEARCH_SYNONYM_GROUPS) {
+  const stems = group.map(stem);
+  for (const term of stems) {
+    const synonyms = synonymsByTerm.get(term) ?? new Set<string>();
+    for (const synonym of stems) {
+      if (synonym !== term) {
+        synonyms.add(synonym);
+      }
+    }
+    synonymsByTerm.set(term, synonyms);
+  }
+}
+
+// One query word with the weight that each matching tool word gets: 1 for
+// the word itself and SYNONYM_WEIGHT for each synonym.
+type QueryTerm = Map<string, number>;
+
+function queryTerms(query: string): QueryTerm[] {
+  const unique = [
     ...new Set(
       rawTerms(query)
         .filter((term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term))
-        .map(stem),
+        .map(stem)
+        .flatMap(expandAbbreviation),
     ),
   ];
+  return unique.map((term) => {
+    const weights: QueryTerm = new Map();
+    for (const synonym of synonymsByTerm.get(term) ?? []) {
+      weights.set(synonym, SYNONYM_WEIGHT);
+    }
+    weights.set(term, 1);
+    return weights;
+  });
 }
 
 /** Summarize catalog descriptions before rendering them into model-visible data. */
@@ -257,34 +317,49 @@ function averageFieldLengths(documents: SearchDocument[]): number[] {
   );
 }
 
-function documentFrequencies(documents: SearchDocument[]): Map<string, number> {
-  const frequencies = new Map<string, number>();
-  for (const document of documents) {
-    const uniqueTerms = new Set(document.fields.flat());
-    for (const term of uniqueTerms) {
-      frequencies.set(term, (frequencies.get(term) ?? 0) + 1);
-    }
-  }
-  return frequencies;
+interface ScoredQueryTerm {
+  weights: QueryTerm;
+  inverseDocumentFrequency: number;
+}
+
+// Score a query word and its synonyms as one BM25 term, as Lucene's
+// SynonymQuery does: synonym matches add discounted term frequency, and the
+// document frequency counts tools that contain any of the words. A rare
+// synonym then cannot outscore a common exact word.
+function scoreQueryTerms(
+  query: QueryTerm[],
+  documents: SearchDocument[],
+): ScoredQueryTerm[] {
+  const documentTerms = documents.map(
+    (document) => new Set(document.fields.flat()),
+  );
+  return query.map((weights) => {
+    const documentFrequency = documentTerms.filter((terms) =>
+      [...weights.keys()].some((term) => terms.has(term)),
+    ).length;
+    return {
+      weights,
+      inverseDocumentFrequency: Math.log(
+        1 +
+          (documents.length - documentFrequency + 0.5) /
+            (documentFrequency + 0.5),
+      ),
+    };
+  });
 }
 
 function scoreSearchDocument(
   document: SearchDocument,
-  query: string[],
-  frequencies: Map<string, number>,
-  documentCount: number,
+  query: ScoredQueryTerm[],
   averageLengths: number[],
 ): number {
-  return query.reduce((score, term) => {
-    const documentFrequency = frequencies.get(term) ?? 0;
-    if (documentFrequency === 0) {
-      return score;
-    }
+  return query.reduce((score, { weights, inverseDocumentFrequency }) => {
     const weightedTermFrequency = document.fields.reduce(
       (weighted, field, fieldIndex) => {
-        const termFrequency = field.filter(
-          (candidate) => candidate === term,
-        ).length;
+        const termFrequency = field.reduce(
+          (total, candidate) => total + (weights.get(candidate) ?? 0),
+          0,
+        );
         if (termFrequency === 0) {
           return weighted;
         }
@@ -303,9 +378,6 @@ function scoreSearchDocument(
     if (weightedTermFrequency === 0) {
       return score;
     }
-    const inverseDocumentFrequency = Math.log(
-      1 + (documentCount - documentFrequency + 0.5) / (documentFrequency + 0.5),
-    );
     return (
       score +
       (inverseDocumentFrequency * weightedTermFrequency * (BM25_K1 + 1)) /
@@ -331,18 +403,12 @@ function searchCatalogTools(
   if (searchTerms.length === 0) {
     return [];
   }
+  const scoredTerms = scoreQueryTerms(searchTerms, documents);
   const averageLengths = averageFieldLengths(documents);
-  const frequencies = documentFrequencies(documents);
   const scored = documents
     .map((document) => ({
       name: document.name,
-      score: scoreSearchDocument(
-        document,
-        searchTerms,
-        frequencies,
-        documents.length,
-        averageLengths,
-      ),
+      score: scoreSearchDocument(document, scoredTerms, averageLengths),
     }))
     .filter(({ score }) => score > 0)
     .sort(

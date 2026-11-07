@@ -51,6 +51,15 @@ const RANKING_CASES = [
   ["stop watching a resource", "resource-watches", "stopWatchingResources"],
   ["find open review items", "review-desk", "searchReviewItems"],
   ["update a review item", "review-desk", "updateReviewItem"],
+  // Synonyms and abbreviations.
+  ["fetch issue details", "github", "github_getIssue"],
+  ["view a pull request", "github", "github_getPullRequest"],
+  ["look up a repo", "github", "github_getRepository"],
+  ["modify an issue", "github", "github_updateIssue"],
+  ["file a bug", "github", "github_createIssue"],
+  ["reply to an issue", "github", "github_commentOnIssue"],
+  ["show my memories", "memory", "memory_listMemories"],
+  ["unsubscribe from a resource", "resource-watches", "stopWatchingResources"],
 ] as const;
 
 // Queries with no fitting tool in this catalog.
