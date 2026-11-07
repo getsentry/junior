@@ -7,32 +7,42 @@ const conversationId = "slack:CQA123:1770003600.000200";
 // Wide enough for details to open beside the chat by default.
 test.use({ viewport: { height: 900, width: 1440 } });
 
-/** Select the first words of the newest Junior reply, as a mouse drag would. */
-async function selectReplyText(page: Page): Promise<string> {
-  return page.evaluate(async () => {
+/**
+ * Select text in the newest Junior reply, as a mouse drag would: 12
+ * characters of its `skip`-th text, or one whole word with `word`.
+ */
+async function selectReplyText(
+  page: Page,
+  options: { skip?: number; word?: boolean } = {},
+): Promise<string> {
+  return page.evaluate(async ({ skip = 0, word = false }) => {
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
     const reply = replies[replies.length - 1]!;
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
-    while (node && (node.textContent ?? "").trim().length < 12) {
+    let skipped = 0;
+    while (
+      node &&
+      ((node.textContent ?? "").trim().length < 12 || skipped++ < skip)
+    ) {
       node = walker.nextNode();
     }
     node!.parentElement!.scrollIntoView({ block: "center" });
     // A scroll hides the button. Select after the scroll settles.
     await new Promise((resolve) => setTimeout(resolve, 200));
     const text = node!.textContent!;
-    const start = text.search(/\S/);
+    const match = word ? /\p{L}{4,}/u.exec(text)! : /\S/.exec(text)!;
     const range = document.createRange();
-    range.setStart(node!, start);
-    range.setEnd(node!, start + 12);
+    range.setStart(node!, match.index);
+    range.setEnd(node!, match.index + (word ? match[0].length : 12));
     const selection = window.getSelection()!;
     selection.removeAllRanges();
     selection.addRange(range);
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     return range.toString();
-  });
+  }, options);
 }
 
 /**
@@ -215,4 +225,39 @@ test("closes a quick question and shows details again", async ({
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(details).toBeVisible();
+});
+
+test("quotes selected reply text in the message box", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  await expect(
+    page.locator("[data-quick-question-message-id]").first(),
+  ).toBeVisible();
+  const respond = page.getByRole("button", { name: "Respond", exact: true });
+  const composer = page.getByRole("textbox", {
+    name: "Continue this conversation",
+  });
+
+  // One word is a double-click or a lookup, not a quote.
+  await selectReplyText(page, { word: true });
+  await expect(respond).toBeHidden();
+
+  await composer.fill("Thanks.");
+  const first = await selectReplyText(page);
+  await screenshot(page, "conversation-selection-respond", { view: "desktop" });
+  await respond.click();
+  await expect(composer).toBeFocused();
+  await composer.pressSequentially("Why?");
+  const second = await selectReplyText(page, { skip: 1 });
+  await respond.click();
+  await expect(composer).toHaveValue(
+    `Thanks.\n\n> ${first}\n\nWhy?\n\n> ${second}\n\n`,
+  );
+  await screenshot(page, "conversation-selection-respond-quoted", {
+    view: "desktop",
+  });
 });

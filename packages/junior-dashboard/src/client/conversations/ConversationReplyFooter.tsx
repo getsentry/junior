@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import type {
   ConversationDetailReport,
   ConversationPendingMessagesReport,
@@ -43,6 +51,8 @@ function ReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** Lets the page add a quote of selected text to the draft. */
+  ref?: Ref<Pick<ConversationComposerHandle, "appendText">>;
   /** The last Review item that Junior added in the transcript. */
   reviewItemId?: string;
   /**
@@ -184,6 +194,9 @@ function ReplyFooter(props: {
   editCancelRef.current = editCancel;
   const editingRef = useRef(false);
   const composerRef = useRef<ConversationComposerHandle>(null);
+  useImperativeHandle(props.ref, () => ({
+    appendText: (text) => composerRef.current?.appendText(text),
+  }));
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {

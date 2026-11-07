@@ -30,6 +30,7 @@ import {
   conversationDetailQueryKey,
   conversationDetailQueryOptions,
 } from "./queries";
+import { isDeliberateSelection, markdownQuote } from "./selectionQuote";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
 
 const HIGHLIGHT_NAME = "quick-question";
@@ -76,7 +77,7 @@ function readSelection(
   if (!root || !selection || selection.isCollapsed || !selection.rangeCount)
     return undefined;
   const quote = selection.toString().trim().slice(0, MAX_QUOTE_CHARS).trim();
-  if (!quote) return undefined;
+  if (!isDeliberateSelection(quote)) return undefined;
   const range = selection.getRangeAt(0);
   const node = range.commonAncestorContainer;
   const element = node instanceof Element ? node : node.parentElement;
@@ -89,14 +90,16 @@ function readSelection(
 }
 
 /**
- * Show a "Quick question" button above a text selection in a Junior reply.
- * It hides on scroll, because its position would go stale.
+ * Show "Quick question" and "Respond" buttons above a text selection in a
+ * Junior reply. They hide on scroll, because their position would go stale.
  */
 export function QuickQuestionSelectionButton(props: {
   rootRef: RefObject<HTMLElement | null>;
   onAsk(selection: QuickQuestionSelection): void;
+  /** Take the selection as a Markdown quote. Absent without a message box. */
+  onRespond?(quote: string): void;
 }) {
-  const { rootRef, onAsk } = props;
+  const { rootRef, onAsk, onRespond } = props;
   const [anchor, setAnchor] = useState<DOMRect>();
   useEffect(() => {
     const update = () =>
@@ -117,14 +120,23 @@ export function QuickQuestionSelectionButton(props: {
     };
   }, [rootRef]);
   if (!anchor) return null;
-  // Show the button above the selection, or below it near the top edge.
+  const take = (act: (selection: QuickQuestionSelection) => void) => {
+    const selection = readSelection(rootRef.current);
+    setAnchor(undefined);
+    if (!selection) return;
+    window.getSelection()?.removeAllRanges();
+    act(selection);
+  };
+  // Show the buttons above the selection, or below it near the top edge.
   const above = anchor.top >= 56;
   return createPortal(
     <div
       className={cn(
-        "fixed z-50 -translate-x-1/2 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised p-1 shadow-lg",
+        "fixed z-50 flex -translate-x-1/2 gap-1 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-raised p-1 shadow-lg",
         above && "-translate-y-full",
       )}
+      // Keep the selection while a button takes the click.
+      onMouseDown={(event) => event.preventDefault()}
       style={{
         left: anchor.left + anchor.width / 2,
         top: above
@@ -134,19 +146,20 @@ export function QuickQuestionSelectionButton(props: {
     >
       <Button
         className="h-8 text-dashboard-text"
-        // Keep the selection while the button takes the click.
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => {
-          const selection = readSelection(rootRef.current);
-          setAnchor(undefined);
-          if (!selection) return;
-          window.getSelection()?.removeAllRanges();
-          onAsk(selection);
-        }}
+        onClick={() => take(onAsk)}
         variant="quiet"
       >
         Quick question
       </Button>
+      {onRespond ? (
+        <Button
+          className="h-8 text-dashboard-text"
+          onClick={() => take(({ quote }) => onRespond(markdownQuote(quote)))}
+          variant="quiet"
+        >
+          Respond
+        </Button>
+      ) : null}
     </div>,
     document.body,
   );
