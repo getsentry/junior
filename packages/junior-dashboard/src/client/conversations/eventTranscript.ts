@@ -438,6 +438,12 @@ export function transcriptMessagesFromEvents(
       continue;
     }
 
+    if (data.type === "turn_lifecycle" && data.state === "no_reply") {
+      const message = latestUserMessageByTurn.get(data.turnId);
+      if (message?.eventType) message.noReply = true;
+      continue;
+    }
+
     if (data.type === "turn_lifecycle" && data.state === "failed") {
       messages.push({
         role: data.failureCode === "delivery_failed" ? "system" : "assistant",
