@@ -18,14 +18,17 @@ const CHILD_LABEL = "Subagent";
  * they can see private content.
  */
 export async function readConversationAgentTree(
-  conversationId: string,
+  conversation: { conversationId: string; parentConversationId?: string },
   readAccess: ConversationAccessReader,
 ): Promise<ConversationAgentTreeNode[] | undefined> {
-  // Every detail request calls this, and a root Conversation must not need a
-  // full Conversation record.
-  const lineage = (await readConversationLineage(conversationId)).slice(
-    -MAX_AGENT_TREE_DEPTH,
-  );
+  // Every detail request calls this, and a root Conversation must not need
+  // any read.
+  if (!conversation.parentConversationId) {
+    return undefined;
+  }
+  const lineage = (
+    await readConversationLineage(conversation.conversationId)
+  ).slice(-MAX_AGENT_TREE_DEPTH);
   if (lineage.length < 2) {
     return undefined;
   }

@@ -240,30 +240,29 @@ export async function conversationViewerMarks(
             and(eq(juniorUsers.primaryEmailNormalized, subject.email), marked),
           );
   return new Map(
-    rows.map((row) => [
-      row.rootConversationId,
-      {
-        ...(row.archivedAt
-          ? { archivedAtMs: row.archivedAt.getTime() }
-          : undefined),
-        ...(row.pinnedAt ? { pinnedAtMs: row.pinnedAt.getTime() } : undefined),
-        ...(row.pinnedAt && row.pinPosition !== null
-          ? { pinPosition: row.pinPosition }
-          : undefined),
-      },
-    ]),
+    rows.flatMap((row) => {
+      const marks = viewerMarksFromParticipant(row);
+      return marks ? [[row.rootConversationId, marks] as const] : [];
+    }),
   );
 }
 
-/** Read one viewer's archive and pin times for a conversation root. */
-export async function readConversationViewerMarks(
-  viewer: { id: string },
-  rootConversationId: string,
-): Promise<ConversationViewerMarks | undefined> {
-  const marks = await conversationViewerMarks(getDb(), [rootConversationId], {
-    userId: viewer.id,
-  });
-  return marks.get(rootConversationId);
+/** Project one participant row into marks, or undefined when it has none. */
+export function viewerMarksFromParticipant(row: {
+  archivedAt: Date | null;
+  pinnedAt: Date | null;
+  pinPosition: number | null;
+}): ConversationViewerMarks | undefined {
+  if (!row.archivedAt && !row.pinnedAt) return undefined;
+  return {
+    ...(row.archivedAt
+      ? { archivedAtMs: row.archivedAt.getTime() }
+      : undefined),
+    ...(row.pinnedAt ? { pinnedAtMs: row.pinnedAt.getTime() } : undefined),
+    ...(row.pinnedAt && row.pinPosition !== null
+      ? { pinPosition: row.pinPosition }
+      : undefined),
+  };
 }
 
 /** True when one user pinned this root. Feeds sort these rows first. */
