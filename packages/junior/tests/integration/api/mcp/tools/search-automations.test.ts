@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   connectMcpTools,
+  MCP_TEST_ORIGIN,
   MCP_TEST_OTHER_VIEWER,
   MCP_TEST_VIEWER,
   mockMcpDashboardConfig,
@@ -61,6 +62,7 @@ describe("searchAutomations MCP tool", () => {
           ownedByYou: true,
           status: "active",
           title: "Weekly digest",
+          url: `${MCP_TEST_ORIGIN}/automations/sched_viewer_digest`,
         }),
       ],
       total: 1,

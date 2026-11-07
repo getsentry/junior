@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import * as z from "zod";
 
-const CURSOR_CONTEXT = "junior-conversation-report-cursor";
+const EVENT_CURSOR_CONTEXT = "junior-conversation-report-cursor";
+const FEED_CURSOR_CONTEXT = "junior-conversation-feed-cursor";
 
 const conversationCursorPayloadSchema = z
   .object({
@@ -17,6 +18,26 @@ type ConversationCursorPayload = z.infer<
   typeof conversationCursorPayloadSchema
 >;
 
+const conversationFeedCursorPayloadSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    lastActivityAtMs: z.number().int(),
+    /** Set when the feed sorts the viewer's pins first. */
+    pinned: z.boolean().optional(),
+    version: z.literal(1),
+  })
+  .strict();
+
+type ConversationFeedCursorPayload = z.infer<
+  typeof conversationFeedCursorPayloadSchema
+>;
+
+/** Position of the last row of one feed page. */
+export type ConversationFeedPosition = Omit<
+  ConversationFeedCursorPayload,
+  "version"
+>;
+
 function cursorSecret(): string {
   const secret = process.env.JUNIOR_SECRET?.trim();
   if (!secret) {
@@ -26,21 +47,50 @@ function cursorSecret(): string {
 }
 
 /** Sign one encoded cursor with the domain-separated server secret. */
-function signature(payload: string): string {
+function signature(context: string, payload: string): string {
   return createHmac("sha256", cursorSecret())
-    .update(`${CURSOR_CONTEXT}:${payload}`)
+    .update(`${context}:${payload}`)
     .digest("base64url");
+}
+
+function encodeSignedCursor(
+  context: string,
+  payload: ConversationCursorPayload | ConversationFeedCursorPayload,
+): string {
+  const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString(
+    "base64url",
+  );
+  return `${encoded}.${signature(context, encoded)}`;
+}
+
+/** Return the parsed payload only when the cursor signature is valid. */
+function decodeSignedCursor<T>(
+  context: string,
+  cursor: string,
+  schema: z.ZodType<T>,
+): T | undefined {
+  const [encoded, actualSignature, extra] = cursor.split(".");
+  if (!encoded || !actualSignature || extra !== undefined) return undefined;
+  const expected = Buffer.from(signature(context, encoded));
+  const actual = Buffer.from(actualSignature);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    return undefined;
+  }
+
+  try {
+    return schema.parse(
+      JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")),
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 /** Encode an authenticated, conversation-bound event position for an API cursor. */
 export function encodeConversationCursor(
   payload: Omit<ConversationCursorPayload, "version">,
 ): string {
-  const encoded = Buffer.from(
-    JSON.stringify({ ...payload, version: 1 }),
-    "utf8",
-  ).toString("base64url");
-  return `${encoded}.${signature(encoded)}`;
+  return encodeSignedCursor(EVENT_CURSOR_CONTEXT, { ...payload, version: 1 });
 }
 
 /** Decode an authenticated reporting cursor for the expected conversation. */
@@ -48,26 +98,37 @@ export function decodeConversationCursor(args: {
   conversationId: string;
   cursor: string;
 }): { seq: number; transcript?: string } | undefined {
-  const [encoded, actualSignature, extra] = args.cursor.split(".");
-  if (!encoded || !actualSignature || extra !== undefined) return undefined;
-  const expected = Buffer.from(signature(encoded));
-  const actual = Buffer.from(actualSignature);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+  const parsed = decodeSignedCursor(
+    EVENT_CURSOR_CONTEXT,
+    args.cursor,
+    conversationCursorPayloadSchema,
+  );
+  if (!parsed || parsed.conversationId !== args.conversationId) {
     return undefined;
   }
+  return {
+    seq: parsed.seq,
+    ...(parsed.transcript ? { transcript: parsed.transcript } : undefined),
+  };
+}
 
-  try {
-    const parsed = conversationCursorPayloadSchema.parse(
-      JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")),
-    );
-    if (parsed.conversationId !== args.conversationId) {
-      return undefined;
-    }
-    return {
-      seq: parsed.seq,
-      ...(parsed.transcript ? { transcript: parsed.transcript } : undefined),
-    };
-  } catch {
-    return undefined;
-  }
+/** Encode the last row of a feed page as an authenticated next-page cursor. */
+export function encodeConversationFeedCursor(
+  position: ConversationFeedPosition,
+): string {
+  return encodeSignedCursor(FEED_CURSOR_CONTEXT, { ...position, version: 1 });
+}
+
+/** Decode an authenticated feed cursor into the last row of the prior page. */
+export function decodeConversationFeedCursor(
+  cursor: string,
+): ConversationFeedPosition | undefined {
+  const parsed = decodeSignedCursor(
+    FEED_CURSOR_CONTEXT,
+    cursor,
+    conversationFeedCursorPayloadSchema,
+  );
+  if (!parsed) return undefined;
+  const { version: _version, ...position } = parsed;
+  return position;
 }

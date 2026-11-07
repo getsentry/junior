@@ -128,6 +128,8 @@ export const conversationFeedQuerySchema = z
       .transform((value) => value.toLowerCase())
       .optional(),
     codeRepositoryId: z.string().uuid().optional(),
+    /** `nextCursor` of the page before. */
+    cursor: z.string().min(1).optional(),
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
@@ -283,6 +285,8 @@ export const conversationSummaryReportSchema = z
     channelNameRedacted: z.boolean().optional(),
     locationId: z.string().optional(),
     sentryTraceUrl: z.string().optional(),
+    /** Dashboard page, with the dashboard base path. Missing when the dashboard is off. */
+    dashboardUrl: z.string().url().optional(),
     locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     /**
@@ -899,6 +903,8 @@ const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
 export const conversationFeedSchema = z
   .object({
     conversations: z.array(conversationFeedItemSchema),
+    /** Set when more conversations follow. Pass it as `cursor` to read them. */
+    nextCursor: z.string().min(1).optional(),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
   })
