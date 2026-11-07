@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   conversationAncestors,
@@ -110,20 +110,24 @@ async function setArchive(args: {
     );
     if (args.conversationId === rootConversationId) {
       // A manual restore means the conversation is not done for this person,
-      // so their auto-archive must not archive it again.
+      // so no auto-archive may archive it again. The root actor may not have
+      // a participant row yet.
       // oxlint-disable-next-line junior/touch-conversation-detail -- the detail ETag reads the auto-archive choice on each request.
       await db
-        .update(juniorConversationParticipants)
-        .set({ autoArchive: false })
-        .where(
-          and(
-            eq(juniorConversationParticipants.userId, args.userId),
-            eq(
-              juniorConversationParticipants.rootConversationId,
-              rootConversationId,
-            ),
-          ),
-        );
+        .insert(juniorConversationParticipants)
+        .values({
+          autoArchive: false,
+          lastMessageAt: target.lastActivityAt,
+          rootConversationId,
+          userId: args.userId,
+        })
+        .onConflictDoUpdate({
+          target: [
+            juniorConversationParticipants.userId,
+            juniorConversationParticipants.rootConversationId,
+          ],
+          set: { autoArchive: false },
+        });
     }
     return { archivedAt: null, status: "updated" as const };
   });
