@@ -86,16 +86,20 @@ function matchScatter(
 }
 
 /**
- * Compare `term` with the start of each word, so an unfinished word still
- * counts. Allows one edit for short terms and two for longer ones.
+ * Compare `term` with the text from each word start, so an unfinished word
+ * still counts. Allows one edit for short terms and two for longer ones.
  */
 function matchTypo(haystack: string, term: string): QuickOpenMatch | undefined {
   if (term.length < TYPO_MIN_LENGTH) return undefined;
   const allowed = term.length < 6 ? 1 : 2;
   let best: { at: number; length: number; distance: number } | undefined;
+  // Compare against the rest of the title, not only the word, so
+  // `slef-update` still finds "self-update".
   for (const word of haystack.matchAll(/[\p{L}\p{N}]+/gu)) {
-    if (word[0].length < term.length - 1) continue;
-    const distances = prefixDistances(term, word[0].slice(0, term.length + 1));
+    const distances = prefixDistances(
+      term,
+      haystack.slice(word.index, word.index + term.length + 1),
+    );
     // The term's own length first, so a tie highlights the whole term.
     for (const length of [term.length, term.length - 1, term.length + 1]) {
       const distance = distances[length];

@@ -34,6 +34,7 @@ it("matches a word start within one typo, two for longer terms", () => {
   ]);
   expect(quickOpenMatch("Customer escalation", "escelation")).toBeDefined();
   expect(quickOpenMatch("Checkout latency triage", "chekcout")).toBeDefined();
+  expect(quickOpenMatch("Package self-update", "slef-update")).toBeDefined();
   expect(quickOpenMatch("Checkout latency triage", "cehkcuot")).toBeUndefined();
   // Short terms need their letters in order.
   expect(quickOpenMatch("Uptime alerts", "tpi")).toBeUndefined();
