@@ -2,7 +2,6 @@ import type { StateAdapter } from "chat";
 import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { logException } from "@/chat/logging";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { InboundMessageClaim } from "@/chat/task-execution/state";
@@ -115,8 +114,8 @@ export async function stopConversation(args: {
   state?: StateAdapter;
 }): Promise<StopConversationResult> {
   // The claim stays outside the try. A failed claim leaves no claim of this
-  // call, because the store releases one whose metadata write fails. So a
-  // redelivery whose claim check fails keeps the first delivery's claim.
+  // call, because the claim releases its own write when a later step fails.
+  // So a redelivery whose claim check fails keeps the first delivery's claim.
   if (
     args.message &&
     (
@@ -155,13 +154,9 @@ export async function stopConversation(args: {
     });
   } catch (error) {
     if (args.message && !stopSaved) {
-      // The stop error is the one that matters, so a failed release does not
-      // replace it.
       await releaseInboundMessage({
         message: args.message,
         state: args.state,
-      }).catch((releaseError: unknown) => {
-        logException(releaseError, "conversation.stop.release.failed");
       });
     }
     throw error;

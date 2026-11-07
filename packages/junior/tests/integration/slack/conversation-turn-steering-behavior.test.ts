@@ -55,22 +55,38 @@ function failFirstStopRequest(state: StateAdapter): StateAdapter {
   }) as StateAdapter;
 }
 
-/** Fail the next read of a Conversation's work state once `failNext` is called. */
-function failNextConversationRead(state: StateAdapter) {
-  let armed = false;
+/**
+ * Fail the next read of a Conversation's work state, or let its next write
+ * land and then fail, once armed.
+ */
+function failNextConversationRecord(state: StateAdapter) {
+  const key = `junior:conversation:v2:${CONVERSATION_ID}`;
+  let armed: "read" | "write" | undefined;
   return {
-    failNext: () => {
-      armed = true;
+    failNextRead: () => {
+      armed = "read";
+    },
+    failNextWriteAfterSave: () => {
+      armed = "write";
     },
     state: new Proxy(state, {
       get(target, prop) {
         if (prop === "get") {
-          return async (key: string) => {
-            if (armed && key === `junior:conversation:v2:${CONVERSATION_ID}`) {
-              armed = false;
+          return async (getKey: string) => {
+            if (armed === "read" && getKey === key) {
+              armed = undefined;
               throw new Error("transient work state read failure");
             }
-            return target.get(key);
+            return target.get(getKey);
+          };
+        }
+        if (prop === "set") {
+          return async (setKey: string, value: unknown, ttlMs?: number) => {
+            await target.set(setKey, value, ttlMs);
+            if (armed === "write" && setKey === key) {
+              armed = undefined;
+              throw new Error("transient work state write failure");
+            }
           };
         }
         const value = readProxyProperty(target, prop);
@@ -354,27 +370,33 @@ describe("Slack ingress: thread messages", () => {
   });
 
   it("lets Slack retry a `stop` keyword whose claim fails to save", async () => {
+    const record = failNextConversationRecord(getStateAdapter());
     const metadata = failNextExecutionWrite(getConversationStore());
-    const harness = ingress(getStateAdapter(), metadata.store);
+    const harness = ingress(record.state, metadata.store);
     const child = await startThreadWork(harness);
     const stop = {
       eventType: "message" as const,
       text: `<@${SLACK_BOT_USER_ID}> stop`,
       ts: "1712345.000200",
     };
+    // The claim record lands, then its write fails.
+    record.failNextWriteAfterSave();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    expect(stopAcks()).toHaveLength(0);
+
     // The claim lands, then its metadata write fails.
     metadata.failNext();
     await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
     expect(stopAcks()).toHaveLength(0);
 
-    // The failed claim is released, so the retry stops the work.
+    // Each failed claim is released, so the retry stops the work.
     await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
     await expectThreadWorkStopped(child, harness.state);
   });
 
   it("keeps a `stop` keyword's claim when the stop fails after it landed", async () => {
-    const reads = failNextConversationRead(getStateAdapter());
-    const harness = ingress(reads.state);
+    const record = failNextConversationRecord(getStateAdapter());
+    const harness = ingress(record.state);
     const child = await startThreadWork(harness);
     const stop = {
       eventType: "message" as const,
@@ -390,7 +412,7 @@ describe("Slack ingress: thread messages", () => {
     await expectChildAgentStopped(child, harness.state);
 
     // A redelivery whose claim check fails keeps the saved claim.
-    reads.failNext();
+    record.failNextRead();
     await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
 
     // The next redelivery is a duplicate, so it cannot stop newer work.

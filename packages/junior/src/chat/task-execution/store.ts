@@ -1,6 +1,5 @@
 import type { StateAdapter } from "chat";
 import { getConversationStore } from "@/chat/db";
-import { logException } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   CONVERSATION_QUEUE_SCHEMA_VERSION,
@@ -249,7 +248,7 @@ export async function appendInboundMessage(args: {
 /**
  * Record an inbound message id that skips the mailbox. When the claim is
  * saved but its metadata write fails, this releases the claim, so a
- * redelivery can claim it again. Any other failure saved no claim.
+ * redelivery can claim it again.
  */
 export async function claimInboundMessage(args: {
   message: workState.InboundMessageClaim;
@@ -266,13 +265,10 @@ export async function claimInboundMessage(args: {
         state: args.state,
       });
     } catch (error) {
-      // The metadata error is the one that matters, so a failed release
-      // does not replace it.
-      await workState
-        .releaseInboundMessage({ message: args.message, state: args.state })
-        .catch((releaseError: unknown) => {
-          logException(releaseError, "conversation.stop.release.failed");
-        });
+      await workState.releaseInboundMessage({
+        message: args.message,
+        state: args.state,
+      });
       throw error;
     }
   }

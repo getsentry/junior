@@ -21,6 +21,7 @@ import {
   getStateAdapter,
 } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
+import { logException } from "@/chat/logging";
 
 const CONVERSATION_PREFIX = "junior:conversation:v2";
 const CONVERSATION_SCHEMA_VERSION = 2;
@@ -1311,7 +1312,9 @@ export async function appendInboundMessage(args: {
  * Record an inbound message id without adding the message to the mailbox.
  * Ingress uses it for input that it handles itself, such as a Slack `stop`.
  * The id is a duplicate after that, for this claim and for the mailbox, so
- * one message is handled once.
+ * one message is handled once. A claim that fails after its duplicate check
+ * is released, so a redelivery can claim again. A claim that fails before
+ * it keeps an id that an earlier delivery saved.
  */
 export async function claimInboundMessage(args: {
   message: InboundMessageClaim;
@@ -1319,45 +1322,63 @@ export async function claimInboundMessage(args: {
   state?: StateAdapter;
 }): Promise<ClaimInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(
-    { conversationId: args.message.conversationId, state: args.state },
-    async (state, lock) => {
-      const current = await readInboundConversation(state, args.message, nowMs);
-      if (
-        current.execution.inboundMessageIds.includes(
-          args.message.inboundMessageId,
-        )
-      ) {
-        return { status: "duplicate" };
-      }
-      await writeConversation(
-        state,
-        lock,
-        withExecutionUpdate(
-          {
-            ...current,
-            destination: current.destination ?? args.message.destination,
-            source: current.source ?? args.message.source,
-            lastActivityAtMs: nowMs,
-          },
-          {
-            ...current.execution,
-            inboundMessageIds: [
-              ...current.execution.inboundMessageIds,
-              args.message.inboundMessageId,
-            ],
-          },
+  // Set once the duplicate check passes. From then on a throw may come after
+  // the claim landed, such as from an index write or the lock release, so
+  // only then is the claim this call's to release.
+  let claimWritten = false;
+  try {
+    return await withConversationMutation(
+      { conversationId: args.message.conversationId, state: args.state },
+      async (state, lock) => {
+        const current = await readInboundConversation(
+          state,
+          args.message,
           nowMs,
-        ),
-      );
-      return { status: "claimed" };
-    },
-  );
+        );
+        if (
+          current.execution.inboundMessageIds.includes(
+            args.message.inboundMessageId,
+          )
+        ) {
+          return { status: "duplicate" };
+        }
+        claimWritten = true;
+        await writeConversation(
+          state,
+          lock,
+          withExecutionUpdate(
+            {
+              ...current,
+              destination: current.destination ?? args.message.destination,
+              source: current.source ?? args.message.source,
+              lastActivityAtMs: nowMs,
+            },
+            {
+              ...current.execution,
+              inboundMessageIds: [
+                ...current.execution.inboundMessageIds,
+                args.message.inboundMessageId,
+              ],
+            },
+            nowMs,
+          ),
+        );
+        return { status: "claimed" };
+      },
+    );
+  } catch (error) {
+    if (claimWritten) {
+      await releaseInboundMessage(args);
+    }
+    throw error;
+  }
 }
 
 /**
  * Release a claim from `claimInboundMessage`, so a redelivery of the message
- * is new again. A message that waits in the mailbox keeps its id.
+ * is new again. A message that waits in the mailbox keeps its id. It runs
+ * after a failure, so a failed release is logged and not thrown, and the
+ * error that caused it wins.
  */
 export async function releaseInboundMessage(args: {
   message: InboundMessageClaim;
@@ -1366,34 +1387,42 @@ export async function releaseInboundMessage(args: {
 }): Promise<void> {
   const nowMs = args.nowMs ?? now();
   const id = args.message.inboundMessageId;
-  await withConversationMutation(
-    { conversationId: args.message.conversationId, state: args.state },
-    async (state, lock) => {
-      const current = await readInboundConversation(state, args.message, nowMs);
-      if (
-        !current.execution.inboundMessageIds.includes(id) ||
-        current.execution.pendingMessages.some(
-          (message) => message.inboundMessageId === id,
-        )
-      ) {
-        return;
-      }
-      await writeConversation(
-        state,
-        lock,
-        withExecutionUpdate(
-          current,
-          {
-            ...current.execution,
-            inboundMessageIds: current.execution.inboundMessageIds.filter(
-              (inboundMessageId) => inboundMessageId !== id,
-            ),
-          },
+  try {
+    await withConversationMutation(
+      { conversationId: args.message.conversationId, state: args.state },
+      async (state, lock) => {
+        const current = await readInboundConversation(
+          state,
+          args.message,
           nowMs,
-        ),
-      );
-    },
-  );
+        );
+        if (
+          !current.execution.inboundMessageIds.includes(id) ||
+          current.execution.pendingMessages.some(
+            (message) => message.inboundMessageId === id,
+          )
+        ) {
+          return;
+        }
+        await writeConversation(
+          state,
+          lock,
+          withExecutionUpdate(
+            current,
+            {
+              ...current.execution,
+              inboundMessageIds: current.execution.inboundMessageIds.filter(
+                (inboundMessageId) => inboundMessageId !== id,
+              ),
+            },
+            nowMs,
+          ),
+        );
+      },
+    );
+  } catch (error) {
+    logException(error, "conversation.stop.release.failed");
+  }
 }
 
 /** Append only when the Conversation has no other runnable work. */
