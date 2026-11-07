@@ -82,6 +82,8 @@ describe("nested agent invocations", () => {
       });
       const helper = await createAgentInvocation({
         ...slackInvocationInput,
+        // spawnAgent marks a child at the depth limit. A result keeps it.
+        childAgentsDisabled: true,
         idempotencyKey: "nested-helper",
         parentConversationId: child.childConversationId,
       });
@@ -134,7 +136,7 @@ describe("nested agent invocations", () => {
         expect.objectContaining({
           actor: slackInvocationInput.actor,
           conversationId: helper.childConversationId,
-          disabledFeatures: ["interactive-auth"],
+          disabledFeatures: ["interactive-auth", "subagents"],
           location: expect.objectContaining({
             provider: "slack",
             channelId: "C123",

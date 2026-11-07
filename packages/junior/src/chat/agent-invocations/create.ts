@@ -36,6 +36,7 @@ type NewAgentInvocation = Pick<
   | "actor"
   | "agentName"
   | "agentType"
+  | "childAgentsDisabled"
   | "childConversationId"
   | "credentialContext"
   | "destination"
@@ -62,6 +63,7 @@ async function insertAgentInvocation(
       ...invocation,
       agentName: invocation.agentName ?? null,
       agentType: invocation.agentType ?? null,
+      childAgentsDisabled: invocation.childAgentsDisabled ?? false,
       credentialContext: invocation.credentialContext ?? null,
       parentToolCallId: invocation.parentToolCallId ?? null,
       reasoningLevel: invocation.reasoningLevel ?? null,
@@ -216,6 +218,7 @@ export async function createAgentInvocation(
         actor: input.actor,
         agentName: input.agentName,
         agentType: input.agentType,
+        childAgentsDisabled: input.childAgentsDisabled,
         childConversationId,
         credentialContext: input.credentialContext,
         destination: input.destination,
@@ -260,6 +263,7 @@ export async function createAgentInvocationFromLatest(
       actor,
       agentName: latest.agentName,
       agentType: latest.agentType,
+      childAgentsDisabled: latest.childAgentsDisabled,
       childConversationId: latest.childConversationId,
       credentialContext,
       destination: latest.destination,
@@ -357,6 +361,7 @@ export async function createAgentInvocationForMessage(
           actor: input.actor,
           agentName: latest.agentName,
           agentType: latest.agentType,
+          childAgentsDisabled: latest.childAgentsDisabled,
           childConversationId: input.childConversationId,
           credentialContext: input.credentialContext,
           destination: input.destination,

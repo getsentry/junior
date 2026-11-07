@@ -274,10 +274,19 @@ describe("agent invocation spawn and result delivery", () => {
       };
 
       // With maxAgentDepth 1, a child of the root can spawn and its own
-      // child cannot.
+      // child cannot. That child's Runs do not offer spawnAgent.
+      await spawnFrom(parentConversationId, "call-root");
+      await spawnFrom(child.childConversationId, "call-child");
+      const spawned = (conversationId: string, toolCallId: string) =>
+        getAgentInvocation(
+          getAgentInvocationId(conversationId, `parent-turn:${toolCallId}`),
+        );
       await expect(
-        spawnFrom(child.childConversationId, "call-child"),
-      ).resolves.toMatchObject({ conversation_id: expect.any(String) });
+        spawned(parentConversationId, "call-root"),
+      ).resolves.not.toHaveProperty("childAgentsDisabled");
+      await expect(
+        spawned(child.childConversationId, "call-child"),
+      ).resolves.toMatchObject({ childAgentsDisabled: true });
       await expect(
         spawnFrom(grandchild.childConversationId, "call-grandchild"),
       ).rejects.toMatchObject(refusal);

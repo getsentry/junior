@@ -113,12 +113,14 @@ type EnqueueOptions = {
   state?: StateAdapter;
 };
 
-/** Map a durable invocation's model settings to the child Run policy. */
+/** Map a durable invocation's model settings and depth to the child Run policy. */
 export function agentInvocationRunPolicy(
   invocation: AgentInvocation,
 ): Pick<AgentRun, "disabledFeatures" | "reasoning"> {
   return {
-    disabledFeatures: ["interactive-auth"],
+    disabledFeatures: invocation.childAgentsDisabled
+      ? ["interactive-auth", "subagents"]
+      : ["interactive-auth"],
     ...(invocation.reasoningLevel
       ? { reasoning: invocation.reasoningLevel }
       : undefined),

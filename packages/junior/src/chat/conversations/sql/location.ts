@@ -1,5 +1,5 @@
 import type { Destination } from "@sentry/junior-plugin-api";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
@@ -122,6 +122,51 @@ export function visibilityFromLocationRow(
 }
 
 /**
+ * Give every descendant of a root Conversation the root's Location and
+ * Destination row, in the caller's transaction. Each write that changes
+ * either value on a root calls this, so a child never keeps an old Location.
+ */
+export async function saveLocationOnDescendants(
+  executor: JuniorSqlDatabase,
+  rootConversationId: string,
+): Promise<void> {
+  // UNION, not UNION ALL, so that bad parent links cannot loop forever.
+  const descendantIds = sql`(
+    with recursive descendants(conversation_id) as (
+      select child.conversation_id
+      from junior_conversations child
+      where child.parent_conversation_id = ${rootConversationId}
+      union
+      select child.conversation_id
+      from junior_conversations child
+      join descendants on child.parent_conversation_id = descendants.conversation_id
+    )
+    select conversation_id from descendants
+  )`;
+  // Lock the descendants first. createChild holds a share lock on the parent
+  // row while it copies it, so a child that commits during this wait is
+  // found by the update below, which reads a new snapshot.
+  const locked = await executor
+    .db()
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(inArray(juniorConversations.conversationId, descendantIds))
+    .for("no key update");
+  if (locked.length === 0) {
+    return;
+  }
+  await executor
+    .db()
+    .update(juniorConversations)
+    .set({
+      location: sql`(select root.location_json from junior_conversations root where root.conversation_id = ${rootConversationId})`,
+      destinationId: sql`(select root.destination_id from junior_conversations root where root.conversation_id = ${rootConversationId})`,
+      detailVersion: nextDetailVersion,
+    })
+    .where(inArray(juniorConversations.conversationId, descendantIds));
+}
+
+/**
  * Give a root Conversation with no Location its first one, in the caller's
  * SQL scope. The Location row becomes the Conversation Destination, so
  * visibility then comes from that channel. Returns false when the
@@ -153,7 +198,11 @@ export async function setFirstConversationLocation(
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
-  return rows.length > 0;
+  if (rows.length === 0) {
+    return false;
+  }
+  await saveLocationOnDescendants(executor, args.conversationId);
+  return true;
 }
 
 /** Store a channel-level Location's first bound post as its thread. */
@@ -162,7 +211,7 @@ export async function startLocationThread(
   binding: ProviderConversationBinding,
 ): Promise<void> {
   const location = juniorConversations.location;
-  await executor
+  const rows = await executor
     .db()
     .update(juniorConversations)
     .set({
@@ -172,10 +221,16 @@ export async function startLocationThread(
     .where(
       and(
         eq(juniorConversations.conversationId, binding.conversationId),
+        // A child's Location is its root's. Only the root changes it.
+        isNull(juniorConversations.parentConversationId),
         sql`${location}->>'provider' = ${binding.provider}`,
         sql`${location}->>'teamId' = ${binding.providerTenantId}`,
         sql`${location}->>'channelId' = ${binding.providerDestinationId}`,
         isNull(sql`${location}->>'threadTs'`),
       ),
-    );
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  if (rows.length > 0) {
+    await saveLocationOnDescendants(executor, binding.conversationId);
+  }
 }

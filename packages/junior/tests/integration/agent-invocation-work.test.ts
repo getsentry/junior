@@ -99,6 +99,7 @@ describe("agent invocation conversation work", () => {
       const created = await createAndEnqueueAgentInvocation(
         {
           ...slackInvocationInput,
+          childAgentsDisabled: true,
           idempotencyKey: "execute-1",
         },
         {
@@ -307,7 +308,7 @@ describe("agent invocation conversation work", () => {
         agentInvocationId: created.invocationId,
         conversationId: created.childConversationId,
         instruction: { text: slackInvocationInput.input },
-        disabledFeatures: ["interactive-auth"],
+        disabledFeatures: ["interactive-auth", "subagents"],
         reasoning: "medium",
         actor: slackInvocationInput.actor,
         destination: slackDestination,
