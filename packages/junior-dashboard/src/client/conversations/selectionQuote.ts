@@ -178,7 +178,9 @@ function renderTable(table: Element): string {
       renderChildren(cell)
         .trim()
         .replace(/\s*\n\s*/g, " ")
-        .replace(/\|/g, "\\|"),
+        // `\|` keeps a pipe in its cell. Double the backslashes before it,
+        // or `\\|` escapes the backslash and the pipe splits the cell.
+        .replace(/(\\*)\|/g, "$1$1\\|"),
     ),
   );
   const width = Math.max(0, ...rows.map((row) => row.length));
