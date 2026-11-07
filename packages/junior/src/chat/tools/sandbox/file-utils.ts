@@ -23,7 +23,6 @@ export interface SandboxSearchTelemetry {
   resultBytes: number;
 }
 
-export const MAX_TEXT_CHARS = 60_000;
 export const RIPGREP_EXCLUDED_GLOBS = [
   "!**/.git/**",
   "!**/node_modules/**",
@@ -54,22 +53,6 @@ export function positiveInteger(value: unknown): number | undefined {
 /** Compare and slice text in one line-ending space while preserving callers' output rules. */
 export function normalizeToLf(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-/** Keep tool output inside the model-facing budget with an explicit notice. */
-export function truncateText(
-  value: string,
-  maxChars = MAX_TEXT_CHARS,
-): { content: string; truncated: boolean } {
-  if (value.length <= maxChars) {
-    return { content: value, truncated: false };
-  }
-
-  const removed = value.length - maxChars;
-  return {
-    content: `${value.slice(0, maxChars)}\n\n[output truncated: ${removed} characters removed]`,
-    truncated: true,
-  };
 }
 
 /** Detect model-facing missing paths without swallowing sandbox lifecycle/API failures. */

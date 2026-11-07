@@ -53,14 +53,13 @@ export async function capToolResult<TResult extends { content: ToolContent }>(
     toolCallId: string;
     workspace?: Pick<SandboxWorkspace, "writeFiles">;
     maxChars?: number;
-    bypass?: () => boolean;
   },
 ): Promise<TResult> {
   const maxChars = options.maxChars ?? TOOL_RESULT_MAX_CHARS;
   const text = result.content
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join("\n\n");
-  if (text.length <= maxChars || options.bypass?.()) {
+  if (text.length <= maxChars) {
     return result;
   }
 

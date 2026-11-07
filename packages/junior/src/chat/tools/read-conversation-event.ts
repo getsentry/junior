@@ -11,9 +11,6 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-const DEFAULT_LIMIT = 20_000;
-const MAX_LIMIT = 50_000;
-
 const readConversationEventOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1),
   seq: z.number().int().nonnegative(),
@@ -29,17 +26,24 @@ const readConversationEventOutputSchema = juniorToolOutputSchema.extend({
     .boolean()
     .optional()
     .describe("Whether a tool_result event was an error."),
-  text: z.string().describe("Event text from offset, at most limit chars."),
+  text: z
+    .string()
+    .describe("Event text from offset, at most limit chars when set."),
   offset: z.number().int().nonnegative(),
   total_chars: z.number().int().nonnegative(),
   has_more: z.boolean().describe("Whether text continues after this slice."),
 });
 
-/** Create a deferred tool that reads one full event of a conversation log. */
+/**
+ * Create a deferred tool that reads one full event of a conversation log.
+ * The event lives in the database, so the default returns all of its text.
+ * The tool pipeline cuts long text for the model and saves the full text to a
+ * Sandbox file.
+ */
 export function createReadConversationEventTool(context: ToolRuntimeContext) {
   return zodTool({
     description:
-      "Read the full text of one conversation event by seq, in pages. Works for events from earlier history versions, such as cleared tool results.",
+      "Read the full text of one conversation event by seq. Set offset or limit to read part of it. Works for events from earlier history versions, such as cleared tool results.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -71,11 +75,8 @@ export function createReadConversationEventTool(context: ToolRuntimeContext) {
           .number()
           .int()
           .min(1)
-          .max(MAX_LIMIT)
           .nullable()
-          .describe(
-            `Maximum chars. Default ${DEFAULT_LIMIT}; max ${MAX_LIMIT}.`,
-          )
+          .describe("Maximum chars. Default: all text after offset.")
           .optional(),
       })
       .strict(),
@@ -84,7 +85,7 @@ export function createReadConversationEventTool(context: ToolRuntimeContext) {
       const conversationId =
         input.conversation_id?.trim() || context.conversationId;
       const offset = input.offset ?? 0;
-      const limit = input.limit ?? DEFAULT_LIMIT;
+      const limit = input.limit ?? undefined;
 
       await assertCanReadConversationEvents(context, conversationId);
       // The log query has no history-version filter, so this finds events
@@ -107,7 +108,10 @@ export function createReadConversationEventTool(context: ToolRuntimeContext) {
           `offset ${offset} is past the end of the event text (${text.length} chars)`,
         );
       }
-      const slice = text.slice(offset, offset + limit);
+      const slice = text.slice(
+        offset,
+        limit === undefined ? undefined : offset + limit,
+      );
       return {
         conversation_id: conversationId,
         seq: event.seq,

@@ -1,8 +1,35 @@
+import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_READ_LIMIT = 1000;
-const MAX_READ_CHARS = 60_000;
+/**
+ * One page always fits the tool result cap, so the cap never copies a page
+ * of a file that the model can read. The page is counted as JSON text, and
+ * the other result fields get 2,000 chars.
+ */
+const MAX_READ_CHARS = TOOL_RESULT_MAX_CHARS - 2_000;
+
+/** Length of the text inside a JSON string, after escapes. */
+function jsonLength(text: string): number {
+  return JSON.stringify(text).length - 2;
+}
+
+/** The longest start of `line` that fits `maxChars` as JSON text. */
+function lineHead(line: string, maxChars: number): string {
+  let low = 0;
+  let high = Math.min(line.length, maxChars);
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (jsonLength(line.slice(0, middle)) <= maxChars) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  const code = line.charCodeAt(low - 1);
+  return line.slice(0, code >= 0xd800 && code <= 0xdbff ? low - 1 : low);
+}
 
 interface TextRangeResult {
   content: [{ type: "text"; text: string }];
@@ -53,7 +80,6 @@ function normalizeToLf(value: string): string {
 /** Return a bounded line window so large files can be read incrementally. */
 export function sliceFileContent(params: {
   content: string;
-  continuationArgumentName?: string;
   limit?: unknown;
   offset?: unknown;
   path: string;
@@ -72,16 +98,18 @@ export function sliceFileContent(params: {
   let lineTruncated = false;
 
   for (const line of selected) {
-    const separatorLength = returnedLines.length > 0 ? 1 : 0;
-    if (returnedCharacters + separatorLength + line.length <= MAX_READ_CHARS) {
+    // A newline is two chars in JSON text.
+    const separatorLength = returnedLines.length > 0 ? 2 : 0;
+    const lineLength = jsonLength(line);
+    if (returnedCharacters + separatorLength + lineLength <= MAX_READ_CHARS) {
       returnedLines.push(line);
-      returnedCharacters += separatorLength + line.length;
+      returnedCharacters += separatorLength + lineLength;
       continue;
     }
 
     characterLimitReached = true;
     if (returnedLines.length === 0) {
-      returnedLines.push(line.slice(0, MAX_READ_CHARS));
+      returnedLines.push(lineHead(line, MAX_READ_CHARS));
       lineTruncated = true;
     }
     break;
@@ -128,7 +156,7 @@ export function sliceFileContent(params: {
       ? {
           continuation: {
             arguments: {
-              [params.continuationArgumentName ?? "path"]: params.path,
+              path: params.path,
               offset: endLine + 1,
               limit: maxLines,
             },

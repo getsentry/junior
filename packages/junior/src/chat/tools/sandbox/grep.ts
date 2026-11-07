@@ -1,7 +1,6 @@
 import path from "node:path";
 import {
   DEFAULT_SEARCH_COMMAND_TIMEOUT_MS,
-  MAX_TEXT_CHARS,
   RIPGREP_EXCLUDED_GLOBS,
   collectFiles,
   getRipgrepSearchLocation,
@@ -10,7 +9,6 @@ import {
   normalizeToLf,
   positiveInteger,
   resolveWorkspacePath,
-  truncateText,
   type SandboxCommandRunner,
   type SandboxFileSystem,
   type SandboxSearchTelemetry,
@@ -210,9 +208,7 @@ export async function grepFiles(params: {
     }
   }
 
-  const bounded = truncateText(
-    output.length > 0 ? output.join("\n") : "No matches found",
-  );
+  const body = output.length > 0 ? output.join("\n") : "No matches found";
   const notices: string[] = [];
   if (matchLimitReached) {
     notices.push(
@@ -224,19 +220,15 @@ export async function grepFiles(params: {
       `Some lines were truncated to ${MAX_GREP_LINE_CHARS} characters.`,
     );
   }
-  if (bounded.truncated) {
-    notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
-  }
 
   return makeStructuredToolOutput({
     target: params.path ?? ".",
     path: params.path ?? ".",
-    truncated: matchLimitReached || lineTruncated || bounded.truncated,
+    truncated: matchLimitReached || lineTruncated,
     context,
     ...(params.glob ? { glob: params.glob } : undefined),
     line_count: output.length,
-    lines:
-      bounded.content === "No matches found" ? [] : bounded.content.split("\n"),
+    lines: body === "No matches found" ? [] : body.split("\n"),
     match_count: matchCount,
     pattern: params.pattern,
     ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
@@ -434,9 +426,7 @@ async function grepFilesWithRipgrep(params: {
 
   const matchCount = Math.min(totalMatches, params.limit);
   const matchLimitReached = totalMatches > params.limit;
-  const bounded = truncateText(
-    output.length > 0 ? output.join("\n") : "No matches found",
-  );
+  const body = output.length > 0 ? output.join("\n") : "No matches found";
   const notices: string[] = [];
   if (matchLimitReached) {
     notices.push(
@@ -448,19 +438,15 @@ async function grepFilesWithRipgrep(params: {
       `Some lines were truncated to ${MAX_GREP_LINE_CHARS} characters.`,
     );
   }
-  if (bounded.truncated) {
-    notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
-  }
 
   const response = makeStructuredToolOutput({
     target: params.path ?? ".",
     path: params.path ?? ".",
-    truncated: matchLimitReached || lineTruncated || bounded.truncated,
+    truncated: matchLimitReached || lineTruncated,
     context: params.context,
     ...(params.glob ? { glob: params.glob } : undefined),
     line_count: output.length,
-    lines:
-      bounded.content === "No matches found" ? [] : bounded.content.split("\n"),
+    lines: body === "No matches found" ? [] : body.split("\n"),
     match_count: matchCount,
     pattern: params.pattern,
     ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),

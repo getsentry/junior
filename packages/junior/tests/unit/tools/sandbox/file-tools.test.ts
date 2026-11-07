@@ -12,6 +12,7 @@ import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
 import type { SandboxCommandRunner } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 
 function workspacePath(filePath: string): string {
   return path.posix.join(SANDBOX_WORKSPACE_ROOT, filePath);
@@ -106,50 +107,56 @@ describe("sandbox file tools", () => {
   });
 
   it("continues readFile at the first whole line excluded by the character limit", () => {
-    const line = "a".repeat(30_000);
+    const line = "a".repeat(14_000);
     const result = sliceFileContent({
-      content: `${line}\n${line}\nthree`,
+      content: `${line}\n${line}\n${line}\nfour`,
       path: "generated.txt",
     });
 
     expect(result.details).toMatchObject({
       truncated: true,
-      character_limit_reached: 60_000,
-      content: line,
-      end_line: 1,
-      truncation_reasons: ["60000 character output limit reached."],
+      character_limit_reached: 30_000,
+      content: `${line}\n${line}`,
+      end_line: 2,
+      truncation_reasons: ["30000 character output limit reached."],
       continuation: {
         arguments: {
           path: "generated.txt",
-          offset: 2,
+          offset: 3,
           limit: 1000,
         },
         reason: "character output limit reached; file has more lines",
       },
     });
     expect(result.details).not.toHaveProperty("line_truncated");
-    expect(result.content[0].text.length).toBeLessThan(61_000);
+    // A page always fits the tool result cap, so the cap never copies it.
+    expect(result.content[0].text.length).toBeLessThanOrEqual(
+      TOOL_RESULT_MAX_CHARS,
+    );
   });
 
   it("bounds and reports an individually oversized readFile line", () => {
+    // Each quote is two chars in JSON text.
     const result = sliceFileContent({
-      content: "a".repeat(100_000),
+      content: '"'.repeat(100_000),
       path: "generated.json",
     });
 
     expect(result.details).toMatchObject({
       truncated: true,
-      character_limit_reached: 60_000,
+      character_limit_reached: 30_000,
       line_truncated: true,
       end_line: 1,
       truncation_reasons: [
-        "60000 character output limit reached.",
+        "30000 character output limit reached.",
         "Line 1 was truncated.",
       ],
     });
-    expect(result.details.content).toHaveLength(60_000);
+    expect(result.details.content).toHaveLength(15_000);
     expect(result.details).not.toHaveProperty("continuation");
-    expect(result.content[0].text.length).toBeLessThan(61_000);
+    expect(result.content[0].text.length).toBeLessThanOrEqual(
+      TOOL_RESULT_MAX_CHARS,
+    );
   });
 
   it("applies exact edits and preserves line endings", async () => {

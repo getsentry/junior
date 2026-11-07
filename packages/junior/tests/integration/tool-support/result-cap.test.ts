@@ -28,10 +28,10 @@ const definitions = {
     inputSchema: Type.Object({}),
     execute: async () => ({ text: "small" }),
   }),
-  boundedResult: tool({
-    description: "Return a large result that the tool bounded itself.",
+  moreMatchesResult: tool({
+    description: "Return a large result that says no items were left out.",
     inputSchema: Type.Object({}),
-    execute: async () => ({ text: BIG_TEXT, truncated: false }),
+    execute: async () => ({ text: "x".repeat(40_000), truncated: false }),
   }),
 } as Record<string, AnyToolDefinition>;
 
@@ -172,25 +172,43 @@ describe("tool result cap", () => {
     expect(contentText(catalogResult)).toContain("[cut: ");
   });
 
-  it("leaves small results and results that the tool bounded itself", async () => {
+  it("leaves a small result unchanged", async () => {
     const writeFiles = fakeWrite();
-    const find = agentTools(writeFiles);
 
-    const bounded = (await find("boundedResult").execute(
-      "call-bounded",
-      {},
-    )) as AgentToolResult<unknown>;
-    const small = (await find("smallResult").execute(
+    const small = (await agentTools(writeFiles)("smallResult").execute(
       "call-small",
       {},
     )) as AgentToolResult<unknown>;
 
-    expect(
-      contentText(bounded) ===
-        JSON.stringify({ text: BIG_TEXT, truncated: false }),
-    ).toBe(true);
     expect(contentText(small)).toBe(JSON.stringify({ text: "small" }));
     expect(writeFiles).not.toHaveBeenCalled();
+  });
+
+  it("cuts a large result even when it says truncated: false", async () => {
+    const writeFiles = fakeWrite();
+
+    const result = (await agentTools(writeFiles)("moreMatchesResult").execute(
+      "call-more-matches",
+      {},
+    )) as AgentToolResult<unknown>;
+
+    expect(writeFiles).toHaveBeenCalledOnce();
+    expect(splitNote(contentText(result))[1]).toMatch(/^\[cut: /);
+  });
+
+  it("cuts long codemode output and keeps it whole in details", async () => {
+    const writeFiles = fakeWrite();
+
+    const result = (await agentTools(writeFiles)(CODEMODE_TOOL_NAME).execute(
+      "call-long-script",
+      { code: 'text("y".repeat(40000)); return "end";' },
+    )) as AgentToolResult<unknown>;
+
+    expect(result.details).toMatchObject({ ok: true, value: "end" });
+    expect((result.details as { output: string }).output.length).toBe(40_000);
+    const file = writeFiles.mock.calls[0]![0][0]!;
+    expect(String(file.content).endsWith("y\nReturn value:\nend")).toBe(true);
+    expect(splitNote(contentText(result))[1]).toContain(`full: ${file.path}`);
   });
 
   it("says the full result was not saved when the write fails", async () => {

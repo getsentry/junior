@@ -40,12 +40,6 @@ import type { CodeModeCall, CodeModeResult } from "@/chat/codemode/result";
 /** Deadline of one script, including the time its nested calls take. */
 export const CODE_MODE_SCRIPT_TIMEOUT_MS = 120_000;
 
-/**
- * Output limit: pi's default `max_output_tokens` (10k tokens), at the 4
- * characters per token of `estimateTextTokens`. The output and the return
- * value share it.
- */
-export const CODE_MODE_MAX_OUTPUT_CHARS = 10_000 * 4;
 const MAX_CALL_ERROR_CHARS = 2_000;
 
 /**
@@ -63,16 +57,6 @@ interface ScriptCall extends CodeModeCall {
   input: unknown;
   /** Action review allowed the call and it began to run. */
   started: boolean;
-}
-
-/** What {@link runCodeModeScript} returns. */
-export interface CodeModeScriptOutcome {
-  result: CodeModeResult;
-  /**
-   * The uncut output and return value JSON, only when `result.truncated`.
-   * The caller decides where to keep them.
-   */
-  untruncated?: { output: string; value?: string };
 }
 
 /** Run inputs for {@link runCodeModeScript}. */
@@ -176,46 +160,13 @@ function vmErrorKind(result: CodemodeResult): CodeModeErrorKind | undefined {
     : error.kind;
 }
 
-/** Cut the output and return value to share the output limit. */
-function boundedOutput(result: CodemodeResult) {
-  const output = result.output
+/** The script output as text. The tool pipeline cuts long text for the model. */
+function scriptOutput(result: CodemodeResult): string {
+  return result.output
     .map((item) =>
       item.type === "text" ? item.text : `[image ${item.mimeType} not shown]`,
     )
     .join("\n");
-  const valueJson =
-    result.ok && result.value !== undefined
-      ? (JSON.stringify(result.value) ?? "")
-      : "";
-  const outputBytes = Buffer.byteLength(output) + Buffer.byteLength(valueJson);
-  if (output.length + valueJson.length <= CODE_MODE_MAX_OUTPUT_CHARS) {
-    return {
-      output,
-      outputBytes,
-      truncated: false,
-      value: result.ok ? result.value : undefined,
-    };
-  }
-  // Each part keeps what it needs up to half the limit; the larger part also
-  // gets what the smaller part does not use.
-  const half = CODE_MODE_MAX_OUTPUT_CHARS / 2;
-  const valueChars =
-    valueJson.length <= half
-      ? valueJson.length
-      : Math.max(half, CODE_MODE_MAX_OUTPUT_CHARS - output.length);
-  const value =
-    valueJson.length <= valueChars
-      ? result.ok
-        ? result.value
-        : undefined
-      : cut(valueJson, valueChars);
-  return {
-    output: cut(output, CODE_MODE_MAX_OUTPUT_CHARS - valueChars),
-    outputBytes,
-    truncated: true,
-    untruncated: { output, ...(valueJson ? { value: valueJson } : undefined) },
-    value,
-  };
 }
 
 /**
@@ -233,7 +184,7 @@ function boundedOutput(result: CodemodeResult) {
  */
 export async function runCodeModeScript(
   run: CodeModeScriptRun,
-): Promise<CodeModeScriptOutcome> {
+): Promise<CodeModeResult> {
   // pi-codemode reports calls from a worker callback, which loses the async
   // context. Run each nested call with the `codemode` span active.
   const parentSpan = Sentry.getActiveSpan();
@@ -259,7 +210,6 @@ export async function runCodeModeScript(
     rejectedCallCount: 0,
     batchLimitRejectedCallCount: 0,
     outputBytes: 0,
-    outputTruncated: false,
   };
   let drain: CodemodeHostCall[] = [];
   let lastSeq = 0;
@@ -543,11 +493,14 @@ export async function runCodeModeScript(
       throw pauseError;
     }
 
-    const output = boundedOutput(vmResult);
+    const output = scriptOutput(vmResult);
+    const valueJson =
+      vmResult.ok && vmResult.value !== undefined
+        ? (JSON.stringify(vmResult.value) ?? "")
+        : "";
     const errorKind = vmErrorKind(vmResult);
     Object.assign(telemetry, {
-      outputBytes: output.outputBytes,
-      outputTruncated: output.truncated,
+      outputBytes: Buffer.byteLength(output) + Buffer.byteLength(valueJson),
       ...(readyAt !== undefined
         ? {
             vmStartMs: Math.round(readyAt - startedAt),
@@ -557,23 +510,17 @@ export async function runCodeModeScript(
       ...(errorKind ? { errorKind } : undefined),
     });
     return {
-      result: {
-        ok: vmResult.ok,
-        ...(vmResult.ok
-          ? { value: output.value }
-          : {
-              error: {
-                kind: errorKind!,
-                message: vmResult.error.stack ?? vmResult.error.message,
-              },
-            }),
-        output: output.output,
-        truncated: output.truncated,
-        calls: calls.map(
-          ({ input: _input, started: _started, ...call }) => call,
-        ),
-      },
-      ...(output.untruncated ? { untruncated: output.untruncated } : undefined),
+      ok: vmResult.ok,
+      ...(vmResult.ok
+        ? { value: vmResult.value }
+        : {
+            error: {
+              kind: errorKind!,
+              message: vmResult.error.stack ?? vmResult.error.message,
+            },
+          }),
+      output,
+      calls: calls.map(({ input: _input, started: _started, ...call }) => call),
     };
   } finally {
     run.signal?.removeEventListener("abort", onAbort);
