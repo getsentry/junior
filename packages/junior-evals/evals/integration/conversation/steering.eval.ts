@@ -102,7 +102,7 @@ describe("Slack Turn Steering", () => {
     expect(next.reactions).toEqual([]);
   });
 
-  test("when someone says stop during a turn, Junior stops the turn", async ({
+  test("when someone says stop during a turn, Junior stops the turn until a later mention", async ({
     agent,
   }) => {
     const { run } = await agent(PASSIVE_ROUTING);
@@ -119,6 +119,12 @@ describe("Slack Turn Steering", () => {
       "Stopped.",
     ]);
     expect(conversation.reactions).not.toContain("white_check_mark");
+
+    // The stop keeps the thread, so a later mention starts a Turn again.
+    const next = await conversation.continue(
+      slackMention("Reply with only the word ready."),
+    );
+    expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
   });
 });
 

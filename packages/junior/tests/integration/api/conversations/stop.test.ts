@@ -470,10 +470,11 @@ describe("conversation stop API", () => {
       actor.email,
     );
     expect(response.status).toBe(200);
+    const stoppedAtMs = clock();
 
     // The child's run spawns a child agent before it sees the stop, and that
     // child agent finishes. When the run sees the stop, its cascade still
-    // stops that child agent.
+    // stops that child agent, with the child's stop.
     clock.mockReturnValue(clock() + 1_000);
     const missed = await createAgentInvocation({
       ...invocationInput,
@@ -489,7 +490,7 @@ describe("conversation stop API", () => {
     await stopChildAgentsOf(child.invocation.childConversationId, state);
     await expect(
       getConversationStoppedAtMs(missed.childConversationId),
-    ).resolves.toBe(clock());
+    ).resolves.toBe(stoppedAtMs);
   });
 
   it("stops a child agent that a stopped root spawned before its run saw the stop", async () => {
@@ -596,5 +597,10 @@ describe("conversation stop API", () => {
         lastResult: "completed",
       }),
     );
+    // A person's input to the root ends the stop of that child agent too.
+    await resumeStoppedConversationTree(created.conversationId, Date.now());
+    await expect(
+      getConversationStoppedAtMs(missed.childConversationId),
+    ).resolves.toBeUndefined();
   });
 });

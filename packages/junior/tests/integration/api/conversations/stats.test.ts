@@ -138,6 +138,16 @@ describe("conversation stats API", () => {
         updatedAt: childAt,
         executionStatus: "idle",
       });
+      // A stop after a failed Turn reports `stopped`, so it is not failed.
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "slack:C1:stopped",
+        rootConversationId: "slack:C1:stopped",
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "failed",
+        stoppedAt: childAt,
+      });
       await store.recordExecution({
         conversationId: "advisor:child",
         createdAtMs: childAt.getTime(),
@@ -255,7 +265,7 @@ describe("conversation stats API", () => {
         active: 1,
         cachedInputTokens: 300,
         cacheCreationTokens: 7,
-        conversations: 6,
+        conversations: 7,
         costUsd: 0.0075,
         durationMs: 2_304,
         failed: 1,
@@ -361,7 +371,7 @@ describe("conversation stats API", () => {
         expect.objectContaining({
           cachedInputTokens: 300,
           cacheCreationTokens: 7,
-          conversations: 4,
+          conversations: 5,
           costUsd: 0.004,
           date: "2026-06-15",
           durationMs: 1_604,
@@ -411,7 +421,7 @@ describe("conversation stats API", () => {
         expect.objectContaining({
           cachedInputTokens: 300,
           cacheCreationTokens: 7,
-          conversations: 2,
+          conversations: 3,
           costUsd: 0.003,
           date: "2026-06-15T11",
           durationMs: 1_504,
@@ -423,7 +433,7 @@ describe("conversation stats API", () => {
         report.metricHours
           ?.filter((hour) => hour.conversations > 0)
           .reduce((sum, hour) => sum + hour.conversations, 0),
-      ).toBe(5);
+      ).toBe(6);
     } finally {
       vi.useRealTimers();
       await fixture.close();

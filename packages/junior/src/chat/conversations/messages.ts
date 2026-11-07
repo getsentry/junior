@@ -102,6 +102,38 @@ export async function persistConversationMessages(args: {
   });
 }
 
+function messageCreatedEvent(stored: NewConversationMessage) {
+  return {
+    // The key makes the Message id unique in the Conversation.
+    idempotencyKey: `message:${stored.messageId}`,
+    createdAtMs: stored.createdAtMs,
+    data: {
+      type: "message" as const,
+      messageId: stored.messageId,
+      role: stored.role,
+      text: stored.text,
+      ...(stored.authorIdentityId
+        ? { authorIdentityId: stored.authorIdentityId }
+        : undefined),
+      ...(stored.meta ? { meta: stored.meta } : undefined),
+    },
+  };
+}
+
+/**
+ * Save a Message only when its id is new. Returns false when a Message with
+ * that id is already saved, so a caller can handle a redelivered input once.
+ */
+export async function appendNewConversationMessage(
+  eventStore: ConversationEventStore,
+  args: { conversationId: string; message: ConversationMessage },
+): Promise<boolean> {
+  const saved = await eventStore.append(args.conversationId, [
+    messageCreatedEvent(toStoredConversationMessage(args.message)),
+  ]);
+  return saved.length > 0;
+}
+
 /** Append visible message facts through a caller-owned event-store transaction. */
 export async function appendConversationMessages(
   eventStore: ConversationEventStore,
@@ -146,22 +178,7 @@ export async function appendConversationMessages(
             },
           ]
         : []
-      : [
-          {
-            idempotencyKey: `message:${stored.messageId}`,
-            createdAtMs: stored.createdAtMs,
-            data: {
-              type: "message" as const,
-              messageId: stored.messageId,
-              role: stored.role,
-              text: stored.text,
-              ...(stored.authorIdentityId
-                ? { authorIdentityId: stored.authorIdentityId }
-                : undefined),
-              ...(stored.meta ? { meta: stored.meta } : undefined),
-            },
-          },
-        ];
+      : [messageCreatedEvent(stored)];
     return [
       ...messageEvent,
       ...(message.meta?.replied === true

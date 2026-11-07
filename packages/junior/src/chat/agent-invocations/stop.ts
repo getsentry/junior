@@ -93,10 +93,12 @@ export async function stopChildAgentsOf(
     taskedAfterMs: stoppedAtMs,
   });
   await skipUnreadResults(conversationId, nowMs, state);
+  // They take the stop of this Conversation, so input that ends it ends
+  // theirs too.
   await finishStoppedTree(
     tree,
     tree.conversationIds.filter((id) => id !== conversationId),
-    { cancelWatches: false, state },
+    { cancelWatches: false, nowMs: stoppedAtMs, state },
   );
 }
 
@@ -108,9 +110,8 @@ export async function stopChildAgentsOf(
  *
  * The Conversation's run sees its stop only at its next stop signal check.
  * When it does, `stopChildAgentsOf` stops the child agents that it spawned or
- * gave new work to before then. Their stop is later than this one, so a
- * person's input to this Conversation does not end it. Only new work from
- * their parent does.
+ * gave new work to before then, at the time of this stop. So input that ends
+ * this stop ends theirs too.
  */
 export async function stopChildAgentsBelow(
   conversationId: string,

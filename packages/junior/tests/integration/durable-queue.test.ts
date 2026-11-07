@@ -630,14 +630,13 @@ describe("durable queue contract", () => {
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({ state: "paused" });
 
-      await expect(
-        q.send({
-          eventType: "message",
-          text: "stop",
-          threadTs: "1712345.0001",
-          ts: "1712345.0002",
-        }),
-      ).resolves.toMatchObject({ status: 200 });
+      const stop = {
+        eventType: "message" as const,
+        text: "stop",
+        threadTs: "1712345.0001",
+        ts: "1712345.0002",
+      };
+      await expect(q.send(stop)).resolves.toMatchObject({ status: 200 });
       await expect(q.next()).resolves.toEqual({ status: "completed" });
 
       await expect(
@@ -647,8 +646,21 @@ describe("durable queue contract", () => {
       expect(q.replies()).toEqual([SLACK_STOP_ACK]);
       // The stop queued its own wake. It finds no work left.
       await expect(q.next()).resolves.toEqual({ status: "no_work" });
-      // A later mention ends the stop and gets a normal reply.
-      await expectNextTurn(q, "1712346.0001");
+      // A later mention ends the stop. A Slack retry of the old stop does not
+      // stop the Turn that the mention starts.
+      await expect(
+        q.send({
+          text: `<@${SLACK_BOT_USER_ID}> check the next deploy`,
+          threadTs: "1712345.0001",
+          ts: "1712346.0001",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next(almostSpentStartedAtMs(0))).resolves.toEqual({
+        status: "yielded",
+      });
+      await expect(q.send(stop)).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      expect(q.replies()).toEqual([SLACK_STOP_ACK, "Deploy checked."]);
     }, 30_000);
   });
 

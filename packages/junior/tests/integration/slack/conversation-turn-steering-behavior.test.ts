@@ -200,18 +200,26 @@ describe("Slack ingress: thread messages", () => {
     await expectThreadWorkStopped(child, harness.state);
   });
 
-  it("stops the active Turn and its child agents from the `stop` keyword the same way", async () => {
+  it("stops the active Turn and its child agents from the `stop` keyword the same way, once per message", async () => {
     const harness = ingress();
     const child = await startThreadWork(harness);
+    const stop = {
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.000200",
+    };
     await expect(
-      harness.send({
-        eventType: "message",
-        text: "stop",
-        ts: "1712345.000200",
-      }),
+      harness.send({ ...stop, eventType: "message" }),
+    ).resolves.toMatchObject({ status: 200 });
+    const stoppedAtMs = await getConversationStoppedAtMs(CONVERSATION_ID);
+    // Slack sends a mention as both `message` and `app_mention`.
+    await expect(
+      harness.send({ ...stop, eventType: "app_mention" }),
     ).resolves.toMatchObject({ status: 200 });
 
     expect(statusClears()).toHaveLength(1);
     await expectThreadWorkStopped(child, harness.state);
+    await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+      stoppedAtMs,
+    );
   });
 });

@@ -25,7 +25,10 @@ import {
   getConversationStore,
   getSqlExecutor,
 } from "@/chat/db";
-import { appendConversationMessages } from "@/chat/conversations/messages";
+import {
+  appendConversationMessages,
+  appendNewConversationMessage,
+} from "@/chat/conversations/messages";
 import { stopConversation } from "@/chat/conversations/stop";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -325,9 +328,8 @@ export const SLACK_STOP_ACK = "Stopped.";
  * Stop a Slack thread's Conversation for the `stop` keyword or Slack's native
  * agent stop button. The thread stays subscribed, and the next person input
  * that reaches the worker ends the stop. A keyword stop message is saved as
- * a skipped Message and
- * never enters the mailbox. Slack does not leave the `processing` status by
- * itself, so clear the status even when no work runs.
+ * a skipped Message and never enters the mailbox. Slack does not leave the
+ * `processing` status by itself, so clear the status even when no work runs.
  * https://docs.slack.dev/reference/events/agent_session_stopped
  */
 async function handleSlackStop(args: {
@@ -345,6 +347,30 @@ async function handleSlackStop(args: {
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
+  if (args.stopMessage) {
+    const { message, stopReason } = args.stopMessage;
+    await bindSlackAuthorIdentity(message, args.installation);
+    const conversation = coerceThreadConversationState(undefined);
+    recordSkippedConversationMessage({
+      conversation,
+      message,
+      skippedReason: `${SubscribedReplyReason.ThreadOptOut}:${stopReason}`,
+      text: parseContent(message).text,
+    });
+    const [stopMessage] = conversation.messages;
+    // Slack sends one mention as both `message` and `app_mention`, and it
+    // retries events. Saving the stop message claims the stop, so a second
+    // delivery neither stops newer work nor posts a second ack.
+    if (
+      stopMessage &&
+      !(await appendNewConversationMessage(getConversationEventStore(), {
+        conversationId,
+        message: stopMessage,
+      }))
+    ) {
+      return;
+    }
+  }
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
   let stopped: StopConversationWorkResult;
   try {
@@ -369,21 +395,7 @@ async function handleSlackStop(args: {
     });
   }
 
-  if (args.stopMessage) {
-    const { message, stopReason } = args.stopMessage;
-    await bindSlackAuthorIdentity(message, args.installation);
-    const conversation = coerceThreadConversationState(undefined);
-    recordSkippedConversationMessage({
-      conversation,
-      message,
-      skippedReason: `${SubscribedReplyReason.ThreadOptOut}:${stopReason}`,
-      text: parseContent(message).text,
-    });
-    await appendConversationMessages(getConversationEventStore(), {
-      conversation,
-      conversationId,
-    });
-  } else if (stopped.status !== "requested") {
+  if (!args.stopMessage && stopped.status !== "requested") {
     // A button press with no work to stop needs no reply.
     return;
   }
