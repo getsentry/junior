@@ -820,7 +820,7 @@ export function createConversationTurnWorker(
             await acknowledge();
             return { status: "paused" };
           }
-          // A Thread keeps memory off, like every child Conversation.
+          // Memory is public, so only a root captures it; a Thread is a child.
           if (completedSuccessfully && !thread) {
             try {
               await scheduleSessionCompletedPluginTasks(

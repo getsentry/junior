@@ -573,6 +573,20 @@ describe("Thread input", () => {
           state: harness.state,
         },
       );
+      await persistThreadStateById(root.conversationId, {
+        conversation: {
+          ...coerceThreadConversationState({}),
+          messages: [
+            {
+              author: { userName: webTestActor.userName },
+              createdAtMs: 1_000,
+              id: "root-message-1",
+              role: "user",
+              text: "Start the work.",
+            },
+          ],
+        },
+      });
       const rootDestination = {
         platform: "local",
         conversationId: root.conversationId,
@@ -599,6 +613,15 @@ describe("Thread input", () => {
           visibility: "private",
         },
       });
+      // A web root has no Location, so the root's Messages come from web.
+      const personRun = harness.runs.at(-1)!;
+      const [rootContext] = buildPromptInput({
+        history: personRun.history,
+        instruction: personRun.instruction,
+      }).contextContentParts;
+      expect((rootContext as { text: string }).text).toContain(
+        '<root-conversation source="web">',
+      );
     } finally {
       await harness.close();
     }
