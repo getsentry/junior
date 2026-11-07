@@ -30,7 +30,11 @@ import {
   conversationDetailQueryKey,
   conversationDetailQueryOptions,
 } from "./queries";
-import { isDeliberateSelection, markdownQuote } from "./selectionQuote";
+import {
+  isDeliberateSelection,
+  markdownQuote,
+  selectionMarkdown,
+} from "./selectionQuote";
 import { TranscriptMessageShell } from "./TranscriptMessageShell";
 
 const HIGHLIGHT_NAME = "quick-question";
@@ -154,7 +158,11 @@ export function QuickQuestionSelectionButton(props: {
       {onRespond ? (
         <Button
           className="h-8 text-dashboard-text"
-          onClick={() => take(({ quote }) => onRespond(markdownQuote(quote)))}
+          onClick={() =>
+            take(({ range }) =>
+              onRespond(markdownQuote(selectionMarkdown(range))),
+            )
+          }
           variant="quiet"
         >
           Respond

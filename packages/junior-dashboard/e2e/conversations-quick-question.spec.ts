@@ -9,24 +9,20 @@ test.use({ viewport: { height: 900, width: 1440 } });
 
 /**
  * Select text in the newest Junior reply, as a mouse drag would: 12
- * characters of its `skip`-th text, or one whole word with `word`.
+ * characters, or one whole word with `word`.
  */
 async function selectReplyText(
   page: Page,
-  options: { skip?: number; word?: boolean } = {},
+  options: { word?: boolean } = {},
 ): Promise<string> {
-  return page.evaluate(async ({ skip = 0, word = false }) => {
+  return page.evaluate(async ({ word = false }) => {
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
     const reply = replies[replies.length - 1]!;
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
-    let skipped = 0;
-    while (
-      node &&
-      ((node.textContent ?? "").trim().length < 12 || skipped++ < skip)
-    ) {
+    while (node && (node.textContent ?? "").trim().length < 12) {
       node = walker.nextNode();
     }
     node!.parentElement!.scrollIntoView({ block: "center" });
@@ -43,6 +39,25 @@ async function selectReplyText(
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     return range.toString();
   }, options);
+}
+
+/** Select all of the newest Junior reply, as a triple-click drag would. */
+async function selectWholeReply(page: Page) {
+  await page.evaluate(async () => {
+    const replies = document.querySelectorAll(
+      "[data-quick-question-message-id]",
+    );
+    const reply = replies[replies.length - 1]!;
+    reply.scrollIntoView({ block: "start" });
+    // A scroll hides the button. Select after the scroll settles.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const range = document.createRange();
+    range.selectNodeContents(reply);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
 }
 
 /**
@@ -252,10 +267,47 @@ test("quotes selected reply text in the message box", async ({
   await respond.click();
   await expect(composer).toBeFocused();
   await composer.pressSequentially("Why?");
-  const second = await selectReplyText(page, { skip: 1 });
+  // The quote keeps the Markdown of the reply: marks, lists, tables, code.
+  await selectWholeReply(page);
   await respond.click();
   await expect(composer).toHaveValue(
-    `Thanks.\n\n> ${first}\n\nWhy?\n\n> ${second}\n\n`,
+    [
+      "Thanks.",
+      "",
+      `> ${first}`,
+      "",
+      "Why?",
+      "",
+      "> Checkout p95 jumped after **payments-v42** landed.",
+      ">",
+      "> What I checked:",
+      ">",
+      "> - deploy marker `payments-v42` correlates with the spike",
+      "> - canary hosts show the same `checkout.latency` shape",
+      "> - error volume is flat, so this looks like slow path not hard fail",
+      ">",
+      "> | Window | Region | Host class | p50 | p95 | p99 | Errors | Notes |",
+      "> | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+      "> | pre-deploy | us-west1 | canary + stable | 120ms | 210ms | 340ms | 0.4% | baseline |",
+      "> | post-deploy | us-west1 | stable | 310ms | **890ms** | 1.4s | 0.5% | spike after payments-v42 |",
+      "> | canary only | us-west1 | canary | 280ms | 860ms | 1.3s | 0.5% | same shape as stable |",
+      ">",
+      "> Useful query:",
+      ">",
+      "> ```sql",
+      "> SELECT percentile(duration, 0.95) AS p95",
+      "> FROM transactions",
+      "> WHERE transaction = 'checkout.complete'",
+      ">   AND timestamp > now() - interval '2 hours'",
+      "> GROUP BY 1",
+      "> ORDER BY p95 DESC;",
+      "> ```",
+      ">",
+      "> Next step: compare the pre/post deploy spans, then decide whether to",
+      "> roll back or patch the slow serializer path.",
+      "",
+      "",
+    ].join("\n"),
   );
   await screenshot(page, "conversation-selection-respond-quoted", {
     view: "desktop",
