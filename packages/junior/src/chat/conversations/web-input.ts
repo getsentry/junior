@@ -12,7 +12,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { type StoredSlackActor, type WebActor } from "@/chat/actor";
-import type { ConversationStore } from "@/chat/conversations/store";
+import type {
+  Conversation,
+  ConversationStore,
+} from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { getActiveTraceContext } from "@/chat/logging";
@@ -118,14 +121,23 @@ function storedActorFromWeb(actor: WebActor): StoredSlackActor {
   };
 }
 
+/** A Task takes input only from its parent agent. */
+export class WebMessageRefusedError extends Error {
+  constructor(conversationId: string) {
+    super(`Conversation ${conversationId} does not accept web messages`);
+    this.name = "WebMessageRefusedError";
+  }
+}
+
 /**
  * Return whether a person can add a web Message to an existing
- * Conversation: a dashboard Conversation or a Slack thread.
+ * Conversation: a dashboard Conversation, a Slack thread, or a Thread.
  */
 export function acceptsWebMessages(
-  conversationId: string,
-  destination: Destination | undefined,
+  conversation: Pick<Conversation, "conversationId" | "destination" | "kind">,
 ): boolean {
+  if (conversation.kind !== "root") return conversation.kind === "thread";
+  const { conversationId, destination } = conversation;
   if (destination?.platform === "slack") return true;
   return (
     destination?.platform === "local" && conversationId.startsWith("local:web:")
@@ -156,7 +168,7 @@ export function buildWebInboundMessage(args: {
   authorIdentityId?: string;
   conversationId: string;
   createdAtMs?: number;
-  /** Existing Conversation Destination, when the root already exists. */
+  /** Conversation Destination. A Thread has none. */
   destination?: Destination;
   message: string;
   attachments?: MessageAttachment[];
@@ -171,10 +183,6 @@ export function buildWebInboundMessage(args: {
   if (!args.actor.email) {
     throw new Error("Web Actor requires a verified email");
   }
-  const destination = resolveConversationDestination({
-    conversationId: args.conversationId,
-    existing: args.destination,
-  });
   const nowMs = args.nowMs ?? Date.now();
   // The Turn continues the trace of the request that sent this Message.
   const traceContext = getActiveTraceContext();
@@ -184,7 +192,7 @@ export function buildWebInboundMessage(args: {
     delivery: "defer",
     // TODO(dcramer): Remove InboundMessage.destination after workers read the
     // Conversation Location and no mailbox reader requires Destination.
-    destination,
+    ...(args.destination ? { destination: args.destination } : undefined),
     inboundMessageId: args.messageId,
     input: {
       authorId: args.actor.userId,
@@ -217,7 +225,10 @@ export function buildWebInboundMessage(args: {
   };
 }
 
-/** Record web activity and create a Conversation root when needed. */
+/**
+ * Record web activity and create a Conversation root when needed. Returns the
+ * Conversation Destination. A Thread has none, and a Task refuses web input.
+ */
 export async function recordWebConversationActivity(args: {
   actor: WebActor;
   conversationId: string;
@@ -225,13 +236,21 @@ export async function recordWebConversationActivity(args: {
   nowMs: number;
   /** Applied only when this call creates the Conversation root. */
   rootVisibility?: ConversationPrivacy;
-}): Promise<Destination> {
+}): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
   const existing = await store.get({ conversationId: args.conversationId });
-  const destination = resolveConversationDestination({
-    conversationId: args.conversationId,
-    existing: existing?.destination,
-  });
+  if (existing?.kind === "task") {
+    throw new WebMessageRefusedError(args.conversationId);
+  }
+  // A child keeps no Destination: its `agent:` id is not a local
+  // Destination, and its Agent invocations must not see one.
+  const destination =
+    existing?.kind === "thread"
+      ? undefined
+      : resolveConversationDestination({
+          conversationId: args.conversationId,
+          existing: existing?.destination,
+        });
   const isNewRoot = !existing;
   const visibility = args.rootVisibility === "private" ? "private" : "public";
   const source = isNewRoot
@@ -242,7 +261,7 @@ export async function recordWebConversationActivity(args: {
     // TODO(dcramer): Remove the Conversation destination write after all
     // readers use its stored Location. A stored Destination is not resent:
     // Continue in Slack may replace it after the read above.
-    ...(existing?.destination ? undefined : { destination }),
+    ...(destination && !existing?.destination ? { destination } : undefined),
     nowMs: args.nowMs,
     actor: storedActorFromWeb(args.actor),
     // A dashboard continuation does not replace the root Source.
@@ -329,7 +348,7 @@ export async function appendAndEnqueueWebMessage(
     getSqlExecutor(),
     input.actor,
   );
-  const enqueueTo = (destination: Destination) =>
+  const enqueueTo = (destination: Destination | undefined) =>
     enqueue({
       message: buildWebInboundMessage({
         actor: input.actor,
@@ -353,6 +372,8 @@ export async function appendAndEnqueueWebMessage(
   try {
     result = await enqueueTo(destination);
   } catch (error) {
+    // Continue in Slack moves only a root. A Thread has no Destination.
+    if (!destination) throw error;
     // Continue in Slack can move an idle Conversation between the read
     // above and the mailbox lock. The Message follows the move.
     const stored = await (

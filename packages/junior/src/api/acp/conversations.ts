@@ -6,6 +6,7 @@ import {
   conversationTurnIdForMessage,
   appendAndEnqueueWebMessage,
   recordWebConversationActivity,
+  WebMessageRefusedError,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
@@ -36,7 +37,8 @@ type PromptResult =
       turnId: string;
     }
   | { status: "active" }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  | { status: "refused" };
 
 type TurnTerminal =
   | { outcome: "cancelled" | "completed"; status: "completed" }
@@ -181,20 +183,28 @@ export function createAcpConversations(
       if (await getAuthPausedConversationTurnId(conversationId)) {
         return { status: "active" };
       }
-      const result = await appendAndEnqueueWebMessage(
-        {
-          actor: webActorFromUser(user),
-          conversationId,
-          idempotencyKey,
-          message: text,
-        },
-        {
-          conversationStore: options.conversationStore,
-          exclusive: true,
-          queue: options.queue,
-          state: options.state,
-        },
-      );
+      let result;
+      try {
+        result = await appendAndEnqueueWebMessage(
+          {
+            actor: webActorFromUser(user),
+            conversationId,
+            idempotencyKey,
+            message: text,
+          },
+          {
+            conversationStore: options.conversationStore,
+            exclusive: true,
+            queue: options.queue,
+            state: options.state,
+          },
+        );
+      } catch (error) {
+        if (error instanceof WebMessageRefusedError) {
+          return { status: "refused" };
+        }
+        throw error;
+      }
       if (result.status === "active") return { status: "active" };
 
       return {

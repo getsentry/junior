@@ -361,7 +361,11 @@ export function actorFromRun(
   return undefined;
 }
 
-/** Reject contradictory provider coordinates before the run touches state. */
+/**
+ * Reject contradictory provider coordinates before the run touches state.
+ * `threadRootConversationId` is the root of the Run's Conversation when it
+ * is a Thread, read from stored lineage, never from the Run.
+ */
 export function assertRunConsistency(
   run: Pick<
     AgentRun,
@@ -373,6 +377,7 @@ export function assertRunConsistency(
     | "actor"
     | "dispatch"
   >,
+  verified: { threadRootConversationId?: string } = {},
 ): void {
   const { destination, source } = run;
   switch (source.kind) {
@@ -417,6 +422,14 @@ export function assertRunConsistency(
       }
       switch (destination.platform) {
         case "local": {
+          // A person's Turn in a Thread replies in the Thread. It has the
+          // Destination of its root, like the Thread's Agent invocations.
+          if (
+            verified.threadRootConversationId !== undefined &&
+            destination.conversationId === verified.threadRootConversationId
+          ) {
+            break;
+          }
           if (source.conversationId !== destination.conversationId) {
             throw new TypeError(
               "Source and destination conversation IDs do not match",

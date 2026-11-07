@@ -119,9 +119,9 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { readConversationLineage } from "@/chat/conversations/lineage";
+import { checkRunConsistency } from "./run-consistency";
 import {
   RetryableDeliveryError,
-  assertRunConsistency,
   actorFromRun,
   surfaceFromRun,
   type AgentRun,
@@ -351,7 +351,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run);
+  await checkRunConsistency(run);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;

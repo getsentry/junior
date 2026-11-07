@@ -10,6 +10,7 @@ import {
 } from "./authorized-turn";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { getConversationStore } from "@/chat/db";
 import {
   resolveTurnSessionRouting,
   type RequiredTurnSessionRouting,
@@ -35,6 +36,7 @@ export interface PausedTurnRequest {
 }
 
 interface TurnWakeOptions {
+  conversationStore?: ConversationStore;
   nowMs?: number;
   queue?: ConversationWorkQueue;
   state?: StateAdapter;
@@ -102,9 +104,16 @@ export async function wakePausedTurn(
   options: TurnWakeOptions = {},
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
+  const conversation = await (
+    options.conversationStore ?? getConversationStore()
+  ).get({ conversationId: request.conversationId });
   await requestConversationWork({
     conversationId: request.conversationId,
-    destination: request.destination,
+    // A child keeps no Destination. A person's Turn in a Thread borrows its
+    // Agent invocation's Destination, which must not be written back.
+    destination: conversation?.parentConversationId
+      ? undefined
+      : request.destination,
     nowMs,
     state: options.state,
   });
@@ -125,9 +134,7 @@ export async function wakePausedTurn(
 }
 
 /** Create paused Turn operations for one app. */
-export function createPausedTurns(
-  options: TurnWakeOptions & { conversationStore?: ConversationStore } = {},
-): PausedTurns {
+export function createPausedTurns(options: TurnWakeOptions = {}): PausedTurns {
   return {
     get: (args) =>
       getPausedTurnRequest({
