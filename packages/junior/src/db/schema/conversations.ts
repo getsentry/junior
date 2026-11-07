@@ -22,6 +22,20 @@ import type {
   ConversationStatus,
 } from "@/chat/conversations/store";
 
+/**
+ * Who may see a Conversation, from the smallest audience to the largest:
+ * one person, a private channel, the company, or anyone. Code compares the
+ * values by their position in this list.
+ */
+export const CONVERSATION_VISIBILITIES = [
+  "direct",
+  "private",
+  "internal",
+  "world",
+] as const;
+
+export type ConversationVisibility = (typeof CONVERSATION_VISIBILITIES)[number];
+
 export const juniorConversations = pgTable(
   "junior_conversations",
   {
@@ -54,6 +68,9 @@ export const juniorConversations = pgTable(
     actor: jsonb("actor_json").$type<StoredSlackActor>(),
     channelName: text("channel_name"),
     title: text("title"),
+    // Root Conversations only. Null means unknown and reads as private.
+    // `SqlStore.upsertConversation` owns the write rule.
+    visibility: text("visibility").$type<ConversationVisibility>(),
     createdAt: timestamptz("created_at").notNull(),
     lastActivityAt: timestamptz("last_activity_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
@@ -116,6 +133,10 @@ export const juniorConversations = pgTable(
     check(
       "junior_conversations_kind_check",
       sql`${table.kind} in ('root', 'thread', 'task')`,
+    ),
+    check(
+      "junior_conversations_visibility_check",
+      sql`${table.visibility} in ('direct', 'private', 'internal', 'world')`,
     ),
     check(
       "junior_conversations_kind_parent_check",

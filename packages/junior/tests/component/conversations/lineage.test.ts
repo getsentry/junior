@@ -87,6 +87,35 @@ describe("Conversation lineage", () => {
     await expect(readConversationLineage("agent:missing")).resolves.toEqual([]);
   });
 
+  it("never reads a child as less private than its root", async () => {
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+    };
+    // The root becomes private. Then the channel becomes public again, and
+    // the child gets the public Destination.
+    await store.recordActivity({
+      conversationId: ROOT_ID,
+      destination,
+      nowMs: 4_000,
+      visibility: "private",
+    });
+    await store.recordActivity({
+      conversationId: CHILD_ID,
+      destination,
+      nowMs: 5_000,
+      visibility: "public",
+    });
+
+    const lineage = await readConversationLineage(CHILD_ID);
+
+    expect(lineage.map((entry) => entry.visibility)).toEqual([
+      "private",
+      "private",
+    ]);
+  });
+
   it("stops a parent cycle at the first repeated Conversation", async () => {
     // Bad data: no writer can link a root to its own descendant.
     await fixture.sql
