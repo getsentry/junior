@@ -9,13 +9,14 @@ test.use({ viewport: { height: 900, width: 1440 } });
 
 /**
  * Select text in the newest Junior reply, as a mouse drag would: 12
- * characters, or one whole word with `word`.
+ * characters, or one whole word with `word`. With `touch`, no mouseup
+ * ends the selection, as on a touch screen.
  */
 async function selectReplyText(
   page: Page,
-  options: { word?: boolean } = {},
+  options: { touch?: boolean; word?: boolean } = {},
 ): Promise<string> {
-  return page.evaluate(async ({ word = false }) => {
+  return page.evaluate(async ({ touch = false, word = false }) => {
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
@@ -36,7 +37,9 @@ async function selectReplyText(
     const selection = window.getSelection()!;
     selection.removeAllRanges();
     selection.addRange(range);
-    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    if (!touch) {
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    }
     return range.toString();
   }, options);
 }
@@ -311,5 +314,41 @@ test("quotes selected reply text in the message box", async ({
   );
   await screenshot(page, "conversation-selection-respond-quoted", {
     view: "desktop",
+  });
+});
+
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true, viewport: { height: 844, width: 390 } });
+
+  test("shows the selection menu for a settled touch selection", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    const reply = page.locator("[data-quick-question-message-id]").last();
+    await expect(reply).toBeVisible();
+    // The last pointer is a finger. Touch selection sends no mouseup.
+    await reply.locator("p").first().tap();
+    const quote = await selectReplyText(page, { touch: true });
+    // Visual QA covers the menu position below the selection.
+    const respond = page.getByRole("button", { name: "Respond", exact: true });
+    await expect(respond).toBeVisible();
+    await screenshot(page, "conversation-selection-touch", { view: "mobile" });
+
+    // iOS clears the selection when a tap lands outside it. The tap uses
+    // the selection that the menu showed for.
+    await page.evaluate(() =>
+      document.addEventListener(
+        "pointerdown",
+        () => window.getSelection()!.removeAllRanges(),
+        { once: true },
+      ),
+    );
+    await respond.tap();
+    await expect(
+      page.getByRole("textbox", { name: "Continue this conversation" }),
+    ).toHaveValue(`> ${quote}\n\n`);
   });
 });
