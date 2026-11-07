@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Menu, PanelRight } from "lucide-react";
 
-import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
-  MobileHeaderLivePortal,
   MobileHeaderTagsPortal,
   useOpenMobileNavigation,
 } from "../components/layout/DashboardChrome";
@@ -19,7 +16,9 @@ import {
   type ConversationPinAction,
 } from "./ConversationHeaderActions";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
+import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import type { TranscriptSearchMatch } from "./transcriptSearch";
 
 /**
  * Keep the conversation title and frequently used controls in the header.
@@ -41,12 +40,12 @@ export function ConversationHeader(props: {
   forks?: ReactNode;
   /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
-  live: boolean;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   pin: ConversationPinAction;
   privacy: ReactNode;
   search: string;
+  searchMatch: TranscriptSearchMatch;
   sentryConversationUrl?: string;
   sidebarToggle?: ReactNode;
   title: string;
@@ -81,10 +80,14 @@ export function ConversationHeader(props: {
     searchInputRef.current?.focus();
   }, [searchOpenVisible]);
 
+  const closeSearch = () => {
+    setSearchOpen(false);
+    if (props.search.length > 0) props.onSearchChange("");
+  };
+
   const toggleSearch = () => {
     if (searchOpenVisible) {
-      setSearchOpen(false);
-      if (props.search.length > 0) props.onSearchChange("");
+      closeSearch();
       return;
     }
     setSearchOpen(true);
@@ -123,15 +126,6 @@ export function ConversationHeader(props: {
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
-  const liveIndicator = props.live ? (
-    <span className="inline-flex shrink-0" title="Working">
-      <Spinner
-        aria-label="Working"
-        className="size-3.5 text-dashboard-text-muted motion-safe:[animation-duration:1.25s]"
-      />
-    </span>
-  ) : null;
-
   return (
     <>
       <MobileHeaderActionsPortal>
@@ -156,11 +150,10 @@ export function ConversationHeader(props: {
           )}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
-      <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
       {props.contextTags || props.linkedWork ? (
         <MobileHeaderTagsPortal>
-          {/* One row under the title. Tags keep their width and scroll. */}
-          <div className="-mt-1.5 flex min-w-0 items-center gap-1.5 overflow-x-auto pb-0.5 pr-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
+          {/* One row. Tags keep their width; the slot scrolls. */}
+          <div className="flex w-max items-center gap-1.5 [&>*]:shrink-0">
             {props.contextTags}
             {props.linkedWork ? (
               <div aria-label="Linked work">{props.linkedWork}</div>
@@ -210,7 +203,6 @@ export function ConversationHeader(props: {
                 {props.title}
               </h2>
             )}
-            {liveIndicator}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}
@@ -232,6 +224,7 @@ export function ConversationHeader(props: {
             ) : null}
             {props.view === "raw" ? null : (
               <TranscriptSearchToggle
+                inputRef={searchInputRef}
                 onClick={toggleSearch}
                 open={searchOpenVisible}
               />
@@ -261,17 +254,14 @@ export function ConversationHeader(props: {
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
         ) : null}
         {searchOpenVisible ? (
-          <div className="px-4 py-3 md:px-7">
-            <SearchInput
-              className="min-w-0"
-              inputRef={searchInputRef}
-              label="Search transcript"
-              onChange={props.onSearchChange}
-              placeholder="Search transcript…"
-              size="compact"
-              value={props.search}
-            />
-          </div>
+          <TranscriptSearchBar
+            className="inset-x-3 md:left-auto md:right-4 md:w-[max(20rem,25vw)]"
+            inputRef={searchInputRef}
+            match={props.searchMatch}
+            onChange={props.onSearchChange}
+            onClose={closeSearch}
+            value={props.search}
+          />
         ) : null}
         {props.archive.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">

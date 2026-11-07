@@ -238,8 +238,8 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  // A child agent reports to its parent, whatever input started this Turn.
-  if (context.parentConversationId) {
+  // An Agent invocation reports to its parent.
+  if (context.agentInvocationId) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
 
@@ -369,7 +369,7 @@ export function createTools(
           reviewItemServices,
         ),
       },
-      context.parentConversationId
+      context.agentInvocationId
         ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`
         : undefined,
     ),

@@ -455,9 +455,9 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
-    // A child agent's input is a parent agent task or another agent's
+    // An Agent invocation's input is a parent agent task or another agent's
     // output. An agent wrote it, so it has no Actor.
-    const childAgent = Boolean(run.parentConversationId);
+    const childAgent = Boolean(run.agentInvocationId);
     const turnStartProvenance = childAgent
       ? agentInstructionProvenance
       : instructionProvenanceFor(actor);

@@ -223,7 +223,8 @@ test("each review item gets a fresh answer form", async ({
   await expect(detail.getByLabel("Anything else?")).toBeFocused();
   await page.keyboard.type("Wait for the EU canary first.");
   await screenshot(page, "review-desk-other", { view: "desktop" });
-  await detail.getByRole("button", { name: "Send" }).click();
+  // Every text box sends its form on Ctrl+Enter or Cmd+Enter.
+  await page.keyboard.press("ControlOrMeta+Enter");
   await expect.poll(() => actions.length).toBe(3);
   expect(actions[2]).toMatchObject({
     body: {
@@ -533,7 +534,7 @@ test("a message asks before it drops unsent picks", async ({
   expect(messages).toEqual([]);
 
   // The reader can send the message anyway.
-  await composer.press("Enter");
+  await composer.press("ControlOrMeta+Enter");
   await confirm.getByRole("button", { name: "Send message" }).click();
   await expect.poll(() => messages).toEqual(["Thursday works."]);
   await expect(composer).toHaveValue("");

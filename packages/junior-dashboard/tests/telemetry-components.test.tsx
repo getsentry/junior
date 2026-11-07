@@ -379,7 +379,6 @@ describe("dashboard canonical-event components", () => {
           conversationId="conversation-1"
           detailsOpen={false}
           onDetailsClick={() => {}}
-          live={false}
           onSearchChange={() => {}}
           onViewChange={() => {}}
           pin={{
@@ -390,6 +389,12 @@ describe("dashboard canonical-event components", () => {
           }}
           privacy={null}
           search=""
+          searchMatch={{
+            count: 0,
+            index: 0,
+            setMatches: () => {},
+            step: () => {},
+          }}
           title="Header QA"
           view="raw"
         />

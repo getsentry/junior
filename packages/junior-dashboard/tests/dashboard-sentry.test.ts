@@ -70,7 +70,7 @@ describe("dashboard browser Sentry", () => {
     });
   });
 
-  it("sends a Reply rating with IDs only", async () => {
+  it("sends a Reply rating with the reader and comment", async () => {
     vi.stubGlobal("window", {
       __JUNIOR_DASHBOARD_SENTRY__: {
         dsn: "https://public@example.com/1",
@@ -87,14 +87,22 @@ describe("dashboard browser Sentry", () => {
       items.push(...envelope[1].map(([, payload]) => payload));
     });
 
-    sendReplyRating({ conversationId: "c1", messageId: "m1", rating: "bad" });
+    sendReplyRating({
+      comment: "Wrong repo",
+      conversationId: "c1",
+      messageId: "m1",
+      rating: "bad",
+      reader: { email: "ana@example.com", name: "Ana" },
+    });
 
     await vi.waitFor(() => expect(items).toHaveLength(1));
     const event = items[0] as Record<string, unknown>;
     expect(event).toMatchObject({
       contexts: {
         feedback: {
-          message: "Bad reply",
+          contact_email: "ana@example.com",
+          message: "Bad reply: Wrong repo",
+          name: "Ana",
           source: "dashboard_reply_rating",
           url: "http://localhost/conversations/c1",
         },
@@ -106,7 +114,8 @@ describe("dashboard browser Sentry", () => {
       },
       type: "feedback",
     });
-    // The sent payload has no person, breadcrumbs, request, or page content.
+    // The reader is only in the feedback context. The sent payload has no
+    // breadcrumbs, request, or page content.
     expect(Object.keys(JSON.parse(JSON.stringify(event))).sort()).toEqual([
       "contexts",
       "environment",

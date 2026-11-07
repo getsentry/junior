@@ -3,14 +3,18 @@ import * as z from "zod";
 import { createApp, defineJuniorPlugins } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  completeAgentInvocation,
   createAgentInvocation,
   createAgentInvocationForMessage,
-  getActiveAgentInvocationForConversation,
-  getAgentInvocation,
+} from "@/chat/agent-invocations/create";
+import {
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
+} from "@/chat/agent-invocations/ids";
+import {
+  completeAgentInvocation,
+  getActiveAgentInvocationForConversation,
+  getAgentInvocation,
   markAgentInvocationPaused,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
@@ -163,7 +167,7 @@ describe("agent invocation conversation work", () => {
               }),
             },
             text: expect.stringMatching(
-              /^\[agent result\][\s\S]*Durable child result/,
+              /^<agent-result [^>]*status="completed">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,
             ),
           }),
           source: "event",
@@ -292,6 +296,8 @@ describe("agent invocation conversation work", () => {
       ]);
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
+        // Guardian intent, prompt mode, and reportBlocked read this field.
+        agentInvocationId: created.invocationId,
         conversationId: created.childConversationId,
         instruction: { text: slackInvocationInput.input },
         disabledFeatures: ["interactive-auth", "subagents"],
@@ -745,8 +751,8 @@ describe("agent invocation conversation work", () => {
           input: expect.objectContaining({
             text: expect.stringMatching(
               orphanState === "paused"
-                ? /failed\.[\s\S]*Error:\nThis task was not resumed\. Newer work for this child agent started/
-                : /failed\.[\s\S]*Error:\nAgent invocation lost its worker/,
+                ? /^<agent-result [^>]*status="failed"[\s\S]*\nThis task was not resumed\. Newer work for this child agent started/
+                : /^<agent-result [^>]*status="failed"[\s\S]*\nAgent invocation lost its worker/,
             ),
           }),
         });
@@ -768,7 +774,9 @@ describe("agent invocation conversation work", () => {
               queued.invocationId,
             ),
             input: expect.objectContaining({
-              text: expect.stringMatching(/Result:\nRetry path checked/),
+              text: expect.stringMatching(
+                /status="completed">\n[\s\S]*\nRetry path checked\n<\/agent-result>$/,
+              ),
             }),
           }),
         ]);

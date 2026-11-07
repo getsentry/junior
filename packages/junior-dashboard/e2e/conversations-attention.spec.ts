@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -81,6 +81,27 @@ async function mockWaitingConversation(
   });
 }
 
+/** Label of the sidebar section that lists the first row matching `title`. */
+async function sidebarSectionOf(
+  sidebar: Locator,
+  title: RegExp,
+): Promise<string | undefined> {
+  const items = await sidebar
+    .locator("button[aria-expanded], a")
+    .evaluateAll((elements) =>
+      elements.map((element) => ({
+        heading: element.tagName === "BUTTON",
+        text: element.textContent?.trim() ?? "",
+      })),
+    );
+  let section: string | undefined;
+  for (const item of items) {
+    if (item.heading) section = item.text;
+    else if (title.test(item.text)) return section;
+  }
+  return undefined;
+}
+
 test.describe("conversation sections", () => {
   test("puts waiting conversations in Needs attention first", async ({
     page,
@@ -131,9 +152,6 @@ test.describe("conversation sections", () => {
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
-    const sectionButtons = sidebar.getByRole("button", {
-      name: /^(Pinned|Needs attention)/,
-    });
     const activeRows = sidebar.getByRole("link", {
       name: /Investigate checkout latency/,
     });
@@ -153,9 +171,11 @@ test.describe("conversation sections", () => {
     expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
     await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
-    // Pinned wins over Needs attention, so the section is gone.
-    await expect(sectionButtons).toHaveCount(1);
+    // Pinned wins over Needs attention, so the row shows only in Pinned.
     await expect(activeRows).toHaveCount(1);
+    await expect
+      .poll(() => sidebarSectionOf(sidebar, /Investigate checkout latency/))
+      .toMatch(/^Pinned/);
     await expect(
       activeRows.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
@@ -208,27 +228,23 @@ test.describe("conversation sections", () => {
     const finishedRow = sidebar.getByRole("link", {
       name: /Closed issue summary/,
     });
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
-    );
+    const finishedSection = () =>
+      sidebarSectionOf(sidebar, /Closed issue summary/);
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
     await expect(
       finishedRow.getByRole("img", { name: "Unread" }),
     ).toBeVisible();
 
     await finishedRow.click();
     await expect(finishedRow).toHaveAttribute("aria-current", "page");
-    // Read now, but held at the top so the row does not move under the pointer.
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
-    );
+    // Read now, but held in place so the row does not move under the pointer.
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
     await expect(sidebar.getByRole("img", { name: "Unread" })).toHaveCount(0);
 
     await sidebar
       .getByRole("link", { name: /Checkout latency triage/ })
       .click();
-    await expect(sidebar.getByRole("link").first()).not.toHaveAccessibleName(
-      /Closed issue summary/,
-    );
+    await expect.poll(finishedSection).toMatch(/^(?!Needs attention)/);
 
     // Mark the open conversation unread. It stays unread after leaving it.
     await finishedRow.click();
@@ -250,6 +266,7 @@ test.describe("conversation sections", () => {
     await expect(page.getByRole("menuitem")).toHaveText([
       "Mark as read",
       "Pin",
+      "Rename",
       "Archive",
     ]);
     await screenshot(page, "conversation-sidebar-context-menu", {
@@ -266,6 +283,40 @@ test.describe("conversation sections", () => {
     await expect(finishedRow.getByRole("img", { name: "Unread" })).toHaveCount(
       0,
     );
+  });
+
+  test("renames a conversation from the row menu", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const renameRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/title"),
+    );
+    await sidebar
+      .getByRole("link", { name: /Closed issue summary/ })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Rename" }).click();
+    const titleInput = page.getByRole("textbox", { name: "Title" });
+    await expect(titleInput).toBeFocused();
+    await expect(titleInput).toHaveValue("Closed issue summary");
+    await titleInput.fill("  Closed issue follow-up ");
+    await page.getByRole("button", { name: "Save" }).click();
+    expect((await renameRequest).postDataJSON()).toEqual({
+      title: "Closed issue follow-up",
+    });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const renamedRow = sidebar.getByRole("link", {
+      name: /Closed issue follow-up/,
+    });
+    await expect(renamedRow).toBeVisible();
+
+    await page.reload();
+    await expect(renamedRow).toBeVisible();
   });
 
   test("the sidebar review chip opens details at Needs you", async ({

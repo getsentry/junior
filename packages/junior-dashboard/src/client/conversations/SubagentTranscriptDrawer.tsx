@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, CircleAlert, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
@@ -13,7 +13,6 @@ import { buildConversationMarkdown } from "../markdownExport";
 import { Drawer } from "../components/Drawer";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
-import { SearchInput } from "../components/SearchInput";
 import { StatusChip } from "../components/StatusChip";
 import { subagentStatusTone } from "./ConversationChildAgents";
 import { CopyButton } from "../components/CopyButton";
@@ -23,6 +22,8 @@ import {
 } from "./ConversationHeaderActions";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
+import { TranscriptSearchBar } from "./TranscriptSearchBar";
+import { useTranscriptSearchMatch } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
 /** One child Conversation to show, with what its parent already knows. */
@@ -59,6 +60,7 @@ function SubagentTranscriptDrawerContent(props: {
   const query = useConversationData(props.target.conversationId);
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
+  const searchMatch = useTranscriptSearchMatch(search);
   const [searchOpen, setSearchOpen] = useState(false);
 
   const detail = query.data;
@@ -72,6 +74,17 @@ function SubagentTranscriptDrawerContent(props: {
   const startedAt = detail ? Date.parse(detail.startedAt) : undefined;
   const searchOpenVisible =
     view === "rich" && (searchOpen || search.length > 0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!searchOpenVisible) return;
+    searchInputRef.current?.focus();
+  }, [searchOpenVisible]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    if (search.length > 0) setSearch("");
+  };
 
   const titleId = "subagent-transcript-drawer-title";
 
@@ -81,10 +94,10 @@ function SubagentTranscriptDrawerContent(props: {
         <>
           {view === "rich" ? (
             <TranscriptSearchToggle
+              inputRef={searchInputRef}
               onClick={() => {
                 if (searchOpenVisible) {
-                  setSearchOpen(false);
-                  if (search.length > 0) setSearch("");
+                  closeSearch();
                   return;
                 }
                 setSearchOpen(true);
@@ -160,16 +173,14 @@ function SubagentTranscriptDrawerContent(props: {
             {props.target.conversationId}
           </code>
           {searchOpenVisible ? (
-            <div className="mt-3 min-w-0">
-              <SearchInput
-                className="min-w-0"
-                label="Search transcript"
-                onChange={setSearch}
-                placeholder="Search transcript…"
-                size="compact"
-                value={search}
-              />
-            </div>
+            <TranscriptSearchBar
+              className="inset-x-4 md:left-auto md:right-5 md:w-80"
+              inputRef={searchInputRef}
+              match={searchMatch}
+              onChange={setSearch}
+              onClose={closeSearch}
+              value={search}
+            />
           ) : null}
         </>
       }
@@ -203,6 +214,8 @@ function SubagentTranscriptDrawerContent(props: {
           onLoadPreviousPage={query.loadPreviousPage}
           search={search}
           onSearchChange={setSearch}
+          searchMatch={searchMatch.index}
+          onSearchMatches={searchMatch.setMatches}
           transcript={detail}
           view={view}
         />
