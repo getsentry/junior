@@ -2,8 +2,16 @@
 export const DASHBOARD_SERVICE_WORKER_PATH = "/_junior/dashboard/sw.js";
 
 /**
+ * Cache Storage entry that holds the URL of the last tapped notification.
+ * The key is a cache key only; no route serves it.
+ */
+export const NOTIFICATION_TARGET_CACHE = "junior-notification-target";
+export const NOTIFICATION_TARGET_KEY = "/_junior/dashboard/notification-target";
+
+/**
  * The service worker only shows phone notifications. It has no `fetch`
- * handler, so it never caches or changes dashboard requests.
+ * handler, so it never caches or changes dashboard requests. Its one cache
+ * entry holds the last tapped notification URL for the page to open.
  *
  * Every push shows a notification. Safari and Chrome penalize a push that
  * shows nothing. When the user already looks at the same page, the
@@ -11,6 +19,8 @@ export const DASHBOARD_SERVICE_WORKER_PATH = "/_junior/dashboard/sw.js";
  */
 const SERVICE_WORKER_SOURCE = String.raw`
 const SCOPE_URL = new URL(self.registration.scope);
+const TARGET_CACHE = ${JSON.stringify(NOTIFICATION_TARGET_CACHE)};
+const TARGET_KEY = new URL(${JSON.stringify(NOTIFICATION_TARGET_KEY)}, SCOPE_URL).href;
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -84,6 +94,17 @@ self.addEventListener("notificationclick", (event) => {
   const url = targetUrl(event.notification.data && event.notification.data.url);
   event.waitUntil(
     (async () => {
+      // iOS can run this handler while a backgrounded Home Screen app is
+      // still suspended, for example behind the lock screen. navigate() and
+      // postMessage() can then get lost, and the app resumes on its old page.
+      // The page reads this entry when it becomes visible and opens the URL.
+      const cache = await caches.open(TARGET_CACHE);
+      await cache.put(
+        TARGET_KEY,
+        new Response(JSON.stringify({ atMs: Date.now(), url: url.href }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
       const windows = await self.clients.matchAll({
         includeUncontrolled: true,
         type: "window",

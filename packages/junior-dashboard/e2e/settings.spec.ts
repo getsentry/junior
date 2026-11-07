@@ -1,4 +1,8 @@
 import { expect, test } from "./test";
+import {
+  NOTIFICATION_TARGET_CACHE,
+  NOTIFICATION_TARGET_KEY,
+} from "../src/service-worker";
 import { screenshot } from "./screenshot";
 
 test("updates the signed-in user's display name", async ({
@@ -51,6 +55,42 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   });
   await expect(page.getByText("Hours saved.")).toBeVisible();
   await expect(saturday).toHaveAttribute("aria-pressed", "true");
+});
+
+test("opens a tapped notification that the app did not open", async ({
+  page,
+  dashboard,
+}) => {
+  // The service worker saves the tapped URL. iOS can lose its navigation to
+  // a suspended Home Screen app, so the page opens the URL when shown.
+  async function saveTappedNotification(path: string, ageMs: number) {
+    await page.evaluate(
+      async ({ ageMs, cacheName, key, path }) => {
+        const cache = await caches.open(cacheName);
+        await cache.put(
+          key,
+          new Response(JSON.stringify({ atMs: Date.now() - ageMs, url: path })),
+        );
+      },
+      {
+        ageMs,
+        cacheName: NOTIFICATION_TARGET_CACHE,
+        key: NOTIFICATION_TARGET_KEY,
+        path,
+      },
+    );
+  }
+
+  await page.goto(dashboard.baseURL);
+  await saveTappedNotification("/settings", 10 * 60_000);
+  await page.reload();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+
+  await saveTappedNotification("/settings", 0);
+  await page.reload();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
+  await page.reload();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
 });
 
 test("follows the system theme until the user picks one", async ({

@@ -12,6 +12,8 @@ import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
 import {
   clearAppBadge,
+  openNotificationTarget,
+  openTappedNotificationTarget,
   registerDashboardServiceWorker,
 } from "./client/notifications/push";
 
@@ -102,12 +104,15 @@ navigator.serviceWorker?.addEventListener("message", (event) => {
   ) {
     return;
   }
-  const url = new URL(data.url, window.location.href);
-  if (url.origin === window.location.origin) window.location.assign(url.href);
+  openNotificationTarget(data.url);
 });
-clearAppBadge();
+function onDashboardVisible(): void {
+  clearAppBadge();
+  void openTappedNotificationTarget();
+}
+onDashboardVisible();
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") clearAppBadge();
+  if (document.visibilityState === "visible") onDashboardVisible();
 });
 
 const queryClient = new QueryClient({
