@@ -2,6 +2,7 @@
 # Model-repairable failures must use ToolInputError or PluginToolInputError.
 # Only keep true system/config/integrity failures here.
 # Format: relativePath<TAB>normalized throw statement
+packages/junior-github/src/tools/comment-on-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/comment-on-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.", );
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue was created, but the runtime could not persist the completed issue state.", { cause: error }, );
