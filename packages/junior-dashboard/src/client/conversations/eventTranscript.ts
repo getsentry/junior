@@ -232,6 +232,9 @@ export function transcriptMessagesFromEvents(
           ? { agentInvocationId: data.agentInvocationId }
           : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        ...(data.eventNamespace
+          ? { eventNamespace: data.eventNamespace }
+          : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }
@@ -404,6 +407,16 @@ export function transcriptMessagesFromEvents(
           },
         ]),
       );
+      continue;
+    }
+
+    if (data.type === "reply_posted") {
+      messages.push({
+        ...eventMessage(event, "assistant", [
+          { type: "text", text: data.text },
+        ]),
+        postedTo: data.plugin,
+      });
       continue;
     }
 

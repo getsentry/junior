@@ -121,6 +121,8 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
@@ -150,6 +152,8 @@ export type TranscriptViewMessage = {
   /** Local images of a pending send that the server has not stored yet. */
   images?: InputImage[];
   parts: TranscriptViewPart[];
+  /** Plugin whose tool posted this Junior reply, such as `github`. */
+  postedTo?: string;
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
   sourceSeq: number;

@@ -114,6 +114,7 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
         repo: repo.ref,
         number: input.number,
         comment_id: comment.id,
+        reply: { text: input.body, url: comment.html_url },
         url: comment.html_url,
       };
     },

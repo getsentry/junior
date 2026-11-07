@@ -33,6 +33,8 @@ export interface ConversationMessageMeta {
   source?: "slack" | "web";
   /** First Event of the batch. Marks the message as an Event message. */
   eventType?: string;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
   eventObjectType?: ObjectType;
   /**
    * The Watch Events when several arrived together. A Message that also

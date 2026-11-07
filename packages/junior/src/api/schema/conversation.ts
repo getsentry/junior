@@ -331,6 +331,8 @@ const conversationReportMessageEventDataSchema = z
     /** Agent invocation whose input this is. An agent wrote it, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
+    /** Namespace of the first Event, such as `github`. */
+    eventNamespace: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),
@@ -556,6 +558,16 @@ const conversationReportAttachmentsDeliveredEventDataSchema = z
   })
   .strict();
 
+/** Junior text that a plugin tool posted to its provider. */
+const conversationReportReplyPostedEventDataSchema = z
+  .object({
+    type: z.literal("reply_posted"),
+    plugin: z.string().min(1),
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
@@ -602,6 +614,7 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
   conversationReportAttachmentsDeliveredEventDataSchema,
+  conversationReportReplyPostedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
   conversationReportSubagentEventDataSchema,

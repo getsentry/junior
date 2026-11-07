@@ -24,12 +24,12 @@ import { shouldCopyRawTranscript } from "./transcriptCopy";
 import { messageRawText } from "./transcriptRenderModel";
 import { TranscriptMessageHeading } from "./TranscriptHeadingRow";
 import { RedactedMarker } from "./TranscriptRedacted";
-import { SlackMark } from "./SlackMark";
+import { SourceMark } from "./SourceMark";
 import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
 import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
-import { showsSlackSourceIcon } from "./transcriptSource";
+import { transcriptMessageSource } from "./transcriptSource";
 
 /** Render one chat message with its saved cards and attached turn context. */
 export const TranscriptMessageView = memo(
@@ -212,7 +212,7 @@ function TranscriptMessageHeader(props: {
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
-  const showSlack = showsSlackSourceIcon(props.message, props.conversation);
+  const source = transcriptMessageSource(props.message, props.conversation);
   const timestamp = formatMessageTimestamp(props.message.timestamp);
   const roleLabel = transcriptMessageActorLabel(
     props.conversation,
@@ -224,14 +224,10 @@ function TranscriptMessageHeader(props: {
       <span className={transcriptRoleLabelClass(props.message.role)}>
         {roleLabel}
       </span>
-      {showSlack || timestamp ? (
+      {source || timestamp ? (
         <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">
-          {showSlack ? (
-            <span className="inline-flex shrink-0 self-center" title="Slack">
-              <SlackMark className="size-3.5" />
-            </span>
-          ) : null}
-          {showSlack && timestamp ? <span aria-hidden="true">·</span> : null}
+          {source ? <SourceMark provider={source} /> : null}
+          {source && timestamp ? <span aria-hidden="true">·</span> : null}
           <TranscriptTimestamp value={props.message.timestamp} />
         </span>
       ) : null}
