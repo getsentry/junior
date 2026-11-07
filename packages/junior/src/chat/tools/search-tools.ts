@@ -9,8 +9,11 @@ export const SEARCH_TOOLS_NAME = "searchTools";
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_RESULTS = 20;
 const MODEL_VISIBLE_DESCRIPTION_CAP = 180;
-// Identity, descriptive guidance, and source/schema context respectively.
+// Identity, descriptive guidance, and source/parameter context respectively.
 const SEARCH_FIELD_WEIGHTS = [8, 4, 1] as const;
+// Drop matches that score below this share of the best match, so a query
+// returns the tools that fit it instead of every tool that shares one word.
+const MIN_RELATIVE_SCORE = 0.3;
 const BM25_K1 = 1.2;
 const BM25_B = 0.75;
 
@@ -63,7 +66,6 @@ const searchToolsToolSchema = z
   .object({
     tool_name: z.string(),
     description: z.string(),
-    exposure: z.enum(["direct", "deferred", "modelOnly", "codemode", "hidden"]),
     source: z.string().optional(),
     input_schema: z.unknown(),
     call_notes: z.array(z.string()),
@@ -95,7 +97,26 @@ interface SearchDocument {
   fields: [string[], string[], string[]];
 }
 
-function terms(value: string): string[] {
+// Fold common English plurals so "issues" matches "issue" and
+// "repositories" matches "repository". Both sides use the same fold, so an
+// odd stem such as "alway" still matches itself.
+function singular(term: string): string {
+  if (term.length <= 3) {
+    return term;
+  }
+  if (term.endsWith("ies")) {
+    return `${term.slice(0, -3)}y`;
+  }
+  if (/(?:ss|us|ch|sh|x|z)es$/.test(term)) {
+    return term.slice(0, -2);
+  }
+  if (/[^sui]s$/.test(term)) {
+    return term.slice(0, -1);
+  }
+  return term;
+}
+
+function rawTerms(value: string): string[] {
   const chunks = value.match(/[\p{L}\p{N}]+/gu) ?? [];
   const result: string[] = [];
   for (const chunk of chunks) {
@@ -112,12 +133,16 @@ function terms(value: string): string[] {
   return result;
 }
 
+function terms(value: string): string[] {
+  return rawTerms(value).map(singular);
+}
+
 function queryTerms(query: string): string[] {
   return [
     ...new Set(
-      terms(query).filter(
-        (term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term),
-      ),
+      rawTerms(query)
+        .filter((term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term))
+        .map(singular),
     ),
   ];
 }
@@ -136,12 +161,30 @@ export function summarizeModelVisibleDescription(description: string): string {
   return `${normalized.slice(0, MODEL_VISIBLE_DESCRIPTION_CAP - 3).trimEnd()}...`;
 }
 
-function schemaText(schema: unknown): string {
-  try {
-    return JSON.stringify(schema);
-  } catch {
-    return "";
+// Collect parameter names and descriptions. Raw schema JSON would add words
+// such as "type", "string", and "properties" to every tool.
+function parameterText(schema: unknown): string[] {
+  if (Array.isArray(schema)) {
+    return schema.flatMap(parameterText);
   }
+  if (!schema || typeof schema !== "object") {
+    return [];
+  }
+  const record = schema as Record<string, unknown>;
+  const text: string[] = [];
+  if (typeof record.description === "string") {
+    text.push(record.description);
+  }
+  const properties = record.properties;
+  if (properties && typeof properties === "object") {
+    for (const [name, property] of Object.entries(properties)) {
+      text.push(name, ...parameterText(property));
+    }
+  }
+  for (const key of ["items", "anyOf", "oneOf", "allOf"]) {
+    text.push(...parameterText(record[key]));
+  }
+  return text;
 }
 
 function searchableToolFields(
@@ -168,13 +211,10 @@ function searchableToolFields(
         .filter(Boolean)
         .join(" "),
     ),
+    // The source description is the same for every tool in the source, so
+    // it only adds noise to ranking. Source filtering uses the source id.
     terms(
-      [
-        definition.source?.id,
-        definition.source?.description,
-        schemaText(definition.inputSchema),
-        schemaText(definition.annotations ?? {}),
-      ]
+      [definition.source?.id, ...parameterText(definition.inputSchema)]
         .filter(Boolean)
         .join(" "),
     ),
@@ -283,7 +323,7 @@ function searchCatalogTools(
   }
   const averageLengths = averageFieldLengths(documents);
   const frequencies = documentFrequencies(documents);
-  return documents
+  const scored = documents
     .map((document) => ({
       name: document.name,
       score: scoreSearchDocument(
@@ -298,7 +338,10 @@ function searchCatalogTools(
     .sort(
       (left, right) =>
         right.score - left.score || left.name.localeCompare(right.name),
-    )
+    );
+  const minScore = (scored[0]?.score ?? 0) * MIN_RELATIVE_SCORE;
+  return scored
+    .filter(({ score }) => score >= minScore)
     .map(({ name }) => name);
 }
 
@@ -372,7 +415,6 @@ function toolMetadata(
   return {
     tool_name: name,
     description: summarizeModelVisibleDescription(definition.description),
-    exposure: effectiveToolExposure(definition),
     ...(includeSource && definition.source
       ? { source: definition.source.id }
       : undefined),
@@ -382,10 +424,18 @@ function toolMetadata(
   };
 }
 
-/** Create the model-visible search tool for the executable tool catalog. */
+/**
+ * Create the model-visible search tool for the executable tool catalog.
+ * Direct tools stay out of results: the model already has their schemas.
+ */
 export function createSearchToolsTool(
-  catalogTools: Record<string, AnyToolDefinition>,
+  allCatalogTools: Record<string, AnyToolDefinition>,
 ) {
+  const catalogTools = Object.fromEntries(
+    Object.entries(allCatalogTools).filter(
+      ([, definition]) => effectiveToolExposure(definition) !== "direct",
+    ),
+  );
   const knownSources = sourceSummaries(catalogTools);
   return zodTool({
     description: renderSearchToolsDescription(knownSources),
