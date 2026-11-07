@@ -4,6 +4,7 @@ import {
   SquarePen,
   type LucideIcon,
 } from "lucide-react";
+import fuzzysort from "fuzzysort";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -19,7 +20,6 @@ import { isPlatformShortcut, platformShortcut } from "../keyboard";
 import type { Conversation } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
-import { quickOpenMatch } from "./quickOpenMatch";
 import {
   Command,
   CommandDialog,
@@ -271,10 +271,10 @@ function paletteItems(input: {
   );
   const matchedPages = ranked(
     pages.map((page) => {
-      const match = quickOpenMatch(page.label, input.query);
+      const match = fuzzysort.single(input.query, page.label);
       return {
         ...pageItem(page),
-        matches: match?.indices,
+        matches: match ? [...match.indexes] : undefined,
         score: match?.score ?? 0,
       };
     }),
@@ -299,13 +299,13 @@ function conversationItem(
   query?: string,
 ): PaletteItem {
   const label = conversationDisplayTitle(conversation);
-  const match = query ? quickOpenMatch(label, query) : undefined;
+  const match = query ? fuzzysort.single(query, label) : undefined;
   return {
     group,
     icon: conversation.visibility === "private" ? LockKeyhole : MessageSquare,
     id: `conversation-${conversation.id}`,
     label,
-    matches: match?.indices,
+    matches: match ? [...match.indexes] : undefined,
     meta: conversation.archivedAt
       ? "Archived"
       : formatCompactAge(conversation.lastSeenAt),
