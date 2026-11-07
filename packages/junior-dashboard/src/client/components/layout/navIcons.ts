@@ -8,7 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-// Plugin primary pages without an entry here use the generic plugin icon.
+// Plugin pages without an entry here use the generic plugin icon.
 const NAV_ICONS: Record<string, LucideIcon> = {
   automations: Zap,
   code: CodeXml,
@@ -17,7 +17,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   system: Gauge,
 };
 
-/** Return the icon for a primary nav item key. */
+/** Return the icon for a nav item key. */
 export function navItemIcon(key: string): LucideIcon {
   return NAV_ICONS[key] ?? Boxes;
 }

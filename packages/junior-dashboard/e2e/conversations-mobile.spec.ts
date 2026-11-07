@@ -305,6 +305,13 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByLabel("Signed in as Dashboard User")).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+  const accountMenu = page.getByLabel("Account menu for Dashboard User");
+  await expect(
+    accountMenu.getByRole("link", { name: "Code", exact: true }),
+  ).toBeVisible();
+  await expect(
+    accountMenu.getByRole("link", { name: "System", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "API tokens" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
   const closeNavigation = page.getByRole("button", {

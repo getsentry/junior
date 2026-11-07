@@ -1,5 +1,4 @@
 import {
-  Boxes,
   ChevronDown,
   LogOut,
   Settings,
@@ -9,12 +8,12 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
-import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { formatCostSummary, peoplePath } from "../format";
-import { pluginUserPagePath } from "../pages/user/pluginUserPageRoutes";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
+import { navItemIcon } from "./layout/navIcons";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button, buttonVariants } from "./ui/button";
@@ -24,7 +23,8 @@ type ProfileMenuProps = {
   identity: Identity;
   onSignOut(): Promise<void>;
   spend?: PersonalSpendReport;
-  userPages: PluginUserPageLink[];
+  /** Pages that live in this menu instead of the primary nav. */
+  pages: DashboardHeaderNavItem[];
   /**
    * `popover` is the avatar control at the bottom of the desktop nav rail.
    * `top-bar` is the spend and avatar control in the tall desktop top bar.
@@ -139,7 +139,7 @@ export function ProfileMenu({
   identity,
   onSignOut,
   spend,
-  userPages,
+  pages,
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
@@ -151,9 +151,6 @@ export function ProfileMenu({
   const thirtyDaySpend = spend
     ? formatCostSummary({ total: spend.thirtyDaysUsd })
     : "—";
-  const profilePages = userPages.filter(
-    (page) => page.navigation === "profile",
-  );
 
   const identityBlock = (
     <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
@@ -205,23 +202,26 @@ export function ProfileMenu({
         <Settings aria-hidden="true" size={16} strokeWidth={2} />
         Settings
       </Link>
+      {pages.map((page) => {
+        const Icon = navItemIcon(page.key);
+        return (
+          <Link
+            className={profileLinkClass}
+            key={page.key}
+            onClick={close}
+            to={page.to}
+          >
+            <Icon aria-hidden="true" size={16} strokeWidth={2} />
+            {page.label}
+          </Link>
+        );
+      })}
       {identity.user.isAdmin ? (
         <Link className={profileLinkClass} onClick={close} to="/admin">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={2} />
           Admin
         </Link>
       ) : null}
-      {profilePages.map((page) => (
-        <Link
-          className={profileLinkClass}
-          key={`${page.pluginName}:${page.id}`}
-          onClick={close}
-          to={pluginUserPagePath(page.pluginName, page.id)}
-        >
-          <Boxes aria-hidden="true" size={16} strokeWidth={2} />
-          {page.label}
-        </Link>
-      ))}
       <Button
         onClick={() => {
           close();
@@ -273,20 +273,16 @@ export function ProfileMenu({
         <Link className={sheetItemClass} to="/settings">
           Settings
         </Link>
+        {pages.map((page) => (
+          <Link className={sheetItemClass} key={page.key} to={page.to}>
+            {page.label}
+          </Link>
+        ))}
         {identity.user.isAdmin ? (
           <Link className={sheetItemClass} to="/admin">
             Admin
           </Link>
         ) : null}
-        {profilePages.map((page) => (
-          <Link
-            className={sheetItemClass}
-            key={`${page.pluginName}:${page.id}`}
-            to={pluginUserPagePath(page.pluginName, page.id)}
-          >
-            {page.label}
-          </Link>
-        ))}
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
           data-mobile-nav-dismiss
