@@ -54,6 +54,15 @@ it("ranks a typo below a tight scatter and above a loose one", () => {
   );
 });
 
+it("keeps label indices when lowercasing adds characters", () => {
+  expect(quickOpenMatch("İstanbul latency", "latency")?.indices).toEqual([
+    9, 10, 11, 12, 13, 14, 15,
+  ]);
+  expect(quickOpenMatch("İstanbul latency", "ist")).toEqual(
+    quickOpenMatch("Istanbul latency", "ist"),
+  );
+});
+
 it("keeps surrogate pairs whole", () => {
   expect(quickOpenMatch("Ship 🚀 now", "🚀")?.indices).toEqual([5, 6]);
 });

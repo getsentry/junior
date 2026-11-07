@@ -27,8 +27,8 @@ export function quickOpenMatch(
   label: string,
   query: string,
 ): QuickOpenMatch | undefined {
-  const haystack = label.toLowerCase();
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const haystack = foldCase(label);
+  const terms = foldCase(query).split(/\s+/).filter(Boolean);
   const indices = new Set<number>();
   let score = 0;
   for (const term of terms) {
@@ -141,6 +141,17 @@ function prefixDistances(a: string, b: string): number[] {
     [before, previous, current] = [previous, current, before];
   }
   return previous;
+}
+
+// Lowercases one character at a time and keeps each one's UTF-16 length, so
+// indices in the folded text stay valid in the label. "İ" lowercases to "i"
+// plus a combining dot; only the "i" is kept.
+function foldCase(text: string): string {
+  let folded = "";
+  for (const char of text) {
+    folded += char.toLowerCase().slice(0, char.length);
+  }
+  return folded;
 }
 
 function isWordStart(haystack: string, at: number): boolean {
