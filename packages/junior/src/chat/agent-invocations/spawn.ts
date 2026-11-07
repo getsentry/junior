@@ -20,21 +20,22 @@ type SpawnOptions = {
 };
 
 /**
- * Count the parents of the Conversation that starts a child agent, and
- * return its depth. A root has depth 0. A chain that does not end at a root,
- * such as a cycle, cannot start a child agent.
+ * Count the parents of the Conversation that starts a child agent. A chain
+ * that does not end at a root, such as a cycle, cannot start one.
  */
 async function assertCanStartChildAgent(
   conversationId: string,
   maxAgentDepth: number,
-): Promise<number> {
+): Promise<void> {
   const lineage = await readConversationLineage(conversationId);
   const root = lineage[0];
-  const depth = lineage.length - 1;
-  if (!root || root.parentConversationId || depth > maxAgentDepth) {
+  if (
+    !root ||
+    root.parentConversationId ||
+    lineage.length - 1 > maxAgentDepth
+  ) {
     throw new AgentDepthLimitError(maxAgentDepth);
   }
-  return depth;
 }
 
 /** Bind a Run's Actor and credentials to new Agent invocations. */
@@ -51,10 +52,9 @@ export function bindSpawnAgent(
     call: { signal?: AbortSignal; toolCallId: string },
   ) => {
     call.signal?.throwIfAborted();
-    const maxAgentDepth = options.maxAgentDepth ?? botConfig.maxAgentDepth;
-    const depth = await assertCanStartChildAgent(
+    await assertCanStartChildAgent(
       run.conversationId,
-      maxAgentDepth,
+      options.maxAgentDepth ?? botConfig.maxAgentDepth,
     );
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
@@ -63,11 +63,6 @@ export function bindSpawnAgent(
         actor,
         ...(input.name ? { agentName: input.name } : undefined),
         ...(input.agentType ? { agentType: input.agentType } : undefined),
-        // The new child cannot start its own child agents, so its Runs do
-        // not offer spawnAgent.
-        ...(depth + 1 > maxAgentDepth
-          ? { childAgentsDisabled: true as const }
-          : undefined),
         ...(run.credentialContext
           ? { credentialContext: run.credentialContext }
           : undefined),

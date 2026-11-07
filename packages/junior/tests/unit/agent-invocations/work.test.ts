@@ -19,7 +19,7 @@ describe("agentInvocationRunPolicy", () => {
       updatedAtMs: 1,
     });
 
-    expect(agentInvocationRunPolicy(invocation)).toEqual({
+    expect(agentInvocationRunPolicy(invocation, true)).toEqual({
       disabledFeatures: ["interactive-auth"],
       reasoning: "medium",
     });

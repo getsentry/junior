@@ -22,6 +22,7 @@ import {
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
+import { botConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
@@ -146,6 +147,7 @@ export function createConversationWork(
         queue: options.queue,
         state: options.state,
       }),
+    maxAgentDepth: botConfig.maxAgentDepth,
     queue: options.queue,
     state: options.state,
   });

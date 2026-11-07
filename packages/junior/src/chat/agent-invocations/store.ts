@@ -34,7 +34,6 @@ export function invocationFromRow(
   return agentInvocationSchema.parse({
     actor: row.actor,
     ...(row.agentName ? { agentName: row.agentName } : undefined),
-    ...(row.childAgentsDisabled ? { childAgentsDisabled: true } : undefined),
     childConversationId: row.childConversationId,
     createdAtMs: row.createdAt.getTime(),
     ...(row.credentialContext

@@ -1,4 +1,3 @@
-ALTER TABLE "junior_agent_invocations" ADD COLUMN "child_agents_disabled" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 -- Give each existing child the Destination row and Location of its root, as
 -- createChild now does for a new child. A child Run then reads visibility and
 -- Location from its own row. A child whose chain is broken or has a cycle

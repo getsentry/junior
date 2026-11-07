@@ -188,7 +188,6 @@ describe("agent invocation identity and concurrency", () => {
     try {
       const first = await harness.spawn({
         agentName: "researcher",
-        childAgentsDisabled: true,
         idempotencyKey: "named-1",
         input: "first named task",
         reasoningLevel: "high",
@@ -223,7 +222,7 @@ describe("agent invocation identity and concurrency", () => {
         "interactive-auth",
         "subagents",
       ]);
-      // A message keeps the reasoning level and depth limit of the child.
+      // A message keeps the reasoning level of the child.
       expect(requests[1]?.reasoning).toBe("high");
       expect(requests[1]?.disabledFeatures).toEqual([
         "interactive-auth",

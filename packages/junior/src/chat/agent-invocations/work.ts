@@ -116,11 +116,12 @@ type EnqueueOptions = {
 /** Map a durable invocation's model settings and depth to the child Run policy. */
 export function agentInvocationRunPolicy(
   invocation: AgentInvocation,
+  canSpawn: boolean,
 ): Pick<AgentRun, "disabledFeatures" | "reasoning"> {
   return {
-    disabledFeatures: invocation.childAgentsDisabled
-      ? ["interactive-auth", "subagents"]
-      : ["interactive-auth"],
+    disabledFeatures: canSpawn
+      ? ["interactive-auth"]
+      : ["interactive-auth", "subagents"],
     ...(invocation.reasoningLevel
       ? { reasoning: invocation.reasoningLevel }
       : undefined),
@@ -655,13 +656,20 @@ async function saveAgentInvocationResult(args: {
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
+ * `maxAgentDepth` is the number of child agent levels that can start their
+ * own child agents. The default, 0, lets only the root start child agents.
  */
 export function createAgentInvocationWorker(
   agentRunner: AgentRunner,
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    maxAgentDepth?: number;
   } = {},
 ) {
+  // Every child has depth 1 or more, so with 0 no child can spawn. With more,
+  // a child past the limit still sees spawnAgent, and the spawn-time check in
+  // spawn.ts refuses it. Depth is not stored or read per Run.
+  const canSpawn = (options.maxAgentDepth ?? 0) > 0;
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -846,7 +854,7 @@ export function createAgentInvocationWorker(
           // force interactive auth when a delegated tool requires credentials
           // the parent can request. Today background children hard-fail instead
           // of pausing for an OAuth link.
-          ...agentInvocationRunPolicy(invocation),
+          ...agentInvocationRunPolicy(invocation, canSpawn),
           state: {
             sandboxRef,
           },

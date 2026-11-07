@@ -43,7 +43,6 @@ const agentInvocationBaseSchema = z
   .object({
     actor: actorSchema,
     agentName: agentNameSchema.optional(),
-    childAgentsDisabled: z.literal(true).optional(),
     childConversationId: exactStringSchema,
     createdAtMs: z.number().finite(),
     credentialContext: credentialContextSchema.optional(),
@@ -83,7 +82,6 @@ export const createAgentInvocationSchema = z
   .object({
     actor: actorSchema,
     agentName: agentNameSchema.optional(),
-    childAgentsDisabled: z.literal(true).optional(),
     credentialContext: credentialContextSchema.optional(),
     destination: destinationSchema,
     idempotencyKey: exactStringSchema,

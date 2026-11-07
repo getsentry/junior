@@ -82,8 +82,6 @@ describe("nested agent invocations", () => {
       });
       const helper = await createAgentInvocation({
         ...slackInvocationInput,
-        // spawnAgent marks a child at the depth limit. A result keeps it.
-        childAgentsDisabled: true,
         idempotencyKey: "nested-helper",
         parentConversationId: child.childConversationId,
       });

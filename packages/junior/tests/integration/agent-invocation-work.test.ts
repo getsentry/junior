@@ -99,7 +99,6 @@ describe("agent invocation conversation work", () => {
       const created = await createAndEnqueueAgentInvocation(
         {
           ...slackInvocationInput,
-          childAgentsDisabled: true,
           idempotencyKey: "execute-1",
         },
         {

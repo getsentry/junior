@@ -445,6 +445,7 @@ export function createChildConversationWorker(
   agentRunner: AgentRunner,
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    maxAgentDepth?: number;
     queue: ConversationWorkQueue;
     state?: StateAdapter;
   },

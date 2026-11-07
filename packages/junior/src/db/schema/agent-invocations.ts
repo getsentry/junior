@@ -1,5 +1,4 @@
 import {
-  boolean,
   index,
   jsonb,
   pgTable,
@@ -70,11 +69,6 @@ export const juniorAgentInvocations = pgTable(
     ).$type<ConversationPrivacy>(),
     agentType: text("agent_type").$type<AgentType>(),
     reasoningLevel: text("reasoning_level").$type<TurnReasoningLevel>(),
-    // Set when the child is too deep to start its own child agents. spawnAgent
-    // sets it once, and later invocations of the child copy it.
-    childAgentsDisabled: boolean("child_agents_disabled")
-      .notNull()
-      .default(false),
     // The parent `spawnAgent` or `messageAgent` tool call. Null for
     // runtime-started invocations.
     parentToolCallId: text("parent_tool_call_id"),
