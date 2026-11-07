@@ -15,7 +15,37 @@ const SEARCH_FIELD_WEIGHTS = [8, 4, 1] as const;
 // returns the tools that fit it instead of every tool that shares one word.
 const MIN_RELATIVE_SCORE = 0.3;
 const BM25_K1 = 1.2;
-const BM25_B = 0.75;
+// Length normalization per field. Long tool descriptions add usage guidance,
+// not more topics, so they get a weaker length penalty than the other fields.
+const BM25_B = [0.75, 0.3, 0.75] as const;
+
+// A synonym match counts for less than an exact match, so a tool that uses
+// the query's own word still ranks first.
+const SYNONYM_WEIGHT = 0.6;
+
+// Common action words that tools and queries use for the same action. These
+// are generic English, so they also apply to MCP and plugin tools.
+const SEARCH_SYNONYM_GROUPS = [
+  ["get", "fetch", "read", "view", "show", "retrieve", "look"],
+  ["update", "edit", "change", "modify", "set", "rename"],
+  ["create", "add", "new", "make", "write"],
+  ["delete", "remove", "archive", "forget", "drop", "discard"],
+  ["search", "find", "query", "lookup", "look"],
+  ["list", "show", "all", "enumerate"],
+  ["comment", "reply", "respond"],
+  ["stop", "cancel", "unwatch", "unsubscribe"],
+  ["watch", "subscribe", "monitor", "follow"],
+  ["save", "store", "remember", "memorize"],
+];
+
+// Short forms in queries that mean exactly the same as their long form. Only
+// the query is expanded: most tools have a `repo` parameter, so expanding
+// tool text would make "repository" match almost every tool.
+const SEARCH_ABBREVIATIONS: Record<string, string[]> = {
+  pr: ["pull", "request"],
+  repo: ["repository"],
+  msg: ["message"],
+};
 
 const SEARCH_STOP_WORDS = new Set([
   "a",
@@ -97,23 +127,30 @@ interface SearchDocument {
   fields: [string[], string[], string[]];
 }
 
-// Fold common English plurals so "issues" matches "issue" and
-// "repositories" matches "repository". Both sides use the same fold, so an
-// odd stem such as "alway" still matches itself.
-function singular(term: string): string {
+// Fold plurals, "-ed", "-ing", and a final "e", so "issues" matches
+// "issue", "closed" matches "close", and "updating" matches "update". Both
+// the query and the tool text use the same fold, so an odd stem such as
+// "clos" still matches itself.
+function stem(term: string): string {
   if (term.length <= 3) {
     return term;
   }
-  if (term.endsWith("ies")) {
-    return `${term.slice(0, -3)}y`;
+  let stemmed = term;
+  if (stemmed.endsWith("ies")) {
+    stemmed = `${stemmed.slice(0, -3)}y`;
+  } else if (/(?:ss|us|ch|sh|x|z)es$/.test(stemmed)) {
+    stemmed = stemmed.slice(0, -2);
+  } else if (/[^sui]s$/.test(stemmed)) {
+    stemmed = stemmed.slice(0, -1);
   }
-  if (/(?:ss|us|ch|sh|x|z)es$/.test(term)) {
-    return term.slice(0, -2);
+  const verbSuffix = /(?:ed|ing)$/.exec(stemmed);
+  if (verbSuffix && stemmed.length - verbSuffix[0].length >= 3) {
+    stemmed = stemmed.slice(0, -verbSuffix[0].length);
   }
-  if (/[^sui]s$/.test(term)) {
-    return term.slice(0, -1);
+  if (stemmed.length > 3 && stemmed.endsWith("e")) {
+    stemmed = stemmed.slice(0, -1);
   }
-  return term;
+  return stemmed;
 }
 
 function rawTerms(value: string): string[] {
@@ -133,18 +170,50 @@ function rawTerms(value: string): string[] {
   return result;
 }
 
-function terms(value: string): string[] {
-  return rawTerms(value).map(singular);
+// Runs after stemming, so the long form is stemmed here to match tool text.
+function expandAbbreviation(term: string): string[] {
+  return SEARCH_ABBREVIATIONS[term]?.map(stem) ?? [term];
 }
 
-function queryTerms(query: string): string[] {
-  return [
+function terms(value: string): string[] {
+  return rawTerms(value).map(stem);
+}
+
+const synonymsByTerm = new Map<string, Set<string>>();
+for (const group of SEARCH_SYNONYM_GROUPS) {
+  const stems = group.map(stem);
+  for (const term of stems) {
+    const synonyms = synonymsByTerm.get(term) ?? new Set<string>();
+    for (const synonym of stems) {
+      if (synonym !== term) {
+        synonyms.add(synonym);
+      }
+    }
+    synonymsByTerm.set(term, synonyms);
+  }
+}
+
+// One query word with the weight that each matching tool word gets: 1 for
+// the word itself and SYNONYM_WEIGHT for each synonym.
+type QueryTerm = Map<string, number>;
+
+function queryTerms(query: string): QueryTerm[] {
+  const unique = [
     ...new Set(
       rawTerms(query)
         .filter((term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term))
-        .map(singular),
+        .map(stem)
+        .flatMap(expandAbbreviation),
     ),
   ];
+  return unique.map((term) => {
+    const weights: QueryTerm = new Map();
+    for (const synonym of synonymsByTerm.get(term) ?? []) {
+      weights.set(synonym, SYNONYM_WEIGHT);
+    }
+    weights.set(term, 1);
+    return weights;
+  });
 }
 
 /** Summarize catalog descriptions before rendering them into model-visible data. */
@@ -187,9 +256,29 @@ function parameterText(schema: unknown): string[] {
   return text;
 }
 
+// A sentence that names another tool, such as "For issues, use
+// github_commentOnIssue", tells the model about that other tool. Its words
+// would make this tool match queries for the other tool, so ranking skips it.
+function withoutToolReferences(
+  text: string,
+  name: string,
+  toolNames: Set<string>,
+): string {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter(
+      (sentence) =>
+        !(sentence.match(/[\w-]+/g) ?? []).some(
+          (word) => word !== name && toolNames.has(word),
+        ),
+    )
+    .join(" ");
+}
+
 function searchableToolFields(
   name: string,
   definition: AnyToolDefinition,
+  toolNames: Set<string>,
 ): SearchDocument["fields"] {
   return [
     terms(
@@ -203,13 +292,17 @@ function searchableToolFields(
         .join(" "),
     ),
     terms(
-      [
-        definition.description,
-        definition.promptSnippet,
-        ...(definition.promptGuidelines ?? []),
-      ]
-        .filter(Boolean)
-        .join(" "),
+      withoutToolReferences(
+        [
+          definition.description,
+          definition.promptSnippet,
+          ...(definition.promptGuidelines ?? []),
+        ]
+          .filter(Boolean)
+          .join(" "),
+        name,
+        toolNames,
+      ),
     ),
     // The source description is the same for every tool in the source, so
     // it only adds noise to ranking. Source filtering uses the source id.
@@ -225,13 +318,14 @@ function prepareSearchDocuments(
   tools: Record<string, AnyToolDefinition>,
   source: string | null,
 ): SearchDocument[] {
+  const toolNames = new Set(Object.keys(tools));
   return Object.entries(tools)
     .filter(([, definition]) =>
       source ? definition.source?.id === source : true,
     )
     .map(([name, definition]) => ({
       name,
-      fields: searchableToolFields(name, definition),
+      fields: searchableToolFields(name, definition, toolNames),
     }));
 }
 
@@ -248,59 +342,77 @@ function averageFieldLengths(documents: SearchDocument[]): number[] {
   );
 }
 
-function documentFrequencies(documents: SearchDocument[]): Map<string, number> {
-  const frequencies = new Map<string, number>();
-  for (const document of documents) {
-    const uniqueTerms = new Set(document.fields.flat());
-    for (const term of uniqueTerms) {
-      frequencies.set(term, (frequencies.get(term) ?? 0) + 1);
-    }
-  }
-  return frequencies;
+interface ScoredQueryTerm {
+  weights: QueryTerm;
+  inverseDocumentFrequency: number;
 }
 
-function scoreSearchDocument(
+// A query word and its synonyms share one document frequency: the count of
+// tools that contain any of the words. A rare synonym then cannot outscore a
+// common exact word.
+function scoreQueryTerms(
+  query: QueryTerm[],
+  documents: SearchDocument[],
+): ScoredQueryTerm[] {
+  const documentTerms = documents.map(
+    (document) => new Set(document.fields.flat()),
+  );
+  return query.map((weights) => {
+    const documentFrequency = documentTerms.filter((terms) =>
+      [...weights.keys()].some((term) => terms.has(term)),
+    ).length;
+    return {
+      weights,
+      inverseDocumentFrequency: Math.log(
+        1 +
+          (documents.length - documentFrequency + 0.5) /
+            (documentFrequency + 0.5),
+      ),
+    };
+  });
+}
+
+function weightedTermFrequency(
   document: SearchDocument,
-  query: string[],
-  frequencies: Map<string, number>,
-  documentCount: number,
+  term: string,
   averageLengths: number[],
 ): number {
-  return query.reduce((score, term) => {
-    const documentFrequency = frequencies.get(term) ?? 0;
-    if (documentFrequency === 0) {
-      return score;
+  return document.fields.reduce((weighted, field, fieldIndex) => {
+    const termFrequency = field.filter(
+      (candidate) => candidate === term,
+    ).length;
+    if (termFrequency === 0) {
+      return weighted;
     }
-    const weightedTermFrequency = document.fields.reduce(
-      (weighted, field, fieldIndex) => {
-        const termFrequency = field.filter(
-          (candidate) => candidate === term,
-        ).length;
-        if (termFrequency === 0) {
-          return weighted;
-        }
-        const averageLength = averageLengths[fieldIndex] ?? 0;
-        const lengthRatio =
-          averageLength === 0 ? 1 : field.length / averageLength;
-        return (
-          weighted +
-          SEARCH_FIELD_WEIGHTS[fieldIndex]! *
-            (termFrequency / (1 - BM25_B + BM25_B * lengthRatio))
-        );
-      },
-      0,
-    );
-    if (weightedTermFrequency === 0) {
-      return score;
-    }
-    const inverseDocumentFrequency = Math.log(
-      1 + (documentCount - documentFrequency + 0.5) / (documentFrequency + 0.5),
-    );
+    const averageLength = averageLengths[fieldIndex] ?? 0;
+    const lengthRatio = averageLength === 0 ? 1 : field.length / averageLength;
     return (
-      score +
-      (inverseDocumentFrequency * weightedTermFrequency * (BM25_K1 + 1)) /
-        (weightedTermFrequency + BM25_K1)
+      weighted +
+      SEARCH_FIELD_WEIGHTS[fieldIndex]! *
+        (termFrequency /
+          (1 - BM25_B[fieldIndex]! + BM25_B[fieldIndex]! * lengthRatio))
     );
+  }, 0);
+}
+
+// Each word gets its own BM25 saturation before its weight applies. Field
+// weights make most matches saturate, so a weight applied to term frequency
+// would make a synonym match score the same as an exact match.
+function scoreSearchDocument(
+  document: SearchDocument,
+  query: ScoredQueryTerm[],
+  averageLengths: number[],
+): number {
+  return query.reduce((score, { weights, inverseDocumentFrequency }) => {
+    let best = 0;
+    for (const [term, weight] of weights) {
+      const frequency = weightedTermFrequency(document, term, averageLengths);
+      best = Math.max(
+        best,
+        (weight * frequency * (BM25_K1 + 1)) / (frequency + BM25_K1),
+      );
+    }
+    return score + inverseDocumentFrequency * best;
   }, 0);
 }
 
@@ -321,18 +433,12 @@ function searchCatalogTools(
   if (searchTerms.length === 0) {
     return [];
   }
+  const scoredTerms = scoreQueryTerms(searchTerms, documents);
   const averageLengths = averageFieldLengths(documents);
-  const frequencies = documentFrequencies(documents);
   const scored = documents
     .map((document) => ({
       name: document.name,
-      score: scoreSearchDocument(
-        document,
-        searchTerms,
-        frequencies,
-        documents.length,
-        averageLengths,
-      ),
+      score: scoreSearchDocument(document, scoredTerms, averageLengths),
     }))
     .filter(({ score }) => score > 0)
     .sort(
