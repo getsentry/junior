@@ -2,7 +2,12 @@ import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import {
+  NavigationType,
+  useNavigate,
+  useNavigationType,
+  useParams,
+} from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { useConversationsData } from "../api";
@@ -20,6 +25,7 @@ import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
   ConversationComposer,
+  touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
 import { HeaderIconButton } from "./ConversationHeaderActions";
@@ -82,6 +88,7 @@ export function ConversationWorkspace(props: {
   const search = sidebarFits ? "" : debouncedQuery;
   const params = useParams();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
   const feed = useConversationsData(search);
@@ -90,6 +97,7 @@ export function ConversationWorkspace(props: {
   const createConversation = useCreateConversation();
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
+  const createRequested = useRef(false);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -101,8 +109,11 @@ export function ConversationWorkspace(props: {
   );
   const openCreate = () => {
     createConversation.reset();
-    if (selectedId) navigate(NEW_CONVERSATION_PATH);
-    else createComposer.current?.focus();
+    if (selectedId) {
+      // The reader asked to type, so home takes focus even on a touch screen.
+      createRequested.current = true;
+      navigate(NEW_CONVERSATION_PATH);
+    } else createComposer.current?.focus();
   };
 
   const waitingConversations = useWaitingConversations();
@@ -138,10 +149,21 @@ export function ConversationWorkspace(props: {
     return () => visit.abort();
   }, [home]);
 
-  // Home exists to start a conversation, so the reader can type at once.
+  // Home exists to start a conversation, so the reader can type at once. On a
+  // touch screen, focus opens the keyboard over the conversation list. There,
+  // focus only when the dashboard opens on home or the reader asks to create,
+  // not when they come back from a conversation or follow a link.
+  const homeShown = useRef(false);
   useEffect(() => {
-    if (home) createComposer.current?.focus();
-  }, [home]);
+    if (!home) return;
+    const returned =
+      (homeShown.current || navigationType === NavigationType.Push) &&
+      !createRequested.current;
+    homeShown.current = true;
+    createRequested.current = false;
+    if (returned && touchKeyboardMatches()) return;
+    createComposer.current?.focus();
+  }, [home, navigationType]);
 
   const createView = (
     <NewConversationView

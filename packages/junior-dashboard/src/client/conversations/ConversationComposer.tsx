@@ -44,7 +44,8 @@ function subscribeToTouchKeyboard(onChange: () => void) {
   return () => media.removeEventListener("change", onChange);
 }
 
-function touchKeyboardMatches() {
+/** True when the device types on a touch keyboard. */
+export function touchKeyboardMatches() {
   return window.matchMedia(TOUCH_KEYBOARD_QUERY).matches;
 }
 

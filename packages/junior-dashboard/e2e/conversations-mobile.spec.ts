@@ -200,6 +200,46 @@ test.describe("on a touch screen", () => {
     await expect(composer).toHaveValue("First line\nSecond line");
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
+
+  test("opens the keyboard on home only when the dashboard opens there", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const composer = page.getByLabel("Start a conversation");
+    await expect(composer).toBeFocused();
+
+    const conversation = page.getByRole("link", {
+      name: /Investigate checkout latency/,
+    });
+    const heading = page.getByRole("heading", {
+      name: "Investigate checkout latency",
+    });
+    await conversation.click();
+    await expect(heading).toBeVisible();
+    await page.getByRole("link", { name: "Back to conversations" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeVisible();
+    await expect(composer).not.toBeFocused();
+
+    // A browser back gesture returns to home too.
+    await conversation.click();
+    await expect(heading).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeVisible();
+    await expect(composer).not.toBeFocused();
+
+    // A tablet shows the list beside home. Its create button asks to type.
+    await page.setViewportSize({ height: 800, width: 1024 });
+    await conversation.first().click();
+    await expect(heading).toBeVisible();
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeFocused();
+  });
 });
 
 test("opens and closes a conversation on mobile", async ({
