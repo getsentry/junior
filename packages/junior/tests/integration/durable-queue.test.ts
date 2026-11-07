@@ -25,7 +25,6 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { LOST_WORKER_RESUME_MESSAGE } from "@/chat/task-execution/paused-turn";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
@@ -36,6 +35,7 @@ import {
 import {
   getTurnRecord,
   listTurnSummaries,
+  LOST_WORKER_RESUME_MESSAGE,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
