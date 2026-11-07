@@ -74,13 +74,13 @@ describe("conversation child agents API", () => {
     );
     await getDb()
       .update(juniorConversations)
-      .set({ kind: "thread", childArchivedAt: new Date(4_000) })
+      .set({ kind: "thread", archivedAt: new Date(4_000) })
       .where(
         eq(juniorConversations.conversationId, thread.childConversationId),
       );
     await getDb()
       .update(juniorConversations)
-      .set({ childArchivedAt: new Date(3_500) })
+      .set({ archivedAt: new Date(3_500) })
       .where(
         eq(juniorConversations.conversationId, blocked.childConversationId),
       );
@@ -125,7 +125,7 @@ describe("conversation child agents API", () => {
     ).toEqual({
       agents: [
         {
-          childArchivedAt: new Date(3_500).toISOString(),
+          archivedAt: new Date(3_500).toISOString(),
           conversationId: blocked.childConversationId,
           cumulativeDurationMs: 0,
           error: "GitHub access is missing.",
@@ -144,7 +144,7 @@ describe("conversation child agents API", () => {
               outputTokens: 50,
             },
           },
-          childArchivedAt: null,
+          archivedAt: null,
           conversationId: reviewer.childConversationId,
           cumulativeDurationMs: 50_000,
           cumulativeUsage: {
@@ -165,7 +165,7 @@ describe("conversation child agents API", () => {
           kind: "thread",
           status: "pending",
           task: "Pair on the rollout with the team.",
-          childArchivedAt: new Date(4_000).toISOString(),
+          archivedAt: new Date(4_000).toISOString(),
           updatedAt: new Date(500).toISOString(),
         },
       ],
@@ -258,7 +258,7 @@ describe("conversation child agents API", () => {
     expect(await response.json()).toEqual({
       agents: [
         {
-          childArchivedAt: null,
+          archivedAt: null,
           conversationId: child.childConversationId,
           cumulativeDurationMs: 0,
           kind: "task",

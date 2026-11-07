@@ -9,8 +9,8 @@ import {
 } from "../tool-context";
 
 /**
- * Register `archiveConversation`. It archives or restores a root for the
- * user, or a child Conversation and optionally its children for everyone.
+ * Register `archiveConversation`. It archives or restores one Conversation,
+ * and optionally its children, for everyone.
  */
 export function registerArchiveConversationTool(
   server: McpServer,
@@ -21,7 +21,7 @@ export function registerArchiveConversationTool(
     {
       title: "Archive conversation",
       description:
-        "Archive one of your conversations, or restore it. Archiving a top-level conversation hides it and its child conversations only for you, and writes nothing to the children. Archiving a child conversation, a Thread or a Task, hides it and its children for everyone. A child restore fails while a conversation above it is archived. A new message from a person restores a child and the archived conversations above it.",
+        "Archive one of your conversations, or restore it, for everyone in it. Archiving a conversation hides it and its child conversations. A restore fails while a conversation above it is archived. A new message from a person restores the conversation and the archived conversations above it.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         archived: z
@@ -32,7 +32,7 @@ export function registerArchiveConversationTool(
           .boolean()
           .default(false)
           .describe(
-            "Child conversations only. On archive, true also archives every child of this conversation at any depth; without it, a child archive fails while any of its children is not archived. On restore, true also restores the children that were archived with this conversation. Ignored for a top-level conversation.",
+            "On archive, true also archives every child of this conversation at any depth; without it, the archive fails while any of its children is not archived. On restore, true also restores the children that were archived with this conversation.",
           ),
         lastSeenAt: z
           .string()

@@ -99,7 +99,7 @@ describe("conversation pin API", () => {
     await closeDb();
   });
 
-  it("sorts the viewer's pins first and unpins on archive", async () => {
+  it("sorts the viewer's pins first, keeps pins on archive, and restores on pin", async () => {
     const older = "local:test:pin-older";
     const newer = "local:test:pin-newer";
     await storeConversation({
@@ -160,11 +160,21 @@ describe("conversation pin API", () => {
       },
     );
     expect(archive.status).toBe(200);
+    // Archive applies to everyone but leaves each person's pin alone.
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(older, { viewer }),
       ).pinnedAt,
-    ).toBeNull();
+    ).toEqual(expect.any(String));
+    await expect(feedIds({ viewer: other.viewer })).resolves.toEqual([
+      { conversationId: newer, pinned: false },
+    ]);
+    // A pin restores the archive for everyone.
+    expect((await setPin(other.app, older, true)).status).toBe(200);
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: older, pinned: true },
+      { conversationId: newer, pinned: false },
+    ]);
   });
 
   it("keeps the viewer's Pinned order until a pin changes", async () => {

@@ -15,7 +15,7 @@ import { conversationFromRecordRow, selectConversationRecords } from "./record";
 /**
  * Find where a Thread nests: its nearest ancestor that is a listed root or a
  * Thread. A Thread under a Task moves up. Returns undefined when an ancestor
- * child is archived, because a child archive hides its whole subtree.
+ * is archived, because an archive hides its whole subtree.
  */
 function findThreadPlacement(
   threadId: string,
@@ -27,7 +27,7 @@ function findThreadPlacement(
     if (rootIds.has(ancestor.conversationId)) {
       return placement ?? ancestor.conversationId;
     }
-    if (ancestor.childArchivedAt) return undefined;
+    if (ancestor.archivedAt) return undefined;
     if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
   }
   return undefined;
@@ -36,9 +36,9 @@ function findThreadPlacement(
 /**
  * Read the shown Threads of the listed roots for the feed, nested under
  * their nearest shown ancestor. A Thread shows when it and every ancestor
- * child have no `child_archived_at`. The caller passes only roots that the
- * viewer has not archived, so a root archive hides its tree with no writes to
- * the children. A Thread uses the access of its root.
+ * have no `archived_at`. The caller passes only unarchived roots, so a root
+ * archive hides its tree with no writes to the children. A Thread uses the
+ * access of its root.
  */
 export async function readFeedThreads(
   db: JuniorDatabase,
@@ -53,7 +53,7 @@ export async function readFeedThreads(
         and(
           inArray(juniorConversations.rootConversationId, rootIdList),
           eq(juniorConversations.kind, "thread"),
-          isNull(juniorConversations.childArchivedAt),
+          isNull(juniorConversations.archivedAt),
         ),
       )
       .orderBy(

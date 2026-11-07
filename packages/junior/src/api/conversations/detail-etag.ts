@@ -119,7 +119,6 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     : sql`false`;
   const [row] = await db
     .select({
-      archivedAt: juniorConversationParticipants.archivedAt,
       attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
       autoArchive: juniorConversationParticipants.autoArchive,
       autoArchiveDefault: juniorUsers.autoArchiveDefault,

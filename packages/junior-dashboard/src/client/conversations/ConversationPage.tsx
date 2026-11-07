@@ -20,7 +20,6 @@ import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
 import {
   applyPendingArchiveUpdate,
-  conversationArchivedAt,
   useArchiveConversation,
   type ArchivedFromConversationState,
   type PendingArchiveConversationUpdate,
@@ -291,8 +290,6 @@ export function ConversationPage(props: {
   const navigate = useNavigate();
   const setArchived = (archived: boolean) => {
     archive.mutate({
-      // A child archive covers its children, so the confirm names them.
-      applyToChildren: conversation!.kind !== "root",
       archived,
       lastSeenAt: conversation!.lastSeenAt,
     });
@@ -759,7 +756,7 @@ export function ConversationPage(props: {
                 unread,
               }}
               archive={{
-                archived: Boolean(conversationArchivedAt(conversation)),
+                archived: Boolean(conversation?.archivedAt),
                 disabled: !conversation || archive.isPending,
                 // A refused restore names the archived ancestor to restore
                 // first.
@@ -769,7 +766,7 @@ export function ConversationPage(props: {
                     "Could not update archive state."
                   : undefined,
                 onClick: () => {
-                  if (conversationArchivedAt(conversation)) {
+                  if (conversation?.archivedAt) {
                     setArchived(false);
                   } else if (conversation!.kind === "root") {
                     setArchived(true);

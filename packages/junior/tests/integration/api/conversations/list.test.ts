@@ -88,11 +88,15 @@ describe("conversation list API", () => {
         .db()
         .insert(juniorConversationParticipants)
         .values({
-          archivedAt: new Date(2_000),
           lastMessageAt: new Date(1_000),
           rootConversationId: archivedId,
           userId: viewer!.id,
         });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: new Date(2_000) })
+        .where(eq(juniorConversations.conversationId, archivedId));
       const app = createJuniorApi();
 
       const response = await app.request(

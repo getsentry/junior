@@ -1,13 +1,4 @@
-import {
-  and,
-  eq,
-  exists,
-  inArray,
-  isNotNull,
-  notExists,
-  or,
-  type SQL,
-} from "drizzle-orm";
+import { and, eq, exists, inArray, isNotNull, or, type SQL } from "drizzle-orm";
 import { union } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -103,26 +94,6 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
   return inArray(juniorConversations.conversationId, memberRoots);
 }
 
-/** True when the person's personal feed has archived this root. */
-export function conversationArchivedFor(member: ConversationMember): SQL {
-  return exists(
-    memberParticipantRow(
-      member,
-      isNotNull(juniorConversationParticipants.archivedAt),
-    ),
-  );
-}
-
-/** True when the person's personal feed has not archived this root. */
-export function conversationNotArchivedFor(member: ConversationMember): SQL {
-  return notExists(
-    memberParticipantRow(
-      member,
-      isNotNull(juniorConversationParticipants.archivedAt),
-    ),
-  );
-}
-
 /** Root-actor ownership or a materialized participant row for the same person. */
 export function viewerConversationMembership(args: {
   actorMatch: SQL | undefined;
@@ -134,14 +105,13 @@ export function viewerConversationMembership(args: {
   return args.actorMatch ?? args.participantMatch;
 }
 
-/** One person's archive and pin marks on a conversation root. */
+/** One person's pin marks on a conversation root. */
 export type ConversationViewerMarks = {
-  archivedAtMs?: number;
   pinnedAtMs?: number;
   pinPosition?: number;
 };
 
-/** Read personal archive and pin marks for a bounded set of conversation roots. */
+/** Read personal pin marks for a bounded set of conversation roots. */
 export async function conversationViewerMarks(
   db: JuniorDatabase,
   conversationIds: readonly string[],
@@ -152,14 +122,10 @@ export async function conversationViewerMarks(
     inArray(juniorConversationParticipants.rootConversationId, [
       ...conversationIds,
     ]),
-    or(
-      isNotNull(juniorConversationParticipants.archivedAt),
-      isNotNull(juniorConversationParticipants.pinnedAt),
-    ),
+    isNotNull(juniorConversationParticipants.pinnedAt),
   );
   const query = db
     .select({
-      archivedAt: juniorConversationParticipants.archivedAt,
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId: juniorConversationParticipants.rootConversationId,
@@ -191,17 +157,13 @@ export async function conversationViewerMarks(
 
 /** Project one participant row into marks, or undefined when it has none. */
 export function viewerMarksFromParticipant(row: {
-  archivedAt: Date | null;
   pinnedAt: Date | null;
   pinPosition: number | null;
 }): ConversationViewerMarks | undefined {
-  if (!row.archivedAt && !row.pinnedAt) return undefined;
+  if (!row.pinnedAt) return undefined;
   return {
-    ...(row.archivedAt
-      ? { archivedAtMs: row.archivedAt.getTime() }
-      : undefined),
-    ...(row.pinnedAt ? { pinnedAtMs: row.pinnedAt.getTime() } : undefined),
-    ...(row.pinnedAt && row.pinPosition !== null
+    pinnedAtMs: row.pinnedAt.getTime(),
+    ...(row.pinPosition !== null
       ? { pinPosition: row.pinPosition }
       : undefined),
   };

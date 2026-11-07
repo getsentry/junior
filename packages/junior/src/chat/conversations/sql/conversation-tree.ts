@@ -7,7 +7,7 @@ import { nextDetailVersion } from "./detail-version";
 
 /** One Conversation in a tree, with the fields that archive rules read. */
 export type ConversationTreeNode = {
-  childArchivedAt: Date | null;
+  archivedAt: Date | null;
   conversationId: string;
   kind: ConversationKind;
   parentConversationId?: string;
@@ -24,7 +24,7 @@ export async function readConversationTrees(
   if (rootConversationIds.length === 0) return new Map();
   const rows = await db
     .select({
-      childArchivedAt: juniorConversations.childArchivedAt,
+      archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
@@ -37,7 +37,7 @@ export async function readConversationTrees(
     rows.map((row) => [
       row.conversationId,
       {
-        childArchivedAt: row.childArchivedAt,
+        archivedAt: row.archivedAt,
         conversationId: row.conversationId,
         kind: conversationKindFromRow(row),
         ...(row.parentConversationId
@@ -92,8 +92,8 @@ export function conversationDescendants(
   return descendants;
 }
 
-/** Set or clear the shared archive of the given child Conversations. */
-export async function setChildArchivedAt(
+/** Set or clear the shared archive of the given Conversations. */
+export async function setArchivedAt(
   db: JuniorDatabase,
   conversationIds: readonly string[],
   archivedAt: Date | null,
@@ -101,36 +101,40 @@ export async function setChildArchivedAt(
   if (conversationIds.length === 0) return;
   await db
     .update(juniorConversations)
-    .set({ childArchivedAt: archivedAt, detailVersion: nextDetailVersion })
+    .set({ archivedAt, detailVersion: nextDetailVersion })
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
 }
 
 /**
- * Restore one archived child and its archived ancestor children, so the child
- * shows again. Its descendants keep their archive. A root has no child
- * archive, so this changes nothing for a root.
+ * Restore one archived Conversation and its archived ancestors, so it shows
+ * again. Its descendants keep their archive.
  */
-export async function restoreArchivedChildPath(
+export async function restoreArchivedPath(
   db: JuniorDatabase,
   conversationId: string,
 ): Promise<void> {
   const [row] = await db
     .select({
+      archivedAt: juniorConversations.archivedAt,
       parentConversationId: juniorConversations.parentConversationId,
       rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
+  if (!row) return;
   // Most messages land in a root, so skip the tree read there.
-  if (!row?.parentConversationId || !row.rootConversationId) return;
+  if (!row.parentConversationId || !row.rootConversationId) {
+    if (row.archivedAt) await setArchivedAt(db, [conversationId], null);
+    return;
+  }
   const tree = await readConversationTrees(db, [row.rootConversationId]);
   const node = tree.get(conversationId);
   if (!node) return;
-  await setChildArchivedAt(
+  await setArchivedAt(
     db,
     [node, ...conversationAncestors(tree, conversationId)]
-      .filter((entry) => entry.kind !== "root" && entry.childArchivedAt)
+      .filter((entry) => entry.archivedAt)
       .map((entry) => entry.conversationId),
     null,
   );
