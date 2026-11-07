@@ -12,6 +12,11 @@ const NEON_POOLER_SUFFIX = "-pooler";
  * migrates the database that `DATABASE_URL` names.
  */
 export function readMigrationDatabaseUrl(databaseUrl: string): string {
+  // libpq URIs with an empty host, such as `postgresql://user@/db?host=/tmp`,
+  // are not WHATWG URLs. They can't name a Neon endpoint.
+  if (!URL.canParse(databaseUrl)) {
+    return databaseUrl;
+  }
   const url = new URL(databaseUrl);
   const [endpoint, ...domain] = url.hostname.split(".");
   if (
