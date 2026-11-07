@@ -79,6 +79,11 @@ describe("conversation list API", () => {
         searchText: "hidden marigold launch",
         modelId: "test-model",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ stoppedAt: new Date() })
+        .where(eq(juniorConversations.conversationId, privateId));
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
       await fixture.sql
@@ -129,7 +134,12 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await privateTitleSearchResponse.json())
           .conversations,
-      ).toEqual([expect.objectContaining({ conversationId: privateId })]);
+      ).toEqual([
+        expect.objectContaining({
+          conversationId: privateId,
+          status: "stopped",
+        }),
+      ]);
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );

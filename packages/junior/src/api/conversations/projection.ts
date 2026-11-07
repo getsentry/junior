@@ -33,6 +33,7 @@ type ConversationProjectionSource = Pick<
   | "lastActivityAtMs"
   | "location"
   | "source"
+  | "stoppedAtMs"
   | "title"
   | "updatedAtMs"
 >;
@@ -117,16 +118,22 @@ function actorIdentityReport(
   return Object.keys(identity).length > 0 ? identity : undefined;
 }
 
+/**
+ * A stopped Conversation shows as `stopped` while no work runs. A Turn that
+ * runs before the stop ends, such as one that its parent's new work starts,
+ * shows as `active`.
+ */
 function statusFromConversation(
   conversation: ConversationProjectionSource,
 ): ConversationReportStatus {
-  if (conversation.execution.status === "idle") {
-    return "completed";
+  const status = conversation.execution.status;
+  if (status !== "idle" && status !== "failed") {
+    return "active";
   }
-  if (conversation.execution.status === "failed") {
-    return "failed";
+  if (conversation.stoppedAtMs !== undefined) {
+    return "stopped";
   }
-  return "active";
+  return status === "idle" ? "completed" : "failed";
 }
 
 function titleFromConversation(args: {
@@ -266,8 +273,10 @@ export function conversationSummaryFromStoredConversation(args: {
     canViewPrivateContent,
   );
   const status = statusFromConversation(conversation);
-  // Only an idle Conversation waits on the reader.
-  const unread = status === "completed" && args.unreadReply === true;
+  // Only an idle Conversation waits on the reader. A stopped one is idle too.
+  const unread =
+    (status === "completed" || status === "stopped") &&
+    args.unreadReply === true;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,

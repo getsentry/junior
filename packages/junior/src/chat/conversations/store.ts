@@ -99,6 +99,8 @@ export interface Conversation {
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
   transcriptPurgedAtMs?: number;
+  /** When a person stopped this Conversation. Unset when it is not stopped. */
+  stoppedAtMs?: number;
   /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }

@@ -67,6 +67,13 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
+  Events are saved as skipped Messages and start no Turn. A stop marks the
+  Conversation and its child agents. A run that sees its stop late also stops
+  the child agents it tasked after the stop. A person's input sent after the
+  stop, or new work from a child's parent, ends the stop. A person's
+  stop keeps the Watches; an agent's `stopAgent` also cancels them. Reports
+  show it as `stopped` while no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.

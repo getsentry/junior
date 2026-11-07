@@ -187,7 +187,7 @@ function withMockViewerState<
   const pinPosition = mockPinPositions.get(report.conversationId);
   // Match the API: only idle conversations are unread.
   const unread =
-    report.status === "completed" &&
+    (report.status === "completed" || report.status === "stopped") &&
     mockUnreadConversationIds.has(report.conversationId);
   return {
     ...report,

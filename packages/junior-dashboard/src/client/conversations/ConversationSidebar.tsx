@@ -28,6 +28,7 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
+  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { formatCompactAge } from "./conversationAge";
@@ -359,7 +360,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const emphasized = unread || Boolean(props.waiting);
   const drag = props.drag;
   // Unread tracks idle conversations only.
-  const canMarkUnread = props.conversation.status === "completed";
+  const canMarkUnread = isIdleConversation(props.conversation);
   const archived = Boolean(props.conversation.archivedAt);
   // The leading marker toggles read state. A waiting row's marker is about
   // its review item, so it stays a plain marker.
@@ -584,7 +585,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   );
 });
 
-/** Show the row age, or the status when the conversation runs or failed. */
+/** Show the row age, or the status when the conversation runs, failed, or stopped. */
 function ConversationRowState(props: {
   lastSeenAt: string;
   status: ReturnType<typeof visualStatusForConversation>;
@@ -599,6 +600,13 @@ function ConversationRowState(props: {
   }
   if (props.status === "failed") {
     return <span className="font-sans text-xs text-rose-400">Failed</span>;
+  }
+  if (props.status === "stopped") {
+    return (
+      <span className="font-sans text-xs text-dashboard-text-muted">
+        Stopped
+      </span>
+    );
   }
   return (
     <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">

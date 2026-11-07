@@ -209,7 +209,7 @@ export type SystemData = DashboardCoreData & {
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle";
+export type VisualStatus = "active" | "failed" | "idle" | "stopped";
 
 export type CodeBlock = {
   code: string;
