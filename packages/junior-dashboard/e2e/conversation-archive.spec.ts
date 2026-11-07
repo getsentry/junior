@@ -12,7 +12,7 @@ test("finds an old archived conversation by title and restores it", async ({
   await expect(sidebarLink).toHaveCount(0);
 
   await page.keyboard.press("ControlOrMeta+k");
-  const palette = page.getByRole("dialog", { name: "Search" });
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
   await palette.getByRole("combobox").fill("archived restore");
   await palette
     .getByRole("option", { name: /Archived restore target.*Archived/ })

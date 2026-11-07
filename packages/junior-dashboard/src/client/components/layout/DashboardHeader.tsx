@@ -3,7 +3,10 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
-import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
+import {
+  COMMAND_PALETTE_LABEL,
+  COMMAND_PALETTE_SHORTCUT,
+} from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { Button } from "../ui/button";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
@@ -135,7 +138,7 @@ export function DashboardHeader(props: {
             onClick={props.onSearch}
           >
             <Search aria-hidden="true" className="size-4 shrink-0" />
-            <span className="flex-1 text-left">Search…</span>
+            <span className="flex-1 text-left">{COMMAND_PALETTE_LABEL}…</span>
             <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
           </Button>
           {props.profile}
@@ -234,7 +237,7 @@ export function DashboardHeader(props: {
                   size="menu"
                 >
                   <Search aria-hidden="true" className="size-4" />
-                  Search
+                  {COMMAND_PALETTE_LABEL}
                 </Button>
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
