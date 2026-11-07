@@ -105,7 +105,9 @@ import {
 } from "../components/ParticipantAvatarStack";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChatLayout } from "./ChatLayout";
+import type { ConversationComposerHandle } from "./ConversationComposer";
 import { ConversationOutline } from "./ConversationOutline";
+import { committedMessageIds } from "./conversationOutbox";
 import {
   QuickQuestionPanel,
   QuickQuestionSelectionButton,
@@ -163,6 +165,7 @@ export function ConversationPage(props: {
     () => false,
   );
   const pageRef = useRef<HTMLDivElement>(null);
+  const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
@@ -405,6 +408,9 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   const agentTree = detail.data?.agentTree;
+  // A child Conversation takes input only from its parent agent, and it
+  // runs without interactive auth, so it has no approval to show.
+  const canReply = view === "rich" && detail.data?.isParticipant && !agentTree;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
@@ -888,9 +894,7 @@ export function ConversationPage(props: {
             </section>
           }
           dock={
-            // A child Conversation takes input only from its parent agent, and it
-            // runs without interactive auth, so it has no approval to show.
-            view === "rich" && detail.data?.isParticipant && !agentTree ? (
+            canReply && detail.data ? (
               <div
                 className="contents"
                 onFocusCapture={engageComposer}
@@ -908,6 +912,7 @@ export function ConversationPage(props: {
                   // every 2s; a prop would bust footer memo while the reader types.
                   pendingGeneratedAtRef={pendingGeneratedAtRef}
                   pendingMessages={detail.pendingMessages}
+                  ref={replyRef}
                   reviewItemId={reviewItemId}
                   // Without live history, an inline send would never leave the
                   // transcript tail. A started Turn reads a new send only later.
@@ -944,6 +949,9 @@ export function ConversationPage(props: {
           setTurnContext(undefined);
           quickQuestion.open(selection);
         }}
+        onRespond={
+          canReply ? (quote) => replyRef.current?.appendText(quote) : undefined
+        }
         rootRef={pageRef}
       />
       <SubagentTranscriptDrawer
@@ -967,19 +975,6 @@ function conversationIsLive(
   if (detail) return detail.status === "active";
   return visualStatus === "active";
 }
-
-function committedMessageIds(
-  events: ConversationDetailReport["events"] | undefined,
-): readonly string[] {
-  if (!events) return EMPTY_MESSAGE_IDS;
-  const ids: string[] = [];
-  for (const event of events) {
-    if (event.data.type === "message") ids.push(event.data.messageId);
-  }
-  return ids;
-}
-
-const EMPTY_MESSAGE_IDS: readonly string[] = [];
 
 type ConversationLink = { event: number } | { turn: string };
 

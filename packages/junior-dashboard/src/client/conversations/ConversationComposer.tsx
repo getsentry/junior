@@ -82,6 +82,8 @@ export function conversationAttemptForSubmit(
 
 /** Imperative composer actions for the reply footer and the create view. */
 export type ConversationComposerHandle = {
+  /** Add text as a new paragraph after the draft, with the cursor below it. */
+  appendText(text: string): void;
   /** True when the draft has room for these images right now. */
   canRestoreImages(images: readonly InputImage[]): boolean;
   /** Put the cursor in the draft. */
@@ -405,6 +407,21 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   useImperativeHandle(props.ref, () => ({
+    appendText: (text) => {
+      const draft = draftRef.current.text.trimEnd();
+      // The blank line ends a Markdown block, so the next words start anew.
+      const next = {
+        ...draftRef.current,
+        text: `${draft && `${draft}\n\n`}${text}\n\n`,
+      };
+      replaceMessage(next);
+      storeDraft(storageKey, next);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(next.text.length, next.text.length);
+      textarea.scrollTop = textarea.scrollHeight;
+    },
     canRestoreImages: (images) =>
       !images.length || composerImagesFit([...images, ...imagesRef.current]),
     focus: () => textareaRef.current?.focus({ preventScroll: true }),
