@@ -386,10 +386,13 @@ export async function stopConversationWork(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  /** Runs once the stop request is saved, before its metadata write. */
+  onStopSaved?: () => void;
   state?: StateAdapter;
 }) {
   const result = await workState.stopConversationWork(args);
   if (result.status === "requested") {
+    args.onStopSaved?.();
     await recordExecutionMetadata(args);
   }
   return result;

@@ -21,6 +21,8 @@ export async function stopConversationTurn(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  /** Runs once the stop request is saved. */
+  onStopSaved?: () => void;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<StopConversationWorkResult> {
@@ -30,6 +32,7 @@ export async function stopConversationTurn(args: {
       conversationId: args.conversationId,
       conversationStore: args.conversationStore,
       nowMs,
+      onStopSaved: args.onStopSaved,
       state: args.state,
     });
   let result = await stop();
@@ -81,8 +84,10 @@ export type StopConversationResult =
  * A stop that comes from a message, such as the Slack `stop` keyword, passes
  * that message. Its id is claimed in the mailbox first, so a redelivery
  * returns `duplicate` and stops nothing, not even newer work. A stop that
- * fails releases its claim, so a redelivery can stop again. A failed reply
- * after a stop is not released: the work is already stopped.
+ * fails before its stop request is saved releases its claim, so a redelivery
+ * can stop again. A failure after that keeps the claim, as does a failed
+ * reply: the work is already stopped, and a redelivery must not stop newer
+ * work.
  *
  * The child agents and sessions stop first, so a failure leaves the Turn
  * running and the stop can be retried. A child agent can outlive the parent
@@ -108,6 +113,7 @@ export async function stopConversation(args: {
   ) {
     return { status: "duplicate" };
   }
+  let stopSaved = false;
   try {
     // One stop time for the whole tree, so a late cascade of a child agent
     // knows which Conversations this stop already reached.
@@ -121,9 +127,14 @@ export async function stopConversation(args: {
       nowMs,
       state: args.state,
     });
-    return await stopConversationTurn(args);
+    return await stopConversationTurn({
+      ...args,
+      onStopSaved: () => {
+        stopSaved = true;
+      },
+    });
   } catch (error) {
-    if (args.message) {
+    if (args.message && !stopSaved) {
       // The stop error is the one that matters, so a failed release does not
       // replace it.
       await releaseInboundMessage({

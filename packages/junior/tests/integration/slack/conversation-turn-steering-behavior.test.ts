@@ -252,4 +252,28 @@ describe("Slack ingress: thread messages", () => {
       stoppedAtMs,
     );
   });
+
+  it("keeps a `stop` keyword's claim when the stop fails after it landed", async () => {
+    const harness = ingress();
+    const child = await startThreadWork(harness);
+    const stop = {
+      eventType: "message" as const,
+      text: `<@${SLACK_BOT_USER_ID}> stop`,
+      ts: "1712345.000200",
+    };
+    // The stop request is saved, then its wake fails.
+    harness.queue.rejectSends();
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 503 });
+    harness.queue.allowSends();
+    const stoppedAtMs = await getConversationStoppedAtMs(CONVERSATION_ID);
+    expect(stoppedAtMs).toBeDefined();
+    await expectChildAgentStopped(child, harness.state);
+
+    // The redelivery is a duplicate, so it cannot stop newer work.
+    await expect(harness.send(stop)).resolves.toMatchObject({ status: 200 });
+    expect(stopAcks()).toHaveLength(0);
+    await expect(getConversationStoppedAtMs(CONVERSATION_ID)).resolves.toBe(
+      stoppedAtMs,
+    );
+  });
 });
