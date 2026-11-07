@@ -69,7 +69,7 @@ describe("agent invocation worker", () => {
     vi.restoreAllMocks();
   });
 
-  it("stops a stranded running child without starting another agent run", async () => {
+  it("stops a stranded running child that already used its resume", async () => {
     const fixture = await prepareParentConversation();
     const state = getStateAdapter();
     await state.connect();
@@ -114,6 +114,7 @@ describe("agent invocation worker", () => {
           },
         ] as PiMessage[],
         turnId,
+        lostWorkerResumeCount: 1,
         sliceId: 1,
         source: { kind: "agent_invocation" },
         state: "running",

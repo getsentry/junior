@@ -35,6 +35,8 @@ import {
   abandonTurnRecord,
   failTurnRecord,
   getTurnRecord,
+  lostWorkerBeforeFirstSave,
+  pauseLostWorkerTurn,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import {
@@ -43,6 +45,7 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { botConfig } from "@/chat/config";
 import {
   recordFinishedTurnForAutomatedLimit,
@@ -426,11 +429,16 @@ async function persistTerminalLifecycle(
   );
 }
 
-/** Stop an invocation whose worker died, or project its terminal turn result. */
+/**
+ * Stop an invocation whose worker died, or project its terminal turn result.
+ * With `resumeLostWorker`, a Turn whose worker died resumes once from its last
+ * save, as a root Turn does. A second loss stops it.
+ */
 async function projectTerminalTurn(
   invocation: AgentInvocation,
-  options: { reportNow?: boolean } = {},
+  options: { reportNow?: boolean; resumeLostWorker?: boolean } = {},
 ): Promise<AgentInvocation | undefined> {
+  const { resumeLostWorker, ...completeOptions } = options;
   let turn = await getTurnRecord(
     invocation.childConversationId,
     getAgentInvocationTurnId(invocation.invocationId),
@@ -438,7 +446,20 @@ async function projectTerminalTurn(
   if (!turn) {
     return undefined;
   }
-  if (turn.state === "running") {
+  if (
+    resumeLostWorker &&
+    turn.state === "running" &&
+    (await pauseLostWorkerTurn(turn))
+  ) {
+    return undefined;
+  }
+  if (
+    turn.state === "running" ||
+    // The resumed run lost its worker again before its first save.
+    (resumeLostWorker &&
+      turn.state === "paused" &&
+      lostWorkerBeforeFirstSave(turn))
+  ) {
     turn = await failTurnRecord({
       conversationId: turn.conversationId,
       expectedVersion: turn.version,
@@ -464,7 +485,7 @@ async function projectTerminalTurn(
       ? undefined
       : readBlockedReport(turn.piMessages.slice(turn.turnStartMessageIndex));
   return await completeAgentInvocation({
-    ...options,
+    ...completeOptions,
     invocationId: invocation.invocationId,
     ...(failed
       ? {
@@ -750,7 +771,10 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
-      const projected = await projectTerminalTurn(invocation);
+      // This worker holds the lease, so a running Turn lost its worker.
+      const projected = await projectTerminalTurn(invocation, {
+        resumeLostWorker: true,
+      });
       if (projected && isTerminalAgentInvocation(projected)) {
         await finish(projected);
         await acknowledge();
@@ -838,6 +862,9 @@ export function createAgentInvocationWorker(
           source: invocation.source,
           ...(location ? { location } : undefined),
           surface: "internal",
+          // A Turn that starts late in the worker's request must pause before
+          // the host ends the request, not run on until the host kills it.
+          deadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
           ...(stopSignal ? { signal: stopSignal } : undefined),
           // TODO(dcramer): Issues #881 and #883 track a path for child runs to
           // force interactive auth when a delegated tool requires credentials
