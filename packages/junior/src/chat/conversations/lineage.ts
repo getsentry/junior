@@ -5,7 +5,8 @@ import { getDb } from "@/chat/db";
 import { parseSessionSource } from "@/chat/source";
 import { juniorConversations, juniorDestinations } from "@/db/schema";
 import { conversationKindFromRow } from "./sql/conversation-row";
-import { locationFromRow, visibilityFromLocationRow } from "./sql/location";
+import { locationFromRow } from "./sql/location";
+import { readConversationPrivacy } from "./sql/visibility";
 import type { ConversationKind } from "./store";
 
 /** One Conversation in a parent chain. */
@@ -51,6 +52,7 @@ export async function readConversationLineage(
       location: juniorConversations.location,
       parentConversationId: juniorConversations.parentConversationId,
       sessionSource: juniorConversations.sessionSource,
+      visibility: juniorConversations.visibility,
     })
     .from(juniorConversations)
     .innerJoin(
@@ -71,7 +73,10 @@ export async function readConversationLineage(
       row.destination,
       parseSessionSource(row.sessionSource),
     );
-    const visibility = visibilityFromLocationRow(row.destination);
+    const visibility = readConversationPrivacy({
+      conversation: row.visibility,
+      destination: row.destination?.visibility,
+    });
     return {
       conversationId: row.conversationId,
       kind: conversationKindFromRow(row),

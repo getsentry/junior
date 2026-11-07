@@ -1,6 +1,5 @@
 import type { Destination } from "@sentry/junior-plugin-api";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -108,24 +107,11 @@ export function locationFromRow(
   });
 }
 
-/** Read confirmed visibility from one linked Location row. */
-export function visibilityFromLocationRow(
-  row: LocationRow | null,
-): ConversationPrivacy | undefined {
-  if (!row) {
-    return undefined;
-  }
-  if (row.visibility === "public" || row.visibility === "private") {
-    return row.visibility;
-  }
-  return undefined;
-}
-
 /**
  * Give a root Conversation with no Location its first one, in the caller's
- * SQL scope. The Location row becomes the Conversation Destination, so
- * visibility then comes from that channel. Returns false when the
- * Conversation already has a Location.
+ * SQL scope. The Location row becomes the Conversation Destination. The
+ * Conversation keeps its own visibility, and a private channel makes it read
+ * private. Returns false when the Conversation already has a Location.
  */
 export async function setFirstConversationLocation(
   executor: JuniorSqlDatabase,

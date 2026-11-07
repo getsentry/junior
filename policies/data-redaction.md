@@ -2,8 +2,10 @@
 
 ## Intent
 
-Conversation privacy follows the stored destination visibility. Redaction
-protects raw payloads and telemetry. It does not change the product data a
+Each root Conversation stores its visibility: `direct`, `private`,
+`internal`, or `world`. A private Destination also makes it private. Dashboard
+and search SQL still read Destination visibility until #2380 moves them.
+Redaction protects raw payloads and telemetry. It does not change the product data a
 conversation may keep. Code: `packages/junior/src/chat/conversations/`.
 
 ## Policy
