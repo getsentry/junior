@@ -16,6 +16,9 @@ Conversation. A new feature uses this rule. It does not add its own rule.
   the values of their root. Missing or unknown visibility is private. A
   direct message is private. When the root or its Destination is missing,
   every row after row 1 denies.
+- A child copies the root's visibility and Location when it is created. Its
+  Runs use that copy and do not read the root again, so a later change on
+  the root does not reach the child.
 
 ## Rule between Conversations
 

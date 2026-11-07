@@ -51,6 +51,7 @@ import {
 } from "./location";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import { childSpawnSchema, type ChildSpawn } from "@/chat/conversations/spawn";
 type ConversationRow = Omit<
   typeof juniorConversations.$inferSelect,
   "legacyArchivedAt"
@@ -222,6 +223,24 @@ function destinationFromRow(
   return parseDestination(value);
 }
 
+/**
+ * Copy what a new child needs from its parent. A root gives its own Location
+ * and visibility. A child passes on its own copy one level deeper. A child
+ * that has no copy passes on none, so its children also fail closed.
+ */
+function childSpawnFromParent(parent: Conversation): ChildSpawn | undefined {
+  if (parent.parentConversationId) {
+    return parent.spawn
+      ? { ...parent.spawn, depth: parent.spawn.depth + 1 }
+      : undefined;
+  }
+  return {
+    depth: 1,
+    ...(parent.location ? { location: parent.location } : undefined),
+    visibility: parent.visibility ?? "private",
+  };
+}
+
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
@@ -304,6 +323,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.stoppedAt) !== undefined
       ? { stoppedAtMs: msFromDate(row.stoppedAt) }
       : undefined),
+    ...(row.spawn ? { spawn: childSpawnSchema.parse(row.spawn) } : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }
@@ -400,6 +420,7 @@ export class SqlStore implements ConversationStore {
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
+          const spawn = childSpawnFromParent(parent);
           const child: Conversation = {
             ...emptyConversation({
               conversationId: args.childConversationId,
@@ -408,6 +429,7 @@ export class SqlStore implements ConversationStore {
             }),
             kind: args.kind,
             parentConversationId: args.parentConversationId,
+            ...(spawn ? { spawn } : undefined),
           };
           await this.upsertConversation({ conversation: child });
         },
@@ -848,6 +870,7 @@ export class SqlStore implements ConversationStore {
         parentConversationId: conversation.parentConversationId ?? null,
         kind: conversation.kind,
         rootConversationId,
+        spawn: conversation.spawn ?? null,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,
@@ -874,6 +897,7 @@ export class SqlStore implements ConversationStore {
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
+          spawn: sql`coalesce(${juniorConversations.spawn}, excluded.spawn_json)`,
           detailVersion: nextDetailVersion,
         },
       })

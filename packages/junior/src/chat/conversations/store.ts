@@ -1,5 +1,6 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
+import type { ChildSpawn } from "@/chat/conversations/spawn";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { SessionSource } from "@/chat/source";
@@ -74,6 +75,8 @@ export interface Conversation {
   parentConversationId?: string;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
+  /** Parent facts that a child copied at create. Roots have none. */
+  spawn?: ChildSpawn;
   // TODO(dcramer): Replace this creation-time Actor projection with the
   // stored creator Identity after creator identity writes are complete.
   actor?: StoredSlackActor;

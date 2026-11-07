@@ -118,6 +118,22 @@ describe("agent invocation conversation work", () => {
       expect(child).not.toHaveProperty("location");
       expect(child).not.toHaveProperty("sessionSource");
       expect(child).not.toHaveProperty("visibility");
+      // The child copies the root's Location and visibility at spawn.
+      expect(child?.spawn).toEqual({
+        depth: 1,
+        location: expect.objectContaining({ threadTs: "1712345.0001" }),
+        visibility: "public",
+      });
+      // A later change on the root does not reach the child.
+      await conversationStore.recordActivity({
+        conversationId: slackParentConversationId,
+        destination: slackDestination,
+        nowMs: 3_000,
+        visibility: "private",
+      });
+      await expect(
+        conversationStore.get({ conversationId: slackParentConversationId }),
+      ).resolves.toMatchObject({ visibility: "private" });
       const queueMessage = queue.takeMessage();
 
       await expect(

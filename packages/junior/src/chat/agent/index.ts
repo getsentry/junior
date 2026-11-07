@@ -118,7 +118,7 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { readLineageRoot } from "@/chat/conversations/lineage";
+import { getConversationStore } from "@/chat/db";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -213,9 +213,15 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const conversationPrivacy = resolveConversationPrivacy(
-    await readLineageRoot(run.conversationId),
-  );
+  // A child uses the visibility it copied at spawn, never its parent's.
+  const conversation = await getConversationStore().get({
+    conversationId: run.conversationId,
+  });
+  const conversationPrivacy = resolveConversationPrivacy({
+    visibility: conversation?.parentConversationId
+      ? conversation.spawn?.visibility
+      : conversation?.visibility,
+  });
   const actor = actorFromRun(run);
   const runLogContext: LogContext = {
     conversationId: run.conversationId,

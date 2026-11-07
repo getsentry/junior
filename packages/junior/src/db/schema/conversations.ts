@@ -14,6 +14,7 @@ import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { Location } from "@/chat/conversations/location";
+import type { ChildSpawn } from "@/chat/conversations/spawn";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type {
@@ -75,6 +76,12 @@ export const juniorConversations = pgTable(
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
+    // Set once on a child at create. Child Runs read their Location,
+    // visibility, and depth here, not from a parent. A writer of an older
+    // deploy leaves it null, and child Runs then fail closed.
+    // TODO(dcramer): After every deployed writer sets spawn_json, rerun the
+    // 0085 backfill for children with a null value.
+    spawn: jsonb("spawn_json").$type<ChildSpawn>(),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(

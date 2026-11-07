@@ -7,7 +7,6 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
-import { readLineageRoot } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -16,7 +15,7 @@ import {
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { escapeClosingTags, renderTag } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -764,12 +763,14 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, root] = await Promise.all([
+      const [persisted, projection, child] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
-        readLineageRoot(invocation.childConversationId),
+        getConversationStore().get({
+          conversationId: invocation.childConversationId,
+        }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       // Some types start with the parent's history. Later agent invocations
@@ -779,8 +780,10 @@ export function createAgentInvocationWorker(
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
-      location = root.location;
-      canSpawn = root.depth <= maxAgentDepth;
+      // The child reads what it copied at spawn, never its parent. A child
+      // without a copy gets no Location and cannot spawn.
+      location = child?.spawn?.location;
+      canSpawn = child?.spawn ? child.spawn.depth <= maxAgentDepth : false;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };
