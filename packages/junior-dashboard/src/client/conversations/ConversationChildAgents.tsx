@@ -79,32 +79,14 @@ export function ConversationThreads(props: {
   feedConversations: readonly Conversation[];
   threads: readonly ConversationChildAgent[];
 }) {
-  const [showArchived, setShowArchived] = useState(false);
   const titles = useMemo(
     () => feedThreadTitles(props.feedConversations),
     [props.feedConversations],
   );
-  const archivedCount = props.threads.filter(
-    (thread) => thread.childArchivedAt,
-  ).length;
-  const threads = showArchived
-    ? props.threads
-    : props.threads.filter((thread) => !thread.childArchivedAt);
+  const { action, items: threads } = useShowArchived(props.threads);
   return (
     <DetailsCard
-      action={
-        archivedCount > 0 ? (
-          <button
-            className="cursor-pointer rounded-md px-1.5 py-0.5 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-            onClick={() => setShowArchived((value) => !value)}
-            type="button"
-          >
-            {showArchived
-              ? "Hide archived"
-              : `Show archived (${archivedCount})`}
-          </button>
-        ) : null
-      }
+      action={action}
       count={threads.length}
       flat
       label="Threads"
@@ -156,31 +138,65 @@ export function ConversationTasks(props: {
   onOpenTask(target: SubagentTranscriptTarget): void;
   tasks: readonly ConversationChildAgent[];
 }) {
+  const { action, items: tasks } = useShowArchived(props.tasks);
   return (
-    <DetailsCard count={props.tasks.length} flat label="Tasks" title="Tasks">
-      <DetailsList
-        itemKey={(task) => task.conversationId}
-        items={props.tasks}
-        renderItem={(task) => (
-          <ChildAgentRow
-            agent={task}
-            onOpen={() =>
-              props.onOpenTask({
-                conversationId: task.conversationId,
-                ...(task.redacted
-                  ? undefined
-                  : {
-                      ...(task.name ? { agentName: task.name } : undefined),
-                      label: task.title ?? task.name,
-                    }),
-                status: task.status,
-              })
-            }
-          />
-        )}
-      />
+    <DetailsCard
+      action={action}
+      count={tasks.length}
+      flat
+      label="Tasks"
+      title="Tasks"
+    >
+      {tasks.length > 0 ? (
+        <DetailsList
+          itemKey={(task) => task.conversationId}
+          items={tasks}
+          renderItem={(task) => (
+            <ChildAgentRow
+              agent={task}
+              onOpen={() =>
+                props.onOpenTask({
+                  conversationId: task.conversationId,
+                  ...(task.redacted
+                    ? undefined
+                    : {
+                        ...(task.name ? { agentName: task.name } : undefined),
+                        label: task.title ?? task.name,
+                      }),
+                  status: task.status,
+                })
+              }
+            />
+          )}
+        />
+      ) : (
+        <p className="m-0">Every Task is archived.</p>
+      )}
     </DetailsCard>
   );
+}
+
+/** Hide archived children until the reader asks for them. */
+function useShowArchived(children: readonly ConversationChildAgent[]) {
+  const [showArchived, setShowArchived] = useState(false);
+  const archivedCount = children.filter(
+    (child) => child.childArchivedAt,
+  ).length;
+  return {
+    action:
+      archivedCount > 0 ? (
+        <button
+          className="cursor-pointer rounded-md px-1.5 py-0.5 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          onClick={() => setShowArchived((value) => !value)}
+          type="button"
+        >
+          {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+        </button>
+      ) : null,
+    items: showArchived
+      ? children
+      : children.filter((child) => !child.childArchivedAt),
+  };
 }
 
 const statusIcons: Partial<Record<string, LucideIcon>> = {

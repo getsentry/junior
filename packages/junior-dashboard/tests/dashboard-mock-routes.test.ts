@@ -505,9 +505,10 @@ describe("dashboard canonical-event mock routes", () => {
         expect.objectContaining({ kind: "task" }),
       ]);
 
-      expect((await archiveThread(DASHBOARD_QA_THREAD_ID, true)).status).toBe(
-        200,
-      );
+      // The Thread has a nested Thread, so it archives with its children.
+      expect(
+        (await archiveThread(DASHBOARD_QA_THREAD_ID, true, true)).status,
+      ).toBe(200);
       await expect(qaThreads()).resolves.toBeUndefined();
       expect(
         (await archiveThread(DASHBOARD_QA_ARCHIVED_THREAD_ID, false)).status,

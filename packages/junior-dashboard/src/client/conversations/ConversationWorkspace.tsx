@@ -25,6 +25,7 @@ import {
 import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
   usePendingArchiveConversationUpdates,
+  withoutThreads,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
@@ -440,7 +441,17 @@ function applyPendingArchiveUpdates(
         : null,
     });
   }
-  return [...byId.values()].sort((a, b) =>
+  const rows = [...byId.values()].sort((a, b) =>
     b.lastSeenAt.localeCompare(a.lastSeenAt),
   );
+  // A refetch can bring back a Thread whose archive is still pending.
+  const archivedIds = new Set(
+    updates
+      .filter((update) => update.archived)
+      .map((update) => update.conversationId),
+  );
+  // Keep row identity when nothing is pending, so memoized rows skip renders.
+  return includeArchived || archivedIds.size === 0
+    ? rows
+    : withoutThreads(rows, (thread) => archivedIds.has(thread.id));
 }
