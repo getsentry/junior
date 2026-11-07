@@ -15,6 +15,7 @@ import {
   juniorToolOutputSchema,
   makeStructuredToolOutput,
 } from "@/chat/tool-support/structured-result";
+import { SANDBOX_TOOL_SOURCE } from "@/chat/sandbox/tool-source";
 
 const DEFAULT_LIST_LIMIT = 500;
 
@@ -113,6 +114,8 @@ export async function listDir(params: {
 /** Create the sandbox directory listing tool definition exposed to the agent. */
 export function createListDirTool() {
   return zodTool({
+    exposure: "deferred",
+    source: SANDBOX_TOOL_SOURCE,
     description:
       "List a sandbox workspace directory. Returns sorted entries with '/' suffixes for directories and bounded truncation notices.",
     annotations: {

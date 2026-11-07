@@ -91,7 +91,6 @@ export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
     },
     description:
       "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. You cannot approve pull requests.",
-    exposure: "direct",
     inputSchema,
     outputSchema,
     async execute(review): Promise<Result> {
