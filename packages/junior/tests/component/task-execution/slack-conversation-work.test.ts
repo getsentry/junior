@@ -822,6 +822,7 @@ describe("Slack conversation work execution", () => {
 
     expect(runNextPausedTurn).toHaveBeenCalledOnce();
     expect(runNextPausedTurn).toHaveBeenCalledWith(CONVERSATION_ID, {
+      checkIn: expect.any(Function),
       shouldYield: expect.any(Function),
       // The resumed Run must observe a stop like a first Run does.
       stopSignal: expect.any(AbortSignal),

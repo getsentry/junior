@@ -121,6 +121,7 @@ export interface PausedTurnOptions {
 /** Per-worker controls for one paused turn. */
 export interface PausedTurnRunOptions {
   shouldYield?: () => boolean;
+  checkIn?: () => Promise<boolean>;
   /** Aborts the resumed Run when someone stops the Conversation. */
   stopSignal?: AbortSignal;
 }
@@ -667,6 +668,7 @@ async function runPausedTurnInContext(
             },
             durability: {
               shouldYield: runOptions.shouldYield,
+              checkIn: runOptions.checkIn,
               recordPendingAuth: async (nextPendingAuth) => {
                 conversation.processing.pendingAuth = nextPendingAuth;
                 await persistThreadStateById(payload.conversationId, {
