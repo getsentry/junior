@@ -23,6 +23,7 @@ import {
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { botConfig } from "@/chat/config";
+import { logException } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
@@ -215,15 +216,31 @@ export function createConversationWork(
     // it spawned or gave new work to after the stop, as a child's worker does.
     const readStopSignal = context.stopSignal;
     let stopSignal: AbortSignal | undefined;
-    const result = await runRoot({
-      ...context,
-      stopSignal: readStopSignal
-        ? () => (stopSignal = readStopSignal())
-        : undefined,
-    });
-    if (stopSignal?.aborted) {
-      await stopChildAgentsOf(context.conversationId, options.state);
+    const stopLateChildAgents = async () => {
+      if (stopSignal?.aborted) {
+        await stopChildAgentsOf(context.conversationId, options.state);
+      }
+    };
+    let result: ConversationWorkerResult;
+    try {
+      result = await runRoot({
+        ...context,
+        stopSignal: readStopSignal
+          ? () => (stopSignal = readStopSignal())
+          : undefined,
+      });
+    } catch (error) {
+      // After a seen stop, the run throws only when saving the cancelled Turn
+      // fails. With retries left, `recordConversationRetry` keeps the `runId`,
+      // so the retried run sees the stop and cascades. On the final attempt,
+      // only this cascade stops the late child agents. The run's own error
+      // wins over a failed cascade.
+      await stopLateChildAgents().catch((cascadeError: unknown) => {
+        logException(cascadeError, "conversation.stop.cascade.exception");
+      });
+      throw error;
     }
+    await stopLateChildAgents();
     return result;
   };
   return {
