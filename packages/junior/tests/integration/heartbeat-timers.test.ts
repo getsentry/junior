@@ -185,7 +185,7 @@ it("drops a fired timer when the root session stops, the same as a child", async
   ).toHaveLength(1);
 
   // The Slack `stop` keyword runs this session stop on a root.
-  await stopConversationSession({ conversationId });
+  await stopConversationSession({ conversationId, queue });
   expect(await execute(tools.listWatches!, {})).toEqual({ subscriptions: [] });
   clock.mockReturnValue(clock() + 600_000);
   await runTimerWatchHeartbeat({ nowMs: clock(), queue });

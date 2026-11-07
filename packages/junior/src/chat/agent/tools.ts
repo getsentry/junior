@@ -451,6 +451,9 @@ export async function wireAgentTools(
     ...(args.durability.spawnAgent
       ? { spawnAgent: args.durability.spawnAgent }
       : undefined),
+    ...(args.durability.stopAgent
+      ? { stopAgent: args.durability.stopAgent }
+      : undefined),
     ...(args.durability.messageAgent
       ? { messageAgent: args.durability.messageAgent }
       : undefined),

@@ -92,6 +92,15 @@ export type SpawnAgent = (
 ) => Promise<SpawnAgentResult>;
 
 /**
+ * Runtime-bound capability that stops one child agent of the run's
+ * Conversation and every child agent below it. Undefined means the
+ * Conversation is not a child of the run's Conversation.
+ */
+export type StopAgent = (
+  childConversationId: string,
+) => Promise<{ stopped: boolean } | undefined>;
+
+/**
  * Model-safe input for one message to the parent, a child agent, or another
  * top-level agent.
  */
@@ -211,6 +220,8 @@ export class RetryableDeliveryError extends Error {
 export type AgentDurability = {
   /** Schedule delegated work with authority bound by the active parent run. */
   spawnAgent?: SpawnAgent;
+  /** Stop a child agent of this run, with the queue that runs child work. */
+  stopAgent?: StopAgent;
   /** Message the parent, a child, or a top-level agent from this run. */
   messageAgent?: MessageAgent;
   onInputCommitted?: () => void | Promise<void>;

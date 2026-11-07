@@ -33,6 +33,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { bindStopAgent } from "@/chat/agent-invocations/stop";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
@@ -633,7 +634,12 @@ describe("agent invocation identity and concurrency", () => {
       );
       clock.mockReturnValue(clock() + 120_000);
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
-      const stopAgent = createStopAgentTool(parentConversationId);
+      const stopAgent = createStopAgentTool(
+        bindStopAgent(
+          { conversationId: parentConversationId },
+          { queue: harness.queue },
+        ),
+      );
       await expect(
         stopAgent.execute!({ conversation_id: child.childConversationId }, {}),
       ).resolves.toMatchObject({ stopped: true });

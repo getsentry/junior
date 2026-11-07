@@ -1131,11 +1131,18 @@ export async function listTurnSummaries(
   return readTurnSummaries(turnCursorIndexKey(conversationId));
 }
 
-/** Mark an unfinished turn cursor as abandoned when a newer turn wins. */
+/**
+ * Mark an unfinished turn cursor as abandoned when a newer turn wins. With
+ * `onlyIfAuthPaused`, abandon only a Turn that still waits for sign-in. This
+ * leaves a resumed Turn alone only after the worker's first running
+ * checkpoint. Before that the Turn still reads as paused, so the stop abandons
+ * it and signals the worker.
+ */
 export async function abandonTurnRecord(args: {
   conversationId: string;
   turnId: string;
   errorMessage?: string;
+  onlyIfAuthPaused?: boolean;
 }): Promise<TurnRecord | undefined> {
   return await withTurnCursorMutation(
     args.conversationId,
@@ -1146,7 +1153,9 @@ export async function abandonTurnRecord(args: {
         !existing ||
         existing.state === "completed" ||
         existing.state === "failed" ||
-        existing.state === "abandoned"
+        existing.state === "abandoned" ||
+        (args.onlyIfAuthPaused &&
+          (existing.state !== "paused" || existing.resumeReason !== "auth"))
       ) {
         return undefined;
       }

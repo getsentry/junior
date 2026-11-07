@@ -379,7 +379,11 @@ async function handleSlackThreadStop(args: {
     messages: work?.execution.pendingMessages ?? [],
     state: args.state,
   });
-  await stopConversationSession({ conversationId, state: args.state });
+  await stopConversationSession({
+    conversationId,
+    queue: args.queue,
+    state: args.state,
+  });
 
   await bindSlackAuthorIdentity(args.message, args.installation);
   const content = parseContent(args.message);

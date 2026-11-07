@@ -5,8 +5,12 @@ import {
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
+import { stopConversationTurn } from "@/chat/conversations/stop";
 import { cancelSubscriptions } from "@/chat/events/store";
-import { stopConversationWork } from "@/chat/task-execution/store";
+import type { AgentRun, StopAgent } from "@/chat/agent/types";
+import { cancelSignInPausedTurn } from "@/chat/task-execution/conversation-turn";
+import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { juniorAgentInvocations } from "@/db/schema";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
@@ -19,6 +23,24 @@ import {
 } from "./store";
 import type { TerminalAgentInvocation } from "./types";
 
+/** Bind a Run's Conversation and the queue of its child work to stopAgent. */
+export function bindStopAgent(
+  run: Pick<AgentRun, "conversationId">,
+  options: {
+    queue: ConversationWorkQueue | (() => ConversationWorkQueue);
+    state?: StateAdapter;
+  },
+): StopAgent {
+  return async (childConversationId) =>
+    await stopChildAgent({
+      childConversationId,
+      parentConversationId: run.conversationId,
+      queue:
+        typeof options.queue === "function" ? options.queue() : options.queue,
+      state: options.state,
+    });
+}
+
 /**
  * Stop one child agent of a parent Conversation and every child agent below
  * it. The parent gets no result. SQL stops the work first. Then each
@@ -30,6 +52,7 @@ import type { TerminalAgentInvocation } from "./types";
 export async function stopChildAgent(args: {
   childConversationId: string;
   parentConversationId: string;
+  queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<{ stopped: boolean } | undefined> {
   const latest = await getLatestAgentInvocationForConversation(
@@ -46,7 +69,7 @@ export async function stopChildAgent(args: {
   if (!tree) {
     return undefined;
   }
-  await finishStoppedTree(tree, tree.conversationIds, args.state);
+  await finishStoppedTree(tree, tree.conversationIds, args);
   return { stopped: tree.stopped.length > 0 || !wasStopped };
 }
 
@@ -57,9 +80,10 @@ export async function stopChildAgent(args: {
  */
 export async function stopConversationSession(args: {
   conversationId: string;
+  queue: ConversationWorkQueue;
   state?: StateAdapter;
 }): Promise<void> {
-  await stopChildAgentsOf(args.conversationId, args.state);
+  await stopChildAgentsOf(args.conversationId, args);
   await endSessions([args.conversationId], args.state);
 }
 
@@ -70,27 +94,42 @@ export async function stopConversationSession(args: {
  */
 export async function stopChildAgentsOf(
   conversationId: string,
-  state?: StateAdapter,
+  options: StopWorkOptions,
 ): Promise<void> {
   const tree = await stopAgentInvocationTree(conversationId);
   await finishStoppedTree(
     tree,
     tree.conversationIds.filter((id) => id !== conversationId),
-    state,
+    options,
   );
 }
 
+type StopWorkOptions = { queue: ConversationWorkQueue; state?: StateAdapter };
+
+/**
+ * A Thread can hold a person's Turn that waits for sign-in. The stop ends
+ * that Turn here, not in the stop wake, because the wake can go to queued
+ * input first. Then a later sign-in callback cannot resume a stopped Thread.
+ */
 async function finishStoppedTree(
   tree: StoppedAgentTree,
   conversationIdsToStop: string[],
-  state: StateAdapter | undefined,
+  options: StopWorkOptions,
 ): Promise<void> {
   for (const invocation of tree.stopped) {
     await recordSubagentEnded(invocation);
   }
-  await endSessions(conversationIdsToStop, state);
+  await endSessions(conversationIdsToStop, options.state);
   for (const conversationId of conversationIdsToStop) {
-    await stopConversationWork({ conversationId, state });
+    const pausedTurnId = await getAuthPausedConversationTurnId(conversationId);
+    if (pausedTurnId) {
+      await cancelSignInPausedTurn({ conversationId, turnId: pausedTurnId });
+    }
+    await stopConversationTurn({
+      conversationId,
+      queue: options.queue,
+      state: options.state,
+    });
   }
 }
 

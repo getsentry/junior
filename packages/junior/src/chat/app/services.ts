@@ -25,6 +25,7 @@ import {
 import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import { bindStopAgent } from "@/chat/agent-invocations/stop";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 export interface JuniorRuntimeServices {
@@ -65,6 +66,8 @@ export function createJuniorRuntimeServices(
         bindMessageAgent(request, { queue: getVercelConversationWorkQueue }),
       bindSpawnAgent: (request) =>
         bindSpawnAgent(request, { queue: getVercelConversationWorkQueue }),
+      bindStopAgent: (request) =>
+        bindStopAgent(request, { queue: getVercelConversationWorkQueue }),
       tracePropagation: overrides.sandbox?.tracePropagation,
     });
 
