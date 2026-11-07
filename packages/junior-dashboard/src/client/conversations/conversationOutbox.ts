@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type {
   ActorIdentity,
   ConversationPendingMessage,
+  ConversationReportEvent,
   InputImage,
 } from "@sentry/junior/api/schema";
 import type { DashboardCoreData } from "../types";
@@ -16,6 +17,8 @@ export type ConversationOutboxMessage = {
    * the row in place, so it does not pass through the queue first.
    */
   inline?: boolean;
+  /** Client time when the accept response arrived. */
+  acceptedAtMs?: number;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -197,6 +200,70 @@ export function isInlineOutboxMessage(
   return Boolean(message.inline) && message.status !== "failed";
 }
 
+/** Ids of history Messages and of the input that started each Turn. */
+function historyMessageIds(events: readonly ConversationReportEvent[]): {
+  messageIds: Set<string>;
+  turnInputIds: Set<string>;
+} {
+  const messageIds = new Set<string>();
+  const turnInputIds = new Set<string>();
+  for (const event of events) {
+    if (event.data.type === "message") messageIds.add(event.data.messageId);
+    if (event.data.type === "turn_lifecycle" && event.data.state === "started")
+      for (const id of event.data.inputMessageIds ?? []) turnInputIds.add(id);
+  }
+  return { messageIds, turnInputIds };
+}
+
+/**
+ * Drop local sends that one server snapshot already shows.
+ *
+ * A queued row leaves when the mailbox or history has it. An inline row stays
+ * while the mailbox lists it. The server writes the mailbox before it accepts
+ * a send, and the snapshot reads the mailbox before history. So when a mailbox
+ * read that started after the accept has neither copy, the send was removed,
+ * or it is in history before the loaded events. Events hold only the latest
+ * window, which can move past a send while the app is in the background.
+ */
+export function settleConversationOutboxMessages(
+  current: ConversationOutboxMessage[],
+  snapshot: {
+    events: readonly ConversationReportEvent[];
+    /** Client time when the snapshot started its mailbox read. */
+    mailboxReadAtMs?: number;
+    queued: readonly ConversationPendingMessage[];
+  },
+): ConversationOutboxMessage[] {
+  const queuedIds = new Set(
+    snapshot.queued.map((message) => message.messageId),
+  );
+  const { messageIds, turnInputIds } = historyMessageIds(snapshot.events);
+  const settle = (
+    message: ConversationOutboxMessage,
+  ): ConversationOutboxMessage | undefined => {
+    const queued = queuedIds.has(message.messageId);
+    // A Turn joins several sends into the Message of the first one, so a
+    // joined send has only its Turn input id. The Turn starts before the
+    // mailbox drops the send. Until then, keep the row, or the mailbox copy
+    // would show in the queue.
+    const read =
+      messageIds.has(message.messageId) ||
+      (!queued && turnInputIds.has(message.messageId));
+    if (read) return undefined;
+    if (queued) return isInlineOutboxMessage(message) ? message : undefined;
+    const settled =
+      message.acceptedAtMs !== undefined &&
+      snapshot.mailboxReadAtMs !== undefined &&
+      snapshot.mailboxReadAtMs > message.acceptedAtMs;
+    return settled ? undefined : message;
+  };
+  const next = current.flatMap((message) => settle(message) ?? []);
+  const unchanged =
+    next.length === current.length &&
+    next.every((message, index) => message === current[index]);
+  return unchanged ? current : next;
+}
+
 /**
  * Split pending rows between the queue and the transcript.
  *
@@ -251,7 +318,7 @@ export function acceptConversationOutboxMessage(
 ): ConversationOutboxMessage[] {
   return (current ?? []).map((message) =>
     message.idempotencyKey === idempotencyKey
-      ? { ...message, messageId, status: "accepted" }
+      ? { ...message, acceptedAtMs: Date.now(), messageId, status: "accepted" }
       : message,
   );
 }
