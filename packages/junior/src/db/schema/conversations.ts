@@ -76,9 +76,9 @@ export const juniorConversations = pgTable(
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
     // arm of junior_conversations_kind_parent_check.
     kind: text("kind").$type<ConversationKind>(),
-    // Set once on a child at create. Child Runs read their Location,
-    // visibility, and depth here, not from a parent. A writer of an older
-    // deploy leaves it null, and child Runs then fail closed.
+    // Set once when a child is created. Its Runs read Location, visibility,
+    // and depth here, not from a parent. A child that an older deploy
+    // created has none, so its Runs are private and have no Location.
     // TODO(dcramer): After every deployed writer sets spawn_json, rerun the
     // 0087 backfill for children with a null value.
     spawn: jsonb("spawn_json").$type<ChildSpawn>(),

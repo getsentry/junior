@@ -80,7 +80,7 @@ export interface Conversation {
   archivedAtMs?: number;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
-  /** Parent facts that a child copied at create. Roots have none. */
+  /** What a child saved when it was created. A root has none. */
   spawn?: ChildSpawn;
   // TODO(dcramer): Replace this creation-time Actor projection with the
   // stored creator Identity after creator identity writes are complete.

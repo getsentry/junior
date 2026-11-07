@@ -213,7 +213,7 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  // A child uses the visibility it copied at spawn, never its parent's.
+  // A child uses the visibility it saved when it was created.
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });

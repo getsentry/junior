@@ -804,8 +804,8 @@ export function createAgentInvocationWorker(
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
-      // The child reads what it copied at spawn, never its parent. A child
-      // without a copy gets no Location and cannot spawn.
+      // The child uses what it saved when it was created, never its parent.
+      // Without that, it has no Location and cannot start agents.
       location = child?.spawn?.location;
       canSpawn = child?.spawn ? child.spawn.depth <= maxAgentDepth : false;
     } catch (error) {

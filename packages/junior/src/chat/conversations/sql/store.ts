@@ -222,7 +222,7 @@ function destinationFromRow(
 /**
  * Copy what a new child needs from its parent. A root gives its own Location
  * and visibility. A child passes on its own copy one level deeper. A child
- * that has no copy passes on none, so its children also fail closed.
+ * that has no copy passes on none, so its children are private too.
  */
 function childSpawnFromParent(parent: Conversation): ChildSpawn | undefined {
   if (parent.parentConversationId) {
