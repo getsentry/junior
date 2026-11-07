@@ -112,16 +112,16 @@ function definedProps<T extends Record<string, unknown>>(
 
 type TurnStatus = "running" | "paused" | "completed" | "failed" | "abandoned";
 
-/** A terminal Turn never runs again, so it absorbs later progress writes. */
-function isTerminalTurnState(state: TurnStatus): boolean {
+/** A completed, failed, or abandoned Turn never runs again. */
+function isFinishedTurnState(state: TurnStatus): boolean {
   return state === "completed" || state === "failed" || state === "abandoned";
 }
 
-/** A progress write reached a Turn that is already terminal. */
-export class TurnAlreadyTerminalError extends Error {
+/** A running or paused write reached a Turn that already finished. */
+export class TurnAlreadyFinishedError extends Error {
   constructor(turnId: string, state: TurnStatus) {
-    super(`Turn ${turnId} is already ${state}`);
-    this.name = "TurnAlreadyTerminalError";
+    super(`Turn ${turnId} already finished as ${state}`);
+    this.name = "TurnAlreadyFinishedError";
   }
 }
 
@@ -795,7 +795,8 @@ async function updateTurnState(args: {
 
 /**
  * Commit stable Pi state and advance the turn cursor. A running or paused
- * write to a terminal Turn throws `TurnAlreadyTerminalError`.
+ * write to a completed, failed, or abandoned Turn throws
+ * `TurnAlreadyFinishedError`.
  */
 export async function upsertTurnRecord(args: {
   channelName?: string;
@@ -846,14 +847,14 @@ async function upsertTurnRecordLocked(
     args.conversationId,
     args.turnId,
   );
-  // A late worker that lost its lease must not reopen a terminal Turn or
+  // A late worker that lost its lease must not restart a finished Turn or
   // commit more history to it.
   if (
     existingRecord &&
-    isTerminalTurnState(existingRecord.state) &&
-    !isTerminalTurnState(args.state)
+    isFinishedTurnState(existingRecord.state) &&
+    !isFinishedTurnState(args.state)
   ) {
-    throw new TurnAlreadyTerminalError(args.turnId, existingRecord.state);
+    throw new TurnAlreadyFinishedError(args.turnId, existingRecord.state);
   }
   const conversationStore = args.conversationStore ?? getConversationStore();
   const conversation = await conversationStore.get({
@@ -1052,14 +1053,14 @@ async function recordTurnSummaryOwned(
   const priorSummary = (await listTurnSummaries(args.conversationId)).find(
     (summary) => summary.turnId === args.turnId,
   );
-  const terminalSummary =
-    priorSummary && isTerminalTurnState(priorSummary.state)
+  const finishedSummary =
+    priorSummary && isFinishedTurnState(priorSummary.state)
       ? priorSummary
       : undefined;
-  const terminalRecord =
-    stored && isTerminalTurnState(stored.state) ? stored : undefined;
-  const existing = terminalSummary ?? terminalRecord ?? stored ?? priorSummary;
-  if ((terminalSummary || terminalRecord) && !isTerminalTurnState(args.state)) {
+  const finishedRecord =
+    stored && isFinishedTurnState(stored.state) ? stored : undefined;
+  const existing = finishedSummary ?? finishedRecord ?? stored ?? priorSummary;
+  if ((finishedSummary || finishedRecord) && !isFinishedTurnState(args.state)) {
     return;
   }
   const existingDispatchId = existing?.dispatchId;

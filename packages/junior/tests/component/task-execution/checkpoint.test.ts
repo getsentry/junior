@@ -1726,7 +1726,7 @@ describe("turn checkpoint", () => {
     expect(logException).not.toHaveBeenCalled();
   });
 
-  it("keeps a terminal turn terminal when a late worker saves progress", async () => {
+  it("keeps a completed turn completed when a late worker saves progress", async () => {
     const logException = vi.fn();
     vi.doMock("@/chat/logging", async (importOriginal) => {
       const actual = await importOriginal<typeof import("@/chat/logging")>();

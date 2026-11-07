@@ -38,7 +38,7 @@ import {
   getTurnRecordForResume,
   listTurnSummaries,
   recordTurnSummary,
-  TurnAlreadyTerminalError,
+  TurnAlreadyFinishedError,
   upsertTurnRecord,
   type AgentDispatchOutcome,
   type TurnPauseReason,
@@ -261,7 +261,7 @@ async function saveRunning(
     // checkpoints.
     if (
       !(error instanceof AgentHistoryBranchError) &&
-      !(error instanceof TurnAlreadyTerminalError)
+      !(error instanceof TurnAlreadyFinishedError)
     ) {
       logException(error, "agent.turn.checkpoint.running.failed", {
         "app.ai.resume_conversation_id": args.conversationId,
@@ -342,8 +342,8 @@ async function savePaused(
     if (error instanceof TurnSliceLimitExceededError) {
       throw error;
     }
-    // A late worker cannot pause a terminal Turn. Callers see an unsaved pause.
-    if (error instanceof TurnAlreadyTerminalError) {
+    // A late worker cannot pause a finished Turn. Callers see an unsaved pause.
+    if (error instanceof TurnAlreadyFinishedError) {
       return undefined;
     }
     logException(error, "agent.turn.checkpoint.paused.failed", {
