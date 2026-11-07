@@ -114,12 +114,24 @@ export async function readUnreadConversationIds(
 /**
  * Store a read report and say whether Junior's latest visible reply is still
  * unread, so the dashboard can clear its unread flag without a refetch.
+ *
+ * Only a viewer who may read the transcript can report: a participant, or
+ * anyone for a public Conversation. Others get the same 404 as a missing
+ * Conversation.
  */
 export async function reportConversationRead(
   viewer: User,
   conversationId: string,
   body: ConversationReadPosition,
 ): Promise<ConversationReadReport> {
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [conversationId],
+    viewer,
+  );
+  if (!access.get(conversationId)?.canViewPrivateContent) {
+    throwApiError(404, "Conversation not found.");
+  }
   const readPosition = await markConversationRead(viewer, conversationId, body);
   const unread = await readUnreadConversationIds(
     getDb(),
