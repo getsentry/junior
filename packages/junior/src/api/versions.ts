@@ -24,7 +24,7 @@ export async function readVersions(
       conversation: options.conversationId
         ? sql<
             string | null
-          >`(${conversationVersionQuery(db, options.conversationId)})`
+          >`(${conversationVersionQuery(db, options.conversationId, viewer.id)})`
         : sql<null>`null`,
       conversations: sql<string>`(${conversationFeedVersionQuery(db, viewer.id)})`,
       reviewItems: sql<string>`(${reviewItemsNeedingUserVersionQuery(db, viewer.id)})`,
