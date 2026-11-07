@@ -6,7 +6,11 @@ import {
   type ConversationEventWatermark,
   type SeqRange,
 } from "@/chat/conversations/sql/event-watermarks";
-import { getStateAdapter } from "@/chat/state/adapter";
+import {
+  getStateAdapter,
+  getStateValues,
+  setStateValues,
+} from "@/chat/state/adapter";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
@@ -153,21 +157,25 @@ async function readOperationsByConversation(
     }
   }
   const state = getStateAdapter();
-  const entries = await Promise.all(
-    [...latest].map(async ([conversationId, watermark]) => {
-      const cached = auxiliaryCostCacheSchema.safeParse(
-        await state.get(auxiliaryCostCacheKey(conversationId)),
-      ).data;
-      // A purged Conversation starts again at seq 0 with a new first event.
-      const base =
-        cached &&
-        cached.seq <= watermark.seq &&
-        cached.originMs === watermark.originMs
-          ? cached
-          : undefined;
-      return { base, conversationId, watermark };
-    }),
+  const watermarkEntries = [...latest];
+  // One batched read for the whole list, not one per Conversation.
+  const cachedValues = await getStateValues(
+    state,
+    watermarkEntries.map(([conversationId]) =>
+      auxiliaryCostCacheKey(conversationId),
+    ),
   );
+  const entries = watermarkEntries.map(([conversationId, watermark], index) => {
+    const cached = auxiliaryCostCacheSchema.safeParse(cachedValues[index]).data;
+    // A purged Conversation starts again at seq 0 with a new first event.
+    const base =
+      cached &&
+      cached.seq <= watermark.seq &&
+      cached.originMs === watermark.originMs
+        ? cached
+        : undefined;
+    return { base, conversationId, watermark };
+  });
   const ranges = entries.flatMap(({ base, conversationId, watermark }) =>
     watermark.seq > (base?.seq ?? -1)
       ? [{ conversationId, fromSeq: base?.seq ?? -1, toSeq: watermark.seq }]
@@ -176,28 +184,27 @@ async function readOperationsByConversation(
   const deltas = ranges.length > 0 ? await sumOperationCosts(db, ranges) : [];
 
   const result = new Map<string, OperationSums[]>();
-  await Promise.all(
-    entries.map(async ({ base, conversationId, watermark }) => {
-      if (base && base.seq === watermark.seq) {
-        result.set(conversationId, base.operations);
-        return;
-      }
-      const operations = [
-        ...mergeOperations([
-          ...(base?.operations ?? []),
-          ...deltas.flatMap(({ conversationId: deltaId, ...operation }) =>
-            deltaId === conversationId ? [operation] : [],
-          ),
-        ]).values(),
-      ];
-      result.set(conversationId, operations);
-      await state.set(
-        auxiliaryCostCacheKey(conversationId),
-        { ...watermark, operations } satisfies AuxiliaryCostCache,
-        AUXILIARY_COST_CACHE_TTL_MS,
-      );
-    }),
-  );
+  const writes: Array<{ key: string; value: AuxiliaryCostCache }> = [];
+  for (const { base, conversationId, watermark } of entries) {
+    if (base && base.seq === watermark.seq) {
+      result.set(conversationId, base.operations);
+      continue;
+    }
+    const operations = [
+      ...mergeOperations([
+        ...(base?.operations ?? []),
+        ...deltas.flatMap(({ conversationId: deltaId, ...operation }) =>
+          deltaId === conversationId ? [operation] : [],
+        ),
+      ]).values(),
+    ];
+    result.set(conversationId, operations);
+    writes.push({
+      key: auxiliaryCostCacheKey(conversationId),
+      value: { ...watermark, operations },
+    });
+  }
+  await setStateValues(state, writes, AUXILIARY_COST_CACHE_TTL_MS);
   return result;
 }
 
