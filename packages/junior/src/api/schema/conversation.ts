@@ -806,6 +806,8 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     autoArchive: z.boolean().optional(),
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
+    /** The viewer can move this dashboard conversation to a Slack thread. */
+    canContinueInSlack: z.literal(true).optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
     readPosition: conversationReadPositionSchema.optional(),
     /**

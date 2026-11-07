@@ -149,6 +149,12 @@ const mockTitles = new Map<string, string>();
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
+/** Process-local Slack channels from Continue in Slack. */
+const mockSlackChannelByConversationId = new Map<
+  string,
+  { channel: string; channelName: string }
+>();
+
 /**
  * Restore process-local archive, pin, unread, and auto-archive state so tests
  * sharing a worker do not leak state.
@@ -161,6 +167,7 @@ export function resetMockConversationViewerState(): void {
   mockUnreadConversationIds.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
+  mockSlackChannelByConversationId.clear();
 }
 
 /**
@@ -2340,9 +2347,41 @@ export function readMockConversationDetail(
           previousCursor: mockBeforeCursor(conversationId, events[0].seq),
         }
       : withViewerState;
-  return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
-    ? { ...bounded, locationId: `mock:${bounded.channel}` }
-    : bounded;
+  const movedChannel = mockSlackChannelByConversationId.get(conversationId);
+  const located = movedChannel
+    ? { ...bounded, ...movedChannel }
+    : conversationId === DASHBOARD_QA_CONVERSATION_ID
+      ? // Stands in for a public dashboard conversation.
+        { ...bounded, canContinueInSlack: true as const }
+      : bounded;
+  return located.channel && PUBLIC_MOCK_CHANNEL_IDS.has(located.channel)
+    ? { ...located, locationId: `mock:${located.channel}` }
+    : located;
+}
+
+/** Move the mock dashboard conversation to a mock channel thread, once. */
+export function continueMockConversationInSlack(
+  conversationId: string,
+  locationId: string,
+):
+  | { channelName?: string; conversationId: string; locationUrl: string }
+  | undefined {
+  const channel = locationId.replace(/^mock:/, "");
+  const detail = readMockConversationDetail(conversationId);
+  const location = readMockLocationDirectory().locations.find(
+    (candidate) => candidate.id === locationId,
+  );
+  if (!detail?.canContinueInSlack || !location) return undefined;
+  const channelName = location.label.replace(/^#/, "");
+  mockSlackChannelByConversationId.set(conversationId, {
+    channel,
+    channelName,
+  });
+  return {
+    channelName,
+    conversationId,
+    locationUrl: `https://example.slack.com/archives/${channel}/p1770030000000100`,
+  };
 }
 
 /** Return the deterministic older page used to exercise transcript pagination. */

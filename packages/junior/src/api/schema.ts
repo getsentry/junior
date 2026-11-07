@@ -104,6 +104,14 @@ export type {
   GuardianStats,
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
+export {
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
+} from "./schema/conversation-continue-in-slack";
+export type {
+  ContinueConversationInSlackBody,
+  ContinueConversationInSlackResponse,
+} from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
 export {
   conversationReadPositionSchema,

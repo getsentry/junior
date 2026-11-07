@@ -32,6 +32,8 @@ import {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
   conversationReadPositionSchema,
   conversationReadReportSchema,
   conversationUnreadSchema,
@@ -76,6 +78,7 @@ import {
 } from "./code-repository";
 import {
   readMockConversationChildAgents,
+  continueMockConversationInSlack,
   readMockConversationDetail,
   readMockConversationEvents,
   readMockConversationEventsAround,
@@ -458,6 +461,22 @@ export function createMockReportingApi(): Hono<{
       summary:
         "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
     });
+  });
+  app.post("/conversations/:conversationId/continue-in-slack", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    const body = continueConversationInSlackBodySchema.safeParse(
+      await c.req.json(),
+    );
+    if (!params.success || !body.success) {
+      return errorResponse("Invalid request.", 400);
+    }
+    const result = continueMockConversationInSlack(
+      params.data.conversationId,
+      body.data.locationId,
+    );
+    return result
+      ? jsonResponse(continueConversationInSlackResponseSchema, result)
+      : errorResponse("Conversation or channel not found.", 404);
   });
   app.patch("/conversations/:conversationId/archive", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
