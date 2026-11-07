@@ -74,7 +74,7 @@ describe("agent invocation conversation work", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps the Location from creation and reads the root's current visibility without delivering child output", async () => {
+  it("saves the root's Location and visibility on the child, keeps visibility current, and does not deliver child output", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
@@ -118,9 +118,10 @@ describe("agent invocation conversation work", () => {
       expect(child).not.toHaveProperty("location");
       expect(child).not.toHaveProperty("sessionSource");
       expect(child).not.toHaveProperty("visibility");
-      // The child saves the root's Location when it is created.
+      // The child saves the root's Location and visibility when it is created.
       expect(child?.spawn).toEqual({
         location: expect.objectContaining({ threadTs: "1712345.0001" }),
+        visibility: "public",
       });
       // The root becomes private before the child runs.
       await conversationStore.recordActivity({
@@ -132,6 +133,15 @@ describe("agent invocation conversation work", () => {
       await expect(
         conversationStore.get({ conversationId: slackParentConversationId }),
       ).resolves.toMatchObject({ visibility: "private" });
+      // The same write updates the child's saved visibility.
+      await expect(
+        conversationStore.get({ conversationId: created.childConversationId }),
+      ).resolves.toMatchObject({
+        spawn: {
+          location: expect.objectContaining({ threadTs: "1712345.0001" }),
+          visibility: "private",
+        },
+      });
       const queueMessage = queue.takeMessage();
 
       await expect(
@@ -330,7 +340,7 @@ describe("agent invocation conversation work", () => {
         runId: created.invocationId,
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
-      // The child Run uses the root's new visibility.
+      // The child Run uses its saved visibility.
       expect(observedVisibility).toBe("private");
     } finally {
       await fixture.close();

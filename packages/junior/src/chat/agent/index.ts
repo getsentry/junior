@@ -118,8 +118,7 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { getSqlExecutor } from "@/chat/db";
-import { readRootVisibility } from "@/chat/conversations/sql/privacy";
+import { getConversationStore } from "@/chat/db";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -214,12 +213,14 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  // Read the root's visibility on each Run, so a root that becomes private
-  // also makes its open children private.
+  const conversation = await getConversationStore().get({
+    conversationId: run.conversationId,
+  });
+  // A child uses the visibility that it saved from its root.
   const conversationPrivacy = resolveConversationPrivacy({
-    visibility:
-      (await readRootVisibility(getSqlExecutor(), run.conversationId)) ??
-      undefined,
+    visibility: conversation?.parentConversationId
+      ? conversation.spawn?.visibility
+      : conversation?.visibility,
   });
   const actor = actorFromRun(run);
   const runLogContext: LogContext = {

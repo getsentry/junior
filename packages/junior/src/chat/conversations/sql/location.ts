@@ -6,6 +6,7 @@ import type { SessionSource } from "@/chat/source";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations, type juniorDestinations } from "@/db/schema";
 import type { ProviderConversationBinding } from "./bindings";
+import { saveRootLocationOnChildren } from "./child-spawn";
 import { nextDetailVersion } from "./detail-version";
 
 type LocationRow = typeof juniorDestinations.$inferSelect;
@@ -124,8 +125,8 @@ export function visibilityFromLocationRow(
 /**
  * Give a root Conversation with no Location its first one, in the caller's
  * SQL scope. The Location row becomes the Conversation Destination, so
- * visibility then comes from that channel. Returns false when the
- * Conversation already has a Location.
+ * visibility then comes from that channel. Its children save both. Returns
+ * false when the Conversation already has a Location.
  */
 export async function setFirstConversationLocation(
   executor: JuniorSqlDatabase,
@@ -153,16 +154,21 @@ export async function setFirstConversationLocation(
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
-  return rows.length > 0;
+  if (rows.length === 0) return false;
+  await saveRootLocationOnChildren(executor, args.conversationId, location);
+  return true;
 }
 
-/** Store a channel-level Location's first bound post as its thread. */
+/**
+ * Store a channel-level Location's first bound post as its thread. A root's
+ * children save the new Location.
+ */
 export async function startLocationThread(
   executor: JuniorSqlDatabase,
   binding: ProviderConversationBinding,
 ): Promise<void> {
   const location = juniorConversations.location;
-  await executor
+  const rows = await executor
     .db()
     .update(juniorConversations)
     .set({
@@ -177,5 +183,14 @@ export async function startLocationThread(
         sql`${location}->>'channelId' = ${binding.providerDestinationId}`,
         isNull(sql`${location}->>'threadTs'`),
       ),
+    )
+    .returning({ location });
+  const stored = rows[0]?.location;
+  if (stored) {
+    await saveRootLocationOnChildren(
+      executor,
+      binding.conversationId,
+      locationSchema.parse(stored),
     );
+  }
 }

@@ -33,6 +33,12 @@ describe("Conversation Location thread", () => {
       const before = await store.get({ conversationId: CONVERSATION_ID });
       expect(before?.location).toMatchObject({ channelId: "C123" });
       expect(before?.location).not.toHaveProperty("threadTs");
+      const childConversationId = `${CONVERSATION_ID}:task`;
+      await store.createChild({
+        childConversationId,
+        kind: "task",
+        parentConversationId: CONVERSATION_ID,
+      });
 
       await startLocationThread(fixture.sql, {
         ...BINDING,
@@ -46,6 +52,14 @@ describe("Conversation Location thread", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         location: { channelId: "C123", threadTs: "1700000000.000200" },
+      });
+      // A child saves the root's new thread.
+      await expect(
+        store.get({ conversationId: childConversationId }),
+      ).resolves.toMatchObject({
+        spawn: {
+          location: { channelId: "C123", threadTs: "1700000000.000200" },
+        },
       });
     } finally {
       await fixture.close();

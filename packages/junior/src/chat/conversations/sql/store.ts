@@ -50,7 +50,12 @@ import {
 } from "./location";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-import { childSpawnSchema, type ChildSpawn } from "@/chat/conversations/spawn";
+import {
+  childSpawnFromParent,
+  childSpawnSchema,
+} from "@/chat/conversations/spawn";
+import { saveVisibilityChangeOnChildren } from "./child-spawn";
+import { resolveRootVisibility } from "./privacy";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -217,17 +222,6 @@ function destinationFromRow(
           }
         : undefined;
   return parseDestination(value);
-}
-
-/**
- * Copy what a new child needs from its parent. A root gives its own Location.
- * A child passes on what it saved.
- */
-function childSpawnFromParent(parent: Conversation): ChildSpawn | undefined {
-  if (parent.parentConversationId) {
-    return parent.spawn;
-  }
-  return parent.location ? { location: parent.location } : undefined;
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */
@@ -412,7 +406,13 @@ export class SqlStore implements ConversationStore {
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
-          const spawn = childSpawnFromParent(parent);
+          // Lock the root Destination, so a visibility change waits for this
+          // child and then updates it too.
+          const root = await resolveRootVisibility(
+            this.executor,
+            args.parentConversationId,
+          );
+          const spawn = childSpawnFromParent(parent, root.visibility);
           const child: Conversation = {
             ...emptyConversation({
               conversationId: args.childConversationId,
@@ -421,7 +421,7 @@ export class SqlStore implements ConversationStore {
             }),
             kind: args.kind,
             parentConversationId: args.parentConversationId,
-            ...(spawn ? { spawn } : undefined),
+            spawn,
           };
           await this.upsertConversation({ conversation: child });
         },
@@ -928,6 +928,27 @@ export class SqlStore implements ConversationStore {
     if (!destination) {
       return undefined;
     }
+    const write = () => this.writeDestination(destination, nowMs);
+    if (!destination.refreshVisibility) {
+      return (await write())?.id;
+    }
+    return await saveVisibilityChangeOnChildren(
+      this.executor,
+      {
+        provider: destination.provider,
+        providerTenantId: tenantId(destination.providerTenantId),
+        providerDestinationId: destination.providerDestinationId,
+      },
+      write,
+    );
+  }
+
+  private async writeDestination(
+    destination: DestinationUpsert,
+    nowMs: number,
+  ): Promise<
+    { id: string; visibility: JuniorDestinationVisibility } | undefined
+  > {
     const visibilityUpdate = destination.refreshVisibility
       ? sql`excluded.visibility`
       : juniorDestinations.visibility;
@@ -964,8 +985,11 @@ export class SqlStore implements ConversationStore {
           updatedAt: sql`excluded.updated_at`,
         },
       })
-      .returning({ id: juniorDestinations.id });
-    return rows[0]?.id;
+      .returning({
+        id: juniorDestinations.id,
+        visibility: juniorDestinations.visibility,
+      });
+    return rows[0];
   }
 }
 

@@ -1,10 +1,11 @@
 ALTER TABLE "junior_conversations" ADD COLUMN "spawn_json" jsonb;--> statement-breakpoint
--- Give each existing child the root Location that its Runs read from the root
--- before, so children in flight keep working. A child whose chain is broken
--- or has a cycle never joins a root here, so it gets nothing and its Runs
--- have no Location. The Location follows locationFromRow: location_json, else
--- a Slack destination row, with the session Source threadTs when the
--- Location has none.
+-- Give each existing child what its root has: the root Location that its
+-- Runs read from the root before, and the root's visibility, "public" only
+-- when the root Destination is public. A child whose chain is broken or has
+-- a cycle never joins a root here, so it gets nothing and its Runs are
+-- private with no Location. The Location follows locationFromRow:
+-- location_json, else a Slack destination row, with the session Source
+-- threadTs when the Location has none.
 WITH RECURSIVE "tree" ("conversation_id", "root_id", "depth", "path") AS (
   SELECT "conversation_id", "conversation_id", 0, ARRAY["conversation_id"]
   FROM "junior_conversations"
@@ -27,6 +28,7 @@ WITH RECURSIVE "tree" ("conversation_id", "root_id", "depth", "path") AS (
         'channelId', "destination"."provider_destination_id"
       )
     END AS "location",
+    CASE WHEN "destination"."visibility" = 'public' THEN 'public' ELSE 'private' END AS "visibility",
     nullif(btrim("root"."source_json"->>'threadTs'), '') AS "source_thread_ts",
     "root"."source_json"->>'kind' AS "source_kind",
     "root"."source_json"->>'teamId' AS "source_team_id",
@@ -47,14 +49,18 @@ WITH RECURSIVE "tree" ("conversation_id", "root_id", "depth", "path") AS (
         AND "source_thread_ts" IS NOT NULL
       THEN "location" || jsonb_build_object('threadTs', "source_thread_ts")
       ELSE "location"
-    END AS "location"
+    END AS "location",
+    "visibility"
   FROM "root_place"
 )
 UPDATE "junior_conversations" "child"
-SET "spawn_json" = jsonb_build_object('location', "root_facts"."location")
+SET "spawn_json" = jsonb_build_object('visibility', "root_facts"."visibility")
+  || CASE
+    WHEN "root_facts"."location" IS NULL THEN '{}'::jsonb
+    ELSE jsonb_build_object('location', "root_facts"."location")
+  END
 FROM "tree"
 JOIN "root_facts" ON "root_facts"."root_id" = "tree"."root_id"
 WHERE "child"."conversation_id" = "tree"."conversation_id"
   AND "tree"."depth" > 0
-  AND "root_facts"."location" IS NOT NULL
   AND "child"."spawn_json" IS NULL;
