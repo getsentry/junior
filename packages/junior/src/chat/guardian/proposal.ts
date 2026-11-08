@@ -54,14 +54,6 @@ export interface ToolActionEvidence {
 }
 
 /**
- * User intent of every action in a child agent run. Its task came from a
- * parent agent, so Guardian judges authorization from the child's own
- * Conversation, where that task is labeled.
- */
-export const CHILD_AGENT_USER_INTENT =
-  "[Child agent run. Its task came from a parent agent. Judge authorization only from the `parent agent:` and `user:` lines in the root user instructions section.]";
-
-/**
  * Every line break that can start a new visible line. Guardian puts a label on
  * each line, so the root read and the prompt split on all of them.
  */

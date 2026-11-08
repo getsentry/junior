@@ -131,7 +131,6 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
-import { CHILD_AGENT_USER_INTENT } from "@/chat/guardian/proposal";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {
@@ -486,13 +485,18 @@ async function executeAgentRunInPrivacyContext(
             turnStartMessageIndex,
           ) ?? [])
         : [];
+    // The current request for action review: the Actor's own instructions,
+    // or in a child the parent agent's task and messages, which have no Actor.
+    const isGuardianIntent = (
+      provenance: ConversationMessageProvenance | undefined,
+    ): boolean =>
+      provenance?.authority === "instruction" &&
+      (provenance.actor
+        ? sameActorIdentity(provenance.actor, actor)
+        : childAgent);
     const guardianIntentParts =
       currentTurnMessages.flatMap((message, index) => {
-        const provenance = currentTurnProvenance[index];
-        if (
-          provenance?.authority !== "instruction" ||
-          !sameActorIdentity(provenance.actor, actor)
-        ) {
+        if (!isGuardianIntent(currentTurnProvenance[index])) {
           return [];
         }
         const text = getUserMessageInstructionText(message);
@@ -504,10 +508,7 @@ async function executeAgentRunInPrivacyContext(
       // action review can still run against thread evidence.
       guardianIntentParts.push(userInput.trim() || "[empty]");
     }
-    // No person writes in a child, so no text of the child, on any slice, is
-    // user intent. Action review reads the root Conversation instead.
-    const currentUserIntent = (): string =>
-      childAgent ? CHILD_AGENT_USER_INTENT : guardianIntentParts.join("\n\n");
+    const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       ...(routing.credentialContext &&
@@ -928,11 +929,7 @@ async function executeAgentRunInPrivacyContext(
             ...messages.map((message) => message.provenance),
           );
           for (const message of messages) {
-            if (
-              message.provenance.authority === "instruction" &&
-              sameActorIdentity(message.provenance.actor, actor) &&
-              message.text.trim()
-            ) {
+            if (isGuardianIntent(message.provenance) && message.text.trim()) {
               guardianIntentParts.push(message.text.trim());
             }
           }
