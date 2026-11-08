@@ -965,6 +965,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             activeTurnId,
           });
           let piMessages = loadedPiMessages.piMessages;
+          // Batched steering below is this Turn's input, not earlier history.
+          const hasHistory = Boolean(piMessages?.length);
           // Each batched steering message keeps its own Actor and authority.
           const batchedSteeringMessages = (
             await resolveSteeringMessages(
@@ -1039,7 +1041,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 ? [preparedState.userMessageId]
                 : []),
             ],
-            hasHistory: Boolean(piMessages?.length),
+            hasHistory,
             turnId,
           });
           const drainSteeringMessages = options.drainSteeringMessages
