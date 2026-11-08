@@ -1091,15 +1091,16 @@ describe("dashboard canonical-event components", () => {
   });
 
   it.each([
-    ["running", undefined],
-    ["aborted", "aborted"],
-  ] as const)("renders the %s child lifecycle status", (status, outcome) => {
+    ["running", undefined, "running"],
+    ["aborted", "aborted", "stopped"],
+  ] as const)("renders the %s Task status", (_status, outcome, label) => {
     const events: ConversationReportEvent[] = [
       event(0, {
         type: "subagent",
         startedSeq: 0,
         startedAt: "2026-01-01T00:00:00.000Z",
         childConversationId: "child-1",
+        childKind: "task",
         subagentKind: "advisor",
         status: "running",
       }),
@@ -1111,6 +1112,7 @@ describe("dashboard canonical-event components", () => {
           startedSeq: 0,
           startedAt: "2026-01-01T00:00:00.000Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "advisor",
           status: outcome,
         }),
@@ -1128,7 +1130,7 @@ describe("dashboard canonical-event components", () => {
       </QueryClientProvider>,
     );
     expect(html).toContain("advisor");
-    expect(html).toContain(status);
+    expect(html).toContain(label);
     expect(html).toContain('aria-label="Open advisor transcript"');
   });
 
@@ -1200,6 +1202,7 @@ describe("dashboard canonical-event components", () => {
                 startedSeq: 0,
                 startedAt: "2026-01-01T00:00:00.000Z",
                 childConversationId: "child-1",
+                childKind: "task",
                 subagentKind: "advisor",
                 status: "running",
               }),

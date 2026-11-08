@@ -44,7 +44,10 @@ describe("rowIndexForSeq", () => {
   });
 });
 
-function subagentEntry(seq: number): RenderedTranscriptEntry {
+function subagentEntry(
+  seq: number,
+  childKind: "thread" | "task" = "task",
+): RenderedTranscriptEntry {
   return {
     key: `subagent:child-${seq}`,
     kind: "subagent",
@@ -52,6 +55,7 @@ function subagentEntry(seq: number): RenderedTranscriptEntry {
       childConversationId: `child-${seq}`,
       id: `child-${seq}:${seq}`,
       status: "completed",
+      childKind,
       subagentKind: "agent",
       type: "subagent",
     },
@@ -73,14 +77,15 @@ function messageEntry(seq: number): RenderedTranscriptEntry {
 }
 
 describe("transcriptListRows", () => {
-  it("groups each run of child agents and keeps a lone child agent as its card", () => {
+  it("collapses each run of Tasks to one row and keeps each Thread as its own row", () => {
     const rows = transcriptListRows({
       entries: [
         subagentEntry(1),
         subagentEntry(2),
-        subagentEntry(3),
-        messageEntry(4),
-        subagentEntry(5),
+        subagentEntry(3, "thread"),
+        subagentEntry(4),
+        messageEntry(5),
+        subagentEntry(6),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),
@@ -89,20 +94,24 @@ describe("transcriptListRows", () => {
     expect(
       rows.map((row) => ({
         keys:
-          row.kind === "subagents"
+          row.kind === "tasks"
             ? row.entries.map((entry) => entry.key)
-            : undefined,
+            : row.kind === "entry"
+              ? [row.entry.key]
+              : undefined,
         kind: row.kind,
         seq: "seq" in row ? row.seq : undefined,
       })),
     ).toEqual([
       {
-        keys: ["subagent:child-1", "subagent:child-2", "subagent:child-3"],
-        kind: "subagents",
-        seq: 3,
+        keys: ["subagent:child-1", "subagent:child-2"],
+        kind: "tasks",
+        seq: 2,
       },
-      { keys: undefined, kind: "entry", seq: 4 },
-      { keys: undefined, kind: "entry", seq: 5 },
+      { keys: ["subagent:child-3"], kind: "entry", seq: 3 },
+      { keys: ["subagent:child-4"], kind: "tasks", seq: 4 },
+      { keys: ["5:message:0"], kind: "entry", seq: 5 },
+      { keys: ["subagent:child-6"], kind: "tasks", seq: 6 },
     ]);
   });
 });
