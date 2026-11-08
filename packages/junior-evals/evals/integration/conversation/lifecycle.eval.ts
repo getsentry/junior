@@ -7,7 +7,10 @@ import {
   reply,
   webMessage,
 } from "@junior-evals/fixture/inputs";
-import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
+import {
+  rejectNextModelRequest,
+  rejectNextModelRequestAsTooLong,
+} from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
@@ -137,6 +140,34 @@ describe("Lifecycle and Resilience", () => {
     );
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
+    ]);
+  });
+
+  test("when the provider rejects a context over the input limit, skip the summary and post a safe failure reply", async ({
+    agent,
+  }) => {
+    // The same 8,000 token context window: the context is over the input
+    // limit at Turn start, so the Turn sends the request without a summary.
+    // Injected fault: the provider rejects the request as too long.
+    rejectNextModelRequestAsTooLong();
+    const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
+    const conversation = await run(
+      slackMention("In one short sentence, what is the capital of France?"),
+    );
+
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    // The fixed copy of a rejected request. It does not yet say that the
+    // conversation is too large for the model.
+    expect(
+      conversation.replies.map((reply) =>
+        reply.text.replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
+      ),
+    ).toEqual([
+      "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
     ]);
   });
 
