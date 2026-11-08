@@ -183,14 +183,15 @@ export function createConversationAccessReader(
 /** The fields of a Conversation that decide access from another one. */
 export type ConversationReach = Pick<
   ConversationAccess,
-  "rootConversationId" | "tenant" | "visibility"
+  "rootConversationId" | "visibility"
 >;
 
 /**
  * Apply `policies/conversation-access.md`: whether work in the `requester`
  * Conversation may read or find the data of the `target` Conversation. The
- * person of the Turn does not change the result. A private Conversation is
- * reachable only from its own tree.
+ * person of the Turn does not change the result. A public Conversation is
+ * reachable from any Conversation, on any surface and in any provider tenant.
+ * A private Conversation is reachable only from its own tree.
  */
 export function canAccessConversation(args: {
   requester: ConversationReach;
@@ -202,14 +203,6 @@ export function canAccessConversation(args: {
     requester.rootConversationId === target.rootConversationId
   ) {
     return true;
-  }
-  if (
-    !requester.tenant ||
-    !target.tenant ||
-    requester.tenant.provider !== target.tenant.provider ||
-    requester.tenant.providerTenantId !== target.tenant.providerTenantId
-  ) {
-    return false;
   }
   // Missing or unknown visibility is private.
   return target.visibility === "public";

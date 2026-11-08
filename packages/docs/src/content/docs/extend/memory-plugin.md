@@ -208,7 +208,7 @@ What do you remember about my preferences?
 
 Junior should recall the preference without prompting.
 
-Memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from any Conversation in the same Slack workspace, including DMs. The upgrade deletes private memories from older versions.
+Memories are public. A durable fact remembered in a public Conversation can be recalled from any Conversation, including DMs, web Conversations, and other Slack workspaces. The upgrade deletes private memories from older versions.
 
 ## Failure modes
 

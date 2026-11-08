@@ -242,6 +242,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
 
     if (isVisionEnabled() && shouldHydrateVisionContext) {
       await deps.hydrateConversationVisionContext(conversation, {
+        conversationId,
         threadId: args.context.threadId,
         channelId: args.context.channelId,
         actorId: args.context.actorId,

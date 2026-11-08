@@ -1,20 +1,19 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ConversationMessageSearchScope } from "@/chat/conversations/message-search";
 import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
 } from "@/chat/db";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
+import { parseSlackTeamId } from "@/chat/slack/ids";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { chatGetPermalinkOk } from "../fixtures/slack/factories/api";
 import { queueSlackApiResponse } from "../msw/handlers/slack-api";
 
-const scope: ConversationMessageSearchScope = {
-  kind: "public_provider_tenant",
-  provider: "slack",
-  providerTenantId: "T123",
-};
+const teamId = parseSlackTeamId("T123");
+if (!teamId) {
+  throw new Error("test Slack team id did not parse");
+}
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -67,7 +66,7 @@ describe("searchConversationMessages", () => {
       }),
     });
     const tool = createSlackConversationMessageSearchTool(
-      scope,
+      teamId,
       "slack:CREQUEST:1700000000.900000",
     );
 

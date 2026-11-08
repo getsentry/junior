@@ -345,9 +345,11 @@ Attributes on the `agent.context_compaction` span:
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
 - `app.compaction.skip_reason`: `over_target` (the context that a
-  replacement keeps is above the target without a summary) or
+  replacement keeps is above the target without a summary),
   `last_over_threshold` (the first model call after the latest full
-  compaction was above the threshold). A skipped compaction runs at the input limit.
+  compaction was above the threshold), or `over_input_limit` (the context
+  that a replacement keeps is at the input limit, so no summary can fit). A
+  compaction skipped for one of the first two reasons runs at the input limit.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.

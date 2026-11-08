@@ -5,9 +5,10 @@
  * agent requests (the ones that offer tools) and holds them while a test
  * reacts. It never changes a model request or its response, and it writes
  * a model answer only for a forced Guardian decision (`guardian.ts`). A test
- * can make the provider reject one agent
- * request with `rejectNextModelRequest()`. Two requests are not model requests. Image generation is a third-party image API, so the
- * observer answers it with a 1x1 PNG, or with the image of
+ * can make the provider reject one agent request with
+ * `rejectNextModelRequest()` or `rejectNextModelRequestAsTooLong()`. Two
+ * requests are not model requests. Image generation is a third-party image
+ * API, so the observer answers it with a 1x1 PNG, or with the image of
  * `mockGeneratedImage()`. `webSearch` is a third-party search provider, so
  * `web.ts` answers it with the results of the test.
  */
@@ -39,7 +40,15 @@ export function mockGeneratedImage(png: Buffer): void {
   });
 }
 
-let rejectedModelRequests = 0;
+/** Error messages of the provider for the next agent requests, in order. */
+let modelRejections: string[] = [];
+
+function rejectNextAgentRequest(message: string): void {
+  modelRejections.push(message);
+  onTestFinished(() => {
+    modelRejections = [];
+  });
+}
 
 /**
  * Make the model provider reject the next model request of the agent in this
@@ -47,10 +56,18 @@ let rejectedModelRequests = 0;
  * does not retry such a request, so the turn fails.
  */
 export function rejectNextModelRequest(): void {
-  rejectedModelRequests += 1;
-  onTestFinished(() => {
-    rejectedModelRequests = 0;
-  });
+  rejectNextAgentRequest(
+    "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+  );
+}
+
+/**
+ * Make the model provider reject the next model request of the agent in this
+ * test, as it does when the request is larger than the context window of the
+ * model. Junior does not retry such a request, so the turn fails.
+ */
+export function rejectNextModelRequestAsTooLong(): void {
+  rejectNextAgentRequest("prompt is too long: 213462 tokens > 200000 maximum");
 }
 
 export type GatewayProgress =
@@ -137,7 +154,7 @@ export function installGatewayObserver(): GatewayObserver {
       }
       const hook = progressHook;
       if (
-        (!hook && rejectedModelRequests === 0) ||
+        (!hook && modelRejections.length === 0) ||
         !request.url.startsWith(GATEWAY_MESSAGES_URL)
       ) {
         return passthrough();
@@ -147,16 +164,12 @@ export function installGatewayObserver(): GatewayObserver {
         // Titles and other side calls do not offer tools.
         return passthrough();
       }
-      if (rejectedModelRequests > 0) {
-        rejectedModelRequests -= 1;
+      const rejection = modelRejections.shift();
+      if (rejection) {
         return HttpResponse.json(
           {
             type: "error",
-            error: {
-              type: "invalid_request_error",
-              message:
-                "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
-            },
+            error: { type: "invalid_request_error", message: rejection },
           },
           { status: 400 },
         );

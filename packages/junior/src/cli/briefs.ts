@@ -21,7 +21,7 @@ import {
   throughIndexFromSnapshot,
   type ConversationSnapshot,
 } from "@/chat/briefs/snapshot";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject } from "@/chat/core-model";
 import { CLI_USAGE } from "./run";
 
 type PullOptions = {
@@ -237,7 +237,13 @@ async function runSnapshot(
     versions.push(
       await generateBrief({
         completeObject: (request) =>
-          completeObject({ ...request, modelId: options.model }),
+          completeObject({
+            ...request,
+            modelId: options.model,
+            operation: "brief_update",
+            // The CLI report sums the cost of each version.
+            cost: { owner: "caller" },
+          }),
         input: briefInputFromSnapshot(snapshot, throughIndex),
         previous: versions.at(-1)?.brief,
         prompt,

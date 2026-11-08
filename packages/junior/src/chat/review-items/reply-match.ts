@@ -1,5 +1,5 @@
 import { botConfig } from "@/chat/config";
-import { completeDecision } from "@/chat/pi/client";
+import { completeDecision } from "@/chat/core-model";
 import type { ReviewItem } from "./store";
 
 const MATCH_CONFIDENCE_THRESHOLD = 0.7;
@@ -65,7 +65,8 @@ export async function matchReplyToReviewItems(args: {
       modelId: botConfig.decisionModelId,
     },
     modelId: botConfig.decisionModelId,
-    promptName: "junior.review_item_reply_match",
+    operation: "review_item_reply_match",
+    cost: { conversationId: args.conversationId },
     questions: Object.fromEntries(
       args.items.map((item, index) => [keys[index]!, matchQuestion(item)]),
     ),

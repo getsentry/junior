@@ -13,7 +13,7 @@ import {
 import type { BriefEntry } from "@/chat/briefs/schema";
 import { generateCatchUp, type CatchUpBrief } from "@/chat/catch-up/generate";
 import { botConfig } from "@/chat/config";
-import { completeText } from "@/chat/pi/client";
+import { completeText } from "@/chat/core-model";
 
 interface CatchUpEvalInput {
   /** The Brief from the reader's last visit. */
@@ -44,6 +44,8 @@ export const catchUpHarness = createHarness<
       ...(input.brief ? { brief: input.brief } : undefined),
       completeText,
       conversationId: "slack:CEVAL:1712345.0001",
+      // The eval Conversation is not stored, so it records no cost.
+      cost: { owner: "none" },
       entries: input.rows.map((row, index) => ({
         ...row,
         createdAtMs: START_MS + index * 60_000,
