@@ -95,7 +95,7 @@ export function createMessageAgentTool(
         }
         if (error instanceof AgentInvocationLimitError) {
           throw new ToolInputError(
-            `${error.message}. Wait for active children to finish, or archive a finished Thread with archiveAgent, before you give more work.`,
+            `${error.message}. Wait for active children to finish before you give more work.`,
             { cause: error },
           );
         }

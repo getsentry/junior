@@ -34,7 +34,7 @@ export function createArchiveAgentTool(conversationId: string) {
     exposure: "deferred",
     source: AGENTS_TOOL_SOURCE,
     description:
-      "Archive a Thread that this conversation started, for everyone. An archived Thread no longer counts toward your limit of active children, and a person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread after its last result: that person decides, and can archive it from its dashboard_url.",
+      "Archive a Thread that this conversation started, for everyone. A person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread after its last result: that person decides, and can archive it from its dashboard_url.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

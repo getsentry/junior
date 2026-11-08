@@ -8,6 +8,7 @@ import {
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { completeAgentInvocation } from "@/chat/agent-invocations/store";
+import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
@@ -148,42 +149,62 @@ describe("Thread spawn and archive", () => {
     }
   });
 
-  it("counts each Thread toward the cap until it is archived", async () => {
+  it("counts a Thread toward the cap only while it has open work", async () => {
     const harness = await createHarness();
     try {
-      // An idle Task does not count.
+      // Idle children do not count, Threads included.
       await createIdleChild("idle-task", "task");
-      const threads: string[] = [];
+      const idleThread = await createIdleChild("idle-thread", "thread");
+      const busy: AgentInvocation[] = [];
       for (
         let index = 0;
         index < MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT;
         index++
       ) {
-        threads.push(await createIdleChild(`thread-${index}`, "thread"));
+        busy.push(
+          await createAgentInvocation({
+            ...slackInvocationInput,
+            idempotencyKey: `busy-thread-${index}`,
+            kind: "thread",
+          }),
+        );
       }
 
-      // Idle Threads still count: people can give them work at any time.
+      // Threads with open work count.
       await expect(
         createAgentInvocation({
           ...slackInvocationInput,
           idempotencyKey: "one-too-many",
         }),
       ).rejects.toBeInstanceOf(AgentInvocationLimitError);
-      // A Thread already counts, so new work for it needs no new slot.
+      // New work makes an idle Thread active, so it needs a slot.
       await expect(
         createAgentInvocationForMessage({
           ...slackInvocationInput,
-          childConversationId: threads[0]!,
-          idempotencyKey: "more-for-thread",
-          parentToolCallId: "call-more",
+          childConversationId: idleThread,
+          idempotencyKey: "more-for-idle-thread",
+          parentToolCallId: "call-idle",
         }),
-      ).resolves.toMatchObject({ queued: false });
+      ).rejects.toBeInstanceOf(AgentInvocationLimitError);
+      // A busy Thread already counts, so more work for it needs no new slot.
+      await expect(
+        createAgentInvocationForMessage({
+          ...slackInvocationInput,
+          childConversationId: busy[0]!.childConversationId,
+          idempotencyKey: "more-for-busy-thread",
+          parentToolCallId: "call-busy",
+        }),
+      ).resolves.toMatchObject({ queued: true });
 
-      await archiveAgent(slackParentConversationId, threads[1]!);
+      await completeAgentInvocation({
+        invocationId: busy[1]!.invocationId,
+        result: "Done.",
+        status: "completed",
+      });
       await expect(
         createAgentInvocation({
           ...slackInvocationInput,
-          idempotencyKey: "after-archive",
+          idempotencyKey: "after-finish",
         }),
       ).resolves.toMatchObject({ status: "pending" });
     } finally {

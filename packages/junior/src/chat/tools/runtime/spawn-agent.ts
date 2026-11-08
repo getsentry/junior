@@ -101,7 +101,7 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "thread: people can open and message the child directly, like a conversation of its own. Pick it for long-lived work that people will want to follow, steer, or talk to. It counts toward your limit of active children until you archive it with archiveAgent. task (default; omit or pass null): background work that only you message.",
+            "thread: people can open and message the child directly, like a conversation of its own. Pick it for long-lived work that people will want to follow, steer, or talk to. task (default; omit or pass null): background work that only you message.",
           ),
         agent_type: z
           .enum(AGENT_TYPES)
@@ -156,7 +156,7 @@ export function createSpawnAgentTool(
         }
         if (error instanceof AgentInvocationLimitError) {
           throw new ToolInputError(
-            `${error.message}. Wait for active children to finish, or archive a finished Thread with archiveAgent, before spawning more.`,
+            `${error.message}. Wait for active children to finish before spawning more.`,
             { cause: error },
           );
         }
