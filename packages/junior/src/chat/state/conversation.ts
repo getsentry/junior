@@ -65,6 +65,8 @@ export interface ConversationMessage {
   id: string;
   meta?: ConversationMessageMeta;
   role: ConversationRole;
+  /** Event seq of the saved Message. Missing until it is saved and loaded. */
+  seq?: number;
   text: string;
 }
 

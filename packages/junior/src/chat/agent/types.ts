@@ -152,11 +152,6 @@ export type AgentInstruction = {
   /** Host-owned turn context shown to the model near the instruction. */
   context?: string;
   actor?: AgentInstructionActor;
-  /**
-   * When history is present, still include `context` in the prompt. Default is
-   * to omit conversation context once durable history already carries it.
-   */
-  includeConversationContextWithHistory?: boolean;
 };
 
 /** Dispatch identity carried on plugin-authored runs. */

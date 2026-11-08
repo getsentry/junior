@@ -82,6 +82,8 @@ export function projectConversationMessages(
         message: {
           ...message,
           createdAtMs: current?.message.createdAtMs ?? message.createdAtMs,
+          // An edit keeps the seq of the first save, so it is not new again.
+          seq: current?.message.seq ?? event.seq,
         },
         ...(current?.repliedAtMs === undefined
           ? undefined

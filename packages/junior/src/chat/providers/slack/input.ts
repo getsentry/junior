@@ -20,59 +20,10 @@ import {
 } from "@/chat/slack/conversation-context";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
-import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
-import { escapeXml } from "@/chat/xml";
 import { withoutSavedSteeringMessages } from "@/chat/agent/prompt";
-
-function renderRecentThreadMessageLines(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-): string[] {
-  const messagesForContext = messages.filter((queued) => {
-    if (queued.explicitMention) {
-      return false;
-    }
-    const slackTs = inboundMessageActor(queued)?.slackTs;
-    return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
-  });
-  if (messagesForContext.length === 0) {
-    return [];
-  }
-  const lines: string[] = [];
-  for (const queued of messagesForContext) {
-    const actor = inboundMessageActor(queued);
-    const author = escapeXml(actor?.authorName ?? "user");
-    const attrs = [
-      `role="user"`,
-      `author="${author}"`,
-      actor?.authorId ? `actor_id="${escapeXml(actor.authorId)}"` : undefined,
-      actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
-    ]
-      .filter((attr): attr is string => Boolean(attr))
-      .join(" ");
-    const text = escapeXml(queued.userText.replace(/\s+/g, " "));
-    lines.push(
-      `  <message ${attrs}>`,
-      `[user] ${author}: ${text}`,
-      "  </message>",
-    );
-  }
-  return lines;
-}
-
-/** Add recent Slack messages to the agent context. */
-export function appendRecentMessagesToContext(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-): string | undefined {
-  return appendThreadContextMessages(
-    conversationContext,
-    renderRecentThreadMessageLines(conversationContext, messages),
-  );
-}
 
 /** Return the actor stored with one inbound Slack message. */
 export function inboundMessageActor(

@@ -293,15 +293,8 @@ function buildUserTurnInput(args: {
 /** Build the prompt-facing user input. */
 export function buildPromptInput(args: {
   instruction: AgentInstruction;
-  history?: readonly import("@/chat/pi/messages").PiMessage[];
 }): PromptInput {
-  const { instruction, history } = args;
-  const promptConversationContext =
-    history &&
-    history.length > 0 &&
-    !instruction.includeConversationContextWithHistory
-      ? undefined
-      : instruction.context;
+  const { instruction } = args;
   const promptInput = buildUserTurnInput({
     omittedImageAttachmentCount: instruction.omittedImageAttachmentCount ?? 0,
     userAttachments: instruction.attachments
@@ -309,7 +302,7 @@ export function buildPromptInput(args: {
       : undefined,
     inputParts: renderInputParts(instruction),
   });
-  const trimmedContext = promptConversationContext?.trim();
+  const trimmedContext = instruction.context?.trim();
   return {
     ...promptInput,
     contextContentParts: trimmedContext

@@ -280,7 +280,6 @@ describe("Thread input", () => {
       // A Thread is its own agent: its context is its own history, never the
       // root's Messages.
       const prompt = buildPromptInput({
-        history: personRun!.history,
         instruction: personRun!.instruction,
       });
       expect(JSON.stringify([personRun!.instruction, prompt])).not.toContain(
