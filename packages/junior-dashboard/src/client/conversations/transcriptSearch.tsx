@@ -13,8 +13,6 @@ import {
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
-import { transcriptFailureSearchText } from "./transcriptFailure";
-import { stringifyPartValue } from "../format";
 import { isPlatformShortcut } from "../keyboard";
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -226,90 +224,22 @@ export function buildSearchDecorations(
 
 // ─── Matching ────────────────────────────────────────────────────────────────
 
-/** Returns true if any rendered field in the entry contains the normalised query. */
+/**
+ * Returns true if a message row contains the normalised query. Search
+ * finds what people and Junior said, so tool calls, reasoning, child
+ * agents, failures, and other activity rows never match.
+ */
 export function entryMatchesSearch(
   entry: RenderedTranscriptEntry,
   normalizedQuery: string,
 ): boolean {
   if (!normalizedQuery) return true;
-
-  if (entry.kind === "message") {
-    return (
-      textContains(entry.message.trustedSummary, normalizedQuery) ||
-      textContains(entry.message.eventType, normalizedQuery) ||
-      textContains(messageRawText(entry.message), normalizedQuery)
-    );
-  }
-
-  if (entry.kind === "failure") {
-    return textContains(
-      transcriptFailureSearchText(
-        entry.failureCode,
-        entry.failureReason,
-        entry.eventId,
-      ),
-      normalizedQuery,
-    );
-  }
-
-  if (entry.kind === "tool") {
-    return [
-      entry.part.name,
-      entry.part.status,
-      stringifyPartValue(entry.part.input),
-      stringifyPartValue(entry.part.output),
-    ].some((value) => textContains(value, normalizedQuery));
-  }
-
-  if (entry.kind === "reasoning") {
-    return textContains(
-      entry.part.redacted ? "reasoning redacted" : entry.part.text,
-      normalizedQuery,
-    );
-  }
-
-  if (entry.kind === "subagent") {
-    return (
-      textContains(
-        entry.part.agentName ?? entry.part.subagentKind,
-        normalizedQuery,
-      ) ||
-      textContains(entry.part.title, normalizedQuery) ||
-      textContains(entry.part.task, normalizedQuery) ||
-      textContains(entry.part.status, normalizedQuery)
-    );
-  }
-
-  if (entry.kind === "structured_event") {
-    const presentation = entry.part.presentation;
-    return [
-      presentation.title,
-      presentation.preview,
-      ...(presentation.details ?? []).flatMap((detail) => [
-        detail.title,
-        detail.description,
-        detail.content,
-        ...(detail.metadata ?? []),
-      ]),
-    ].some((value) => textContains(value, normalizedQuery));
-  }
-
-  if (entry.kind === "attachments_delivered") {
-    return entry.part.attachments.some(
-      (attachment) =>
-        textContains(attachment.filename, normalizedQuery) ||
-        textContains(attachment.contentType, normalizedQuery),
-    );
-  }
-
-  if (entry.kind === "context") {
-    const event = entry.part.event;
-    return ["context compacted", event.summary].some((value) =>
-      textContains(value, normalizedQuery),
-    );
-  }
-
-  return false;
+  if (entry.kind !== "message") return false;
+  return (
+    textContains(entry.message.trustedSummary, normalizedQuery) ||
+    textContains(entry.message.eventType, normalizedQuery) ||
+    textContains(messageRawText(entry.message), normalizedQuery)
+  );
 }
 
 function textContains(text: string | undefined, query: string): boolean {

@@ -5,7 +5,6 @@ import { formatElapsedDuration, formatMessageTimestamp } from "../format";
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
 import { subagentStatusTone } from "./ConversationChildAgents";
-import { HighlightText } from "./transcriptSearch";
 
 /**
  * Render a child agent as a compact card in the transcript stream: name,
@@ -34,7 +33,7 @@ export function TranscriptSubagentView(props: {
     <>
       <span className="flex min-w-0 items-center gap-2 text-xs leading-5">
         <span className="min-w-0 truncate font-sans text-sm font-semibold text-dashboard-text">
-          <HighlightText text={label} />
+          {label}
         </span>
         <StatusChip
           className={cn("shrink-0", status === "running" && "animate-pulse")}
@@ -57,7 +56,7 @@ export function TranscriptSubagentView(props: {
       </span>
       {headline ? (
         <span className="block min-w-0 truncate text-sm leading-snug text-dashboard-text-subtle">
-          <HighlightText text={headline} />
+          {headline}
         </span>
       ) : null}
     </>

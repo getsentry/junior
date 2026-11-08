@@ -2,7 +2,6 @@ import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
 import { DisplayText } from "../display-text/DisplayText";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 type TranscriptPresentationEventPart = TranscriptViewStructuredEventPart;
@@ -12,7 +11,6 @@ export function TranscriptStructuredEventView(props: {
   part: TranscriptPresentationEventPart;
   timestamp?: number;
 }) {
-  const search = useTranscriptSearch();
   const presentation = props.part.presentation;
   const timestamp = formatMessageTimestamp(props.timestamp);
   const details = presentation.details ?? [];
@@ -30,7 +28,7 @@ export function TranscriptStructuredEventView(props: {
           <section key={`${detail.title}:${index}`}>
             {repeatsTitle(detail.title) ? null : (
               <div className="whitespace-pre-wrap break-words font-sans text-sm font-medium text-dashboard-text">
-                <HighlightText text={detail.title} />
+                {detail.title}
               </div>
             )}
             {detail.description ? (
@@ -40,7 +38,7 @@ export function TranscriptStructuredEventView(props: {
             ) : null}
             {detail.content ? (
               <pre className="mt-2 max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-xs leading-normal text-dashboard-text-muted first:mt-0">
-                <HighlightText text={detail.content} />
+                {detail.content}
               </pre>
             ) : null}
             {detail.metadata?.length ? (
@@ -50,7 +48,7 @@ export function TranscriptStructuredEventView(props: {
                     className="text-xs text-dashboard-text-muted"
                     key={value}
                   >
-                    <HighlightText text={value} />
+                    {value}
                   </span>
                 ))}
               </div>
@@ -59,14 +57,14 @@ export function TranscriptStructuredEventView(props: {
         ))}
       </div>
     ) : null;
-  const collapsible = details.length > 0 && !search.active;
+  const collapsible = details.length > 0;
   // The header can sit inside the row button, so it uses only inline elements
   // and no links.
   const header = (
     <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
       <span className="min-w-0">
         <span className="block text-sm font-medium leading-6 text-dashboard-text">
-          <HighlightText text={presentation.title} />
+          {presentation.title}
         </span>
         {presentation.preview ? (
           <span className="mt-0.5 block truncate text-xs text-dashboard-text-muted">

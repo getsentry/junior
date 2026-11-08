@@ -7,7 +7,6 @@ import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
 import { subagentStatusTone } from "./ConversationChildAgents";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 
 type SubagentStatus = TranscriptViewSubagentPart["status"];
@@ -103,10 +102,7 @@ export function TranscriptSubagentGroup(props: {
   onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
   openKey: string;
 }) {
-  const { active: searchActive } = useTranscriptSearch();
-  const [storedOpen, setOpen] = useTranscriptRowOpen(props.openKey);
-  // Search already dropped rows that do not match, so show every match.
-  const open = storedOpen || searchActive;
+  const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const nowMs = Date.now();
   const span = groupSpan(props.entries, nowMs);
   const running = props.entries.some(
@@ -182,7 +178,6 @@ export function TranscriptSubagentGroup(props: {
           key={entry.key}
           lane={span ? laneStyle(entry, span, nowMs) : undefined}
           onOpenTranscript={props.onOpenTranscript}
-          searchActive={searchActive}
         />
       ))}
       {!open && completedCount > 0 ? (
@@ -203,16 +198,12 @@ function SubagentGroupRow(props: {
   entry: RenderedSubagentEntry;
   lane?: { left: string; width: string };
   onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
-  searchActive: boolean;
 }) {
   const { part } = props.entry;
   const label = agentLabel(part);
   // A row that needs attention keeps its task title, like the single card.
-  // Search also matches the title and task, so show the text that matched.
   const headline =
-    part.status === "completed" && !props.searchActive
-      ? undefined
-      : (part.title ?? part.task);
+    part.status === "completed" ? undefined : (part.title ?? part.task);
   const duration = formatElapsedDuration(
     props.entry.timestamp,
     part.finishedTimestamp,
@@ -222,11 +213,11 @@ function SubagentGroupRow(props: {
       <StatusPip status={part.status} />
       <span className="min-w-0">
         <span className="block truncate font-sans text-sm font-medium text-dashboard-text">
-          <HighlightText text={label} />
+          {label}
         </span>
         {headline ? (
           <span className="block truncate text-sm leading-snug text-dashboard-text-subtle">
-            <HighlightText text={headline} />
+            {headline}
           </span>
         ) : null}
         <span className="sr-only">{part.status}</span>

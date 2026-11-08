@@ -321,10 +321,10 @@ describe("dashboard canonical-event components", () => {
     expect(nestedHtml).toContain(">old</del>");
   });
 
-  it("keeps a running tool name searchable and accessible", () => {
+  it("keeps a running tool name accessible", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="search">
+        <TranscriptSearchProvider query="">
           <TranscriptToolView
             part={{
               id: "tool-1",
@@ -339,9 +339,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain('aria-label="webSearch (running)"');
-    expect(html).toContain("query");
     expect(html).toContain("regression");
-    expect(html).toContain("<mark");
   });
 
   it("shows response size beside tool duration", () => {
