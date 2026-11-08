@@ -184,7 +184,9 @@ describe("context compaction projection reset", () => {
                 content: [
                   {
                     type: "text",
-                    text: `<runtime-turn-context>\n${"y".repeat(1_600_000)}\n</runtime-turn-context>`,
+                    // Below the 380k input limit alone, over it with the
+                    // summary.
+                    text: `<runtime-turn-context>\n${"y".repeat(1_400_000)}\n</runtime-turn-context>`,
                   },
                   {
                     type: "text",
@@ -208,7 +210,7 @@ describe("context compaction projection reset", () => {
             } as PiMessage,
           ],
         },
-        async () => "Short summary.",
+        async () => "s".repeat(200_000),
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
     await expect(loadProjection({ conversationId })).resolves.toEqual(original);
