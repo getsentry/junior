@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getConversationStore } from "@/chat/db";
 import {
   connectMcpTools,
   MCP_TEST_OTHER_VIEWER,
@@ -52,6 +53,63 @@ describe("archiveConversation MCP tool", () => {
       CONVERSATION_ID,
     ]);
     expect(restored.structuredContent).toEqual({ archivedAt: null });
+  });
+
+  it("archives a Thread and its children without archiving its root", async () => {
+    const threadId = "agent:mcp-archive-thread";
+    await seedMcpConversation({
+      conversationId: CONVERSATION_ID,
+      email: MCP_TEST_VIEWER,
+      title: "Viewer incident",
+    });
+    await getConversationStore().createChild({
+      childConversationId: threadId,
+      kind: "thread",
+      parentConversationId: CONVERSATION_ID,
+    });
+    await getConversationStore().createChild({
+      childConversationId: `${threadId}:task`,
+      kind: "task",
+      parentConversationId: threadId,
+    });
+    const call = await connectMcpTools();
+    const readConversation = async (conversationId: string) =>
+      (
+        (await call("getConversation", { conversationId }))
+          .structuredContent as {
+          conversation: { archivedAt?: string; lastSeenAt: string };
+        }
+      ).conversation;
+
+    const lastSeenAt = (await readConversation(threadId)).lastSeenAt;
+    await expect(
+      call("archiveConversation", { conversationId: threadId, lastSeenAt }),
+    ).resolves.toMatchObject({
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: "1 child conversation is not archived. Pass applyToChildren to archive it too.",
+        },
+      ],
+    });
+    const archived = await call("archiveConversation", {
+      applyToChildren: true,
+      conversationId: threadId,
+      lastSeenAt,
+    });
+
+    expect(archived.structuredContent).toEqual({
+      archivedAt: expect.any(String),
+    });
+    for (const conversationId of [threadId, `${threadId}:task`]) {
+      expect((await readConversation(conversationId)).archivedAt).toEqual(
+        expect.any(String),
+      );
+    }
+    expect(
+      (await readConversation(CONVERSATION_ID)).archivedAt,
+    ).toBeUndefined();
   });
 
   it("refuses a stale lastSeenAt and another person's Conversation", async () => {

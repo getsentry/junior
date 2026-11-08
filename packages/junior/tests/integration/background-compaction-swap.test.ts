@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   commitMessages,
@@ -5,12 +6,15 @@ import {
 } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
+import { renderCompactionSummary } from "@/chat/services/context-compaction";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import { closeConversationFixture } from "../fixtures/conversation";
 
 const MODEL_ID = "openai/gpt-5.4";
 // Above the compaction threshold of the default 400k token window.
 const OVERSIZED_TEXT = "x".repeat(1_600_000);
+// Above the 360k threshold, below the 380k input limit.
+const NEAR_LIMIT_TEXT = "x".repeat(1_480_000);
 const LONG_LOG = Array.from(
   { length: 400 },
   (_, index) => `step ${index} checksum ${(index * 7_919).toString(16)}`,
@@ -92,11 +96,38 @@ async function prepareSummary(
   return committed;
 }
 
+/** Commit history and a background summary request that is still running. */
+async function requestSummary(
+  conversationId: string,
+  messages: PiMessage[],
+  requestedAtMs = Date.now(),
+) {
+  const committed = await commitMessages({ conversationId, messages });
+  await getConversationEventStore().append(conversationId, [
+    {
+      createdAtMs: requestedAtMs,
+      data: {
+        type: "compaction_requested",
+        markSeq: committed.committedSeq,
+        historyVersion: committed.historyVersion,
+        modelId: MODEL_ID,
+      },
+    },
+  ]);
+  return committed;
+}
+
 const firstTurn = [
   user("<current-instruction>Find build 7421.</current-instruction>", 1),
   toolCall("call-1", 2),
   toolResult("call-1", OVERSIZED_TEXT, 3),
   assistant("Found build 7421.", 4),
+];
+const nearLimitTurn = [
+  firstTurn[0]!,
+  firstTurn[1]!,
+  toolResult("call-1", NEAR_LIMIT_TEXT, 3),
+  firstTurn[3]!,
 ];
 
 describe("background compaction swap", () => {
@@ -228,6 +259,219 @@ describe("background compaction swap", () => {
     expect(summarize).not.toHaveBeenCalled();
     expect(result.compacted).toBe(true);
     expect(result.piMessages!.slice(-3)).toEqual(turn);
+
+    // The next execution slice starts from the swapped history. The kept
+    // tool call still holds usage of the old history, so it must not count.
+    const next = await compactWithPreparedSummary(
+      { ...args, mode: "blocking", piMessages: result.piMessages! },
+      summarize,
+    );
+    expect(next.compacted).toBe(false);
+    expect(summarize).not.toHaveBeenCalled();
+  });
+
+  it("keeps the history at Turn start below the threshold", async () => {
+    const conversationId = "local:web:swap-turn-start-below";
+    const earlier = [
+      user("<current-instruction>Find build 7421.</current-instruction>", 1),
+      assistant("Found build 7421.", 2),
+    ];
+    await prepareSummary(conversationId, earlier);
+    const afterMark = [
+      user(
+        "<current-instruction>Read the deploy log.</current-instruction>",
+        3,
+      ),
+      assistant("Read it.", 4),
+    ];
+    const committed = await commitMessages({
+      conversationId,
+      messages: [...earlier, ...afterMark],
+    });
+    const prompt = user(
+      "<current-instruction>What was the checksum?</current-instruction>",
+      5,
+    );
+    const summarize = vi.fn(async () => "Unused.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        pendingMessages: [
+          { message: prompt, provenance: { authority: "instruction" } },
+        ],
+        piMessages: [...earlier, ...afterMark],
+      },
+      summarize,
+    );
+
+    // A swap here would only rewrite the provider's prompt cache.
+    expect(result.compacted).toBe(false);
+    expect(summarize).not.toHaveBeenCalled();
+    const events = getConversationEventStore();
+    expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
+      committed.historyVersion,
+    );
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual([...earlier, ...afterMark]);
+  });
+
+  it("defers to a running summary below the input limit, at Turn start and between model calls", async () => {
+    const conversationId = "local:web:swap-defer";
+    const committed = await requestSummary(conversationId, nearLimitTurn);
+    const prompt = user(
+      "<current-instruction>What was the checksum?</current-instruction>",
+      5,
+    );
+    const summarize = vi.fn(async () => "Unused.");
+    const args = {
+      conversationId,
+      modelId: MODEL_ID,
+      piMessages: nearLimitTurn,
+    };
+
+    const turnStart = await compactWithPreparedSummary(
+      {
+        ...args,
+        mode: "blocking",
+        pendingMessages: [
+          { message: prompt, provenance: { authority: "instruction" } },
+        ],
+      },
+      summarize,
+    );
+    const between = await compactWithPreparedSummary(
+      { ...args, mode: "active" },
+      summarize,
+    );
+
+    // The next model call still fits, so the Turn goes on with the full
+    // history until the summary is ready.
+    expect(turnStart).toEqual({ compacted: false, reason: "deferred" });
+    expect(between).toEqual({ compacted: false, reason: "deferred" });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(
+      await getConversationEventStore().loadCurrentHistoryVersion(
+        conversationId,
+      ),
+    ).toBe(committed.historyVersion);
+  });
+
+  it("waits at the input limit for a running summary and swaps it in", async () => {
+    const conversationId = "local:web:swap-wait";
+    const committed = await requestSummary(conversationId, firstTurn);
+    const ready = sleep(200).then(() =>
+      getConversationEventStore().append(conversationId, [
+        {
+          createdAtMs: Date.now(),
+          data: {
+            type: "compaction_prepared",
+            markSeq: committed.committedSeq,
+            historyVersion: committed.historyVersion,
+            modelId: MODEL_ID,
+            outcome: "ready",
+            summary: "The person asked for the deploy checksum of build 7421.",
+          },
+        },
+      ]),
+    );
+    const summarize = vi.fn(async () => "Unused.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: firstTurn,
+      },
+      summarize,
+    );
+    await ready;
+
+    expect(summarize).not.toHaveBeenCalled();
+    expect(result.compacted).toBe(true);
+    expect(result.piMessages!.map(textOf).join("\n")).toContain(
+      "deploy checksum of build 7421",
+    );
+  });
+
+  it("writes nothing when another replacement commits during the wait", async () => {
+    const conversationId = "local:web:swap-wait-replaced";
+    const committed = await requestSummary(conversationId, firstTurn);
+    const events = getConversationEventStore();
+    const replaced = sleep(200).then(() =>
+      events.replaceHistory(conversationId, {
+        createdAtMs: Date.now(),
+        data: {
+          type: "compaction",
+          modelId: MODEL_ID,
+          summary: "Other Turn.",
+          replacementHistory: [],
+        },
+      }),
+    );
+    const summarize = vi.fn(async () => "Stale fallback.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: firstTurn,
+      },
+      summarize,
+    );
+    await replaced;
+
+    expect(result).toEqual({ compacted: false, reason: "history_conflict" });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
+      committed.historyVersion + 1,
+    );
+  });
+
+  it("runs the blocking summary when the wait for a running summary ends", async () => {
+    const conversationId = "local:web:swap-wait-timeout";
+    // The wait counts from the request, so less than a second is left.
+    await requestSummary(conversationId, firstTurn, Date.now() - 44_500);
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: firstTurn,
+      },
+      summarize,
+    );
+
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.piMessages!.map(textOf).join("\n")).toContain(
+      "Fresh summary.",
+    );
+  });
+
+  it("runs the blocking summary at once for a stale request below the input limit", async () => {
+    const conversationId = "local:web:swap-stale-request";
+    await requestSummary(conversationId, nearLimitTurn, Date.now() - 46_000);
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        piMessages: nearLimitTurn,
+      },
+      summarize,
+    );
+
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.compacted).toBe(true);
   });
 
   it("discards a summary of an older History version and runs the blocking compaction", async () => {
@@ -294,6 +538,98 @@ describe("background compaction swap", () => {
 
     expect(summarize).toHaveBeenCalledOnce();
     expect(result.compacted).toBe(true);
+  });
+
+  it("skips a summary when the kept context alone stays above the target", async () => {
+    const conversationId = "local:web:compaction-kept-over-target";
+    // Turn context that every replacement keeps, above the 288k target.
+    const turn = [
+      user(`<thread-context>${"t".repeat(1_200_000)}</thread-context>`, 1),
+      user("<current-instruction>Check the deploy.</current-instruction>", 1),
+      {
+        ...toolCall("call-1", 2),
+        usage: { input: 370_000, output: 20, totalTokens: 370_020 },
+      } as PiMessage,
+      toolResult("call-1", "ok", 3),
+    ];
+    await commitMessages({ conversationId, messages: turn });
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      { conversationId, mode: "active", modelId: MODEL_ID, piMessages: turn },
+      summarize,
+    );
+
+    expect(result).toEqual({ compacted: false, reason: "over_target" });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual(turn);
+  });
+
+  it("compacts again only at the input limit when the last compaction stayed above the threshold", async () => {
+    const conversationId = "local:web:compaction-last-over-threshold";
+    const summaryAt = Date.now();
+    const history = (inputTokens: number) => [
+      user("<current-instruction>Check the deploy.</current-instruction>", 1),
+      user(renderCompactionSummary("Earlier work."), summaryAt),
+      // The first model call after the summary measured the replacement.
+      {
+        ...toolCall("call-1", summaryAt + 1),
+        usage: { input: inputTokens, output: 20, totalTokens: inputTokens },
+      } as PiMessage,
+      toolResult("call-1", "ok", summaryAt + 2),
+    ];
+    await commitMessages({ conversationId, messages: history(370_000) });
+    const summarize = vi.fn(async () => "Fresh summary.");
+    const args = { conversationId, mode: "active" as const, modelId: MODEL_ID };
+
+    const skipped = await compactWithPreparedSummary(
+      { ...args, piMessages: history(370_000) },
+      summarize,
+    );
+    expect(skipped).toEqual({ compacted: false, reason: "over_target" });
+    expect(summarize).not.toHaveBeenCalled();
+
+    const atLimit = await compactWithPreparedSummary(
+      { ...args, piMessages: history(381_000) },
+      summarize,
+    );
+    expect(atLimit.compacted).toBe(true);
+    expect(summarize).toHaveBeenCalledOnce();
+  });
+
+  it("compacts above the threshold after a swap that kept agent history", async () => {
+    const conversationId = "local:web:compaction-after-swap";
+    const summaryAt = Date.now();
+    // A swap keeps agent history from before its summary. A full compaction
+    // can still drop it, so the first model call after the swap is no floor.
+    const history = [
+      user("<current-instruction>Check the deploy.</current-instruction>", 1),
+      user(renderCompactionSummary("Earlier work."), summaryAt),
+      toolCall("call-1", 2),
+      toolResult("call-1", "carried", 3),
+      {
+        ...toolCall("call-2", summaryAt + 1),
+        usage: { input: 370_000, output: 20, totalTokens: 370_020 },
+      } as PiMessage,
+      toolResult("call-2", "ok", summaryAt + 2),
+    ];
+    await commitMessages({ conversationId, messages: history });
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: history,
+      },
+      summarize,
+    );
+
+    expect(result.compacted).toBe(true);
+    expect(summarize).toHaveBeenCalledOnce();
   });
 
   it("discards a summary when another replacement commits first", async () => {

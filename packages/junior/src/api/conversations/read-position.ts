@@ -20,7 +20,16 @@ export async function readConversationReadPosition(
   viewer: User,
   conversationId: string,
 ): Promise<ConversationReadPosition | undefined> {
-  const [row] = await getDb()
+  const [row] = await conversationReadPositionQuery(viewer, conversationId);
+  return row;
+}
+
+/** Select the viewer's read position, so other reads can embed it. */
+export function conversationReadPositionQuery(
+  viewer: User,
+  conversationId: string,
+) {
+  return getDb()
     .select({
       lastReadSeq: sql<number>`greatest(${juniorConversationReadPositions.lastReadSeq}, (${latestViewerMessageSeq(viewer, conversationId)}))`,
     })
@@ -32,7 +41,6 @@ export async function readConversationReadPosition(
       ),
     )
     .limit(1);
-  return row;
 }
 
 /** The seq of the latest Message that one of the viewer's Identities wrote. */

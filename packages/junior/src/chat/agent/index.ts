@@ -73,7 +73,10 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
+import {
+  isTurnInputCommitLostError,
+  TurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
@@ -119,6 +122,7 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { getConversationStore } from "@/chat/db";
+import type { ConversationKind } from "@/chat/conversations/store";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -143,9 +147,19 @@ import {
 } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
-import { estimateRequestOverheadTokens } from "@/chat/services/context-budget";
+import {
+  estimateRequestOverheadTokens,
+  getAgentContextCompactionTriggerTokens,
+} from "@/chat/services/context-budget";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
-import { requestBackgroundCompaction } from "@/chat/services/background-compaction";
+import {
+  lastRequestInputSize,
+  requestBackgroundCompaction,
+} from "@/chat/services/background-compaction";
+import {
+  logInputAfterCompaction,
+  type CompactionMode,
+} from "@/chat/services/context-compaction-telemetry";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
@@ -154,20 +168,6 @@ import {
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
-
-/** Read visibility from the Conversation, or from its nearest parent with one. */
-async function readRunConversationVisibility(
-  conversationId: string,
-): Promise<ConversationPrivacy | undefined> {
-  const conversationStore = getConversationStore();
-  let conversation = await conversationStore.get({ conversationId });
-  while (!conversation?.visibility && conversation?.parentConversationId) {
-    conversation = await conversationStore.get({
-      conversationId: conversation.parentConversationId,
-    });
-  }
-  return conversation?.visibility;
-}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -227,7 +227,11 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const visibility = await readRunConversationVisibility(run.conversationId);
+  // A child reads visibility from its own Destination row, the same as a root.
+  const conversation = await getConversationStore().get({
+    conversationId: run.conversationId,
+  });
+  const visibility = conversation?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
   });
@@ -261,6 +265,7 @@ export async function executeAgentRun(
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         run,
+        conversation?.kind,
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -271,6 +276,7 @@ export async function executeAgentRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
+  conversationKind: ConversationKind | undefined,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: StreamFn | undefined,
@@ -281,8 +287,6 @@ async function executeAgentRunInPrivacyContext(
   const requireAutomationResult = run.dispatch?.declaresResult === true;
   const input = {
     actor: run.instruction.actor,
-    includeConversationContextWithPiMessages:
-      run.instruction.includeConversationContextWithHistory,
     messageText: run.instruction.text,
     userAttachments: run.instruction.attachments
       ? [...run.instruction.attachments]
@@ -351,7 +355,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run);
+  assertRunConsistency(run, conversationKind);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
@@ -408,6 +412,17 @@ async function executeAgentRunInPrivacyContext(
     }
     connectedMcpProviders.add(provider);
   };
+  // A worker can stall past its Lease and come back after another worker
+  // took the Conversation. Check the Lease right before each side effect.
+  const requireConversationLease = async (
+    action: "reply" | "save",
+  ): Promise<void> => {
+    if (durability.checkIn && !(await durability.checkIn())) {
+      throw new TurnInputCommitLostError(
+        `Conversation Lease lost before ${action} for conversation=${conversationId} turn=${turnId}`,
+      );
+    }
+  };
   const recordActiveMcpProviders = async () => {
     if (!mcpToolManager) {
       return;
@@ -455,9 +470,9 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
-    // A child agent's input is a parent agent task or another agent's
+    // An Agent invocation's input is a parent agent task or another agent's
     // output. An agent wrote it, so it has no Actor.
-    const childAgent = Boolean(run.parentConversationId);
+    const childAgent = Boolean(run.agentInvocationId);
     const turnStartProvenance = childAgent
       ? agentInstructionProvenance
       : instructionProvenanceFor(actor);
@@ -579,7 +594,6 @@ async function executeAgentRunInPrivacyContext(
     // ── Prompt input ─────────────────────────────────────────────────
     const { contextContentParts, userContentParts } = buildPromptInput({
       instruction: run.instruction,
-      history: run.history,
     });
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
@@ -775,6 +789,29 @@ async function executeAgentRunInPrivacyContext(
       promptName: CONTEXT_COMPACTION_PROMPT_NAME,
       ...(streamFn ? { base: streamFn } : undefined),
     });
+    // The replacement waiting for the provider-reported input of the next
+    // model request.
+    let replacementAwaitingInput:
+      | { messageCount: number; mode: CompactionMode }
+      | undefined;
+    /** Log the first provider-reported input after a replacement. */
+    const logFirstInputAfterReplacement = (): void => {
+      if (!replacementAwaitingInput) {
+        return;
+      }
+      const inputSize = lastRequestInputSize(
+        agent!.state.messages.slice(replacementAwaitingInput.messageCount),
+      );
+      if (!inputSize) {
+        return;
+      }
+      logInputAfterCompaction({
+        inputSize,
+        mode: replacementAwaitingInput.mode,
+        threshold: getAgentContextCompactionTriggerTokens(activeModelId),
+      });
+      replacementAwaitingInput = undefined;
+    };
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -842,6 +879,7 @@ async function executeAgentRunInPrivacyContext(
         throw error;
       }
       agent!.state.messages = replacement;
+      replacementAwaitingInput = { messageCount: replacement.length, mode };
       runResume.setBeforeMessageCount(replacement.length);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
@@ -867,7 +905,6 @@ async function executeAgentRunInPrivacyContext(
         conversationPrivacy,
         modelId: activeModelId,
         queue: run.environment?.backgroundCompactionQueue,
-        turnStartedAtMs: replyStartedAtMs,
       });
     // ── Agent execution ──────────────────────────────────────────────
     let assistantMessageDeliveryError:
@@ -882,6 +919,7 @@ async function executeAgentRunInPrivacyContext(
         return;
       }
       try {
+        await requireConversationLease("reply");
         await delivery(message);
         acceptedToolFreeAssistant = true;
       } catch (error) {
@@ -1054,6 +1092,9 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
+          // A model call can complete before an abort, such as an auth
+          // pause, so log its input first. An aborted call reports none.
+          logFirstInputAfterReplacement();
           // Pi runs this hook after an abort, such as an auth pause, but no
           // model call follows. Sandbox work here fails on the aborted signal
           // and hides why the run stopped. Steering stays queued.
@@ -1130,9 +1171,18 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
-        return runResume
-          .persistSafeBoundary([...agent!.state.messages])
-          .then(() => undefined);
+        return requireConversationLease("save")
+          .then(() => runResume.persistSafeBoundary([...agent!.state.messages]))
+          .then(
+            () => undefined,
+            (error: unknown) => {
+              // Pi turns a listener error into a failed model message, so
+              // keep the error for the step to rethrow.
+              pendingPiHookError ??=
+                error instanceof Error ? error : new Error(String(error));
+              throw error;
+            },
+          );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         if (
@@ -1509,6 +1559,8 @@ async function executeAgentRunInPrivacyContext(
       unsubscribe();
     }
 
+    // The caller saves the completed Turn after this returns.
+    await requireConversationLease("save");
     await recordActiveMcpProviders();
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
@@ -1546,6 +1598,10 @@ async function executeAgentRunInPrivacyContext(
       error instanceof AssistantMessageDeliveryError
         ? error.originalError
         : error;
+    // Another worker holds the Lease. Do not complete or park the Turn.
+    if (isTurnInputCommitLostError(runError)) {
+      throw runError;
+    }
     if (
       runError instanceof AuthPausePersistenceError ||
       isTurnExecutionLimitExceededError(runError)
@@ -1564,6 +1620,8 @@ async function executeAgentRunInPrivacyContext(
     // continuable). Soft yield after delivery + steering still parks so the
     // steered work can run on the next slice.
     if (resume?.timedOut && acceptedToolFreeAssistant && agent) {
+      // The caller saves the completed Turn after this returns.
+      await requireConversationLease("save");
       await recordActiveMcpProviders();
       const piMessages = [...agent.state.messages];
       return {

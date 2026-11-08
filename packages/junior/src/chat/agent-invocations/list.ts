@@ -10,8 +10,8 @@ import {
   juniorAgentInvocations,
   juniorConversations,
 } from "@/db/schema";
+import { getAgentInvocationIdForResult } from "./ids";
 import {
-  getAgentInvocationIdForResult,
   invocationFromRow,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,

@@ -8,6 +8,7 @@ import type {
   TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
+import type { ConversationKind } from "@/chat/conversations/store";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -151,11 +152,6 @@ export type AgentInstruction = {
   /** Host-owned turn context shown to the model near the instruction. */
   context?: string;
   actor?: AgentInstructionActor;
-  /**
-   * When history is present, still include `context` in the prompt. Default is
-   * to omit conversation context once durable history already carries it.
-   */
-  includeConversationContextWithHistory?: boolean;
 };
 
 /** Dispatch identity carried on plugin-authored runs. */
@@ -216,6 +212,11 @@ export type AgentDurability = {
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
+  /**
+   * Return false when the durable worker no longer holds the Conversation
+   * Lease. The run checks it before each saved step and each reply.
+   */
+  checkIn?: () => Promise<boolean>;
   drainSteeringMessages?: (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentSteeringMessage[]>;
@@ -268,9 +269,13 @@ export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
   /**
-   * Parent of a child agent Conversation. The final reply of this run goes to
-   * that parent, not to a person. Unset for a root Conversation.
+   * Agent invocation that this Run advances. Only the Agent invocation worker
+   * sets it. Its input is agent-written, and its final reply goes to the
+   * parent. Behavior that depends on that reads this field, not the
+   * Conversation kind: a person's Turn in a Thread has no Agent invocation.
    */
+  agentInvocationId?: string;
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
   turnId: string;
@@ -357,7 +362,10 @@ export function actorFromRun(
   return undefined;
 }
 
-/** Reject contradictory provider coordinates before the run touches state. */
+/**
+ * Reject contradictory provider coordinates before the run touches state.
+ * `conversationKind` comes from the stored Conversation, never from the Run.
+ */
 export function assertRunConsistency(
   run: Pick<
     AgentRun,
@@ -369,6 +377,7 @@ export function assertRunConsistency(
     | "actor"
     | "dispatch"
   >,
+  conversationKind?: ConversationKind,
 ): void {
   const { destination, source } = run;
   switch (source.kind) {
@@ -413,6 +422,11 @@ export function assertRunConsistency(
       }
       switch (destination.platform) {
         case "local": {
+          // A person's Turn in a Thread replies in the Thread. Its
+          // Destination is the Thread's own copy of its root's.
+          if (conversationKind === "thread") {
+            break;
+          }
           if (source.conversationId !== destination.conversationId) {
             throw new TypeError(
               "Source and destination conversation IDs do not match",

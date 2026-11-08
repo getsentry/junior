@@ -288,6 +288,40 @@ describe("Watches", () => {
     expect(delivery.replies).toHaveLength(1);
   });
 
+  test("when the merge guidance says to tell the person who asked, post it", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(`What does ${pullRequest} change?`),
+    );
+    // The Watch that Junior adds after it opens a pull request. The GitHub
+    // plugin guidance for the merge says to mention the person who asked.
+    await insertWatch({
+      conversation,
+      events: ["pull_request.merged"],
+      identifier: pullRequest,
+      intent:
+        "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push. Report completed work or blockers in the originating Slack thread. Report when the pull request closes unmerged. When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID from the originating thread, with the reviewer, the review outcome, and the pull request link. Otherwise stay silent.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(mergedWebhook());
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says GitHub PR ${pullRequest} was merged.`,
+          "The reply mentions the person who asked in the thread.",
+        ],
+      }),
+    );
+
+    // The person must hear about the merge, so the reply is not quiet.
+    expect(delivery.quietReplies).toEqual([]);
+    expect(delivery.replies).toHaveLength(1);
+  });
+
   test("when the person who asked reviews the PR, address them once as you", async ({
     run,
   }) => {
@@ -327,6 +361,65 @@ describe("Watches", () => {
         ],
         fail: [
           "Do not present the reviewer as a different person from the person the reply notifies.",
+          'Do not name "octo-requester" as the reviewer.',
+        ],
+      }),
+    );
+
+    expect(delivery.replies).toHaveLength(1);
+    expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
+  });
+
+  test("when a child agent reports a review by the person who asked, address them once as you", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        `Use spawnAgent to start one child agent named "pr-watcher" with the task "Reply with only the word READY. A watch on ${pullRequest} sends you its reviews later." When it reports a review, @-mention me here with the reviewer, the review outcome, and the pull request link.`,
+      ),
+    );
+    const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+      (call) => toolOutput(call) as { conversation_id?: string },
+    );
+    expect(
+      spawned?.conversation_id,
+      "No child agent: this run does not test the relay",
+    ).toEqual(expect.any(String));
+    // The Slack person who asked also reviews on GitHub as this login. The
+    // child agent watches the PR, so the review reaches the thread only
+    // through its result.
+    await insertLinkedGitHubIdentity({ login: "octo-requester" });
+    await insertWatch({
+      conversation: { conversationId: spawned!.conversation_id! },
+      events: ["pull_request.review.changes_requested"],
+      identifier: pullRequest,
+      intent:
+        "Report each review to the parent agent with the reviewer, the review outcome, and the pull request link. Do not change the pull request.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const delivery = await conversation.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Please add a regression test.",
+          state: "changes_requested",
+          user: { login: "octo-requester" },
+        },
+      }),
+    );
+    await expect(delivery).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          `The reply says changes were requested on GitHub PR ${pullRequest}.`,
+          "The reply treats the person it mentions as the reviewer, for example by saying that you requested changes.",
+        ],
+        fail: [
+          "Do not present the reviewer as a different person from the person the reply mentions.",
           'Do not name "octo-requester" as the reviewer.',
         ],
       }),

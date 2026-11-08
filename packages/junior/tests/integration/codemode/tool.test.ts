@@ -128,7 +128,6 @@ describe("codemode tool", () => {
       ok: true,
       value: { hasTime: true },
       output: "watches: 0",
-      truncated: false,
       calls: [
         { id: `${CODEMODE_CALL_ID}/c1`, toolName: "systemTime", status: "ok" },
         { id: `${CODEMODE_CALL_ID}/c2`, toolName: "listWatches", status: "ok" },

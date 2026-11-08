@@ -20,7 +20,11 @@ import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+} from "../../../msw/handlers/slack-api";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createChild,
   insertLegacyEvent,
@@ -447,11 +451,17 @@ describe("conversation detail API", () => {
         data: {
           messageId: "reply-1",
           role: "assistant",
-          text: "<@UOWNER1> merged. cc <@UNEW1234>",
+          text: "<@UOWNER1> merged. cc <@UNEW1234> <@USHARED1>",
           type: "message",
         },
       },
     ]);
+    // Another instance already asked Slack for USHARED1.
+    await getStateAdapter().set(
+      "slack-user-names:T123:USHARED1",
+      { fullName: "Shared Person" },
+      60_000,
+    );
     await appendConversationBrief(getDb(), {
       conversationId,
       turnId: "mentions-brief-turn",
@@ -484,8 +494,16 @@ describe("conversation detail API", () => {
           slackUserId: "UNEW1234",
           slackUserName: "new.person",
         },
+        { fullName: "Shared Person", slackUserId: "USHARED1" },
       ],
     });
+    expect(
+      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+    ).toEqual(["UNEW1234"]);
+    // Other instances can now skip Slack for UNEW1234.
+    expect(
+      await getStateAdapter().get("slack-user-names:T123:UNEW1234"),
+    ).toEqual({ fullName: "New Person", userName: "new.person" });
     // The Brief uses the same lookup as transcript events.
     expect(detail?.brief?.mentions).toEqual([
       {

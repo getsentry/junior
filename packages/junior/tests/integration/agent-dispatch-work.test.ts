@@ -11,8 +11,10 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { LOST_WORKER_RESUME_MESSAGE } from "@/chat/task-execution/paused-turn";
+import {
+  LOST_WORKER_RESUME_MESSAGE,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";

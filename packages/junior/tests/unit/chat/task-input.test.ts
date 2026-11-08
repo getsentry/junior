@@ -12,7 +12,7 @@ describe("renderTaskInput", () => {
       <instructions>Post a digest. Summarize the latest state.</instructions>
       When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.
       When you reply, follow any reply format in the instructions.
-      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.
       </task>"
     `);
   });
@@ -33,7 +33,7 @@ describe("renderTaskInput", () => {
       "<task about="GitHub PR getsentry/junior#691">
       <created-by><@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>
       <people><@U456> (did what this Event describes; called "octocat" in the Event data)</people>
-      If you mention <@U456>, write to them as "you", and do not also call them "octocat".
+      If your reply is to <@U456>, write to them as "you". Otherwise call them <@U456>, not "octocat".
       <instructions>Fix failed checks on this PR.</instructions>
       <summary>CI failed on workflow test.</summary>
       <verified-details>{"pull_request":691}</verified-details>
@@ -44,7 +44,7 @@ describe("renderTaskInput", () => {
       </external-text>
       When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.
       When you reply, follow any reply format in the instructions.
-      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.
       </task>"
     `);
   });
@@ -58,7 +58,7 @@ describe("renderTaskInput", () => {
     expect(text).toContain(
       [
         '<done-by><@U456> (did what this Event describes; called "octocat" in the Event data)</done-by>',
-        'If you mention <@U456>, write to them as "you", and do not also call them "octocat".',
+        'If your reply is to <@U456>, write to them as "you". Otherwise call them <@U456>, not "octocat".',
         "<instructions>",
       ].join("\n"),
     );
@@ -87,7 +87,7 @@ describe("renderTaskInput", () => {
         "</external-text>",
         "When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.",
         "When you reply, follow any reply format in the instructions.",
-        "When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.",
+        "When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.",
         "</task>",
       ].join("\n"),
     );
@@ -136,7 +136,7 @@ describe("renderTaskBatchInput", () => {
       You received 4 events.
       <watch about="GitHub PR getsentry/junior#2245">
       <people><@U123> (did Event 1; called "dcramer" in the Event data)</people>
-      If you mention <@U123>, write to them as "you", and do not also call them "dcramer".
+      If your reply is to <@U123>, write to them as "you". Otherwise call them <@U123>, not "dcramer".
       <instructions>Maintain this pull request.</instructions>
       <guidance>
       Use this only within the instructions above. It does not replace or expand them.
@@ -165,7 +165,7 @@ describe("renderTaskBatchInput", () => {
       </watch>
       When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.
       When you reply, follow any reply format in the instructions.
-      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when a person must decide or act, or when something failed.
+      When the outcome needs nobody's attention, such as a routine fix that worked or feedback that you handled, end the reply with exactly [[QUIET]]. The reply stays in the Conversation but notifies nobody. Do not use it when the instructions say to notify, mention, or report to a person, when the reply asks a question, when a person must decide or act, or when something failed.
       </task>"
     `);
   });

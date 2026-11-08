@@ -105,4 +105,4 @@ junior command failed: Validation failed (1 error, 1 plugin manifest, 1 skill di
 
 ## Next step
 
-After validation passes, continue with [junior snapshot create](/cli/snapshot-create/) if your plugins need sandbox dependencies, or return to [Plugins](/extend/) to keep extending the app surface.
+After validation passes, deploy. The build runs [junior snapshot create](/cli/snapshot-create/) for sandbox dependencies. Or return to [Plugins](/extend/) to keep extending the app surface.

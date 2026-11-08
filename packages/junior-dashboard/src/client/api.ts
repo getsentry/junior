@@ -59,10 +59,6 @@ function takeDashboardBootstrap(): DashboardCoreData | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-// The server reuses its cached report until the viewer's spend changes, so a
-// short poll shows a finished Turn without a full aggregate query each time.
-const PERSONAL_SPEND_REFRESH_MS = 10_000;
-
 /** Query options for dashboard shell data, seeded from the page shell. */
 export function dashboardCoreQueryOptions() {
   return queryOptions({
@@ -127,13 +123,7 @@ export function useConversationsData(search = "") {
         signal,
       ),
     placeholderData: keepPreviousData,
-    // Active rows change while no Conversation is open, such as a new title.
-    refetchInterval: (query) =>
-      query.state.data?.conversations.some(
-        (conversation) => conversation.status === "active",
-      )
-        ? 10_000
-        : false,
+    // The versions poll refreshes the feed when it changes.
     retry: false,
   });
 }
@@ -327,7 +317,10 @@ export function useActorCodeData(email: string | undefined) {
   });
 }
 
-/** Fetch and refresh the authenticated viewer's rolling model spend. */
+/**
+ * Fetch the authenticated viewer's rolling model spend. The versions poll
+ * refreshes it when it changes.
+ */
 export function usePersonalSpendData(enabled: boolean) {
   return useQuery({
     enabled,
@@ -338,7 +331,6 @@ export function usePersonalSpendData(enabled: boolean) {
         "/api/people/me/spend",
         signal,
       ),
-    refetchInterval: PERSONAL_SPEND_REFRESH_MS,
     retry: false,
     staleTime: 0,
   });

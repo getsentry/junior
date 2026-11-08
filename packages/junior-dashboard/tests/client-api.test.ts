@@ -10,6 +10,7 @@ import { createDashboardApp } from "../src/app";
 import { auth, embeddedBootstrap } from "./dashboard-test-helpers";
 import {
   ARCHIVED_CONVERSATION_ID,
+  resetMockConversationViewerState,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
@@ -133,6 +134,7 @@ describe("dashboard client API", () => {
     const conversationId = "slack:C1:123";
     const detail = {
       conversationId,
+      kind: "root" as const,
       cumulativeDurationMs: 1,
       displayTitle: "Active conversation",
       eventHistory: { status: "available" as const },
@@ -258,7 +260,7 @@ describe("dashboard client API", () => {
       expect(denied.status).toBe(401);
     } finally {
       client.clear();
-      setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+      resetMockConversationViewerState();
     }
   });
 

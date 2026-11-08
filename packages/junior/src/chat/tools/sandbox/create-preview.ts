@@ -2,6 +2,7 @@ import * as z from "zod";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { SANDBOX_TOOL_SOURCE } from "@/chat/sandbox/tool-source";
 
 const outputSchema = juniorToolOutputSchema.extend({
   url: z.string().url(),
@@ -12,6 +13,8 @@ export function createCreatePreviewTool(
   createPreview: NonNullable<SandboxWorkspace["createPreview"]>,
 ) {
   return zodTool({
+    exposure: "deferred",
+    source: SANDBOX_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

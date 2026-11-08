@@ -2,7 +2,11 @@
  * Browser side of phone notifications: service worker registration and the
  * Web Push subscription for this device.
  */
-import { DASHBOARD_SERVICE_WORKER_PATH } from "../../service-worker";
+import {
+  DASHBOARD_SERVICE_WORKER_PATH,
+  NOTIFICATION_TARGET_CACHE,
+  NOTIFICATION_TARGET_KEY,
+} from "../../service-worker";
 
 /** What this browser can do with phone notifications. */
 export type PushSupport =
@@ -134,4 +138,41 @@ export function clearAppBadge(): void {
     clearAppBadge?: () => Promise<void>;
   };
   void badgeNavigator.clearAppBadge?.().catch(() => undefined);
+}
+
+/** A tap older than this belongs to an earlier visit; do not act on it. */
+const NOTIFICATION_TARGET_MAX_AGE_MS = 2 * 60_000;
+
+/** Open a notification URL when it is on this origin and not open already. */
+export function openNotificationTarget(value: string): void {
+  const url = new URL(value, window.location.href);
+  if (url.origin !== window.location.origin) return;
+  const current = `${window.location.pathname}${window.location.search}`;
+  if (`${url.pathname}${url.search}` === current) return;
+  window.location.assign(url.href);
+}
+
+/**
+ * Open the URL of a notification that was just tapped. The worker saves it
+ * because iOS can lose its navigate() call and message to a suspended app.
+ */
+export async function openTappedNotificationTarget(): Promise<void> {
+  if (typeof caches === "undefined") return;
+  const cache = await caches.open(NOTIFICATION_TARGET_CACHE);
+  const response = await cache.match(NOTIFICATION_TARGET_KEY);
+  if (!response) return;
+  await cache.delete(NOTIFICATION_TARGET_KEY);
+  const data: unknown = await response.json();
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("url" in data) ||
+    typeof data.url !== "string" ||
+    !("atMs" in data) ||
+    typeof data.atMs !== "number" ||
+    Date.now() - data.atMs > NOTIFICATION_TARGET_MAX_AGE_MS
+  ) {
+    return;
+  }
+  openNotificationTarget(data.url);
 }

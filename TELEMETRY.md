@@ -87,14 +87,6 @@ fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.
 sort=-gen_ai.tool.call.result.size
 ```
 
-Search tool volume, truncation, and raw output size.
-
-```text
-dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
-fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
-sort=-timestamp
-```
-
 Code Mode scripts, with their nested call counts and failures.
 
 ```text
@@ -247,18 +239,17 @@ attributes below.
 
 Attributes on the `codemode` span:
 
-| Attribute                                      | Type    | Meaning                                                |
-| ---------------------------------------------- | ------- | ------------------------------------------------------ |
-| `app.codemode.script.bytes`                    | int     | script size in UTF-8 bytes                             |
-| `app.codemode.call.count`                      | int     | nested calls made, including rejected calls            |
-| `app.codemode.call.peak_concurrency`           | int     | most nested calls that ran at the same time            |
-| `app.codemode.call.rejected_count`             | int     | nested calls not allowed by action review              |
-| `app.codemode.call.batch_limit_rejected_count` | int     | nested calls refused by the per-drain batch limit      |
-| `app.codemode.vm.start_ms`                     | int     | time until the VM was ready                            |
-| `app.codemode.run_ms`                          | int     | time from VM ready until the result settled            |
-| `app.codemode.output.bytes`                    | int     | script output in UTF-8 bytes, before truncation        |
-| `app.codemode.output.truncated`                | boolean | output was cut to the output limit                     |
-| `app.codemode.error.kind`                      | string  | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
+| Attribute                                      | Type   | Meaning                                                |
+| ---------------------------------------------- | ------ | ------------------------------------------------------ |
+| `app.codemode.script.bytes`                    | int    | script size in UTF-8 bytes                             |
+| `app.codemode.call.count`                      | int    | nested calls made, including rejected calls            |
+| `app.codemode.call.peak_concurrency`           | int    | most nested calls that ran at the same time            |
+| `app.codemode.call.rejected_count`             | int    | nested calls not allowed by action review              |
+| `app.codemode.call.batch_limit_rejected_count` | int    | nested calls refused by the per-drain batch limit      |
+| `app.codemode.vm.start_ms`                     | int    | time until the VM was ready                            |
+| `app.codemode.run_ms`                          | int    | time from VM ready until the result settled            |
+| `app.codemode.output.bytes`                    | int    | script output and return value in UTF-8 bytes          |
+| `app.codemode.error.kind`                      | string | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
 
 - `app.codemode.vm.start_ms` and `app.codemode.run_ms` are absent when the VM
   did not start. `app.codemode.error.kind` is absent when the script returned
@@ -318,8 +309,18 @@ A compaction replaces the history when its estimate is above the threshold.
 - The span and all its children have `app.compaction.mode`. Group the summary
   `gen_ai.chat` spans by mode to compare duration and cache reads.
 - `app.turn.compaction_wait_ms` on `chat.turn` is the time that the Turn
-  waited on compaction in this execution slice. It is absent when no
-  compaction ran.
+  waited on summary compactions in this execution slice. It is absent when no
+  summary compaction ran.
+- `app.turn.compaction_swap_wait_ms` on `chat.turn` is the time that the Turn
+  waited on prepared-summary swaps, also when the swap was `not_ready` or
+  `discarded`. It includes the wait for a running summary at the input
+  limit. It is absent when no swap span ran.
+- After each replacement, the next model request logs
+  `context_compaction.next_request.completed` with
+  `app.compaction.next_input.size` (provider-reported input, cache included),
+  `app.compaction.threshold`, `app.compaction.mode`, and
+  `app.compaction.next_input.over_threshold`. When it is `true`, the
+  replacement did not get the history below the threshold.
 - Sentry data scrubbing removes the values of attribute keys that contain
   `token`. So these keys do not contain it, but the estimates count tokens.
 
@@ -328,7 +329,8 @@ Attributes on the `agent.context_compaction` span:
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
 | `app.compaction.mode`                 | string | `blocking`, `active`, `background`            |
-| `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
+| `app.compaction.outcome`              | string | `compacted`, `skipped`, or `summary_failed`   |
+| `app.compaction.skip_reason`          | string | why no summary was made above the threshold   |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
 | `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
 | `app.compaction.threshold`            | int    | estimated tokens that start a compaction      |
@@ -342,26 +344,38 @@ Attributes on the `agent.context_compaction` span:
   on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
+- `app.compaction.skip_reason`: `over_target` (the context that a
+  replacement keeps is above the target without a summary) or
+  `last_over_threshold` (the first model call after the latest full
+  compaction was above the threshold). A skipped compaction runs at the input limit.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
 `chat/services/context-compaction-swap.ts` owns it. The mode tells the swap
 point: `blocking` at Turn start, `active` between model calls. The span exists
-only when the current History version has a background compaction request or
-result.
+only when the history is above the threshold and the current History version
+has a background compaction request or result.
 
-| Attribute                         | Type   | Meaning                                         |
-| --------------------------------- | ------ | ----------------------------------------------- |
-| `app.compaction.outcome`          | string | `applied`, `not_ready`, or `discarded`          |
-| `app.compaction.discard_reason`   | string | why a ready summary was not used                |
-| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap      |
-| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary |
-| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages        |
-| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer       |
-| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                |
+A request younger than 45 seconds is a running summary. Below the input
+limit, the swap is `deferred` and no blocking summary runs. At the input
+limit, the swap polls until the summary has a result or the 45 seconds end.
 
-- `not_ready`: the job has not written a ready summary, or it failed. A
-  blocking compaction can still follow at the threshold.
+| Attribute                         | Type   | Meaning                                          |
+| --------------------------------- | ------ | ------------------------------------------------ |
+| `app.compaction.outcome`          | string | `applied`, `deferred`, `not_ready`, `discarded`  |
+| `app.compaction.discard_reason`   | string | why a ready summary was not used                 |
+| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap       |
+| `app.compaction.request.age_ms`   | int    | time from the pending request to the swap        |
+| `app.compaction.wait.timed_out`   | bool   | the wait at the input limit ended with no result |
+| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary  |
+| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages         |
+| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer        |
+| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                 |
+
+- `deferred`: a running summary exists, and the next model call fits below
+  the input limit. A later check swaps the summary in.
+- `not_ready`: the request is older than 45 seconds, the job failed, or the
+  wait ended. A blocking compaction can still follow at the threshold.
 - `app.compaction.discard_reason`: `history_version_changed`,
   `over_target`, `conflict` (another replacement committed first), or
   `split_tool_call` (the mark falls between a tool call and its result).
@@ -409,6 +423,25 @@ Turn wait on compaction.
 dataset=spans query='span.op:chat.turn has:tags[app.turn.compaction_wait_ms,number]'
 fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.compaction_wait_ms,number]),p50(span.duration)
 ```
+
+## Thread Context
+
+Each Turn prompt gets one `<thread-context>` block.
+`chat/conversations/thread-context.ts` sets these attributes when it builds
+the block: on `chat.reply` in a Slack Turn, on `chat.turn` in a web or Event
+Turn. The block holds only the Messages since the
+previous Turn when agent history exists.
+
+| Attribute                             | Type   | Meaning                                                   |
+| ------------------------------------- | ------ | --------------------------------------------------------- |
+| `app.thread_context.chars`            | int    | characters of the block, 0 when there is none             |
+| `app.thread_context.shown_messages`   | int    | Messages in the block                                     |
+| `app.thread_context.omitted_messages` | int    | Messages left out by the 60,000-character cap             |
+| `app.thread_context.cursor`           | string | `found`, `missing` (Turn before cursors), or `no_history` |
+| `app.thread_messages.trimmed`         | int    | oldest Messages dropped from the loaded window            |
+
+- `app.thread_messages.trimmed` is set in Turn preparation, only when the
+  loaded Messages pass the trim threshold. Trimming makes no model call.
 
 ## Invariants
 
@@ -484,8 +517,11 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   breadcrumbs, or replays.
 - A Reply rating is Sentry user feedback with `source`
   `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
-  `gen_ai.conversation.id`, and `messaging.message.id`. It has no Reply text
-  and no person. The dashboard hides the thumbs when it has no DSN.
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has the reader's
+  name and email, and the message is `Good reply` or `Bad reply`, plus the
+  reader's optional comment on a bad rating. It has no Reply text. Each Reply
+  sends at most one rating each time the reader opens its Conversation. The
+  dashboard hides the thumbs when it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their

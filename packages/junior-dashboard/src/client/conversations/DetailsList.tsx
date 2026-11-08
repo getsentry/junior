@@ -1,15 +1,18 @@
 import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import { CollapsibleTrigger } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { OutboundIcon } from "../components/OutboundLink";
 
 /**
  * Group one kind of detail in a compact card. Conversation details and event
  * details share it, so both panels read the same way. A `label` names the
- * card as a region.
+ * card as a region. An `action` sits at the end of the title row.
  */
 export function DetailsCard(props: {
+  action?: ReactNode;
   children: ReactNode;
   count?: number;
   flat?: boolean;
@@ -27,21 +30,24 @@ export function DetailsCard(props: {
       )}
     >
       {props.title ? (
-        <h3
-          className={cn(
-            "m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs",
-            props.flat
-              ? "font-semibold text-dashboard-text"
-              : "font-medium text-dashboard-text-muted",
-          )}
-        >
-          {props.title}
-          {props.count ? (
-            <span className="font-normal tabular-nums text-dashboard-text-faint">
-              {props.count.toLocaleString("en-US")}
-            </span>
-          ) : null}
-        </h3>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <h3
+            className={cn(
+              "m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs",
+              props.flat
+                ? "font-semibold text-dashboard-text"
+                : "font-medium text-dashboard-text-muted",
+            )}
+          >
+            {props.title}
+            {props.count ? (
+              <span className="font-normal tabular-nums text-dashboard-text-faint">
+                {props.count.toLocaleString("en-US")}
+              </span>
+            ) : null}
+          </h3>
+          {props.action}
+        </div>
       ) : null}
       <div className="min-w-0 break-words font-sans text-xs leading-relaxed text-dashboard-text-muted">
         {props.children}
@@ -101,7 +107,8 @@ export function DetailsList<T>(props: {
 /**
  * Lay out one details list row: an icon, a title, and short trailing text on
  * the first line, then optional lines under the title. A row with `href`
- * opens that link in a new tab. A `disclosure` row is the trigger of the
+ * opens that link in a new tab, and a row with `to` opens a dashboard page.
+ * An `onClick` row is a button. A `disclosure` row is the trigger of the
  * enclosing `Collapsible`, so it shows or hides the content under it.
  */
 export function DetailsRow(props: {
@@ -110,11 +117,17 @@ export function DetailsRow(props: {
   href?: string;
   icon: ReactNode;
   meta?: ReactNode;
+  onClick?(): void;
   title: ReactNode;
+  to?: string;
   /** Native hover text with detail that the row does not show. */
   tooltip?: string;
 }) {
-  const interactive = props.href !== undefined || props.disclosure === true;
+  const interactive =
+    props.href !== undefined ||
+    props.to !== undefined ||
+    props.onClick !== undefined ||
+    props.disclosure === true;
   const className = cn(
     "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-1 rounded-md px-1.5 py-1.5 text-left text-inherit no-underline",
     interactive &&
@@ -125,8 +138,9 @@ export function DetailsRow(props: {
       <span className="grid size-5 shrink-0 place-items-center text-dashboard-text-muted">
         {props.icon}
       </span>
-      <span className="min-w-0 truncate text-sm font-medium leading-5 text-dashboard-text">
-        {props.title}
+      <span className="flex min-w-0 items-center text-sm font-medium leading-5 text-dashboard-text">
+        <span className="truncate">{props.title}</span>
+        {props.href ? <OutboundIcon /> : null}
       </span>
       <span className="shrink-0 text-xs leading-5 tabular-nums text-dashboard-text-muted">
         {props.meta}
@@ -145,6 +159,25 @@ export function DetailsRow(props: {
       >
         {content}
       </a>
+    );
+  }
+  if (props.to) {
+    return (
+      <Link className={className} title={props.tooltip} to={props.to}>
+        {content}
+      </Link>
+    );
+  }
+  if (props.onClick) {
+    return (
+      <button
+        className={cn(className, "cursor-pointer")}
+        onClick={props.onClick}
+        title={props.tooltip}
+        type="button"
+      >
+        {content}
+      </button>
     );
   }
   if (props.disclosure) {

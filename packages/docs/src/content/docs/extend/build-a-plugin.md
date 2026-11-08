@@ -517,10 +517,11 @@ Run validation before deploy:
 
 ```bash
 pnpm exec junior check
-pnpm exec junior snapshot create
 ```
 
-`junior check` validates manifest and skill structure. `junior snapshot create` verifies runtime dependency snapshot inputs when your plugin declares them.
+`junior check` validates manifest and skill structure. The deploy build runs
+`junior snapshot create`, which installs your runtime dependencies. Confirm that
+its build log lists them.
 
 ## Next step
 

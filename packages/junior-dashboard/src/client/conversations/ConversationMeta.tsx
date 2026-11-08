@@ -46,6 +46,7 @@ import {
   linkStatusLabel,
   type ConversationLink,
 } from "./ConversationLinkedWork";
+import { OutboundLink } from "../components/OutboundLink";
 
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 
@@ -59,14 +60,12 @@ export function PendingAuthorization(props: {
 }) {
   return (
     <div className="mb-2 rounded-lg border border-dashboard-accent/20 bg-dashboard-accent/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
-      <a
+      <OutboundLink
         className="font-medium text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-accent-text"
         href={props.authorization.authorizationUrl}
-        rel="noreferrer"
-        target="_blank"
       >
         {props.authorization.label}
-      </a>
+      </OutboundLink>
       <p className="mb-0 mt-1 text-xs text-dashboard-text-muted">
         {props.authorization.completionText}
       </p>
@@ -402,12 +401,10 @@ export function ConversationAnnotations(props: {
   return (
     <div className="flex gap-x-4 gap-y-2 overflow-x-auto">
       {props.links.map((link) => (
-        <a
+        <OutboundLink
           className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline transition-colors hover:text-dashboard-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
           href={link.url}
           key={link.key}
-          rel="noreferrer"
-          target="_blank"
           title={[
             link.label,
             link.plugin,
@@ -424,7 +421,7 @@ export function ConversationAnnotations(props: {
             status={link.status}
           />
           <span className="min-w-0 break-words">{link.label}</span>
-        </a>
+        </OutboundLink>
       ))}
     </div>
   );
@@ -432,14 +429,9 @@ export function ConversationAnnotations(props: {
 
 function LocationLink(props: { label: string; locationUrl?: string }) {
   return props.locationUrl ? (
-    <a
-      className={dashboardInlineLinkClass}
-      href={props.locationUrl}
-      rel="noreferrer"
-      target="_blank"
-    >
+    <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
-    </a>
+    </OutboundLink>
   ) : (
     props.label
   );
@@ -680,7 +672,7 @@ function conversationStatItems(
       ? {
           content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
           key: "subagents",
-          label: "Subagents",
+          label: "Child conversations",
         }
       : undefined,
   ];

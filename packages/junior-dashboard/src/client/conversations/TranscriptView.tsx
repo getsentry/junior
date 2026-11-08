@@ -36,7 +36,7 @@ export function Transcript(props: {
   historyError?: Error | null;
   historyVersion?: string;
   live?: boolean;
-  /** The read position when the Conversation opened. */
+  /** The stored read position of the viewer. */
   lastReadSeq?: number;
   loadingPreviousPage?: boolean;
   /**
@@ -48,6 +48,8 @@ export function Transcript(props: {
   onLoadPreviousPage?: () => void;
   /** Receive the last event sequence the reader saw in the transcript. */
   onRead?: (seq: number) => void;
+  /** The reader acted outside the transcript, such as in the composer. */
+  readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[];
@@ -56,6 +58,9 @@ export function Transcript(props: {
   revealSeq?: number;
   search?: string;
   onSearchChange?(value: string): void;
+  /** Index of the current search match. */
+  searchMatch?: number;
+  onSearchMatches?(count: number, prepended: number): void;
   selectedEventSeq?: number;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -97,6 +102,7 @@ export function Transcript(props: {
   // results skip rows, so they do not move the read position.
   useTranscriptReadReporter({
     content: bottomPinning.contentElement,
+    engaged: props.readEngaged,
     lastReadSeq: props.lastReadSeq,
     onRead: props.onRead,
     paused: view !== "rich" || search.trim().length > 0,
@@ -135,7 +141,11 @@ export function Transcript(props: {
   }
 
   return (
-    <TranscriptSearchProvider query={search}>
+    <TranscriptSearchProvider
+      match={props.searchMatch}
+      onMatches={props.onSearchMatches}
+      query={search}
+    >
       {/* The pinning hook holds the reader's place; browser anchoring would fight it. */}
       <div
         className="grid min-w-0 [overflow-anchor:none]"

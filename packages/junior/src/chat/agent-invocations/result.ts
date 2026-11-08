@@ -24,20 +24,27 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
+import { createAgentInvocationFromLatest } from "./create";
 import {
-  createAgentInvocationFromLatest,
-  getAgentInvocation,
   getAgentInvocationIdForEvents,
   getAgentInvocationIdForMessage,
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
+} from "./ids";
+import {
+  getAgentInvocation,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
 } from "./store";
+import { isWatchEvent } from "@/chat/conversations/session-stop";
 import { renderUntrustedTag } from "@/chat/input-tags";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { listUnreportedSiblingAgents } from "./list";
+import {
+  agentInvocationResultEventType,
+  isAgentInvocationResultEventType,
+} from "./result-event-type";
 import type {
   AgentInvocation,
   ChildAgent,
@@ -52,7 +59,6 @@ import {
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
 // can pause for input or auth instead of failing (#881).
-const AGENT_INVOCATION_EVENT_TYPE_PREFIX = "agent_invocation.";
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
 /** Event type of a message that a child agent sends to its parent. */
 const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
@@ -147,7 +153,7 @@ function buildResultInboundMessage(
     kind: "event",
     event: {
       eventKey: invocation.invocationId,
-      eventType: `${AGENT_INVOCATION_EVENT_TYPE_PREFIX}${invocation.status}`,
+      eventType: agentInvocationResultEventType(invocation.status),
       identifier: invocation.invocationId,
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
       trustedSummary: summary,
@@ -295,9 +301,24 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
   if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
     return { invocationId: metadata.event.identifier, kind: "message" };
   }
-  return metadata.event.eventType.startsWith(AGENT_INVOCATION_EVENT_TYPE_PREFIX)
+  return isAgentInvocationResultEventType(metadata.event.eventType)
     ? { invocationId: metadata.event.identifier, kind: "result" }
     : undefined;
+}
+
+/**
+ * Return whether a stop after this result was sent skipped it, so it starts no
+ * work. A message that a child sent before its stop is still delivered.
+ */
+function isSkippedAgentResult(
+  input: ChildAgentInput,
+  invocation: AgentInvocation,
+): boolean {
+  return (
+    input.kind === "result" &&
+    isTerminalAgentInvocation(invocation) &&
+    invocation.parentMailboxStatus === "skipped"
+  );
 }
 
 /**
@@ -348,11 +369,15 @@ async function startAgentInvocationsForChildInput(
   }
   // A stopped child takes no new work, even from input sent before the stop.
   // A tree stop leaves a `replaced` agent invocation with its finished status
-  // and marks it `skipped`, so that also means stopped.
+  // and marks it `skipped`, so that also means stopped. Watch Events start
+  // work once a person or the parent ended the stop of the child.
   if (
-    latest.status === "stopped" ||
-    (isTerminalAgentInvocation(latest) &&
-      latest.parentMailboxStatus === "skipped")
+    (latest.status === "stopped" ||
+      (isTerminalAgentInvocation(latest) &&
+        latest.parentMailboxStatus === "skipped")) &&
+    // The session stop already saved every Watch Event of a stopped
+    // Conversation, so these reach a child that is no longer stopped.
+    (isAgentInput || !messages.every(isWatchEvent))
   ) {
     await context.attempt.ack();
     return { status: "completed" };
@@ -393,14 +418,7 @@ async function startAgentInvocationsForChildInput(
   for (const [index, message] of messages.entries()) {
     const input = inputs[index]!;
     const source = await getChildAgentInputInvocation(message, input);
-    // The child was stopped after this result was sent. A message that a
-    // child sent before its stop is still delivered, as it is for a root
-    // parent.
-    if (
-      input.kind === "result" &&
-      isTerminalAgentInvocation(source) &&
-      source.parentMailboxStatus === "skipped"
-    ) {
+    if (isSkippedAgentResult(input, source)) {
       continue;
     }
     const invocation = await createAgentInvocationFromLatest({
@@ -454,14 +472,15 @@ export function createChildConversationWorker(
  * Run each agent invocation result or message as the Actor that triggered the
  * child, user or system. This is on purpose: the result continues that
  * Actor's work. The Actor comes from SQL, not from mailbox metadata, so the
- * parent Turn has the same authority it had at spawn time.
+ * parent Turn has the same authority it had at spawn time. A result that a
+ * stop skipped is dropped. Returns undefined when no input is left.
  *
  * TODO(dcramer): Pass the delegated credential subject of a system Actor, such
  * as a timer watch Turn, when system Turns can spawn children that need it.
  */
 export async function withAgentInvocationResultActors(
   work: MailboxTurnWork,
-): Promise<MailboxTurnWork> {
+): Promise<MailboxTurnWork | undefined> {
   if (work.kind !== "mailbox") {
     return work;
   }
@@ -475,8 +494,11 @@ export async function withAgentInvocationResultActors(
         entry.message,
         input,
       );
-      return { ...entry, actor: invocation.actor };
+      return isSkippedAgentResult(input, invocation)
+        ? undefined
+        : { ...entry, actor: invocation.actor };
     }),
   );
-  return { kind: "mailbox", batch };
+  const kept = batch.filter((entry) => entry !== undefined);
+  return kept.length > 0 ? { kind: "mailbox", batch: kept } : undefined;
 }

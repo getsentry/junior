@@ -101,7 +101,8 @@ export function UsageCard(props: UsageCardProps) {
               </span>
               <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                 <Swatch className={SUBAGENT_FILL} />
-                {props.split.count} subagent{props.split.count === 1 ? "" : "s"}
+                {props.split.count} child conversation
+                {props.split.count === 1 ? "" : "s"}
                 <span className="font-medium text-dashboard-text">
                   {props.split.subagents}
                 </span>

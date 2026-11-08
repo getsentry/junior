@@ -107,7 +107,6 @@ describe("bot image hydration", () => {
               },
             },
           ],
-          compactions: [],
           processing: {},
           vision: {
             byFileId: {},
@@ -272,7 +271,6 @@ describe("bot image hydration", () => {
         conversation: {
           schemaVersion: 1,
           messages: [],
-          compactions: [],
           processing: {},
           vision: {
             byFileId: {},
@@ -349,7 +347,6 @@ describe("bot image hydration", () => {
         conversation: {
           schemaVersion: 1,
           messages: [],
-          compactions: [],
           processing: {},
           vision: {
             byFileId: {},
@@ -529,7 +526,6 @@ describe("bot image hydration", () => {
           conversation: {
             schemaVersion: 1,
             messages: [],
-            compactions: [],
             processing: {},
             vision: {
               byFileId: {},
@@ -566,7 +562,6 @@ describe("bot image hydration", () => {
               conversation: {
                 schemaVersion: 1,
                 messages: [],
-                compactions: [],
                 processing: {},
                 vision: {
                   byFileId: {},
@@ -663,7 +658,6 @@ describe("bot image hydration", () => {
           conversation: {
             schemaVersion: 1,
             messages: [],
-            compactions: [],
             processing: {},
             vision: {
               byFileId: {},
@@ -706,7 +700,6 @@ describe("bot image hydration", () => {
               conversation: {
                 schemaVersion: 1,
                 messages: [],
-                compactions: [],
                 processing: {},
                 vision: {
                   byFileId: {},
@@ -763,7 +756,6 @@ describe("bot image hydration", () => {
           conversation: {
             schemaVersion: 1,
             messages: [],
-            compactions: [],
             processing: {},
             vision: {
               byFileId: {},
@@ -800,7 +792,6 @@ describe("bot image hydration", () => {
               conversation: {
                 schemaVersion: 1,
                 messages: [],
-                compactions: [],
                 processing: {},
                 vision: {
                   byFileId: {},

@@ -284,13 +284,13 @@ Webhook signing secret for events and PR or issue outcome reporting.
 
 </details>
 
-## Run migrations
+## Migrations
 
-```bash
-pnpm exec junior upgrade
-```
+The next Vercel deploy applies this plugin's migrations, because the scaffolded
+build runs [junior upgrade](/cli/upgrade/). For a local database, run
+`pnpm exec junior upgrade` yourself.
 
-This creates the `junior_github_pull_requests` and `junior_github_issues`
+The migrations create the `junior_github_pull_requests` and `junior_github_issues`
 projections used by webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.

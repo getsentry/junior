@@ -30,6 +30,7 @@ test("opens scheduled and event automations in the native Automations view", asy
         conversationId,
         cumulativeDurationMs: 1_000,
         displayTitle: "Automation card",
+        kind: "root",
         eventHistory: { status: "available" },
         events: [
           {

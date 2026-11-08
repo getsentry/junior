@@ -29,10 +29,7 @@ import {
   stopConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import {
-  deleteConversationState,
-  recordConversationExecution,
-} from "@/chat/task-execution/state";
+import { deleteConversationState } from "@/chat/task-execution/state";
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
@@ -266,35 +263,6 @@ describe("conversation work execution", () => {
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
     await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(raw);
-  });
-
-  it("ignores legacy injected markers without blocking pending work", async () => {
-    const state = getStateAdapter();
-    await state.connect();
-    await appendInboundMessage({
-      message: inboundMessage("injected"),
-      nowMs: 1_000,
-      state,
-    });
-    await appendInboundMessage({
-      message: inboundMessage("pending", {
-        createdAtMs: 2_000,
-        receivedAtMs: 2_100,
-      }),
-      nowMs: 2_100,
-      state,
-    });
-    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
-      execution: { pendingMessages: Array<Record<string, unknown>> };
-    };
-    raw.execution.pendingMessages[0]!.injectedAtMs = 1_500;
-    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
-
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
-    ).resolves.toMatchObject({
-      messages: [expect.objectContaining({ inboundMessageId: "pending" })],
-    });
   });
 
   it("repairs duplicate inbound work when no queue marker was recorded", async () => {
@@ -620,18 +588,13 @@ describe("conversation work execution", () => {
       state,
     });
 
-    await recordConversationExecution({
-      conversationId: CONVERSATION_ID,
-      createdAtMs: 1_000,
-      destination: SLACK_DESTINATION,
-      execution: {
-        status: "failed",
-        updatedAtMs: 2_000,
-      },
-      lastActivityAtMs: 2_000,
-      state,
-      updatedAtMs: 2_000,
-    });
+    // Seed the residue of a failed Run that still has mailbox work.
+    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: { status: string; updatedAtMs: number };
+    };
+    raw.execution.status = "failed";
+    raw.execution.updatedAtMs = 2_000;
+    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
 
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
@@ -1860,9 +1823,6 @@ describe("conversation work execution", () => {
     expect(state ? countPendingConversationMessages(state) : 0).toBe(1);
     expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
       "m2",
-    ]);
-    expect(state?.messages.map((message) => message.injectedAtMs)).toEqual([
-      undefined,
     ]);
   });
 

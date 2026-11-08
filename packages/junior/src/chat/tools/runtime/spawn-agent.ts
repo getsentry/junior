@@ -1,5 +1,6 @@
 import * as z from "zod";
 import {
+  AgentDepthLimitError,
   AgentInvocationLimitError,
   AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
@@ -135,6 +136,12 @@ export function createSpawnAgentTool(
         if (error instanceof AgentInvocationLimitError) {
           throw new ToolInputError(
             `${error.message}. Wait for active children to finish before spawning more.`,
+            { cause: error },
+          );
+        }
+        if (error instanceof AgentDepthLimitError) {
+          throw new ToolInputError(
+            `${error.message}. Do the work in this agent instead.`,
             { cause: error },
           );
         }

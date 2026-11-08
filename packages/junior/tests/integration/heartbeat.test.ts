@@ -91,7 +91,6 @@ async function persistActiveTurn(
   await persistThreadStateById(conversationId, {
     conversation: {
       schemaVersion: 1,
-      compactions: [],
       messages: [],
       processing: {
         activeTurnId,

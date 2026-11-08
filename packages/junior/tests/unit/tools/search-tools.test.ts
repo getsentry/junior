@@ -107,6 +107,28 @@ function mixedCatalog() {
         ),
       }),
     }),
+    github_commentOnIssue: tool({
+      description:
+        "Post a comment on a GitHub issue. Returns the comment id and URL.",
+      source: githubSource,
+      exposure: "deferred",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Issue number." }),
+        body: Type.String({ description: "Comment text." }),
+      }),
+    }),
+    github_commentOnPullRequest: tool({
+      description:
+        "Post a comment on a GitHub pull request, or reply in an inline review thread. Use it to answer a question asked in a pull request review or comment.",
+      source: githubSource,
+      exposure: "direct",
+      inputSchema: Type.Object({
+        repo: Type.String(),
+        number: Type.Integer({ description: "Pull request number." }),
+        body: Type.String({ description: "Comment text." }),
+      }),
+    }),
     github_createIssue: tool({
       description: "Create a GitHub issue with a conversation footer.",
       source: githubSource,
@@ -227,7 +249,7 @@ function mixedCatalog() {
 }
 
 describe("searchTools", () => {
-  it("discovers catalog tools from metadata and returns their schemas", async () => {
+  it("discovers deferred catalog tools from metadata and returns their schemas", async () => {
     const searchTools = createSearchToolsTool(catalog());
 
     expect(searchTools.description).toContain(
@@ -253,7 +275,7 @@ describe("searchTools", () => {
             "Agent demo tools for customer health and account planning.",
         },
       ],
-      total_catalog_tools: 3,
+      total_catalog_tools: 2,
       total_matches: 1,
       returned_tools: 1,
       execution_tool: "executeTool",
@@ -261,7 +283,6 @@ describe("searchTools", () => {
         {
           tool_name: "agentDemo_lookupCustomer",
           description: "Lookup customer health for account review.",
-          exposure: "deferred",
           source: "agent-demo",
           input_schema: {
             properties: {
@@ -291,28 +312,9 @@ describe("searchTools", () => {
       ],
     });
 
+    // The model already has direct tools, so search does not return them.
     const directResult = await searchTools.execute!({ query: "shell" }, {});
-    expect(directResult).toMatchObject({
-      returned_tools: 1,
-      sources: [],
-      tools: [
-        {
-          tool_name: "bash",
-          exposure: "direct",
-          input_schema: {
-            required: ["command"],
-            properties: {
-              command: {
-                description: "Command to execute.",
-                minLength: 1,
-                type: "string",
-              },
-            },
-          },
-        },
-      ],
-    });
-    expect(directResult.tools[0]).not.toHaveProperty("source");
+    expect(directResult).toMatchObject({ total_matches: 0, tools: [] });
   });
 
   it("filters by source and omits per-tool source in filtered results", async () => {
@@ -385,6 +387,9 @@ describe("searchTools", () => {
         undefined,
       ],
       ["search code repository", "github_getRepository", "github"],
+      ["repositories", "github_getRepository", "github"],
+      ["comment on issue", "github_commentOnIssue", "github"],
+      ["issue comments", "github_commentOnIssue", undefined],
       ["create issue", "github_createIssue", "github"],
       ["create issue", "mcp__linear__create_issue", "linear"],
       ["update GitHub issue", "github_updateIssue", "github"],
@@ -432,6 +437,26 @@ describe("searchTools", () => {
         query,
         tools: result.tools.map(({ tool_name }) => tool_name),
       }).toEqual({ query, tools: expect.arrayContaining([expectedTool]) });
+    }
+  });
+
+  it("drops weak matches that share only common words", async () => {
+    const searchTools = createSearchToolsTool(mixedCatalog());
+
+    const result = await searchTools.execute!(
+      { query: "create pull request", source: "github", max_results: 20 },
+      {},
+    );
+
+    const names = result.tools.map(({ tool_name }) => tool_name);
+    expect(names[0]).toBe("github_createPullRequest");
+    // Every GitHub tool shares the source; only pull request tools fit.
+    for (const unrelated of [
+      "github_cloneRepository",
+      "github_getRepository",
+      "github_updateIssue",
+    ]) {
+      expect(names).not.toContain(unrelated);
     }
   });
 
@@ -519,8 +544,8 @@ describe("searchTools", () => {
           description: "Long-term Junior memory storage and recall",
         },
       ],
-      total_eligible_tools: 3,
-      total_matches: 3,
+      total_eligible_tools: 2,
+      total_matches: 2,
       returned_tools: 1,
     });
     expect(result.tools).toHaveLength(1);
@@ -547,14 +572,11 @@ describe("searchTools", () => {
           description: "Long-term Junior memory storage and recall",
         },
       ],
-      returned_tools: 3,
+      returned_tools: 2,
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
           source: "agent-demo",
-        },
-        {
-          tool_name: "bash",
         },
         {
           tool_name: "memory_createMemory",
@@ -562,9 +584,6 @@ describe("searchTools", () => {
         },
       ],
     });
-    expect(result.tools[0]?.source).toBe("agent-demo");
-    expect(result.tools[2]?.source).toBe("memory");
-    expect(result.tools[1]).not.toHaveProperty("source");
   });
 
   it("summarizes model-visible descriptions", () => {

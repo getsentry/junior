@@ -217,13 +217,9 @@ function liveAgent(inputSize: number): Agent {
   });
 }
 
-/**
- * Complete a Turn. The default start is before every event, so no ready
- * summary was passed over at its start.
- */
+/** Complete a Turn and return the background jobs that it sent. */
 async function completeTurn(
   agent: Agent,
-  turnStartedAtMs = 0,
 ): Promise<BackgroundCompactionMessage[]> {
   const sent: BackgroundCompactionMessage[] = [];
   await requestBackgroundCompaction({
@@ -232,7 +228,6 @@ async function completeTurn(
     conversationPrivacy: "private",
     modelId: MODEL_ID,
     queue: { send: async (message) => void sent.push(message) },
-    turnStartedAtMs,
   });
   return sent;
 }
@@ -305,7 +300,7 @@ describe("background compaction job", () => {
       },
     ]);
 
-    // A summary that became ready during the Turn waits for the next Turn.
+    // A ready summary waits for the compaction threshold.
     await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
     // A repeated delivery writes nothing.
     await processBackgroundCompaction(sent[0]!, { streamFn: model.streamFn });
@@ -344,39 +339,33 @@ describe("background compaction job", () => {
     ]);
   });
 
-  it("requests again when a Turn started after a ready summary and did not swap it in", async () => {
+  it("keeps a ready summary for later Turns below the threshold", async () => {
     const events = getConversationEventStore();
     await events.append(CONVERSATION_ID, [
       { createdAtMs: 1, data: userMessage("First question.", 1) },
     ]);
     const mark = getAgentBackgroundCompactionMarkTokens(MODEL_ID);
-    const ready = async (job: BackgroundCompactionMessage | undefined) =>
-      await processBackgroundCompaction(job!, {
-        streamFn: replies(["<summary>Earlier work.</summary>"]).streamFn,
-      });
+    const [job] = await completeTurn(liveAgent(mark));
+    await processBackgroundCompaction(job!, {
+      streamFn: replies(["<summary>Earlier work.</summary>"]).streamFn,
+    });
 
-    await ready((await completeTurn(liveAgent(mark)))[0]);
-    await events.append(CONVERSATION_ID, [
-      { createdAtMs: 2, data: userMessage("Second question.", 2) },
-    ]);
-    // The History version is the same, so this Turn discarded the summary,
-    // for example because the history after its mark is too large now.
-    const [second] = await completeTurn(liveAgent(mark), Date.now());
-    expect(second).toBeDefined();
-    await ready(second);
-    await events.append(CONVERSATION_ID, [
-      { createdAtMs: 3, data: userMessage("Third question.", 3) },
-    ]);
-
-    // Two passed-over summaries reach the attempt limit.
-    await expect(completeTurn(liveAgent(mark), Date.now())).resolves.toEqual(
-      [],
-    );
+    // Later Turns at the mark stay below the threshold, so the summary is
+    // not swapped in yet. They do not pay for another summary.
+    for (const [seq, text] of [
+      [2, "Second question."],
+      [3, "Third question."],
+    ] as const) {
+      await events.append(CONVERSATION_ID, [
+        { createdAtMs: seq, data: userMessage(text, seq) },
+      ]);
+      await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
+    }
     expect(
       (await bookkeeping()).filter(
         (event) => event.type === "compaction_requested",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it("writes nothing when the history was replaced before the job ran", async () => {

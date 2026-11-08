@@ -32,6 +32,7 @@ export const conversationReportSourceEventTypes = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
+  "reply_posted",
   "turn_completed",
   "turn_failed",
   "compaction",
@@ -391,6 +392,9 @@ function reportEventData(args: {
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : undefined),
+        ...(typeof data.meta?.eventNamespace === "string"
+          ? { eventNamespace: data.meta.eventNamespace }
+          : undefined),
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
           : undefined),
@@ -447,6 +451,16 @@ function reportEventData(args: {
       return {
         type: "attachments_delivered",
         attachments: data.attachments,
+      };
+    case "reply_posted":
+      if (!args.canExposePayload) {
+        return undefined;
+      }
+      return {
+        type: "reply_posted",
+        plugin: data.plugin,
+        text: data.text,
+        ...(data.url ? { url: data.url } : undefined),
       };
     case "guardian_action_reviewed":
       return {

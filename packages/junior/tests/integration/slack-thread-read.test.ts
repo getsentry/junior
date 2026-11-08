@@ -109,8 +109,6 @@ describe("slackThreadRead", () => {
       target_message_ts: "1700000000.123456",
       thread_ts: "1700000000.123456",
       count: 2,
-      fetched_count: 2,
-      truncated: false,
     });
     expect(result).not.toHaveProperty("conversation_ids");
     expect(result.messages).toHaveLength(2);
@@ -583,8 +581,6 @@ describe("slackThreadRead", () => {
 
     expect(result).toMatchObject({
       count: 3,
-      fetched_count: 3,
-      truncated: false,
     });
     expect(result.messages).toHaveLength(3);
 

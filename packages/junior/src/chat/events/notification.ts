@@ -304,6 +304,7 @@ export function eventBatchMessageMeta(
   messages: readonly InboundMessage[],
 ): Pick<
   ConversationMessageMeta,
+  | "eventNamespace"
   | "eventObjectType"
   | "eventType"
   | "events"
@@ -326,6 +327,7 @@ export function eventBatchMessageMeta(
         : [];
   return {
     eventType: metadata.event.eventType,
+    eventNamespace: metadata.event.namespace,
     eventObjectType: metadata.event.objectType,
     ...(metadata.event.trustedSummary
       ? { trustedSummary: metadata.event.trustedSummary }

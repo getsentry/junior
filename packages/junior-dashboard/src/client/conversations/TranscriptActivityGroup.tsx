@@ -11,7 +11,10 @@ import {
 import { formatMs } from "../format";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
-import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
+import {
+  isAgentInvocationResultMessage,
+  type RenderedTranscriptEntry,
+} from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
@@ -29,9 +32,13 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // Child agent rows stay in the main view, like their result events.
+  // Child agent rows stay in the main view. A run of them is one group card.
   if (entry.kind === "subagent") return false;
-  if (entry.kind === "message") return false;
+  // An agent invocation result left only for its recalled memories is
+  // activity of the Turn it started. Its child agent card shows the outcome.
+  if (entry.kind === "message") {
+    return isAgentInvocationResultMessage(entry.message);
+  }
   // A Turn's captured memories stay visible, so the reader sees what it saved.
   if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
     return false;
@@ -45,8 +52,9 @@ export function isCollapsibleActivityEntry(
 
 /**
  * Keys of message rows that fold into activity: each quiet reply and the
- * Event messages that started its Turn. Event messages wait for the next
- * reply; a message from a person clears them.
+ * Event messages that started its Turn, and each Event message whose Turn
+ * ended without a reply. Event messages wait for the next reply; a message
+ * from a person clears them.
  */
 export function quietTurnEntryKeys(
   entries: readonly RenderedTranscriptEntry[],
@@ -57,6 +65,10 @@ export function quietTurnEntryKeys(
     if (entry.kind !== "message") continue;
     const { message } = entry;
     if (message.role === "user") {
+      if (message.noReply) {
+        keys.add(entry.key);
+        continue;
+      }
       eventKeys = message.eventType ? [...eventKeys, entry.key] : [];
       continue;
     }

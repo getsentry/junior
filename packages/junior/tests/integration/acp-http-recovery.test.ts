@@ -9,7 +9,6 @@ import { createAcpConversations } from "@/api/acp/conversations";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { recordConversationExecution } from "@/chat/task-execution/state";
 import {
   closeConversationFixture,
   createConversationWebHarness,
@@ -780,14 +779,14 @@ describe("remote ACP recovery", () => {
     await harness.drain();
 
     const failedAtMs = Date.now();
-    await recordConversationExecution({
-      conversationId,
-      createdAtMs: failedAtMs,
-      execution: { status: "failed", updatedAtMs: failedAtMs },
-      lastActivityAtMs: failedAtMs,
-      state: harness.state,
-      updatedAtMs: failedAtMs,
-    });
+    // Seed the residue of a Run that failed during cleanup.
+    const workKey = `junior:conversation:v2:${conversationId}`;
+    const raw = (await harness.state.get(workKey)) as {
+      execution: { status: string; updatedAtMs: number };
+    };
+    raw.execution.status = "failed";
+    raw.execution.updatedAtMs = failedAtMs;
+    await harness.state.set(workKey, raw);
     await expect(
       conversations.readTurn({
         afterCursor: first.afterCursor,

@@ -27,6 +27,7 @@ async function mockLongConversation(
     cumulativeDurationMs: 1_000,
     displayTitle: "Long transcript",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -102,7 +103,9 @@ async function mockLongConversation(
   await page.route(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
-      await route.fulfill({ json: route.request().postDataJSON() });
+      await route.fulfill({
+        json: { ...route.request().postDataJSON(), unreadReply: false },
+      });
     },
   );
   await page.route(
@@ -238,11 +241,99 @@ test("mounts only the rows near the viewport of a long transcript", async ({
   await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
-  await page.getByRole("button", { name: "Search transcript" }).click();
-  await page
-    .getByPlaceholder("Search transcript…")
-    .fill("Transcript message 1234 with");
-  await expect(transcript.getByText("Transcript message 1234 ")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  await expect(search).toBeFocused();
+  await search.fill("Transcript message 123");
+  await expect(page.getByText("1/11", { exact: true })).toBeVisible();
+  // Enter goes to the next match. Shift+Enter goes back and wraps around.
+  await search.press("Enter");
+  await expect(page.getByText("2/11", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1230 "),
+  ).toBeInViewport();
+  await search.press("Shift+Enter");
+  await search.press("Shift+Enter");
+  await expect(page.getByText("11/11", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1239 "),
+  ).toBeInViewport();
+
+  // A second press goes to the browser's find.
+  await page.evaluate(() => {
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        document.body.dataset.findPrevented = String(event.defaultPrevented);
+      },
+      { once: true },
+    );
+  });
+  await page.keyboard.press("ControlOrMeta+f");
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-find-prevented",
+    "false",
+  );
+
+  // Escape closes the search, not the details panel.
+  await search.press("Escape");
+  await expect(search).toHaveCount(0);
+  await expect(details).toBeVisible();
+});
+
+test("keeps a Reply rating while its row unmounts", async ({
+  page,
+  dashboard,
+}) => {
+  const feedback: unknown[] = [];
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      __JUNIOR_DASHBOARD_SENTRY__: {
+        dsn: "https://public@sentry.example/1",
+        tracesSampleRate: 0,
+      },
+    });
+  });
+  await page.route("https://sentry.example/**", async (route) => {
+    const item = route.request().postData()?.split("\n").at(-1) ?? "";
+    if (item.includes('"type":"feedback"')) feedback.push(JSON.parse(item));
+    await route.fulfill({ json: {} });
+  });
+  await page.clock.install();
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: false,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  const reply = row(transcript, EVENT_COUNT - 1);
+  const good = reply.getByRole("button", { name: "Good reply" });
+  const bad = reply.getByRole("button", { name: "Bad reply" });
+  const scrollTo = (place: "top" | "bottom") =>
+    transcript.evaluate(
+      (element, top) => element.scrollTo({ top }),
+      place === "top" ? 0 : 1e9,
+    );
+  await good.hover();
+  await good.click();
+
+  // A pending Good stays pending while its row unmounts, then sends once.
+  await scrollTo("top");
+  await expect(reply).toHaveCount(0);
+  await scrollTo("bottom");
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toBeVisible();
+  await scrollTo("top");
+  await expect(reply).toHaveCount(0);
+  await page.clock.runFor(5000);
+  await expect.poll(() => feedback.length).toBe(1);
+  await scrollTo("bottom");
+  await expect(good).toHaveAttribute("aria-pressed", "true");
+  await expect(bad).toHaveCount(0);
+  await good.click();
+  await page.clock.runFor(5000);
+  expect(feedback).toHaveLength(1);
 });
 
 test("jumps to a far message from the outline", async ({ page, dashboard }) => {
@@ -317,6 +408,44 @@ test("holds the top row while earlier pages load above it", async ({
   expect(mock.pageRequests).toEqual(
     [1, 2, 3, 4].map((load) => `?before=${EVENT_COUNT - PAGE_SIZE * load}`),
   );
+});
+
+test("keeps the current search match while earlier pages load", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  let release = () => {};
+  mock.holdEarlier = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const transcript = page.getByLabel("Conversation transcript");
+  await expect(
+    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
+  ).toBeInViewport();
+
+  await page.keyboard.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Search transcript…");
+  // The latest page holds 1969, 1979, 1989, and 1999.
+  await search.fill("9 with");
+  await expect(page.getByText("1/4", { exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByText("2/4", { exact: true })).toBeVisible();
+
+  // The earlier page adds four matches before 1979, which stays current.
+  mock.holdEarlier = new Promise(() => {});
+  release();
+  await expect(page.getByText("6/8", { exact: true })).toBeVisible();
+  await search.press("Enter");
+  await expect(page.getByText("7/8", { exact: true })).toBeVisible();
+  await expect(
+    transcript.getByText("Transcript message 1989 "),
+  ).toBeInViewport();
 });
 
 test("opens far behind at the marker and jumps to the latest", async ({
