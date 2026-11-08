@@ -181,13 +181,31 @@ function assistant(text: string, input = 0, costUsd = 0): AssistantMessage {
   };
 }
 
-/** A model stream that answers each call with the next text, at $0.001. */
-function replies(texts: string[]): { calls: Context[]; streamFn: StreamFn } {
+/**
+ * A model stream that answers each call with the next text, at $0.001. An
+ * `{ error }` entry is a provider error with no cost.
+ */
+function replies(texts: Array<string | { error: string }>): {
+  calls: Context[];
+  streamFn: StreamFn;
+} {
   const calls: Context[] = [];
   const streamFn: StreamFn = (_model, context) => {
-    const message = assistant(texts[calls.length]!, 0, 0.001);
+    const reply = texts[calls.length]!;
     calls.push({ ...context, messages: [...context.messages] });
     const stream = createAssistantMessageEventStream();
+    if (typeof reply !== "string") {
+      const error: AssistantMessage = {
+        ...assistant(""),
+        stopReason: "error",
+        errorMessage: reply.error,
+      };
+      queueMicrotask(() => {
+        stream.push({ type: "error", reason: "error", error });
+      });
+      return stream;
+    }
+    const message = assistant(reply, 0, 0.001);
     queueMicrotask(() => {
       stream.push({ type: "start", partial: message });
       stream.push({ type: "done", reason: "stop", message });
@@ -330,7 +348,8 @@ describe("background compaction job", () => {
     ]);
     const [secondJob] = await completeTurn(liveAgent(mark));
     await processBackgroundCompaction(secondJob!, {
-      streamFn: replies(["No tags.", "Still no tags."]).streamFn,
+      streamFn: replies(["No tags.", { error: "Internal server error" }])
+        .streamFn,
     });
     await events.append(CONVERSATION_ID, [
       { createdAtMs: 3, data: userMessage("Third question.", 3) },
@@ -340,9 +359,10 @@ describe("background compaction job", () => {
     const prepared = (await bookkeeping()).filter(
       (event) => event.type === "compaction_prepared",
     );
+    // A failed nudge request keeps the cost of the first request.
     expect(prepared).toMatchObject([
-      { outcome: "failed", errorType: "missing_summary" },
-      { outcome: "failed", errorType: "missing_summary" },
+      { outcome: "failed", errorType: "missing_summary", costUsd: 0.002 },
+      { outcome: "failed", errorType: "provider_server", costUsd: 0.001 },
     ]);
   });
 

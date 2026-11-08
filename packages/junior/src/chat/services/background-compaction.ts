@@ -305,7 +305,10 @@ function failureLabel(error: unknown, signal: AbortSignal): string {
   if (signal.aborted) {
     return "timeout";
   }
-  if (error instanceof ContextSummaryError) {
+  if (
+    error instanceof ContextSummaryError &&
+    error.failure !== "request_failed"
+  ) {
     return error.failure;
   }
   const providerError = findProviderError(error);

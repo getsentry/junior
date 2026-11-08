@@ -62,7 +62,14 @@ export interface AgentModelRequest {
   options: SimpleStreamOptions;
 }
 
-type SummaryFailure = "empty" | "max_tokens" | "missing_summary" | "tool_call";
+// `request_failed`: the nudge request failed after the first request was
+// billed. The request error is the cause.
+type SummaryFailure =
+  | "empty"
+  | "max_tokens"
+  | "missing_summary"
+  | "request_failed"
+  | "tool_call";
 
 /** A context summary and the estimated cost of the requests that made it. */
 export interface ContextSummary {
@@ -76,8 +83,12 @@ export class ContextSummaryError extends Error {
   /** Estimated cost of the summary requests that did not succeed. */
   readonly costUsd?: number;
 
-  constructor(failure: SummaryFailure, costUsd?: number) {
-    super(`Context summary failed: ${failure}`);
+  constructor(
+    failure: SummaryFailure,
+    costUsd?: number,
+    options?: { cause: unknown },
+  ) {
+    super(`Context summary failed: ${failure}`, options);
     this.failure = failure;
     this.name = "ContextSummaryError";
     if (costUsd !== undefined) this.costUsd = costUsd;
@@ -197,10 +208,20 @@ export async function requestContextSummary(
   logWarn("context_compaction.summary.nudged", {
     "app.compaction.summary_failure": first.failure,
   });
-  const secondMessage = await complete(request, streamFn, [
-    instruction,
-    userText(SUMMARY_NUDGE),
-  ]);
+  let secondMessage: AssistantMessage;
+  try {
+    secondMessage = await complete(request, streamFn, [
+      instruction,
+      userText(SUMMARY_NUDGE),
+    ]);
+  } catch (error) {
+    // Keep the cost of the first request, which the provider billed.
+    throw new ContextSummaryError(
+      "request_failed",
+      summaryCostUsd(firstMessage),
+      { cause: error },
+    );
+  }
   const second = readSummary(secondMessage);
   if ("summary" in second) {
     return withCost(second.summary, firstMessage, secondMessage);
