@@ -58,6 +58,52 @@ describe("tool action review evidence", () => {
     expect(JSON.stringify(evidence)).not.toContain("Hidden chain");
   });
 
+  it("leaves out tool calls that have no result yet", () => {
+    // Pi adds the model step before it runs its calls, so the call under
+    // review is in the transcript without a result.
+    const transcript = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Start one scout, then stop it." }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-plan",
+            name: "updatePlan",
+            arguments: { step: "Start scout" },
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "call-plan",
+        toolName: "updatePlan",
+        content: [{ type: "text", text: "Plan updated." }],
+        isError: false,
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "call-spawn",
+            name: "spawnAgent",
+            arguments: { name: "scout" },
+          },
+        ],
+      },
+    ].map((value) => piMessage(value));
+
+    expect(buildToolActionEvidence(transcript).entries).toEqual([
+      { role: "user", text: "Start one scout, then stop it." },
+      { role: "tool updatePlan call", text: '{"step":"Start scout"}' },
+      { role: "tool updatePlan result", text: "Plan updated." },
+    ]);
+  });
+
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {
     const messageFixtures = [
       {
