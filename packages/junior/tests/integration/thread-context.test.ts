@@ -92,6 +92,12 @@ describe("Turn thread context", () => {
     });
     expect(first).toContain("chatter before the first mention");
     expect(first).not.toContain("first request");
+    await getTurnLifecycle().complete({
+      conversationId: CONVERSATION_ID,
+      createdAtMs: Date.now(),
+      outcome: "success",
+      turnId: "turn-first",
+    });
 
     await saveMessages(conversation, [
       {
@@ -123,5 +129,24 @@ describe("Turn thread context", () => {
         turnId: "turn-second",
       }),
     ).resolves.toBe(second);
+
+    // A failed Turn may not have its prompt in agent history, so the next
+    // Turn still shows the Messages that the failed Turn covered.
+    await getTurnLifecycle().fail({
+      conversationId: CONVERSATION_ID,
+      createdAtMs: Date.now(),
+      failureCode: "agent_run_failed",
+      turnId: "turn-second",
+    });
+    await saveMessages(conversation, [
+      threadMessage("m-third", "third request", { explicitMention: true }),
+    ]);
+    const third = await startTurn(conversation, {
+      hasHistory: true,
+      inputMessageId: "m-third",
+      turnId: "turn-third",
+    });
+    expect(third).toContain("chatter between mentions");
+    expect(third).not.toContain("chatter before the first mention");
   });
 });
