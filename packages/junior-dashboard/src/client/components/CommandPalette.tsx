@@ -10,6 +10,7 @@ import { useNavigate } from "react-router";
 import { useConversationsData } from "../api";
 import { formatCompactAge } from "../conversations/conversationAge";
 import {
+  FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
   conversationPath,
 } from "../conversations/conversationRoutes";
@@ -48,6 +49,8 @@ type PaletteItem = {
   matches?: number[];
   meta?: string;
   score: number;
+  /** Navigation state for the destination page. */
+  state?: typeof FOCUS_REPLY_STATE;
   to: string;
 };
 
@@ -164,7 +167,7 @@ function CommandPaletteBody(props: {
                 <CommandItem
                   key={item.id}
                   onSelect={() => {
-                    navigate(item.to);
+                    navigate(item.to, { state: item.state });
                     props.onClose();
                   }}
                   value={item.id}
@@ -310,6 +313,8 @@ function conversationItem(
       ? "Archived"
       : formatCompactAge(conversation.lastSeenAt),
     score: match?.score ?? 0,
+    // The reader switched there to talk, so the reply box takes focus.
+    state: FOCUS_REPLY_STATE,
     to: conversationPath(conversation.id),
   };
 }

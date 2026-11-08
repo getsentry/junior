@@ -1,3 +1,5 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
+
 import { expect, test } from "./test";
 
 test("switches conversations from the command palette without a server search", async ({
@@ -7,6 +9,22 @@ test("switches conversations from the command palette without a server search", 
   await page.setViewportSize({ height: 800, width: 1280 });
   // Rows must not wait on the server search.
   await page.route(/\/api\/conversations\?q=/, (route) => route.abort());
+  // Only a participant gets the reply box.
+  await page.route(
+    `**/api/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}*`,
+    async (route) => {
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
+      });
+      await route.fulfill({
+        response,
+        json: { ...(await response.json()), isParticipant: true },
+      });
+    },
+  );
   await page.goto(dashboard.baseURL);
 
   await page.keyboard.press("ControlOrMeta+k");
@@ -28,6 +46,10 @@ test("switches conversations from the command palette without a server search", 
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+  // The reader switched to talk there, so the reply box takes focus.
+  await expect(
+    page.getByRole("textbox", { name: "Continue this conversation" }),
+  ).toBeFocused();
 
   // The open conversation is not a row, so Enter switches away from it.
   await page.getByRole("button", { name: "Go to conversation" }).click();

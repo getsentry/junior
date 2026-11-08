@@ -15,7 +15,7 @@ export function ConversationPageDock(props: {
   hasNewerPage: boolean;
   live: boolean;
   onPinRequest(): void;
-  ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
+  ref: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
 }) {
   const { detail } = props;
   // Key on the event array, not the whole detail object. Metadata-only polls

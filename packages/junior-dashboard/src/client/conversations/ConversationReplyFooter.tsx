@@ -51,8 +51,8 @@ function ReplyFooter(props: {
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
-  /** Lets the page add a quote of selected text to the draft. */
-  ref?: Ref<Pick<ConversationComposerHandle, "appendText">>;
+  /** Lets the page focus the draft or add a quote of selected text to it. */
+  ref?: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
   /** The last Review item that Junior added in the transcript. */
   reviewItemId?: string;
   /**
@@ -196,6 +196,7 @@ function ReplyFooter(props: {
   const composerRef = useRef<ConversationComposerHandle>(null);
   useImperativeHandle(props.ref, () => ({
     appendText: (text) => composerRef.current?.appendText(text),
+    focus: () => composerRef.current?.focus(),
   }));
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(

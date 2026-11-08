@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -38,6 +38,7 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  requestsReplyFocus,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
@@ -92,7 +93,10 @@ import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChatLayout } from "./ChatLayout";
-import type { ConversationComposerHandle } from "./ConversationComposer";
+import {
+  touchKeyboardMatches,
+  type ConversationComposerHandle,
+} from "./ConversationComposer";
 import { ConversationOutline } from "./ConversationOutline";
 import {
   QuickQuestionPanel,
@@ -151,7 +155,8 @@ export function ConversationPage(props: {
     () => false,
   );
   const pageRef = useRef<HTMLDivElement>(null);
-  const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
+  const replyRef =
+    useRef<Pick<ConversationComposerHandle, "appendText" | "focus">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
@@ -388,6 +393,20 @@ export function ConversationPage(props: {
     view === "rich" &&
     detail.data?.isParticipant &&
     detail.data.kind !== "task";
+  // A navigation that asks for the reply box focuses it once, when it shows.
+  // Coming back from the event log does not focus it again. On a touch
+  // screen, focus would open the keyboard over the transcript.
+  const location = useLocation();
+  const replyFocusKey = requestsReplyFocus(location.state)
+    ? location.key
+    : undefined;
+  const replyFocusedKey = useRef<string>(undefined);
+  useEffect(() => {
+    if (!canReply || !replyFocusKey) return;
+    if (replyFocusedKey.current === replyFocusKey) return;
+    replyFocusedKey.current = replyFocusKey;
+    if (!touchKeyboardMatches()) replyRef.current?.focus();
+  }, [canReply, replyFocusKey]);
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
