@@ -669,7 +669,7 @@ export async function compactActiveContextIfNeeded(
   if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
-  return await withCompactionSpan(args.mode, () =>
+  return await withCompactionSpan(args.mode, "summary", () =>
     compactActiveAboveThreshold(args, summarize, source, triggerTokens),
   );
 }
