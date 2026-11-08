@@ -6,12 +6,14 @@ import {
 } from "@/chat/agent-invocations/errors";
 import {
   agentNameSchema,
+  CHILD_AGENT_KINDS,
   PARENT_AGENT_TARGET,
 } from "@/chat/agent-invocations/types";
 import {
   AGENT_TYPES,
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { completeText } from "@/chat/pi/client";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
@@ -32,6 +34,13 @@ const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
     .describe(
       "Child conversation ID. Pass it to searchConversationEvents to read the child's history.",
     ),
+  dashboard_url: z
+    .string()
+    .url()
+    .optional()
+    .describe(
+      "Dashboard link of the child. People can message a Thread there.",
+    ),
 });
 
 /** Create the asynchronous child-agent tool for one parent run. */
@@ -46,7 +55,7 @@ export function createSpawnAgentTool(
       `Pick agent_type when one fits; omit it for a fresh general-purpose child with your tools:\n${formatAgentTypes()}`,
       "After you delegate, do not do the same work yourself. End your turn with a short status. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
-      "A child keeps its type when it receives more work through messageAgent.",
+      "A child keeps its type and kind when it receives more work through messageAgent.",
       "Your task text is the child's instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.",
     ].join(" "),
     exposure: "modelOnly",
@@ -86,6 +95,13 @@ export function createSpawnAgentTool(
           .describe(
             "New child-agent name that messageAgent can address, or omit for a one-off agent",
           ),
+        kind: z
+          .enum(CHILD_AGENT_KINDS)
+          .nullable()
+          .optional()
+          .describe(
+            "thread: people can open and message the child directly, like a conversation of its own. Pick it for long-lived work that people will want to follow, steer, or talk to. It counts toward your limit of active children until you archive it with archiveAgent. task (default; omit or pass null): background work that only you message.",
+          ),
         agent_type: z
           .enum(AGENT_TYPES)
           .nullable()
@@ -117,6 +133,7 @@ export function createSpawnAgentTool(
           {
             task: input.task,
             ...(input.agent_type ? { agentType: input.agent_type } : undefined),
+            ...(input.kind ? { kind: input.kind } : undefined),
             ...(title ? { title } : undefined),
             ...(input.name ? { name: input.name } : undefined),
             ...(input.reasoning_level
@@ -137,7 +154,7 @@ export function createSpawnAgentTool(
         }
         if (error instanceof AgentInvocationLimitError) {
           throw new ToolInputError(
-            `${error.message}. Wait for active children to finish before spawning more.`,
+            `${error.message}. Wait for active children to finish, or archive a finished Thread with archiveAgent, before spawning more.`,
             { cause: error },
           );
         }
@@ -149,8 +166,12 @@ export function createSpawnAgentTool(
         }
         throw error;
       }
+      const dashboardUrl = getDashboardConversationLink(
+        result.childConversationId,
+      );
       return {
         conversation_id: result.childConversationId,
+        ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
       };
     },
   });

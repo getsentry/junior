@@ -1,5 +1,10 @@
+import { and, eq, isNull } from "drizzle-orm";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
+import {
+  juniorAgentBindings,
+  juniorAgentInvocations,
+  juniorConversations,
+} from "@/db/schema";
 import { getAgentBinding } from "./bindings";
 import {
   AgentInvocationLimitError,
@@ -23,7 +28,10 @@ import {
   type CreateAgentInvocationInput,
 } from "./types";
 
-/** Cap concurrent non-terminal children one parent can keep in flight. */
+/**
+ * Cap the active children of one parent: Tasks with open work and Threads
+ * that are not archived.
+ */
 export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
 /**
  * Cap the non-terminal agent invocations of one child, including the one that
@@ -121,21 +129,35 @@ async function assertCanGiveChildWork(
 
 /**
  * Throw when giving work to one child agent would put its parent over
- * `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT`. A child agent is active while it
- * has open work, so a busy child already counts and messages queued for it
- * do not count again. A new or idle child becomes active. This is the only
- * place the rule for which child agents count lives. `open` is the parent's
- * open work from `listOpenAgentInvocations`.
+ * `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT`. A Task is active while it has
+ * open work, so a busy Task already counts and messages queued for it do not
+ * count again. A Thread is active until it is archived, because people can
+ * give it work at any time. A new child, an idle Task, or an archived Thread
+ * becomes active. This is the only place the rule for which child agents
+ * count lives. `open` is the parent's open work from
+ * `listOpenAgentInvocations`.
  */
-function assertChildAgentCapacity(
+async function assertChildAgentCapacity(
   open: readonly AgentInvocation[],
   args: { childConversationId: string; parentConversationId: string },
-): void {
-  const active = new Set(
-    open
+): Promise<void> {
+  const threads = await getSqlExecutor()
+    .db()
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.parentConversationId, args.parentConversationId),
+        eq(juniorConversations.kind, "thread"),
+        isNull(juniorConversations.archivedAt),
+      ),
+    );
+  const active = new Set([
+    ...open
       .filter((row) => row.parentConversationId === args.parentConversationId)
       .map((row) => row.childConversationId),
-  );
+    ...threads.map((row) => row.conversationId),
+  ]);
   if (
     !active.has(args.childConversationId) &&
     active.size >= MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT
@@ -170,7 +192,10 @@ export async function createAgentInvocation(
   return await getSqlExecutor().withLock(lockName, async () => {
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
-      if (!sameCreateInput(existing, input)) {
+      const child = await getConversationStore().get({
+        conversationId: existing.childConversationId,
+      });
+      if (!sameCreateInput(existing, input) || child?.kind !== input.kind) {
         throw new Error(
           `Agent invocation idempotency key was reused with different input for ${invocationId}`,
         );
@@ -188,14 +213,14 @@ export async function createAgentInvocation(
     ) {
       throw new AgentNameInUseError(input.agentName);
     }
-    assertChildAgentCapacity(open, {
+    await assertChildAgentCapacity(open, {
       childConversationId,
       parentConversationId: input.parentConversationId,
     });
 
     await getConversationStore().createChild({
       childConversationId,
-      kind: "task",
+      kind: input.kind,
       parentConversationId: input.parentConversationId,
       nowMs,
       source: "internal",
@@ -348,7 +373,7 @@ export async function createAgentInvocationForMessage(
           MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,
         );
       }
-      assertChildAgentCapacity(open, {
+      await assertChildAgentCapacity(open, {
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });

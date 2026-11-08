@@ -6,12 +6,13 @@ export class AgentNameInUseError extends Error {
   }
 }
 
-/** Parent already has the maximum number of non-terminal child invocations. */
+/**
+ * Parent already has the maximum number of active children: Tasks with open
+ * work and Threads that are not archived.
+ */
 export class AgentInvocationLimitError extends Error {
   constructor(limit: number) {
-    super(
-      `Parent already has ${limit} active child agent invocations (limit ${limit})`,
-    );
+    super(`Parent already has ${limit} active child agents (limit ${limit})`);
     this.name = "AgentInvocationLimitError";
   }
 }

@@ -1,5 +1,4 @@
 import { createWebSource } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
 import {
   completeAgentInvocation,
   getActiveAgentInvocationForConversation,
@@ -8,7 +7,6 @@ import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
-import { getDb } from "@/chat/db";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -16,7 +14,6 @@ import {
   listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { juniorConversations } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -125,10 +122,7 @@ export async function finishInvocation(
   });
 }
 
-/**
- * Start a named child agent and store it as a Thread. Spawn creates only
- * Tasks until Threads have their own entry point.
- */
+/** Start a named child agent as a Thread. */
 export async function startThread(
   harness: Harness,
   idempotencyKey: string,
@@ -142,6 +136,7 @@ export async function startThread(
       ...input,
       agentName: "researcher",
       idempotencyKey,
+      kind: "thread",
     },
     {
       conversationStore: harness.conversationStore,
@@ -149,10 +144,6 @@ export async function startThread(
       state: harness.state,
     },
   );
-  await getDb()
-    .update(juniorConversations)
-    .set({ kind: "thread" })
-    .where(eq(juniorConversations.conversationId, created.childConversationId));
   return created.childConversationId;
 }
 

@@ -110,7 +110,7 @@ describe("spawnAgent", () => {
     ).rejects.toSatisfy(
       (error) =>
         error instanceof ToolInputError &&
-        error.message.includes("active child agent invocations") &&
+        error.message.includes("active child agents") &&
         error.message.includes("Wait for active children"),
     );
   });

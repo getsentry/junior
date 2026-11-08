@@ -1,0 +1,115 @@
+import * as z from "zod";
+import { setConversationArchive } from "@/api/conversations/archive";
+import { listOpenAgentInvocations } from "@/chat/agent-invocations/store";
+import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
+import { getConversationStore } from "@/chat/db";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
+import { zodTool } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+
+export const ARCHIVE_AGENT_TOOL_NAME = "archiveAgent";
+
+const archiveAgentOutputSchema = juniorToolOutputSchema.extend({
+  conversation_id: z.string().min(1).describe("Archived Thread ID"),
+  archived_at: z.string().describe("When the Thread was archived"),
+});
+
+/** Create the tool that archives one Thread that a conversation started. */
+export function createArchiveAgentTool(conversationId: string) {
+  return zodTool({
+    exposure: "deferred",
+    source: AGENTS_TOOL_SOURCE,
+    description:
+      "Archive a Thread that this conversation started, for everyone. An archived Thread no longer counts toward your limit of active children. Archive a Thread only when its work is done and no person still uses it: check its kind, status, and last_person_message_at with searchAgents first, and leave a Thread that people still message. A person's new message in an archived Thread restores it.",
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+      readOnlyHint: false,
+    },
+    inputSchema: z
+      .object({
+        conversation_id: z
+          .string()
+          .trim()
+          .min(1)
+          .describe(
+            "Thread conversation ID from spawnAgent or searchAgents to archive",
+          ),
+        apply_to_children: z
+          .boolean()
+          .nullable()
+          .optional()
+          .describe(
+            "True also archives the child agents that the Thread started, at any depth. Without it, the archive fails while any of them is not archived.",
+          ),
+      })
+      .strict(),
+    outputSchema: archiveAgentOutputSchema,
+    execute: async (input) => {
+      const childConversationId = input.conversation_id;
+      const child = await getConversationStore().get({
+        conversationId: childConversationId,
+      });
+      if (!child || child.parentConversationId !== conversationId) {
+        throw new ToolInputError(
+          `${childConversationId} is not a child agent of this conversation. Use searchAgents to find its conversation_id.`,
+        );
+      }
+      if (child.kind !== "thread") {
+        throw new ToolInputError(
+          `${childConversationId} is a Task. Only a Thread can be archived. A Task needs no archive.`,
+        );
+      }
+      if (child.archivedAtMs !== undefined) {
+        return {
+          conversation_id: childConversationId,
+          archived_at: new Date(child.archivedAtMs).toISOString(),
+        };
+      }
+      // An open Turn, from a person or from this conversation, means the
+      // Thread is in use.
+      const working =
+        child.execution.status === "pending" ||
+        child.execution.status === "running" ||
+        child.execution.status === "paused" ||
+        (await listOpenAgentInvocations(childConversationId)).some(
+          (row) => row.childConversationId === childConversationId,
+        );
+      if (working) {
+        throw new ToolInputError(
+          `${childConversationId} is working. Leave it, or wait until it is idle.`,
+        );
+      }
+      const result = await setConversationArchive({
+        applyToChildren: input.apply_to_children ?? false,
+        archived: true,
+        conversationId: childConversationId,
+        // New activity after this read, such as a person's message, refuses
+        // the archive.
+        lastSeenAt: new Date(child.lastActivityAtMs).toISOString(),
+      });
+      switch (result.status) {
+        case "archived":
+          return {
+            conversation_id: childConversationId,
+            archived_at: result.archivedAt,
+          };
+        case "conflict":
+          throw new ToolInputError(
+            `${childConversationId} received new activity. Check it again with searchAgents before you archive it.`,
+          );
+        case "unarchived_children":
+          throw new ToolInputError(
+            `${childConversationId} has ${result.unarchivedChildCount} child conversation(s) that are not archived. Pass apply_to_children to archive them too.`,
+          );
+        case "missing":
+        case "archived_ancestor":
+        case "restored":
+          throw new Error(
+            `Archive of Thread ${childConversationId} returned ${result.status}`,
+          );
+      }
+    },
+  });
+}

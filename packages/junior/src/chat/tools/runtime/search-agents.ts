@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
 import type { Actor } from "@/chat/actor";
 import {
   listAgentRelatives,
@@ -17,6 +18,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
   agentNameSchema,
+  CHILD_AGENT_KINDS,
   CHILD_AGENT_RESULTS,
   type ChildAgent,
 } from "@/chat/agent-invocations/types";
@@ -96,6 +98,12 @@ const listedAgentSchema = z
       .describe(
         "Agent name given by its parent. Pass the name of a child agent to messageAgent.",
       ),
+    kind: z
+      .enum(CHILD_AGENT_KINDS)
+      .optional()
+      .describe(
+        "Kind of a child or sibling. thread: people can message it. task: only its parent messages it.",
+      ),
     status: z
       .enum(LISTED_AGENT_STATUSES)
       .describe(
@@ -125,7 +133,13 @@ const listedAgentSchema = z
       .string()
       .url()
       .optional()
-      .describe("Dashboard link of a top-level conversation"),
+      .describe("Dashboard link of the conversation"),
+    last_person_message_at: z
+      .string()
+      .optional()
+      .describe(
+        "Time of the newest message that a person sent in a child or sibling",
+      ),
     archived: z
       .literal(true)
       .optional()
@@ -143,15 +157,26 @@ type ListedAgent = z.output<typeof listedAgentSchema>;
 function listedChildAgent(
   relation: AgentRelation,
   agent: ChildAgent,
+  lastPersonMessageAt: ReadonlyMap<string, string>,
 ): ListedAgent {
+  const dashboardUrl = getDashboardConversationLink(agent.childConversationId);
+  const personMessageAt = lastPersonMessageAt.get(agent.childConversationId);
   return {
     relation,
     conversation_id: agent.childConversationId,
     ...(agent.agentName ? { name: agent.agentName } : undefined),
+    kind: agent.kind,
     status: childAgentStatus(agent),
     ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
     task: truncate(agent.task, TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
+    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(personMessageAt
+      ? { last_person_message_at: personMessageAt }
+      : undefined),
+    ...(agent.archivedAtMs !== undefined
+      ? { archived: true as const }
+      : undefined),
     ...(agent.errorMessage
       ? { error: truncate(agent.errorMessage, ERROR_MAX_LENGTH) }
       : undefined),
@@ -310,8 +335,16 @@ export function createSearchAgentsTool(context: {
       }
       const { children, parent, self, siblings } =
         await listAgentRelatives(context);
+      const lastPersonMessageAt = await readLastUserMessageAtByConversation(
+        getDb(),
+        [...(self ? [self] : []), ...children, ...siblings].map(
+          (agent) => agent.childConversationId,
+        ),
+      );
+      const listed = (relation: AgentRelation, agent: ChildAgent) =>
+        listedChildAgent(relation, agent, lastPersonMessageAt);
       const agents: ListedAgent[] = [
-        ...(self ? [listedChildAgent("self", self)] : []),
+        ...(self ? [listed("self", self)] : []),
         ...(parent
           ? [
               {
@@ -322,8 +355,8 @@ export function createSearchAgentsTool(context: {
               },
             ]
           : []),
-        ...children.map((agent) => listedChildAgent("child", agent)),
-        ...siblings.map((agent) => listedChildAgent("sibling", agent)),
+        ...children.map((agent) => listed("child", agent)),
+        ...siblings.map((agent) => listed("sibling", agent)),
       ];
       const filters = {
         ...(conversationIds
