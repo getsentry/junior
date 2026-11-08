@@ -55,7 +55,7 @@ export async function readConversationOutline(
     )
     .orderBy(asc(juniorConversationEvents.seq));
   const items = rows.flatMap((row) => {
-    const text = withoutCutMention(row.text).trim();
+    const text = withoutCutToken(row.text).trim();
     return text ? [{ seq: row.seq, text }] : [];
   });
 
@@ -75,9 +75,15 @@ export async function readConversationOutline(
   };
 }
 
-/** Drop a Slack token, such as `<@U123>`, that the length cut split. */
-function withoutCutMention(text: string): string {
+/**
+ * Repair a Slack token that the length cut split. A cut mention, such as
+ * `<@U12`, cannot resolve, so it is dropped. A cut link keeps its URL text,
+ * so a message that is only a long link still has a title.
+ */
+function withoutCutToken(text: string): string {
   return text.length < CONVERSATION_OUTLINE_TEXT_LENGTH
     ? text
-    : text.replace(/<[^<>]*$/, "");
+    : text.replace(/<([^<>]*)$/, (_, token: string) =>
+        /^[@#!]/.test(token) ? "" : token.split("|")[0]!,
+      );
 }

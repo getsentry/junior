@@ -57,6 +57,7 @@ describe("conversation outline API", () => {
     });
     // The mention starts before the cut and ends after it.
     const long = `${"a".repeat(195)} <@U123456789> rest`;
+    const link = `https://example.com/${"b".repeat(300)}`;
     await getConversationEventStore().append(conversationId, [
       message("first", "user", "  first question  "),
       // More events than one default detail page.
@@ -68,6 +69,7 @@ describe("conversation outline API", () => {
       message("empty", "user", "   "),
       message("mention", "user", "hi <@U1>", { explicitMention: true }),
       message("long", "user", long),
+      message("link", "user", `<${link}>`),
     ]);
 
     const outline = await readOutline(conversationId);
@@ -76,6 +78,7 @@ describe("conversation outline API", () => {
       "first question",
       "hi <@U1>",
       "a".repeat(195),
+      link.slice(0, 199),
     ]);
     expect(outline.items[0]?.seq).toBeLessThan(outline.items[1]!.seq);
   });
