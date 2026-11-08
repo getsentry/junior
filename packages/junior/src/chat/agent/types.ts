@@ -144,6 +144,12 @@ export type AgentInstruction = {
    * `actor`.
    */
   inputs?: readonly AgentInstructionInput[];
+  /**
+   * Provenance of the inputs. Omitted means an instruction of the Run's
+   * Actor. An instruction with no Actor is an agent's, such as a parent
+   * agent task.
+   */
+  provenance?: ConversationMessageProvenance;
   attachments?: readonly AgentAttachment[];
   /** Durable web image references, resolved by the host before execution. */
   storedAttachments?: readonly MessageAttachment[];

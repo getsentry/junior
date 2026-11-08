@@ -1,27 +1,26 @@
 /**
- * Reads the authority of an action from its root Conversation.
+ * Reads the authority of an action from the Conversation of its Run.
  *
- * When Guardian reviews an action, the runtime walks up to the root
- * Conversation and reads the messages there. For a root Run, the root is its
- * own Conversation. A child agent never has a message from a person: its task
- * comes from its parent agent, so it reads the root of its parent chain. The
- * source is the root's `message` events: the durable visible transcript.
+ * When Guardian reviews an action, the runtime reads the messages of the
+ * Conversation that the Run belongs to, and never of a Conversation above
+ * it. The source is the `message` events: the durable visible transcript.
  * Compaction never rewrites these events, so an early request or a
- * later revocation is still there after the root's model history changes.
+ * later revocation is still there after the model history changes.
  *
  * A message counts as the user only when its stored author Identity is one
  * of the Identities of the person behind the Run's Actor: every Identity of
  * their User, or only the Actor's own Identity when it has no User. So a
  * review desk answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
- * the one exception, because it has no per-person Identity. An Automation
- * run's own instruction counts as `automation`. Each other message keeps its
- * real author as a label and is only context. Nothing is copied into the Run.
+ * the one exception, because it has no per-person Identity. A Run that an
+ * agent started follows its parent agent, so the tasks and messages that the
+ * parent sent with spawnAgent or messageAgent count as the user there, and no
+ * person's message does. Each other message keeps its real author as a label
+ * and is only context. Nothing is copied into the Run.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
-import { readConversationLineage } from "@/chat/conversations/lineage";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
 import type { Conversation } from "@/chat/conversations/store";
 import {
@@ -30,6 +29,8 @@ import {
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
+import { AGENT_INVOCATION_STATUSES } from "./statuses";
+import { listAgentInvocationsForConversation } from "./store";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -42,11 +43,6 @@ const MAX_ROOT_MESSAGE_CHARS = 4_000;
 const MAX_ROOT_CONVERSATION_CHARS = 24_000;
 /** Message events read from the log. Edits and skipped messages use some. */
 const MAX_ROOT_MESSAGE_EVENTS = 64;
-/** A parent chain longer than this is broken, so it gives no authority. */
-const MAX_PARENT_DEPTH = 32;
-
-// A dispatch Conversation id and its input message id are the same value.
-const DISPATCH_CONVERSATION_PREFIX = "agent-dispatch:";
 
 type MessageData = Extract<
   ConversationEvent["data"],
@@ -55,24 +51,6 @@ type MessageData = Extract<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-/** Find the root Conversation, or nothing when the parent chain is broken. */
-async function findRootConversation(
-  conversationId: string,
-): Promise<Conversation | undefined> {
-  const lineage = await readConversationLineage(conversationId);
-  const root = lineage[0];
-  if (
-    !root ||
-    root.parentConversationId ||
-    lineage.length - 1 > MAX_PARENT_DEPTH
-  ) {
-    return undefined;
-  }
-  return await getConversationStore().get({
-    conversationId: root.conversationId,
-  });
 }
 
 /**
@@ -86,16 +64,8 @@ function messageAuthor(
   const author = isRecord(data.meta?.author) ? data.meta.author : undefined;
   const userId =
     typeof author?.userId === "string" ? author.userId.trim() : undefined;
-  if (!userId) {
+  if (!userId || author?.isBot === true) {
     return undefined;
-  }
-  if (author?.isBot === true) {
-    // The runtime writes an Automation run's instruction as the dispatch
-    // input message, under the run's system Actor.
-    return root.conversationId.startsWith(DISPATCH_CONVERSATION_PREFIX) &&
-      data.messageId === root.conversationId
-      ? { platform: "system", name: userId }
-      : undefined;
   }
   const session = root.sessionSource;
   const platform = session?.kind ?? root.destination?.platform;
@@ -125,12 +95,32 @@ async function actorIdentityIds(actor: Actor): Promise<Set<string>> {
   return new Set(identities.map((identity) => identity.id));
 }
 
+/**
+ * Ids of the agent invocations that a parent agent's spawnAgent or
+ * messageAgent call started in this Conversation. Their input is the
+ * instruction of a Run that an agent started.
+ */
+async function parentTaskInvocationIds(
+  conversationId: string,
+): Promise<Set<string>> {
+  const invocations = await listAgentInvocationsForConversation(
+    conversationId,
+    AGENT_INVOCATION_STATUSES,
+  );
+  return new Set(
+    invocations.flatMap((invocation) =>
+      invocation.parentToolCallId ? [invocation.invocationId] : [],
+    ),
+  );
+}
+
 /** Label one root message with its real author. */
 function messageLabel(
   root: Conversation,
   data: MessageData,
-  actor: Actor,
+  actor: Actor | undefined,
   personIdentityIds: ReadonlySet<string>,
+  parentTaskIds: ReadonlySet<string>,
 ): RootConversationMessage["author"] {
   if (data.role === "assistant") {
     return "assistant";
@@ -142,16 +132,21 @@ function messageLabel(
   if (data.meta?.eventType !== undefined) {
     return "event";
   }
+  const invocationId = data.meta?.agentInvocationId;
+  if (typeof invocationId === "string" && parentTaskIds.has(invocationId)) {
+    return "user";
+  }
   if (data.authorIdentityId && personIdentityIds.has(data.authorIdentityId)) {
     return "user";
   }
   const author = messageAuthor(root, data);
-  if (author?.platform === "system") {
-    return sameActorIdentity(author, actor) ? "automation" : "event";
-  }
   // The local CLI has no per-person Identity. Its messages use the system
   // Identity, which events use too, so a local message counts by its Actor.
-  if (author?.platform === "local" && sameActorIdentity(author, actor)) {
+  if (
+    author?.platform === "local" &&
+    actor &&
+    sameActorIdentity(author, actor)
+  ) {
     return "user";
   }
   return "other person";
@@ -165,7 +160,7 @@ function renderedChars(message: RootConversationMessage): number {
 
 /** Only these labels can authorize an action. */
 function canAuthorize(message: RootConversationMessage): boolean {
-  return message.author === "user" || message.author === "automation";
+  return message.author === "user";
 }
 
 /** Use one line break, so a label cannot hide inside another line. */
@@ -182,29 +177,22 @@ function truncate(text: string, maxChars: number): string {
 }
 
 /**
- * Read the opening message of a root. For an Automation run root, it is the
- * run's instruction: its dispatch input message, loaded by id. For another
- * root, it is the oldest message, which usually holds the original request.
- * `seq` is set only when the message is older than the read page.
+ * Read the opening message of a Conversation: the oldest message, which
+ * usually holds the original request or task. `seq` is set only when the
+ * message is older than the read page.
  */
 async function readOpeningMessage(
   root: Conversation,
   page: ReadonlyMap<string, MessageData>,
 ): Promise<{ data: MessageData; seq?: number } | undefined> {
   const store = getConversationEventStore();
-  const event = root.conversationId.startsWith(DISPATCH_CONVERSATION_PREFIX)
-    ? // Each message event uses this key, as written by conversation ingress.
-      await store.loadByIdempotencyKey(
-        root.conversationId,
-        `message:${root.conversationId}`,
-      )
-    : (
-        await store.query(root.conversationId, {
-          afterSeq: -1,
-          limit: 1,
-          types: ["message"],
-        })
-      ).events[0];
+  const event = (
+    await store.query(root.conversationId, {
+      afterSeq: -1,
+      limit: 1,
+      types: ["message"],
+    })
+  ).events[0];
   if (event?.data.type !== "message") {
     return undefined;
   }
@@ -214,18 +202,20 @@ async function readOpeningMessage(
 }
 
 /**
- * Read a bounded projection of the root Conversation for Guardian review of
- * one action. `actor` is the Actor of the Run. Only messages that the same
- * Actor wrote, or the Automation run's own instruction for a system Actor,
- * are labeled as authority. When `conversationId` is a root, it reads that
- * Conversation.
+ * Read a bounded projection of the Run's own Conversation for Guardian review
+ * of one action. `actor` is the requester: the Actor whose instructions the
+ * Run follows, or nothing when an agent writes them. Only the requester's
+ * messages are labeled as authority. For a Run that an agent started, those
+ * are its parent agent's tasks and messages.
  */
 export async function readRootConversation(args: {
   actor: Actor | undefined;
   conversationId: string;
 }): Promise<RootConversation> {
-  const root = await findRootConversation(args.conversationId);
-  if (!root || !args.actor) {
+  const root = await getConversationStore().get({
+    conversationId: args.conversationId,
+  });
+  if (!root) {
     return { messages: [], truncated: false };
   }
   const page = await getConversationEventStore().query(root.conversationId, {
@@ -250,8 +240,8 @@ export async function readRootConversation(args: {
       orphanEdits.set(data.messageId, data.text);
     }
   }
-  // The opening message holds the original request, or the instruction of an
-  // Automation run, so it stays when newer messages push it out of the window.
+  // The opening message holds the original request or task, so it stays when
+  // newer messages push it out of the window.
   const pinnedRead = await readOpeningMessage(root, byId);
   // The opening message has a position, so an edit of it in the page counts.
   const openingEdit = pinnedRead
@@ -264,7 +254,12 @@ export async function readRootConversation(args: {
     pinnedRead && openingEdit !== undefined
       ? { ...pinnedRead.data, text: openingEdit }
       : pinnedRead?.data;
-  const personIdentityIds = await actorIdentityIds(args.actor);
+  const personIdentityIds = args.actor
+    ? await actorIdentityIds(args.actor)
+    : new Set<string>();
+  const parentTaskIds = args.actor
+    ? new Set<string>()
+    : await parentTaskInvocationIds(root.conversationId);
   const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {
     const text = normalizeLines(data.text).trim();
@@ -274,7 +269,13 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(root, data, args.actor, personIdentityIds),
+      author: messageLabel(
+        root,
+        data,
+        args.actor,
+        personIdentityIds,
+        parentTaskIds,
+      ),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
@@ -286,7 +287,13 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
-            author: messageLabel(root, opening, args.actor, personIdentityIds),
+            author: messageLabel(
+              root,
+              opening,
+              args.actor,
+              personIdentityIds,
+              parentTaskIds,
+            ),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]
