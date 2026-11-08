@@ -125,6 +125,8 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
           });
           attributes["app.cache_warming.return_probability"] =
             decision.returnProbability;
+          attributes["app.cache_warming.returns_per_warmup"] =
+            decision.returnsPerWarmup;
           attributes["app.cache_warming.threshold"] = decision.threshold;
           // The tool returned while the gaps were read.
           if (current !== generation) return;

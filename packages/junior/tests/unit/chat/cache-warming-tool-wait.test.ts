@@ -97,6 +97,20 @@ describe("tool wait cache warming", () => {
     warmer.stop();
   });
 
+  it("warms for tools that return a few TTLs later", async () => {
+    // Tools return after 10 minutes. A return in the next TTL is not likely
+    // at the first warmup, but a chain of warmups reaches it.
+    await seedToolWaits(10 * MINUTE);
+    const warmer = createToolWaitWarmer("local:test:tool-wait");
+    await warmer.record(request(), message("toolUse"));
+
+    await vi.advanceTimersByTimeAsync(30 * MINUTE);
+
+    // At about 4, 8, and 12 minutes. At 16 minutes, every tool returned.
+    expect(mocks.sendWarmup).toHaveBeenCalledTimes(3);
+    warmer.stop();
+  });
+
   it("does not warm without recorded tool waits or for a small prefix", async () => {
     const warmer = createToolWaitWarmer("local:test:tool-wait");
     await warmer.record(request(), message("toolUse"));
