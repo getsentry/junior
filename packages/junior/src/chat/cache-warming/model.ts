@@ -118,6 +118,18 @@ export function warmupMarginMs(prefixTokens: number): number {
   );
 }
 
+/**
+ * Pick the gap histogram for an idle period. Return chances differ most by
+ * who started the Turn and by how many Turns the Conversation had before it.
+ * Turns that no person started rarely get a quick reply. In 30 days of
+ * production data, segments by these two keys saved more than one histogram.
+ * Local time of day did not improve the result, so it is not a key.
+ */
+export function gapSegment(userActor: boolean, endedTurns: number): string {
+  const depth = endedTurns === 0 ? "1" : endedTurns < 3 ? "2-3" : "4+";
+  return `${userActor ? "user" : "system"}:${depth}`;
+}
+
 /** Inputs for one warmup decision. Prices use one unit, such as $/MTok. */
 export interface WarmupDecisionInput {
   /**
@@ -125,12 +137,13 @@ export interface WarmupDecisionInput {
    * with no reply counts as `NO_REPLY_GAP_MS`.
    */
   conversationGapsMs: readonly number[];
-  /** Recent reply gaps (ms) across all conversations, recorded the same way. */
+  /**
+   * Recent reply gaps (ms) of the same `gapSegment` across all
+   * conversations, recorded the same way.
+   */
   globalGapsMs: readonly number[];
   /** Time since the cached request started. */
   idleMs: number;
-  /** 1 for the first warmup of this idle period. */
-  cycle: number;
   prefixTokens: number;
   cacheReadPrice: number;
   cacheWritePrice: number;
@@ -142,7 +155,7 @@ export interface WarmupDecision {
   reason:
     | "warm"
     | "prefix_too_small"
-    | "cycle_limit"
+    | "no_savings"
     | "horizon"
     | "unlikely_return";
   returnProbability: number;
@@ -152,17 +165,16 @@ export interface WarmupDecision {
 /**
  * Decide whether to send the next warmup.
  *
- * Each warmup costs one cache read of the prefix. A return to a warm cache
- * saves one write minus one read. After k warmups, the return chance must be
- * above k·read/(write − read) (Lore's rising threshold). After
- * (write − read)/read warmups, warming always costs more than it can save.
+ * A warmup costs one cache read of the prefix. A return to a warm cache saves
+ * one write minus one read. So a warmup pays when the chance of a return in
+ * the next TTL is above read/(write − read). Earlier warmups are already
+ * paid, so the threshold is the same for each warmup. The falling return
+ * chance stops the warmups.
  */
 export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const savedPerReturn = input.cacheWritePrice - input.cacheReadPrice;
   const threshold =
-    savedPerReturn > 0
-      ? Math.min((input.cycle * input.cacheReadPrice) / savedPerReturn, 1)
-      : 1;
+    savedPerReturn > 0 ? Math.min(input.cacheReadPrice / savedPerReturn, 1) : 1;
   const histogram = blendHistograms(
     histogramOf(input.conversationGapsMs),
     histogramOf(input.globalGapsMs),
@@ -182,7 +194,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     return decision("prefix_too_small");
   }
   if (threshold >= 1) {
-    return decision("cycle_limit");
+    return decision("no_savings");
   }
   if (input.idleMs + SHORT_CACHE_TTL_MS > IDLE_HORIZON_MS) {
     return decision("horizon");

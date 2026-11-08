@@ -29,6 +29,7 @@ import type { ThinkingLevel } from "@/chat/pi/sdk";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   decideWarmup,
+  gapSegment,
   IDLE_HORIZON_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
@@ -38,7 +39,6 @@ import {
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 
 const KEY_PREFIX = "junior:cache_warming";
-const GLOBAL_GAPS_KEY = `${KEY_PREFIX}:gaps`;
 const GLOBAL_GAPS_MAX = 2_000;
 const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * 60_000;
 const CONVERSATION_GAPS_MAX = 50;
@@ -64,6 +64,8 @@ interface WarmState {
 
 interface IdlePeriod {
   generation: string;
+  /** The `gapSegment` that this period records its gap in. */
+  segment: string;
   /** Start of the request that ended the turn. */
   sinceMs: number;
   /** True after this period recorded its gap. */
@@ -75,6 +77,8 @@ interface IdlePeriod {
 interface ConversationCacheState {
   /** Recent reply gaps (ms) of the idle periods of this Conversation. */
   gapsMs: number[];
+  /** Turns of this Conversation that ended. */
+  endedTurns?: number;
   idle?: IdlePeriod;
 }
 
@@ -85,6 +89,7 @@ interface ModelRequest {
   startedAtMs: number;
 }
 
+const segmentGapsKey = (segment: string) => `${KEY_PREFIX}:gaps:${segment}`;
 const conversationKey = (conversationId: string) =>
   `${KEY_PREFIX}:conversation:${conversationId}`;
 const snapshotKey = (conversationId: string) =>
@@ -154,10 +159,11 @@ function snapshotContext(context: Context): Context {
 
 async function recordGap(
   state: Awaited<ReturnType<typeof connectedState>>,
+  segment: string,
   gapsMs: number[],
   gapMs: number,
 ): Promise<number[]> {
-  await state.appendToList(GLOBAL_GAPS_KEY, gapMs, {
+  await state.appendToList(segmentGapsKey(segment), gapMs, {
     maxLength: GLOBAL_GAPS_MAX,
     ttlMs: GLOBAL_GAPS_TTL_MS,
   });
@@ -169,9 +175,11 @@ async function startIdlePeriod(
   conversationId: string,
   request: ModelRequest,
   message: AssistantMessage,
+  segment: string,
 ): Promise<IdlePeriod> {
   const idle: IdlePeriod = {
     generation: randomUUID(),
+    segment,
     sinceMs: request.startedAtMs,
   };
   const prefixTokens = message.usage.cacheRead + message.usage.cacheWrite;
@@ -206,6 +214,7 @@ async function startIdlePeriod(
 
 async function recordModelCall(
   conversationId: string,
+  userActor: boolean,
   request: ModelRequest,
   message: AssistantMessage,
 ): Promise<void> {
@@ -218,7 +227,7 @@ async function recordModelCall(
   if (idle) {
     const gapMs = request.startedAtMs - idle.sinceMs;
     if (idle.warm && !idle.gapRecorded && gapMs > 0) {
-      gapsMs = await recordGap(state, gapsMs, gapMs);
+      gapsMs = await recordGap(state, idle.segment, gapsMs, gapMs);
     }
     if (idle.warm?.active) {
       await state.delete(snapshotKey(conversationId));
@@ -236,13 +245,21 @@ async function recordModelCall(
 
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.
+  const endedTurns = previous?.endedTurns ?? 0;
   const next: ConversationCacheState =
     message.stopReason === "stop"
       ? {
           gapsMs,
-          idle: await startIdlePeriod(state, conversationId, request, message),
+          endedTurns: endedTurns + 1,
+          idle: await startIdlePeriod(
+            state,
+            conversationId,
+            request,
+            message,
+            gapSegment(userActor, endedTurns),
+          ),
         }
-      : { gapsMs };
+      : { gapsMs, endedTurns };
   if (!idle && !next.idle) {
     return;
   }
@@ -273,11 +290,13 @@ export interface CacheWarmingRecorder {
 }
 
 /**
- * Create a recorder for one agent run. A failure to record only loses cache
- * warming, so it is logged and does not stop the run.
+ * Create a recorder for one agent run. `userActor` is true when a person
+ * started the Turn. A failure to record only loses cache warming, so it is
+ * logged and does not stop the run.
  */
 export function createCacheWarmingRecorder(
   conversationId: string,
+  userActor: boolean,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
   // After the first call of the run ends the idle period, the next mid-turn
@@ -312,7 +331,7 @@ export function createCacheWarmingRecorder(
       }
       idleEnded = message.stopReason !== "stop";
       try {
-        await recordModelCall(conversationId, request, message);
+        await recordModelCall(conversationId, userActor, request, message);
       } catch (error) {
         logWarn("cache_warming.model_call.record_failed", {
           "exception.message":
@@ -358,6 +377,7 @@ export async function runCacheWarmup(
     await state.set(
       conversationKey(conversationId),
       {
+        ...latest,
         gapsMs: gapsMs ?? latest.gapsMs,
         idle: { ...latest.idle, ...changes },
       } satisfies ConversationCacheState,
@@ -375,7 +395,7 @@ export async function runCacheWarmup(
       await state.delete(snapshotKey(conversationId));
       await update(
         { gapRecorded: true, warm: { ...warm, active: false } },
-        await recordGap(state, current.gapsMs, NO_REPLY_GAP_MS),
+        await recordGap(state, idle.segment, current.gapsMs, NO_REPLY_GAP_MS),
       );
     }
     return;
@@ -404,9 +424,8 @@ export async function runCacheWarmup(
       const model = resolveGatewayModel(warm.modelId);
       const decision = decideWarmup({
         conversationGapsMs: current.gapsMs,
-        globalGapsMs: await state.getList<number>(GLOBAL_GAPS_KEY),
+        globalGapsMs: await state.getList<number>(segmentGapsKey(idle.segment)),
         idleMs: Date.now() - idle.sinceMs,
-        cycle: message.cycle,
         prefixTokens: warm.prefixTokens,
         cacheReadPrice: model.cost.cacheRead,
         cacheWritePrice: model.cost.cacheWrite,

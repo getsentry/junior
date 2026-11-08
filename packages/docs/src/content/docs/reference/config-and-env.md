@@ -329,10 +329,12 @@ less than that write.
 - A delayed queue message sends the same request with a one-token output limit
   before the cache expires. Junior sends the next warmup only while the chance
   that the person replies in the next 5 minutes is high enough to pay for it.
-  The needed chance goes up with each warmup.
+  The needed chance is the same for each warmup.
 - Junior learns that chance from the reply gaps of idle periods. A period with
-  no reply in 55 minutes counts as no reply. Until Junior has recorded gaps, it
-  sends no warmups.
+  no reply in 55 minutes counts as no reply. Junior keeps separate gaps for
+  Turns that a person started and Turns that an event or automation started,
+  and for the first, second to third, and later Turns of a Conversation. Until
+  Junior has recorded gaps for a group, it sends no warmups for that group.
 - When 3 of the last 20 warmups of a model miss the cache or fail, Junior stops
   warmups for that model. They start again 6 hours after the last warmup.
 - `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no

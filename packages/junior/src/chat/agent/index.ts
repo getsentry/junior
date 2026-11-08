@@ -53,7 +53,7 @@ import {
   sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
-import type { Actor } from "@/chat/actor";
+import { isUserActor, type Actor } from "@/chat/actor";
 import {
   actorLogContext,
   credentialUserSubjectId,
@@ -998,7 +998,10 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
-    const cacheWarming = createCacheWarmingRecorder(conversationId);
+    const cacheWarming = createCacheWarmingRecorder(
+      conversationId,
+      isUserActor(actor),
+    );
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,

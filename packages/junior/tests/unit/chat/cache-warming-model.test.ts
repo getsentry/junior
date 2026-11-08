@@ -16,7 +16,6 @@ describe("decideWarmup", () => {
       conversationGapsMs: [],
       globalGapsMs: [...gaps(80, 7 * MINUTE), ...gaps(20, 3 * 60 * MINUTE)],
       idleMs: 4 * MINUTE,
-      cycle: 1,
       prefixTokens: 200_000,
     });
 
@@ -32,7 +31,6 @@ describe("decideWarmup", () => {
       conversationGapsMs: gaps(20, 3 * 60 * MINUTE),
       globalGapsMs: gaps(100, 7 * MINUTE),
       idleMs: 4 * MINUTE,
-      cycle: 1,
       prefixTokens: 200_000,
     });
 
@@ -43,7 +41,6 @@ describe("decideWarmup", () => {
     const input = {
       ...prices,
       conversationGapsMs: [],
-      cycle: 1,
       prefixTokens: 200_000,
     };
     // Only 3 of 100 idle periods got a reply. Without the 97 periods with no
@@ -69,23 +66,31 @@ describe("decideWarmup", () => {
     ).toMatchObject({ warm: false, reason: "horizon" });
   });
 
-  it("raises the threshold with each warmup until warming cannot pay", () => {
+  it("uses one threshold for each warmup and stops when returns get rare", () => {
     const input = {
       ...prices,
       conversationGapsMs: [],
-      globalGapsMs: gaps(100, 7 * MINUTE),
-      idleMs: 4 * MINUTE,
+      // Half of the idle periods get a reply after 6 minutes. The other half
+      // get no reply, so after 7 minutes nobody is left to return.
+      globalGapsMs: [...gaps(50, 6 * MINUTE), ...gaps(50, NO_REPLY_GAP_MS)],
       prefixTokens: 200_000,
     };
 
-    expect(decideWarmup({ ...input, cycle: 2 }).threshold).toBeCloseTo(
-      2 * decideWarmup({ ...input, cycle: 1 }).threshold,
-    );
-    // (5 - 0.2) / 0.2 = 24 warmups cost as much as one cache write.
-    expect(decideWarmup({ ...input, cycle: 24 })).toMatchObject({
-      warm: false,
-      reason: "cycle_limit",
-    });
+    const first = decideWarmup({ ...input, idleMs: 4 * MINUTE });
+    expect(first).toMatchObject({ warm: true });
+    // Earlier warmups are already paid: read / (write - read).
+    expect(first.threshold).toBeCloseTo(0.2 / 4.8);
+    const later = decideWarmup({ ...input, idleMs: 9 * MINUTE });
+    expect(later).toMatchObject({ warm: false, reason: "unlikely_return" });
+    expect(later.threshold).toBeCloseTo(first.threshold);
+    expect(
+      decideWarmup({
+        ...input,
+        idleMs: 4 * MINUTE,
+        cacheReadPrice: 1,
+        cacheWritePrice: 1,
+      }),
+    ).toMatchObject({ warm: false, reason: "no_savings" });
   });
 
   it("does not warm a small prefix or without any observed gaps", () => {
@@ -93,7 +98,6 @@ describe("decideWarmup", () => {
       ...prices,
       conversationGapsMs: [],
       idleMs: 4 * MINUTE,
-      cycle: 1,
     };
 
     expect(

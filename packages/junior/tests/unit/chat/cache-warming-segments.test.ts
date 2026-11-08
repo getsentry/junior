@@ -1,0 +1,85 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
+import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
+import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
+import { resolveGatewayModel } from "@/chat/pi/client";
+import { getStateAdapter } from "@/chat/state/adapter";
+
+const mocks = vi.hoisted(() => ({
+  sendCacheWarmup: vi.fn(async (_message: unknown, _delayMs: number) => {}),
+}));
+
+vi.mock("@/chat/cache-warming/queue", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/cache-warming/queue")>()),
+  sendCacheWarmup: mocks.sendCacheWarmup,
+}));
+
+const { createCacheWarmingRecorder, runCacheWarmup } =
+  await import("@/chat/cache-warming/warmup");
+
+const MINUTE = 60_000;
+const conversationId = "local:test:cache-warming-segments";
+const model = resolveGatewayModel("anthropic/claude-opus-5.5");
+const context: Context = {
+  systemPrompt: "Answer the question.",
+  messages: [{ role: "user", content: "Hi.", timestamp: 1 }],
+};
+const finalReply: AssistantMessage = {
+  role: "assistant",
+  content: [{ type: "text", text: "Done." }],
+  api: "anthropic-messages",
+  provider: "vercel-ai-gateway",
+  model: model.id,
+  usage: {
+    input: 10,
+    output: 10,
+    cacheRead: 60_000,
+    cacheWrite: 0,
+    totalTokens: 60_020,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+  stopReason: "stop",
+  timestamp: 1,
+};
+
+// Run one Turn that ends with a final reply, like one agent run does.
+async function endTurn(userActor: boolean) {
+  const recorder = createCacheWarmingRecorder(conversationId, userActor);
+  recorder.wrap((() => undefined) as never)(model, context, {});
+  await recorder.record(finalReply);
+}
+
+function scheduledHorizon(): CacheWarmupMessage {
+  const message = mocks.sendCacheWarmup.mock.calls
+    .map(([sent]) => sent as CacheWarmupMessage)
+    .reverse()
+    .find((sent) => sent.kind === "horizon");
+  if (!message) throw new Error("No horizon message was scheduled.");
+  return message;
+}
+
+const segmentGaps = (segment: string) =>
+  getStateAdapter().getList<number>(`junior:cache_warming:gaps:${segment}`);
+
+describe("cache warming gap segments", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("records each gap in the segment of the Turn that started the idle period", async () => {
+    vi.useFakeTimers();
+    await endTurn(false);
+    // Nobody returned within the idle horizon of the first Turn.
+    vi.advanceTimersByTime(56 * MINUTE);
+    await runCacheWarmup(scheduledHorizon());
+
+    // A person starts the second Turn and returns 7 minutes after it ends.
+    await endTurn(true);
+    vi.advanceTimersByTime(7 * MINUTE);
+    await endTurn(true);
+
+    expect(await segmentGaps("system:1")).toEqual([NO_REPLY_GAP_MS]);
+    expect(await segmentGaps("user:2-3")).toEqual([7 * MINUTE]);
+    expect(await segmentGaps("user:1")).toEqual([]);
+  });
+});
