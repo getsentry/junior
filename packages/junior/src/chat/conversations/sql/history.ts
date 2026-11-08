@@ -57,15 +57,9 @@ const messageHistoryEventTypes = [
 const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
 
 /**
- * Whether one event should restore an archived conversation to the feed.
- *
- * Archive hides finished noise until a human comes back. Events,
- * turn lifecycle, compaction, and other system writes may still refresh
- * activity clocks, but they must not unarchive on their own.
- */
-/**
- * True when a Turn input message is addressed to Junior. A Slack message in
- * a subscribed thread that does not mention Junior is marked
+ * True when a Turn input message is addressed to Junior, which subscribes its
+ * author again (contract: `api/conversations/subscription.ts`). A Slack
+ * message in a subscribed thread that does not mention Junior is marked
  * `explicitMention: false`. Other Sources, such as the dashboard and Slack
  * mentions and DMs, always address Junior.
  */
@@ -73,6 +67,13 @@ function eventAddressesJunior(data: ConversationEventData): boolean {
   return data.type === "message" && data.meta?.explicitMention !== false;
 }
 
+/**
+ * Whether one event should restore an archived conversation to the feed.
+ *
+ * Archive hides finished noise until a human comes back. Events,
+ * turn lifecycle, compaction, and other system writes may still refresh
+ * activity clocks, but they must not unarchive on their own.
+ */
 function eventUnarchivesConversation(data: ConversationEventData): boolean {
   if (data.type === "user_message") {
     const provenance = data.provenance;

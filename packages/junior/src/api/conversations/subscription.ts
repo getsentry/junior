@@ -18,15 +18,46 @@ import type {
 } from "../schema/conversation-subscription";
 import { readConversationAccessFromSql } from "./access";
 
-/**
- * Subscribe the viewer to a Conversation, or unsubscribe them. A
- * subscription belongs to the root, like a pin. An unsubscribed root leaves
- * the viewer's active feed until they mention Junior in it again, subscribe,
- * or pin it. The participant row stays, so the viewer keeps access.
+/*
+ * Conversation subscription: the owner of this contract.
  *
- * Unsubscribe also clears the viewer's pin. When no subscriber is left, no
- * feed shows the Conversation, so the unsubscribe archives the root and its
- * unarchived descendants for everyone. A later Message restores it.
+ * Why: archive applies to everyone. When two people share a Conversation and
+ * one hands it off, that person needs a way to drop it from their own feed
+ * while the other person keeps working.
+ *
+ * Behavior. Each scenario has a test in
+ * `tests/integration/api/conversations/subscription.test.ts`.
+ *
+ * - Given two participants, when one unsubscribes, then it leaves only that
+ *   person's active feed. The other person's feed does not change.
+ * - Given an unsubscribed person, then they keep access. They can open the
+ *   Conversation and find it in search and in the archived list.
+ * - Given an unsubscribed person, when they post a Message that does not
+ *   address Junior (a passive reply in a Slack thread that Junior watches),
+ *   or other people keep working, then it stays out of their feed.
+ * - Given an unsubscribed person, when they address Junior (a Slack mention,
+ *   a Slack DM, or a dashboard Message), then they are subscribed again.
+ *   Pin and Subscribe also subscribe them again.
+ * - Given the last subscribed participant, when they unsubscribe, then the
+ *   root and its unarchived descendants are archived for everyone. No feed
+ *   shows it anymore. The next person's Message restores it, as with any
+ *   archive.
+ *
+ * Rules that follow:
+ * - A subscription belongs to the root, like a pin. A child id resolves to
+ *   its root.
+ * - Unsubscribe clears the person's pin. Subscribe does not restore an
+ *   archive.
+ * - An unsubscribed person does not keep the root from auto-archive, and
+ *   their own auto-archive run skips it.
+ * - Code: the active feed filter (`conversationIsNotUnsubscribedRoot`), Turn
+ *   input membership (`recordTurnInputParticipants`), and auto-archive
+ *   (`archivableRow`).
+ */
+
+/**
+ * Subscribe the viewer to a Conversation, or unsubscribe them. The contract
+ * is in the comment above.
  */
 export async function setConversationSubscription(
   viewer: User,

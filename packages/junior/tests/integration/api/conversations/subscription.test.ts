@@ -1,217 +1,187 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
-import { readConversationDetail } from "@/api/conversations/detail";
-import { readConversationFeed } from "@/api/conversations/list";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   conversationDetailReportSchema,
-  conversationSubscriptionResponseSchema,
+  conversationFeedSchema,
 } from "@/api/schema";
 import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
-  getDb,
+  getSqlExecutor,
 } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 
-async function person(email: string) {
+// The contract is the comment at the top of
+// `src/api/conversations/subscription.ts`. Each test is one of its
+// scenarios. Tests go through the public API and stored Slack Turns only, so
+// storage can change without test changes.
+
+const CONVERSATION_ID = "slack:C1:subscription";
+let nowMs = 1_000;
+
+/** A dashboard viewer who is also a Slack user in the same workspace. */
+async function person(name: string) {
+  const email = `${name}@example.com`;
   const viewer = await resolveViewerUser(email);
   if (!viewer) throw new Error(`missing viewer for ${email}`);
-  const identityId = `identity:${email}`;
-  await getDb()
-    .insert(juniorIdentities)
-    .values({
-      createdAt: new Date(1_000),
-      email,
-      emailNormalized: email,
-      emailVerified: true,
-      id: identityId,
-      kind: "user",
-      provider: "slack",
-      providerSubjectId: email,
-      providerTenantId: "T1",
-      updatedAt: new Date(1_000),
-      userId: viewer.id,
-    });
+  const identityId = await resolveActorIdentityId(getSqlExecutor(), {
+    email,
+    platform: "slack",
+    teamId: "T1",
+    userId: `U-${name}`,
+  });
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
     context.set("viewer", viewer);
     await next();
   });
   app.route("/", createJuniorApi());
-  return { app, identityId, viewer };
+  const api = (path: string, init?: RequestInit) =>
+    app.request(`http://localhost/api/conversations${path}`, init);
+  const patch = (path: string, body: unknown) =>
+    api(path, {
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+      method: "PATCH",
+    });
+  return {
+    identityId: identityId!,
+    async feed(query = "") {
+      const response = await api(query);
+      expect(response.status).toBe(200);
+      return conversationFeedSchema
+        .parse(await response.json())
+        .conversations.map((conversation) => conversation.conversationId);
+    },
+    async open() {
+      const response = await api(`/${CONVERSATION_ID}`);
+      expect(response.status).toBe(200);
+      return conversationDetailReportSchema.parse(await response.json());
+    },
+    async pin() {
+      const response = await patch(`/${CONVERSATION_ID}/pin`, {
+        pinned: true,
+      });
+      expect(response.status).toBe(200);
+    },
+    async setSubscribed(subscribed: boolean) {
+      const response = await patch(`/${CONVERSATION_ID}/subscription`, {
+        subscribed,
+      });
+      expect(response.status).toBe(200);
+    },
+  };
 }
 
 type Person = Awaited<ReturnType<typeof person>>;
 
-async function storeConversation(conversationId: string) {
-  await getConversationStore().recordActivity({
-    conversationId,
-    destination: { platform: "local", conversationId },
-    nowMs: 1_000,
-    source: "internal",
-    title: conversationId,
-    visibility: "public",
-  });
-}
-
-async function addParticipant(conversationId: string, someone: Person) {
-  await getDb()
-    .insert(juniorConversationParticipants)
-    .values({
-      lastMessageAt: new Date(1_000),
-      rootConversationId: conversationId,
-      userId: someone.viewer.id,
-    });
-}
-
-async function setSubscribed(
-  someone: Person,
-  conversationId: string,
-  subscribed: boolean,
-) {
-  const response = await someone.app.request(
-    `http://localhost/api/conversations/${conversationId}/subscription`,
+/** Store one Slack Message from the person, and a Turn that reads it. */
+async function say(someone: Person, mentionsJunior: boolean) {
+  nowMs += 1_000;
+  const messageId = `message-${nowMs}`;
+  await getConversationEventStore().append(CONVERSATION_ID, [
     {
-      body: JSON.stringify({ subscribed }),
-      headers: { "content-type": "application/json" },
-      method: "PATCH",
-    },
-  );
-  expect(response.status).toBe(200);
-  return conversationSubscriptionResponseSchema.parse(await response.json());
-}
-
-function setPin(someone: Person, conversationId: string, pinned: boolean) {
-  return someone.app.request(
-    `http://localhost/api/conversations/${conversationId}/pin`,
-    {
-      body: JSON.stringify({ pinned }),
-      headers: { "content-type": "application/json" },
-      method: "PATCH",
-    },
-  );
-}
-
-/** Store one Slack message from the person and start a Turn with it. */
-async function startTurn(
-  conversationId: string,
-  someone: Person,
-  args: { explicitMention: boolean; id: string; atMs: number },
-) {
-  await getConversationEventStore().append(conversationId, [
-    {
-      createdAtMs: args.atMs,
+      createdAtMs: nowMs,
       data: {
         authorIdentityId: someone.identityId,
-        messageId: args.id,
-        meta: { explicitMention: args.explicitMention, source: "slack" },
+        messageId,
+        meta: { explicitMention: mentionsJunior, source: "slack" },
         role: "user",
-        text: args.id,
+        text: messageId,
         type: "message",
       },
-      idempotencyKey: `message:${args.id}`,
+      idempotencyKey: `message:${messageId}`,
     },
     {
-      createdAtMs: args.atMs + 1,
+      createdAtMs: nowMs + 1,
       data: {
-        inputMessageIds: [args.id],
-        surface: "api",
-        turnId: `turn:${args.id}`,
+        inputMessageIds: [messageId],
+        surface: "slack",
+        turnId: `turn-${messageId}`,
         type: "turn_started",
       },
-      idempotencyKey: `turn:${args.id}:started`,
+      idempotencyKey: `turn:${messageId}:started`,
     },
   ]);
 }
 
-async function feedIds(someone: Person) {
-  const feed = await readConversationFeed({ viewer: someone.viewer });
-  return feed.conversations.map((conversation) => conversation.conversationId);
+/** Given Ana and Ben both mentioned Junior in one Slack thread. */
+async function sharedThread() {
+  await getConversationStore().recordActivity({
+    conversationId: CONVERSATION_ID,
+    destination: { platform: "local", conversationId: CONVERSATION_ID },
+    nowMs,
+    source: "internal",
+    title: "Shared thread",
+    visibility: "public",
+  });
+  const ana = await person("ana");
+  const ben = await person("ben");
+  await say(ana, true);
+  await say(ben, true);
+  expect(await ana.feed()).toEqual([CONVERSATION_ID]);
+  expect(await ben.feed()).toEqual([CONVERSATION_ID]);
+  return { ana, ben };
 }
 
-async function detail(conversationId: string, someone: Person) {
-  return conversationDetailReportSchema.parse(
-    await readConversationDetail(conversationId, { viewer: someone.viewer }),
-  );
-}
-
-describe("conversation subscription API", () => {
+describe("conversation subscription", () => {
   afterEach(async () => {
     await closeDb();
   });
 
-  it("hides the conversation from one person until they mention Junior again", async () => {
-    const id = "local:test:subscription-handoff";
-    await storeConversation(id);
-    const leaver = await person("leaver@example.com");
-    const owner = await person("owner@example.com");
-    await addParticipant(id, leaver);
-    await addParticipant(id, owner);
-    expect((await setPin(leaver, id, true)).status).toBe(200);
+  it("unsubscribing removes it from only your feed, and you keep access", async () => {
+    const { ana, ben } = await sharedThread();
 
-    await expect(setSubscribed(leaver, id, false)).resolves.toEqual({
-      archivedAt: null,
-      subscribed: false,
-    });
-    await expect(feedIds(leaver)).resolves.toEqual([]);
-    await expect(feedIds(owner)).resolves.toEqual([id]);
-    // The leaver keeps access and finds it in search, so they can come back.
-    const left = await detail(id, leaver);
-    expect(left).toMatchObject({ isParticipant: true, subscribed: false });
-    expect(left.pinnedAt).toBeFalsy();
-    await expect(
-      readConversationFeed({ q: id, viewer: leaver.viewer }),
-    ).resolves.toMatchObject({ conversations: [{ conversationId: id }] });
+    await ana.setSubscribed(false);
 
-    // Someone else carries on, and the leaver replies without a mention.
-    await startTurn(id, owner, {
-      atMs: 2_000,
-      explicitMention: true,
-      id: "owner-mention",
-    });
-    await startTurn(id, leaver, {
-      atMs: 3_000,
-      explicitMention: false,
-      id: "leaver-passive",
-    });
-    await expect(feedIds(leaver)).resolves.toEqual([]);
-
-    await startTurn(id, leaver, {
-      atMs: 4_000,
-      explicitMention: true,
-      id: "leaver-mention",
-    });
-    await expect(feedIds(leaver)).resolves.toEqual([id]);
-    expect((await detail(id, leaver)).subscribed).toBe(true);
+    expect(await ana.feed()).toEqual([]);
+    expect(await ben.feed()).toEqual([CONVERSATION_ID]);
+    expect(await ana.open()).toMatchObject({ subscribed: false });
+    expect(await ana.feed("?q=shared")).toEqual([CONVERSATION_ID]);
   });
 
-  it("archives the conversation when the last subscriber leaves", async () => {
-    const id = "local:test:subscription-last";
-    await storeConversation(id);
-    const first = await person("first@example.com");
-    const second = await person("second@example.com");
-    await addParticipant(id, first);
-    await addParticipant(id, second);
+  it("stays out of your feed until you address Junior again", async () => {
+    const { ana, ben } = await sharedThread();
+    await ana.setSubscribed(false);
 
-    await setSubscribed(first, id, false);
-    await expect(setSubscribed(second, id, false)).resolves.toEqual({
-      archivedAt: expect.any(String),
-      subscribed: false,
-    });
-    expect((await detail(id, first)).archivedAt).toEqual(expect.any(String));
+    await say(ben, true);
+    await say(ana, false);
+    expect(await ana.feed()).toEqual([]);
 
-    // Subscribing again leaves the shared archive alone. A pin restores it.
-    await expect(setSubscribed(first, id, true)).resolves.toEqual({
-      archivedAt: expect.any(String),
-      subscribed: true,
-    });
-    await expect(feedIds(first)).resolves.toEqual([]);
-    expect((await setPin(second, id, true)).status).toBe(200);
-    await expect(feedIds(first)).resolves.toEqual([id]);
-    await expect(feedIds(second)).resolves.toEqual([id]);
+    await say(ana, true);
+    expect(await ana.feed()).toEqual([CONVERSATION_ID]);
+    expect(await ana.open()).toMatchObject({ subscribed: true });
+  });
+
+  it("pin and subscribe also bring it back, and unsubscribe drops the pin", async () => {
+    const { ana } = await sharedThread();
+    await ana.pin();
+
+    await ana.setSubscribed(false);
+    expect((await ana.open()).pinnedAt).toBeFalsy();
+    await ana.pin();
+    expect(await ana.feed()).toEqual([CONVERSATION_ID]);
+
+    await ana.setSubscribed(false);
+    await ana.setSubscribed(true);
+    expect(await ana.feed()).toEqual([CONVERSATION_ID]);
+  });
+
+  it("the last subscriber leaving archives it for everyone, and the next Message restores it", async () => {
+    const { ana, ben } = await sharedThread();
+
+    await ana.setSubscribed(false);
+    expect((await ben.open()).archivedAt).toBeFalsy();
+    await ben.setSubscribed(false);
+    expect((await ana.open()).archivedAt).toEqual(expect.any(String));
+    expect(await ana.feed("?status=archived")).toEqual([CONVERSATION_ID]);
+
+    await say(ben, true);
+    expect(await ben.feed()).toEqual([CONVERSATION_ID]);
+    expect(await ana.feed()).toEqual([]);
   });
 });

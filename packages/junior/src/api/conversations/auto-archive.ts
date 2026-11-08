@@ -240,6 +240,7 @@ function archivableRow(run: ArchiveRun) {
   return and(
     eq(juniorConversationParticipants.userId, run.userId),
     // A person who unsubscribed left the conversation to the others.
+    // Contract: `subscription.ts`.
     isNull(juniorConversationParticipants.unsubscribedAt),
     rootIsUnarchived(),
     // A pin keeps the conversation in the feed on purpose.

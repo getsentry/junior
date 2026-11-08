@@ -87,7 +87,7 @@ function conversationFeedMembershipFilter(
       : status === "all"
         ? undefined
         : // An unsubscribed person still finds the conversation in archived
-          // and search results, so they can subscribe again.
+          // and search results. Contract: `subscription.ts`.
           and(
             isNull(juniorConversations.archivedAt),
             conversationIsNotUnsubscribedRoot(member),
