@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { DashboardApiError, post } from "../http";
 
 /** Longest dictation. Keeps the upload under the transcription body limit. */
-export const DICTATION_MAX_SECONDS = 120;
+export const DICTATION_MAX_SECONDS = 300;
 
 // Opus is small and widely supported. Safari records only AAC in MP4.
 const RECORDING_TYPES = [
@@ -14,7 +14,7 @@ const RECORDING_TYPES = [
 ];
 
 // Browsers default to about 128 kbps. Speech needs much less, and a fixed
-// rate keeps 2 minutes near 1 MB in every browser, under the upload limit.
+// rate keeps 5 minutes near 2.4 MB in every browser, under the upload limit.
 const RECORDING_BITS_PER_SECOND = 64_000;
 
 // Where one dictation is: asking for the mic, recording, or transcribing.
