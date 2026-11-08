@@ -71,7 +71,7 @@ async function createIdleChild(
 async function archiveAgent(
   conversationId: string,
   childConversationId: string,
-  options: { apply_to_children?: boolean; person_asked?: boolean } = {},
+  options: { apply_to_children?: boolean } = {},
 ) {
   const tool = createArchiveAgentTool(conversationId);
   return await tool.execute!(
@@ -254,10 +254,21 @@ describe("Thread spawn and archive", () => {
         name: "ToolInputError",
         message: expect.stringContaining("a person still uses it"),
       });
+      // New work from the parent gives the Thread back to the parent.
+      const { invocation } = await createAgentInvocationForMessage({
+        ...slackInvocationInput,
+        childConversationId: thread,
+        idempotencyKey: "after-person",
+        parentToolCallId: "call-after-person",
+      });
+      await completeAgentInvocation({
+        invocationId: invocation.invocationId,
+        result: "Done.",
+        status: "completed",
+      });
       await expect(
         archiveAgent(slackParentConversationId, thread, {
           apply_to_children: true,
-          person_asked: true,
         }),
       ).resolves.toMatchObject({ conversation_id: thread });
     } finally {

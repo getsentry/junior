@@ -34,7 +34,7 @@ export function createArchiveAgentTool(conversationId: string) {
     exposure: "deferred",
     source: AGENTS_TOOL_SOURCE,
     description:
-      "Archive a Thread that this conversation started, for everyone. An archived Thread no longer counts toward your limit of active children, and a person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread after its last result: leave that Thread, unless that person asked you to archive it.",
+      "Archive a Thread that this conversation started, for everyone. An archived Thread no longer counts toward your limit of active children, and a person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread after its last result: that person decides, and can archive it from its dashboard_url.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -56,13 +56,6 @@ export function createArchiveAgentTool(conversationId: string) {
           .optional()
           .describe(
             "True also archives the child agents that the Thread started, at any depth. Without it, the archive fails while any of them is not archived.",
-          ),
-        person_asked: z
-          .boolean()
-          .nullable()
-          .optional()
-          .describe(
-            "True only when the person who messaged the Thread asked you to archive it.",
           ),
       })
       .strict(),
@@ -102,19 +95,19 @@ export function createArchiveAgentTool(conversationId: string) {
           `${childConversationId} is working. Leave it, or wait until it is idle.`,
         );
       }
-      if (!input.person_asked) {
-        const personMessageAt =
-          await readLastPersonMessageAtMs(childConversationId);
-        const latest =
-          await getLatestAgentInvocationForConversation(childConversationId);
-        if (
-          personMessageAt !== undefined &&
-          personMessageAt > (latest?.updatedAtMs ?? 0)
-        ) {
-          throw new ToolInputError(
-            `A person messaged ${childConversationId} after its last result, so a person still uses it. Leave it, unless that person asked you to archive it.`,
-          );
-        }
+      // A person who messaged the Thread after its last result took it
+      // over, so only people archive it from then on.
+      const personMessageAt =
+        await readLastPersonMessageAtMs(childConversationId);
+      const latest =
+        await getLatestAgentInvocationForConversation(childConversationId);
+      if (
+        personMessageAt !== undefined &&
+        personMessageAt > (latest?.updatedAtMs ?? 0)
+      ) {
+        throw new ToolInputError(
+          `A person messaged ${childConversationId} after its last result, so a person still uses it. Leave it. That person can archive it from its dashboard_url.`,
+        );
       }
       const result = await setConversationArchive({
         applyToChildren: input.apply_to_children ?? false,
