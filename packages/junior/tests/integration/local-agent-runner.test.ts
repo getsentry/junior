@@ -1,4 +1,5 @@
 import path from "node:path";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import {
   defineJuniorPlugin,
@@ -28,7 +29,10 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import {
+  deleteMcpStoredOAuthCredentials,
+  getMcpStoredOAuthCredentials,
+} from "@/chat/mcp/auth-store";
 import { startLocalOAuthCallbackServer } from "@/chat/local/oauth-callback-server";
 import { createLocalOAuthState } from "@/chat/local/oauth-relay";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
@@ -41,7 +45,11 @@ import {
 import { createModelStream } from "../fixtures/model-stream";
 import { runMcpOauthCallbackRoute } from "../fixtures/mcp-oauth-callback-harness";
 import { createPluginAppFixture } from "../fixtures/plugin-app";
-import { EVAL_MCP_AUTH_PROVIDER } from "../msw/handlers/eval-mcp-auth";
+import {
+  EVAL_MCP_AUTH_PROVIDER,
+  EVAL_MCP_SERVER_URL,
+} from "../msw/handlers/eval-mcp-auth";
+import { mswServer } from "../msw/server";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
@@ -90,6 +98,50 @@ async function loadLifecycleEvents(conversationId: string) {
 }
 
 type CapturedAgentRun = AgentRun;
+
+/** Run the agent so it connects Eval Auth, then confirms the connection. */
+function connectEvalAuthAgentRunner(requests: AgentRun[] = []): AgentRunner {
+  return createModelAgentRunnerForRun((request) => {
+    requests.push(request);
+    return createModelStream([
+      {
+        type: "toolCall",
+        name: "searchMcpTools",
+        arguments: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget echo" },
+      },
+      { type: "text", text: "Eval Auth is connected." },
+    ]);
+  });
+}
+
+/** Approve one Eval Auth link and finish it through the local relay. */
+async function completeLocalAuthorization(authorizationUrl: string) {
+  const providerResponse = await fetch(authorizationUrl, {
+    redirect: "manual",
+  });
+  const providerLocation = providerResponse.headers.get("location");
+  expect(providerResponse.status).toBe(302);
+  expect(providerLocation).toEqual(expect.any(String));
+  const providerCallback = new URL(providerLocation!);
+  const state = providerCallback.searchParams.get("state");
+  const code = providerCallback.searchParams.get("code");
+  expect(state).toEqual(expect.any(String));
+  expect(code).toEqual(expect.any(String));
+
+  const relayResponse = await runMcpOauthCallbackRoute({
+    provider: EVAL_MCP_AUTH_PROVIDER,
+    state: state!,
+    code: code!,
+    agentRunner: neverRunAgentRunner(),
+    expectBackgroundWork: false,
+  });
+  const localCallbackUrl = relayResponse.headers.get("location");
+  expect(relayResponse.status).toBe(302);
+  expect(localCallbackUrl).toEqual(expect.any(String));
+  await expect(fetch(localCallbackUrl!)).resolves.toMatchObject({
+    status: 200,
+  });
+}
 
 describe("local agent runner", () => {
   it("runs a local message without Slack actor or destination state", async () => {
@@ -224,48 +276,8 @@ describe("local agent runner", () => {
         NonNullable<LocalAgentTurnDeps["authorization"]>["deliver"]
       >[0][] = [];
       const delivered: LocalAgentReply[] = [];
-      const agentRunner = createModelAgentRunnerForRun((request) => {
-        requests.push(request);
-        return createModelStream([
-          {
-            type: "toolCall",
-            name: "searchMcpTools",
-            arguments: {
-              provider: EVAL_MCP_AUTH_PROVIDER,
-              query: "budget echo",
-            },
-          },
-          { type: "text", text: "Eval Auth is connected." },
-        ]);
-      });
+      const agentRunner = connectEvalAuthAgentRunner(requests);
       oauthCallback = await startLocalOAuthCallbackServer();
-      const completeAuthorization = async (authorizationUrl: string) => {
-        const providerResponse = await fetch(authorizationUrl, {
-          redirect: "manual",
-        });
-        const providerLocation = providerResponse.headers.get("location");
-        expect(providerResponse.status).toBe(302);
-        expect(providerLocation).toEqual(expect.any(String));
-        const providerCallback = new URL(providerLocation!);
-        const state = providerCallback.searchParams.get("state");
-        const code = providerCallback.searchParams.get("code");
-        expect(state).toEqual(expect.any(String));
-        expect(code).toEqual(expect.any(String));
-
-        const relayResponse = await runMcpOauthCallbackRoute({
-          provider: EVAL_MCP_AUTH_PROVIDER,
-          state: state!,
-          code: code!,
-          agentRunner: neverRunAgentRunner(),
-          expectBackgroundWork: false,
-        });
-        const localCallbackUrl = relayResponse.headers.get("location");
-        expect(relayResponse.status).toBe(302);
-        expect(localCallbackUrl).toEqual(expect.any(String));
-        await expect(fetch(localCallbackUrl!)).resolves.toMatchObject({
-          status: 200,
-        });
-      };
 
       await runLocalAgentTurn(
         {
@@ -281,7 +293,7 @@ describe("local agent runner", () => {
             deliver: async (request) => {
               authorizationRequests.push(request);
               oauthCallback!.beginAuthorization(request.authorizationUrl);
-              await completeAuthorization(request.authorizationUrl);
+              await completeLocalAuthorization(request.authorizationUrl);
             },
             wait: oauthCallback.waitForAuthorization,
           },
@@ -333,6 +345,72 @@ describe("local agent runner", () => {
       expect(state.processing.pendingAuth).toBeUndefined();
     } finally {
       await oauthCallback?.close();
+      await pluginApp.cleanup();
+      if (previousBaseUrl === undefined) {
+        delete process.env.JUNIOR_BASE_URL;
+      } else {
+        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+      }
+    }
+  });
+
+  // The provider rejects the new token right after sign-in, and the refresh
+  // fails. The resumed Turn must send a new link, not reuse the finished one.
+  it("sends a new link when the provider rejects the token after sign-in", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "oauth-rejected-after-sign-in",
+      cwd: "/tmp/local-agent-runner-oauth-rejected",
+    });
+    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
+    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    const pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
+    // Start signed out; an earlier test in this file connects the same actor.
+    await deleteMcpStoredOAuthCredentials("local-cli", EVAL_MCP_AUTH_PROVIDER);
+    const oauthCallback = await startLocalOAuthCallbackServer();
+    let rejectedToken = false;
+    mswServer.use(
+      http.post(EVAL_MCP_SERVER_URL, ({ request }) => {
+        const authorization = request.headers.get("authorization");
+        if (rejectedToken || authorization !== "Bearer eval-auth-access-token")
+          return undefined;
+        rejectedToken = true;
+        return new HttpResponse(null, {
+          status: 401,
+          headers: { "WWW-Authenticate": 'Bearer error="invalid_token"' },
+        });
+      }),
+    );
+
+    try {
+      const authorizationUrls: string[] = [];
+      const delivered: LocalAgentReply[] = [];
+      await runLocalAgentTurn(
+        { conversationId: conversationId!, message: "connect eval-auth" },
+        {
+          agentRunner: connectEvalAuthAgentRunner(),
+          authorization: {
+            cancel: oauthCallback.cancelAuthorization,
+            createState: async () =>
+              await createLocalOAuthState(oauthCallback.port),
+            deliver: async (request) => {
+              authorizationUrls.push(request.authorizationUrl);
+              oauthCallback.beginAuthorization(request.authorizationUrl);
+              await completeLocalAuthorization(request.authorizationUrl);
+            },
+            wait: oauthCallback.waitForAuthorization,
+          },
+          deliverReply: async (reply) => {
+            delivered.push(reply);
+          },
+        },
+      );
+
+      expect(rejectedToken).toBe(true);
+      expect(authorizationUrls).toHaveLength(2);
+      expect(authorizationUrls[1]).not.toBe(authorizationUrls[0]);
+      expect(delivered).toEqual([{ text: "Eval Auth is connected." }]);
+    } finally {
+      await oauthCallback.close();
       await pluginApp.cleanup();
       if (previousBaseUrl === undefined) {
         delete process.env.JUNIOR_BASE_URL;
