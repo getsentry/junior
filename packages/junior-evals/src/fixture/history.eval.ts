@@ -59,7 +59,9 @@ function stripVolatile(value: unknown): unknown {
 
 /**
  * Stored rows without volatile fields. A message update folds into its
- * message. Runtime context belongs to the run, not the history.
+ * message. Runtime context belongs to the run, not the history. Model cost
+ * events record what a call spent, such as the title, and loaded history
+ * spent nothing.
  */
 async function comparableRows(conversationId: string): Promise<unknown[]> {
   const rows = await getConversationEventStore().loadHistory(conversationId);
@@ -71,6 +73,13 @@ async function comparableRows(conversationId: string): Promise<unknown[]> {
       data.type === "user_message" &&
       (data.provenance as { authority?: string } | undefined)?.authority ===
         "context"
+    ) {
+      continue;
+    }
+    if (
+      data.type === "structured_event" &&
+      typeof (data.content as { costUsd?: unknown } | undefined)?.costUsd ===
+        "number"
     ) {
       continue;
     }
