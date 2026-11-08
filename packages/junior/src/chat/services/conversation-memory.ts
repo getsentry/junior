@@ -1,12 +1,10 @@
 import { messageCardRef, type MessageCard } from "@/chat/conversations/cards";
 import { botConfig } from "@/chat/config";
-import type { completeText } from "@/chat/pi/client";
 import type {
-  ConversationCompaction,
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import { logWarn, setSpanAttributes } from "@/chat/logging";
+import { setSpanAttributes } from "@/chat/logging";
 import {
   calculateContextCompactionTargetTokens,
   estimateTextTokens,
@@ -21,39 +19,14 @@ import { escapeXml } from "@/chat/xml";
 import { isEventConversationMessage } from "@/chat/events/actor";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
-const CONTEXT_COMPACTION_BATCH_SIZE = 24;
-const CONTEXT_MAX_COMPACTIONS = 16;
 const CONTEXT_MAX_MESSAGE_CHARS = 3200;
-// About 24k tokens at 2.5 characters per token. Counting at 4 characters per
-// token undercounts thread text.
+// Hard cap on the rendered thread context, newest Messages first.
 const THREAD_CONTEXT_MAX_CHARS = 60_000;
 const THREAD_CONTEXT_OPEN = '<thread-context authority="evidence-only">';
 const THREAD_CONTEXT_CLOSE = "</thread-context>";
 const THREAD_CONTEXT_OMITTED_NOTE =
   "Older Messages of this thread are not shown. Find them with the searchConversationEvents and readConversationEvent tools.";
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
-
-export interface ConversationMemoryDeps {
-  completeText: typeof completeText;
-}
-
-export interface ConversationMemoryService {
-  compactConversationIfNeeded: (
-    conversation: ThreadConversationState,
-    context: {
-      threadId?: string;
-      channelId?: string;
-      actorId?: string;
-      runId?: string;
-    },
-  ) => Promise<void>;
-}
-
-export function generateConversationId(
-  prefix: "assistant" | "backfill" | "compaction" | "turn",
-): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
 
 /** Normalize message boundaries without changing transcript formatting. */
 export function normalizeConversationText(text: string): string {
@@ -127,17 +100,15 @@ function authorDisplayField(
   return value;
 }
 
-/** Estimate the visible Message working set that thread compaction bounds. */
+/** Estimate the visible Message working set that trimming bounds. */
 export function estimateConversationMessagesTokens(
   conversation: ThreadConversationState,
 ): number {
-  const text = [
-    ...conversation.compactions.map((compaction) => compaction.summary),
-    ...conversation.messages.map((message) =>
-      renderConversationMessageLine(message, conversation),
-    ),
-  ].join("\n");
-  return estimateTextTokens(text);
+  return estimateTextTokens(
+    conversation.messages
+      .map((message) => renderConversationMessageLine(message, conversation))
+      .join("\n"),
+  );
 }
 
 export function upsertConversationMessage(
@@ -289,6 +260,14 @@ export function latestConversationMessageSeq(
   return latest;
 }
 
+/** A rendered thread context block and the counts that telemetry reports. */
+export interface ThreadContextBlock {
+  text?: string;
+  shownMessages: number;
+  /** Messages that matched but did not fit under the size cap. */
+  omittedMessages: number;
+}
+
 /**
  * Render the thread Messages that this Turn needs as one evidence-only block.
  *
@@ -309,7 +288,7 @@ export function buildConversationContext(
      */
     history?: { afterSeq?: number };
   } = {},
-): string | undefined {
+): ThreadContextBlock {
   const { history } = options;
   const candidates = conversation.messages.filter(
     (entry) =>
@@ -340,107 +319,22 @@ export function buildConversationContext(
     .map((message, index) =>
       renderThreadContextMessage(message, conversation, index + 1),
     );
+  const counts = {
+    shownMessages: shown.length,
+    omittedMessages: candidates.length - shown.length,
+  };
   if (shown.length === 0) {
-    return undefined;
+    return counts;
   }
   const lines = [THREAD_CONTEXT_OPEN, ...shown, THREAD_CONTEXT_CLOSE];
-  // Thread compaction also drops older Messages from the working set.
+  // Trimming also drops older Messages from the working set.
   if (
     shown.length < candidates.length ||
-    (!history && conversation.compactions.length > 0)
+    (!history && conversation.historyFromSeq !== undefined)
   ) {
     lines.push(THREAD_CONTEXT_OMITTED_NOTE);
   }
-  return lines.join("\n");
-}
-
-function pruneCompactions(
-  compactions: ConversationCompaction[],
-): ConversationCompaction[] {
-  if (compactions.length <= CONTEXT_MAX_COMPACTIONS) {
-    return compactions;
-  }
-
-  const overflowCount = compactions.length - CONTEXT_MAX_COMPACTIONS + 1;
-  const merged = compactions.slice(0, overflowCount);
-  const mergedSummary = merged
-    .map((entry) => entry.summary)
-    .join("\n")
-    .slice(0, 3500);
-  const coveredMessageCount = merged.reduce(
-    (count, entry) => count + entry.coveredMessageCount,
-    0,
-  );
-
-  const compacted: ConversationCompaction = {
-    id: generateConversationId("compaction"),
-    createdAtMs: Date.now(),
-    summary: mergedSummary,
-    coveredMessageCount,
-  };
-  return [compacted, ...compactions.slice(overflowCount)];
-}
-
-async function summarizeConversationChunk(
-  messages: ConversationMessage[],
-  conversation: ThreadConversationState,
-  context: {
-    threadId?: string;
-    channelId?: string;
-    actorId?: string;
-    runId?: string;
-  },
-  deps: ConversationMemoryDeps,
-): Promise<string> {
-  const transcript = messages
-    .map((message) => renderConversationMessageLine(message, conversation))
-    .join("\n");
-
-  try {
-    const result = await deps.completeText({
-      modelId: botConfig.fastModelId,
-      temperature: 0,
-      promptName: "junior.thread_compaction",
-      messages: [
-        {
-          role: "user",
-          content: [
-            "Summarize the following older Slack thread transcript segment for future assistant turns.",
-            "Keep the summary factual and concise. Do not invent details.",
-            "",
-            "Output exactly three XML sections in this order:",
-            "<active-asks> one bullet per outstanding user ask that has not been narrowed, answered, or replaced by a later turn. Omit the section body if none. </active-asks>",
-            "<resolved-or-replaced-asks> one bullet per ask that has been replaced, narrowed, answered, or already acted on in this segment. Include the replacement/outcome inline. Omit the section body if none. </resolved-or-replaced-asks>",
-            "<facts> one bullet per durable fact useful regardless of scope: names, ids, URLs, decisions, locations, preferences, constraints that remain true. Omit the section body if none. </facts>",
-            "",
-            "Do not output any text outside the three sections.",
-            "",
-            transcript,
-          ].join("\n"),
-          timestamp: Date.now(),
-        },
-      ],
-      metadata: {
-        modelId: botConfig.fastModelId,
-        threadId: context.threadId ?? "",
-        channelId: context.channelId ?? "",
-        actorId: context.actorId ?? "",
-        runId: context.runId ?? "",
-      },
-    });
-    const summary = result.text.trim();
-    if (summary.length > 0) {
-      return summary.slice(0, 3500);
-    }
-  } catch (error) {
-    logWarn("conversation.compaction.summary.failed", {
-      "exception.message":
-        error instanceof Error ? error.message : String(error),
-      "app.compaction_messages_covered": messages.length,
-    });
-  }
-
-  return transcript.slice(0, 2800);
+  return { ...counts, text: lines.join("\n") };
 }
 
 /** Return the earliest human-authored message known for a thread. */
@@ -475,73 +369,52 @@ export function getThreadTitleSourceMessage(
   return firstMessage;
 }
 
-async function compactConversationIfNeededWithDeps(
+/**
+ * Drop the oldest visible Messages until the working set fits the target, so
+ * the Messages that each Turn loads stay bounded. This makes no model call.
+ * Return whether a Message was dropped.
+ */
+export async function trimConversationMessages(
   conversation: ThreadConversationState,
-  context: {
-    threadId?: string;
-    channelId?: string;
-    actorId?: string;
-    runId?: string;
-  },
-  deps: ConversationMemoryDeps,
-): Promise<void> {
+  /** Load the seq after which a thread context delta still needs Messages. */
+  loadKeepAfterSeq: () => Promise<number | undefined>,
+): Promise<boolean> {
   let estimatedTokens = estimateConversationMessagesTokens(conversation);
-  setSpanAttributes({
-    "app.context_tokens_estimated": estimatedTokens,
-  });
-
+  setSpanAttributes({ "app.context_tokens_estimated": estimatedTokens });
   const triggerTokens = getConversationContextCompactionTriggerTokens();
+  if (estimatedTokens <= triggerTokens) return false;
+
   const targetTokens = calculateContextCompactionTargetTokens(triggerTokens);
-  while (
-    estimatedTokens > triggerTokens &&
-    conversation.messages.length > CONTEXT_MIN_LIVE_MESSAGES
-  ) {
-    const compactCount = Math.min(
-      CONTEXT_COMPACTION_BATCH_SIZE,
-      conversation.messages.length - CONTEXT_MIN_LIVE_MESSAGES,
-    );
-    if (compactCount <= 0) {
+  const keepAfterSeq = await loadKeepAfterSeq();
+  const maxDropped = conversation.messages.length - CONTEXT_MIN_LIVE_MESSAGES;
+  let dropped = 0;
+  while (dropped < maxDropped && estimatedTokens > targetTokens) {
+    const message = conversation.messages[dropped]!;
+    if (
+      keepAfterSeq !== undefined &&
+      (message.seq === undefined || message.seq > keepAfterSeq)
+    ) {
       break;
     }
-
-    const compactedChunk = conversation.messages.slice(0, compactCount);
-    const summary = await summarizeConversationChunk(
-      compactedChunk,
-      conversation,
-      context,
-      deps,
+    estimatedTokens -= estimateTextTokens(
+      `${renderConversationMessageLine(message, conversation)}\n`,
     );
-    conversation.compactions.push({
-      id: generateConversationId("compaction"),
-      createdAtMs: Date.now(),
-      summary,
-      coveredMessageCount: compactedChunk.length,
-    });
-    conversation.compactions = pruneCompactions(conversation.compactions);
-    conversation.messages = conversation.messages.slice(compactCount);
-
-    estimatedTokens = estimateConversationMessagesTokens(conversation);
-    setSpanAttributes({
-      "app.compaction_messages_covered": compactCount,
-      "app.compaction.trigger_tokens": triggerTokens,
-      "app.compaction.target_tokens": targetTokens,
-      "app.context_tokens_estimated": estimatedTokens,
-    });
-
-    if (estimatedTokens <= targetTokens) {
-      break;
-    }
+    dropped += 1;
   }
-}
+  if (dropped === 0) return false;
 
-/** Build the service that owns durable conversation memory compaction. */
-export function createConversationMemoryService(
-  deps: ConversationMemoryDeps,
-): ConversationMemoryService {
-  return {
-    compactConversationIfNeeded: async (conversation, context) =>
-      await compactConversationIfNeededWithDeps(conversation, context, deps),
-  };
+  conversation.messages = conversation.messages.slice(dropped);
+  // Messages load in seq order, so the first kept Message starts the window.
+  const historyFromSeq = conversation.messages[0]?.seq;
+  if (historyFromSeq !== undefined) {
+    conversation.historyFromSeq = historyFromSeq;
+  }
+  setSpanAttributes({
+    "app.thread_messages.trimmed": dropped,
+    "app.context_tokens_estimated":
+      estimateConversationMessagesTokens(conversation),
+  });
+  return true;
 }
 
 export function isHumanConversationMessage(

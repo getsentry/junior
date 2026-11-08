@@ -43,7 +43,6 @@
   "agent-test-imports": {},
   "model-fakes": {
     "packages/junior/tests/component/briefs/conversation-brief-task.test.ts": 2,
-    "packages/junior/tests/component/conversation-storage-sql.test.ts": 1,
     "packages/junior/tests/component/memory-plugin-storage.test.ts": 2,
     "packages/junior/tests/component/plugins/plugin-prompt-hooks.test.ts": 4,
     "packages/junior/tests/component/plugins/plugin-run-actors.test.ts": 4,

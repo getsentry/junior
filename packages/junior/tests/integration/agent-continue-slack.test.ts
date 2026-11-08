@@ -161,7 +161,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.1",
@@ -360,7 +359,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.8",
@@ -547,7 +545,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.9",
@@ -604,7 +601,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.7",
@@ -677,7 +673,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "event-msg.12",
@@ -751,7 +746,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.10",
@@ -829,7 +823,6 @@ describe("paused turn Slack integration", () => {
     await threadStateModule.persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "msg.11",
