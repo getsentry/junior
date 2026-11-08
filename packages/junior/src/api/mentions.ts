@@ -114,16 +114,16 @@ async function readMentionedPeople(
   });
   if (tenantId && unnamed.length > 0) {
     const profiles = await lookupSlackUserNames(tenantId, unnamed);
-    unnamed.forEach((id) => {
+    for (const id of unnamed) {
       const profile = profiles.get(id);
-      if (!profile?.fullName && !profile?.userName) return;
+      if (!profile?.fullName && !profile?.userName) continue;
       people.set(id, {
         ...people.get(id),
         slackUserId: id,
         ...(profile.fullName ? { fullName: profile.fullName } : undefined),
         ...(profile.userName ? { slackUserName: profile.userName } : undefined),
       });
-    });
+    }
   }
   return people;
 }

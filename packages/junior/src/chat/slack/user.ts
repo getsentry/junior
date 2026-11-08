@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import * as z from "zod";
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
@@ -164,6 +165,9 @@ export interface SlackUserNames {
 // instance skip `users.info` for a day. Names change rarely. Only answers
 // from Slack are shared, so a failed lookup stays local to one request.
 const USER_NAMES_SHARED_TTL_MS = 24 * 60 * 60 * 1000;
+// Caps parallel `users.info` calls so a cold read with many mentions does
+// not burst past the Slack rate limit.
+const USER_NAMES_LOOKUP_CONCURRENCY = 5;
 
 const sharedUserNamesSchema = z.object({
   fullName: z.string().optional(),
@@ -191,29 +195,30 @@ export async function lookupSlackUserNames(
     userIds.map((userId) => sharedUserNamesKey(teamId, userId)),
   );
   const missing: string[] = [];
-  userIds.forEach((userId, index) => {
+  for (const [index, userId] of userIds.entries()) {
     const parsed = sharedUserNamesSchema.safeParse(shared[index]);
     if (parsed.success) {
       names.set(userId, parsed.data);
     } else {
       missing.push(userId);
     }
-  });
+  }
 
+  const limit = pLimit(USER_NAMES_LOOKUP_CONCURRENCY);
   const profiles = await Promise.all(
-    missing.map((userId) => lookupSlackUser(teamId, userId)),
+    missing.map((userId) => limit(() => lookupSlackUser(teamId, userId))),
   );
   const found: Array<{ key: string; value: SlackUserNames }> = [];
-  missing.forEach((userId, index) => {
+  for (const [index, userId] of missing.entries()) {
     const profile = profiles[index];
-    if (!profile) return;
+    if (!profile) continue;
     const value: SlackUserNames = {
       ...(profile.fullName ? { fullName: profile.fullName } : undefined),
       ...(profile.userName ? { userName: profile.userName } : undefined),
     };
     names.set(userId, value);
     found.push({ key: sharedUserNamesKey(teamId, userId), value });
-  });
+  }
   await setStateValues(state, found, USER_NAMES_SHARED_TTL_MS);
   return names;
 }
