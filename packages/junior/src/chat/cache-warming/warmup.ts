@@ -562,6 +562,8 @@ export async function runCacheWarmup(
       });
       attributes["app.cache_warming.return_probability"] =
         decision.returnProbability;
+      attributes["app.cache_warming.returns_per_warmup"] =
+        decision.returnsPerWarmup;
       attributes["app.cache_warming.threshold"] = decision.threshold;
       if (!decision.warm) {
         logInfo("cache_warming.warmup.skipped", {

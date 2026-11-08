@@ -330,9 +330,11 @@ likely to cost less than that write.
   minutes.
 - A delayed queue message sends the same request with a one-token output limit
   before the cache expires. Junior sends the next warmup only while the chance
-  that the person replies before the cache expires is high enough to pay for
-  it. The needed chance is the same for each warmup. Only replies in the first
-  55 minutes count, so for a 30-minute cache the chance is a low estimate.
+  that the person replies soon is high enough to pay for it. Junior compares
+  plans of one or more warmups in a row, so it also warms when the person
+  usually replies a few TTLs later. The needed chance is the same for each
+  warmup. Only replies in the first 55 minutes count, so for a 30-minute cache
+  the chance is a low estimate.
 - Junior learns that chance from the reply gaps of idle periods. A period with
   no reply in 55 minutes counts as no reply. Junior keeps separate gaps for
   Turns that a person started and Turns that an event or automation started,

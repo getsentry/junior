@@ -111,6 +111,21 @@ describe("decideWarmup", () => {
     });
   });
 
+  it("warms for returns a few TTLs away", () => {
+    // People return after 10 minutes. One warmup at 4 minutes keeps the cache
+    // only until 9 minutes, but a second warmup reaches them.
+    const decision = decideWarmup({
+      ...prices,
+      conversationGapsMs: [],
+      globalGapsMs: gaps(100, 10 * MINUTE),
+      idleMs: 4 * MINUTE,
+      prefixTokens: 200_000,
+    });
+
+    expect(decision.returnProbability).toBe(0);
+    expect(decision).toMatchObject({ warm: true, reason: "warm" });
+  });
+
   it("uses one threshold for each warmup and stops when returns get rare", () => {
     const input = {
       ...prices,

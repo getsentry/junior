@@ -192,7 +192,10 @@ export interface WarmupDecision {
     | "no_savings"
     | "horizon"
     | "unlikely_return";
+  /** Chance of a return in the next TTL. */
   returnProbability: number;
+  /** Best returns per warmup over the plans that `decideWarmup` compares. */
+  returnsPerWarmup: number;
   threshold: number;
 }
 
@@ -200,10 +203,15 @@ export interface WarmupDecision {
  * Decide whether to send the next warmup.
  *
  * A warmup costs one cache read of the prefix. A return to a warm cache saves
- * one write minus one read. So a warmup pays when the chance of a return in
- * the next TTL is above read/(write − read). Earlier warmups are already
- * paid, so the threshold is the same for each warmup. The falling return
- * chance stops the warmups.
+ * one write minus one read. So warming pays when the expected returns per
+ * warmup are above read/(write − read). Earlier warmups are already paid, so
+ * the threshold is the same for each warmup.
+ *
+ * One warmup alone can be useless when people return a little after the next
+ * TTL, while two or three warmups in a row would reach them. So the decision
+ * compares plans of 1, 2, ... warmups up to the horizon. Each plan sends its
+ * next warmup only while nobody returned. Junior warms when the best plan
+ * pays, and decides again at the next warmup.
  */
 export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const savedPerReturn = input.cacheWritePrice - input.cacheReadPrice;
@@ -218,10 +226,12 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     input.idleMs,
     Math.min(input.cacheTtlMs, IDLE_HORIZON_MS - input.idleMs),
   );
+  const perWarmup = returnsPerWarmup(histogram, input.idleMs, input.cacheTtlMs);
   const decision = (reason: WarmupDecision["reason"]): WarmupDecision => ({
     warm: reason === "warm",
     reason,
     returnProbability: probability,
+    returnsPerWarmup: perWarmup,
     threshold,
   });
   if (input.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
@@ -233,5 +243,26 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   if (input.idleMs >= IDLE_HORIZON_MS) {
     return decision("horizon");
   }
-  return decision(probability >= threshold ? "warm" : "unlikely_return");
+  return decision(perWarmup >= threshold ? "warm" : "unlikely_return");
+}
+
+// Best expected returns per warmup over plans of 1, 2, ... warmups that end
+// at the horizon. Warmup i of a plan runs about i TTLs from now, and only if
+// nobody returned before it.
+function returnsPerWarmup(
+  histogram: GapHistogram,
+  idleMs: number,
+  ttlMs: number,
+): number {
+  const now = survival(histogram, idleMs);
+  if (now < 0.001 || ttlMs <= 0) return 0;
+  let best = 0;
+  let warmups = 0;
+  for (let startMs = idleMs; startMs < IDLE_HORIZON_MS; startMs += ttlMs) {
+    warmups += survival(histogram, startMs) / now;
+    const endMs = Math.min(startMs + ttlMs, IDLE_HORIZON_MS);
+    const returns = (now - survival(histogram, endMs)) / now;
+    best = Math.max(best, returns / warmups);
+  }
+  return best;
 }
