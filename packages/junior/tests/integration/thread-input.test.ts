@@ -9,17 +9,12 @@ import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import {
-  completeAgentInvocation,
   getAgentInvocation,
-  getActiveAgentInvocationForConversation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { buildPromptInput } from "@/chat/agent/prompt";
-import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
-import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
+import { type AgentRun } from "@/chat/agent/types";
 import {
-  appendAndEnqueueWebMessage,
   createAndEnqueueConversation,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
@@ -30,10 +25,8 @@ import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   getTurnRecord,
-  listTurnSummaries,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import { recordTurnAuthorization } from "@/chat/task-execution/authorized-turn";
@@ -49,160 +42,21 @@ import {
 } from "@/chat/task-execution/store";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { juniorDestinations } from "@/db/schema";
 import {
-  prepareSlackParentConversation,
   slackDestination,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 import { webTestActor } from "../fixtures/conversation";
-import { createConversationWorkHarness } from "../fixtures/conversation-work";
-
-/** Compose production Conversation work with a Slack root. */
-async function createHarness() {
-  const { conversationStore, fixture } = await prepareSlackParentConversation();
-  // Integration tests do not run the agent. The runner checks each run as
-  // the agent does first, reads it, and stops it. The test finishes each
-  // Agent invocation itself, or ends its runs with `onInvocationRun`.
-  const runs: AgentRun[] = [];
-  // A Conversation has one open Turn. Any other open Turn seen when a run
-  // starts lands here.
-  const otherOpenTurns: string[] = [];
-  let onInvocationRun: (() => Promise<never>) | undefined;
-  const work = await createConversationWorkHarness({
-    run: async (run) => {
-      assertRunConsistency(
-        run,
-        (await conversationStore.get({ conversationId: run.conversationId }))
-          ?.kind,
-      );
-      runs.push(run);
-      otherOpenTurns.push(
-        ...(await listTurnSummaries(run.conversationId))
-          .filter(
-            (turn) =>
-              turn.turnId !== run.turnId &&
-              (turn.state === "paused" || turn.state === "running"),
-          )
-          .map((turn) => turn.turnId),
-      );
-      if (run.agentInvocationId && onInvocationRun) {
-        await onInvocationRun();
-      }
-      throw new Error("stop after reading the run");
-    },
-  });
-  /** Run the next queued wake of one Conversation. */
-  const process = async (conversationId: string) =>
-    await work.process(work.queue.takeMessageFor(conversationId));
-  return {
-    close: async () => await fixture.close(),
-    conversationStore,
-    /** Run every queued wake of one Conversation, as the queue does. */
-    drain: async (conversationId: string) => {
-      while (
-        work.queue
-          .queuedMessages()
-          .some((message) => message.conversationId === conversationId)
-      ) {
-        await process(conversationId);
-      }
-    },
-    /**
-     * Run the queued wakes of one Conversation until the agent runs. A run
-     * that the runner stops retries, so this stops at the first run.
-     */
-    processUntilRun: async (conversationId: string) => {
-      const runCount = runs.length;
-      while (
-        runs.length === runCount &&
-        work.queue
-          .queuedMessages()
-          .some((message) => message.conversationId === conversationId)
-      ) {
-        await process(conversationId);
-      }
-    },
-    /** Run `fn` in each later Agent invocation run. It ends the run. */
-    onInvocationRun: (fn: () => Promise<never>) => {
-      onInvocationRun = fn;
-    },
-    otherOpenTurns,
-    process,
-    queue: work.queue,
-    runs,
-    state: work.state,
-  };
-}
-
-type Harness = Awaited<ReturnType<typeof createHarness>>;
-
-/** Finish the open Agent invocation of a child, then report its result. */
-async function finishInvocation(harness: Harness, childConversationId: string) {
-  const invocation =
-    await getActiveAgentInvocationForConversation(childConversationId);
-  if (!invocation) throw new Error("Expected an open Agent invocation");
-  await completeAgentInvocation({
-    invocationId: invocation.invocationId,
-    result: "Found it.",
-    status: "completed",
-  });
-  await expect(harness.process(childConversationId)).resolves.toMatchObject({
-    status: "completed",
-  });
-}
-
-/**
- * Start a named child agent and store it as a Thread. Spawn creates only
- * Tasks until Threads have their own entry point.
- */
-async function startThread(
-  harness: Harness,
-  idempotencyKey: string,
-  input: Partial<
-    Pick<CreateAgentInvocationInput, "destination" | "parentConversationId">
-  > = {},
-) {
-  const created = await createAndEnqueueAgentInvocation(
-    {
-      ...slackInvocationInput,
-      ...input,
-      agentName: "researcher",
-      idempotencyKey,
-    },
-    {
-      conversationStore: harness.conversationStore,
-      queue: harness.queue,
-      state: harness.state,
-    },
-  );
-  await getDb()
-    .update(juniorConversations)
-    .set({ kind: "thread" })
-    .where(eq(juniorConversations.conversationId, created.childConversationId));
-  return created.childConversationId;
-}
-
-async function sendPersonMessage(
-  harness: Harness,
-  conversationId: string,
-  idempotencyKey: string,
-) {
-  return await appendAndEnqueueWebMessage(
-    {
-      actor: webTestActor,
-      conversationId,
-      idempotencyKey,
-      message: "What did you find?",
-    },
-    {
-      conversationStore: harness.conversationStore,
-      queue: harness.queue,
-      state: harness.state,
-    },
-  );
-}
+import {
+  createHarness,
+  finishInvocation,
+  sendPersonMessage,
+  savePersonTurn,
+  startThread,
+  type Harness,
+} from "../fixtures/thread-input";
 
 /** Give the Thread more work from its parent agent, like messageAgent. */
 async function sendParentMessage(harness: Harness, toolCallId: string) {
@@ -230,56 +84,6 @@ async function sendParentMessage(harness: Harness, toolCallId: string) {
       toolCallId,
     },
   );
-}
-
-/**
- * Save the person's Message and their Turn: `auth` when it waits for a
- * sign-in callback, `yield` between slices, `running` when its worker died
- * mid-Turn.
- */
-async function savePersonTurn(
-  threadId: string,
-  mode: "auth" | "running" | "yield" = "auth",
-) {
-  const messageId = "api-msg_person-paused";
-  await persistThreadStateById(threadId, {
-    conversation: {
-      ...coerceThreadConversationState({}),
-      messages: [
-        {
-          author: { userName: webTestActor.userName },
-          createdAtMs: 1,
-          id: messageId,
-          meta: { explicitMention: true, source: "web" },
-          role: "user",
-          text: "What did you find?",
-        },
-      ],
-    },
-  });
-  const turnId = buildDeterministicTurnId(messageId);
-  const turn = {
-    conversationId: threadId,
-    turnId,
-    sliceId: 1,
-    messages: [
-      {
-        role: "user" as const,
-        content: [{ type: "text" as const, text: "What did you find?" }],
-        timestamp: 1,
-      },
-    ],
-    destination: slackDestination,
-    source: createWebSource(threadId, "public"),
-    actor: webTestActor,
-    surface: "api" as const,
-  };
-  await saveTurnCheckpoint(
-    mode === "running"
-      ? { ...turn, mode }
-      : { ...turn, mode: "paused", reason: mode },
-  );
-  return turnId;
 }
 
 /**
