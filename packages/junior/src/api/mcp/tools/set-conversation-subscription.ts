@@ -21,7 +21,7 @@ export function registerSetConversationSubscriptionTool(
     {
       title: "Set conversation subscription",
       description:
-        "Subscribe to one of your conversations, or unsubscribe from it. Unsubscribe removes it only from your feed and clears your pin. When nobody else is subscribed, it archives the conversation for everyone. Your next mention of Junior in it subscribes you again.",
+        "Subscribe to one of your conversations, or unsubscribe from it. Unsubscribe removes it only from your feed and clears your pin. When nobody else is subscribed, it archives the conversation for everyone. Your next mention of the bot in it subscribes you again.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         subscribed: z.boolean().describe("False unsubscribes you."),
