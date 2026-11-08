@@ -179,10 +179,15 @@ export async function postSlackMessage(input: {
   };
 }
 
-/** Set or replace the link previews that Junior shows on a posted message. */
+/**
+ * Set or replace the link previews that Junior shows on a posted message.
+ * Pass the `unfurl_id` of a sent message's `link_shared` event when it has
+ * one: Slack accepts it in channels that Junior has not joined.
+ */
 export async function unfurlSlackLinks(input: {
   channelId: string;
   messageTs: string;
+  unfurlId?: string;
   unfurls: Record<string, { blocks: KnownBlock[] }>;
 }): Promise<void> {
   const channelId = requireSlackConversationId(
@@ -190,13 +195,11 @@ export async function unfurlSlackLinks(input: {
     "Slack link unfurl",
   );
   const ts = requireSlackMessageTimestamp(input.messageTs, "Slack link unfurl");
+  const target = input.unfurlId
+    ? { source: "conversations_history" as const, unfurl_id: input.unfurlId }
+    : { channel: channelId, ts };
   await withSlackRetries(
-    () =>
-      getSlackClient().chat.unfurl({
-        channel: channelId,
-        ts,
-        unfurls: input.unfurls,
-      }),
+    () => getSlackClient().chat.unfurl({ ...target, unfurls: input.unfurls }),
     3,
     {
       action: "chat.unfurl",

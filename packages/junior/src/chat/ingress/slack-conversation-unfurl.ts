@@ -43,6 +43,7 @@ const linkSharedEventSchema = z.object({
   message_ts: z.string(),
   source: z.string().optional(),
   thread_ts: slackMessageTsSchema.optional(),
+  unfurl_id: z.string().min(1).optional(),
 });
 
 // The button value is ours: Slack sends it back as we wrote it.
@@ -219,6 +220,7 @@ export async function unfurlDashboardConversationLinks(args: {
   await unfurlSlackLinks({
     channelId,
     messageTs: messageTs.data,
+    ...(event.unfurl_id ? { unfurlId: event.unfurl_id } : undefined),
     unfurls,
   });
 }

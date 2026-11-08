@@ -207,9 +207,10 @@ describe("Slack webhook: dashboard conversation links", () => {
     await slack.shareLink(url);
     const preview = unfurlsOf(slackApiOutbox.calls("chat.unfurl")[0]);
     expect(Object.keys(preview ?? {})).toEqual([url]);
+    // The unfurl id works before Junior joins the channel.
     expect(slackApiOutbox.calls("chat.unfurl")[0]?.params).toMatchObject({
-      channel: "C123",
-      ts: SHARED_TS,
+      source: "conversations_history",
+      unfurl_id: "C123.1712345.0001.abc",
     });
     const value = continueHereValue(url);
     expect(value).toBeDefined();
@@ -234,6 +235,11 @@ describe("Slack webhook: dashboard conversation links", () => {
     expect(
       JSON.stringify(unfurlsOf(slackApiOutbox.calls("chat.unfurl")[1])),
     ).toContain("Continues in");
+    // The move joined the channel, so the update uses the message.
+    expect(slackApiOutbox.calls("chat.unfurl")[1]?.params).toMatchObject({
+      channel: "C123",
+      ts: SHARED_TS,
+    });
 
     // A later mention in the thread reaches the same Conversation.
     const before = slack.queue.queuedMessages().length;
