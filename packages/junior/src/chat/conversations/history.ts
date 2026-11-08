@@ -712,6 +712,11 @@ export interface ConversationEventStore {
   loadMessageHistory(conversationId: string): Promise<MessageHistory>;
   /** All events across every history version in `seq` order. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
+  /** Events of one type across every history version in `seq` order. */
+  loadEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]>;
   /**
    * Bounded raw event page for observational/debug reads.
    * Defaults to the newest matching events when neither bound is set.

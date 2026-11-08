@@ -23,6 +23,7 @@ import {
   type ConversationEventData,
   type HistoryReplacement,
   type HistoryReplacementResult,
+  type KnownConversationEventType,
   type MessageHistory,
   type MessagesSummarizedEvent,
   type NewConversationEvent,
@@ -502,6 +503,24 @@ class SqlConversationEventStore implements ConversationEventStore {
       .select()
       .from(juniorConversationEvents)
       .where(eq(juniorConversationEvents.conversationId, conversationId))
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
+  async loadEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, type),
+        ),
+      )
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
   }

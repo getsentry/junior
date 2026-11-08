@@ -285,8 +285,11 @@ export async function loadConnectedMcpProviders(args: {
   conversationId: string;
   credentialSubjectId: string;
 }): Promise<string[]> {
-  const events = await getConversationEventStore().loadHistory(
+  // Every turn start calls this. Load only connection events: a long
+  // Conversation's full log holds every compaction's replacement history.
+  const events = await getConversationEventStore().loadEventsOfType(
     args.conversationId,
+    "mcp_provider_connected",
   );
   return connectedMcpProvidersFromEvents(events, args.credentialSubjectId);
 }
