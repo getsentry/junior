@@ -205,6 +205,15 @@ async function swapPreparedCompaction(
           "app.compaction.wait.timed_out":
             latest?.event.seq === first.event.seq,
         });
+        // Another replacement committed during the wait, so the active
+        // messages are stale. A swap or a blocking summary would write them
+        // over the newer history.
+        if (latest?.historyVersion !== first.historyVersion) {
+          return {
+            ...discard("history_version_changed"),
+            reason: "history_conflict",
+          };
+        }
       }
     }
     const prepared = latest?.event.data;

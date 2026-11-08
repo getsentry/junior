@@ -398,6 +398,41 @@ describe("background compaction swap", () => {
     );
   });
 
+  it("writes nothing when another replacement commits during the wait", async () => {
+    const conversationId = "local:web:swap-wait-replaced";
+    const committed = await requestSummary(conversationId, firstTurn);
+    const events = getConversationEventStore();
+    const replaced = sleep(200).then(() =>
+      events.replaceHistory(conversationId, {
+        createdAtMs: Date.now(),
+        data: {
+          type: "compaction",
+          modelId: MODEL_ID,
+          summary: "Other Turn.",
+          replacementHistory: [],
+        },
+      }),
+    );
+    const summarize = vi.fn(async () => "Stale fallback.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: firstTurn,
+      },
+      summarize,
+    );
+    await replaced;
+
+    expect(result).toEqual({ compacted: false, reason: "history_conflict" });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
+      committed.historyVersion + 1,
+    );
+  });
+
   it("runs the blocking summary when the wait for a running summary ends", async () => {
     const conversationId = "local:web:swap-wait-timeout";
     // The wait counts from the request, so less than a second is left.
