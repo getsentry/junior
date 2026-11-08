@@ -70,13 +70,6 @@ export interface ConversationMessage {
   text: string;
 }
 
-export interface ConversationCompaction {
-  coveredMessageCount: number;
-  createdAtMs: number;
-  id: string;
-  summary: string;
-}
-
 export interface ConversationProcessingState {
   activeTurnId?: string;
   lastCompletedAtMs?: number;
@@ -111,7 +104,8 @@ export interface ConversationVisionState {
 }
 
 export interface ThreadConversationState {
-  compactions: ConversationCompaction[];
+  /** Seq where the loaded Message window starts, after older Messages were trimmed. */
+  historyFromSeq?: number;
   messages: ConversationMessage[];
   processing: ConversationProcessingState;
   schemaVersion: 1;
@@ -122,7 +116,6 @@ function defaultConversationState(): ThreadConversationState {
   return {
     schemaVersion: 1,
     messages: [],
-    compactions: [],
     processing: {},
     vision: {
       byFileId: {},
@@ -182,7 +175,6 @@ export function coerceThreadConversationState(
   // Conversation history lives in SQL. The operator upgrade reads any old
   // thread-state history; live code starts empty and hydrates canonical events.
   const messages: ConversationMessage[] = [];
-  const compactions: ConversationCompaction[] = [];
 
   const rawProcessing = isRecord(rawConversation.processing)
     ? rawConversation.processing
@@ -215,7 +207,6 @@ export function coerceThreadConversationState(
   return {
     schemaVersion: 1,
     messages,
-    compactions,
     processing,
     vision: {
       backfillCompletedAtMs: toOptionalNumber(rawVision.backfillCompletedAtMs),

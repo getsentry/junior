@@ -3,7 +3,10 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
-import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
+import {
+  buildTurnThreadContext,
+  loadThreadContextTrimFloor,
+} from "@/chat/conversations/thread-context";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { closeDb, getConversationStore } from "@/chat/db";
 import { latestConversationMessageSeq } from "@/chat/services/conversation-memory";
@@ -148,5 +151,13 @@ describe("Turn thread context", () => {
     });
     expect(third).toContain("chatter between mentions");
     expect(third).not.toContain("chatter before the first mention");
+
+    // Trimming keeps the Messages that the next Turn may still show.
+    const between = conversation.messages.find(
+      (message) => message.id === "m-between",
+    );
+    const floor = await loadThreadContextTrimFloor(CONVERSATION_ID);
+    expect(floor).toBeDefined();
+    expect(between?.seq).toBeGreaterThan(floor!);
   });
 });

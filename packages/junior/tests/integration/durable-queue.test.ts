@@ -313,7 +313,6 @@ async function seedDeadWorkerResidue(
   await persistThreadStateById(CONVERSATION_ID, {
     conversation: {
       schemaVersion: 1,
-      compactions: [],
       messages: [
         {
           id: "1712345.0001",
@@ -732,7 +731,6 @@ describe("durable queue contract", () => {
         conversationMessageId: `${turnId}:assistant:1`,
         conversation: {
           schemaVersion: 1,
-          compactions: [],
           messages: [
             {
               id: "1712345.0001",

@@ -354,14 +354,12 @@ describe("Slack webhook persistence contract", () => {
             }),
           }),
         ],
-        compaction: undefined,
         historyFromSeq: expect.any(Number),
       });
       await expect(
         getConversationEventStore().loadMessageHistory(threadId),
       ).resolves.toEqual({
         events: [],
-        compaction: undefined,
         historyFromSeq: expect.any(Number),
       });
     } finally {

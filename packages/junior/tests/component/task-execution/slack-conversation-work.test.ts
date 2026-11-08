@@ -1400,7 +1400,6 @@ describe("Slack conversation work execution", () => {
     await persistThreadStateById(CONVERSATION_ID, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0001",

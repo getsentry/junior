@@ -478,10 +478,9 @@ class SqlConversationEventStore implements ConversationEventStore {
       )
       .orderBy(desc(juniorConversationEvents.seq))
       .limit(1);
-    const compaction = compactionRow
-      ? messagesSummarizedEventFromRow(compactionRow)
-      : undefined;
-    const historyFromSeq = compaction?.data.historyFromSeq ?? 0;
+    const historyFromSeq = compactionRow
+      ? messagesSummarizedEventFromRow(compactionRow).data.historyFromSeq
+      : 0;
     const rows = await this.executor
       .db()
       .select()
@@ -494,7 +493,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
-    return { events: rows.map(eventFromRow), compaction, historyFromSeq };
+    return { events: rows.map(eventFromRow), historyFromSeq };
   }
 
   async loadHistory(conversationId: string): Promise<ConversationEvent[]> {

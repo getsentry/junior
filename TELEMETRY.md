@@ -415,6 +415,25 @@ dataset=spans query='span.op:chat.turn has:tags[app.turn.compaction_wait_ms,numb
 fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.compaction_wait_ms,number]),p50(span.duration)
 ```
 
+## Thread Context
+
+Each Turn prompt gets one `<thread-context>` block.
+`chat/conversations/thread-context.ts` sets these attributes when it builds
+the block: on `chat.reply` in a Slack Turn, on `chat.turn` in a web or Event
+Turn. The block holds only the Messages since the
+previous Turn when agent history exists.
+
+| Attribute                             | Type   | Meaning                                                   |
+| ------------------------------------- | ------ | --------------------------------------------------------- |
+| `app.thread_context.chars`            | int    | characters of the block, 0 when there is none             |
+| `app.thread_context.shown_messages`   | int    | Messages in the block                                     |
+| `app.thread_context.omitted_messages` | int    | Messages left out by the 60,000-character cap             |
+| `app.thread_context.cursor`           | string | `found`, `missing` (Turn before cursors), or `no_history` |
+| `app.thread_messages.trimmed`         | int    | oldest Messages dropped from the loaded window            |
+
+- `app.thread_messages.trimmed` is set in Turn preparation, only when the
+  loaded Messages pass the trim threshold. Trimming makes no model call.
+
 ## Invariants
 
 - `slack.message.ingress` records sender, team, and `app.slack.membership`

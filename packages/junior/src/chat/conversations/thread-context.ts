@@ -1,4 +1,5 @@
 import { getConversationEventStore } from "@/chat/db";
+import { setSpanAttributes } from "@/chat/logging";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 
@@ -45,6 +46,27 @@ async function loadThreadContextCursor(args: {
 }
 
 /**
+ * Return the oldest cursor of the Turns that the cursor lookup reads. Messages
+ * after it may still be in the thread context delta of the next Turn, also
+ * when the latest Turns failed or the next Turn retries.
+ */
+export async function loadThreadContextTrimFloor(
+  conversationId: string,
+): Promise<number | undefined> {
+  const page = await getConversationEventStore().query(conversationId, {
+    limit: CURSOR_TURN_LOOKBACK,
+    types: ["turn_started"],
+  });
+  const cursors = page.events.flatMap((event) =>
+    event.data.type === "turn_started" &&
+    event.data.threadContextThroughSeq !== undefined
+      ? [event.data.threadContextThroughSeq]
+      : [],
+  );
+  return cursors.length > 0 ? Math.min(...cursors) : undefined;
+}
+
+/**
  * Build the thread context of one Turn prompt. With agent history, show only
  * the thread Messages saved after the cursor of the previous Turn.
  */
@@ -56,17 +78,25 @@ export async function buildTurnThreadContext(args: {
   hasHistory: boolean;
   turnId: string;
 }): Promise<string | undefined> {
-  return buildConversationContext(args.conversation, {
+  const afterSeq = args.hasHistory
+    ? await loadThreadContextCursor({
+        conversationId: args.conversationId,
+        turnId: args.turnId,
+      })
+    : undefined;
+  const block = buildConversationContext(args.conversation, {
     excludeMessageIds: args.excludeMessageIds,
-    ...(args.hasHistory
-      ? {
-          history: {
-            afterSeq: await loadThreadContextCursor({
-              conversationId: args.conversationId,
-              turnId: args.turnId,
-            }),
-          },
-        }
-      : undefined),
+    ...(args.hasHistory ? { history: { afterSeq } } : undefined),
   });
+  setSpanAttributes({
+    "app.thread_context.chars": block.text?.length ?? 0,
+    "app.thread_context.shown_messages": block.shownMessages,
+    "app.thread_context.omitted_messages": block.omittedMessages,
+    "app.thread_context.cursor": !args.hasHistory
+      ? "no_history"
+      : afterSeq === undefined
+        ? "missing"
+        : "found",
+  });
+  return block.text;
 }

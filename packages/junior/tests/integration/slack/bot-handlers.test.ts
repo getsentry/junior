@@ -69,7 +69,6 @@ function createAwaitingContinuationState(args: {
   return {
     conversation: {
       schemaVersion: 1,
-      compactions: [],
       piMessages: [],
       messages: [
         {

@@ -313,7 +313,6 @@ describe("conversation work telemetry", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0001",
