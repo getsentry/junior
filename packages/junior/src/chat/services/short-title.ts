@@ -1,5 +1,5 @@
 import { botConfig } from "@/chat/config";
-import type { completeText } from "@/chat/pi/client";
+import type { completeText, ConversationModelCost } from "@/chat/core-model";
 import { logWarn } from "@/chat/logging";
 
 export const SHORT_TITLE_MAX_LENGTH = 60;
@@ -66,6 +66,7 @@ export function fallbackShortTitle(
 export async function generateShortTitle(args: {
   completeText: typeof completeText;
   context?: string[];
+  cost: ConversationModelCost;
   kind: ShortTitleKind;
   sourceText: string;
   signal?: AbortSignal;
@@ -79,7 +80,8 @@ export async function generateShortTitle(args: {
       signal: args.signal,
       modelId: botConfig.fastModelId,
       temperature: 0,
-      promptName: `junior.${args.kind}_title`,
+      operation: `${args.kind}_title`,
+      cost: args.cost,
       messages: [
         {
           role: "user",
@@ -125,6 +127,7 @@ export async function generateShortTitle(args: {
  */
 export async function resolveTaskTitle(args: {
   completeText: typeof completeText;
+  cost: ConversationModelCost;
   instruction: string;
   title?: string | null;
   signal?: AbortSignal;
@@ -133,6 +136,7 @@ export async function resolveTaskTitle(args: {
   if (explicit) return explicit;
   return generateShortTitle({
     completeText: args.completeText,
+    cost: args.cost,
     kind: "task",
     sourceText: args.instruction,
     signal: args.signal,
