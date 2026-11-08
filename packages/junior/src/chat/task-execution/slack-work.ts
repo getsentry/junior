@@ -403,6 +403,8 @@ const slackInstallationSchema = z
   .strict() satisfies z.ZodType<SlackInstallationContext>;
 
 const slackConversationMessageMetadataBaseSchema = z.object({
+  /** Core edit marker. See `withEditMarker`. */
+  edit: z.object({ inboundMessageId: z.string().optional() }).optional(),
   installation: slackInstallationSchema.optional(),
   message: serializedMessageSchema,
   platform: z.literal("slack"),

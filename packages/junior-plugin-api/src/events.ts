@@ -625,6 +625,12 @@ export const eventInputSchema = z
      * resources, such as a repository, because those Watches must stay active.
      */
     terminal: z.boolean().optional(),
+    /**
+     * Set when the Event edits an earlier Event of the same type, such as an
+     * edited comment. Core gives it only to Watches. It joins a running Turn
+     * or is saved as context, and never starts a Turn or an Event automation.
+     */
+    edit: z.literal(true).optional(),
     trustedSummary: z
       .string()
       .min(1)

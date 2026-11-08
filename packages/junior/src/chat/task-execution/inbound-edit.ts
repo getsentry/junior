@@ -2,13 +2,18 @@ import * as z from "zod";
 import type { InboundMessage } from "./state";
 
 const editMarkerSchema = z.looseObject({
-  edit: z.object({ inboundMessageId: z.string().min(1) }),
+  edit: z.object({ inboundMessageId: z.string().min(1).optional() }),
 });
 
 /**
- * Return the Inbound message that this one edits. The marker on `interrupt`
- * input lets a running Turn steer the edit in. Alone, it starts no Turn.
+ * Whether input edits earlier input. The marker on `interrupt` input lets a
+ * running Turn steer the edit in. Alone, it starts no Turn.
  */
+export function isInboundEdit(message: Pick<InboundMessage, "input">): boolean {
+  return editMarkerSchema.safeParse(message.input.metadata).success;
+}
+
+/** Return the Inbound message that this edit changes, when it is known. */
 export function editedInboundMessageId(
   message: Pick<InboundMessage, "input">,
 ): string | undefined {
@@ -16,10 +21,10 @@ export function editedInboundMessageId(
     .inboundMessageId;
 }
 
-/** Return input metadata that marks an edit of another Inbound message. */
+/** Return input metadata that marks an edit of earlier input. */
 export function withEditMarker(
   metadata: Record<string, unknown> | undefined,
-  inboundMessageId: string,
+  inboundMessageId?: string,
 ): Record<string, unknown> {
-  return { ...metadata, edit: { inboundMessageId } };
+  return { ...metadata, edit: inboundMessageId ? { inboundMessageId } : {} };
 }

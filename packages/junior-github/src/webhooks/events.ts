@@ -858,6 +858,39 @@ function normalizeReleaseEvent(
   );
 }
 
+const bodyEditSchema = z.object({
+  action: z.literal("edited"),
+  changes: z.object({ body: z.object({ from: z.string().nullish() }) }),
+});
+
+/**
+ * Normalize an edited comment or review body as an edit of the Event that
+ * `normalize` builds for `createdAction`. Watches of that Event get it. An
+ * edit that leaves the body as it was gives no Event.
+ */
+function normalizeBodyEdit(
+  args: { body: unknown; botEmail?: string; deliveryId: string },
+  createdAction: string,
+  normalize: (
+    deliveryId: string,
+    body: unknown,
+    botEmail: string | undefined,
+  ) => EventInput[],
+): EventInput[] {
+  const parsed = bodyEditSchema.safeParse(args.body);
+  if (!parsed.success) return [];
+  const previous = parsed.data.changes.body.from ?? "";
+  const created = { ...(args.body as object), action: createdAction };
+  return normalize(args.deliveryId, created, args.botEmail)
+    .filter((event) => (event.untrustedText ?? "") !== previous)
+    .map((event) => ({
+      ...event,
+      edit: true,
+      trustedSummary: `Edited: ${event.trustedSummary}`,
+      untrustedText: `Previous text:\n${previous}\n\nNew text:\n${event.untrustedText ?? ""}`,
+    }));
+}
+
 /**
  * Normalize one verified GitHub delivery into conversation events.
  *
@@ -881,23 +914,40 @@ export function normalizeGitHubEvents(args: {
     case "issues":
       return normalizeIssueEvents(args.deliveryId, args.body);
     case "pull_request_review":
-      return normalizePullRequestReviewEvent(
-        args.deliveryId,
-        args.body,
-        args.botEmail,
-      );
+      return [
+        ...normalizePullRequestReviewEvent(
+          args.deliveryId,
+          args.body,
+          args.botEmail,
+        ),
+        ...normalizeBodyEdit(
+          args,
+          "submitted",
+          normalizePullRequestReviewEvent,
+        ),
+      ];
     case "issue_comment":
-      return normalizeIssueCommentEvents(
-        args.deliveryId,
-        args.body,
-        args.botEmail,
-      );
+      return [
+        ...normalizeIssueCommentEvents(
+          args.deliveryId,
+          args.body,
+          args.botEmail,
+        ),
+        ...normalizeBodyEdit(args, "created", normalizeIssueCommentEvents),
+      ];
     case "pull_request_review_comment":
-      return normalizePullRequestReviewCommentEvent(
-        args.deliveryId,
-        args.body,
-        args.botEmail,
-      );
+      return [
+        ...normalizePullRequestReviewCommentEvent(
+          args.deliveryId,
+          args.body,
+          args.botEmail,
+        ),
+        ...normalizeBodyEdit(
+          args,
+          "created",
+          normalizePullRequestReviewCommentEvent,
+        ),
+      ];
     case "check_suite":
       return normalizeCheckSuiteEvents(
         args.deliveryId,

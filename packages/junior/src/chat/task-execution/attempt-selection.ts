@@ -1,4 +1,4 @@
-import { editedInboundMessageId } from "./inbound-edit";
+import { isInboundEdit } from "./inbound-edit";
 import type { ConversationWorkState, InboundMessage } from "./store";
 
 function selectContiguousTurnBatch(
@@ -32,7 +32,7 @@ export function isAttemptInterrupt(
 ): boolean {
   return (
     message.delivery === "interrupt" &&
-    editedInboundMessageId(message) === undefined &&
+    !isInboundEdit(message) &&
     !(work.execution.status === "paused" && message.source === "web")
   );
 }

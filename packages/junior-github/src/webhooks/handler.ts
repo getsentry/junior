@@ -122,10 +122,12 @@ type FeedbackTarget = z.output<typeof feedbackTargetSchema>;
 function pullRequestFeedbackTarget(
   events: EventInput[],
 ): FeedbackTarget | undefined {
+  // An edit starts no Turn, so it gets no "reviewing" reaction.
   const event = events.find(
     (candidate) =>
-      candidate.eventType === "pull_request.comment.created" ||
-      candidate.eventType === "pull_request.review_comment.created",
+      !candidate.edit &&
+      (candidate.eventType === "pull_request.comment.created" ||
+        candidate.eventType === "pull_request.review_comment.created"),
   );
   const parsed = feedbackTargetSchema.safeParse(event?.data);
   return parsed.success ? parsed.data : undefined;

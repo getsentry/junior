@@ -94,7 +94,8 @@ export function createEventAppPublisher(args: {
           slackTeamId: eventAutomationTeamId,
           state: work.state,
         }),
-        eventAutomationTeamId
+        // An edit never starts a Turn, so no Event automation runs for it.
+        eventAutomationTeamId && !event.edit
           ? ingestEventAutomations(event, {
               queue,
               teamId: eventAutomationTeamId,

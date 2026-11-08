@@ -157,7 +157,11 @@ export async function skipInputAfterConversationStop(
     }
   }
   if (saved.length > 0) {
-    await saveStoppedConversationEvents(context.conversationId, saved);
+    await saveSkippedConversationEvents(
+      context.conversationId,
+      saved,
+      STOPPED_CONVERSATION_SKIP_REASON,
+    );
   }
   if (live.length === messages.length) {
     return { context };
@@ -198,9 +202,10 @@ export function isWatchEvent(message: InboundMessage): boolean {
  * the retry carries more Events to save, the extra Events are deduplicated
  * away.
  */
-async function saveStoppedConversationEvents(
+export async function saveSkippedConversationEvents(
   conversationId: string,
   messages: readonly InboundMessage[],
+  skippedReason: string,
 ): Promise<void> {
   const first = messages[0]!;
   const { text } = instructionForInputs(
@@ -218,7 +223,7 @@ async function saveStoppedConversationEvents(
       : undefined),
     meta: {
       replied: false,
-      skippedReason: STOPPED_CONVERSATION_SKIP_REASON,
+      skippedReason,
       ...eventBatchMessageMeta(messages),
     },
   });

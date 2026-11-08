@@ -1,4 +1,5 @@
 import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
+import { withEditMarker } from "@/chat/task-execution/inbound-edit";
 import * as z from "zod";
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
@@ -41,6 +42,8 @@ export interface EventNotification {
   namespace: string;
   identifier: string;
   terminal?: boolean;
+  /** An edit of an earlier Event. It starts no Turn. */
+  edit?: true;
   trustedSummary: string;
   data?: Record<string, unknown>;
   untrustedText?: string;
@@ -366,7 +369,7 @@ export function createEventInboundMessage(input: {
     conversationId: input.subscription.conversationId,
     createdAtMs: input.event.occurredAtMs,
     inboundMessageId: `event:${input.subscription.id}:${input.event.eventKey}`,
-    delivery: "defer",
+    delivery: input.event.edit ? "interrupt" : "defer",
     source: "event",
     receivedAtMs: input.receivedAtMs ?? Date.now(),
     input: {
@@ -374,7 +377,7 @@ export function createEventInboundMessage(input: {
       authorId: EVENT_AUTHOR_ID,
       // TODO(dcramer): Use the event author Identity when plugins report it.
       authorIdentityId: SYSTEM_IDENTITY_ID,
-      metadata,
+      metadata: input.event.edit ? withEditMarker(metadata) : metadata,
     },
   };
 }
@@ -397,13 +400,16 @@ export async function enqueueEventNotification(args: {
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-  const decision = await admitAutomatedTurn({
-    conversationId: args.subscription.conversationId,
-    maxTurns,
-    nowMs: args.event.occurredAtMs,
-    state: args.state,
-  });
-  if (decision.status === "paused") {
+  // An edit starts no Turn, so it does not count toward the limit.
+  const decision = args.event.edit
+    ? undefined
+    : await admitAutomatedTurn({
+        conversationId: args.subscription.conversationId,
+        maxTurns,
+        nowMs: args.event.occurredAtMs,
+        state: args.state,
+      });
+  if (decision?.status === "paused") {
     logInfo("events.automated_turn_limit.paused", {
       conversationId: args.subscription.conversationId,
       "app.automated_turn_limit.consecutive":

@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
-import { editedInboundMessageId } from "./inbound-edit";
+import { editedInboundMessageId, isInboundEdit } from "./inbound-edit";
 import * as z from "zod";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
@@ -1258,8 +1258,7 @@ async function appendInboundMessageWithAdmission(args: {
         status = current.execution.status === "running" ? "running" : "paused";
       } else if (
         current.execution.status === "paused" &&
-        (args.message.delivery === "defer" ||
-          editedInboundMessageId(args.message) !== undefined)
+        (args.message.delivery === "defer" || isInboundEdit(args.message))
       ) {
         status = "paused";
       } else {
