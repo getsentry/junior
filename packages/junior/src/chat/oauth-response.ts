@@ -119,7 +119,7 @@ export async function readBoundedOAuthErrorBody(
 /** Preserve small OAuth error responses while bounding bodies before SDK parsing. */
 export function fetchWithBoundedOAuthErrorBodies(
   fetchFn: typeof fetch = globalThis.fetch,
-  onErrorResponseStatus?: (status: number) => void,
+  onErrorResponse?: (response: Response) => void,
 ): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetchFn(input, init);
@@ -127,7 +127,7 @@ export function fetchWithBoundedOAuthErrorBodies(
       return response;
     }
 
-    onErrorResponseStatus?.(response.status);
+    onErrorResponse?.(response);
     if (!response.body) {
       return response;
     }
