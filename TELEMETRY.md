@@ -309,8 +309,17 @@ A compaction replaces the history when its estimate is above the threshold.
 - The span and all its children have `app.compaction.mode`. Group the summary
   `gen_ai.chat` spans by mode to compare duration and cache reads.
 - `app.turn.compaction_wait_ms` on `chat.turn` is the time that the Turn
-  waited on compaction in this execution slice. It is absent when no
-  compaction ran.
+  waited on summary compactions in this execution slice. It is absent when no
+  summary compaction ran.
+- `app.turn.compaction_swap_wait_ms` on `chat.turn` is the time that the Turn
+  waited on prepared-summary swaps, also when the swap was `not_ready` or
+  `discarded`. It is absent when no swap span ran.
+- After each replacement, the next model request logs
+  `context_compaction.next_request.completed` with
+  `app.compaction.next_input.size` (provider-reported input, cache included),
+  `app.compaction.threshold`, `app.compaction.mode`, and
+  `app.compaction.next_input.over_threshold`. When it is `true`, the
+  replacement did not get the history below the threshold.
 - Sentry data scrubbing removes the values of attribute keys that contain
   `token`. So these keys do not contain it, but the estimates count tokens.
 

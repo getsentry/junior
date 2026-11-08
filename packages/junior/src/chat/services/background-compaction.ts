@@ -83,7 +83,9 @@ function snapshotKey(message: BackgroundCompactionMessage): string {
 }
 
 /** Provider-reported input of the last model request, cache included. */
-function lastRequestInputSize(messages: AgentMessage[]): number | undefined {
+export function lastRequestInputSize(
+  messages: AgentMessage[],
+): number | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
     if (message.role === "assistant") {
@@ -353,7 +355,7 @@ export async function processBackgroundCompaction(
 ): Promise<void> {
   const startedAtMs = Date.now();
   await withLogContext({ conversationId: message.conversationId }, () =>
-    withCompactionSpan("background", async () => {
+    withCompactionSpan("background", "summary", async () => {
       setSpanAttributes({
         "app.compaction.mark_seq": message.markSeq,
         "app.compaction.history_version": message.historyVersion,

@@ -138,7 +138,7 @@ async function swapPreparedCompaction(
   if (!latest) {
     return { compacted: false };
   }
-  return await withCompactionSpan(args.mode, async () => {
+  return await withCompactionSpan(args.mode, "swap", async () => {
     const { event, historyVersion } = latest;
     if (
       event.data.type !== "compaction_prepared" ||

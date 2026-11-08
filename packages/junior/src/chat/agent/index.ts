@@ -147,9 +147,19 @@ import {
 } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
-import { estimateRequestOverheadTokens } from "@/chat/services/context-budget";
+import {
+  estimateRequestOverheadTokens,
+  getAgentContextCompactionTriggerTokens,
+} from "@/chat/services/context-budget";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
-import { requestBackgroundCompaction } from "@/chat/services/background-compaction";
+import {
+  lastRequestInputSize,
+  requestBackgroundCompaction,
+} from "@/chat/services/background-compaction";
+import {
+  logInputAfterCompaction,
+  type CompactionMode,
+} from "@/chat/services/context-compaction-telemetry";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
@@ -782,6 +792,29 @@ async function executeAgentRunInPrivacyContext(
       promptName: CONTEXT_COMPACTION_PROMPT_NAME,
       ...(streamFn ? { base: streamFn } : undefined),
     });
+    // The replacement waiting for the provider-reported input of the next
+    // model request.
+    let replacementAwaitingInput:
+      | { messageCount: number; mode: CompactionMode }
+      | undefined;
+    /** Log the first provider-reported input after a replacement. */
+    const logFirstInputAfterReplacement = (): void => {
+      if (!replacementAwaitingInput) {
+        return;
+      }
+      const inputSize = lastRequestInputSize(
+        agent!.state.messages.slice(replacementAwaitingInput.messageCount),
+      );
+      if (!inputSize) {
+        return;
+      }
+      logInputAfterCompaction({
+        inputSize,
+        mode: replacementAwaitingInput.mode,
+        threshold: getAgentContextCompactionTriggerTokens(activeModelId),
+      });
+      replacementAwaitingInput = undefined;
+    };
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -849,6 +882,7 @@ async function executeAgentRunInPrivacyContext(
         throw error;
       }
       agent!.state.messages = replacement;
+      replacementAwaitingInput = { messageCount: replacement.length, mode };
       runResume.setBeforeMessageCount(replacement.length);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
@@ -1068,6 +1102,7 @@ async function executeAgentRunInPrivacyContext(
           if (hookSignal?.aborted) {
             return undefined;
           }
+          logFirstInputAfterReplacement();
           // Pi waits for this hook before each later model call. The span
           // shows that wait between `gen_ai.chat` spans.
           const stepUpdate = await withSpan(
