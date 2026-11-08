@@ -492,14 +492,18 @@ export async function wireAgentTools(
       userIntent: args.currentUserIntent,
       evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
       // The Run's Conversation labels each message with its real author, so
-      // the Actor's earlier messages can authorize. A Run of a system Actor,
-      // such as an event Turn, is not the author of the person's messages,
-      // so it keeps only the unlabeled evidence. Read for each action.
-      ...(args.currentActor?.platform !== "system"
+      // the requester's earlier messages can authorize. The requester is the
+      // Actor of the Run's instructions, or nothing when an agent writes
+      // them. A Run of a system Actor, such as an event Turn, is not the
+      // author of the person's messages, so it keeps only the unlabeled
+      // evidence. Read for each action.
+      ...(args.currentActor && args.currentActor.platform !== "system"
         ? {
             rootConversation: async () =>
               await readRootConversation({
-                actor: args.currentActor,
+                actor: args.run.instruction.provenance
+                  ? args.run.instruction.provenance.actor
+                  : args.currentActor,
                 conversationId: args.run.conversationId,
               }),
           }

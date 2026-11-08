@@ -34,6 +34,7 @@ import {
 } from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
+import { contextProvenance } from "@/chat/conversations/provenance";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
@@ -303,10 +304,15 @@ describe("agent invocation conversation work", () => {
       ]);
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
-        // Guardian intent, prompt mode, and reportBlocked read this field.
+        // Prompt mode and reportBlocked read this field.
         agentInvocationId: created.invocationId,
         conversationId: created.childConversationId,
-        instruction: { text: slackInvocationInput.input },
+        // No parent agent call started it, so its input is not an
+        // instruction.
+        instruction: {
+          provenance: contextProvenance,
+          text: slackInvocationInput.input,
+        },
         disabledFeatures: ["interactive-auth", "subagents"],
         reasoning: "medium",
         actor: slackInvocationInput.actor,

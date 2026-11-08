@@ -10,6 +10,7 @@ import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
+  contextProvenance,
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -248,6 +249,18 @@ export function agentInvocationInputText(
   ]);
 }
 
+/**
+ * A parent agent task or message is the child's instruction. Another input,
+ * such as a result of the child's own child agent or an Event, is context.
+ */
+function agentInvocationProvenance(
+  invocation: Pick<AgentInvocation, "parentToolCallId">,
+) {
+  return invocation.parentToolCallId
+    ? agentInstructionProvenance
+    : contextProvenance;
+}
+
 /** Resolve invocation execution from mailbox input or durable active state. */
 export async function resolveAgentInvocationId(
   context: ConversationWorkerContext,
@@ -349,7 +362,7 @@ function createAgentMessageSteeringDrain(
           joining.map(
             (candidate): AgentSteeringMessage => ({
               kind: "runtime",
-              provenance: agentInstructionProvenance,
+              provenance: agentInvocationProvenance(candidate),
               text: agentInvocationInputText(candidate),
               timestampMs: candidate.createdAtMs,
             }),
@@ -852,9 +865,12 @@ export function createAgentInvocationWorker(
           turnId,
           runId: invocation.invocationId,
           // A child has no person input: every input is a runtime tag.
-          instruction: instructionForInputs([
-            { kind: "runtime", text: agentInvocationInputText(invocation) },
-          ]),
+          instruction: {
+            ...instructionForInputs([
+              { kind: "runtime", text: agentInvocationInputText(invocation) },
+            ]),
+            provenance: agentInvocationProvenance(invocation),
+          },
           history,
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,

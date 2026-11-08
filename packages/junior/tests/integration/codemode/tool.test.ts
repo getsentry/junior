@@ -143,8 +143,8 @@ describe("codemode tool", () => {
       3. post: rejected by action review
          This action was rejected due to unacceptable risk.
          The agent must not attempt the same outcome through a workaround, indirect execution, or policy circumvention.
-         If the reason is missing or withheld authorization and exact confirmation could make the action allowable, stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.
-         Proceed only with a materially safer alternative. Otherwise, stop and explain the specific risk to the user without mentioning Guardian or internal review mechanics.
+         If the reason is missing or withheld authorization and exact confirmation could make the action allowable, ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.
+         Proceed only with a materially safer alternative. Otherwise, explain the specific risk the way your instructions say to report, without mentioning Guardian or internal review mechanics.
          Reason: The user did not ask for a post.
       Action review rejected 1 of these calls. Follow the instructions of each rejected call.
       Output:

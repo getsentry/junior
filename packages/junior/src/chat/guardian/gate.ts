@@ -99,23 +99,23 @@ export interface ToolActionReview {
 
 const ACTION_CONFIRMATION_INSTRUCTIONS = [
   "The action was not executed because explicit user confirmation is required.",
-  "Stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
+  "Do not retry it, or get the same outcome another way, until the user explicitly confirms this exact action.",
+  "Ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.",
   "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
-  "Do not call another tool or retry until the user explicitly confirms this exact action.",
 ].join("\n");
 
 const ACTION_DENIAL_INSTRUCTIONS = [
   "This action was rejected due to unacceptable risk.",
   "The agent must not attempt the same outcome through a workaround, indirect execution, or policy circumvention.",
-  "If the reason is missing or withheld authorization and exact confirmation could make the action allowable, stop tool use for this turn and respond to the user now with a direct, concise confirmation question that names the exact action, target, and material side effects.",
-  "Proceed only with a materially safer alternative. Otherwise, stop and explain the specific risk to the user without mentioning Guardian or internal review mechanics.",
+  "If the reason is missing or withheld authorization and exact confirmation could make the action allowable, ask for that confirmation now, the way your instructions say to ask. Name the exact action, target, and material side effects.",
+  "Proceed only with a materially safer alternative. Otherwise, explain the specific risk the way your instructions say to report, without mentioning Guardian or internal review mechanics.",
 ].join("\n");
 
 const ACTION_REVIEW_LIMIT_INSTRUCTIONS = [
   "This action was rejected due to unacceptable risk.",
   "Action review rejected three consecutive tool execution attempts.",
   "Do not retry this action or an equivalent write this turn.",
-  "Stop tool use for this turn and respond to the user now with a direct, concise explanation of the risk.",
+  "Explain the risk now, directly and concisely, the way your instructions say to report.",
   "Do not mention Guardian, the runtime, policy, or internal review mechanics.",
 ].join("\n");
 

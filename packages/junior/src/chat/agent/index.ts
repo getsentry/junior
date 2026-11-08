@@ -46,7 +46,6 @@ import {
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
 import {
-  agentInstructionProvenance,
   contextProvenance,
   instructionActors,
   instructionProvenanceFor,
@@ -131,6 +130,7 @@ import {
   type AgentRun,
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
+import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
 import {
@@ -461,12 +461,18 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
-    // An Agent invocation's input is a parent agent task or another agent's
-    // output. An agent wrote it, so it has no Actor.
-    const childAgent = Boolean(run.agentInvocationId);
-    const turnStartProvenance = childAgent
-      ? agentInstructionProvenance
-      : instructionProvenanceFor(actor);
+    const turnStartProvenance =
+      run.instruction.provenance ?? instructionProvenanceFor(actor);
+    // Whose instructions this Run follows: its Actor, or nothing when an
+    // agent wrote them. Only the requester's instructions are user intent.
+    const requester = turnStartProvenance.actor;
+    const isRequesterInstruction = (
+      provenance: ConversationMessageProvenance | undefined,
+    ): boolean =>
+      provenance?.authority === "instruction" &&
+      (provenance.actor
+        ? sameActorIdentity(provenance.actor, requester)
+        : !requester);
     const committedInstructionProvenance: ConversationMessageProvenance[] = [
       ...(existingSessionRecord?.piMessageProvenance ?? []),
       ...(existingSessionRecord?.actors ?? []).map(instructionProvenanceFor),
@@ -487,11 +493,7 @@ async function executeAgentRunInPrivacyContext(
         : [];
     const guardianIntentParts =
       currentTurnMessages.flatMap((message, index) => {
-        const provenance = currentTurnProvenance[index];
-        if (
-          provenance?.authority !== "instruction" ||
-          !sameActorIdentity(provenance.actor, actor)
-        ) {
+        if (!isRequesterInstruction(currentTurnProvenance[index])) {
           return [];
         }
         const text = getUserMessageInstructionText(message);
@@ -501,7 +503,14 @@ async function executeAgentRunInPrivacyContext(
       // Bare @mentions are normal Slack "continue this thread" nudges. After
       // bot-mention strip the instruction is empty; keep a non-blank marker so
       // action review can still run against thread evidence.
-      guardianIntentParts.push(userInput.trim() || "[empty]");
+      // An input that is not an instruction, such as a nested result, is
+      // evidence only.
+      const text = isRequesterInstruction(turnStartProvenance)
+        ? userInput.trim()
+        : "";
+      guardianIntentParts.push(
+        readParentAgentTask(text) ?? (text || "[empty]"),
+      );
     }
     const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
@@ -924,12 +933,9 @@ async function executeAgentRunInPrivacyContext(
             ...messages.map((message) => message.provenance),
           );
           for (const message of messages) {
-            if (
-              message.provenance.authority === "instruction" &&
-              sameActorIdentity(message.provenance.actor, actor) &&
-              message.text.trim()
-            ) {
-              guardianIntentParts.push(message.text.trim());
+            const text = message.text.trim();
+            if (isRequesterInstruction(message.provenance) && text) {
+              guardianIntentParts.push(readParentAgentTask(text) ?? text);
             }
           }
           for (const message of piMessages) {

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
+import {
+  agentInstructionProvenance,
+  contextProvenance,
+} from "@/chat/conversations/provenance";
 import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
@@ -1005,25 +1009,40 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentAfterToolResults).toHaveLength(1);
   });
 
-  // A child Run's input, such as a parent agent task, is its user intent, as
-  // a person's message is for a root Run.
+  // A parent agent task is the user intent of a child Run, without its tag,
+  // as a person's message is for a root Run. A nested result is not.
   it.each([
     {
       name: "a root Run",
       conversationId: "conversation-guardian-deny",
       input: "help me",
+      intent: "help me",
       run: {},
     },
     {
       name: "a child Run",
       input:
         "<parent-agent-task>\nPing the demo service.\n</parent-agent-task>",
+      intent: "Ping the demo service.",
       conversationId: "agent:guardian-deny",
-      run: { agentInvocationId: "agent-invocation:guardian-deny" },
+      run: {
+        agentInvocationId: "agent-invocation:guardian-deny",
+        instruction: { provenance: agentInstructionProvenance },
+      },
+    },
+    {
+      name: "a child Run woken by a nested result",
+      input: '<agent-result status="completed">\nPing it.\n</agent-result>',
+      intent: "[empty]",
+      conversationId: "agent:guardian-deny-result",
+      run: {
+        agentInvocationId: "agent-invocation:guardian-deny-result",
+        instruction: { provenance: contextProvenance },
+      },
     },
   ])(
     "wires Guardian denial through the runtime before MCP execution for $name",
-    async ({ conversationId, input, run }) => {
+    async ({ conversationId, input, intent, run }) => {
       listToolsMock.mockReset();
       listToolsMock.mockResolvedValue(makeDemoMcpTools());
       guardianDecision.value = "deny";
@@ -1042,7 +1061,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
       expect(guardianProposals).toEqual([
         expect.objectContaining({
-          context: expect.objectContaining({ userIntent: input }),
+          context: expect.objectContaining({ userIntent: intent }),
           input: {
             arguments: { query: "hello" },
             tool_name: "mcp__demo__ping",
