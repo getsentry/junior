@@ -91,6 +91,9 @@ export async function persistConversationMessageWindow(args: {
       data: {
         type: "messages_summarized",
         historyFromSeq: args.historyFromSeq,
+        // Older deploys require this array. Keep it so a rollback or a
+        // mixed-version deploy can still decode the row.
+        compactions: [],
       },
       createdAtMs: Date.now(),
     },
