@@ -1,12 +1,12 @@
 /**
- * Reads the authority of an action from the Conversation of its Run, or from
- * the root for a child agent.
+ * Reads the authority of an action from the Conversation of its Run.
  *
  * When Guardian reviews an action, the runtime reads the messages of the
- * Conversation that the Run belongs to. A child agent never has a message
- * from a person: its task comes from its parent agent, so it reads the root
- * of its parent chain. The source is the `message` events: the durable
- * visible transcript.
+ * Conversation that the Run belongs to, and never of a Conversation above
+ * it. A parent agent passes authority to a child in the text of its
+ * spawnAgent or messageAgent call, and Guardian reviews that call in the
+ * parent. So in the child that text counts as `parent agent`. The source is
+ * the `message` events: the durable visible transcript.
  * Compaction never rewrites these events, so an early request or a
  * later revocation is still there after the root's model history changes.
  *
@@ -16,13 +16,13 @@
  * review desk answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
  * the one exception, because it has no per-person Identity. An Automation
- * run's own instruction counts as `automation`. Each other message keeps its
+ * run's own instruction counts as `automation`. A nested result that a child
+ * agent gets as input is not parent text. Each other message keeps its
  * real author as a label and is only context. Nothing is copied into the Run.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
-import { readConversationLineage } from "@/chat/conversations/lineage";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
 import type { Conversation } from "@/chat/conversations/store";
 import {
@@ -43,8 +43,6 @@ const MAX_ROOT_MESSAGE_CHARS = 4_000;
 const MAX_ROOT_CONVERSATION_CHARS = 24_000;
 /** Message events read from the log. Edits and skipped messages use some. */
 const MAX_ROOT_MESSAGE_EVENTS = 64;
-/** A parent chain longer than this is broken, so it gives no authority. */
-const MAX_PARENT_DEPTH = 32;
 
 // A dispatch Conversation id and its input message id are the same value.
 const DISPATCH_CONVERSATION_PREFIX = "agent-dispatch:";
@@ -56,24 +54,6 @@ type MessageData = Extract<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-/** Find the root Conversation, or nothing when the parent chain is broken. */
-async function findRootConversation(
-  conversationId: string,
-): Promise<Conversation | undefined> {
-  const lineage = await readConversationLineage(conversationId);
-  const root = lineage[0];
-  if (
-    !root ||
-    root.parentConversationId ||
-    lineage.length - 1 > MAX_PARENT_DEPTH
-  ) {
-    return undefined;
-  }
-  return await getConversationStore().get({
-    conversationId: root.conversationId,
-  });
 }
 
 /**
@@ -143,6 +123,11 @@ function messageLabel(
   if (data.meta?.eventType !== undefined) {
     return "event";
   }
+  // The runtime records a spawnAgent or messageAgent task with its tool
+  // call. Guardian reviewed that call in the parent.
+  if (typeof data.meta?.parentToolCallId === "string") {
+    return "parent agent";
+  }
   if (data.authorIdentityId && personIdentityIds.has(data.authorIdentityId)) {
     return "user";
   }
@@ -166,7 +151,11 @@ function renderedChars(message: RootConversationMessage): number {
 
 /** Only these labels can authorize an action. */
 function canAuthorize(message: RootConversationMessage): boolean {
-  return message.author === "user" || message.author === "automation";
+  return (
+    message.author === "user" ||
+    message.author === "automation" ||
+    message.author === "parent agent"
+  );
 }
 
 /** Use one line break, so a label cannot hide inside another line. */
@@ -215,21 +204,18 @@ async function readOpeningMessage(
 }
 
 /**
- * Read a bounded projection of the Conversation that authorizes one action
- * for Guardian review. `actor` is the Actor of the Run. Only messages that
- * the same Actor wrote, or the Automation run's own instruction for a system
- * Actor, are labeled as authority. `childAgent` is a Run that a parent agent
- * or an Event started: it reads the root of `conversationId`. Each other Run
- * reads `conversationId` itself.
+ * Read a bounded projection of the Run's own Conversation for Guardian review
+ * of one action. `actor` is the Actor of the Run. Only messages that the same
+ * Actor wrote, the Automation run's own instruction for a system Actor, and
+ * a parent agent's task are labeled as authority.
  */
 export async function readRootConversation(args: {
   actor: Actor | undefined;
-  childAgent: boolean;
   conversationId: string;
 }): Promise<RootConversation> {
-  const root = args.childAgent
-    ? await findRootConversation(args.conversationId)
-    : await getConversationStore().get({ conversationId: args.conversationId });
+  const root = await getConversationStore().get({
+    conversationId: args.conversationId,
+  });
   if (!root || !args.actor) {
     return { messages: [], truncated: false };
   }

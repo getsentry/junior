@@ -33,7 +33,14 @@ export async function recordSubagentStarted(
         messageId,
         role: "user",
         text: invocation.input,
-        meta: { agentInvocationId: invocation.invocationId },
+        meta: {
+          agentInvocationId: invocation.invocationId,
+          // Only a spawnAgent or messageAgent task has a tool call. Action
+          // review reads it as the parent's authority in the child.
+          ...(invocation.parentToolCallId
+            ? { parentToolCallId: invocation.parentToolCallId }
+            : undefined),
+        },
       },
       createdAtMs: invocation.createdAtMs,
     },

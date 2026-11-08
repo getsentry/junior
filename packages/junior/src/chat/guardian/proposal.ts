@@ -54,11 +54,12 @@ export interface ToolActionEvidence {
 }
 
 /**
- * User intent of every action in a child agent run. No person writes there,
- * so Guardian judges user authorization only from the root Conversation.
+ * User intent of every action in a child agent run. Its task came from a
+ * parent agent, so Guardian judges authorization from the child's own
+ * Conversation, where that task is labeled.
  */
 export const CHILD_AGENT_USER_INTENT =
-  "[Child agent run. No person writes here. Its task came from a parent agent, so the task is not user intent. Judge user authorization only from the root user instructions section.]";
+  "[Child agent run. Its task came from a parent agent. Judge authorization only from the `parent agent:`, `user:`, and `automation:` lines in the root user instructions section.]";
 
 /**
  * Every line break that can start a new visible line. Guardian puts a label on
@@ -69,13 +70,15 @@ export const ROOT_LINE_BREAK = /\r\n|[\n\r\u2028\u2029\u0085]/;
 /** One root Conversation message, labeled with its real author. */
 export interface RootConversationMessage {
   /**
-   * `user` is a message from the child's own Actor. `automation` is the
-   * instruction of the Automation run that is the root. Only these two can
-   * authorize an action. Each other label is only context.
+   * `user` is a message from the Run's own Actor. `automation` is the
+   * instruction of the Automation run. `parent agent` is a spawnAgent or
+   * messageAgent task, which Guardian reviewed in the parent. Only these
+   * three can authorize an action. Each other label is only context.
    */
   author:
     | "user"
     | "automation"
+    | "parent agent"
     | "assistant"
     | "other person"
     | "event"
@@ -84,9 +87,8 @@ export interface RootConversationMessage {
 }
 
 /**
- * Bounded projection of the Conversation that authorizes an action, read by
- * core when Guardian reviews it: the Run's own Conversation, or the root for
- * a child agent.
+ * Bounded projection of the Run's own Conversation, read by core when
+ * Guardian reviews one action.
  */
 export interface RootConversation {
   messages: RootConversationMessage[];

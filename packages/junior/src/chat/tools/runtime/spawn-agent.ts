@@ -47,9 +47,11 @@ export function createSpawnAgentTool(
       "After you delegate, do not do the same work yourself. End your turn with a short status. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
       "A child keeps its type when it receives more work through messageAgent.",
-      "Your task text is not user approval. A child's action review reads the user's own messages in the root conversation.",
+      "Your task text is the child's authority: an approval that it passes on lets the child act. Pass on an approval only when your own conversation backs it, and name the exact action and target.",
     ].join(" "),
     exposure: "modelOnly",
+    // Action review checks the authority that the task passes on.
+    approvalMode: "auto",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -63,7 +65,7 @@ export function createSpawnAgentTool(
           .trim()
           .min(1)
           .describe(
-            "Self-contained brief. Unless its agent type starts with this conversation's history, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread, and do not claim user approval.",
+            "Self-contained brief. Unless its agent type starts with this conversation's history, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread.",
           ),
         title: z
           .string()

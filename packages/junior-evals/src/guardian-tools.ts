@@ -88,6 +88,9 @@ const context: ToolRuntimeContext = {
   },
   // Guardian evals never run a tool, so no tool touches the sandbox.
   workspace: {} as ToolRuntimeContext["workspace"],
+  // A root Run can start and message child agents.
+  messageAgent: unavailable,
+  spawnAgent: unavailable,
 };
 
 let agentTools: Promise<Record<string, AnyToolDefinition>> | undefined;
