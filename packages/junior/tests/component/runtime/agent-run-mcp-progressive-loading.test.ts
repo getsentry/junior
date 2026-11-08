@@ -1010,7 +1010,9 @@ describe("executeAgentRun progressive MCP loading", () => {
   });
 
   // A parent agent task is the user intent of a child Run, without its tag,
-  // as a person's message is for a root Run. A nested result is not.
+  // as a person's message is for a root Run. A nested result is not. A child
+  // reads its own Conversation even when its parent's Actor is a system
+  // Actor, so earlier parent tasks still count.
   it.each([
     {
       name: "a root Run",
@@ -1031,12 +1033,16 @@ describe("executeAgentRun progressive MCP loading", () => {
       },
     },
     {
-      name: "a child Run woken by a nested result",
+      name: "a child of an Automation run woken by a nested result",
       input: '<agent-result status="completed">\nPing it.\n</agent-result>',
       intent: "[empty]",
       conversationId: "agent:guardian-deny-result",
       run: {
+        actor: { platform: "system", name: "event" } as const,
         agentInvocationId: "agent-invocation:guardian-deny-result",
+        credentialContext: {
+          actor: { platform: "system", name: "event" } as const,
+        },
         instruction: { provenance: contextProvenance },
       },
     },
@@ -1062,6 +1068,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       expect(guardianProposals).toEqual([
         expect.objectContaining({
           context: expect.objectContaining({ userIntent: intent }),
+          rootConversation: expect.anything(),
           input: {
             arguments: { query: "hello" },
             tool_name: "mcp__demo__ping",
