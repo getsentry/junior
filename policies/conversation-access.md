@@ -2,10 +2,17 @@
 
 ## Intent
 
-Private Conversations are isolated. No data goes into or out of a private
-Conversation, except through the people who look at it. One rule decides
-when a Conversation may read, find, or act on the data of another
-Conversation. A new feature uses this rule. It does not add its own rule.
+Visibility is the only boundary between Conversations.
+
+- Public is public. Any Conversation may read and find a public
+  Conversation. The surface (Slack, web, local) and the provider tenant
+  (Slack workspace) do not change this.
+- Private is isolated. No data goes into or out of a private Conversation,
+  except through the people who look at it.
+
+One rule decides when a Conversation may read, find, or act on the data of
+another Conversation. A new feature uses this rule. It does not add its own
+rule, and it does not add a surface or tenant check to public access.
 
 ## Terms
 
@@ -27,9 +34,6 @@ Check the rows in this order. The first match decides.
 | 2   | Public                                         | Allow  |
 | 3   | Private, outside the requester's tree          | Deny   |
 
-- Public is public. Any Conversation may read a public Conversation. The
-  surface (Slack, web, local) and the provider tenant (Slack workspace) do
-  not change the result.
 - Row 3 applies to every person and to every requester visibility. A
   person who is a participant of the target does not change the result.
 - Code: `canAccessConversation` in
