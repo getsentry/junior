@@ -1,9 +1,9 @@
 import { useState, useSyncExternalStore } from "react";
+import { DESKTOP_LAYOUT_QUERY } from "../layoutMedia";
 
 const OPEN_KEY = "junior:conversation:sidebar-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width";
-const WIDE_QUERY = "(min-width: 768px)";
 
 /** Pixel limits for the conversation list beside a selected conversation. */
 export const SIDEBAR_WIDTH = { default: 320, max: 480, min: 240 } as const;
@@ -55,11 +55,11 @@ function readWidth(key: string, limits: WidthLimits): number {
 export function useSidebarFits(): boolean {
   return useSyncExternalStore(
     (onChange) => {
-      const media = window.matchMedia(WIDE_QUERY);
+      const media = window.matchMedia(DESKTOP_LAYOUT_QUERY);
       media.addEventListener("change", onChange);
       return () => media.removeEventListener("change", onChange);
     },
-    () => window.matchMedia(WIDE_QUERY).matches,
+    () => window.matchMedia(DESKTOP_LAYOUT_QUERY).matches,
     () => false,
   );
 }

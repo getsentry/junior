@@ -47,8 +47,7 @@ import {
   type ConversationLink,
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
-
-const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
+import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -288,13 +287,13 @@ function useIsMobileViewport(): boolean {
   return useSyncExternalStore(
     (onStoreChange) => {
       if (typeof window === "undefined") return () => {};
-      const media = window.matchMedia(MOBILE_MEDIA_QUERY);
+      const media = window.matchMedia(MOBILE_LAYOUT_QUERY);
       media.addEventListener("change", onStoreChange);
       return () => media.removeEventListener("change", onStoreChange);
     },
     () =>
       typeof window !== "undefined" &&
-      window.matchMedia(MOBILE_MEDIA_QUERY).matches,
+      window.matchMedia(MOBILE_LAYOUT_QUERY).matches,
     () => false,
   );
 }

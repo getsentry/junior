@@ -21,6 +21,7 @@ import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import type { TranscriptSearchMatch } from "./transcriptSearch";
+import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
 /**
  * Keep the conversation title and frequently used controls in the header.
@@ -71,7 +72,7 @@ export function ConversationHeader(props: {
       !detailsOpen &&
       document.activeElement === document.body
     ) {
-      const trigger = window.matchMedia("(max-width: 767px)").matches
+      const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
         ? menuButtonRef.current
         : detailsButtonRef.current;
       trigger?.focus({ preventScroll: true });

@@ -19,6 +19,7 @@ import {
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
+import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 
 export type DashboardHeaderNavItem = {
   /** Shown beside the label when it is above zero. */
@@ -97,7 +98,7 @@ export function DashboardHeader(props: {
     if (!props.mobileNavigationOpen) return;
 
     // md:hidden only hides the sheet; clear open state so locks do not stick.
-    const mobile = window.matchMedia("(max-width: 767px)");
+    const mobile = window.matchMedia(MOBILE_LAYOUT_QUERY);
     const closeWhenDesktop = () => {
       if (!mobile.matches) onOpenChangeRef.current(false);
     };
