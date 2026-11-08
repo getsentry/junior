@@ -142,13 +142,6 @@ export function createTools(
   tools.readConversationEvent = createReadConversationEventTool(context);
   if (context.conversationPrivacy === "public") {
     tools.searchConversationBriefs = createSearchConversationBriefsTool(
-      slackContext
-        ? {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          }
-        : { kind: "public" },
       context.conversationId,
       slackContext
         ? createSlackConversationBriefSearchPort(slackContext.teamId)
@@ -259,11 +252,7 @@ export function createTools(
     if (context.conversationPrivacy === "public") {
       tools.searchConversationMessages =
         createSlackConversationMessageSearchTool(
-          {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          },
+          slackContext.teamId,
           context.conversationId,
         );
     }

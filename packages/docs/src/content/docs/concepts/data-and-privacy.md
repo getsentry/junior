@@ -33,9 +33,9 @@ Junior uses normalized events instead of storing complete webhook payloads. Secr
 
 ## Visibility
 
-The Slack destination controls conversation visibility. Child conversations, artifacts, and plugin records inherit the parent boundary.
+Visibility is the only boundary between conversations: public is public, and private is isolated. The root conversation controls visibility. Child conversations, artifacts, and plugin records inherit it.
 
-- Work in one conversation can read and find public conversations in the same workspace.
+- Work in one conversation can read and find every public conversation, from Slack, the web, or another Slack workspace.
 - A private conversation is isolated. Work in another conversation never reads, finds, or messages it, also when you take part in both.
 - Work in a private conversation never writes into a public one.
 - In the dashboard, the people who take part in a private conversation can read it.
