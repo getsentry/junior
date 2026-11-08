@@ -5,6 +5,8 @@ import {
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
+import { cancelSignInPausedTurn } from "@/chat/task-execution/conversation-turn";
+import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import {
   getConversationWorkState,
   stopConversationWork,
@@ -169,6 +171,11 @@ async function skipUnreadResults(
     );
 }
 
+/**
+ * A Thread can hold a person's Turn that waits for sign-in. The stop ends
+ * that Turn here, because no worker holds it. Then a later sign-in callback
+ * cannot resume a stopped Thread.
+ */
 async function finishStoppedTree(
   tree: StoppedAgentTree,
   conversationIdsToStop: string[],
@@ -179,6 +186,10 @@ async function finishStoppedTree(
   }
   await markConversationsStopped(conversationIdsToStop, options);
   for (const conversationId of conversationIdsToStop) {
+    const pausedTurnId = await getAuthPausedConversationTurnId(conversationId);
+    if (pausedTurnId) {
+      await cancelSignInPausedTurn({ conversationId, turnId: pausedTurnId });
+    }
     await stopConversationWork({ conversationId, state: options.state });
   }
 }
