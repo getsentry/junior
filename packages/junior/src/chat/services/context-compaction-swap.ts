@@ -127,7 +127,10 @@ async function swapPreparedCompaction(
     ...pendingMessages.map((entry) => entry.message),
   ];
   const triggerTokens = getAgentContextCompactionTriggerTokens(args.modelId);
-  const estimatedTokens = estimateHistoryTokens(sourceMessages);
+  const estimatedTokens = estimateHistoryTokens(
+    sourceMessages,
+    args.requestOverheadTokens,
+  );
   if (args.mode !== "blocking" && estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
