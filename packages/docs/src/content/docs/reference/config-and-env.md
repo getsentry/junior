@@ -348,7 +348,8 @@ less than that write.
   `JUNIOR_CACHE_WARMING_ENABLED=false`, Pi's retention applies again.
 
 Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
-`cache_warmup`, and as `cache_warming.*` logs.
+`junior.cache_warmup`, and as `cache_warming.*` logs. Their cost is added to the
+cost of the Conversation.
 
 ## Install-wide config defaults
 
