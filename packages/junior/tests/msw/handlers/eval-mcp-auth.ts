@@ -12,8 +12,8 @@ const EVAL_MCP_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/oaut
 export const EVAL_MCP_AUTHORIZATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/authorize`;
 const EVAL_MCP_TOKEN_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/token`;
 const EVAL_MCP_REGISTRATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/register`;
-const EVAL_MCP_ACCESS_TOKEN = "eval-auth-access-token";
-const EVAL_MCP_REFRESH_TOKEN = "eval-auth-refresh-token";
+const EVAL_MCP_READ_SCOPE = "mcp:read";
+const EVAL_MCP_WRITE_SCOPE = "mcp:write";
 const EVAL_MCP_SESSION_ID = "eval-auth-session";
 const EVAL_MCP_CLIENT_ID = "eval-auth-client-id";
 const EVAL_MCP_CALLBACK_PATH = "/api/oauth/callback/mcp/eval-auth";
@@ -71,18 +71,55 @@ interface AuthorizationGrant {
   scope?: string;
 }
 
+/** The access that the person granted with their last sign-in. */
+interface ProviderGrant {
+  accessToken: string;
+  refreshToken?: string;
+  scope: string;
+}
+
 let authorizationGrant: AuthorizationGrant | undefined;
 let clientRegistered = false;
-let tokenIssued = false;
+let grant: ProviderGrant | undefined;
+let issuedTokens = 0;
 let issuesRefreshTokens = true;
+let requiresWriteScope = false;
 let releasePushCalls = 0;
 
 /**
- * Issue access tokens without a refresh token until the test ends, as many
- * providers do. Junior must then ask the person to sign in again.
+ * Injected fault: the provider revokes the person's grant. Its access token
+ * gets `401 invalid_token`, and its refresh token gets `invalid_grant`. Only a
+ * new sign-in gives access again.
  */
-export function withholdEvalMcpRefreshTokens(): void {
+export function revokeEvalMcpGrant(): void {
+  grant = undefined;
+}
+
+/**
+ * Injected fault: the MCP server needs `mcp:write`, which a sign-in does not
+ * ask for by default. A token without it gets `403 insufficient_scope`. A
+ * refreshed token keeps its scope, so only a new sign-in that asks for
+ * `mcp:write` gives access.
+ */
+export function requireEvalMcpWriteScope(): void {
+  requiresWriteScope = true;
+}
+
+/**
+ * Injected fault: the provider issues access tokens without a refresh token,
+ * as many providers do.
+ */
+export function issueNoEvalMcpRefreshTokens(): void {
   issuesRefreshTokens = false;
+}
+
+function issueToken(kind: "access" | "refresh"): string {
+  issuedTokens += 1;
+  return `eval-auth-${kind}-token-${issuedTokens}`;
+}
+
+function hasScope(granted: string, scope: string): boolean {
+  return granted.split(" ").includes(scope);
 }
 
 /**
@@ -118,11 +155,22 @@ function getEvalMcpCallbackUrl(): string {
   return new URL(EVAL_MCP_CALLBACK_PATH, baseUrl).toString();
 }
 
-function unauthorizedResponse() {
+/** A missing token gets a plain challenge, a stale one `invalid_token`. */
+function unauthorizedResponse(hasToken: boolean) {
+  const error = hasToken ? `error="invalid_token", ` : "";
   return new HttpResponse(null, {
     status: 401,
     headers: {
-      "WWW-Authenticate": `Bearer resource_metadata="${EVAL_MCP_RESOURCE_METADATA_URL}", scope="mcp:read"`,
+      "WWW-Authenticate": `Bearer ${error}resource_metadata="${EVAL_MCP_RESOURCE_METADATA_URL}", scope="${EVAL_MCP_READ_SCOPE}"`,
+    },
+  });
+}
+
+function insufficientScopeResponse() {
+  return new HttpResponse(null, {
+    status: 403,
+    headers: {
+      "WWW-Authenticate": `Bearer error="insufficient_scope", resource_metadata="${EVAL_MCP_RESOURCE_METADATA_URL}", scope="${EVAL_MCP_READ_SCOPE} ${EVAL_MCP_WRITE_SCOPE}"`,
     },
   });
 }
@@ -144,8 +192,10 @@ function jsonRpcResult(id: unknown, result: unknown, headers?: HeadersInit) {
 export function resetEvalMcpAuthMockState(): void {
   authorizationGrant = undefined;
   clientRegistered = false;
-  tokenIssued = false;
+  grant = undefined;
+  issuedTokens = 0;
   issuesRefreshTokens = true;
+  requiresWriteScope = false;
   releasePushCalls = 0;
 }
 
@@ -658,8 +708,11 @@ export const evalMcpAuthHandlers = [
   ),
   http.post(EVAL_MCP_SERVER_URL, async ({ request }) => {
     const authorization = request.headers.get("authorization");
-    if (!tokenIssued || authorization !== `Bearer ${EVAL_MCP_ACCESS_TOKEN}`) {
-      return unauthorizedResponse();
+    if (!grant || authorization !== `Bearer ${grant.accessToken}`) {
+      return unauthorizedResponse(authorization !== null);
+    }
+    if (requiresWriteScope && !hasScope(grant.scope, EVAL_MCP_WRITE_SCOPE)) {
+      return insufficientScopeResponse();
     }
 
     const payload = (await request.json()) as
@@ -769,7 +822,7 @@ export const evalMcpAuthHandlers = [
     HttpResponse.json({
       resource: EVAL_MCP_SERVER_URL,
       authorization_servers: [EVAL_MCP_AUTH_ORIGIN],
-      scopes_supported: ["mcp:read"],
+      scopes_supported: [EVAL_MCP_READ_SCOPE, EVAL_MCP_WRITE_SCOPE],
     }),
   ),
   http.get(
@@ -862,17 +915,20 @@ export const evalMcpAuthHandlers = [
     const params = new URLSearchParams(bodyText);
     if (params.get("grant_type") === "refresh_token") {
       if (
-        !tokenIssued ||
+        !grant?.refreshToken ||
         params.get("client_id") !== EVAL_MCP_CLIENT_ID ||
-        params.get("refresh_token") !== EVAL_MCP_REFRESH_TOKEN
+        params.get("refresh_token") !== grant.refreshToken
       ) {
         return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
       }
+      // A refreshed token keeps the scope of the grant.
+      grant.accessToken = issueToken("access");
       return HttpResponse.json({
-        access_token: EVAL_MCP_ACCESS_TOKEN,
+        access_token: grant.accessToken,
         token_type: "Bearer",
         expires_in: 3600,
-        refresh_token: EVAL_MCP_REFRESH_TOKEN,
+        refresh_token: grant.refreshToken,
+        scope: grant.scope,
       });
     }
     const code = params.get("code");
@@ -895,18 +951,23 @@ export const evalMcpAuthHandlers = [
       );
     }
 
-    const scope = authorizationGrant.scope ?? "mcp:read";
+    grant = {
+      accessToken: issueToken("access"),
+      ...(issuesRefreshTokens
+        ? { refreshToken: issueToken("refresh") }
+        : undefined),
+      scope: authorizationGrant.scope ?? EVAL_MCP_READ_SCOPE,
+    };
     authorizationGrant = undefined;
-    tokenIssued = true;
 
     return HttpResponse.json({
-      access_token: EVAL_MCP_ACCESS_TOKEN,
+      access_token: grant.accessToken,
       token_type: "Bearer",
       expires_in: 3600,
-      ...(issuesRefreshTokens
-        ? { refresh_token: EVAL_MCP_REFRESH_TOKEN }
+      ...(grant.refreshToken
+        ? { refresh_token: grant.refreshToken }
         : undefined),
-      scope,
+      scope: grant.scope,
     });
   }),
 ];
