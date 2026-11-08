@@ -226,7 +226,12 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     input.idleMs,
     Math.min(input.cacheTtlMs, IDLE_HORIZON_MS - input.idleMs),
   );
-  const perWarmup = returnsPerWarmup(histogram, input.idleMs, input.cacheTtlMs);
+  const perWarmup = returnsPerWarmup(
+    histogram,
+    input.idleMs,
+    input.cacheTtlMs,
+    input.prefixTokens,
+  );
   const decision = (reason: WarmupDecision["reason"]): WarmupDecision => ({
     warm: reason === "warm",
     reason,
@@ -247,18 +252,21 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
 }
 
 // Best expected returns per warmup over plans of 1, 2, ... warmups that end
-// at the horizon. Warmup i of a plan runs about i TTLs from now, and only if
-// nobody returned before it.
+// at the horizon. Each warmup runs one margin before the cache from the
+// previous warmup expires, so warmups come every TTL minus the margin. A
+// warmup runs only if nobody returned before it.
 function returnsPerWarmup(
   histogram: GapHistogram,
   idleMs: number,
   ttlMs: number,
+  prefixTokens: number,
 ): number {
   const now = survival(histogram, idleMs);
-  if (now < 0.001 || ttlMs <= 0) return 0;
+  const intervalMs = ttlMs - warmupMarginMs(prefixTokens);
+  if (now < 0.001 || intervalMs <= 0) return 0;
   let best = 0;
   let warmups = 0;
-  for (let startMs = idleMs; startMs < IDLE_HORIZON_MS; startMs += ttlMs) {
+  for (let startMs = idleMs; startMs < IDLE_HORIZON_MS; startMs += intervalMs) {
     warmups += survival(histogram, startMs) / now;
     const endMs = Math.min(startMs + ttlMs, IDLE_HORIZON_MS);
     const returns = (now - survival(histogram, endMs)) / now;
