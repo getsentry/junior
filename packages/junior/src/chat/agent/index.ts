@@ -122,6 +122,7 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { getConversationStore } from "@/chat/db";
+import type { ConversationKind } from "@/chat/conversations/store";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -217,9 +218,10 @@ export async function executeAgentRun(
     throw new TypeError("Assistant reply generation requires a destination");
   }
   // A child reads visibility from its own Destination row, the same as a root.
-  const visibility = (
-    await getConversationStore().get({ conversationId: run.conversationId })
-  )?.visibility;
+  const conversation = await getConversationStore().get({
+    conversationId: run.conversationId,
+  });
+  const visibility = conversation?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
   });
@@ -253,6 +255,7 @@ export async function executeAgentRun(
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         run,
+        conversation?.kind,
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -263,6 +266,7 @@ export async function executeAgentRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
+  conversationKind: ConversationKind | undefined,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: StreamFn | undefined,
@@ -343,7 +347,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run);
+  assertRunConsistency(run, conversationKind);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;

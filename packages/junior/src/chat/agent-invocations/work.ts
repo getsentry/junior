@@ -57,6 +57,7 @@ import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import { supersedeOpenPersonTurn } from "./thread-turn";
 import {
   agentTypeInstructions,
   agentTypeStartsWithParentHistory,
@@ -504,24 +505,40 @@ async function projectTerminalTurn(
 }
 
 /**
- * End an agent invocation that is still running or paused while other work
- * of its child starts. A saved finished Turn gives its result. Otherwise it
- * fails. The newer work does not continue this task, so the result goes to
- * the parent on its own.
+ * End every running or paused agent invocation of a child before other work
+ * opens a Turn there, so the child has one open Turn. A saved finished Turn
+ * gives its result. Every other one fails with `errorMessage`, because the
+ * newer work does not continue its task. Each reports on its own.
  */
-async function endOtherActiveAgentInvocation(
-  invocation: AgentInvocation,
-): Promise<AgentInvocation | undefined> {
-  return (
-    (await projectTerminalTurn(invocation, { reportNow: true })) ??
-    (await completeAgentInvocation({
-      invocationId: invocation.invocationId,
-      errorMessage:
-        "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
-      reportNow: true,
-      status: "failed",
-    }))
-  );
+export async function endActiveAgentInvocations(
+  conversationId: string,
+  options: {
+    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
+    errorMessage: string;
+    exceptInvocationId?: string;
+  },
+): Promise<void> {
+  for (const active of await listAgentInvocationsForConversation(
+    conversationId,
+    ACTIVE_AGENT_INVOCATION_STATUSES,
+  )) {
+    if (active.invocationId === options.exceptInvocationId) {
+      continue;
+    }
+    const terminal =
+      (await projectTerminalTurn(active, { reportNow: true })) ??
+      (await completeAgentInvocation({
+        invocationId: active.invocationId,
+        errorMessage: options.errorMessage,
+        reportNow: true,
+        status: "failed",
+      }));
+    if (terminal && isTerminalAgentInvocation(terminal)) {
+      await persistTerminalLifecycle(terminal);
+      await recordSubagentEnded(terminal);
+      await options.enqueueResult?.(terminal);
+    }
+  }
 }
 
 /**
@@ -763,16 +780,15 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
-      // A child has at most one running or paused agent invocation. End any
-      // other active one first. Each one reports its own result.
-      for (const active of await listAgentInvocationsForConversation(
-        invocation.childConversationId,
-        ACTIVE_AGENT_INVOCATION_STATUSES,
-      )) {
-        if (active.invocationId !== invocation.invocationId) {
-          await finish(await endOtherActiveAgentInvocation(active));
-        }
-      }
+      // A child has one open Turn. End every other open agent invocation and
+      // a person's open Turn in a Thread first.
+      await endActiveAgentInvocations(invocation.childConversationId, {
+        enqueueResult: options.enqueueResult,
+        errorMessage:
+          "This task was not resumed. Newer work for this child agent started, so this task ended without a result.",
+        exceptInvocationId: invocation.invocationId,
+      });
+      await supersedeOpenPersonTurn(invocation.childConversationId);
       invocation =
         (await markAgentInvocationRunning(invocation.invocationId)) ??
         invocation;

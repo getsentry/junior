@@ -133,7 +133,8 @@ describe("agent invocation spawn and result delivery", () => {
         parentConversationId,
         source: "internal",
       });
-      expect(child).not.toHaveProperty("destination");
+      // A child stores its parent's Destination row, like every Conversation.
+      expect(child?.destination).toEqual(invocationInput.destination);
       await expect(
         createAgentInvocation({
           ...invocationInput,
