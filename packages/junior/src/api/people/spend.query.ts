@@ -33,23 +33,22 @@ function spendWindow(nowMs: number) {
   return { end, sevenDayStart, thirtyDayStart };
 }
 
-/**
- * Return a query for a cheap change marker of one viewer's spend window.
- *
- * Writes that record Conversation metrics also move `updated_at` forward, so
- * the marker changes when spend can change. The window start is part of the
- * marker, so it also changes when the window moves at UTC midnight.
- */
-export function personalSpendVersionQuery(
+/** Return a query for one viewer's model spend for each UTC day in the window. */
+function personalSpendDaysQuery(
   db: JuniorDatabase,
   email: string,
   nowMs: number,
 ) {
   const normalizedEmail = normalizeEmail(email);
   const { end, thirtyDayStart } = spendWindow(nowMs);
+  const activityDate = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD'
+  )`;
   return db
     .select({
-      version: sql<string>`concat_ws(':', ${thirtyDayStart.toISOString().slice(0, 10)}::text, count(*), max(${juniorConversations.updatedAt}))`,
+      costUsd: peopleTreeAggregateColumns.costUsd.as("cost_usd"),
+      date: activityDate.as("date"),
     })
     .from(juniorConversations)
     .innerJoin(
@@ -57,6 +56,7 @@ export function personalSpendVersionQuery(
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
     .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .leftJoin(peopleTreeConversation, peopleTreeMetricsJoin())
     .where(
       normalizedEmail
         ? and(
@@ -65,16 +65,31 @@ export function personalSpendVersionQuery(
             lte(juniorConversations.lastActivityAt, end),
           )
         : sql`false`,
-    );
+    )
+    .groupBy(activityDate);
 }
 
-/** Read the change marker of one viewer's spend window. */
-export async function readPersonalSpendVersion(
+/**
+ * Return a query for a change marker of one viewer's spend window. It holds
+ * the spend of each day, so only a change to the shown spend moves it. The
+ * window start is part of the marker, so it also changes when the window
+ * moves at UTC midnight.
+ */
+export function personalSpendVersionQuery(
+  db: JuniorDatabase,
   email: string,
-  nowMs = Date.now(),
-): Promise<string> {
-  const [row] = await personalSpendVersionQuery(getDb(), email, nowMs);
-  return row?.version ?? "";
+  nowMs: number,
+) {
+  const { thirtyDayStart } = spendWindow(nowMs);
+  const days = personalSpendDaysQuery(db, email, nowMs).as("spend_days");
+  return db
+    .select({
+      version: sql<string>`concat_ws(':',
+        ${thirtyDayStart.toISOString().slice(0, 10)}::text,
+        string_agg(concat_ws('=', ${days.date}, ${days.costUsd}), ',' order by ${days.date})
+      )`,
+    })
+    .from(days);
 }
 
 /** Read one viewer's rolling model spend with one bounded aggregate query. */
@@ -82,35 +97,8 @@ export async function readPersonalSpendFromSql(
   email: string,
   nowMs = Date.now(),
 ): Promise<PersonalSpendReport> {
-  const normalizedEmail = normalizeEmail(email);
   const { end, sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
-  const activityDate = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
-  const metricsJoin = peopleTreeMetricsJoin();
-  const rows = normalizedEmail
-    ? await getDb()
-        .select({
-          costUsd: peopleTreeAggregateColumns.costUsd,
-          date: activityDate,
-        })
-        .from(juniorConversations)
-        .innerJoin(
-          juniorIdentities,
-          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-        )
-        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-        .leftJoin(peopleTreeConversation, metricsJoin)
-        .where(
-          and(
-            verifiedActorWhere(normalizedEmail),
-            gte(juniorConversations.lastActivityAt, thirtyDayStart),
-            lte(juniorConversations.lastActivityAt, end),
-          ),
-        )
-        .groupBy(activityDate)
-    : [];
+  const rows = await personalSpendDaysQuery(getDb(), email, nowMs);
 
   const sevenDayStartDate = sevenDayStart.toISOString().slice(0, 10);
   let sevenDaysUsd = 0;

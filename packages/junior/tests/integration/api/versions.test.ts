@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { CONVERSATION_VERSION_HEADER, versionsSchema } from "@/api/schema";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
@@ -31,6 +36,33 @@ async function authenticatedApi() {
   });
   app.route("/", createJuniorApi());
   return { app, viewer };
+}
+
+/** Record a child agent Turn: an Event and its running execution. */
+async function childAgentTurn(conversationId: string, atMs: number) {
+  await getConversationEventStore().append(conversationId, [
+    {
+      data: {
+        type: "tool_execution_started",
+        toolCallId: `${conversationId}:tool-${atMs}`,
+        toolName: "search",
+      },
+      createdAtMs: atMs,
+    },
+  ]);
+  await getConversationStore().recordExecution({
+    conversationId,
+    createdAtMs: atMs,
+    execution: {
+      runId: `${conversationId}:run`,
+      status: "running",
+      updatedAtMs: atMs,
+    },
+    lastActivityAtMs: atMs,
+    metrics: { durationMs: 50 },
+    source: "slack",
+    updatedAtMs: atMs,
+  });
 }
 
 /** Name the tokens that differ between two reads. */
@@ -77,7 +109,7 @@ describe("versions API", () => {
     await appendVisibleHistory(OTHER);
     expect(await read()).toEqual(first);
 
-    // A child agent writes only its own row. The tree token still moves.
+    // Starting a child agent writes Events to the root, so the feed moves.
     await createChild({
       childConversationId: `${OWN}:child`,
       parentConversationId: OWN,
@@ -88,6 +120,13 @@ describe("versions API", () => {
       "conversations",
     ]);
     expect(await detailVersion()).toBe(withChild.conversation);
+
+    // A child agent's Turn writes only its own row. The feed row shows none
+    // of it, so only the open Conversation's tree token moves.
+    await childAgentTurn(`${OWN}:child`, 20);
+    const withChildTurn = await read();
+    expect(changed(withChild, withChildTurn)).toEqual(["conversation"]);
+    expect(await detailVersion()).toBe(withChildTurn.conversation);
 
     // Input that waits in the mailbox of an idle Conversation is part of its
     // detail, so it moves the tree token.
@@ -104,7 +143,7 @@ describe("versions API", () => {
       nowMs: 10,
     });
     const withInput = await read();
-    expect(changed(withChild, withInput)).toEqual([
+    expect(changed(withChildTurn, withInput)).toEqual([
       "conversation",
       "conversations",
     ]);
@@ -170,6 +209,28 @@ describe("versions API", () => {
       source: "slack",
       updatedAtMs: nowMs,
     });
-    expect(changed(closed, await read())).toContain("spend");
+    const withTurn = await read();
+    expect(changed(closed, withTurn)).toEqual([
+      "conversation",
+      "conversations",
+      "spend",
+    ]);
+
+    // A reply changes the feed row but costs nothing, so spend stays.
+    await appendVisibleHistory(OWN, "Root answer");
+    await getConversationEventStore().append(OWN, [
+      {
+        data: {
+          type: "tool_execution_started",
+          toolCallId: `${OWN}:later-tool`,
+          toolName: "search",
+        },
+        createdAtMs: nowMs + 1,
+      },
+    ]);
+    expect(changed(withTurn, await read())).toEqual([
+      "conversation",
+      "conversations",
+    ]);
   });
 });
