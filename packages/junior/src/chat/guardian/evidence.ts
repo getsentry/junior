@@ -70,7 +70,10 @@ function contentText(content: unknown): string {
     .join("\n");
 }
 
-function assistantEntries(message: PiMessage): EvidenceEntry[] {
+function assistantEntries(
+  message: PiMessage,
+  finishedCallIds: ReadonlySet<string>,
+): EvidenceEntry[] {
   if (!isAssistantMessage(message)) {
     return [];
   }
@@ -89,13 +92,19 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
     }
     const record = part as {
       arguments?: unknown;
+      id?: unknown;
       name?: unknown;
       type?: unknown;
     };
+    // A call without a result has not run yet. It is the call under review
+    // or a call of the same model step, so it must not read as an earlier
+    // event.
     if (
       record.type !== "toolCall" ||
       typeof record.name !== "string" ||
-      !record.name
+      !record.name ||
+      typeof record.id !== "string" ||
+      !finishedCallIds.has(record.id)
     ) {
       continue;
     }
@@ -110,6 +119,11 @@ function assistantEntries(message: PiMessage): EvidenceEntry[] {
 function collectEvidenceEntries(
   messages: readonly PiMessage[],
 ): EvidenceEntry[] {
+  const finishedCallIds = new Set(
+    messages.flatMap((message) =>
+      isToolResultMessage(message) ? [message.toolCallId] : [],
+    ),
+  );
   const entries: EvidenceEntry[] = [];
   for (const message of messages) {
     if (message.role === "user") {
@@ -120,7 +134,7 @@ function collectEvidenceEntries(
       continue;
     }
     if (isAssistantMessage(message)) {
-      entries.push(...assistantEntries(message));
+      entries.push(...assistantEntries(message, finishedCallIds));
       continue;
     }
     if (isToolResultMessage(message)) {
@@ -138,6 +152,7 @@ function collectEvidenceEntries(
 
 /**
  * Project the Codex Guardian transcript selection into structured evidence.
+ * It holds only tool calls that have a result.
  */
 export function buildToolActionEvidence(
   messages: readonly PiMessage[],
