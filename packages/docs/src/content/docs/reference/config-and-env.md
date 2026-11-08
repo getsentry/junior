@@ -346,6 +346,12 @@ likely to cost less than that write.
   and for the first, second to third, and later Turns of a Conversation. This
   applies to the gaps of each Conversation too. Until Junior has recorded 20
   gaps for a group, it sends no warmups for that group.
+- While a tool runs, the running agent warms the cache with the same cost
+  model. The chance comes from recorded tool waits: the time from a model
+  request that ended with tool calls to the next request. Junior records only
+  waits of 2 minutes or more, because shorter waits do not change a decision.
+  Until it has recorded 20 waits, it sends no tool wait warmups. Warmups stop when
+  the next request starts or the run ends.
 - A warmup that misses the cache ends warming for its idle period and sends a
   Sentry warning. When 10 of the last 20 warmups of a provider miss or fail,
   Junior stops warming for that provider for 24 hours and sends a Sentry error.
@@ -360,7 +366,8 @@ likely to cost less than that write.
 
 Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
 `junior.cache_warmup`, and as `cache_warming.*` logs. Their cost is added to the
-cost of the Conversation.
+cost of the Conversation. The `app.cache_warming.trigger` log attribute is
+`idle` or `tool_wait`.
 
 ## Install-wide config defaults
 
