@@ -66,11 +66,15 @@ export async function sendCacheWarmup(
     signQueueMessage(cacheWarmupSign, message),
     {
       delaySeconds: Math.max(0, Math.floor(delayMs / 1000)),
-      // A late warmup cannot refresh an expired cache, so drop it.
-      retentionSeconds: Math.min(
-        QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
-        Math.ceil(delayMs / 1000) + 120,
-      ),
+      // A late warmup cannot refresh an expired cache, so drop it. A late
+      // horizon must still record its no-reply gap.
+      retentionSeconds:
+        message.kind === "warmup"
+          ? Math.min(
+              QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
+              Math.ceil(delayMs / 1000) + 120,
+            )
+          : QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
       idempotencyKey: `cache-warmup_${message.generation}_${
         message.kind === "warmup" ? message.cycle : message.kind
       }`,
