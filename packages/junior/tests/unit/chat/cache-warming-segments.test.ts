@@ -107,7 +107,7 @@ describe("cache warming gap segments", () => {
     expect(await segmentGaps("user:1")).toEqual([7 * MINUTE]);
   });
 
-  it("warms only short-retention requests of models whose cache write costs more than a read", async () => {
+  it("warms only short-retention requests of 5 minute caches whose write costs more than a read", async () => {
     const warmupsAfterTurn = async (
       modelId: string,
       cacheRetention?: "short" | "long",
@@ -134,9 +134,10 @@ describe("cache warming gap segments", () => {
       sentRetention: "short",
       warmups: 2,
     });
-    // Cache writes cost more than reads on this OpenAI model too.
+    // Cache writes cost more than reads on this OpenAI model too, but its
+    // cache does not have the 5 minute TTL.
     expect(await warmupsAfterTurn("openai/gpt-5.6-sol")).toMatchObject({
-      warmups: 2,
+      warmups: 0,
     });
     // The cache write has no price of its own, so the model skips it.
     expect(await warmupsAfterTurn("openai/gpt-5.5")).toMatchObject({

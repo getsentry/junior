@@ -59,8 +59,8 @@ const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 10;
 const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * 60_000;
 const BREAKER_OPEN_TTL_MS = 24 * 60 * 60_000;
-// The recorder sets this retention on agent requests, so Pi's
-// PI_CACHE_RETENTION does not change them. The cost model and the warmup
+// While warming is on, the recorder sets this retention on agent requests, so
+// Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
 // timing use the short TTL.
 const CACHE_RETENTION: CacheRetention = "short";
 
@@ -120,6 +120,13 @@ async function connectedState() {
 
 type ConnectedState = Awaited<ReturnType<typeof connectedState>>;
 
+// Providers whose short cache lasts SHORT_CACHE_TTL_MS and is refreshed by a
+// read. The warmup timing and the reply chance use that TTL. Other caches, such
+// as OpenAI's, last longer, so warmups would be extra cost, and their misses
+// would open the breaker for every model. Add a provider when its TTL is
+// verified.
+const SHORT_TTL_PROVIDERS = new Set(["anthropic"]);
+
 // Warming pays only when a cache write costs more than a read. Pi adds a
 // thinking budget to the one-token output limit on the Anthropic Messages API
 // for models without adaptive thinking. Then a warmup could cost as much as a
@@ -132,6 +139,7 @@ function supportsWarming(request: ModelRequest): boolean {
     (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking !==
       true;
   return (
+    SHORT_TTL_PROVIDERS.has(model.id.split("/")[0] ?? "") &&
     model.cost.cacheRead > 0 &&
     model.cost.cacheWrite > model.cost.cacheRead &&
     !budgetThinking &&
@@ -312,7 +320,8 @@ async function recordModelCall(
 export interface CacheWarmingRecorder {
   /**
    * Wrap the stream function so the recorder sees each model request. The
-   * wrapper also sets the cache retention that warming assumes.
+   * wrapper also sets the cache retention that warming assumes while warming
+   * is on.
    */
   wrap(base?: StreamFn): StreamFn;
   /** Record the finished assistant message of the last model request. */
@@ -336,7 +345,10 @@ export function createCacheWarmingRecorder(
     wrap:
       (base = streamSimple) =>
       (model, context, options) => {
-        const cacheRetention = options?.cacheRetention ?? CACHE_RETENTION;
+        // With warming off, Pi's own retention applies.
+        const cacheRetention =
+          options?.cacheRetention ??
+          (getChatConfig().cacheWarmingEnabled ? CACHE_RETENTION : undefined);
         lastRequest = {
           model,
           // Copy the list, so later changes to the run do not change it.
@@ -344,10 +356,14 @@ export function createCacheWarmingRecorder(
           ...(options?.reasoning
             ? { reasoning: options.reasoning }
             : undefined),
-          cacheRetention,
+          ...(cacheRetention ? { cacheRetention } : undefined),
           startedAtMs: Date.now(),
         };
-        return base(model, context, { ...options, cacheRetention });
+        return base(
+          model,
+          context,
+          cacheRetention ? { ...options, cacheRetention } : options,
+        );
       },
     record: async (message) => {
       const request = lastRequest;
