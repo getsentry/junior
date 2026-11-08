@@ -234,7 +234,8 @@ describe("readConversationEvent", () => {
         api: "openai-responses",
         provider: "openai",
         model: "test-model",
-        usage: {},
+        // Above the compaction threshold, so the Turn swaps the summary in.
+        usage: { input: 400_000, output: 20, totalTokens: 400_020 },
         stopReason: "toolUse",
         timestamp,
       }) as PiMessage;

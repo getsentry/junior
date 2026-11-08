@@ -352,8 +352,8 @@ A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
 `chat/services/context-compaction-swap.ts` owns it. The mode tells the swap
 point: `blocking` at Turn start, `active` between model calls. The span exists
-only when the current History version has a background compaction request or
-result.
+only when the history is above the threshold and the current History version
+has a background compaction request or result.
 
 | Attribute                         | Type   | Meaning                                         |
 | --------------------------------- | ------ | ----------------------------------------------- |
