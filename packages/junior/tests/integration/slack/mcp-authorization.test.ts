@@ -104,7 +104,9 @@ async function expectNewLinkThenAnswer(
   return links[1]!;
 }
 
-describe("Slack MCP authorization", () => {
+// Each case runs the Turn up to three times with two sign-ins in between. The
+// first case in the file also pays the cold start.
+describe("Slack MCP authorization", { timeout: 20_000 }, () => {
   it("sends a new link when the provider revokes the grant after sign-in", async () => {
     const user = "UREVOKED";
     const harness = await askForBudget({ user, ts: "1712345.2001" });
