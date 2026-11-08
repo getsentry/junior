@@ -18,6 +18,7 @@ import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
@@ -213,6 +214,7 @@ export function createTools(
   if (context.spawnAgent) {
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent, modelCost);
     tools.stopAgent = createStopAgentTool(context.conversationId);
+    tools.archiveAgent = createArchiveAgentTool(context.conversationId);
   }
 
   // A child agent that is too deep to start child agents can still find its

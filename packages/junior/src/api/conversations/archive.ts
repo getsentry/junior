@@ -23,22 +23,24 @@ type ArchiveResult =
   | { status: "conflict" | "missing" }
   | { archivedAncestorId: string; status: "archived_ancestor" }
   | { status: "unarchived_children"; unarchivedChildCount: number }
-  | { archivedAt: string | null; status: "updated" };
+  | { archivedAt: string; status: "archived" }
+  | { status: "restored" };
 
 /**
  * Archive or restore one Conversation, root or child, for everyone. Archive
  * refuses while any descendant is unarchived, unless `applyToChildren`
- * archives them too. Restore changes only this Conversation unless
+ * archives them too, and when the Conversation has activity after
+ * `lastSeenAt`. Restore changes only this Conversation unless
  * `applyToChildren` also restores the descendants archived with it, and it
- * refuses while an ancestor is archived.
+ * refuses while an ancestor is archived. A restore of a root by `userId`
+ * turns off auto-archive for that person.
  */
-async function setArchive(args: {
-  applyToChildren: boolean;
-  archived: boolean;
-  conversationId: string;
-  lastSeenAt: string;
-  userId: string;
-}): Promise<ArchiveResult> {
+export async function setConversationArchive(
+  args: { applyToChildren: boolean; conversationId: string } & (
+    | { archived: true; lastSeenAt: string }
+    | { archived: false; userId: string }
+  ),
+): Promise<ArchiveResult> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
@@ -52,17 +54,14 @@ async function setArchive(args: {
       .limit(1)
       .for("update");
     if (!target) return { status: "missing" as const };
-    if (
-      args.archived &&
-      target.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)
-    ) {
-      return { status: "conflict" as const };
-    }
     // A root stores itself as its root. Older rows may leave it null.
     const rootConversationId = target.rootConversationId ?? args.conversationId;
     const tree = await readConversationTrees(db, [rootConversationId]);
     const descendants = conversationDescendants(tree, args.conversationId);
     if (args.archived) {
+      if (target.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)) {
+        return { status: "conflict" as const };
+      }
       const unarchived = descendants.filter((node) => !node.archivedAt);
       if (unarchived.length > 0 && !args.applyToChildren) {
         return {
@@ -79,7 +78,7 @@ async function setArchive(args: {
       );
       return {
         archivedAt: archivedAt.toISOString(),
-        status: "updated" as const,
+        status: "archived" as const,
       };
     }
     // The topmost archived ancestor is the one to restore first.
@@ -129,13 +128,13 @@ async function setArchive(args: {
           set: { autoArchive: false },
         });
     }
-    return { archivedAt: null, status: "updated" as const };
+    return { status: "restored" as const };
   });
 }
 
 /**
  * Archive or restore one Conversation for everyone. Only a participant may
- * do it. The rules are those of `setArchive`.
+ * do it. The rules are those of `setConversationArchive`.
  */
 export async function archiveConversation(
   viewer: User,
@@ -150,24 +149,28 @@ export async function archiveConversation(
   if (!access.get(conversationId)?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  const result = await setArchive({
-    applyToChildren: body.applyToChildren ?? false,
-    archived: body.archived,
-    conversationId,
-    lastSeenAt: body.lastSeenAt,
-    userId: viewer.id,
-  });
+  const applyToChildren = body.applyToChildren ?? false;
+  const result = await setConversationArchive(
+    body.archived
+      ? {
+          applyToChildren,
+          archived: true,
+          conversationId,
+          lastSeenAt: body.lastSeenAt,
+        }
+      : { applyToChildren, archived: false, conversationId, userId: viewer.id },
+  );
   switch (result.status) {
-    case "updated":
+    case "archived":
       // Archive also reads the conversation to the end for the person who
       // archived it. The archive saw no newer activity, so the end is what
       // they saw. Other participants keep their read position.
-      if (body.archived) {
-        await markConversationRead(viewer, conversationId, {
-          lastReadSeq: Number.MAX_SAFE_INTEGER,
-        });
-      }
+      await markConversationRead(viewer, conversationId, {
+        lastReadSeq: Number.MAX_SAFE_INTEGER,
+      });
       return { archivedAt: result.archivedAt };
+    case "restored":
+      return { archivedAt: null };
     case "missing":
       throwApiError(404, "Conversation not found.");
     case "conflict":

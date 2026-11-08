@@ -69,6 +69,7 @@ export function bindSpawnAgent(
         destination: toolInvocationDestination(run),
         idempotencyKey: `${run.turnId}:${call.toolCallId}`,
         input: input.task,
+        ...(input.kind ? { kind: input.kind } : undefined),
         parentConversationId: run.conversationId,
         parentToolCallId: call.toolCallId,
         ...(input.reasoningLevel
