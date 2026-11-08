@@ -857,6 +857,63 @@ describe("GitHub webhook events", () => {
     }
   });
 
+  it("normalizes comment and review edits as edits of their created Events", () => {
+    const comment = {
+      repository: { full_name: "getsentry/junior" },
+      sender: { id: 4242, login: "reviewer" },
+      issue: { number: 946, pull_request: { url: "https://api.test/pr" } },
+      comment: { body: "please revise", id: 101, user: { login: "reviewer" } },
+    };
+    const edited = normalizeGitHubEvents({
+      body: {
+        ...comment,
+        action: "edited",
+        changes: { body: { from: "looks fine" } },
+      },
+      deliveryId: "delivery-edit",
+      eventName: "issue_comment",
+    });
+    expect(edited.map((event) => event.identifier)).toEqual([
+      "getsentry/junior#946",
+      "getsentry/junior",
+    ]);
+    expect(edited[0]).toMatchObject({
+      edit: true,
+      eventKey: "github:delivery-edit:pull_request.comment.created",
+      eventType: "pull_request.comment.created",
+      trustedSummary:
+        "Edited: GitHub PR getsentry/junior#946 received a comment from reviewer.",
+      untrustedText: "Previous text:\nlooks fine\n\nNew text:\nplease revise",
+    });
+    const review = normalizeGitHubEvents({
+      body: {
+        action: "edited",
+        changes: { body: { from: "nit" } },
+        repository: { full_name: "getsentry/junior" },
+        pull_request: { number: 946 },
+        review: { body: "blocking", state: "COMMENTED", user: { login: "r" } },
+      },
+      deliveryId: "delivery-edit",
+      eventName: "pull_request_review",
+    });
+    expect(review[0]).toMatchObject({
+      edit: true,
+      eventType: "pull_request.review.commented",
+    });
+    // A title-only edit leaves the body as it was.
+    expect(
+      normalizeGitHubEvents({
+        body: {
+          ...comment,
+          action: "edited",
+          changes: { body: { from: "please revise" } },
+        },
+        deliveryId: "delivery-edit",
+        eventName: "issue_comment",
+      }),
+    ).toEqual([]);
+  });
+
   it("emits repository check suite events for bare branch builds", () => {
     expect(
       normalizeGitHubEvents({
@@ -2030,6 +2087,19 @@ describe("GitHub-owned pull request outcomes", () => {
           repository: { full_name: "getsentry/junior" },
           pull_request: { number: 946 },
           review: { body: "looks good", state: "COMMENTED", user: bot },
+        },
+      },
+      {
+        eventName: "issue_comment",
+        body: {
+          action: "edited",
+          changes: { body: { from: "fixing" } },
+          repository: { full_name: "getsentry/junior" },
+          issue: {
+            number: 946,
+            pull_request: { url: "https://api.github.com/pulls/946" },
+          },
+          comment: { body: "fixed", id: 101, user: bot },
         },
       },
     ];

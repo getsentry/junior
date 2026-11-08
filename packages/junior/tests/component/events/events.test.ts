@@ -414,6 +414,50 @@ describe("event delivery", () => {
       expect(work?.messages[0]?.input.text).toContain(
         "Address actionable review feedback.",
       );
+
+      // An edit reaches the Watch as an edit. No automation runs for it.
+      const editBody = JSON.stringify({
+        ...JSON.parse(body),
+        action: "edited",
+        changes: { body: { from: "please add regression coverage" } },
+        comment: {
+          body: "please add regression and load coverage",
+          id: 404,
+          user: { login: "reviewer" },
+        },
+      });
+      const editResponse = await app.fetch(
+        new Request("https://example.test/api/webhooks/github", {
+          method: "POST",
+          headers: {
+            "x-github-delivery": "delivery-bridge-edit",
+            "x-github-event": "issue_comment",
+            "x-hub-signature-256": `sha256=${createHmac("sha256", "test-secret")
+              .update(editBody)
+              .digest("hex")}`,
+          },
+          body: editBody,
+        }),
+      );
+      expect(editResponse.status).toBe(202);
+      expect(
+        queue
+          .sentRecords()
+          .filter(({ conversationId }) =>
+            conversationId.startsWith("agent-dispatch:"),
+          ),
+      ).toHaveLength(1);
+      const edited = await getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+        state,
+      });
+      expect(edited?.messages[1]).toMatchObject({
+        delivery: "interrupt",
+        input: { metadata: { edit: {} } },
+      });
+      expect(edited?.messages[1]?.input.text).toContain(
+        "please add regression and load coverage",
+      );
     } finally {
       if (eventAutomationId) {
         await deleteEventAutomation(getDb(), eventAutomationId);

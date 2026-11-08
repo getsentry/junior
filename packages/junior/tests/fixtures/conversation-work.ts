@@ -345,6 +345,39 @@ export function slackEnvelope(input: {
   });
 }
 
+/** Build a Slack `message_changed` envelope for one edit of a message. */
+export function slackEditEnvelope(input: {
+  botId?: string;
+  /** Slack sets `edited` on a person's edit. Pass null to leave it out. */
+  editedTs?: string | null;
+  previousText: string;
+  text: string;
+  threadTs?: string;
+  ts?: string;
+  user?: string;
+}) {
+  const original = slackEnvelope({ ...input, eventType: "message" });
+  const editedTs =
+    input.editedTs === undefined ? "1712345.9001" : input.editedTs;
+  return {
+    ...original,
+    event: {
+      type: "message",
+      subtype: "message_changed",
+      channel: original.event.channel,
+      hidden: true,
+      message: {
+        ...original.event,
+        ...(input.botId ? { bot_id: input.botId } : undefined),
+        ...(editedTs
+          ? { edited: { ts: editedTs, user: original.event.user } }
+          : undefined),
+      },
+      previous_message: { ...original.event, text: input.previousText },
+    },
+  };
+}
+
 /** Create a manually-resolved promise for coordinating async worker tests. */
 export function deferred<T = void>(): {
   promise: Promise<T>;
