@@ -159,15 +159,23 @@ function supportsWarming(request: ModelRequest): boolean {
   );
 }
 
-function nextWarmupDelayMs(
+// A warmup this close to the cache expiry may reach the provider after it.
+const LATE_WARMUP_MS = 10_000;
+
+// Send the warmup that refreshes the cache that a request at
+// `requestStartedAtMs` read or wrote.
+async function scheduleWarmup(
+  message: Omit<
+    Extract<CacheWarmupMessage, { kind: "warmup" }>,
+    "cacheExpiresAtMs"
+  >,
   requestStartedAtMs: number,
   prefixTokens: number,
-): number {
-  return (
-    requestStartedAtMs +
-    SHORT_CACHE_TTL_MS -
-    warmupMarginMs(prefixTokens) -
-    Date.now()
+): Promise<void> {
+  const cacheExpiresAtMs = requestStartedAtMs + SHORT_CACHE_TTL_MS;
+  await sendCacheWarmup(
+    { ...message, cacheExpiresAtMs },
+    cacheExpiresAtMs - warmupMarginMs(prefixTokens) - Date.now(),
   );
 }
 
@@ -317,9 +325,10 @@ async function recordModelCall(
   );
   if (next.idle?.warm) {
     const { generation } = next.idle;
-    await sendCacheWarmup(
+    await scheduleWarmup(
       { kind: "warmup", conversationId, cycle: 1, generation },
-      nextWarmupDelayMs(request.startedAtMs, next.idle.warm.prefixTokens),
+      request.startedAtMs,
+      next.idle.warm.prefixTokens,
     );
     await sendCacheWarmup(
       { kind: "horizon", conversationId, generation },
@@ -471,6 +480,16 @@ export async function runCacheWarmup(
         "app.cache_warming.cycle": message.cycle,
         "app.cache_warming.prefix_tokens": warm.prefixTokens,
       };
+      // The queue can deliver a warmup late, or a long Turn can leave no time
+      // before the cache expires. The cache is gone, so this is not a miss.
+      if (Date.now() + LATE_WARMUP_MS >= message.cacheExpiresAtMs) {
+        logInfo("cache_warming.warmup.skipped", {
+          ...attributes,
+          "app.cache_warming.skip_reason": "cache_expired",
+        });
+        await stop();
+        return;
+      }
       if (await state.get<boolean>(breakerOpenKey)) {
         logInfo("cache_warming.warmup.skipped", {
           ...attributes,
@@ -573,9 +592,15 @@ export async function runCacheWarmup(
       // A reply during the warmup ended the idle period and deleted its
       // snapshot. Then the next warmup would do nothing.
       if (await state.get<string>(snapshotKey(conversationId, generation))) {
-        await sendCacheWarmup(
-          { ...message, cycle: message.cycle + 1 },
-          nextWarmupDelayMs(startedAtMs, warm.prefixTokens),
+        await scheduleWarmup(
+          {
+            kind: "warmup",
+            conversationId,
+            cycle: message.cycle + 1,
+            generation,
+          },
+          startedAtMs,
+          warm.prefixTokens,
         );
       }
     },

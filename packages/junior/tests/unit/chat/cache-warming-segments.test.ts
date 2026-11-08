@@ -107,6 +107,30 @@ describe("cache warming gap segments", () => {
     expect(await segmentGaps("user:1")).toEqual([7 * MINUTE]);
   });
 
+  it("drops a warmup that arrives after the cache expired without counting a miss", async () => {
+    vi.useFakeTimers();
+    const state = getStateAdapter();
+    // People in this segment reply after 8 minutes, so the model would warm.
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
+    }
+    mocks.sendCacheWarmup.mockClear();
+    await endTurn(true);
+    const warmup = mocks.sendCacheWarmup.mock.calls
+      .map(([sent]) => sent as CacheWarmupMessage)
+      .find((sent) => sent.kind === "warmup");
+    if (!warmup) throw new Error("No warmup was scheduled.");
+
+    // The queue delivers the warmup after the 5 minute cache expired.
+    vi.advanceTimersByTime(6 * MINUTE);
+    await runCacheWarmup(warmup);
+
+    expect(
+      await state.getList<number>("junior:cache_warming:breaker:outcomes"),
+    ).toEqual([]);
+    await state.delete("junior:cache_warming:gaps:user:1");
+  });
+
   it("warms only short-retention requests of 5 minute caches whose write costs more than a read", async () => {
     const warmupsAfterTurn = async (
       modelId: string,

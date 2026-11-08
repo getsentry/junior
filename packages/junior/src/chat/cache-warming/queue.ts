@@ -26,6 +26,8 @@ const cacheWarmupMessageSchema = z.discriminatedUnion("kind", [
       conversationId: z.string().min(1),
       cycle: z.number().int().positive(),
       generation: z.string().min(1),
+      // When the cache that this warmup refreshes expires.
+      cacheExpiresAtMs: z.number().int().positive(),
     })
     .strict(),
   // Closes an idle period that got no reply within the idle horizon.
@@ -50,6 +52,7 @@ const cacheWarmupSign = {
     message.conversationId,
     message.generation,
     message.kind === "warmup" ? String(message.cycle) : "",
+    message.kind === "warmup" ? String(message.cacheExpiresAtMs) : "",
   ],
 };
 
