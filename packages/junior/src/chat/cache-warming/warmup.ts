@@ -29,7 +29,8 @@ import {
 import { getChatConfig } from "@/chat/config";
 import { runWithLogContext } from "@/chat/log-context";
 import { logInfo, logWarn } from "@/chat/logging";
-import { completeText, resolveGatewayModel } from "@/chat/pi/client";
+import { completeText } from "@/chat/core-model";
+import { resolveGatewayModel } from "@/chat/pi/client";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
 import { captureMessage } from "@/chat/sentry";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -524,7 +525,8 @@ export async function runCacheWarmup(
         maxTokens: 1,
         messageAttributeMode: "metadata",
         metadata: { conversationId },
-        promptName: "cache_warmup",
+        operation: "cache_warmup",
+        cost: { conversationId },
         // Use the agent's gateway session, so the warmup reaches the same cache.
         sessionId: conversationId,
       }).catch(async (error: unknown) => {
