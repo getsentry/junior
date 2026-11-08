@@ -71,15 +71,13 @@ async function createIdleChild(
 async function archiveAgent(
   conversationId: string,
   childConversationId: string,
-  applyToChildren?: boolean,
+  options: { apply_to_children?: boolean; person_asked?: boolean } = {},
 ) {
   const tool = createArchiveAgentTool(conversationId);
   return await tool.execute!(
     tool.prepareArguments!({
       conversation_id: childConversationId,
-      ...(applyToChildren !== undefined
-        ? { apply_to_children: applyToChildren }
-        : undefined),
+      ...options,
     }),
     {},
   );
@@ -238,24 +236,30 @@ describe("Thread spawn and archive", () => {
       });
       await harness.drain(thread);
       await expect(archivedAtMs(harness, thread)).resolves.toBeUndefined();
-      // searchAgents shows the parent which children people message.
+      // searchAgents shows the kind of each child.
       const listed = await createSearchAgentsTool({
         conversationId: slackParentConversationId,
       }).execute!({}, {});
       expect(listed.agents).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
-            conversation_id: thread,
-            kind: "thread",
-            last_person_message_at: expect.any(String),
-          }),
+          expect.objectContaining({ conversation_id: thread, kind: "thread" }),
           expect.objectContaining({ conversation_id: task, kind: "task" }),
         ]),
       );
-      // Work from the parent is not a person's message.
-      expect(
-        listed.agents.find((agent) => agent.conversation_id === task),
-      ).not.toHaveProperty("last_person_message_at");
+
+      // A person messaged the idle Thread after its last result.
+      await expect(
+        archiveAgent(slackParentConversationId, thread),
+      ).rejects.toMatchObject({
+        name: "ToolInputError",
+        message: expect.stringContaining("a person still uses it"),
+      });
+      await expect(
+        archiveAgent(slackParentConversationId, thread, {
+          apply_to_children: true,
+          person_asked: true,
+        }),
+      ).resolves.toMatchObject({ conversation_id: thread });
     } finally {
       await harness.close();
     }
@@ -281,11 +285,9 @@ describe("Thread spawn and archive", () => {
       });
       await expect(archivedAtMs(harness, thread)).resolves.toBeUndefined();
 
-      const archived = await archiveAgent(
-        slackParentConversationId,
-        thread,
-        true,
-      );
+      const archived = await archiveAgent(slackParentConversationId, thread, {
+        apply_to_children: true,
+      });
       const atMs = Date.parse(archived.archived_at);
       await expect(archivedAtMs(harness, thread)).resolves.toBe(atMs);
       await expect(archivedAtMs(harness, child)).resolves.toBe(atMs);

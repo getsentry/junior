@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
 import type { Actor } from "@/chat/actor";
 import {
   listAgentRelatives,
@@ -133,12 +132,6 @@ const listedAgentSchema = z
       .url()
       .optional()
       .describe("Dashboard link of the conversation"),
-    last_person_message_at: z
-      .string()
-      .optional()
-      .describe(
-        "Time of the newest message that a person sent in a child or sibling",
-      ),
     archived: z
       .literal(true)
       .optional()
@@ -156,10 +149,8 @@ type ListedAgent = z.output<typeof listedAgentSchema>;
 function listedChildAgent(
   relation: AgentRelation,
   agent: ChildAgent,
-  lastPersonMessageAt: ReadonlyMap<string, string>,
 ): ListedAgent {
   const dashboardUrl = getDashboardConversationLink(agent.childConversationId);
-  const personMessageAt = lastPersonMessageAt.get(agent.childConversationId);
   return {
     relation,
     conversation_id: agent.childConversationId,
@@ -170,9 +161,6 @@ function listedChildAgent(
     task: truncate(agent.task, TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
     ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
-    ...(personMessageAt
-      ? { last_person_message_at: personMessageAt }
-      : undefined),
     ...(agent.archivedAtMs !== undefined
       ? { archived: true as const }
       : undefined),
@@ -330,16 +318,8 @@ export function createSearchAgentsTool(context: {
       }
       const { children, parent, self, siblings } =
         await listAgentRelatives(context);
-      const lastPersonMessageAt = await readLastUserMessageAtByConversation(
-        getDb(),
-        [...(self ? [self] : []), ...children, ...siblings].map(
-          (agent) => agent.childConversationId,
-        ),
-      );
-      const listed = (relation: AgentRelation, agent: ChildAgent) =>
-        listedChildAgent(relation, agent, lastPersonMessageAt);
       const agents: ListedAgent[] = [
-        ...(self ? [listed("self", self)] : []),
+        ...(self ? [listedChildAgent("self", self)] : []),
         ...(parent
           ? [
               {
@@ -350,8 +330,8 @@ export function createSearchAgentsTool(context: {
               },
             ]
           : []),
-        ...children.map((agent) => listed("child", agent)),
-        ...siblings.map((agent) => listed("sibling", agent)),
+        ...children.map((agent) => listedChildAgent("child", agent)),
+        ...siblings.map((agent) => listedChildAgent("sibling", agent)),
       ];
       const filters = {
         ...(conversationIds
