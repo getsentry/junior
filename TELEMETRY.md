@@ -319,7 +319,8 @@ Attributes on the `agent.context_compaction` span:
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
 | `app.compaction.mode`                 | string | `blocking`, `active`, `background`            |
-| `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
+| `app.compaction.outcome`              | string | `compacted`, `skipped`, or `summary_failed`   |
+| `app.compaction.skip_reason`          | string | why no summary was made above the threshold   |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
 | `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
 | `app.compaction.threshold`            | int    | estimated tokens that start a compaction      |
@@ -333,6 +334,10 @@ Attributes on the `agent.context_compaction` span:
   on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
+- `app.compaction.skip_reason`: `over_target` (the context that a
+  replacement keeps is above the target without a summary) or
+  `last_over_threshold` (the first model call after the latest full
+  compaction was above the threshold). A skipped compaction runs at the input limit.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
