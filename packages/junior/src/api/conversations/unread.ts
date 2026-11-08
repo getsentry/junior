@@ -1,5 +1,14 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, inArray, max, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  max,
+  sql,
+  type SQL,
+  type SQLWrapper,
+} from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
@@ -27,16 +36,13 @@ import { markConversationRead } from "./read-position";
  * events, so they do not count. It walks the message role index from the
  * newest Message, so it stops at the first reply that is not quiet.
  */
-function latestVisibleReply(db: JuniorDatabase) {
+function latestVisibleReply(db: JuniorDatabase, conversationId: SQLWrapper) {
   return db
     .select({ seq: juniorConversationEvents.seq })
     .from(juniorConversationEvents)
     .where(
       and(
-        eq(
-          juniorConversationEvents.conversationId,
-          juniorConversations.conversationId,
-        ),
+        eq(juniorConversationEvents.conversationId, conversationId),
         eq(juniorConversationEvents.type, "message"),
         sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
         sql`(${juniorConversationEvents.payload}->'meta'->>'quiet') is distinct from 'true'`,
@@ -46,12 +52,15 @@ function latestVisibleReply(db: JuniorDatabase) {
       desc(juniorConversationEvents.createdAt),
       desc(juniorConversationEvents.seq),
     )
-    .limit(1)
-    .as("latest_visible_reply");
+    .limit(1);
 }
 
 /** The seq of the user's latest Message in the outer Conversation. */
-function viewerMessageSeq(db: JuniorDatabase, userId: string) {
+function viewerMessageSeq(
+  db: JuniorDatabase,
+  userId: string,
+  conversationId: SQLWrapper,
+) {
   return db
     .select({ seq: max(juniorConversationEvents.seq) })
     .from(juniorConversationEvents)
@@ -61,14 +70,25 @@ function viewerMessageSeq(db: JuniorDatabase, userId: string) {
     )
     .where(
       and(
-        eq(
-          juniorConversationEvents.conversationId,
-          juniorConversations.conversationId,
-        ),
+        eq(juniorConversationEvents.conversationId, conversationId),
         eq(juniorConversationEvents.type, "message"),
         eq(juniorIdentities.userId, userId),
       ),
     );
+}
+
+/**
+ * Whether Junior's latest visible reply is after the viewer's read position
+ * in one outer Conversation. The position is at least the viewer's own
+ * latest Message. No reply reads as false.
+ */
+export function unreadReplySql(
+  db: JuniorDatabase,
+  userId: string,
+  conversationId: SQLWrapper,
+  lastReadSeq: SQLWrapper,
+): SQL<boolean> {
+  return sql<boolean>`coalesce((${latestVisibleReply(db, conversationId)}) > greatest(coalesce(${lastReadSeq}, -1), coalesce((${viewerMessageSeq(db, userId, conversationId)}), -1)), false)`;
 }
 
 /**
@@ -87,7 +107,6 @@ export async function readUnreadConversationIds(
   userId: string,
 ): Promise<Set<string>> {
   if (conversationIds.length === 0) return new Set();
-  const reply = latestVisibleReply(db);
   const rows = await db
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
@@ -101,11 +120,15 @@ export async function readUnreadConversationIds(
         eq(juniorConversationReadPositions.userId, userId),
       ),
     )
-    .innerJoinLateral(reply, sql`true`)
     .where(
       and(
         inArray(juniorConversations.conversationId, [...conversationIds]),
-        sql`${reply.seq} > greatest(coalesce(${juniorConversationReadPositions.lastReadSeq}, -1), coalesce((${viewerMessageSeq(db, userId)}), -1))`,
+        unreadReplySql(
+          db,
+          userId,
+          juniorConversations.conversationId,
+          juniorConversationReadPositions.lastReadSeq,
+        ),
       ),
     );
   return new Set(rows.map((row) => row.conversationId));
@@ -177,11 +200,15 @@ export async function markConversationUnread(
     return { unreadReply: false };
   }
   const db = getDb();
-  const reply = latestVisibleReply(db);
+  const reply = latestVisibleReply(db, juniorConversations.conversationId).as(
+    "latest_visible_reply",
+  );
   const [row] = await db
     .select({
       replySeq: reply.seq,
-      viewerSeq: sql<number | null>`(${viewerMessageSeq(db, viewer.id)})`,
+      viewerSeq: sql<
+        number | null
+      >`(${viewerMessageSeq(db, viewer.id, juniorConversations.conversationId)})`,
     })
     .from(juniorConversations)
     .innerJoinLateral(reply, sql`true`)

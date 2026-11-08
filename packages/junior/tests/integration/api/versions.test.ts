@@ -1,3 +1,4 @@
+import { and, eq, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -10,6 +11,7 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { juniorConversationEvents } from "@/db/schema";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
@@ -228,9 +230,43 @@ describe("versions API", () => {
         createdAtMs: nowMs + 1,
       },
     ]);
-    expect(changed(withTurn, await read())).toEqual([
+    const withReply = await read();
+    expect(changed(withTurn, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);
+
+    // Scrolling moves the read position, but the feed row shows only
+    // whether the reply is unread.
+    const [reply] = await getDb()
+      .select({ seq: max(juniorConversationEvents.seq) })
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, OWN),
+          eq(juniorConversationEvents.type, "message"),
+        ),
+      );
+    const reportRead = async (lastReadSeq: number) =>
+      (
+        await app.request(
+          `http://localhost/api/conversations/${OWN}/read-position`,
+          {
+            body: JSON.stringify({ lastReadSeq }),
+            headers: { "content-type": "application/json" },
+            method: "PUT",
+          },
+        )
+      ).json();
+    expect(await reportRead(reply!.seq! - 1)).toEqual({
+      lastReadSeq: reply!.seq! - 1,
+      unreadReply: true,
+    });
+    const scrolled = await read();
+    expect(changed(withReply, scrolled)).toEqual([]);
+    expect(await reportRead(reply!.seq!)).toMatchObject({
+      unreadReply: false,
+    });
+    expect(changed(scrolled, await read())).toEqual(["conversations"]);
   });
 });

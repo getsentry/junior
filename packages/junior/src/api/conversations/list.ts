@@ -42,7 +42,7 @@ import {
   type ConversationRecordRow,
 } from "./record";
 import { readFeedThreads } from "./threads";
-import { readUnreadConversationIds } from "./unread";
+import { readUnreadConversationIds, unreadReplySql } from "./unread";
 import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import {
@@ -222,7 +222,9 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  *
  * The token holds only what a feed row shows, so a Task's own writes do not
  * move it. Each content write moves its Conversation's `last_activity_at`,
- * so the root's value covers the preview, participants, and unread reply.
+ * so the root's value covers the preview and participants. The row shows
+ * only whether a reply is unread, so a scroll that moves the read position
+ * does not move the token.
  * Threads and annotations show from the whole tree. Waiting roots outside
  * the page move the Review items token.
  */
@@ -310,7 +312,8 @@ export function conversationFeedVersionQuery(
       version: sql<string>`md5(coalesce(string_agg(
         concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition},
           ${page.title}, ${page.channelName}, ${page.executionStatus},
-          ${page.stoppedAt}, ${page.lastActivityAt}, ${page.lastReadSeq},
+          ${page.stoppedAt}, ${page.lastActivityAt},
+          ${unreadReplySql(db, userId, page.conversationId, page.lastReadSeq)},
           (${tree}), (${annotations})),
         ',' order by ${page.conversationId}
       ), ''))`,
