@@ -437,4 +437,64 @@ describe("user approval for child agents", () => {
       await fixture.close();
     }
   });
+
+  it("keeps the user's request that widened the work after many child results", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    try {
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Find the missing MCP metadata.",
+      });
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Fix each gap and open a PR for each change.",
+      });
+      // Each child result is written and then edited, so the request falls
+      // more than a read page behind the newest message events.
+      for (let step = 1; step <= 40; step += 1) {
+        const messageId = `child-result-${step}`;
+        await recordRootMessage(slackParentConversationId, {
+          eventType: "agent_result",
+          messageId,
+          role: "user",
+          text: `Child result ${step}.`,
+        });
+        await getConversationEventStore().append(slackParentConversationId, [
+          {
+            idempotencyKey: `message:${messageId}:update:1`,
+            data: {
+              type: "message_updated",
+              messageId,
+              role: "user",
+              text: `Child result ${step}.`,
+              meta: { eventType: "agent_result" },
+            },
+            createdAtMs: 5_000 + step,
+          },
+        ]);
+      }
+
+      const read = await readRootConversation({
+        actor: user,
+        conversationId: slackParentConversationId,
+      });
+      expect(
+        read.messages.filter((message) => message.author === "user"),
+      ).toEqual([
+        { author: "user", text: "Find the missing MCP metadata." },
+        { author: "user", text: "Fix each gap and open a PR for each change." },
+      ]);
+      // Only the user's messages are read from before the newest page, so a
+      // note marks the gap after them.
+      expect(read.messages[2]).toEqual({
+        author: "system",
+        text: expect.stringMatching(/^\[Messages may be missing here\./),
+      });
+      expect(read.truncated).toBe(true);
+    } finally {
+      await fixture.close();
+    }
+  });
 });

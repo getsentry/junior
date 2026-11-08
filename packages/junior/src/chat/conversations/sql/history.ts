@@ -9,6 +9,7 @@ import {
   lt,
   lte,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
@@ -520,11 +521,20 @@ class SqlConversationEventStore implements ConversationEventStore {
     ) {
       return { events: [], hasOlder: false, hasNewer: false };
     }
+    if (query.authorIdentityIds?.length === 0) {
+      return { events: [], hasOlder: false, hasNewer: false };
+    }
 
-    const typeFilter =
+    const filter = and(
       query.types && query.types.length > 0
         ? inArray(juniorConversationEvents.type, [...query.types])
-        : undefined;
+        : undefined,
+      query.authorIdentityIds
+        ? inArray(juniorConversationEvents.actorIdentityId, [
+            ...query.authorIdentityIds,
+          ])
+        : undefined,
+    );
     const bounds = and(
       eq(juniorConversationEvents.conversationId, conversationId),
       query.afterSeq === undefined
@@ -533,7 +543,7 @@ class SqlConversationEventStore implements ConversationEventStore {
       query.beforeSeq === undefined
         ? undefined
         : lt(juniorConversationEvents.seq, query.beforeSeq),
-      typeFilter,
+      filter,
     );
 
     // Default to the newest matching page so debug callers start near recent activity.
@@ -568,7 +578,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         : await this.hasMatchingEvent({
             conversationId,
             beforeSeq: firstSeq,
-            typeFilter,
+            filter,
           });
     const hasNewer =
       !newestFirst && overflow
@@ -576,7 +586,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         : await this.hasMatchingEvent({
             conversationId,
             afterSeq: lastSeq,
-            typeFilter,
+            filter,
           });
 
     return { events, hasOlder, hasNewer };
@@ -587,7 +597,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     afterSeq?: number;
     beforeSeq?: number;
     conversationId: string;
-    typeFilter: ReturnType<typeof inArray> | undefined;
+    filter: SQL | undefined;
   }): Promise<boolean> {
     if (
       args.afterSeq !== undefined &&
@@ -609,7 +619,7 @@ class SqlConversationEventStore implements ConversationEventStore {
           args.beforeSeq === undefined
             ? undefined
             : lt(juniorConversationEvents.seq, args.beforeSeq),
-          args.typeFilter,
+          args.filter,
         ),
       )
       .limit(1);
