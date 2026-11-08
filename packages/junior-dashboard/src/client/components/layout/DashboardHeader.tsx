@@ -42,9 +42,12 @@ function NavCount(props: { count?: number }) {
 
 /**
  * Render the shell header: the mobile bar and navigation sheet, and the
- * desktop top bar on tall windows. Short desktop windows use `NavRail`.
+ * desktop top bar when `desktopTopBar` is set. Otherwise desktop uses
+ * `NavRail`.
  */
 export function DashboardHeader(props: {
+  /** Show the desktop top bar instead of the nav sidebar. */
+  desktopTopBar: boolean;
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
   mobileNavigationOpen: boolean;
@@ -59,7 +62,7 @@ export function DashboardHeader(props: {
   onMobileNavigationOpenChange(open: boolean): void;
   /** Open the command palette. */
   onSearch(): void;
-  /** Spend and account control at the right of the tall desktop top bar. */
+  /** Spend and account control at the right of the desktop top bar. */
   profile?: ReactNode;
   version?: string;
   workspaceActive: boolean;
@@ -107,12 +110,17 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative bg-dashboard-bg md:hidden md:tall:block">
+    <header
+      className={cn(
+        "relative bg-dashboard-bg",
+        !props.desktopTopBar && "md:hidden",
+      )}
+    >
       {/* Equal side tracks center the command palette trigger in the window,
           like an editor's title bar. When the nav needs more room, the
           trigger shrinks instead of covering it. Below lg the nav can be
           wider than the window, so it scrolls and the trigger is an icon. */}
-      <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:tall:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
+      <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
         <div className="flex items-center gap-5 max-lg:min-w-0">
           <Link
             aria-label={`${getDashboardAgentName()} home`}
