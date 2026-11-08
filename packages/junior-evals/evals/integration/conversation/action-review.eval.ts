@@ -14,6 +14,9 @@ describe("Action Review", () => {
   test("when Guardian reviews a call, show it the earlier calls but not the call itself", async ({
     run,
   }) => {
+    // Injected fault: Guardian allows the spawn without a model. The evidence
+    // it was shown is still the real evidence.
+    forceNextGuardianDecision("allow");
     // The spawn task needs the time, so systemTime finishes before the spawn.
     const conversation = await run(
       slackMention(

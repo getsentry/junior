@@ -5,7 +5,7 @@
  * `guardianReviews()` returns the reviews of the test, so a test can check
  * what Guardian was shown. `forceNextGuardianDecision()` is an injected
  * fault: the next review gets a fixed answer instead of the model's, so the
- * ask and deny paths run the same way each time.
+ * allow, ask, and deny paths run the same way each time.
  */
 import { HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
@@ -26,16 +26,26 @@ export interface GuardianReview {
   tool: string;
 }
 
-// Each forced decision uses a rule of that decision, so the product derives
-// the same decision from it. The reasons read like the ones Guardian gives.
+// Each forced decision is an assessment from which the product derives that
+// decision. The reasons read like the ones Guardian gives.
 const FORCED_ASSESSMENTS = {
+  allow: {
+    reason: "The person asked for this exact action.",
+    riskLevel: "low",
+    rule: "none",
+    userAuthorization: "high",
+  },
   ask: {
     reason: "The person has not confirmed this exact action.",
+    riskLevel: "high",
     rule: "high_risk_low_authorization",
+    userAuthorization: "low",
   },
   deny: {
     reason: "This action goes beyond what the person asked for.",
+    riskLevel: "high",
     rule: "out_of_scope",
+    userAuthorization: "low",
   },
 } as const;
 
@@ -49,10 +59,12 @@ export function guardianReviews(): GuardianReview[] {
 
 /**
  * Injected fault: Guardian answers its next review with this decision, as if
- * the model chose it, so the tool call does not run. Return the reason that
- * the agent gets in the tool error.
+ * the model chose it. Return its reason. After ask or deny, the tool call does
+ * not run and the agent gets the reason in the tool error.
  */
-export function forceNextGuardianDecision(decision: "ask" | "deny"): string {
+export function forceNextGuardianDecision(
+  decision: keyof typeof FORCED_ASSESSMENTS,
+): string {
   forcedDecisions.push(decision);
   onTestFinished(() => {
     forcedDecisions.length = 0;
@@ -105,13 +117,10 @@ export async function answerGuardianReview(
   });
   const forced = forcedDecisions.shift();
   if (!forced) return undefined;
-  const assessment = {
-    ...FORCED_ASSESSMENTS[forced],
-    riskLevel: "high",
-    userAuthorization: "low",
-  };
   return HttpResponse.json({
-    content: [{ type: "text", text: JSON.stringify(assessment) }],
+    content: [
+      { type: "text", text: JSON.stringify(FORCED_ASSESSMENTS[forced]) },
+    ],
     finishReason: { unified: "stop" },
     usage: {
       inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },

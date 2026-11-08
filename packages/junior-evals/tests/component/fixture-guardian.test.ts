@@ -46,7 +46,7 @@ function proposal(): ToolActionProposal {
 }
 
 describe("Guardian fixture edge", () => {
-  it.each(["ask", "deny"] as const)(
+  it.each(["allow", "ask", "deny"] as const)(
     "answers a forced %s and records what Guardian was shown",
     async (decision) => {
       installGatewayObserver();
