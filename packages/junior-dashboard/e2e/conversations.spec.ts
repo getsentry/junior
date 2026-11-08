@@ -561,6 +561,18 @@ test("shows personal spend and groups profile and session actions", async ({
   await expect(
     popover.getByRole("link", { name: "Settings", exact: true }),
   ).toHaveAttribute("href", "/settings");
+  // Low-traffic pages live here instead of the primary nav.
+  await expect(
+    popover.getByRole("link", { name: "Code", exact: true }),
+  ).toHaveAttribute("href", "/code");
+  await expect(
+    popover.getByRole("link", { name: "System", exact: true }),
+  ).toHaveAttribute("href", "/system");
+  await expect(
+    rail
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^(Code|System)$/ }),
+  ).toHaveCount(0);
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
 
   await page.keyboard.press("Escape");

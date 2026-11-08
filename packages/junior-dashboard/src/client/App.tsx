@@ -51,7 +51,7 @@ import {
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
-import { buildPrimaryNavItems } from "./primaryNav";
+import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "./TracedRoutes";
 import {
   ReviewDeskLoading,
@@ -264,8 +264,12 @@ export function DashboardShell() {
     pathname: location.pathname,
     primaryUserPages,
     reviewCount: reviewCountQuery.data?.needsViewer,
-    userPagesPending: userPagesQuery.isPending,
   });
+  const profileNavItems = loggedIn
+    ? buildProfileNavItems(
+        userPages.filter((page) => page.navigation === "profile"),
+      )
+    : [];
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -294,7 +298,7 @@ export function DashboardShell() {
       <NavRailProvider>
         <CommandPalette
           currentConversationId={conversationId}
-          navItems={primaryNavItems}
+          navItems={[...primaryNavItems, ...profileNavItems]}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
@@ -307,7 +311,7 @@ export function DashboardShell() {
                 identity={data!.me}
                 onSignOut={signOut}
                 spend={personalSpendQuery.data}
-                userPages={userPages}
+                pages={profileNavItems}
               />
             ) : undefined
           }
@@ -343,7 +347,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="top-bar"
                     />
                   ) : undefined
@@ -354,7 +358,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-identity"
                     />
                   ) : undefined
@@ -365,7 +369,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-links"
                     />
                   ) : undefined
@@ -376,7 +380,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-spend"
                     />
                   ) : undefined
