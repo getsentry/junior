@@ -401,6 +401,12 @@ describe("dashboard canonical-event components", () => {
             setMatches: () => {},
             step: () => {},
           }}
+          subscription={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            subscribed: true,
+          }}
           title="Header QA"
           view="raw"
         />

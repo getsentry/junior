@@ -842,6 +842,11 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     canFork: z.boolean().optional(),
     /** The viewer can move this dashboard conversation to a Slack thread. */
     canContinueInSlack: z.literal(true).optional(),
+    /**
+     * The viewer gets this conversation in their active feed. Participants
+     * only. False after an unsubscribe, until they mention Junior again.
+     */
+    subscribed: z.boolean().optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
     readPosition: conversationReadPositionSchema.optional(),
     /**

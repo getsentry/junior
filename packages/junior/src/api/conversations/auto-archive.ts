@@ -190,9 +190,10 @@ function notWaitingOnAnyone() {
 }
 
 /**
- * True when no participant of the row's root pinned it or turned
+ * True when no subscribed participant of the row's root pinned it or turned
  * auto-archive off for it. Archive applies to everyone, so one person's run
- * must not undo another person's pin or manual restore.
+ * must not undo another person's pin or manual restore. A person who
+ * unsubscribed no longer keeps it.
  */
 function noParticipantKeepsRoot() {
   const keeper = alias(juniorConversationParticipants, "keeping_participant");
@@ -205,6 +206,7 @@ function noParticipantKeepsRoot() {
           keeper.rootConversationId,
           juniorConversationParticipants.rootConversationId,
         ),
+        isNull(keeper.unsubscribedAt),
         or(isNotNull(keeper.pinnedAt), eq(keeper.autoArchive, false)),
       ),
     );
@@ -237,6 +239,8 @@ function rootIsUnarchived() {
 function archivableRow(run: ArchiveRun) {
   return and(
     eq(juniorConversationParticipants.userId, run.userId),
+    // A person who unsubscribed left the conversation to the others.
+    isNull(juniorConversationParticipants.unsubscribedAt),
     rootIsUnarchived(),
     // A pin keeps the conversation in the feed on purpose.
     noParticipantKeepsRoot(),

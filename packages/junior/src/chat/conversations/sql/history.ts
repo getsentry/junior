@@ -63,6 +63,16 @@ const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
  * turn lifecycle, compaction, and other system writes may still refresh
  * activity clocks, but they must not unarchive on their own.
  */
+/**
+ * True when a Turn input message is addressed to Junior. A Slack message in
+ * a subscribed thread that does not mention Junior is marked
+ * `explicitMention: false`. Other Sources, such as the dashboard and Slack
+ * mentions and DMs, always address Junior.
+ */
+function eventAddressesJunior(data: ConversationEventData): boolean {
+  return data.type === "message" && data.meta?.explicitMention !== false;
+}
+
 function eventUnarchivesConversation(data: ConversationEventData): boolean {
   if (data.type === "user_message") {
     const provenance = data.provenance;
@@ -295,6 +305,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
+        resubscribe: eventAddressesJunior(data),
       });
       restores ||= isPerson && eventUnarchivesConversation(data);
     }

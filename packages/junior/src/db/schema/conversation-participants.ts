@@ -14,7 +14,8 @@ import { timestamptz } from "./timestamps";
 /**
  * Materialized personal-feed membership for one linked user on one root
  * conversation. Rows come from the root actor and from the authors of Turn
- * input messages. Thread context authors do not get a row.
+ * input messages. Thread context authors do not get a row. An unsubscribed
+ * row keeps access but leaves the active feed.
  */
 export const juniorConversationParticipants = pgTable(
   "junior_conversation_participants",
@@ -41,6 +42,12 @@ export const juniorConversationParticipants = pgTable(
      * user's `autoArchiveDefault`.
      */
     autoArchive: boolean("auto_archive"),
+    /**
+     * Set when this user left the conversation. It stays out of their
+     * active feed until they mention Junior in it again, subscribe, or pin
+     * it. The row keeps its access, so it is not deleted.
+     */
+    unsubscribedAt: timestamptz("unsubscribed_at"),
   },
   (table) => [
     primaryKey({

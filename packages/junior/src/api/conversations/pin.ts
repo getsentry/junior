@@ -95,8 +95,9 @@ export async function pinConversation(
         juniorConversationParticipants.userId,
         juniorConversationParticipants.rootConversationId,
       ],
-      // A new pin has no place yet, so it sorts first in Pinned.
-      set: { pinnedAt, pinPosition: null },
+      // A new pin has no place yet, so it sorts first in Pinned. A pin also
+      // subscribes the viewer again, because Pinned is part of the feed.
+      set: { pinnedAt, pinPosition: null, unsubscribedAt: null },
     });
   return { pinnedAt: pinnedAt.toISOString() };
 }

@@ -350,6 +350,9 @@ async function readConversationDetailFromSql(
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }
       : undefined),
+    ...(report.isParticipant && state.subscribed !== undefined
+      ? { subscribed: state.subscribed }
+      : undefined),
     ...(canContinueInSlack(record.conversation, access)
       ? { canContinueInSlack: true as const }
       : undefined),
