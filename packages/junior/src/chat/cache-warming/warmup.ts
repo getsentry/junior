@@ -10,6 +10,11 @@
  * Each idle period gets one recorded reply gap, so the model also sees the
  * people who do not reply. A reply records its gap. A delayed `horizon`
  * message records `NO_REPLY_GAP_MS` when no reply came in the idle horizon.
+ *
+ * Only a Turn writes the Conversation state. Warmups and the horizon run
+ * while the next Turn can start, so they write only keys of their own idle
+ * period (`generation`): the snapshot, the warmup count, and the gap claim.
+ * Work for an old idle period then cannot change a newer one.
  */
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -53,13 +58,11 @@ const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 3;
 const BREAKER_TTL_MS = 6 * 60 * 60_000;
 
+/** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
   modelId: string;
   prefixTokens: number;
   reasoning?: ThinkingLevel;
-  warmups: number;
-  /** False after warmups stop. The snapshot is then deleted. */
-  active: boolean;
 }
 
 interface IdlePeriod {
@@ -68,15 +71,11 @@ interface IdlePeriod {
   segment: string;
   /** Start of the request that ended the turn. */
   sinceMs: number;
-  /** True after this period recorded its gap. */
-  gapRecorded?: boolean;
   /** Only periods that could be warmed record gaps. */
   warm?: WarmState;
 }
 
 interface ConversationCacheState {
-  /** Recent reply gaps (ms) of the idle periods of this Conversation. */
-  gapsMs: number[];
   /** Turns of this Conversation that ended. */
   endedTurns?: number;
   idle?: IdlePeriod;
@@ -92,8 +91,17 @@ interface ModelRequest {
 const segmentGapsKey = (segment: string) => `${KEY_PREFIX}:gaps:${segment}`;
 const conversationKey = (conversationId: string) =>
   `${KEY_PREFIX}:conversation:${conversationId}`;
-const snapshotKey = (conversationId: string) =>
-  `${KEY_PREFIX}:snapshot:${conversationId}`;
+/** Recent reply gaps (ms) of the idle periods of this Conversation. */
+const conversationGapsKey = (conversationId: string) =>
+  `${KEY_PREFIX}:gaps:conversation:${conversationId}`;
+const snapshotKey = (conversationId: string, generation: string) =>
+  `${KEY_PREFIX}:snapshot:${conversationId}:${generation}`;
+/** Warmups that completed in the idle period. */
+const warmupsKey = (conversationId: string, generation: string) =>
+  `${KEY_PREFIX}:warmups:${conversationId}:${generation}`;
+/** Set by the first of the reply and the horizon to record the gap. */
+const gapClaimKey = (conversationId: string, generation: string) =>
+  `${KEY_PREFIX}:gap_claim:${conversationId}:${generation}`;
 const breakerKey = (modelId: string) => `${KEY_PREFIX}:breaker:${modelId}`;
 
 async function connectedState() {
@@ -157,17 +165,30 @@ function snapshotContext(context: Context): Context {
   };
 }
 
+// The reply and the horizon can run at the same time. Only the first one to
+// claim the idle period records its gap.
 async function recordGap(
   state: Awaited<ReturnType<typeof connectedState>>,
-  segment: string,
-  gapsMs: number[],
+  conversationId: string,
+  idle: IdlePeriod,
   gapMs: number,
-): Promise<number[]> {
-  await state.appendToList(segmentGapsKey(segment), gapMs, {
+): Promise<void> {
+  const claimed = await state.setIfNotExists(
+    gapClaimKey(conversationId, idle.generation),
+    true,
+    CONVERSATION_STATE_TTL_MS,
+  );
+  if (!claimed) {
+    return;
+  }
+  await state.appendToList(segmentGapsKey(idle.segment), gapMs, {
     maxLength: GLOBAL_GAPS_MAX,
     ttlMs: GLOBAL_GAPS_TTL_MS,
   });
-  return [...gapsMs, gapMs].slice(-CONVERSATION_GAPS_MAX);
+  await state.appendToList(conversationGapsKey(conversationId), gapMs, {
+    maxLength: CONVERSATION_GAPS_MAX,
+    ttlMs: CONVERSATION_STATE_TTL_MS,
+  });
 }
 
 async function startIdlePeriod(
@@ -199,15 +220,17 @@ async function startIdlePeriod(
     });
     return idle;
   }
-  await state.set(snapshotKey(conversationId), snapshot, IDLE_HORIZON_MS);
+  await state.set(
+    snapshotKey(conversationId, idle.generation),
+    snapshot,
+    IDLE_HORIZON_MS,
+  );
   return {
     ...idle,
     warm: {
       modelId: request.model.id,
       prefixTokens,
       ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
-      warmups: 0,
-      active: true,
     },
   };
 }
@@ -222,21 +245,21 @@ async function recordModelCall(
   const previous = await state.get<ConversationCacheState>(
     conversationKey(conversationId),
   );
-  let gapsMs = previous?.gapsMs ?? [];
   const idle = previous?.idle;
-  if (idle) {
+  if (idle?.warm) {
     const gapMs = request.startedAtMs - idle.sinceMs;
-    if (idle.warm && !idle.gapRecorded && gapMs > 0) {
-      gapsMs = await recordGap(state, idle.segment, gapsMs, gapMs);
+    if (gapMs > 0) {
+      await recordGap(state, conversationId, idle, gapMs);
     }
-    if (idle.warm?.active) {
-      await state.delete(snapshotKey(conversationId));
-    }
-    if (idle.warm && idle.warm.warmups > 0) {
+    await state.delete(snapshotKey(conversationId, idle.generation));
+    const warmups =
+      (await state.get<number>(warmupsKey(conversationId, idle.generation))) ??
+      0;
+    if (warmups > 0) {
       logInfo("cache_warming.conversation.returned", {
         "app.cache_warming.gap_ms": gapMs,
         "app.cache_warming.prefix_tokens": idle.warm.prefixTokens,
-        "app.cache_warming.warmup_count": idle.warm.warmups,
+        "app.cache_warming.warmup_count": warmups,
         "gen_ai.usage.cache_read.input_tokens": message.usage.cacheRead,
         "gen_ai.usage.cache_creation.input_tokens": message.usage.cacheWrite,
       });
@@ -249,7 +272,6 @@ async function recordModelCall(
   const next: ConversationCacheState =
     message.stopReason === "stop"
       ? {
-          gapsMs,
           endedTurns: endedTurns + 1,
           idle: await startIdlePeriod(
             state,
@@ -259,7 +281,7 @@ async function recordModelCall(
             gapSegment(userActor, endedTurns),
           ),
         }
-      : { gapsMs, endedTurns };
+      : { endedTurns };
   if (!idle && !next.idle) {
     return;
   }
@@ -362,45 +384,20 @@ export async function runCacheWarmup(
   );
   const idle = current?.idle;
   const warm = idle?.warm;
-  if (!current || !idle || !warm || idle.generation !== message.generation) {
+  if (!idle || !warm || idle.generation !== message.generation) {
     return;
   }
-
-  // Write only when a real model call did not replace the idle period.
-  const update = async (changes: Partial<IdlePeriod>, gapsMs?: number[]) => {
-    const latest = await state.get<ConversationCacheState>(
-      conversationKey(conversationId),
-    );
-    if (latest?.idle?.generation !== message.generation) {
-      return false;
-    }
-    await state.set(
-      conversationKey(conversationId),
-      {
-        ...latest,
-        gapsMs: gapsMs ?? latest.gapsMs,
-        idle: { ...latest.idle, ...changes },
-      } satisfies ConversationCacheState,
-      CONVERSATION_STATE_TTL_MS,
-    );
-    return true;
-  };
-  const stop = async () => {
-    await state.delete(snapshotKey(conversationId));
-    await update({ warm: { ...warm, active: false } });
-  };
+  const { generation } = idle;
+  const stop = () => state.delete(snapshotKey(conversationId, generation));
 
   if (message.kind === "horizon") {
-    if (!idle.gapRecorded) {
-      await state.delete(snapshotKey(conversationId));
-      await update(
-        { gapRecorded: true, warm: { ...warm, active: false } },
-        await recordGap(state, idle.segment, current.gapsMs, NO_REPLY_GAP_MS),
-      );
-    }
+    await stop();
+    await recordGap(state, conversationId, idle, NO_REPLY_GAP_MS);
     return;
   }
-  if (!warm.active || warm.warmups !== message.cycle - 1) {
+  const warmups =
+    (await state.get<number>(warmupsKey(conversationId, generation))) ?? 0;
+  if (warmups !== message.cycle - 1) {
     return;
   }
 
@@ -423,7 +420,9 @@ export async function runCacheWarmup(
 
       const model = resolveGatewayModel(warm.modelId);
       const decision = decideWarmup({
-        conversationGapsMs: current.gapsMs,
+        conversationGapsMs: await state.getList<number>(
+          conversationGapsKey(conversationId),
+        ),
         globalGapsMs: await state.getList<number>(segmentGapsKey(idle.segment)),
         idleMs: Date.now() - idle.sinceMs,
         prefixTokens: warm.prefixTokens,
@@ -442,9 +441,11 @@ export async function runCacheWarmup(
         return;
       }
 
-      const snapshot = await state.get<string>(snapshotKey(conversationId));
+      // Warming stopped, or the idle period ended.
+      const snapshot = await state.get<string>(
+        snapshotKey(conversationId, generation),
+      );
       if (!snapshot) {
-        await stop();
         return;
       }
       const context = JSON.parse(
@@ -496,7 +497,14 @@ export async function runCacheWarmup(
       await countOutcome(false);
       logInfo("cache_warming.warmup.completed", attributes);
 
-      if (await update({ warm: { ...warm, warmups: message.cycle } })) {
+      await state.set(
+        warmupsKey(conversationId, generation),
+        message.cycle,
+        IDLE_HORIZON_MS,
+      );
+      // A reply during the warmup ended the idle period and deleted its
+      // snapshot. Then the next warmup would do nothing.
+      if (await state.get<string>(snapshotKey(conversationId, generation))) {
         await sendCacheWarmup(
           { ...message, cycle: message.cycle + 1 },
           nextWarmupDelayMs(startedAtMs, warm.prefixTokens),
