@@ -43,7 +43,7 @@ function conversation(
 }
 
 describe("plugin event transcript projection", () => {
-  it("creates a searchable standalone event entry", () => {
+  it("creates a standalone event entry", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({
@@ -99,7 +99,7 @@ describe("plugin event transcript projection", () => {
     expect(markdown).toContain("2026-01-01T00:00:01.000Z - +1.0s");
   });
 
-  it("creates a searchable standalone native authentication event entry", () => {
+  it("creates a standalone native authentication event entry", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({
@@ -130,7 +130,7 @@ describe("plugin event transcript projection", () => {
     expect(messageRawText(messages[0]!)).toContain("GitHub connected");
   });
 
-  it("creates a searchable AGENTS.md load event entry", () => {
+  it("creates an AGENTS.md load event entry", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         pluginEvent({

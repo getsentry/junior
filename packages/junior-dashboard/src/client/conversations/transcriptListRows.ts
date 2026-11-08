@@ -38,8 +38,9 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
  * become one group row, runs of two or more child agents become one
- * child agent group row, search drops rows that do not match, and the
- * "New" marker becomes its own row before the first unread row.
+ * child agent group row, and the "New" marker becomes its own row before
+ * the first unread row. Search shows only the matching messages, one row
+ * each, so every row is a match.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -53,16 +54,22 @@ export function transcriptListRows(input: {
   unread?: TranscriptUnreadRange;
 }): TranscriptListRow[] {
   const { entries, search } = input;
+  if (search !== undefined) {
+    return entries
+      .filter((entry) => entryMatchesSearch(entry, search))
+      .map((entry) => ({
+        kind: "entry",
+        entry,
+        key: `${input.keyPrefix}:${entry.key}`,
+        seq: entry.seq,
+      }));
+  }
   const quietKeys = quietTurnEntryKeys(entries);
   const collapsible = (entry: RenderedTranscriptEntry) =>
     isCollapsibleActivityEntry(entry) || quietKeys.has(entry.key);
-  const matches = (entry: RenderedTranscriptEntry) =>
-    search === undefined || entryMatchesSearch(entry, search);
   const claimedActivityKeys = new Set<string>();
   const rows: TranscriptListRow[] = [];
-  // Search results are not a reading order, so they get no marker.
-  const markerSeq =
-    search === undefined ? unreadMarkerSeq(entries, input.unread) : undefined;
+  const markerSeq = unreadMarkerSeq(entries, input.unread);
   let markerPending = markerSeq !== undefined;
   // Entries are in seq order, so the first row that reaches the marker seq
   // gets the marker.
@@ -84,21 +91,18 @@ export function transcriptListRows(input: {
         group.push(entries[index]!);
         index += 1;
       }
-      const visible = group.filter(matches);
-      if (visible.length > 0) {
-        // The marker goes before the group when any of it is unread.
-        pushRow({
-          kind: "activity",
-          entries: visible,
-          key: stableActivityGroupKey({
-            claimedKeys: claimedActivityKeys,
-            entries: group,
-            keyPrefix: input.keyPrefix,
-            knownKeys: input.knownActivityKeys,
-          }),
-          seq: lastEntrySeq(group),
-        });
-      }
+      // The marker goes before the group when any of it is unread.
+      pushRow({
+        kind: "activity",
+        entries: group,
+        key: stableActivityGroupKey({
+          claimedKeys: claimedActivityKeys,
+          entries: group,
+          keyPrefix: input.keyPrefix,
+          knownKeys: input.knownActivityKeys,
+        }),
+        seq: lastEntrySeq(group),
+      });
       continue;
     }
     if (entry.kind === "subagent") {
@@ -107,35 +111,30 @@ export function transcriptListRows(input: {
         group.push(entries[index] as SubagentEntry);
         index += 1;
       }
-      const visible = group.filter(matches);
-      if (visible.length > 1) {
+      if (group.length > 1) {
         pushRow({
           kind: "subagents",
-          entries: visible,
+          entries: group,
           // New child agents join at the end, so the first one keeps the key.
           key: `${input.keyPrefix}:subagents:${group[0]!.key}`,
           seq: lastEntrySeq(group),
         });
       } else {
-        for (const subagent of visible) {
-          pushRow({
-            kind: "entry",
-            entry: subagent,
-            key: `${input.keyPrefix}:${subagent.key}`,
-            seq: subagent.seq,
-          });
-        }
+        pushRow({
+          kind: "entry",
+          entry: group[0]!,
+          key: `${input.keyPrefix}:${group[0]!.key}`,
+          seq: group[0]!.seq,
+        });
       }
       continue;
     }
-    if (matches(entry)) {
-      pushRow({
-        kind: "entry",
-        entry,
-        key: `${input.keyPrefix}:${entry.key}`,
-        seq: entry.seq,
-      });
-    }
+    pushRow({
+      kind: "entry",
+      entry,
+      key: `${input.keyPrefix}:${entry.key}`,
+      seq: entry.seq,
+    });
     index += 1;
   }
   return rows;

@@ -16,7 +16,6 @@ import {
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
 import { cn } from "../styles";
-import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
@@ -195,7 +194,6 @@ export function TranscriptActivityGroup(props: {
   openKey?: string;
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
-  const { active: searchActive } = useTranscriptSearch();
   // Activity stays collapsed until the reader opens it.
   const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const rows = props.entries.map((entry) => (
@@ -204,14 +202,6 @@ export function TranscriptActivityGroup(props: {
   const label = activityGroupLabel(props.entries);
   const summary = activityGroupSummary(props.entries);
   const live = hasLiveActivity(props.entries);
-
-  if (searchActive) {
-    return (
-      <TranscriptActivityNesting.Provider value>
-        <div className="grid min-w-0 gap-1">{rows}</div>
-      </TranscriptActivityNesting.Provider>
-    );
-  }
 
   return (
     <Collapsible className="min-w-0 py-0.5" onOpenChange={setOpen} open={open}>

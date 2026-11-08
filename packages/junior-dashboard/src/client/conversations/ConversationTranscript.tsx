@@ -1,7 +1,6 @@
 import {
   memo,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -61,7 +60,10 @@ import {
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import { groupTranscriptMessages } from "./transcriptRenderModel";
-import { useTranscriptSearch } from "./transcriptSearch";
+import {
+  useTranscriptSearch,
+  useTranscriptSearchRows,
+} from "./transcriptSearch";
 import {
   TranscriptOpenRows,
   TranscriptRow,
@@ -77,7 +79,6 @@ import {
   type TranscriptListRow,
 } from "./transcriptListRows";
 import { useVirtualRows } from "./virtualRows";
-import { scrollRootFor } from "./transcriptBottomPinning";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
@@ -469,52 +470,12 @@ function TranscriptEntryList(
     () => new Map(rows.map((row, index) => [row.key, index])),
     [rows],
   );
-  const matchCount = searchQuery === undefined ? 0 : rows.length;
-  const { match, onMatches } = search;
-  // Search rows are all matches. Earlier history can put matches before
-  // the current one, so report how many, and the current match stays on
-  // its row. The current row stays mounted, so it can scroll into view like
-  // a reveal. Scroll only when the reader steps to another row. A new query
-  // or a loaded page does not scroll: a scroll to the top match shows the
-  // history sentinel, and each loaded page would then load the next one.
-  const shownMatch = useRef<{
-    firstKey?: string;
-    matchKey?: string;
-    query?: string;
-  }>({});
-  useEffect(() => {
-    const previous = shownMatch.current;
-    const sameQuery = previous.query === searchQuery;
-    const prepended =
-      matchCount > 0 && sameQuery && previous.firstKey !== undefined
-        ? (indexByKey.get(previous.firstKey) ?? 0)
-        : 0;
-    const current = Math.min(match + prepended, matchCount - 1);
-    const matchKey = matchCount > 0 ? rows[current]?.key : undefined;
-    shownMatch.current = {
-      firstKey: rows[0]?.key,
-      matchKey,
-      query: searchQuery,
-    };
-    onMatches?.(matchCount, prepended);
-    if (
-      !sameQuery ||
-      matchKey === undefined ||
-      matchKey === previous.matchKey
-    ) {
-      return;
-    }
-    const row = listRef.current?.querySelector(`[data-index="${current}"]`);
-    const root = scrollRootFor(listRef.current);
-    if (!row || !(root instanceof Element)) return;
-    // Scroll only the transcript. When it cannot center the row,
-    // scrollIntoView also scrolls the page layout and moves the header and
-    // side panels.
-    const rowBox = row.getBoundingClientRect();
-    const rootBox = root.getBoundingClientRect();
-    root.scrollTop +=
-      rowBox.top - rootBox.top - (rootBox.height - rowBox.height) / 2;
-  }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
+  const currentMatch = useTranscriptSearchRows({
+    indexByKey,
+    listRef,
+    query: searchQuery,
+    rows,
+  });
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -536,7 +497,7 @@ function TranscriptEntryList(
       markerIndex === undefined ? undefined : markerIndex + 1,
       revealIndex,
       revealIndex === undefined ? undefined : revealIndex - 1,
-      matchCount === 0 ? undefined : match,
+      currentMatch,
     ],
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),
@@ -594,7 +555,7 @@ function TranscriptEntryList(
         >
           {virtualizer.getVirtualItems().map((item) => (
             <VirtualTranscriptRow
-              current={matchCount > 0 && item.index === match}
+              current={item.index === currentMatch}
               index={item.index}
               key={item.key}
               measure={virtualizer.measureElement}
