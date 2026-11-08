@@ -77,6 +77,7 @@ import {
   type TranscriptListRow,
 } from "./transcriptListRows";
 import { useVirtualRows } from "./virtualRows";
+import { scrollRootFor } from "./transcriptBottomPinning";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
@@ -192,6 +193,8 @@ function SegmentEvents(
     revealSeq: props.revealSeq,
     scrollAnchorKey: props.scrollAnchorKey,
   };
+  // Search shows only matching messages, so the thinking row is not one.
+  const { active: searchActive } = useTranscriptSearch();
   return (
     <TranscriptRows>
       {props.conversation.eventHistory.status === "expired" ? (
@@ -227,7 +230,7 @@ function SegmentEvents(
           {unavailableTranscriptLabel(props.conversation)}
         </EmptyTelemetry>
       )}
-      {props.responding ? (
+      {props.responding && !searchActive ? (
         <TranscriptRow indent>
           <TranscriptTypingIndicator />
         </TranscriptRow>
@@ -501,9 +504,16 @@ function TranscriptEntryList(
     ) {
       return;
     }
-    listRef.current
-      ?.querySelector(`[data-index="${current}"]`)
-      ?.scrollIntoView({ block: "center" });
+    const row = listRef.current?.querySelector(`[data-index="${current}"]`);
+    const root = scrollRootFor(listRef.current);
+    if (!row || !(root instanceof Element)) return;
+    // Scroll only the transcript. When it cannot center the row,
+    // scrollIntoView also scrolls the page layout and moves the header and
+    // side panels.
+    const rowBox = row.getBoundingClientRect();
+    const rootBox = root.getBoundingClientRect();
+    root.scrollTop +=
+      rowBox.top - rootBox.top - (rootBox.height - rowBox.height) / 2;
   }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
