@@ -1,12 +1,9 @@
 import * as z from "zod";
-import type {
-  ConversationMessageSearchFilters,
-  ConversationMessageSearchScope,
-} from "@/chat/conversations/message-search";
+import type { ConversationMessageSearchFilters } from "@/chat/conversations/message-search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
+import type { SlackTeamId } from "@/chat/slack/ids";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
@@ -98,14 +95,17 @@ async function resolveSearchFilters(input: {
   };
 }
 
-/** Create a tool that searches retained public messages in an authorized Slack workspace. */
+/**
+ * Create a tool that searches retained messages of public Slack
+ * Conversations. `teamId` resolves the `channel_id` filter.
+ */
 export function createSlackConversationMessageSearchTool(
-  scope: ConversationMessageSearchScope,
+  teamId: SlackTeamId,
   currentConversationId: string,
 ) {
   return zodTool({
     description:
-      "Search retained user and assistant messages from public conversations in this Slack workspace. Filter by message text, channel, time range, or linked annotation such as a resource key. Excludes the current conversation. Not live Slack workspace search.",
+      "Search retained user and assistant messages from public Slack conversations. Filter by message text, channel, time range, or linked annotation such as a resource key. Excludes the current conversation. Not live Slack workspace search.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -161,19 +161,12 @@ export function createSlackConversationMessageSearchTool(
       .strict(),
     outputSchema: conversationMessageSearchOutputSchema,
     execute: async (input) => {
-      const teamId = parseSlackTeamId(scope.providerTenantId);
-      if (!teamId) {
-        throw new ToolInputError(
-          "Cannot search retained messages without a valid Slack workspace id.",
-        );
-      }
       const filters = await resolveSearchFilters({ ...input, teamId });
       const store = getConversationMessageSearchStore();
       const matches = await store.search({
         currentConversationId,
         filters,
         limit: input.limit ?? DEFAULT_LIMIT,
-        scope,
       });
       const matchesOutput = await Promise.all(
         matches.map(async (match) => {

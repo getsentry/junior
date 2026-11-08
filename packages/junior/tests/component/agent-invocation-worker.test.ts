@@ -255,6 +255,7 @@ describe("agent invocation worker", () => {
         ...INVOCATION_INPUT,
         agentName: "researcher",
         idempotencyKey: "steer-task",
+        parentToolCallId: "call-steer-task",
       });
       await markAgentInvocationRunning(created.invocationId);
       const { invocation: message, queued } =
@@ -299,8 +300,10 @@ describe("agent invocation worker", () => {
       // The runner drains steering messages, as the agent does before its
       // next model call.
       const steered: AgentSteeringMessage[][] = [];
+      const provenances: unknown[] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
+          provenances.push(run.instruction.provenance);
           await run.durability?.drainSteeringMessages?.(async (messages) => {
             steered.push(messages);
           });
@@ -352,7 +355,9 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
-      // The parent's text is a runtime input tag and has no Actor.
+      // The parent's task and messages are the child's instructions, with no
+      // Actor.
+      expect(provenances).toEqual([agentInstructionProvenance]);
       expect(steered).toEqual([
         [
           expect.objectContaining({

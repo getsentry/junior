@@ -287,7 +287,7 @@ describe("tool action review", () => {
       });
       await expect(action).rejects.toThrow(
         decision === "ask"
-          ? "respond to the user now with a direct, concise confirmation question"
+          ? "Ask for that confirmation now, the way your instructions say to ask."
           : "If the reason is missing or withheld authorization",
       );
     }

@@ -11,7 +11,7 @@ import type {
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import { isRuntimeInputText } from "@/chat/input-tags";
+import { isRuntimeInputText, readParentAgentTask } from "@/chat/input-tags";
 import type { PiMessage } from "@/chat/pi/messages";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 
@@ -270,7 +270,9 @@ export function getUserMessageInstructionText(message: PiMessage): string {
     const withoutContext = text
       .replace(EMBEDDED_THREAD_CONTEXT_PATTERN, "")
       .trim();
-    if (isRuntimeInputText(withoutContext)) return [withoutContext];
+    if (isRuntimeInputText(withoutContext)) {
+      return [readParentAgentTask(withoutContext) ?? withoutContext];
+    }
     const instruction = unwrapCurrentInstruction(withoutContext);
     return instruction === undefined ? [] : [instruction.trim()];
   });

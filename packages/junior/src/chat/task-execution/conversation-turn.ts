@@ -70,6 +70,7 @@ import {
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   abandonTurnRecord,
+  failTurnRecord,
   getTurnRecord,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
@@ -912,6 +913,29 @@ export function createConversationTurnWorker(
                   runId: currentRunId,
                   turnId,
                 });
+          // Fail the Turn record too, or a later wake with no new input
+          // resumes this Turn as the open mailbox Turn (JUNIOR-9M). Its own
+          // try so a lock timeout here still fails the Conversation copy.
+          try {
+            const latest = await getTurnRecord(context.conversationId, turnId);
+            if (latest) {
+              await failTurnRecord({
+                conversationId: context.conversationId,
+                errorMessage:
+                  failure instanceof Error ? failure.message : String(failure),
+                expectedVersion: latest.version,
+                turnId,
+              });
+            }
+          } catch (turnRecordError) {
+            captureConversationTurnFailure({
+              conversationId: context.conversationId,
+              error: turnRecordError,
+              failureCode: "persistence_failed",
+              runId: currentRunId,
+              turnId,
+            });
+          }
           try {
             markTurnFailed({
               conversation,

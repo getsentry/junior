@@ -16,8 +16,10 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorCodeChanges,
+  juniorConversationAnnotations,
   juniorConversationBriefs,
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -40,7 +42,7 @@ import {
   type ConversationRecordRow,
 } from "./record";
 import { readFeedThreads } from "./threads";
-import { readUnreadConversationIds } from "./unread";
+import { readUnreadConversationIds, unreadReplySql } from "./unread";
 import { conversationFeedSchema } from "../schema/conversation";
 import type { ConversationFeed } from "../schema/conversation";
 import {
@@ -211,28 +213,38 @@ async function waitingRowsOutsidePage(
 }
 
 const feedTree = alias(juniorConversations, "feed_tree");
+const feedAnnotated = alias(juniorConversations, "feed_annotated");
 
 /**
  * Return a query for a token that changes when the viewer's default feed
  * page can change. It reads the same newest page as the feed, so its cost
  * does not grow with the viewer's history.
  *
- * A write that changes what a Conversation shows bumps its `detail_version`,
- * so the sum over each page root's tree covers the rows and their child
- * agents. A new or newly active root changes the page. Pins bump no detail
- * version, so they are part of the token too. Waiting roots outside the
- * page move the Review items token.
+ * The token holds only what a feed row shows, so a Task's own writes do not
+ * move it. Each content write moves its Conversation's `last_activity_at`,
+ * so the root's value covers the preview and participants. The row shows
+ * only whether a reply is unread, so a scroll that moves the read position
+ * does not move the token.
+ * Threads and annotations show from the whole tree. Waiting roots outside
+ * the page move the Review items token.
  */
 export function conversationFeedVersionQuery(
   db: JuniorDatabase,
   userId: string,
 ) {
   const pin = juniorConversationParticipants;
+  const read = juniorConversationReadPositions;
   const page = db
     .select({
       conversationId: juniorConversations.conversationId,
+      channelName: juniorConversations.channelName,
+      executionStatus: juniorConversations.executionStatus,
+      lastActivityAt: juniorConversations.lastActivityAt,
+      lastReadSeq: read.lastReadSeq,
       pinnedAt: pin.pinnedAt,
       pinPosition: pin.pinPosition,
+      stoppedAt: juniorConversations.stoppedAt,
+      title: juniorConversations.title,
     })
     .from(juniorConversations)
     .leftJoin(
@@ -240,6 +252,13 @@ export function conversationFeedVersionQuery(
       and(
         eq(pin.rootConversationId, juniorConversations.conversationId),
         eq(pin.userId, userId),
+      ),
+    )
+    .leftJoin(
+      read,
+      and(
+        eq(read.conversationId, juniorConversations.conversationId),
+        eq(read.userId, userId),
       ),
     )
     .where(
@@ -258,16 +277,44 @@ export function conversationFeedVersionQuery(
     )
     .limit(CONVERSATION_FEED_LIMIT)
     .as("feed_page");
+  // The fields of each nested Thread row. An archive anywhere in the tree
+  // can hide Threads under it.
   const tree = db
     .select({
-      version: sql<string>`concat_ws(':', count(*), sum(${feedTree.detailVersion}))`,
+      version: sql<string>`concat_ws(':',
+        count(*) filter (where ${feedTree.archivedAt} is not null),
+        string_agg(concat_ws('/',
+          ${feedTree.conversationId}, ${feedTree.title},
+          ${feedTree.executionStatus}, ${feedTree.stoppedAt},
+          ${feedTree.lastActivityAt}
+        ), ',' order by ${feedTree.conversationId}) filter (
+          where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
+        )
+      )`,
     })
     .from(feedTree)
     .where(eq(feedTree.rootConversationId, page.conversationId));
+  const annotations = db
+    .select({
+      version: sql<string>`concat_ws(':', count(*), max(${juniorConversationAnnotations.updatedAt}))`,
+    })
+    .from(juniorConversationAnnotations)
+    .innerJoin(
+      feedAnnotated,
+      eq(
+        feedAnnotated.conversationId,
+        juniorConversationAnnotations.conversationId,
+      ),
+    )
+    .where(eq(feedAnnotated.rootConversationId, page.conversationId));
   return db
     .select({
       version: sql<string>`md5(coalesce(string_agg(
-        concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition}, (${tree})),
+        concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition},
+          ${page.title}, ${page.channelName}, ${page.executionStatus},
+          ${page.stoppedAt}, ${page.lastActivityAt},
+          ${unreadReplySql(db, userId, page.conversationId, page.lastReadSeq)},
+          (${tree}), (${annotations})),
         ',' order by ${page.conversationId}
       ), ''))`,
     })

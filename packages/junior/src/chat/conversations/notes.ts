@@ -5,6 +5,7 @@
  * context, never user intent, and only core adds one.
  */
 import { getConversationEventStore } from "@/chat/db";
+import type { ConversationTurnFailureCode } from "./history";
 import {
   conversationNoteEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
@@ -16,9 +17,18 @@ import {
  * before it calls the model, so without this note the model cannot see it.
  * The note has the error reference, never the raw error.
  */
-function failedTurnNote(eventId: string | undefined): string {
+function failedTurnNote(
+  failureCode: ConversationTurnFailureCode,
+  eventId: string | undefined,
+): string {
   const reference = eventId ? ` Error reference: event_id=${eventId}.` : "";
-  return `Your previous turn failed before it finished. The person may have seen an error reply or no reply.${reference} Do not assume that request was completed.`;
+  // A rejected post leaves no visible reply, so the model must not answer
+  // as if the person read it.
+  const seen =
+    failureCode === "delivery_failed"
+      ? "Your reply was not delivered, so the person did not see it. They may have seen an error reply."
+      : "The person may have seen an error reply or no reply.";
+  return `Your previous turn failed before it finished. ${seen}${reference} Do not assume that request was completed.`;
 }
 
 /** Most notes that one Turn shows. Older notes in the window are dropped. */
@@ -86,7 +96,7 @@ export async function loadTurnConversationNotes(input: {
         if (data.turnId !== input.turnId) return [];
         foundTurn = true;
       } else if (foundTurn && data.type === "turn_failed") {
-        newestFirst.push(failedTurnNote(data.eventId));
+        newestFirst.push(failedTurnNote(data.failureCode, data.eventId));
         if (newestFirst.length === MAX_CONVERSATION_NOTES_PER_TURN) break scan;
       } else if (
         foundTurn &&

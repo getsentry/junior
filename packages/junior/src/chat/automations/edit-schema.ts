@@ -36,7 +36,6 @@ export type AutomationEditFields = z.output<typeof automationEditFieldsSchema>;
 export const scheduledAutomationEditSchema = automationEditFieldsSchema
   .extend({
     schedule: scheduleIntentSchema.optional(),
-    status: z.enum(["active", "blocked"]).optional(),
   })
   .strict();
 

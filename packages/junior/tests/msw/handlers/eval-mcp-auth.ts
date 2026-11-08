@@ -687,9 +687,10 @@ export const evalMcpAuthHandlers = [
           tools: [
             {
               name: "budget-echo",
-              title: "Budget Echo",
-              description:
-                "Confirms the MCP connection for the auth-resume eval.",
+              title: "Budget Lookup",
+              // Describe the lookup that cases ask for. Action review rejects a
+              // call whose tool does not do what the person asked.
+              description: "Looks up the budget for a request.",
               inputSchema: {
                 type: "object",
                 properties: {
@@ -726,7 +727,7 @@ export const evalMcpAuthHandlers = [
           content: [
             {
               type: "text",
-              text: `Eval MCP connection confirmed for: ${query}`,
+              text: `Budget for "${query}": $150,000.`,
             },
           ],
           isError: false,

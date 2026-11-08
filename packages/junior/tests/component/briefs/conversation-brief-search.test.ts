@@ -9,14 +9,8 @@ import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import { createJuniorSqlFixture } from "../../fixtures/sql";
 
-const tenantScope = {
-  kind: "public_provider_tenant" as const,
-  provider: "slack" as const,
-  providerTenantId: "T123",
-};
-
 describe("Conversation Brief search", () => {
-  it("searches only the latest public root Briefs in the authorized scope", async () => {
+  it("searches only the latest public root Briefs of every surface", async () => {
     const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -180,11 +174,21 @@ describe("Conversation Brief search", () => {
         url: "https://example.com/acme/widget/12",
       });
 
-      const matches = await searchConversationBriefs(db, {
+      const deploymentMatches = await searchConversationBriefs(db, {
         currentConversationId,
         filters: { query: "deployment decision" },
         limit: 10,
-        scope: tenantScope,
+      });
+      // Public is public: another workspace matches; private, child, and
+      // current Conversations do not.
+      expect(
+        deploymentMatches.map((match) => match.conversationId).sort(),
+      ).toEqual([otherTenantId, targetConversationId].sort());
+
+      const matches = await searchConversationBriefs(db, {
+        currentConversationId,
+        filters: { query: "blue rollout" },
+        limit: 10,
       });
       expect(matches).toEqual([
         expect.objectContaining({
@@ -202,14 +206,13 @@ describe("Conversation Brief search", () => {
         }),
       ]);
       expect(matches[0]?.links).toHaveLength(5);
-      expect(matches[0]?.excerpt).toContain("**deployment**");
+      expect(matches[0]?.excerpt).toContain("**blue**");
 
       await expect(
         searchConversationBriefs(db, {
           currentConversationId,
           filters: { query: "obsolete migration" },
           limit: 10,
-          scope: tenantScope,
         }),
       ).resolves.toEqual([]);
 
@@ -224,7 +227,6 @@ describe("Conversation Brief search", () => {
             status: "done",
           },
           limit: 10,
-          scope: tenantScope,
         }),
       ).resolves.toEqual([
         expect.objectContaining({ conversationId: targetConversationId }),
@@ -235,7 +237,6 @@ describe("Conversation Brief search", () => {
           currentConversationId,
           filters: { query: "browser launch" },
           limit: 10,
-          scope: { kind: "public" },
         }),
       ).resolves.toEqual([
         expect.objectContaining({ conversationId: publicLocalId }),
