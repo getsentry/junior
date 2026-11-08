@@ -34,7 +34,7 @@ export function createArchiveAgentTool(conversationId: string) {
     exposure: "deferred",
     source: AGENTS_TOOL_SOURCE,
     description:
-      "Archive a Thread that this conversation started, for everyone. A person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread after its last result: that person decides, and can archive it from its dashboard_url.",
+      "Archive a Thread that this conversation started, for everyone. A person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread since you last gave it work: that person decides, and can archive it from its dashboard_url.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -95,18 +95,20 @@ export function createArchiveAgentTool(conversationId: string) {
           `${childConversationId} is working. Leave it, or wait until it is idle.`,
         );
       }
-      // A person who messaged the Thread after its last result took it
-      // over, so only people archive it from then on.
+      // A person who messaged the Thread since this conversation last gave
+      // it work took it over, so only people archive it from then on. The
+      // invocation's creation time never moves; its update time does, for
+      // example when its result reaches the parent's mailbox.
       const personMessageAt =
         await readLastPersonMessageAtMs(childConversationId);
       const latest =
         await getLatestAgentInvocationForConversation(childConversationId);
       if (
         personMessageAt !== undefined &&
-        personMessageAt > (latest?.updatedAtMs ?? 0)
+        personMessageAt > (latest?.createdAtMs ?? 0)
       ) {
         throw new ToolInputError(
-          `A person messaged ${childConversationId} after its last result, so a person still uses it. Leave it. That person can archive it from its dashboard_url.`,
+          `A person messaged ${childConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its dashboard_url.`,
         );
       }
       const result = await setConversationArchive({

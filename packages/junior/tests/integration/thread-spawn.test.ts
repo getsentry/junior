@@ -7,7 +7,11 @@ import {
 } from "@/chat/agent-invocations/create";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { completeAgentInvocation } from "@/chat/agent-invocations/store";
+import {
+  completeAgentInvocation,
+  getLatestAgentInvocationForConversation,
+  markAgentInvocationMailboxAppended,
+} from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -268,7 +272,14 @@ describe("Thread spawn and archive", () => {
         ]),
       );
 
-      // A person messaged the idle Thread after its last result.
+      // A person messaged the idle Thread after its last result. A later
+      // write to the parent's invocation, such as a replayed mailbox
+      // append, does not hand the Thread back.
+      const reported = await getLatestAgentInvocationForConversation(thread);
+      await markAgentInvocationMailboxAppended(
+        reported!.invocationId,
+        Date.now() + 60_000,
+      );
       await expect(
         archiveAgent(slackParentConversationId, thread),
       ).rejects.toMatchObject({
