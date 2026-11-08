@@ -109,6 +109,20 @@ describe("tool wait cache warming", () => {
     warmer.stop();
   });
 
+  it("does not warm after a request that outlived its cache", async () => {
+    await seedToolWaits(8 * MINUTE);
+    const warmer = createToolWaitWarmer("local:test:tool-wait");
+    // The request generated for 6 minutes, so its cache already expired.
+    await warmer.record(
+      { ...request(), startedAtMs: Date.now() - 6 * MINUTE },
+      message("toolUse"),
+    );
+    await vi.advanceTimersByTimeAsync(MINUTE);
+
+    expect(mocks.sendWarmup).not.toHaveBeenCalled();
+    warmer.stop();
+  });
+
   it("stops when the run ends, also during a warmup", async () => {
     await seedToolWaits(8 * MINUTE);
     let finishWarmup = () => {};

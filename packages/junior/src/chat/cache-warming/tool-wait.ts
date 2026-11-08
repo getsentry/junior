@@ -23,6 +23,7 @@ import {
   sendWarmup,
   cacheTtlMs,
   warmupTiming,
+  warmupTooLate,
   type ModelRequest,
 } from "./request";
 
@@ -64,7 +65,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
 
   const schedule = (cache: WarmCache, refreshedAtMs: number, cycle: number) => {
     const current = generation;
-    const { delayMs } = warmupTiming(
+    const { cacheExpiresAtMs, delayMs } = warmupTiming(
       refreshedAtMs,
       cache.prefixTokens,
       cache.ttlMs,
@@ -72,7 +73,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     timer = setTimeout(
       () => {
         timer = undefined;
-        void warm(cache, cycle, current);
+        void warm(cache, cacheExpiresAtMs, cycle, current);
       },
       Math.max(0, delayMs),
     );
@@ -80,7 +81,12 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     timer.unref?.();
   };
 
-  const warm = (cache: WarmCache, cycle: number, current: number) => {
+  const warm = (
+    cache: WarmCache,
+    cacheExpiresAtMs: number,
+    cycle: number,
+    current: number,
+  ) => {
     const { request, prefixTokens } = cache;
     return runWithLogContext(
       { conversationId, modelId: request.model.id },
@@ -91,6 +97,14 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
           "app.cache_warming.prefix_tokens": prefixTokens,
           "app.cache_warming.trigger": "tool_wait",
         };
+        // A long request can leave no time before the cache expires.
+        if (warmupTooLate(cacheExpiresAtMs)) {
+          logInfo("cache_warming.warmup.skipped", {
+            ...attributes,
+            "app.cache_warming.skip_reason": "cache_expired",
+          });
+          return;
+        }
         try {
           const state = await connectedState();
           if (await breakerOpen(state, request.model.id)) {

@@ -52,6 +52,7 @@ import {
   sendWarmup,
   cacheTtlMs,
   warmupTiming,
+  warmupTooLate,
   type ConnectedState,
   type ModelRequest,
 } from "./request";
@@ -114,9 +115,6 @@ const warmupsKey = (conversationId: string, generation: string) =>
 /** Set by the first of the reply and the horizon to record the gap. */
 const gapClaimKey = (conversationId: string, generation: string) =>
   `${KEY_PREFIX}:gap_claim:${conversationId}:${generation}`;
-// A warmup this close to the cache expiry may reach the provider after it.
-const LATE_WARMUP_MS = 10_000;
-
 // Send the warmup that refreshes the cache that a request at
 // `requestStartedAtMs` read or wrote.
 async function scheduleWarmup(
@@ -464,7 +462,7 @@ export async function runCacheWarmup(
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
-      if (Date.now() + LATE_WARMUP_MS >= message.cacheExpiresAtMs) {
+      if (warmupTooLate(message.cacheExpiresAtMs)) {
         logInfo("cache_warming.warmup.skipped", {
           ...attributes,
           "app.cache_warming.skip_reason": "cache_expired",

@@ -135,6 +135,17 @@ export function warmupTiming(
   };
 }
 
+// A warmup this close to the cache expiry may reach the provider after it.
+const LATE_WARMUP_MS = 10_000;
+
+/**
+ * Return true when a warmup is too late to refresh the cache. The cache is
+ * gone, so the warmup must not run or count as a miss.
+ */
+export function warmupTooLate(cacheExpiresAtMs: number): boolean {
+  return Date.now() + LATE_WARMUP_MS >= cacheExpiresAtMs;
+}
+
 /**
  * Return true while too many recent warmups of the model's provider missed,
  * so its warming is off.
