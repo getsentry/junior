@@ -69,6 +69,7 @@ export interface CompactContextResult {
     | "deferred"
     | "history_conflict"
     | "missing_context"
+    | "over_input_limit"
     | "over_target"
     | "summary_failed";
 }
@@ -694,7 +695,10 @@ async function compactActiveAboveThreshold(
       "app.compaction.input.estimate": source.estimatedTokens,
       "app.compaction.threshold": triggerTokens,
     });
-    return { compacted: false, reason: "over_target" } as const;
+    return {
+      compacted: false,
+      reason: reason === "over_input_limit" ? reason : "over_target",
+    } as const;
   };
   // A summary replaces only agent history. When the kept context alone stays
   // over the threshold, another summary cannot get under it, and the next

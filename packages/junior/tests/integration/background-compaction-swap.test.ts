@@ -597,7 +597,7 @@ describe("background compaction swap", () => {
     );
 
     // The model request still runs. The provider decides if it fits.
-    expect(result).toEqual({ compacted: false, reason: "over_target" });
+    expect(result).toEqual({ compacted: false, reason: "over_input_limit" });
     expect(summarize).not.toHaveBeenCalled();
     expect(
       (await loadConversationProjection({ conversationId })).messages,
