@@ -142,13 +142,6 @@ describe("Guardian action review", () => {
       ...proposal,
       context: { ...proposal.context, source: { kind: "event_automation" } },
     };
-    const automationChild: ToolActionProposal = {
-      ...proposal,
-      rootConversation: {
-        messages: [{ author: "automation", text: "Post the findings." }],
-        truncated: false,
-      },
-    };
 
     expect(guardianDecision(assess("none"), proposal).decision).toBe("allow");
     expect(guardianDecision(assess("withheld_step"), proposal).decision).toBe(
@@ -179,9 +172,6 @@ describe("Guardian action review", () => {
     expect(
       guardianDecision(assess("unclear_destination"), automationProposal)
         .decision,
-    ).toBe("deny");
-    expect(
-      guardianDecision(assess("withheld_step"), automationChild).decision,
     ).toBe("deny");
     expect(guardianDecision(assess("none"), automationProposal).decision).toBe(
       "allow",

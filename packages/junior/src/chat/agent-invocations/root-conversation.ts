@@ -15,9 +15,8 @@
  * their User, or only the Actor's own Identity when it has no User. So a
  * review desk answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
- * the one exception, because it has no per-person Identity. An Automation
- * run's own instruction counts as `automation`. A nested result that a child
- * agent gets as input is not parent text. Each other message keeps its
+ * the one exception, because it has no per-person Identity. A nested result
+ * that a child agent gets as input is not parent text. Each other message keeps its
  * real author as a label and is only context. Nothing is copied into the Run.
  */
 import type { Actor } from "@/chat/actor";
@@ -44,9 +43,6 @@ const MAX_ROOT_CONVERSATION_CHARS = 24_000;
 /** Message events read from the log. Edits and skipped messages use some. */
 const MAX_ROOT_MESSAGE_EVENTS = 64;
 
-// A dispatch Conversation id and its input message id are the same value.
-const DISPATCH_CONVERSATION_PREFIX = "agent-dispatch:";
-
 type MessageData = Extract<
   ConversationEvent["data"],
   { type: "message" | "message_updated" }
@@ -71,12 +67,7 @@ function messageAuthor(
     return undefined;
   }
   if (author?.isBot === true) {
-    // The runtime writes an Automation run's instruction as the dispatch
-    // input message, under the run's system Actor.
-    return root.conversationId.startsWith(DISPATCH_CONVERSATION_PREFIX) &&
-      data.messageId === root.conversationId
-      ? { platform: "system", name: userId }
-      : undefined;
+    return undefined;
   }
   const session = root.sessionSource;
   const platform = session?.kind ?? root.destination?.platform;
@@ -132,9 +123,6 @@ function messageLabel(
     return "user";
   }
   const author = messageAuthor(root, data);
-  if (author?.platform === "system") {
-    return sameActorIdentity(author, actor) ? "automation" : "event";
-  }
   // The local CLI has no per-person Identity. Its messages use the system
   // Identity, which events use too, so a local message counts by its Actor.
   if (author?.platform === "local" && sameActorIdentity(author, actor)) {
@@ -151,11 +139,7 @@ function renderedChars(message: RootConversationMessage): number {
 
 /** Only these labels can authorize an action. */
 function canAuthorize(message: RootConversationMessage): boolean {
-  return (
-    message.author === "user" ||
-    message.author === "automation" ||
-    message.author === "parent agent"
-  );
+  return message.author === "user" || message.author === "parent agent";
 }
 
 /** Use one line break, so a label cannot hide inside another line. */
@@ -172,29 +156,22 @@ function truncate(text: string, maxChars: number): string {
 }
 
 /**
- * Read the opening message of a root. For an Automation run root, it is the
- * run's instruction: its dispatch input message, loaded by id. For another
- * root, it is the oldest message, which usually holds the original request.
- * `seq` is set only when the message is older than the read page.
+ * Read the opening message of a Conversation: the oldest message, which
+ * usually holds the original request or task. `seq` is set only when the
+ * message is older than the read page.
  */
 async function readOpeningMessage(
   root: Conversation,
   page: ReadonlyMap<string, MessageData>,
 ): Promise<{ data: MessageData; seq?: number } | undefined> {
   const store = getConversationEventStore();
-  const event = root.conversationId.startsWith(DISPATCH_CONVERSATION_PREFIX)
-    ? // Each message event uses this key, as written by conversation ingress.
-      await store.loadByIdempotencyKey(
-        root.conversationId,
-        `message:${root.conversationId}`,
-      )
-    : (
-        await store.query(root.conversationId, {
-          afterSeq: -1,
-          limit: 1,
-          types: ["message"],
-        })
-      ).events[0];
+  const event = (
+    await store.query(root.conversationId, {
+      afterSeq: -1,
+      limit: 1,
+      types: ["message"],
+    })
+  ).events[0];
   if (event?.data.type !== "message") {
     return undefined;
   }
@@ -206,8 +183,7 @@ async function readOpeningMessage(
 /**
  * Read a bounded projection of the Run's own Conversation for Guardian review
  * of one action. `actor` is the Actor of the Run. Only messages that the same
- * Actor wrote, the Automation run's own instruction for a system Actor, and
- * a parent agent's task are labeled as authority.
+ * Actor wrote and a parent agent's task are labeled as authority.
  */
 export async function readRootConversation(args: {
   actor: Actor | undefined;
@@ -241,8 +217,8 @@ export async function readRootConversation(args: {
       orphanEdits.set(data.messageId, data.text);
     }
   }
-  // The opening message holds the original request, or the instruction of an
-  // Automation run, so it stays when newer messages push it out of the window.
+  // The opening message holds the original request or task, so it stays when
+  // newer messages push it out of the window.
   const pinnedRead = await readOpeningMessage(root, byId);
   // The opening message has a position, so an edit of it in the page counts.
   const openingEdit = pinnedRead
