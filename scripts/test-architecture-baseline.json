@@ -29,6 +29,7 @@
     "packages/junior/tests/integration/agent-invocation-work.test.ts": 8,
     "packages/junior/tests/integration/annotation-cards.test.ts": 7,
     "packages/junior/tests/integration/api/conversations/cancel-pending-messages.test.ts": 2,
+    "packages/junior/tests/integration/conversation-stale-turn.test.ts": 4,
     "packages/junior/tests/integration/conversation-turn-work.test.ts": 19,
     "packages/junior/tests/integration/durable-queue.test.ts": 10,
     "packages/junior/tests/integration/event-wake-delay.test.ts": 4,
