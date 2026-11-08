@@ -367,12 +367,12 @@ export const replyAttributionSchema = z
 const identityDispatchFields = {
   idempotencyKey: nonBlankStringSchema.pipe(z.string().max(512)),
   input: nonBlankStringSchema.pipe(z.string().max(32_000)),
-  replyAttribution: replyAttributionSchema.optional(),
 };
 
 /**
- * Plugin request to start private work for one person. Name the person by
- * exactly one of:
+ * Plugin request to start work for one person. `input` becomes that person's
+ * first Message in a new public Conversation, so it must be what they asked
+ * for, not text that someone else wrote. Name the person by exactly one of:
  *
  * - `subjectId`: the provider account id that the OAuth account-linking flow
  *   stored. Core binds the provider to the calling plugin.

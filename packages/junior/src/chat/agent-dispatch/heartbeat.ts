@@ -5,7 +5,8 @@ import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-import { createHeartbeatContext, type IdentityDispatcher } from "./context";
+import { createHeartbeatContext } from "./context";
+import type { IdentityDispatcher } from "./identity";
 import {
   listPendingAgentInvocationMailboxAppends,
   listPendingAgentInvocationResults,

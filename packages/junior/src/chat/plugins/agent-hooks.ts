@@ -92,7 +92,7 @@ import {
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
-import type { IdentityDispatcher } from "@/chat/agent-dispatch/context";
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowReviewItem } from "@/chat/review-items/changes";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";

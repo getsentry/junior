@@ -3,10 +3,8 @@ import {
   defineJuniorPlugin,
   type Destination,
 } from "@sentry/junior-plugin-api";
-import {
-  createHeartbeatContext,
-  createIdentityDispatcher,
-} from "@/chat/agent-dispatch/context";
+import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";

@@ -272,21 +272,54 @@ export async function findUserByVerifiedEmails(
 
 const linkedSlackIdentity = alias(juniorIdentities, "linked_slack_identity");
 
+/** One Slack user in the bot workspace and the User behind it. */
+export interface LinkedSlackUser {
+  slackUserId: string;
+  user: { displayName?: string; email: string; id: string };
+}
+
+const linkedSlackUserColumns = {
+  displayName: juniorUsers.displayName,
+  email: juniorUsers.primaryEmail,
+  slackUserId: linkedSlackIdentity.providerSubjectId,
+  userId: juniorUsers.id,
+};
+
+function singleLinkedSlackUser(
+  rows: {
+    displayName: string | null;
+    email: string;
+    slackUserId: string;
+    userId: string;
+  }[],
+): LinkedSlackUser | undefined {
+  const [row] = rows;
+  if (rows.length !== 1 || !row) return undefined;
+  return {
+    slackUserId: row.slackUserId,
+    user: {
+      id: row.userId,
+      email: row.email,
+      ...(row.displayName ? { displayName: row.displayName } : undefined),
+    },
+  };
+}
+
 /**
  * Find the one Slack user in a workspace who is linked to an exact provider
- * Identity.
+ * Identity, and the User behind both.
  *
  * Only the provider account id from an account-linking flow matches. Handles,
  * emails, and display names never match. Return undefined when no Slack user
  * or more than one Slack user matches.
  */
-export async function findLinkedSlackUserId(
+export async function findLinkedSlackUser(
   executor: JuniorSqlDatabase,
   args: { provider: string; providerSubjectId: string; slackTeamId: string },
-): Promise<string | undefined> {
+): Promise<LinkedSlackUser | undefined> {
   const rows = await executor
     .db()
-    .select({ slackUserId: linkedSlackIdentity.providerSubjectId })
+    .select(linkedSlackUserColumns)
     .from(juniorIdentities)
     // The join needs a user on both sides, so unlinked identities drop out.
     .innerJoin(
@@ -298,6 +331,7 @@ export async function findLinkedSlackUserId(
         eq(linkedSlackIdentity.providerTenantId, args.slackTeamId),
       ),
     )
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(
       and(
         eq(juniorIdentities.kind, "user"),
@@ -307,7 +341,7 @@ export async function findLinkedSlackUserId(
       ),
     )
     .limit(2);
-  return rows.length === 1 ? rows[0]?.slackUserId : undefined;
+  return singleLinkedSlackUser(rows);
 }
 
 /**
@@ -316,25 +350,28 @@ export async function findLinkedSlackUserId(
  * The caller must have verified that the person sent from this address.
  * Return undefined when no Slack user or more than one Slack user matches.
  */
-export async function findSlackUserIdByPrimaryEmail(
+export async function findSlackUserByPrimaryEmail(
   executor: JuniorSqlDatabase,
   args: { normalizedEmail: string; slackTeamId: string },
-): Promise<string | undefined> {
+): Promise<LinkedSlackUser | undefined> {
   const rows = await executor
     .db()
-    .select({ slackUserId: juniorIdentities.providerSubjectId })
+    .select(linkedSlackUserColumns)
     .from(juniorUsers)
-    .innerJoin(juniorIdentities, eq(juniorIdentities.userId, juniorUsers.id))
+    .innerJoin(
+      linkedSlackIdentity,
+      eq(linkedSlackIdentity.userId, juniorUsers.id),
+    )
     .where(
       and(
         eq(juniorUsers.primaryEmailNormalized, args.normalizedEmail),
-        eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.providerTenantId, args.slackTeamId),
+        eq(linkedSlackIdentity.kind, "user"),
+        eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, args.slackTeamId),
       ),
     )
     .limit(2);
-  return rows.length === 1 ? rows[0]?.slackUserId : undefined;
+  return singleLinkedSlackUser(rows);
 }
 
 /** Remove one exact provider identity owned by a workspace Slack user. */

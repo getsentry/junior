@@ -499,9 +499,11 @@ or a webhook route. Name the person with one of these:
 - `verifiedEmail`: an address that your plugin proved the person sent from.
   Never use an address that only appears in content.
 
-Junior starts private work in that person's Slack DM only when the person is a
-current member of the Slack workspace on the allowed domains. For any other
-person, it returns `{ status: "not_linked" }` and calls no model.
+Junior starts work only when the person is a current member of the Slack
+workspace on the allowed domains. `input` becomes their first message in a new
+public conversation in the dashboard, as if they sent it there. The conversation
+is not in Slack. For any other person, Junior returns
+`{ status: "not_linked" }` and calls no model.
 
 ```ts
 const result = await ctx.agent.dispatchForIdentity({

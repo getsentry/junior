@@ -19,7 +19,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
-import { createIdentityDispatcher } from "@/chat/agent-dispatch/context";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";

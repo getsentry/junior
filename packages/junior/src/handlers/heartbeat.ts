@@ -1,4 +1,4 @@
-import type { IdentityDispatcher } from "@/chat/agent-dispatch/context";
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";

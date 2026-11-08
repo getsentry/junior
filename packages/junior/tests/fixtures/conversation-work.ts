@@ -11,7 +11,7 @@ import {
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
-import { createIdentityDispatcher } from "@/chat/agent-dispatch/context";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";

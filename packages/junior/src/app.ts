@@ -134,7 +134,7 @@ import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import {
   createIdentityDispatcher,
   type IdentityDispatcher,
-} from "@/chat/agent-dispatch/context";
+} from "@/chat/agent-dispatch/identity";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
