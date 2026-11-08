@@ -20,7 +20,7 @@ export function createArchiveAgentTool(conversationId: string) {
     exposure: "deferred",
     source: AGENTS_TOOL_SOURCE,
     description:
-      "Archive a Thread that this conversation started, for everyone. An archived Thread no longer counts toward your limit of active children. Archive a Thread only when its work is done and no person still uses it: check its kind, status, and last_person_message_at with searchAgents first, and leave a Thread that people still message. A person's new message in an archived Thread restores it.",
+      "Archive a Thread that this conversation started, for everyone. An archived Thread no longer counts toward your limit of active children, and a person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. Before you archive, call searchAgents and read the Thread's last_person_message_at. When a person sent a message after the Thread's last result (its updated_at), a person still uses it: leave it, unless that person asked you to archive it.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

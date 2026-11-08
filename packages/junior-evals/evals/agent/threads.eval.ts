@@ -26,7 +26,7 @@ function archivedIds(calls: ToolCall[]): string[] {
   );
 }
 
-// The user never names a kind. These cases measure whether Junior picks a
+// The pick case never names a kind. These cases measure whether Junior picks a
 // Thread for work that people will talk to, and when it archives one.
 describe("Threads", () => {
   test("when people will work through a long effort with Junior directly, start it as a Thread", async ({
@@ -34,7 +34,7 @@ describe("Threads", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        "We're starting the Postgres 17 upgrade. Give it its own space where Priya and I can work through the plan with you over the next couple of weeks, and kick it off with a first-pass checklist.",
+        "Put a dedicated agent on the Postgres 17 upgrade plan. Priya and I will check in with it directly over the next couple of weeks to steer it. Have it start with a first-pass checklist.",
       ),
     );
 
