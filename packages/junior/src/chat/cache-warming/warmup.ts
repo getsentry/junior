@@ -18,7 +18,11 @@
  */
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
-import { gunzip as gunzipCallback, gzip as gzipCallback } from "node:zlib";
+import {
+  constants as zlibConstants,
+  zstdCompress as zstdCompressCallback,
+  zstdDecompress as zstdDecompressCallback,
+} from "node:zlib";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   streamSimple,
@@ -47,8 +51,13 @@ import {
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 
 // Compress off the event loop, so a large snapshot does not delay other work.
-const gzip = promisify(gzipCallback);
-const gunzip = promisify(gunzipCallback);
+const zstdCompress = promisify(zstdCompressCallback);
+const zstdDecompress = promisify(zstdDecompressCallback);
+// On a sample context, zstd level 4 is about 5% larger than gzip and almost
+// twice as fast.
+const SNAPSHOT_ZSTD_PARAMS = {
+  params: { [zlibConstants.ZSTD_c_compressionLevel]: 4 },
+};
 
 const KEY_PREFIX = "junior:cache_warming";
 const GLOBAL_GAPS_MAX = 2_000;
@@ -272,7 +281,10 @@ async function startIdlePeriod(
   }
   // State values are JSON, so the compressed bytes are stored as base64.
   const snapshot = (
-    await gzip(JSON.stringify(snapshotContext(request.context)))
+    await zstdCompress(
+      JSON.stringify(snapshotContext(request.context)),
+      SNAPSHOT_ZSTD_PARAMS,
+    )
   ).toString("base64");
   if (snapshot.length > MAX_SNAPSHOT_BYTES) {
     logInfo("cache_warming.snapshot.skipped", {
@@ -568,7 +580,9 @@ export async function runCacheWarmup(
         return;
       }
       const context = JSON.parse(
-        (await gunzip(Buffer.from(snapshot, "base64"))).toString("utf8"),
+        (await zstdDecompress(Buffer.from(snapshot, "base64"))).toString(
+          "utf8",
+        ),
       ) as Context;
       const startedAtMs = Date.now();
       const { message: result } = await completeText({
