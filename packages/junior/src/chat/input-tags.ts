@@ -16,6 +16,7 @@ const RUNTIME_INPUT_TAGS = [
   "review-item-dismissed",
   "relayed-review-item-answer",
   "relayed-review-item-dismissed",
+  "message-edit",
 ] as const;
 
 type TagAttrs = Record<string, string | number | undefined>;

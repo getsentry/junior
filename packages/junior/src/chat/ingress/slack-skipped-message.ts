@@ -14,13 +14,14 @@ export async function saveSkippedSlackMessage(args: {
   conversationId: string;
   message: Message;
   skippedReason: string;
+  text?: string;
 }): Promise<void> {
   const conversation = coerceThreadConversationState(undefined);
   recordSkippedConversationMessage({
     conversation,
     message: args.message,
     skippedReason: args.skippedReason,
-    text: parseContent(args.message).text,
+    text: args.text ?? parseContent(args.message).text,
   });
   await appendConversationMessages(getConversationEventStore(), {
     conversation,

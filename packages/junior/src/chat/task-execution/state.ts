@@ -10,6 +10,7 @@
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
+import { editedInboundMessageId } from "./inbound-edit";
 import * as z from "zod";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
@@ -225,6 +226,12 @@ export type StartConversationWorkResult =
 export interface AppendInboundMessageResult {
   status: "appended" | "duplicate";
 }
+
+/** Result of an edit. `updated` changed its pending original in place. */
+export type AppendInboundEditResult =
+  | AppendInboundMessageResult
+  | { status: "ignored" }
+  | { status: "updated" };
 
 export interface AppendAndEnqueueInboundMessageResult extends AppendInboundMessageResult {
   queueMessageId?: string;
@@ -1251,7 +1258,8 @@ async function appendInboundMessageWithAdmission(args: {
         status = current.execution.status === "running" ? "running" : "paused";
       } else if (
         current.execution.status === "paused" &&
-        args.message.delivery === "defer"
+        (args.message.delivery === "defer" ||
+          editedInboundMessageId(args.message) !== undefined)
       ) {
         status = "paused";
       } else {
@@ -1431,6 +1439,54 @@ export async function appendExclusiveInboundMessage(args: {
     ...args,
     exclusive: true,
   });
+}
+
+/**
+ * Persist an edit, marked with `withEditMarker`. A pending original that no
+ * Run can have read gets the new input in place. Otherwise the edit is
+ * appended, for a running Turn to steer in or for the worker to save. An edit
+ * never creates a Conversation.
+ */
+export async function appendInboundEdit(args: {
+  message: InboundMessage;
+  nowMs?: number;
+  replaceInput: (original: InboundMessage) => AgentInput;
+  state?: StateAdapter;
+}): Promise<AppendInboundEditResult> {
+  const nowMs = args.nowMs ?? now();
+  const result = await withConversationMutation(
+    { conversationId: args.message.conversationId, state: args.state },
+    async (state, lock) => {
+      const current = await readConversation(
+        state,
+        args.message.conversationId,
+      );
+      if (!current) return "ignored" as const;
+      const editedId = editedInboundMessageId(args.message);
+      const original = current.execution.pendingMessages.find(
+        (message) => message.inboundMessageId === editedId,
+      );
+      if (!original || isLeaseActive(current.execution.lease, nowMs)) {
+        return undefined;
+      }
+      const input = agentInputSchema.parse(args.replaceInput(original));
+      const execution = {
+        ...current.execution,
+        pendingMessages: current.execution.pendingMessages.map((message) =>
+          message === original ? { ...message, input } : message,
+        ),
+      };
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(current, execution, nowMs),
+      );
+      return "updated" as const;
+    },
+  );
+  return result
+    ? { status: result }
+    : await appendInboundMessage({ ...args, nowMs });
 }
 
 /** Mark a conversation runnable when there is no new mailbox message. */

@@ -4,6 +4,10 @@
  * This module owns Slack status, delivery, and state.
  * It calls `executeTurn` to run and finish the Turn.
  */
+import {
+  isSlackEditCorrection,
+  renderSlackMessageEdit,
+} from "@/chat/slack/message-edit";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -476,15 +480,19 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
-              // An answer or a dismiss steers in as its Review item tag.
-              const reviewItemInput = await loadReviewItemInput(
-                getMessageReviewItemChange(queued.message),
-              );
+              const actor = inboundMessageActor(queued);
+              // An answer or a dismiss steers in as its Review item tag, and
+              // an edit as its correction tag.
+              const runtimeInput = isSlackEditCorrection(queued.message.id)
+                ? renderSlackMessageEdit(queued.message, queued.userText)
+                : await loadReviewItemInput(
+                    getMessageReviewItemChange(queued.message),
+                  );
               return {
-                actor: inboundMessageActor(queued),
-                ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
+                actor,
+                ...(runtimeInput ? { kind: "runtime" as const } : undefined),
                 provenance: inboundMessageProvenance(queued, teamId),
-                text: reviewItemInput ?? queued.userText,
+                text: runtimeInput ?? queued.userText,
                 timestampMs: queued.message.metadata.dateSent.getTime(),
                 omittedImageAttachmentCount:
                   !canReadImages() && hasPotentialImageAttachment(attachments)

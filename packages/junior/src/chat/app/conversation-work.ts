@@ -24,6 +24,7 @@ import {
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { botConfig } from "@/chat/config";
 import { logException } from "@/chat/logging";
+import { skipEditOnlyInput } from "@/chat/conversations/edit-input";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import { resolveThreadTurnWork } from "@/chat/agent-invocations/thread-turn";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
@@ -204,6 +205,10 @@ export function createConversationWork(
   const run = async (
     attemptContext: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
+    const editOnly = await skipEditOnlyInput(attemptContext);
+    if (editOnly) {
+      return editOnly;
+    }
     // Apply a session stop to automated input, on a root or a child.
     const stopped = await skipInputAfterConversationStop(attemptContext);
     if ("skipped" in stopped) {

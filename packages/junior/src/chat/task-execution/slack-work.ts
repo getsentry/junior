@@ -483,7 +483,7 @@ function getConnectedState(stateAdapter?: StateAdapter): StateAdapter {
 }
 
 /** Parse the serialized Slack message/thread envelope stored in the mailbox. */
-function parseSlackMetadata(
+export function parseSlackMetadata(
   value: AgentInput["metadata"],
 ): SlackConversationMessageMetadata | undefined {
   const parsed = slackConversationMessageMetadataSchema.safeParse(value);

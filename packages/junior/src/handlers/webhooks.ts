@@ -37,8 +37,8 @@ async function handleChatSdkWebhook(args: {
   let request = args.request;
   let slackWorkspaceTeamId: string | undefined;
   if (args.platform === "slack") {
-    // Do not intercept message_changed events. Slack edits cannot create or
-    // change a Conversation Message or Turn after the original event.
+    // Do not intercept message_changed events. Slack ingress applies an edit
+    // without starting a Turn.
     const rawBody = await args.request.text();
     const parsedBody = parseJson(rawBody);
     slackWorkspaceTeamId = getSlackPayloadTeamId(parsedBody);

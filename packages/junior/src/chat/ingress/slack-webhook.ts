@@ -15,7 +15,12 @@ import {
   joinCreatedSlackChannel,
   slackChannelCreatedEnvelopeSchema,
 } from "./slack-channel-created";
-import { ThreadImpl, type Message, type StateAdapter } from "chat";
+import { Message, ThreadImpl, type StateAdapter } from "chat";
+import {
+  editedSlackInput,
+  parseSlackMessageEdit,
+} from "@/chat/slack/message-edit";
+import { withEditMarker } from "@/chat/task-execution/inbound-edit";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import {
   startProcessingReaction,
@@ -25,6 +30,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
+  appendAndEnqueueInboundEdit,
   appendAndEnqueueInboundMessage,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
@@ -32,6 +38,7 @@ import type { InboundMessage } from "@/chat/task-execution/state";
 import { withLock } from "@/chat/state/locks";
 import {
   buildSlackInboundMessage,
+  slackInboundMessageId,
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
 import {
@@ -532,6 +539,66 @@ async function routeParsedMessage(args: {
   args.runAfterUnlock(closeAnswered);
 }
 
+/**
+ * Apply a person's edit of earlier Slack input. It never starts a Turn. An
+ * edit outside a Conversation does nothing.
+ */
+async function handleSlackMessageEdit(args: {
+  adapter: SlackAdapter;
+  event: unknown;
+  installation: SlackInstallationContext;
+  conversationStore?: ConversationStore;
+  queue: ConversationWorkQueue;
+  receivedAtMs: number;
+  state: StateAdapter;
+}): Promise<void> {
+  const edit = await parseSlackMessageEdit(
+    args.adapter,
+    args.event,
+    args.state,
+  );
+  if (!edit) return;
+  const { message, threadId } = normalizeMessageThreadId(edit.message);
+  if (shouldIgnoreMessage(message)) return;
+  const correction = Message.fromJSON({
+    ...message.toJSON(),
+    id: edit.id,
+    raw: edit.raw,
+  });
+  await bindSlackAuthorIdentity(correction, args.installation);
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId: threadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+  const { inbound } = await buildSlackInput({
+    ...args,
+    conversationId,
+    message: correction,
+    route: "subscribed",
+  });
+  const originalId = slackInboundMessageId({
+    conversationId,
+    installation: args.installation,
+    slackId: message.id,
+  });
+  await appendAndEnqueueInboundEdit({
+    conversationStore: args.conversationStore,
+    message: {
+      ...inbound,
+      delivery: "interrupt",
+      input: {
+        ...inbound.input,
+        metadata: withEditMarker(inbound.input.metadata, originalId),
+      },
+    },
+    queue: args.queue,
+    replaceInput: (original) =>
+      editedSlackInput(original, message, inbound.input.text),
+    state: args.state,
+  });
+}
+
 async function handleSlackEvent(args: {
   body: SlackEventEnvelope;
   services: SlackWebhookServices;
@@ -656,6 +723,19 @@ async function handleSlackEvent(args: {
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
           }
+          return;
+        }
+
+        if (event.type === "message" && event.subtype === "message_changed") {
+          await handleSlackMessageEdit({
+            adapter,
+            event,
+            installation,
+            conversationStore: args.services.conversationStore,
+            queue: args.services.queue,
+            receivedAtMs,
+            state,
+          });
           return;
         }
 

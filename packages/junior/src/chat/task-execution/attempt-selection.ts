@@ -1,3 +1,4 @@
+import { editedInboundMessageId } from "./inbound-edit";
 import type { ConversationWorkState, InboundMessage } from "./store";
 
 function selectContiguousTurnBatch(
@@ -23,6 +24,7 @@ function selectContiguousTurnBatch(
  *
  * A steered web message must not start a second Turn while a yielded Turn
  * waits to resume. It stays pending for that Turn's drain or the next attempt.
+ * An edit only joins a Turn, so it gets no priority.
  */
 export function isAttemptInterrupt(
   message: InboundMessage,
@@ -30,6 +32,7 @@ export function isAttemptInterrupt(
 ): boolean {
   return (
     message.delivery === "interrupt" &&
+    editedInboundMessageId(message) === undefined &&
     !(work.execution.status === "paused" && message.source === "web")
   );
 }

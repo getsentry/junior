@@ -1,8 +1,8 @@
 import type { SlackInboundEvent } from "./slack-payload";
 
 const IGNORED_MESSAGE_SUBTYPES = new Set([
-  // Conversation Messages are immutable once accepted. An edit must not
-  // rewrite input or start another Turn. Send a new Slack Message instead.
+  // An edit is not new input. `handleSlackMessageEdit` applies it without
+  // starting a Turn.
   "message_changed",
   "message_deleted",
   "message_replied",

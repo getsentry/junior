@@ -372,6 +372,27 @@ export async function appendAndEnqueueInboundMessage(args: {
   return result;
 }
 
+/** Persist an edit and wake its worker when it was appended. */
+export async function appendAndEnqueueInboundEdit(
+  args: Parameters<typeof workState.appendInboundEdit>[0] & {
+    conversationStore?: ConversationStore;
+    queue: ConversationWorkQueue;
+  },
+): Promise<workState.AppendInboundEditResult> {
+  const nowMs = args.nowMs ?? now();
+  const appendResult = await workState.appendInboundEdit({ ...args, nowMs });
+  if (appendResult.status === "appended") {
+    await enqueueAfterAppend({ ...args, appendResult, nowMs });
+  } else if (appendResult.status === "updated") {
+    await recordExecutionMetadata({
+      conversationId: args.message.conversationId,
+      conversationStore: args.conversationStore,
+      state: args.state,
+    });
+  }
+  return appendResult;
+}
+
 /** Persist exclusive inbound work and wake its worker when admitted. */
 export async function appendAndEnqueueExclusiveInboundMessage(args: {
   message: InboundMessage;
