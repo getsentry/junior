@@ -13,6 +13,7 @@ export const EVAL_MCP_AUTHORIZATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/au
 const EVAL_MCP_TOKEN_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/token`;
 const EVAL_MCP_REGISTRATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/register`;
 const EVAL_MCP_ACCESS_TOKEN = "eval-auth-access-token";
+const EVAL_MCP_REFRESH_TOKEN = "eval-auth-refresh-token";
 const EVAL_MCP_SESSION_ID = "eval-auth-session";
 const EVAL_MCP_CLIENT_ID = "eval-auth-client-id";
 const EVAL_MCP_CALLBACK_PATH = "/api/oauth/callback/mcp/eval-auth";
@@ -73,7 +74,16 @@ interface AuthorizationGrant {
 let authorizationGrant: AuthorizationGrant | undefined;
 let clientRegistered = false;
 let tokenIssued = false;
+let issuesRefreshTokens = true;
 let releasePushCalls = 0;
+
+/**
+ * Issue access tokens without a refresh token until the test ends, as many
+ * providers do. Junior must then ask the person to sign in again.
+ */
+export function withholdEvalMcpRefreshTokens(): void {
+  issuesRefreshTokens = false;
+}
 
 /**
  * The first release push lands remotely but stalls past any eval turn
@@ -135,6 +145,7 @@ export function resetEvalMcpAuthMockState(): void {
   authorizationGrant = undefined;
   clientRegistered = false;
   tokenIssued = false;
+  issuesRefreshTokens = true;
   releasePushCalls = 0;
 }
 
@@ -849,6 +860,21 @@ export const evalMcpAuthHandlers = [
   http.post(EVAL_MCP_TOKEN_ENDPOINT, async ({ request }) => {
     const bodyText = await request.text();
     const params = new URLSearchParams(bodyText);
+    if (params.get("grant_type") === "refresh_token") {
+      if (
+        !tokenIssued ||
+        params.get("client_id") !== EVAL_MCP_CLIENT_ID ||
+        params.get("refresh_token") !== EVAL_MCP_REFRESH_TOKEN
+      ) {
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      }
+      return HttpResponse.json({
+        access_token: EVAL_MCP_ACCESS_TOKEN,
+        token_type: "Bearer",
+        expires_in: 3600,
+        refresh_token: EVAL_MCP_REFRESH_TOKEN,
+      });
+    }
     const code = params.get("code");
     const verifier = params.get("code_verifier");
     if (
@@ -877,7 +903,9 @@ export const evalMcpAuthHandlers = [
       access_token: EVAL_MCP_ACCESS_TOKEN,
       token_type: "Bearer",
       expires_in: 3600,
-      refresh_token: "eval-auth-refresh-token",
+      ...(issuesRefreshTokens
+        ? { refresh_token: EVAL_MCP_REFRESH_TOKEN }
+        : undefined),
       scope,
     });
   }),

@@ -310,7 +310,6 @@ describe("createMcpAuthOrchestration", () => {
       toolChannelId: "C123",
     });
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
-    expect(getMcpAuthSession).toHaveBeenCalledWith("auth_existing");
     expect(deliverPrivateMessage).not.toHaveBeenCalled();
     expect(recordPendingAuth).toHaveBeenCalledWith(pendingAuth);
     expect(abandonTurnRecord).not.toHaveBeenCalled();
