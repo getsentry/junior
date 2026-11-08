@@ -1,9 +1,8 @@
 /**
  * Search the top-level agents that one root Conversation may find: public
- * root Conversations in the same provider tenant. Private Conversations are
- * never returned, so no result leaks private data into the requester.
+ * root Conversations of any surface. Private Conversations are never
+ * returned, so no result leaks private data into the requester.
  */
-import type { User } from "@sentry/junior-plugin-api";
 import {
   and,
   desc,
@@ -19,7 +18,6 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { parseStoredBrief } from "@/chat/briefs/schema";
 import { treeHasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
 import type { ConversationStatus } from "@/chat/conversations/store";
@@ -55,23 +53,15 @@ export interface TopLevelAgentSearch {
 }
 
 /**
- * Search public root Conversations in the tenant of `requesterConversationId`.
- * `viewer` is the person of the current Turn. Newest activity first, or best
- * match for a query.
+ * Search public root Conversations other than `requesterConversationId`.
+ * Newest activity first, or best match for a query.
  */
 export async function searchTopLevelAgents(args: {
   requesterConversationId: string;
   search: TopLevelAgentSearch;
-  viewer?: User;
 }): Promise<TopLevelAgent[]> {
-  const { requesterConversationId, search, viewer } = args;
+  const { requesterConversationId, search } = args;
   const db = getDb();
-  const requester = (
-    await readConversationAccessFromSql(db, [requesterConversationId], viewer)
-  ).get(requesterConversationId);
-  if (!requester?.tenant) {
-    return [];
-  }
 
   const briefs = juniorConversationBriefs;
   const newer = alias(juniorConversationBriefs, "newer_briefs");
@@ -89,8 +79,6 @@ export async function searchTopLevelAgents(args: {
     isNull(juniorConversations.quickQuestionAt),
     isNull(juniorConversations.transcriptPurgedAt),
     ne(juniorConversations.conversationId, requesterConversationId),
-    eq(juniorDestinations.provider, requester.tenant.provider),
-    eq(juniorDestinations.providerTenantId, requester.tenant.providerTenantId),
     eq(juniorDestinations.visibility, "public"),
     search.annotation
       ? treeHasAnnotationKey(
