@@ -482,24 +482,20 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
-  const childAgent = Boolean(args.run.agentInvocationId);
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
-      childAgent,
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
       source: runSource,
       userIntent: args.currentUserIntent,
-      evidence: () =>
-        buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
+      evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
       // The Run's Conversation labels each message with its real author, so
-      // the Actor's earlier messages and a parent agent's task can
-      // authorize. A root Run of a system Actor, such as an event Turn, is
-      // not the author of the person's messages, so it keeps only the
-      // unlabeled evidence. Read for each action.
-      ...(childAgent || args.currentActor?.platform !== "system"
+      // the Actor's earlier messages can authorize. A Run of a system Actor,
+      // such as an event Turn, is not the author of the person's messages,
+      // so it keeps only the unlabeled evidence. Read for each action.
+      ...(args.currentActor?.platform !== "system"
         ? {
             rootConversation: async () =>
               await readRootConversation({

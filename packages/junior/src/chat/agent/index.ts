@@ -485,18 +485,13 @@ async function executeAgentRunInPrivacyContext(
             turnStartMessageIndex,
           ) ?? [])
         : [];
-    // The current request for action review: the Actor's own instructions,
-    // or in a child the parent agent's task and messages, which have no Actor.
-    const isGuardianIntent = (
-      provenance: ConversationMessageProvenance | undefined,
-    ): boolean =>
-      provenance?.authority === "instruction" &&
-      (provenance.actor
-        ? sameActorIdentity(provenance.actor, actor)
-        : childAgent);
     const guardianIntentParts =
       currentTurnMessages.flatMap((message, index) => {
-        if (!isGuardianIntent(currentTurnProvenance[index])) {
+        const provenance = currentTurnProvenance[index];
+        if (
+          provenance?.authority !== "instruction" ||
+          !sameActorIdentity(provenance.actor, actor)
+        ) {
           return [];
         }
         const text = getUserMessageInstructionText(message);
@@ -929,7 +924,11 @@ async function executeAgentRunInPrivacyContext(
             ...messages.map((message) => message.provenance),
           );
           for (const message of messages) {
-            if (isGuardianIntent(message.provenance) && message.text.trim()) {
+            if (
+              message.provenance.authority === "instruction" &&
+              sameActorIdentity(message.provenance.actor, actor) &&
+              message.text.trim()
+            ) {
               guardianIntentParts.push(message.text.trim());
             }
           }

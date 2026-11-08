@@ -3,10 +3,7 @@
  *
  * When Guardian reviews an action, the runtime reads the messages of the
  * Conversation that the Run belongs to, and never of a Conversation above
- * it. A parent agent passes authority to a child in the text of its
- * spawnAgent or messageAgent call, and Guardian reviews that call in the
- * parent. So in the child that text counts as `parent agent`. The source is
- * the `message` events: the durable visible transcript.
+ * it. The source is the `message` events: the durable visible transcript.
  * Compaction never rewrites these events, so an early request or a
  * later revocation is still there after the root's model history changes.
  *
@@ -15,9 +12,8 @@
  * their User, or only the Actor's own Identity when it has no User. So a
  * review desk answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
- * the one exception, because it has no per-person Identity. A nested result
- * that a child agent gets as input is not parent text. Each other message keeps its
- * real author as a label and is only context. Nothing is copied into the Run.
+ * the one exception, because it has no per-person Identity. Each other
+ * message keeps its real author as a label and is only context. Nothing is copied into the Run.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -63,10 +59,7 @@ function messageAuthor(
   const author = isRecord(data.meta?.author) ? data.meta.author : undefined;
   const userId =
     typeof author?.userId === "string" ? author.userId.trim() : undefined;
-  if (!userId) {
-    return undefined;
-  }
-  if (author?.isBot === true) {
+  if (!userId || author?.isBot === true) {
     return undefined;
   }
   const session = root.sessionSource;
@@ -114,11 +107,6 @@ function messageLabel(
   if (data.meta?.eventType !== undefined) {
     return "event";
   }
-  // The runtime records a spawnAgent or messageAgent task with its tool
-  // call. Guardian reviewed that call in the parent.
-  if (typeof data.meta?.parentToolCallId === "string") {
-    return "parent agent";
-  }
   if (data.authorIdentityId && personIdentityIds.has(data.authorIdentityId)) {
     return "user";
   }
@@ -139,7 +127,7 @@ function renderedChars(message: RootConversationMessage): number {
 
 /** Only these labels can authorize an action. */
 function canAuthorize(message: RootConversationMessage): boolean {
-  return message.author === "user" || message.author === "parent agent";
+  return message.author === "user";
 }
 
 /** Use one line break, so a label cannot hide inside another line. */
@@ -183,7 +171,7 @@ async function readOpeningMessage(
 /**
  * Read a bounded projection of the Run's own Conversation for Guardian review
  * of one action. `actor` is the Actor of the Run. Only messages that the same
- * Actor wrote and a parent agent's task are labeled as authority.
+ * Actor wrote are labeled as authority.
  */
 export async function readRootConversation(args: {
   actor: Actor | undefined;

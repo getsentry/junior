@@ -45,7 +45,6 @@ export interface ToolActionEvidence {
     role:
       | "assistant"
       | "user"
-      | "parent agent"
       | `tool ${string} call`
       | `tool ${string} result`;
     text: string;
@@ -62,17 +61,10 @@ export const ROOT_LINE_BREAK = /\r\n|[\n\r\u2028\u2029\u0085]/;
 /** One root Conversation message, labeled with its real author. */
 export interface RootConversationMessage {
   /**
-   * `user` is a message from the Run's own Actor. `parent agent` is a
-   * spawnAgent or messageAgent task, which Guardian reviewed in the parent.
-   * Only these two can authorize an action. Each other label is only context.
+   * `user` is a message from the Run's own Actor. Only it can authorize an
+   * action. Each other label is only context.
    */
-  author:
-    | "user"
-    | "parent agent"
-    | "assistant"
-    | "other person"
-    | "event"
-    | "system";
+  author: "user" | "assistant" | "other person" | "event" | "system";
   text: string;
 }
 
