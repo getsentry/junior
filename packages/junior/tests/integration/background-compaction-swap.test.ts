@@ -365,6 +365,39 @@ describe("background compaction swap", () => {
     expect(summarize).toHaveBeenCalledOnce();
   });
 
+  it("compacts above the threshold after a swap that kept agent history", async () => {
+    const conversationId = "local:web:compaction-after-swap";
+    const summaryAt = Date.now();
+    // A swap keeps agent history from before its summary. A full compaction
+    // can still drop it, so the first model call after the swap is no floor.
+    const history = [
+      user("<current-instruction>Check the deploy.</current-instruction>", 1),
+      user(renderCompactionSummary("Earlier work."), summaryAt),
+      toolCall("call-1", 2),
+      toolResult("call-1", "carried", 3),
+      {
+        ...toolCall("call-2", summaryAt + 1),
+        usage: { input: 370_000, output: 20, totalTokens: 370_020 },
+      } as PiMessage,
+      toolResult("call-2", "ok", summaryAt + 2),
+    ];
+    await commitMessages({ conversationId, messages: history });
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: history,
+      },
+      summarize,
+    );
+
+    expect(result.compacted).toBe(true);
+    expect(summarize).toHaveBeenCalledOnce();
+  });
+
   it("discards a summary when another replacement commits first", async () => {
     const conversationId = "local:web:swap-conflict";
     const committed = await prepareSummary(conversationId, firstTurn);

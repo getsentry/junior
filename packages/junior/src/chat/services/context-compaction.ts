@@ -500,18 +500,24 @@ function timestampOf(message: PiMessage): number | undefined {
   return typeof timestamp === "number" ? timestamp : undefined;
 }
 
-/** Find when the latest compaction summary in history was written. */
-function latestSummaryTimestamp(messages: PiMessage[]): number | undefined {
+/** Find the latest compaction summary in history. */
+function latestSummaryIndex(messages: PiMessage[]): number {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
     if (
       (message as { role?: unknown }).role === "user" &&
       hasCompactedConversationContext([message])
     ) {
-      return timestampOf(message);
+      return index;
     }
   }
-  return undefined;
+  return -1;
+}
+
+/** Find when the latest compaction summary in history was written. */
+function latestSummaryTimestamp(messages: PiMessage[]): number | undefined {
+  const index = latestSummaryIndex(messages);
+  return index < 0 ? undefined : timestampOf(messages[index]!);
 }
 
 /**
@@ -566,15 +572,22 @@ export function estimateHistoryTokens(
 
 /**
  * Read the provider-reported input of the first model call after the latest
- * summary. That request held the replacement, so another compaction of the
- * same context cannot get much below it.
+ * full compaction. That request held only the summary and the kept context,
+ * so another full compaction of the same context cannot get much below it.
+ * A swap also keeps agent history from before its summary. A full compaction
+ * can still drop that history, so a swap gives no such size.
  */
 function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
-  const summaryAt = latestSummaryTimestamp(messages);
+  const summaryIndex = latestSummaryIndex(messages);
+  if (summaryIndex < 0) return undefined;
+  const summaryAt = timestampOf(messages[summaryIndex]!);
   if (summaryAt === undefined) return undefined;
-  for (const message of messages) {
+  for (const message of messages.slice(summaryIndex + 1)) {
     const timestamp = timestampOf(message);
-    if (timestamp === undefined || timestamp <= summaryAt) continue;
+    if (timestamp === undefined || timestamp <= summaryAt) {
+      if ((message as { role?: unknown }).role !== "user") return undefined;
+      continue;
+    }
     const tokens = measuredInputTokens(message);
     if (tokens !== undefined) return tokens;
   }
