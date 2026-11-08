@@ -1563,7 +1563,10 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
         type: "message" as const,
         messageId: `many-turns-user-${turn}`,
         role: "user" as const,
-        text: `Question ${turn + 1}: review ${topics[turn % topics.length]}.`,
+        text:
+          turn % 2 === 0
+            ? `Question ${turn + 1}: review ${topics[turn % topics.length]}.`
+            : `Question ${turn + 1}: review ${topics[turn % topics.length]}. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week.`,
       }),
       reportEvent(
         turn * 2 + 1,
