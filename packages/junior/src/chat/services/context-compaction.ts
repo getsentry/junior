@@ -66,6 +66,7 @@ export interface CompactContextResult {
   piMessages?: PiMessage[];
   reason?:
     | "below_threshold"
+    | "deferred"
     | "history_conflict"
     | "missing_context"
     | "over_target"
