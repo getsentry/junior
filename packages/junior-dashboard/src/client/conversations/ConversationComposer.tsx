@@ -155,6 +155,9 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
   const [dictationError, setDictationError] = useState<string>();
+  // Send waits for dictation, so a clip is never left out of the message.
+  const [dictating, setDictating] = useState(false);
+  const dictatingRef = useRef(false);
   // The mic button takes focus, so remember where dictated text goes.
   const dictationCursorRef = useRef<{ end: number; start: number }>(undefined);
   const [dragging, setDragging] = useState(false);
@@ -310,7 +313,8 @@ export const ConversationComposer = memo(function ConversationComposer(
     !submittingRef.current &&
     !confirmingRef.current &&
     !sendLocked &&
-    !readingImagesRef.current;
+    !readingImagesRef.current &&
+    !dictatingRef.current;
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -347,6 +351,7 @@ export const ConversationComposer = memo(function ConversationComposer(
       replaceMessage(clearedDraft);
       replaceImages([]);
       setImageError(undefined);
+      setDictationError(undefined);
       storeDraft(storageKey, clearedDraft);
       attemptRef.current = nextAttempt;
     };
@@ -654,6 +659,10 @@ export const ConversationComposer = memo(function ConversationComposer(
           <div className="flex shrink-0 items-center gap-2">
             <ComposerDictation
               disabled={sendLocked || !online}
+              onBusyChange={(busy) => {
+                dictatingRef.current = busy;
+                setDictating(busy);
+              }}
               onError={setDictationError}
               onText={insertDictation}
             />
@@ -679,7 +688,8 @@ export const ConversationComposer = memo(function ConversationComposer(
                 (!canSend && !images.length) ||
                 !online ||
                 sendLocked ||
-                readingImages
+                readingImages ||
+                dictating
               }
               variant="primary"
               type="submit"

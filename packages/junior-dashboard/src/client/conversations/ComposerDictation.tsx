@@ -1,5 +1,5 @@
 import { Mic, Square, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import {
@@ -19,6 +19,7 @@ const DICTATION_WARN_SECONDS = DICTATION_MAX_SECONDS - 10;
 
 type ComposerDictationProps = {
   disabled?: boolean;
+  onBusyChange(busy: boolean): void;
   onError(message: string | undefined): void;
   onText(text: string): void;
 };
@@ -30,6 +31,13 @@ export function ComposerDictation(props: ComposerDictationProps) {
   const { cancel } = dictation;
   const listening =
     dictation.state === "starting" || dictation.state === "recording";
+  const busy = dictation.state !== "idle";
+  const onBusyChangeRef = useRef(props.onBusyChange);
+  onBusyChangeRef.current = props.onBusyChange;
+
+  useEffect(() => {
+    onBusyChangeRef.current(busy);
+  }, [busy]);
 
   useEffect(() => {
     if (!listening) return;
@@ -100,7 +108,6 @@ export function ComposerDictation(props: ComposerDictationProps) {
     );
   }
 
-  const busy = dictation.state !== "idle";
   return (
     <Tooltip>
       <TooltipTrigger
