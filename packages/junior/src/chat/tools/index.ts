@@ -114,6 +114,10 @@ export function createTools(
       : context.attachmentStorage,
   );
   const eventCatalog = getEventCatalog();
+  const modelCost = {
+    conversationId: context.conversationId,
+    ...(context.turnId ? { turnId: context.turnId } : undefined),
+  };
   const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
@@ -175,6 +179,7 @@ export function createTools(
       {
         modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
+        promptCost: modelCost,
         sandbox: context.workspace,
       },
       hooks.toolOverrides?.imageGenerate,
@@ -213,7 +218,7 @@ export function createTools(
   }
 
   if (context.spawnAgent) {
-    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent, modelCost);
     tools.stopAgent = createStopAgentTool(context.conversationId);
   }
 

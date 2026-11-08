@@ -10,7 +10,7 @@ import {
   type DescribeEvalOptions,
   type JsonValue,
 } from "vitest-evals";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import type {
   ToolActionDecision,

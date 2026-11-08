@@ -11,7 +11,7 @@ describe("spawnAgent", () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
-    const tool = createSpawnAgentTool(spawnAgent);
+    const tool = createSpawnAgentTool(spawnAgent, { owner: "none" });
 
     await expect(
       tool.execute!(
@@ -39,7 +39,7 @@ describe("spawnAgent", () => {
     const spawnAgent = vi.fn().mockResolvedValue({
       childConversationId: "agent:one",
     });
-    const tool = createSpawnAgentTool(spawnAgent);
+    const tool = createSpawnAgentTool(spawnAgent, { owner: "none" });
 
     await tool.execute!(
       tool.prepareArguments!({
@@ -60,7 +60,7 @@ describe("spawnAgent", () => {
   });
 
   it("requires the runtime tool call id used for durable replay", async () => {
-    const tool = createSpawnAgentTool(vi.fn());
+    const tool = createSpawnAgentTool(vi.fn(), { owner: "none" });
 
     await expect(
       tool.execute!(
@@ -73,6 +73,7 @@ describe("spawnAgent", () => {
   it("points a used name to messageAgent", async () => {
     const tool = createSpawnAgentTool(
       vi.fn().mockRejectedValue(new AgentNameInUseError("researcher")),
+      { owner: "none" },
     );
 
     await expect(
@@ -97,6 +98,7 @@ describe("spawnAgent", () => {
   it("maps parent fan-out limit errors to tool input errors", async () => {
     const tool = createSpawnAgentTool(
       vi.fn().mockRejectedValue(new AgentInvocationLimitError(8)),
+      { owner: "none" },
     );
 
     await expect(

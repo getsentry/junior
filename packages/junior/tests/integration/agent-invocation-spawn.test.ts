@@ -168,7 +168,7 @@ describe("agent invocation spawn and result delivery", () => {
         queue,
       });
       expect(spawnAgent).toBeDefined();
-      const tool = createSpawnAgentTool(spawnAgent!);
+      const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
       const input = tool.prepareArguments!({
         task: "Inspect the failing checks.",
         title: "Failing checks",
@@ -262,7 +262,7 @@ describe("agent invocation spawn and result delivery", () => {
           },
           { conversationStore, maxAgentDepth: 1, queue },
         );
-        const tool = createSpawnAgentTool(spawnAgent!);
+        const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
         return tool.execute!(
           tool.prepareArguments!({
             task: "Inspect the failing checks.",
