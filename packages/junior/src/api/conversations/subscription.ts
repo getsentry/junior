@@ -44,6 +44,12 @@ import { readConversationAccessFromSql } from "./access";
  * - Given an archived root, when a person restores it (any Message that
  *   restores an archive, or Unarchive), then that person is subscribed
  *   again. A restored root never sits in no feed.
+ * - Given a Turn, when the agent changes the subscription with its tool,
+ *   then only the person who started the Turn changes, in the current
+ *   Conversation. Nobody can subscribe or unsubscribe another person. The
+ *   dashboard (the menu and Conversation details), the agent tool, and the
+ *   MCP tool act only on the signed-in person or the Turn actor. No
+ *   argument names a person.
  *
  * Rules that follow:
  * - A subscription belongs to the root, like a pin. A child id resolves to
@@ -53,27 +59,46 @@ import { readConversationAccessFromSql } from "./access";
  * - An unsubscribed person does not keep the root from auto-archive, and
  *   their own auto-archive run skips it.
  * - Code: the active feed filter (`conversationIsNotUnsubscribedRoot`), Turn
- *   input membership (`recordTurnInputParticipants`), and auto-archive
- *   (`archivableRow`).
+ *   input membership (`recordTurnInputParticipants`), auto-archive
+ *   (`archivableRow`), and the entry points: this module's HTTP route,
+ *   `chat/tools/conversation-subscription.ts`, and
+ *   `api/mcp/tools/set-conversation-subscription.ts`.
  */
 
 /**
- * Subscribe the viewer to a Conversation, or unsubscribe them. The contract
- * is in the comment above.
+ * Subscribe a person to a Conversation, or unsubscribe them, for the HTTP
+ * API. The contract is in the comment above.
  */
 export async function setConversationSubscription(
   viewer: User,
   conversationId: string,
   body: ConversationSubscriptionBody,
 ): Promise<ConversationSubscriptionResponse> {
+  const result = await updateConversationSubscription(
+    viewer,
+    conversationId,
+    body.subscribed,
+  );
+  if (!result) throwApiError(404, "Conversation not found.");
+  return result;
+}
+
+/**
+ * Subscribe a person to a Conversation, or unsubscribe them. Every caller
+ * passes the person who asked, so nobody changes another person's
+ * subscription. Returns undefined when the person is not a participant.
+ */
+export async function updateConversationSubscription(
+  person: User,
+  conversationId: string,
+  subscribed: boolean,
+): Promise<ConversationSubscriptionResponse | undefined> {
   const access = await readConversationAccessFromSql(
     getDb(),
     [conversationId],
-    viewer,
+    person,
   );
-  if (!access.get(conversationId)?.isParticipant) {
-    throwApiError(404, "Conversation not found.");
-  }
+  if (!access.get(conversationId)?.isParticipant) return undefined;
   const executor = getSqlExecutor();
   const rootConversationId = await resolveRootConversationId(
     executor,
@@ -92,8 +117,8 @@ export async function setConversationSubscription(
       .where(eq(juniorConversations.conversationId, rootConversationId))
       .limit(1)
       .for("update");
-    if (!root) throwApiError(404, "Conversation not found.");
-    const unsubscribedAt = body.subscribed ? null : new Date();
+    if (!root) return undefined;
+    const unsubscribedAt = subscribed ? null : new Date();
     // The root actor may not have a participant row yet. The detail ETag
     // and the feed version read the subscription on each request.
     // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
@@ -103,21 +128,21 @@ export async function setConversationSubscription(
         lastMessageAt: root.lastActivityAt,
         rootConversationId,
         unsubscribedAt,
-        userId: viewer.id,
+        userId: person.id,
       })
       .onConflictDoUpdate({
         target: [
           juniorConversationParticipants.userId,
           juniorConversationParticipants.rootConversationId,
         ],
-        set: body.subscribed
+        set: subscribed
           ? { unsubscribedAt }
           : { pinnedAt: null, pinPosition: null, unsubscribedAt },
       });
-    if (body.subscribed || root.archivedAt) {
+    if (subscribed || root.archivedAt) {
       return {
         archivedAt: root.archivedAt?.toISOString() ?? null,
-        subscribed: body.subscribed,
+        subscribed,
       };
     }
     const [subscriber] = await db

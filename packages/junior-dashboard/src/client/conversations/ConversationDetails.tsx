@@ -45,8 +45,8 @@ type Brief = NonNullable<ConversationDetailReport["brief"]>;
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
   agentTree?: readonly ConversationAgentTreeNode[];
-  /** Viewer's auto-archive control. Null for non-participants. */
-  autoArchive: ReactNode;
+  /** Viewer's subscription and auto-archive. Null for non-participants. */
+  settings: ReactNode;
   brief?: Brief;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
@@ -205,8 +205,8 @@ export function ConversationDetails(props: {
           </DetailsCard>
         ) : null}
         {/* Linked work decides when auto-archive runs, so it follows. */}
-        {props.autoArchive != null ? (
-          <DetailsCard>{props.autoArchive}</DetailsCard>
+        {props.settings != null ? (
+          <DetailsCard>{props.settings}</DetailsCard>
         ) : null}
         {tasks.length > 0 ? (
           <ConversationTasks

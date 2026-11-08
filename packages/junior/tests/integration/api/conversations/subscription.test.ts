@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
+import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import {
@@ -14,11 +15,14 @@ import {
 } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { createConversationSubscriptionTools } from "@/chat/tools/conversation-subscription";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 // The contract is the comment at the top of
 // `src/api/conversations/subscription.ts`. Each test is one of its
-// scenarios. Tests go through the public API and stored Slack Turns only, so
-// storage can change without test changes.
+// scenarios. Tests go through the public API, the agent tool, and stored
+// Slack Turns only, so storage can change without test changes.
 
 const CONVERSATION_ID = "slack:C1:subscription";
 let nowMs = 1_000;
@@ -50,6 +54,7 @@ async function person(name: string) {
     });
   return {
     identityId: identityId!,
+    viewer,
     async feed(query = "") {
       const response = await api(query);
       expect(response.status).toBe(200);
@@ -85,6 +90,29 @@ async function person(name: string) {
 }
 
 type Person = Awaited<ReturnType<typeof person>>;
+
+/** Call the agent tool in a Turn that `actor` started in this Conversation. */
+async function agentSetsSubscription(actor: Person, subscribed: boolean) {
+  const identity: Identity = {
+    id: actor.identityId,
+    provider: "slack",
+    providerSubjectId: actor.identityId,
+  };
+  const context = {
+    conversationId: CONVERSATION_ID,
+    destination: { platform: "local", conversationId: CONVERSATION_ID },
+    egress: { fetch: async () => new Response("ok") },
+    resolveActorIdentity: async () => ({ identity, user: actor.viewer }),
+    source: createLocalSource(CONVERSATION_ID),
+    workspace: {} as ToolRuntimeContext["workspace"],
+  } as ToolRuntimeContext;
+  const tool =
+    createConversationSubscriptionTools(context).setConversationSubscription;
+  if (!tool?.execute || !tool.prepareArguments) {
+    throw new Error("setConversationSubscription is missing");
+  }
+  return await tool.execute(tool.prepareArguments({ subscribed }), {});
+}
 
 /** Store one Slack Message from the person, and a Turn that reads it. */
 async function say(someone: Person, mentionsJunior: boolean) {
@@ -186,6 +214,21 @@ describe("conversation subscription", () => {
     await ben.setSubscribed(false);
     expect((await ana.open()).archivedAt).toEqual(expect.any(String));
     expect(await ana.feed("?status=archived")).toEqual([CONVERSATION_ID]);
+  });
+
+  it("the agent tool changes only the person who started the Turn", async () => {
+    const { ana, ben } = await sharedThread();
+    const cleo = await person("cleo");
+
+    await agentSetsSubscription(ana, false);
+    expect(await ana.feed()).toEqual([]);
+    expect(await ben.feed()).toEqual([CONVERSATION_ID]);
+
+    await agentSetsSubscription(ana, true);
+    expect(await ana.feed()).toEqual([CONVERSATION_ID]);
+    await expect(agentSetsSubscription(cleo, false)).rejects.toBeInstanceOf(
+      ToolInputError,
+    );
   });
 
   it("whoever restores an archived conversation is subscribed again", async () => {
