@@ -6,7 +6,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useLocalStorage } from "@uidotdev/usehooks";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Link, useMatch } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
@@ -31,6 +31,7 @@ import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
 } from "../CommandPalette";
+import { isPlatformShortcut } from "../../keyboard";
 import { cn } from "../../styles";
 
 const OPEN_KEY = "junior:nav:sidebar-open";
@@ -48,21 +49,12 @@ const RAIL_STYLE = {
 
 /**
  * Lay out the desktop nav sidebar beside the page. It starts as the icon rail
- * until the viewer expands it, and keeps that choice for this browser. While
- * the top bar is the desktop navigation (`shown` is false), it stays
- * collapsed and Cmd/Ctrl+B does not change the choice.
+ * until the viewer expands it, and keeps that choice for this browser.
  */
-export function NavRailProvider(props: {
-  children: ReactNode;
-  shown: boolean;
-}) {
+export function NavRailProvider(props: { children: ReactNode }) {
   const [open, setOpen] = useLocalStorage(OPEN_KEY, false);
   return (
-    <SidebarProvider
-      onOpenChange={props.shown ? setOpen : undefined}
-      open={props.shown && open}
-      style={RAIL_STYLE}
-    >
+    <SidebarProvider onOpenChange={setOpen} open={open} style={RAIL_STYLE}>
       {props.children}
     </SidebarProvider>
   );
@@ -148,6 +140,16 @@ function RailNavItem(props: { item: DashboardHeaderNavItem }) {
 
 function RailToggle() {
   const { open, toggleSidebar } = useSidebar();
+  // Bound here so the shortcut works only while the sidebar shows.
+  useEffect(() => {
+    const toggle = (event: KeyboardEvent) => {
+      if (!isPlatformShortcut(event, "b") || event.repeat) return;
+      event.preventDefault();
+      toggleSidebar();
+    };
+    window.addEventListener("keydown", toggle);
+    return () => window.removeEventListener("keydown", toggle);
+  }, [toggleSidebar]);
   const label = open ? "Collapse sidebar" : "Expand sidebar";
   const Icon = open ? ChevronsLeft : ChevronsRight;
   return (

@@ -12,7 +12,6 @@ import {
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
-const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
@@ -36,8 +35,9 @@ function useSidebar() {
 /**
  * Own the sidebar state and width variables for the page frame.
  *
- * The dashboard keeps only the desktop sidebar. It drops the stock cookie
- * and mobile sheet: callers persist `open`, and `DashboardHeader` owns mobile
+ * The dashboard keeps only the desktop sidebar. It drops the stock cookie,
+ * Cmd/Ctrl+B shortcut, and mobile sheet: callers persist `open` and bind the
+ * shortcut while the sidebar shows, and `DashboardHeader` owns mobile
  * navigation.
  */
 function SidebarProvider({
@@ -73,22 +73,6 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => {
     setOpen((open) => !open);
   }, [setOpen]);
-
-  // Adds a keyboard shortcut to toggle the sidebar.
-  React.useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-        (event.metaKey || event.ctrlKey)
-      ) {
-        event.preventDefault();
-        toggleSidebar();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSidebar]);
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.

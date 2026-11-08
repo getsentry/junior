@@ -78,11 +78,13 @@ test("switches desktop navigation between adaptive, top bar, and sidebar", async
     .click();
   await expect(sidebar).toHaveCount(0);
   await expect(primary).toBeVisible();
+  // The sidebar shortcut does nothing while the sidebar is hidden.
+  await page.keyboard.press("ControlOrMeta+b");
 
   // Settings shows the same choice.
   await page.goto(`${dashboard.baseURL}/settings`);
   const setting = page.getByRole("radiogroup", { name: "Navigation" });
   await expect(setting.getByRole("radio", { name: /^Top bar/ })).toBeChecked();
   await setting.getByRole("radio", { name: /^Adaptive/ }).click();
-  await expect(sidebar).toBeVisible();
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
 });

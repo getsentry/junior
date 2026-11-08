@@ -297,7 +297,7 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <NavRailProvider shown={!desktopTopBar}>
+      <NavRailProvider>
         <CommandPalette
           currentConversationId={conversationId}
           navItems={[...primaryNavItems, ...profileNavItems]}
