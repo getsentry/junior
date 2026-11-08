@@ -1,20 +1,14 @@
 import { desc, eq, sql } from "drizzle-orm";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import type { Location } from "@/chat/conversations/location";
 import { getDb } from "@/chat/db";
-import { parseSessionSource } from "@/chat/source";
-import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 import { conversationKindFromRow } from "./sql/conversation-row";
-import { locationFromRow, visibilityFromLocationRow } from "./sql/location";
 import type { ConversationKind } from "./store";
 
 /** One Conversation in a parent chain. */
 export interface ConversationLineageEntry {
   conversationId: string;
   kind: ConversationKind;
-  location?: Location;
   parentConversationId?: string;
-  visibility?: ConversationPrivacy;
 }
 
 /**
@@ -46,11 +40,8 @@ export async function readConversationLineage(
   const rows = await getDb()
     .select({
       conversationId: juniorConversations.conversationId,
-      destination: juniorDestinations,
       kind: juniorConversations.kind,
-      location: juniorConversations.location,
       parentConversationId: juniorConversations.parentConversationId,
-      sessionSource: juniorConversations.sessionSource,
     })
     .from(juniorConversations)
     .innerJoin(
@@ -60,26 +51,12 @@ export async function readConversationLineage(
         juniorConversations.conversationId,
       ),
     )
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
     .orderBy(desc(sql`conversation_lineage.depth`));
-  return rows.map((row) => {
-    const location = locationFromRow(
-      row.location,
-      row.destination,
-      parseSessionSource(row.sessionSource),
-    );
-    const visibility = visibilityFromLocationRow(row.destination);
-    return {
-      conversationId: row.conversationId,
-      kind: conversationKindFromRow(row),
-      ...(location ? { location } : undefined),
-      ...(row.parentConversationId
-        ? { parentConversationId: row.parentConversationId }
-        : undefined),
-      ...(visibility ? { visibility } : undefined),
-    };
-  });
+  return rows.map((row) => ({
+    conversationId: row.conversationId,
+    kind: conversationKindFromRow(row),
+    ...(row.parentConversationId
+      ? { parentConversationId: row.parentConversationId }
+      : undefined),
+  }));
 }

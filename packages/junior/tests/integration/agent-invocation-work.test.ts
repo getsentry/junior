@@ -74,7 +74,7 @@ describe("agent invocation conversation work", () => {
     vi.restoreAllMocks();
   });
 
-  it("reads the parent Location and visibility without delivering child output", async () => {
+  it("reads the root Location and visibility without delivering child output", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
@@ -111,13 +111,20 @@ describe("agent invocation conversation work", () => {
       const child = await conversationStore.get({
         conversationId: created.childConversationId,
       });
+      // The child stores the root's Location and Destination row, but it has
+      // no Destination to deliver to.
       expect(child).toMatchObject({
+        location: {
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1712345.0001",
+        },
         parentConversationId: slackParentConversationId,
+        visibility: "public",
       });
       expect(child).not.toHaveProperty("destination");
-      expect(child).not.toHaveProperty("location");
       expect(child).not.toHaveProperty("sessionSource");
-      expect(child).not.toHaveProperty("visibility");
       const queueMessage = queue.takeMessage();
 
       await expect(
@@ -254,8 +261,8 @@ describe("agent invocation conversation work", () => {
           }),
         ]),
       );
-      // A child has no Location, so the dashboard reads its input and result
-      // from these message events.
+      // A child posts nothing to its Location, so the dashboard reads its
+      // input and result from these message events.
       await expect(
         loadMessageEvents(created.childConversationId),
       ).resolves.toEqual([
@@ -317,6 +324,37 @@ describe("agent invocation conversation work", () => {
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
       expect(observedVisibility).toBe("public");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("makes a child private when its root's channel goes private", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "private-1",
+      });
+      const childBefore = await conversationStore.get({
+        conversationId: created.childConversationId,
+      });
+      expect(childBefore).toMatchObject({ visibility: "public" });
+
+      // Only the root records the new visibility. The child shares its
+      // Destination row, so its own row does not change. A child Run reads
+      // this visibility, as the test above shows.
+      await conversationStore.recordActivity({
+        conversationId: slackParentConversationId,
+        destination: slackDestination,
+        nowMs: 3_000,
+        source: "slack",
+        visibility: "private",
+      });
+      await expect(
+        conversationStore.get({ conversationId: created.childConversationId }),
+      ).resolves.toEqual({ ...childBefore, visibility: "private" });
     } finally {
       await fixture.close();
     }

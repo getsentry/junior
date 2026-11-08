@@ -52,16 +52,9 @@ describe("Conversation lineage", () => {
     await fixture.close();
   });
 
-  it("reads the parent chain root first, with the root's Location and visibility", async () => {
-    const root = await store.get({ conversationId: ROOT_ID });
-
+  it("reads the parent chain root first", async () => {
     await expect(readConversationLineage(GRANDCHILD_ID)).resolves.toEqual([
-      {
-        conversationId: ROOT_ID,
-        kind: "root",
-        location: root!.location,
-        visibility: "public",
-      },
+      { conversationId: ROOT_ID, kind: "root" },
       { conversationId: CHILD_ID, kind: "task", parentConversationId: ROOT_ID },
       {
         conversationId: GRANDCHILD_ID,
@@ -69,20 +62,11 @@ describe("Conversation lineage", () => {
         parentConversationId: CHILD_ID,
       },
     ]);
-    expect(root!.location).toMatchObject({
-      channelId: "C123",
-      threadTs: "1700000000.000100",
-    });
   });
 
   it("reads a root as a chain of one and a missing Conversation as no chain", async () => {
     await expect(readConversationLineage(ROOT_ID)).resolves.toEqual([
-      {
-        conversationId: ROOT_ID,
-        kind: "root",
-        location: expect.objectContaining({ channelId: "C123" }),
-        visibility: "public",
-      },
+      { conversationId: ROOT_ID, kind: "root" },
     ]);
     await expect(readConversationLineage("agent:missing")).resolves.toEqual([]);
   });

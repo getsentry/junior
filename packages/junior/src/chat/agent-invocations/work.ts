@@ -7,7 +7,6 @@ import {
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
 import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
-import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -16,7 +15,7 @@ import {
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { escapeClosingTags, renderTag } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -616,7 +615,7 @@ async function saveAgentInvocationResult(args: {
     });
   } else if (args.invocation.source.kind !== "agent_invocation") {
     const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-    // A child has no Location, so this skips the notice and clears its claim.
+    // A child posts no notice, so this clears its claim.
     await maybePostAutomatedTurnLimitNotice({
       conversationId: args.invocation.childConversationId,
       maxTurns,
@@ -654,24 +653,6 @@ async function saveAgentInvocationResult(args: {
 }
 
 /**
- * Read how many parents a child Conversation has and the root Conversation's
- * Location. A child of the root has depth 1.
- */
-async function readChildDepthAndRootLocation(
-  conversationId: string,
-): Promise<{ depth: number; location?: Location }> {
-  const lineage = await readConversationLineage(conversationId);
-  const root = lineage[0];
-  if (!root) {
-    return { depth: 0 };
-  }
-  // A broken chain also counts the link to the parent that it could not read.
-  return root.parentConversationId
-    ? { depth: lineage.length }
-    : { depth: lineage.length - 1, location: root.location };
-}
-
-/**
  * Build the invocation consumer that advances work through the shared runner.
  * `enqueueResult` sends each terminal result to the parent mailbox. Omit it
  * only where the parent has no mailbox, such as the local CLI.
@@ -685,7 +666,10 @@ export function createAgentInvocationWorker(
     maxAgentDepth?: number;
   } = {},
 ) {
-  const maxAgentDepth = options.maxAgentDepth ?? 0;
+  // Every child has depth 1 or more, so with 0 no child can spawn. With more,
+  // a child past the limit still sees spawnAgent, and the spawn-time check in
+  // spawn.ts refuses it. Depth is not stored or read per Run.
+  const canSpawn = (options.maxAgentDepth ?? 0) > 0;
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -754,7 +738,6 @@ export function createAgentInvocationWorker(
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
     let location: Location | undefined;
-    let canSpawn = false;
     try {
       if (invocation.childConversationId !== context.conversationId) {
         throw new Error(
@@ -806,12 +789,14 @@ export function createAgentInvocationWorker(
         surface: "internal",
         turnId,
       });
-      const [persisted, projection, tree] = await Promise.all([
+      const [persisted, projection, child] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
         openConversationProjection({
           conversationId: invocation.childConversationId,
         }),
-        readChildDepthAndRootLocation(invocation.childConversationId),
+        getConversationStore().get({
+          conversationId: invocation.childConversationId,
+        }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       // Some types start with the parent's history. Later agent invocations
@@ -821,8 +806,7 @@ export function createAgentInvocationWorker(
         projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
-      location = tree.location;
-      canSpawn = tree.depth <= maxAgentDepth;
+      location = child?.location;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };

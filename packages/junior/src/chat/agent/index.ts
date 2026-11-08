@@ -121,7 +121,7 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { readConversationLineage } from "@/chat/conversations/lineage";
+import { getConversationStore } from "@/chat/db";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -157,20 +157,6 @@ import {
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
-
-/** Read visibility from the Conversation, or from its nearest parent with one. */
-async function readRunConversationVisibility(
-  conversationId: string,
-): Promise<ConversationPrivacy | undefined> {
-  const lineage = await readConversationLineage(conversationId);
-  for (let index = lineage.length - 1; index >= 0; index -= 1) {
-    const visibility = lineage[index]!.visibility;
-    if (visibility) {
-      return visibility;
-    }
-  }
-  return undefined;
-}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -230,7 +216,10 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const visibility = await readRunConversationVisibility(run.conversationId);
+  // A child reads visibility from its own Destination row, the same as a root.
+  const visibility = (
+    await getConversationStore().get({ conversationId: run.conversationId })
+  )?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
   });
