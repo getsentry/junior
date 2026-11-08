@@ -17,7 +17,8 @@
  * Work for an old idle period then cannot change a newer one.
  */
 import { randomUUID } from "node:crypto";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gunzip as gunzipCallback, gzip as gzipCallback } from "node:zlib";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   streamSimple,
@@ -38,6 +39,7 @@ import {
   decideWarmup,
   gapSegment,
   IDLE_HORIZON_MS,
+  MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
   SHORT_CACHE_TTL_MS,
@@ -45,11 +47,15 @@ import {
 } from "./model";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 
+// Compress off the event loop, so a large snapshot does not delay other work.
+const gzip = promisify(gzipCallback);
+const gunzip = promisify(gunzipCallback);
+
 const KEY_PREFIX = "junior:cache_warming";
 const GLOBAL_GAPS_MAX = 2_000;
-const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * 60_000;
+const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
 const CONVERSATION_GAPS_MAX = 50;
-const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * 60_000;
+const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
@@ -58,8 +64,8 @@ const REFRESHED_READ_FRACTION = 0.9;
 // every Conversation for a day.
 const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 10;
-const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * 60_000;
-const BREAKER_OPEN_TTL_MS = 24 * 60 * 60_000;
+const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * MINUTE_MS;
+const BREAKER_OPEN_TTL_MS = 24 * 60 * MINUTE_MS;
 // While warming is on, the recorder sets this retention on agent requests, so
 // Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
 // timing use the short TTL.
@@ -243,8 +249,9 @@ async function startIdlePeriod(
   if (!supportsWarming(request) || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
-  const snapshot = gzipSync(
-    JSON.stringify(snapshotContext(request.context)),
+  // State values are JSON, so the compressed bytes are stored as base64.
+  const snapshot = (
+    await gzip(JSON.stringify(snapshotContext(request.context)))
   ).toString("base64");
   if (snapshot.length > MAX_SNAPSHOT_BYTES) {
     logInfo("cache_warming.snapshot.skipped", {
@@ -479,6 +486,9 @@ export async function runCacheWarmup(
       const attributes: Record<string, unknown> = {
         "app.cache_warming.cycle": message.cycle,
         "app.cache_warming.prefix_tokens": warm.prefixTokens,
+        // Queue delay shows as a smaller time left than the warmup margin.
+        "app.cache_warming.cache_ttl_left_ms":
+          message.cacheExpiresAtMs - Date.now(),
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
@@ -530,7 +540,7 @@ export async function runCacheWarmup(
         return;
       }
       const context = JSON.parse(
-        gunzipSync(Buffer.from(snapshot, "base64")).toString("utf8"),
+        (await gunzip(Buffer.from(snapshot, "base64"))).toString("utf8"),
       ) as Context;
       const startedAtMs = Date.now();
       const { message: result } = await completeText({

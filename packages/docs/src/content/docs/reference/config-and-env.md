@@ -315,8 +315,9 @@ The memory model belongs to the memory plugin. Set it with `memoryPlugin({ model
 
 ## Prompt cache warming
 
-Anthropic models keep a prompt cache for 5 minutes. When a person replies after
-that time, the next turn writes the full history to the cache again. Junior
+Anthropic and Alibaba models keep a prompt cache for 5 minutes. When a person
+replies after that time, the next turn writes the full history to the cache
+again. Junior
 keeps the cache of an idle Conversation warm when a warmup is likely to cost
 less than that write.
 

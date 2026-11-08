@@ -7,13 +7,34 @@
  * compares that chance with the cost of one more warmup.
  */
 
-/** Upper edges (ms) of the gap histogram bins. The last bin has no edge. */
+/** One minute in milliseconds. */
+export const MINUTE_MS = 60_000;
+
+/** Upper edges (ms) of the gap histogram bins. */
 const GAP_BIN_EDGES_MS: readonly number[] = [
-  10_000, 20_000, 30_000, 45_000, 60_000, 90_000, 120_000, 180_000, 240_000,
-  300_000, 420_000, 600_000, 900_000, 1_200_000, 1_800_000, 2_700_000,
-  3_600_000, 5_400_000, 7_200_000, 14_400_000,
+  10_000,
+  20_000,
+  30_000,
+  45_000,
+  MINUTE_MS,
+  1.5 * MINUTE_MS,
+  2 * MINUTE_MS,
+  3 * MINUTE_MS,
+  4 * MINUTE_MS,
+  5 * MINUTE_MS,
+  7 * MINUTE_MS,
+  10 * MINUTE_MS,
+  15 * MINUTE_MS,
+  20 * MINUTE_MS,
+  30 * MINUTE_MS,
+  45 * MINUTE_MS,
+  60 * MINUTE_MS,
+  90 * MINUTE_MS,
+  120 * MINUTE_MS,
+  240 * MINUTE_MS,
+  Infinity,
 ];
-const GAP_BIN_COUNT = GAP_BIN_EDGES_MS.length + 1;
+const GAP_BIN_COUNT = GAP_BIN_EDGES_MS.length;
 
 /** Gaps a conversation needs before its own gaps replace the global gaps. */
 const BLEND_PSEUDOCOUNT = 20;
@@ -21,20 +42,30 @@ const BLEND_PSEUDOCOUNT = 20;
 /** Below this prefix size, one cache miss costs too little to warm for. */
 export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
 
-/** Anthropic's short cache TTL. Junior uses the default short retention. */
-export const SHORT_CACHE_TTL_MS = 5 * 60_000;
+/**
+ * Short cache TTL of the providers that Junior warms (`SHORT_TTL_PROVIDERS` in
+ * `warmup.ts`). Junior uses the default short retention.
+ */
+export const SHORT_CACHE_TTL_MS = 5 * MINUTE_MS;
 
 /**
  * Junior watches an idle period for this long. A person who replies later
  * counts as a person who did not reply. Warmups stop before this time, so the
- * model only needs reply chances inside it. Keep it below the queue signature
- * age, because one delayed message closes the idle period.
+ * model only needs reply chances inside it.
+ *
+ * The horizon message is signed when the idle period starts, and a queue
+ * signature is valid for 60 minutes (`QUEUE_SIGNATURE_MAX_AGE_MS`). The other
+ * 5 minutes let a late horizon still record its no-reply gap.
  */
-export const IDLE_HORIZON_MS = 55 * 60_000;
+export const IDLE_HORIZON_MS = 55 * MINUTE_MS;
 
 /** Gap that Junior records for an idle period with no reply in the horizon. */
-export const NO_REPLY_GAP_MS = 24 * 60 * 60_000;
+export const NO_REPLY_GAP_MS = 24 * 60 * MINUTE_MS;
 
+// Warmup margin values from Lore. 0.27 ms per token gives a prefix of about
+// 164K tokens 44 seconds more, which matches the warmup round trip and TTL
+// jitter that Lore saw on large prefixes. The cap applies from about 333K
+// tokens, so the largest margin is 135 seconds.
 const BASE_WARMUP_MARGIN_MS = 45_000;
 const MARGIN_PER_PREFIX_TOKEN_MS = 0.27;
 const MAX_SIZE_MARGIN_MS = 90_000;
@@ -45,8 +76,7 @@ interface GapHistogram {
 }
 
 function binIndex(gapMs: number): number {
-  const index = GAP_BIN_EDGES_MS.findIndex((edge) => gapMs < edge);
-  return index === -1 ? GAP_BIN_EDGES_MS.length : index;
+  return GAP_BIN_EDGES_MS.findIndex((edge) => gapMs < edge);
 }
 
 function histogramOf(gapsMs: readonly number[]): GapHistogram {
@@ -88,14 +118,12 @@ function survival(histogram: GapHistogram, tMs: number): number {
     surviving += histogram.counts[i]!;
   }
   const binStart = index > 0 ? GAP_BIN_EDGES_MS[index - 1]! : 0;
-  const binEnd = GAP_BIN_EDGES_MS[index];
-  if (binEnd !== undefined) {
-    const fractionPast = Math.min(
-      1,
-      Math.max(0, (tMs - binStart) / (binEnd - binStart)),
-    );
-    surviving += histogram.counts[index]! * (1 - fractionPast);
-  }
+  // The last bin has no end, so all of its gaps are after t.
+  const fractionPast = Math.min(
+    1,
+    Math.max(0, (tMs - binStart) / (GAP_BIN_EDGES_MS[index]! - binStart)),
+  );
+  surviving += histogram.counts[index]! * (1 - fractionPast);
   return surviving / histogram.total;
 }
 
@@ -111,8 +139,11 @@ function returnProbability(
 }
 
 /**
- * Return how long before cache expiry to send a warmup. A large prefix needs
- * more headroom, so the margin grows with the prefix up to a fixed cap.
+ * Return how long before cache expiry to send a warmup. The warmup refreshes
+ * the cache only if the provider reads the whole prefix before it expires. A
+ * larger prefix takes longer to send and read, and its cache blocks were
+ * written at slightly different times. So the margin grows with the prefix up
+ * to a fixed cap.
  */
 export function warmupMarginMs(prefixTokens: number): number {
   return (
