@@ -249,6 +249,7 @@ function isTakeOnly(message: ConversationMessage): boolean {
 function renderThreadContextMessage(
   message: ConversationMessage,
   conversation: ThreadConversationState,
+  index: number,
 ): string {
   const author = escapeXml(conversationAuthorDisplayName(message));
   const actorIdAttr = message.author?.userId
@@ -259,7 +260,7 @@ function renderThreadContextMessage(
     ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
     : "";
   return [
-    `  <message ts="${ts}" role="${message.role}" author="${author}"${actorIdAttr}${slackTsAttr}>`,
+    `  <message index="${index}" ts="${ts}" role="${message.role}" author="${author}"${actorIdAttr}${slackTsAttr}>`,
     renderConversationMessageLine(message, conversation),
     "  </message>",
   ].join("\n");
@@ -277,7 +278,7 @@ function isUntaggedThreadMessage(message: ConversationMessage): boolean {
 
 /** Return the highest saved Message seq, the thread context cursor of a Turn. */
 export function latestConversationMessageSeq(
-  conversation: ThreadConversationState,
+  conversation: Pick<ThreadConversationState, "messages">,
 ): number | undefined {
   let latest: number | undefined;
   for (const message of conversation.messages) {
@@ -320,17 +321,25 @@ export function buildConversationContext(
             entry.seq === undefined ||
             entry.seq > history.afterSeq))),
   );
-  const shown: string[] = [];
+  // Keep the newest Messages that fit. The index of a Message is its position
+  // in the block.
+  let first = candidates.length;
   let chars = 0;
-  for (let index = candidates.length - 1; index >= 0; index -= 1) {
-    const rendered = renderThreadContextMessage(
-      candidates[index]!,
+  while (first > 0) {
+    const size = renderThreadContextMessage(
+      candidates[first - 1]!,
       conversation,
-    );
-    if (chars + rendered.length > THREAD_CONTEXT_MAX_CHARS) break;
-    shown.unshift(rendered);
-    chars += rendered.length;
+      first,
+    ).length;
+    if (chars + size > THREAD_CONTEXT_MAX_CHARS) break;
+    chars += size;
+    first -= 1;
   }
+  const shown = candidates
+    .slice(first)
+    .map((message, index) =>
+      renderThreadContextMessage(message, conversation, index + 1),
+    );
   if (shown.length === 0) {
     return undefined;
   }
