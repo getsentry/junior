@@ -685,7 +685,9 @@ async function compactActiveAboveThreshold(
   const retainUserMessages =
     args.mode === "blocking" && pendingMessages.length > 0;
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
-  const skip = (reason: "last_over_threshold" | "over_target") => {
+  const skip = (
+    reason: "last_over_threshold" | "over_input_limit" | "over_target",
+  ) => {
     setSpanAttributes({
       "app.compaction.outcome": "skipped",
       "app.compaction.skip_reason": reason,
@@ -751,6 +753,11 @@ async function compactActiveAboveThreshold(
     keptTokens > calculateContextCompactionTargetTokens(triggerTokens)
   ) {
     return skip("over_target");
+  }
+  // When the kept context alone is at the input limit, no summary can fit.
+  // The model request still runs: the provider decides if it fits.
+  if (keptTokens >= inputLimitTokens) {
+    return skip("over_input_limit");
   }
 
   await args.onCompactionStart?.();
