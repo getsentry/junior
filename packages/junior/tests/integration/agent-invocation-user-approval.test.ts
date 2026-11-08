@@ -452,10 +452,12 @@ describe("user approval for child agents", () => {
         text: "Fix each gap and open a PR for each change.",
       });
       // Each child result is written and then edited, so the request falls
-      // more than a read page behind the newest message events.
+      // more than a read page behind the newest message events. Like in
+      // production, child results use the system Identity.
       for (let step = 1; step <= 40; step += 1) {
         const messageId = `child-result-${step}`;
         await recordRootMessage(slackParentConversationId, {
+          authorIdentityId: SYSTEM_IDENTITY_ID,
           eventType: "agent_result",
           messageId,
           role: "user",
@@ -469,6 +471,7 @@ describe("user approval for child agents", () => {
               messageId,
               role: "user",
               text: `Child result ${step}.`,
+              authorIdentityId: SYSTEM_IDENTITY_ID,
               meta: { eventType: "agent_result" },
             },
             createdAtMs: 5_000 + step,
