@@ -240,6 +240,55 @@ describe("background compaction swap", () => {
     expect(summarize).not.toHaveBeenCalled();
   });
 
+  it("keeps the history at Turn start below the threshold", async () => {
+    const conversationId = "local:web:swap-turn-start-below";
+    const earlier = [
+      user("<current-instruction>Find build 7421.</current-instruction>", 1),
+      assistant("Found build 7421.", 2),
+    ];
+    await prepareSummary(conversationId, earlier);
+    const afterMark = [
+      user(
+        "<current-instruction>Read the deploy log.</current-instruction>",
+        3,
+      ),
+      assistant("Read it.", 4),
+    ];
+    const committed = await commitMessages({
+      conversationId,
+      messages: [...earlier, ...afterMark],
+    });
+    const prompt = user(
+      "<current-instruction>What was the checksum?</current-instruction>",
+      5,
+    );
+    const summarize = vi.fn(async () => "Unused.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        pendingMessages: [
+          { message: prompt, provenance: { authority: "instruction" } },
+        ],
+        piMessages: [...earlier, ...afterMark],
+      },
+      summarize,
+    );
+
+    // A swap here would only rewrite the provider's prompt cache.
+    expect(result.compacted).toBe(false);
+    expect(summarize).not.toHaveBeenCalled();
+    const events = getConversationEventStore();
+    expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
+      committed.historyVersion,
+    );
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual([...earlier, ...afterMark]);
+  });
+
   it("discards a summary of an older History version and runs the blocking compaction", async () => {
     const conversationId = "local:web:swap-discard-99";
     await prepareSummary(conversationId, firstTurn, { historyVersion: 99 });

@@ -908,7 +908,6 @@ async function executeAgentRunInPrivacyContext(
         conversationPrivacy,
         modelId: activeModelId,
         queue: run.environment?.backgroundCompactionQueue,
-        turnStartedAtMs: replyStartedAtMs,
       });
     // ── Agent execution ──────────────────────────────────────────────
     let assistantMessageDeliveryError:

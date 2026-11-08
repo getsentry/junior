@@ -3,11 +3,11 @@
  *
  * A background job writes `compaction_prepared` with a summary of the history
  * up to `markSeq`. The Turn swaps it in without a model call: retained user
- * messages, the summary, then every message after the mark. Turn start swaps
- * a ready summary at once. Between model calls, a swap runs only above the
- * compaction threshold, in place of a blocking summary call. A summary that
- * no longer matches the history is discarded, and the Turn carries on as if
- * none existed.
+ * messages, the summary, then every message after the mark. A swap runs only
+ * above the compaction threshold, at Turn start or between model calls, in
+ * place of a blocking summary call. Below it, a swap would only rewrite the
+ * provider's prompt cache. A summary that no longer matches the history is
+ * discarded, and the Turn carries on as if none existed.
  */
 import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
@@ -113,11 +113,7 @@ export async function compactWithPreparedSummary(
   return await compactActiveContextIfNeeded(args, summarize);
 }
 
-/**
- * Replace history with a ready prepared summary. Turn start swaps whenever
- * one is ready. Between model calls, swap only above the compaction
- * threshold.
- */
+/** Replace history above the compaction threshold with a ready prepared summary. */
 async function swapPreparedCompaction(
   args: ActiveContextCompactionArgs,
 ): Promise<CompactContextResult> {
@@ -131,7 +127,7 @@ async function swapPreparedCompaction(
     sourceMessages,
     args.requestOverheadTokens,
   );
-  if (args.mode !== "blocking" && estimatedTokens <= triggerTokens) {
+  if (estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
   const latest = await loadLatestBackgroundCompaction(args.conversationId);
