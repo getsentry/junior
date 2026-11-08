@@ -282,23 +282,24 @@ test("opens and closes a conversation on mobile", async ({
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
   const navigationSheet = page.getByRole("dialog", { name: "Navigation" });
-  const spendCallout = navigationSheet.getByLabel(
-    "Personal model spend: 7 days $0.46, 30 days $0.46",
-    { exact: true },
-  );
-  await expect(spendCallout).toBeVisible();
-  await expect(spendCallout.getByText("7d $0.46")).toBeVisible();
-  await expect(spendCallout.getByText("30d $0.46")).toBeVisible();
-  // Spend sits above every destination, including primary nav.
-  const spendAbovePrimary = await spendCallout.evaluate((node) => {
-    const dialog = node.closest('[role="dialog"]');
-    const primary = dialog?.querySelector('nav[aria-label="Primary"]');
-    if (!dialog || !primary) return false;
+  const usage = navigationSheet.getByRole("button", {
+    name: "Usage: <1% of weekly soft cap. 7 days $0.46, 30 days $0.46.",
+  });
+  await expect(usage).toBeVisible();
+  await expect(usage).toContainText(/7d\s*\$0\.46\s*·\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+  // Usage sits right above the signed-in strip, as in the desktop footer.
+  const usageAboveIdentity = await usage.evaluate((node) => {
+    const identity = node
+      .closest('[role="dialog"]')
+      ?.querySelector('[aria-label="Signed in as Dashboard User"]');
     return Boolean(
-      node.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING,
+      identity &&
+      node.compareDocumentPosition(identity) & Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });
-  expect(spendAbovePrimary).toBe(true);
+  expect(usageAboveIdentity).toBe(true);
   await expect(
     page.getByLabel("Account menu for Dashboard User"),
   ).toBeVisible();

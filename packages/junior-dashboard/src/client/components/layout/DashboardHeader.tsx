@@ -56,14 +56,16 @@ export function DashboardHeader(props: {
   mobileIdentity?: ReactNode;
   /** Plain account destinations inside the mobile navigation sheet. */
   mobileProfile?: ReactNode;
-  /** Vertical spend callout pinned above every mobile sheet destination. */
-  mobileSpend?: ReactNode;
+  /** Usage meter pinned above the signed-in strip of the sheet. */
+  mobileUsage?: ReactNode;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
   /** Open the command palette. */
   onSearch(): void;
-  /** Spend and account control at the right of the desktop top bar. */
+  /** Account control at the right of the desktop top bar. */
   profile?: ReactNode;
+  /** Usage meter beside the account control in the desktop top bar. */
+  usage?: ReactNode;
   version?: string;
   workspaceActive: boolean;
 }) {
@@ -163,7 +165,8 @@ export function DashboardHeader(props: {
             {COMMAND_PALETTE_SHORTCUT}
           </kbd>
         </Button>
-        <div className="flex items-center gap-3 justify-self-end">
+        <div className="flex items-center gap-2 justify-self-end">
+          {props.usage}
           {props.profile}
         </div>
       </div>
@@ -249,9 +252,6 @@ export function DashboardHeader(props: {
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
-              {props.mobileSpend ? (
-                <div className="mb-3">{props.mobileSpend}</div>
-              ) : null}
               <nav aria-label="Primary" className="grid gap-1">
                 <Button
                   className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
@@ -289,8 +289,11 @@ export function DashboardHeader(props: {
                 </div>
               ) : null}
             </div>
-            {props.mobileIdentity || props.version ? (
+            {props.mobileUsage || props.mobileIdentity || props.version ? (
               <div className="border-t border-dashboard-border-subtle px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {props.mobileUsage ? (
+                  <div className="-mx-1 mb-2">{props.mobileUsage}</div>
+                ) : null}
                 {props.mobileIdentity ? (
                   <div className={props.version ? "mb-2.5" : undefined}>
                     {props.mobileIdentity}

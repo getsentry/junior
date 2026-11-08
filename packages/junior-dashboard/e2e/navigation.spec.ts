@@ -39,6 +39,47 @@ test("expands the nav sidebar and keeps the choice", async ({
   ).toBeVisible();
 });
 
+test("shows usage against the soft caps in the sidebar and top bar", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(dashboard.baseURL);
+
+  const sidebar = page.locator('[data-slot="sidebar"]').filter({
+    has: page.getByRole("navigation", { name: "Primary" }),
+  });
+  const usage = page.getByRole("button", {
+    name: "Usage: <1% of weekly soft cap. 7 days $0.46, 30 days $0.46.",
+  });
+  // The collapsed sidebar shows only the ring.
+  await expect(usage.locator("[data-usage-ring]")).toBeVisible();
+  await expect(usage.locator("[data-usage-totals]")).toBeHidden();
+  await sidebar.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(usage).toContainText(/7d\s*\$0\.46\s*·\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+
+  await usage.click();
+  const popover = page.locator("#usage-popover");
+  await expect(popover).toContainText("Weekly soft cap");
+  await expect(popover).toContainText("$0.46 of $500");
+  await expect(popover).toContainText("Monthly soft cap");
+  await expect(popover).toContainText("$0.46 of $2,000");
+  await expect(popover.getByRole("link", { name: "Details" })).toHaveAttribute(
+    "href",
+    "/people/dev%40example.com",
+  );
+  await page.keyboard.press("Escape");
+
+  // Tall windows move usage to the top bar, beside the avatar.
+  await page.setViewportSize({ width: 1440, height: 1150 });
+  await expect(sidebar).toHaveCount(0);
+  await expect(usage).toContainText(/7d\s*\$0\.46\s*·\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
+});
+
 test("switches desktop navigation between adaptive, top bar, and sidebar", async ({
   page,
   dashboard,
