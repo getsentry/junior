@@ -3,6 +3,7 @@
  * starts from history exercises the same stored state as production.
  */
 import { readdirSync, readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { describe, expect } from "vitest";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { slackMention, reply, webMessage, type MessageInput } from "./inputs";
@@ -102,7 +103,18 @@ async function compareWithRealTurn(
   const loaded = await run(rest, { history: [input, ...replies] });
   const realRows = await comparableRows(real.conversationId);
   const loadedRows = await comparableRows(loaded.conversationId);
-  expect(loadedRows.slice(0, realRows.length)).toEqual(realRows);
+  const loadedPrefix = loadedRows.slice(0, realRows.length);
+  // The eval reporter truncates the deep-equal diff, so the message names the
+  // first row that differs in full.
+  const differing = realRows.findIndex(
+    (row, index) => !isDeepStrictEqual(loadedPrefix[index], row),
+  );
+  expect(
+    loadedPrefix,
+    differing === -1
+      ? undefined
+      : `row ${differing}\nreal: ${JSON.stringify(realRows[differing])}\nloaded: ${JSON.stringify(loadedPrefix[differing])}`,
+  ).toEqual(realRows);
   const store = getConversationStore();
   expect(
     (await store.get({ conversationId: loaded.conversationId }))?.visibility,
