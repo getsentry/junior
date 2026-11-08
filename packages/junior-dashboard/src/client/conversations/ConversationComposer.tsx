@@ -29,6 +29,7 @@ import {
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
 import { ComposerDictation } from "./ComposerDictation";
+import { useDictation } from "./useDictation";
 import { useComposerAutocorrect } from "./composerAutocorrect";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 
@@ -155,9 +156,6 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
   const [dictationError, setDictationError] = useState<string>();
-  // Send waits for dictation, so a clip is never left out of the message.
-  const [dictating, setDictating] = useState(false);
-  const dictatingRef = useRef(false);
   // The mic button takes focus, so remember where dictated text goes.
   const dictationCursorRef = useRef<{ end: number; start: number }>(undefined);
   const [dragging, setDragging] = useState(false);
@@ -314,7 +312,8 @@ export const ConversationComposer = memo(function ConversationComposer(
     !confirmingRef.current &&
     !sendLocked &&
     !readingImagesRef.current &&
-    !dictatingRef.current;
+    // Send waits for dictation, so a clip is never left out of the message.
+    dictation.state === "idle";
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -413,6 +412,10 @@ export const ConversationComposer = memo(function ConversationComposer(
     syncTextareaHeight();
     textarea.focus({ preventScroll: true });
   };
+  const dictation = useDictation({
+    onError: setDictationError,
+    onText: insertDictation,
+  });
 
   // Put queued text back ahead of anything the reader already typed.
   const prependDraftText = (text: string) => {
@@ -658,13 +661,8 @@ export const ConversationComposer = memo(function ConversationComposer(
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <ComposerDictation
+              dictation={dictation}
               disabled={sendLocked || !online}
-              onBusyChange={(busy) => {
-                dictatingRef.current = busy;
-                setDictating(busy);
-              }}
-              onError={setDictationError}
-              onText={insertDictation}
             />
             {props.onStop ? (
               <Button
@@ -689,7 +687,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 !online ||
                 sendLocked ||
                 readingImages ||
-                dictating
+                dictation.state !== "idle"
               }
               variant="primary"
               type="submit"

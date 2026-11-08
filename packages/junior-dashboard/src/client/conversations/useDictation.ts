@@ -13,15 +13,15 @@ const RECORDING_TYPES = [
   "audio/ogg;codecs=opus",
 ];
 
-/** Where one dictation is: asking for the mic, recording, or transcribing. */
-export type DictationState = "idle" | "starting" | "recording" | "transcribing";
+// Where one dictation is: asking for the mic, recording, or transcribing.
+type DictationState = "idle" | "starting" | "recording" | "transcribing";
 
 type DictationSession = {
   abort: AbortController;
   cancelled: boolean;
   recorder?: MediaRecorder;
   stream?: MediaStream;
-  timer?: number;
+  timeout?: number;
 };
 
 type DictationCallbacks = {
@@ -38,10 +38,17 @@ export function dictationSupported(): boolean {
   );
 }
 
+/** Controls for one composer's dictation. */
+export type Dictation = {
+  cancel(): void;
+  start(): Promise<void>;
+  state: DictationState;
+  stop(): void;
+};
+
 /** Record one clip from the microphone and turn it into text. */
-export function useDictation(callbacks: DictationCallbacks) {
+export function useDictation(callbacks: DictationCallbacks): Dictation {
   const [state, setState] = useState<DictationState>("idle");
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const sessionRef = useRef<DictationSession | undefined>(undefined);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -89,7 +96,6 @@ export function useDictation(callbacks: DictationCallbacks) {
     };
     sessionRef.current = session;
     callbacksRef.current.onError(undefined);
-    setElapsedSeconds(0);
     setState("starting");
     try {
       session.stream = await navigator.mediaDevices.getUserMedia({
@@ -134,12 +140,7 @@ export function useDictation(callbacks: DictationCallbacks) {
         void transcribe(session, audio);
       });
       session.recorder = recorder;
-      const startedAt = Date.now();
-      session.timer = window.setInterval(() => {
-        const seconds = Math.floor((Date.now() - startedAt) / 1000);
-        setElapsedSeconds(seconds);
-        if (seconds >= DICTATION_MAX_SECONDS) stop();
-      }, 1000);
+      session.timeout = window.setTimeout(stop, DICTATION_MAX_SECONDS * 1000);
       recorder.start();
     } catch {
       releaseMicrophone(session);
@@ -153,31 +154,31 @@ export function useDictation(callbacks: DictationCallbacks) {
   const cancel = () => {
     const session = sessionRef.current;
     if (!session) return;
-    session.cancelled = true;
-    session.abort.abort();
-    if (session.recorder?.state === "recording") session.recorder.stop();
-    else releaseMicrophone(session);
+    abandon(session);
     finish(session);
   };
 
   // Leaving the page must turn the microphone off.
   useEffect(
     () => () => {
-      const session = sessionRef.current;
-      if (!session) return;
-      session.cancelled = true;
-      session.abort.abort();
-      if (session.recorder?.state === "recording") session.recorder.stop();
-      releaseMicrophone(session);
+      if (sessionRef.current) abandon(sessionRef.current);
     },
     [],
   );
 
-  return { cancel, elapsedSeconds, start, state, stop };
+  return { cancel, start, state, stop };
+}
+
+// Drop the clip and the request, and turn the mic off.
+function abandon(session: DictationSession): void {
+  session.cancelled = true;
+  session.abort.abort();
+  if (session.recorder?.state === "recording") session.recorder.stop();
+  releaseMicrophone(session);
 }
 
 function releaseMicrophone(session: DictationSession): void {
-  window.clearInterval(session.timer);
+  window.clearTimeout(session.timeout);
   for (const track of session.stream?.getTracks() ?? []) track.stop();
 }
 
