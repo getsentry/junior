@@ -842,6 +842,7 @@ async function executeAgentRunInPrivacyContext(
           requestOverheadTokens: estimateRequestOverheadTokens(
             agent!.state.systemPrompt,
             agent!.state.tools,
+            activeModelId,
           ),
           ...(pairPendingRuntimeContext && pendingMessages
             ? {
