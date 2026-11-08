@@ -119,10 +119,12 @@ describe("Lifecycle and Resilience", () => {
   test("when the final reply puts the context over the compaction limit, reply once without compacting", async ({
     agent,
   }) => {
-    // An 8,000 token context window sets the compaction limit at 7,200 tokens.
-    // The message history is small, so the turn starts without compaction.
-    // The measured usage of the reply also counts the system prompt and tools,
-    // which puts it over the limit. No model request follows the reply.
+    // An 8,000 token context window sets the compaction limit at 7,200 tokens
+    // and the input limit at 7,600 tokens. The system prompt and tools alone
+    // are over the input limit, so the context is over it at Turn start. A
+    // summary replaces only the message history and cannot get under it, so
+    // the Turn sends the request without one. The measured usage of the reply
+    // is over the limit too. No model request follows the reply.
     const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
     const conversation = await run(
       slackMention("In one short sentence, what is the capital of France?"),
@@ -130,6 +132,9 @@ describe("Lifecycle and Resilience", () => {
 
     expect(conversation.replies).toHaveLength(1);
     expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
     ]);
