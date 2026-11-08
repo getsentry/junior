@@ -1,6 +1,9 @@
-import { useState, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
+
+import { useDetailsPanel } from "../components/DetailsPanel";
 
 const OPEN_KEY = "junior:conversation:sidebar-open";
+const DETAILS_OPEN_KEY = "junior:conversation:details-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width";
 const WIDE_QUERY = "(min-width: 768px)";
@@ -23,6 +26,28 @@ export function useConversationSidebarOpen() {
   }
 
   return [open, updateOpen] as const;
+}
+
+/**
+ * Remember whether the reader keeps details open in this browser. Undefined
+ * means no saved choice. Only a panel beside the transcript saves or opens
+ * from the choice: a bottom sheet on a narrow screen is a one-off.
+ */
+export function useSavedDetailsOpen() {
+  const fits = useDetailsPanel();
+  const [saved] = useState(() => {
+    const value = readStorage(DETAILS_OPEN_KEY);
+    return value === null ? undefined : value === "true";
+  });
+
+  const save = useCallback(
+    (open: boolean) => {
+      if (fits) writeStorage(DETAILS_OPEN_KEY, String(open));
+    },
+    [fits],
+  );
+
+  return [saved === undefined ? undefined : saved && fits, save] as const;
 }
 
 /** Read the conversation list width saved in this browser. */

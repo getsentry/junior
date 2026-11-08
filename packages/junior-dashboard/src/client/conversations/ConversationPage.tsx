@@ -45,6 +45,7 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
+import { useSavedDetailsOpen } from "./conversationSidebarLayout";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -180,9 +181,12 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (reviewOpen) setDetailsChoice(true);
   }, [reviewOpen]);
-  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefaultOpen);
+  const [savedDetailsOpen, saveDetailsOpen] = useSavedDetailsOpen();
+  const detailsOpen =
+    detailsChoice ?? (reviewOpen || (savedDetailsOpen ?? detailsDefaultOpen));
   const closeDetails = useCallback(() => {
     setDetailsChoice(false);
+    saveDetailsOpen(false);
     setSearchParams(
       (current) => {
         if (!current.has(CONVERSATION_REVIEW_PARAM)) return current;
@@ -192,7 +196,7 @@ export function ConversationPage(props: {
       },
       { replace: true },
     );
-  }, [setSearchParams]);
+  }, [saveDetailsOpen, setSearchParams]);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
   const [memoryPopover, setMemoryPopover] = useState<OpenMemoryPopover>();
   // A memory chosen in details waits here until its transcript row renders.
@@ -661,6 +665,7 @@ export function ConversationPage(props: {
                 } else {
                   focusDetailsOnOpen.current = true;
                   setDetailsChoice(true);
+                  saveDetailsOpen(true);
                 }
               }}
               forks={
