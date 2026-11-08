@@ -10,6 +10,26 @@ const COMPACTION_TARGET_RATIO = 0.8;
 const BACKGROUND_COMPACTION_MARK_RATIO = 0.7;
 const FALLBACK_CONTEXT_WINDOW_TOKENS = 400_000;
 
+/**
+ * Size-only estimate inputs for the requests of one model. Production
+ * provider usage gave these values: Claude counts about 1.6x the tokens of
+ * characters / 4 for both replacements and tool results, plus about 150
+ * tokens for each tool result. OpenAI models match characters / 4.
+ */
+export interface TokenEstimateProfile {
+  charsPerToken: number;
+  toolResultOverheadTokens: number;
+}
+
+const CLAUDE_TOKEN_ESTIMATE: TokenEstimateProfile = {
+  charsPerToken: 2.5,
+  toolResultOverheadTokens: 150,
+};
+const DEFAULT_TOKEN_ESTIMATE: TokenEstimateProfile = {
+  charsPerToken: 4,
+  toolResultOverheadTokens: 0,
+};
+
 export interface ModelContextBudget {
   contextWindow: number;
 }
@@ -23,17 +43,26 @@ export function estimateTextTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+/** Resolve the size-only token estimate inputs for one model's requests. */
+export function getTokenEstimateProfile(modelId: string): TokenEstimateProfile {
+  return modelId.startsWith("anthropic/")
+    ? CLAUDE_TOKEN_ESTIMATE
+    : DEFAULT_TOKEN_ESTIMATE;
+}
+
 /** Estimate the tokens that the system prompt and tool definitions add to a model request. */
 export function estimateRequestOverheadTokens(
   systemPrompt: string,
   tools: readonly Pick<Tool, "description" | "name" | "parameters">[],
+  modelId: string,
 ): number {
   const definitions = tools.map(({ name, description, parameters }) => ({
     name,
     description,
     parameters,
   }));
-  return estimateTextTokens(systemPrompt + JSON.stringify(definitions));
+  const chars = systemPrompt.length + JSON.stringify(definitions).length;
+  return Math.ceil(chars / getTokenEstimateProfile(modelId).charsPerToken);
 }
 
 /** Derive the automatic compaction threshold from model context capacity. */
