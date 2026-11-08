@@ -136,6 +136,7 @@ describe("completeText", () => {
       thinkingLevel: "low",
       cacheRetention: "none",
       messageAttributeMode: "content",
+      sessionId: "slack:C123:1700000000.000",
     });
 
     expect(result.text).toBe("hello world");
@@ -143,7 +144,11 @@ describe("completeText", () => {
     expect(mocks.completeSimple).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({ apiKey: "oidc-token", cacheRetention: "none" }),
+      expect.objectContaining({
+        apiKey: "oidc-token",
+        cacheRetention: "none",
+        sessionId: "slack:C123:1700000000.000",
+      }),
     );
 
     const [name, op, context, _callback, attributes] = mocks.withSpan.mock

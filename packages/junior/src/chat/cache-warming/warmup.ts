@@ -448,6 +448,8 @@ export async function runCacheWarmup(
         messageAttributeMode: "metadata",
         metadata: { conversationId },
         promptName: "cache_warmup",
+        // Use the agent's gateway session, so the warmup reaches the same cache.
+        sessionId: conversationId,
       }).catch(async (error: unknown) => {
         // A request that the provider rejects fails the same way for each
         // Conversation. Count it, so the breaker stops these requests.

@@ -278,6 +278,8 @@ export async function completeText(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
   promptName?: string;
+  /** AI Gateway session ID. Pass the Conversation ID to share its session. */
+  sessionId?: string;
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
@@ -355,6 +357,7 @@ export async function completeText(params: {
             cacheRetention: params.cacheRetention,
             signal: params.signal,
             metadata: params.metadata,
+            sessionId: params.sessionId,
           },
         );
       } catch (error) {
