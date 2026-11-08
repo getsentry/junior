@@ -10,6 +10,7 @@ import {
   StreamableHTTPClientTransport,
   StreamableHTTPError,
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { setSpanAttributes } from "@/chat/logging";
 import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -71,6 +72,9 @@ export interface PluginMcpClientOptions {
 type HostManagedSessionProvider = OAuthClientProvider & {
   getMcpServerSessionId?: () => Promise<string | undefined>;
   saveMcpServerSessionId?: (sessionId: string | undefined) => Promise<void>;
+  /** Only a provider that can send the person a link implements these. */
+  forNewSignIn?: () => OAuthClientProvider;
+  lastSignInScope?: () => Promise<string | undefined>;
 };
 
 function isMissingSessionError(error: unknown): boolean {
@@ -78,15 +82,6 @@ function isMissingSessionError(error: unknown): boolean {
     error instanceof StreamableHTTPError &&
     (error.code === 404 || /Session not found/i.test(error.message))
   );
-}
-
-/** Hide the stored tokens, so `auth()` starts a sign-in instead of a refresh. */
-function withoutStoredTokens(
-  provider: OAuthClientProvider,
-): OAuthClientProvider {
-  return Object.create(provider, {
-    tokens: { value: async () => undefined },
-  }) as OAuthClientProvider;
 }
 
 export class PluginMcpClient {
@@ -287,11 +282,12 @@ export class PluginMcpClient {
           throw error;
         }
         if (
-          error instanceof UnauthorizedError ||
-          (await this.startSignInAfterRejectedRefresh(
-            error,
-            store.errorResponse,
-          ))
+          !(await this.isScopeDeniedAfterSignIn(store.errorResponse)) &&
+          (error instanceof UnauthorizedError ||
+            (await this.startSignInAfterRejectedRefresh(
+              error,
+              store.errorResponse,
+            )))
         ) {
           throw new McpAuthorizationRequiredError(
             this.plugin.manifest.name,
@@ -310,6 +306,27 @@ export class PluginMcpClient {
   }
 
   /**
+   * The provider asks for a scope that the person's last sign-in already
+   * asked for, so it did not grant it. Another link would only loop.
+   */
+  private async isScopeDeniedAfterSignIn(
+    challenge: Response | undefined,
+  ): Promise<boolean> {
+    if (challenge?.status !== 403) {
+      return false;
+    }
+    const { error, scope } = extractWWWAuthenticateParams(challenge);
+    const authProvider = this.options.authProvider as
+      | HostManagedSessionProvider
+      | undefined;
+    return (
+      error === "insufficient_scope" &&
+      authProvider?.lastSignInScope !== undefined &&
+      hasRequiredOAuthScope(await authProvider.lastSignInScope(), scope)
+    );
+  }
+
+  /**
    * The SDK refreshed the token, and the provider still rejects it with 401,
    * or with 403 `insufficient_scope`. A refreshed token keeps its scope, so
    * only a new sign-in can help. Start one for the challenged scope.
@@ -318,10 +335,12 @@ export class PluginMcpClient {
     error: unknown,
     challenge: Response | undefined,
   ): Promise<boolean> {
-    const authProvider = this.options.authProvider;
+    const authProvider = this.options.authProvider as
+      | HostManagedSessionProvider
+      | undefined;
     const url = this.plugin.manifest.mcp?.url;
     if (
-      !authProvider ||
+      !authProvider?.forNewSignIn ||
       !url ||
       !challenge ||
       !(error instanceof StreamableHTTPError)
@@ -336,7 +355,7 @@ export class PluginMcpClient {
     ) {
       return false;
     }
-    const result = await auth(withoutStoredTokens(authProvider), {
+    const result = await auth(authProvider.forNewSignIn(), {
       serverUrl: url,
       ...params,
       fetchFn: this.fetch,

@@ -15,6 +15,7 @@ import {
 } from "../../fixtures/plugin-app";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import {
+  denyEvalMcpWriteScope,
   EVAL_MCP_AUTH_PROVIDER,
   requireEvalMcpWriteScope,
   revokeEvalMcpGrant,
@@ -76,9 +77,9 @@ async function approve(harness: ConversationWorkSlackHarness, link: string) {
 }
 
 /**
- * The provider rejected the first sign-in, so Junior sends a new link instead
- * of answering. After the person approves it, the thread gets the answer.
- * Returns the new link.
+ * The provider rejected the first sign-in, so Junior sends one new link
+ * instead of answering. After the person approves it, Junior stops asking and
+ * the thread gets the agent's reply. Returns the new link.
  */
 async function expectNewLinkThenAnswer(
   harness: ConversationWorkSlackHarness,
@@ -132,5 +133,20 @@ describe("Slack MCP authorization", () => {
     expect(new URL(newLink).searchParams.get("scope")?.split(" ")).toContain(
       "mcp:write",
     );
+  });
+
+  it("stops sending links when the person cannot get the required scope", async () => {
+    const user = "UDENIED";
+    // Injected fault: the MCP server needs a scope the first sign-in lacks.
+    requireEvalMcpWriteScope();
+    // Injected fault: the person's account cannot get that scope.
+    denyEvalMcpWriteScope();
+    const harness = await askForBudget({ user, ts: "1712345.4001" });
+    const [firstLink] = slackApiOutbox.authorizationLinks(user);
+
+    await approve(harness, firstLink!);
+    await harness.drain();
+
+    await expectNewLinkThenAnswer(harness, user);
   });
 });

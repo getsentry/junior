@@ -70,6 +70,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     | (<T>(mutation: () => Promise<T>) => Promise<T>)
     | undefined;
   private readonly oauthClient: PluginMcpOAuthClientConfig | undefined;
+  private ignoresStoredTokens = false;
 
   constructor(
     authSessionId: string,
@@ -141,7 +142,37 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     });
   }
 
+  /**
+   * A provider for this authorization attempt that starts a new sign-in
+   * instead of a refresh. The stored tokens stay until the new sign-in
+   * replaces them, so a person who never finishes it keeps their access.
+   */
+  forNewSignIn(): StateBackedMcpOAuthClientProvider {
+    const provider = new StateBackedMcpOAuthClientProvider(
+      this.authSessionId,
+      this.callbackUrl,
+      this.sessionContext,
+      this.runCredentialMutation,
+      this.oauthClient,
+    );
+    provider.ignoresStoredTokens = true;
+    return provider;
+  }
+
+  /** The scope that the person's last finished sign-in asked for. */
+  async lastSignInScope(): Promise<string | undefined> {
+    const session = await this.getCredentialContext();
+    const credentials = await getMcpStoredOAuthCredentials(
+      session.userId,
+      session.provider,
+    );
+    return credentials?.signInScope;
+  }
+
   async tokens(): Promise<OAuthTokens | undefined> {
+    if (this.ignoresStoredTokens) {
+      return undefined;
+    }
     const session = await this.getCredentialContext();
     const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
@@ -158,8 +189,16 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
           session.userId,
           session.provider,
         )) ?? {};
+      // A sign-in replaces the scope it asked for. A refresh keeps it.
+      const authorizationUrl = (await getMcpAuthSession(this.authSessionId))
+        ?.authorizationUrl;
+      const { signInScope: previousScope, ...rest } = credentials;
+      const signInScope = authorizationUrl
+        ? (new URL(authorizationUrl).searchParams.get("scope") ?? undefined)
+        : previousScope;
       await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-        ...credentials,
+        ...rest,
+        ...(signInScope ? { signInScope } : undefined),
         tokens,
       });
     });
@@ -243,7 +282,10 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
         ...(scope === "tokens" || scope === "all"
           ? undefined
           : credentials.tokens
-            ? { tokens: credentials.tokens }
+            ? {
+                tokens: credentials.tokens,
+                signInScope: credentials.signInScope,
+              }
             : {}),
         ...(scope === "client" || scope === "all"
           ? undefined

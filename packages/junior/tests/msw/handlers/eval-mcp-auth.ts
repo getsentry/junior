@@ -83,6 +83,7 @@ let clientRegistered = false;
 let grant: ProviderGrant | undefined;
 let issuedTokens = 0;
 let requiresWriteScope = false;
+let deniesWriteScope = false;
 let releasePushCalls = 0;
 
 /**
@@ -102,6 +103,22 @@ export function revokeEvalMcpGrant(): void {
  */
 export function requireEvalMcpWriteScope(): void {
   requiresWriteScope = true;
+}
+
+/**
+ * Injected fault: the person's account cannot get `mcp:write`. A sign-in
+ * grants every scope the link asks for except `mcp:write`.
+ */
+export function denyEvalMcpWriteScope(): void {
+  deniesWriteScope = true;
+}
+
+/** The scope a sign-in grants for the scope its link asks for. */
+function grantScope(requested: string): string {
+  return requested
+    .split(" ")
+    .filter((scope) => !(deniesWriteScope && scope === EVAL_MCP_WRITE_SCOPE))
+    .join(" ");
 }
 
 function issueToken(kind: "access" | "refresh"): string {
@@ -186,6 +203,7 @@ export function resetEvalMcpAuthMockState(): void {
   grant = undefined;
   issuedTokens = 0;
   requiresWriteScope = false;
+  deniesWriteScope = false;
   releasePushCalls = 0;
 }
 
@@ -944,7 +962,7 @@ export const evalMcpAuthHandlers = [
     grant = {
       accessToken: issueToken("access"),
       refreshToken: issueToken("refresh"),
-      scope: authorizationGrant.scope ?? EVAL_MCP_READ_SCOPE,
+      scope: grantScope(authorizationGrant.scope ?? EVAL_MCP_READ_SCOPE),
     };
     authorizationGrant = undefined;
 
