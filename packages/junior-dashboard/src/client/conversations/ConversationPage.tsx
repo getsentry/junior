@@ -72,7 +72,11 @@ import {
 import { cn } from "../styles";
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
-import { ConversationAgentTree } from "./ConversationAgentTree";
+import {
+  ChildConversationStatusPill,
+  childConversationStatus,
+} from "./ChildConversationStatus";
+import { useWaitingConversations } from "../review-desk/queries";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -236,6 +240,7 @@ export function ConversationPage(props: {
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
+  const waiting = useWaitingConversations().has(conversationId);
   // The page keeps the start preference from when the Conversation opened.
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
@@ -563,7 +568,6 @@ export function ConversationPage(props: {
           conversation={conversation}
           conversationId={conversationId}
           detail={conversationDetail}
-          feedConversations={conversations}
           highlightReview={reviewOpen}
           links={links}
           memoryState={memoryState}
@@ -634,11 +638,7 @@ export function ConversationPage(props: {
         <ChatLayout
           header={
             <ConversationHeader
-              agentTree={
-                isChildConversation(conversationDetail) ? (
-                  <ConversationAgentTree nodes={conversationDetail.agentTree} />
-                ) : null
-              }
+              agentTree={conversationDetail?.agentTree}
               contextTags={conversationContextTags(conversation)}
               conversationId={conversationId}
               continueInSlack={
@@ -750,6 +750,13 @@ export function ConversationPage(props: {
               searchMatch={searchMatch}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
               sidebarToggle={props.sidebarToggle}
+              status={
+                isChildConversation(conversationDetail) && conversation ? (
+                  <ChildConversationStatusPill
+                    status={childConversationStatus(conversation, waiting)}
+                  />
+                ) : null
+              }
               title={title}
               view={view}
             />

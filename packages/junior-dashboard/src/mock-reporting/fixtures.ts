@@ -832,6 +832,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
+        childKind: "task",
         subagentKind: "agent",
         agentName: "planner",
         task: "Review the dashboard plan before editing.",
@@ -844,6 +845,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 3,
         startedAt: iso(Date.parse(startedAt), 4_000),
         childConversationId: DASHBOARD_QA_PLAN_ID,
+        childKind: "task",
         subagentKind: "agent",
         agentName: "planner",
         task: "Review the dashboard plan before editing.",
@@ -869,6 +871,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
+        childKind: "task",
         subagentKind: "agent",
         agentName: "reviewer",
         status: "running",
@@ -878,6 +881,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         startedSeq: 6,
         startedAt: iso(Date.parse(startedAt), 25_000),
         childConversationId: DASHBOARD_QA_REVIEW_ID,
+        childKind: "task",
         subagentKind: "agent",
         agentName: "reviewer",
         status: "blocked",
@@ -1114,6 +1118,30 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         text: "Yes. The empty state now reuses the loading skeleton.",
         url: "https://github.com/getsentry/getsentry/pull/21572#discussion_r7",
       }),
+      // Threads render as link cards. The archived one is not in the feed,
+      // so its card falls back to what the parent recorded.
+      reportEvent(23, iso(Date.parse(startedAt), 90_000), {
+        type: "subagent",
+        startedSeq: 23,
+        startedAt: iso(Date.parse(startedAt), 90_000),
+        childConversationId: DASHBOARD_QA_THREAD_ID,
+        childKind: "thread",
+        subagentKind: "agent",
+        task: "Check pinned row order with the person who reported it.",
+        title: "Check pinned row order",
+        status: "completed",
+      }),
+      reportEvent(24, iso(Date.parse(startedAt), 92_000), {
+        type: "subagent",
+        startedSeq: 24,
+        startedAt: iso(Date.parse(startedAt), 92_000),
+        childConversationId: DASHBOARD_QA_ARCHIVED_THREAD_ID,
+        childKind: "thread",
+        subagentKind: "agent",
+        task: "Compare the sidebar badges with the design.",
+        title: "Compare sidebar badges",
+        status: "completed",
+      }),
     ],
   });
 }
@@ -1165,7 +1193,10 @@ function advisorConversation(
   };
 }
 
-/** A Thread in the dashboard QA tree. Its messages come from a person. */
+/**
+ * A Thread in the dashboard QA tree. The parent agent starts its first Turn,
+ * and a person starts the next one.
+ */
 function threadConversation(
   nowMs: number,
   conversationId: string,
@@ -1185,14 +1216,15 @@ function threadConversation(
     archivedAt: mockArchivedAt.get(conversationId) ?? null,
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
     startedAt,
-    lastSeenAt: iso(Date.parse(startedAt), 12_000),
-    lastProgressAt: iso(Date.parse(startedAt), 12_000),
-    cumulativeDurationMs: 12_000,
+    lastSeenAt: iso(Date.parse(startedAt), 30_000),
+    lastProgressAt: iso(Date.parse(startedAt), 30_000),
+    cumulativeDurationMs: 30_000,
     events: [
       reportEvent(0, startedAt, {
         type: "message",
         messageId: `${conversationId}:input`,
         role: "user",
+        agentInvocationId: `${conversationId}:invocation`,
         text,
       }),
       reportEvent(1, iso(Date.parse(startedAt), 12_000), {
@@ -1200,6 +1232,19 @@ function threadConversation(
         messageId: `${conversationId}:output`,
         role: "assistant",
         text: "Done. No differences found.",
+      }),
+      reportEvent(2, iso(Date.parse(startedAt), 20_000), {
+        type: "message",
+        messageId: `${conversationId}:follow-up`,
+        role: "user",
+        actorIdentity: actor("taylor@example.com", "Taylor Chen", "taylor"),
+        text: "Can you check it with a cold cache too?",
+      }),
+      reportEvent(3, iso(Date.parse(startedAt), 30_000), {
+        type: "message",
+        messageId: `${conversationId}:follow-up-output`,
+        role: "assistant",
+        text: "Checked with a cold cache. The order still holds.",
       }),
     ],
   });

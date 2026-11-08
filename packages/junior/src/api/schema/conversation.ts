@@ -594,6 +594,8 @@ const conversationReportSubagentEventDataSchema = z
     startedSeq: z.number().int().nonnegative(),
     startedAt: z.string().datetime(),
     childConversationId: z.string().min(1),
+    /** The child's Conversation kind. Only a Thread has its own page link. */
+    childKind: z.enum(["thread", "task"]),
     subagentKind: z.string().min(1),
     agentName: z.string().min(1).optional(),
     task: z.string().min(1).optional(),
