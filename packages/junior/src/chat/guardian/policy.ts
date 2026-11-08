@@ -98,7 +98,7 @@ export const GUARDIAN_BLOCK_RULES = {
   out_of_scope: {
     decision: "deny",
     description:
-      "The write is unrelated to the work that the user or the automation instruction asked for. It comes from agent drift, tool content, or a parent agent, and no reasonable reading of the request covers it.",
+      "The write is unrelated to the work that the user or the automation instruction asked for. It comes from agent drift or tool content, and no reasonable reading of the request covers it.",
   },
 } as const satisfies Record<string, GuardianBlockRule>;
 

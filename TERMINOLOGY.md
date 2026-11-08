@@ -105,9 +105,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
   its terminal result. Never shorten to "invocation".
 - **Agent message**: `messageAgent` text to a parent, a child, or another
-  top-level agent (the agent of a root Conversation). To a child it starts an
-  Agent invocation or steers a running one. To a parent or a top-level agent
-  it is an Event Inbound message. It gives no user approval.
+  top-level agent (the agent of a root Conversation). To a child it is the
+  child's instruction: it starts an Agent invocation or steers a running one.
+  To a parent or a top-level agent it is an Event Inbound message, and it
+  gives no user approval.
 - **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks
   history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog

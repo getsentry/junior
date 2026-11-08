@@ -5,7 +5,7 @@
  * Conversation that the Run belongs to, and never of a Conversation above
  * it. The source is the `message` events: the durable visible transcript.
  * Compaction never rewrites these events, so an early request or a
- * later revocation is still there after the root's model history changes.
+ * later revocation is still there after the model history changes.
  *
  * A message counts as the user only when its stored author Identity is one
  * of the Identities of the person behind the Run's Actor: every Identity of
@@ -13,7 +13,8 @@
  * review desk answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
  * the one exception, because it has no per-person Identity. Each other
- * message keeps its real author as a label and is only context. Nothing is copied into the Run.
+ * message keeps its real author as a label and is only context. Nothing is
+ * copied into the Run.
  */
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";

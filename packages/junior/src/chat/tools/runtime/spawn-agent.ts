@@ -47,10 +47,10 @@ export function createSpawnAgentTool(
       "After you delegate, do not do the same work yourself. End your turn with a short status. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
       "A child keeps its type when it receives more work through messageAgent.",
-      "Your task text is the child's authority: an approval that it passes on lets the child act. Pass on an approval only when your own conversation backs it, and name the exact action and target.",
+      "Your task text is the child's instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.",
     ].join(" "),
     exposure: "modelOnly",
-    // Action review checks the authority that the task passes on.
+    // Action review judges the actions that the task names.
     approvalMode: "auto",
     annotations: {
       destructiveHint: false,
