@@ -1,18 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
+import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
+import type { DashboardBootstrap } from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardFaviconAsset,
-  dashboardClientAsset,
-  dashboardClientChunks,
   dashboardInstallIconAsset,
-  dashboardTailwindAsset,
 } from "./assets";
+import { conversationOpenScript } from "./conversation-open";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
+import {
+  DASHBOARD_ASSETS_PATH,
+  readDashboardClientManifest,
+} from "./public-assets";
 import { DASHBOARD_THEME_COLORS, DASHBOARD_THEME_SCRIPT } from "./theme";
 
-const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
-export const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 export const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 export const DASHBOARD_INSTALL_ICON_PATH = "/_junior/dashboard/icon-512.png";
 export const DASHBOARD_MANIFEST_PATH =
@@ -29,62 +30,9 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#039;");
 }
 
-function readAssetUrl(url: URL): string {
-  if (!existsSync(url)) {
-    return "";
-  }
-  return readFileSync(url, "utf8");
-}
-
-function readWorkspaceAsset(fileName: string): string {
-  const assetPath = path.join(
-    process.cwd(),
-    "node_modules",
-    "@sentry",
-    "junior-dashboard",
-    "dist",
-    fileName,
-  );
-  if (!existsSync(assetPath)) {
-    return "";
-  }
-  return readFileSync(assetPath, "utf8");
-}
-
-/** Load the dashboard browser bundle from the package build output. */
-export function readDashboardClient(): string {
-  const client =
-    dashboardClientAsset ||
-    readAssetUrl(new URL("./client.js", import.meta.url)) ||
-    readAssetUrl(new URL("../dist/client.js", import.meta.url)) ||
-    readWorkspaceAsset("client.js");
-  if (!client) {
-    throw new Error("Junior dashboard client bundle was not found");
-  }
-  return client;
-}
-
-/** Read a content-hashed browser chunk without allowing arbitrary file paths. */
-export function readDashboardClientChunk(file: string): string | undefined {
-  if (!/^[a-zA-Z0-9_-]+-[a-zA-Z0-9_-]+\.js$/.test(file)) return undefined;
-  return (
-    (Object.hasOwn(dashboardClientChunks, file)
-      ? dashboardClientChunks[file]
-      : undefined) ||
-    readAssetUrl(new URL(`./chunks/${file}`, import.meta.url)) ||
-    readAssetUrl(new URL(`../dist/chunks/${file}`, import.meta.url)) ||
-    readWorkspaceAsset(`chunks/${file}`) ||
-    undefined
-  );
-}
-
-function readDashboardTailwind(): string {
-  return (
-    dashboardTailwindAsset ||
-    readAssetUrl(new URL("./tailwind.css", import.meta.url)) ||
-    readAssetUrl(new URL("../dist/tailwind.css", import.meta.url)) ||
-    readWorkspaceAsset("tailwind.css")
-  );
+function stylesheetLink(): string {
+  const { stylesheet } = readDashboardClientManifest();
+  return `<link rel="stylesheet" href="${DASHBOARD_ASSETS_PATH}/${stylesheet}" />`;
 }
 
 function readDashboardColorIcon(): ArrayBuffer {
@@ -210,9 +158,51 @@ export function renderInstallIcon(): Response {
   });
 }
 
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+// The browser SDK reads these meta tags to continue the trace of the request
+// that served this page, so its pageload span joins the server spans.
+function renderSentryHead(sentry: BrowserSentryConfig | undefined): string {
+  if (!sentry) return "";
+  const { baggage, sentryTrace, ...options } = sentry;
+  return [
+    sentryTrace &&
+      `<meta name="sentry-trace" content="${escapeHtml(sentryTrace)}" />`,
+    baggage && `<meta name="baggage" content="${escapeHtml(baggage)}" />`,
+    `<script>window.__JUNIOR_DASHBOARD_SENTRY__ = ${scriptJson(options)};</script>`,
+  ]
+    .filter(Boolean)
+    .join("\n  ");
+}
+
 /** Render the authenticated dashboard HTML shell. */
-export function renderDashboard(basePath: string, agentName: string): Response {
-  const encodedAgentName = JSON.stringify(agentName).replace(/</g, "\\u003c");
+export function renderDashboard(
+  basePath: string,
+  agentName: string,
+  {
+    bootstrap,
+    sentry,
+  }: { bootstrap?: DashboardBootstrap; sentry?: BrowserSentryConfig } = {},
+): Response {
+  const encodedAgentName = scriptJson(agentName);
+  const bootstrapScript = bootstrap
+    ? `window.__JUNIOR_DASHBOARD_BOOTSTRAP__ = ${scriptJson(bootstrap)};`
+    : "";
+  const client = readDashboardClientManifest();
+  // Without these hints, the browser finds the chunks only after the entry
+  // has downloaded and parsed, and the fonts only after the stylesheet has.
+  const clientPreloads = [
+    ...client.imports.map(
+      (file) =>
+        `<link rel="modulepreload" href="${DASHBOARD_ASSETS_PATH}/${file}" />`,
+    ),
+    ...client.fonts.map(
+      (file) =>
+        `<link rel="preload" href="${DASHBOARD_ASSETS_PATH}/${file}" as="font" type="font/woff2" crossorigin />`,
+    ),
+  ].join("\n  ");
   return new Response(
     `<!DOCTYPE html>
 <html lang="en">
@@ -223,14 +213,14 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   <script>${DASHBOARD_THEME_SCRIPT}</script>
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
+  ${renderSentryHead(sentry)}
+  <script>${conversationOpenScript(basePath)}</script>
+  ${stylesheetLink()}
+  ${clientPreloads}
   <title>${escapeHtml(agentName)}</title>
-  <style>
-    ${readDashboardTailwind()}
-  </style>
 </head>
 <body class="m-0 bg-dashboard-ink text-dashboard-text-solid [color-scheme:var(--dashboard-color-scheme,dark)]">
   <div id="dashboard-root">
@@ -247,6 +237,7 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   <script>
     window.__JUNIOR_DASHBOARD_BASE_PATH__ = ${JSON.stringify(basePath)};
     window.__JUNIOR_DASHBOARD_AGENT_NAME__ = ${encodedAgentName};
+    ${bootstrapScript}
     (function () {
       function escapeHtml(value) {
         return String(value)
@@ -291,7 +282,7 @@ export function renderDashboard(basePath: string, agentName: string): Response {
       });
     })();
   </script>
-  <script type="module" src="${DASHBOARD_CLIENT_PATH}?v=${DASHBOARD_CLIENT_VERSION}"></script>
+  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${client.entry}"></script>
 </body>
 </html>`,
     {
@@ -335,9 +326,7 @@ export function renderForbiddenPage(agentName: string): Response {
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>${escapeHtml(agentName)} access denied</title>
   <script>${DASHBOARD_THEME_SCRIPT}</script>
-  <style>
-    ${readDashboardTailwind()}
-  </style>
+  ${stylesheetLink()}
 </head>
 <body class="m-0 bg-dashboard-ink font-sans text-dashboard-text-solid [color-scheme:var(--dashboard-color-scheme,dark)]">
   <main class="grid min-h-screen place-items-center p-8">

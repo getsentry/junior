@@ -15,6 +15,8 @@ conversation may keep. Code: `packages/junior/src/chat/conversations/`.
   private. Missing visibility never widens access.
 - Child conversations, events, artifacts, and plugin records inherit the
   visibility and actor edges of their owning conversation.
+- When one Conversation may read another follows
+  `./conversation-access.md`.
 
 ### Storage
 

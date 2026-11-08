@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import * as z from "zod";
 import { automationListQuerySchema } from "@/api/schema/automation";
 import { readViewerAutomations } from "@/chat/automations/read";
 import { mcpAutomation, mcpAutomationSchema } from "../automation";

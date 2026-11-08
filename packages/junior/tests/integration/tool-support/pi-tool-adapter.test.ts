@@ -6,7 +6,7 @@ import {
   zodTool,
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
-import { z } from "zod";
+import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
@@ -298,32 +298,21 @@ describe("Pi tool adapter integration", () => {
   it("keeps model-only runtime tools out of the tool catalog", async () => {
     const spawnAgent = vi.fn();
     const messageAgent = vi.fn();
-    const handoff = vi.fn();
     const registry = createTools(
       [],
       {},
       {
         ...runtimeContext(),
         automation: { sendsMessage: false },
-        handoff: {
-          activeProfile: { name: "standard" },
-          profiles: [{ name: "handoff" }],
-          execute: handoff,
-        },
         messageAgent,
+        agentInvocationId: "invocation-1",
         parentConversationId: "local:test:parent",
         spawnAgent,
-        spawnAgentProfiles: {
-          activeProfile: () => "standard",
-          defaultProfile: "standard",
-          profiles: { standard: { modelId: "test/standard" } },
-        },
       },
     );
     const tools = createPiAgentTools(registry, new SkillSandbox([], []), {});
     const modelOnlyTools = [
       "finishAutomationRun",
-      "handoff",
       "messageAgent",
       "reportBlocked",
       "spawnAgent",
@@ -342,7 +331,6 @@ describe("Pi tool adapter integration", () => {
     }
     expect(spawnAgent).not.toHaveBeenCalled();
     expect(messageAgent).not.toHaveBeenCalled();
-    expect(handoff).not.toHaveBeenCalled();
   });
 
   it("keeps a disabled tool in the model tool list but rejects its calls", async () => {

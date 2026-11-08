@@ -7,7 +7,7 @@
  * `readConversationEvent` reads back.
  */
 import type { PiMessage } from "@/chat/pi/messages";
-import { hasCurrentInstruction } from "@/chat/pi/transcript";
+import { hasTurnInput } from "@/chat/pi/transcript";
 
 /** Results up to this many text characters stay whole. */
 const MAX_KEPT_RESULT_CHARS = 2_000;
@@ -114,7 +114,7 @@ export function trimToolResults<T extends TrimmableEntry>(
 ): { entries: T[]; trimming: ToolResultTrimming } {
   let latestInstructionIndex = -1;
   entries.forEach((entry, index) => {
-    if (hasCurrentInstruction(entry.message)) latestInstructionIndex = index;
+    if (hasTurnInput(entry.message)) latestInstructionIndex = index;
   });
   const trimming: ToolResultTrimming = { trimmedResults: 0, removedChars: 0 };
   const trimmed = entries.map((entry, index) => {

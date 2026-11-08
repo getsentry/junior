@@ -1,6 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
-import { z } from "zod";
+import * as z from "zod";
 import { jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";

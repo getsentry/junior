@@ -13,14 +13,14 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import { hasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
 import {
-  juniorConversationAnnotations,
   juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
 import {
-  conversationBriefSchema,
+  parseStoredBrief,
   type BriefLink,
   type BriefOutcomeStatus,
 } from "./schema";
@@ -104,6 +104,8 @@ export async function searchConversationBriefs(
         ),
     ),
     isNull(juniorConversations.parentConversationId),
+    // An unkept Quick question is a private side thread.
+    isNull(juniorConversations.quickQuestionAt),
     ne(juniorConversations.conversationId, args.currentConversationId),
     eq(juniorDestinations.visibility, "public"),
   ];
@@ -132,26 +134,11 @@ export async function searchConversationBriefs(
     conditions.push(lt(briefs.createdAt, new Date(args.filters.beforeMs)));
   }
   if (args.filters.annotation) {
-    const annotation = args.filters.annotation.toLowerCase();
-    const nestedAnnotationPrefix = `${annotation}#`;
     conditions.push(
-      sql`exists (
-        select 1
-        from ${juniorConversationAnnotations}
-        where ${and(
-          eq(
-            juniorConversationAnnotations.conversationId,
-            juniorConversations.conversationId,
-          ),
-          sql`(
-            lower(${juniorConversationAnnotations.key}) = ${annotation}
-            or starts_with(
-              lower(${juniorConversationAnnotations.key}),
-              ${nestedAnnotationPrefix}
-            )
-          )`,
-        )}
-      )`,
+      hasAnnotationKey(
+        juniorConversations.conversationId,
+        args.filters.annotation,
+      ),
     );
   }
 
@@ -181,7 +168,7 @@ export async function searchConversationBriefs(
     .limit(args.limit);
 
   return rows.map((row) => {
-    const content = conversationBriefSchema.parse(row.content);
+    const content = parseStoredBrief(row.content);
     return {
       conversationId: row.conversationId,
       excerpt: row.excerpt,

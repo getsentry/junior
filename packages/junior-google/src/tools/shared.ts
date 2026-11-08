@@ -5,7 +5,7 @@ import {
   type PluginSandbox,
   type User,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { emailDomain } from "../config";
 import { GOOGLE_OPERATIONS, type GoogleOperation } from "../credentials";
 
@@ -244,6 +244,38 @@ export function attendeeResults(
     }));
 }
 
+// Personal Google accounts have no Workspace domain to choose.
+const CONSUMER_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+const ACCOUNT_CHOOSER_URL = "https://accounts.google.com/AccountChooser";
+
+/**
+ * Make a Google Calendar event link open in the viewer's Workspace account.
+ *
+ * Google opens a plain event link in the browser's default account, which is
+ * often a personal one. AccountChooser picks the signed-in account of the
+ * Workspace domain, then continues to the event. Everyone in a Slack thread
+ * sees the same link, so the domain comes from Junior's own account, not the
+ * requester. `authuser`, `authdomain`, `login_hint`, `hd` on the event link,
+ * and `/u/<email>/` do not work for every viewer.
+ *
+ * Returns the link unchanged for a consumer domain, a link that is not an
+ * event link, or a link that already goes through AccountChooser.
+ */
+export function accountChooserLink(url: string, accountEmail: string): string {
+  const domain = emailDomain(accountEmail);
+  if (
+    !domain ||
+    CONSUMER_DOMAINS.has(domain) ||
+    !URL.parse(url)?.searchParams.has("eid")
+  ) {
+    return url;
+  }
+  const chooser = new URL(ACCOUNT_CHOOSER_URL);
+  chooser.searchParams.set("hd", domain);
+  chooser.searchParams.set("continue", url);
+  return chooser.toString();
+}
+
 /** Event fields that Junior reads back from its own calendar. */
 export const ownEventSchema = z.object({
   attendees: z.array(googleAttendeeSchema).optional(),
@@ -270,7 +302,13 @@ export type OwnEvent = z.infer<typeof ownEventSchema>;
  * reply. The event id is the key, so a change replaces the saved card. The
  * label is the short date for the sidebar; the card shows the full time.
  */
-export function ownEventResult(event: OwnEvent, timeZone: string) {
+export function ownEventResult(
+  event: OwnEvent,
+  timeZone: string,
+  accountEmail: string,
+) {
+  const url =
+    event.htmlLink && accountChooserLink(event.htmlLink, accountEmail);
   const startMs = Date.parse(event.start.dateTime);
   const when = formatInterval(
     startMs,
@@ -289,7 +327,7 @@ export function ownEventResult(event: OwnEvent, timeZone: string) {
     // People can edit the event in Calendar. Shorten long values so a
     // completed change never fails on the annotation schema.
     title: (event.summary?.trim() || "Untitled event").slice(0, 512),
-    url: event.htmlLink ?? null,
+    url: url || null,
     description: event.description?.trim().slice(0, 4000) || undefined,
     sourceUpdatedAt: event.updated,
     facts: {
@@ -316,7 +354,7 @@ export function ownEventResult(event: OwnEvent, timeZone: string) {
     ...(event.recurringEventId
       ? { series_event_id: event.recurringEventId }
       : undefined),
-    ...(event.htmlLink ? { url: event.htmlLink } : undefined),
+    ...(url ? { url } : undefined),
     ...(event.hangoutLink ? { video_call_url: event.hangoutLink } : undefined),
   };
 }
@@ -359,12 +397,15 @@ const EVENT_ID_PATTERN = /^[A-Za-z0-9_]{5,1024}$/;
 /**
  * Return the event id from an id or a Google Calendar event link.
  *
- * A link's `eid` value is base64 for `<eventId> <calendar email>`.
+ * A link's `eid` value is base64 for `<eventId> <calendar email>`. An
+ * AccountChooser link holds the event link in `continue`.
  */
 export function parseEventId(value: string): string {
   let eventId = value;
   if (/^https?:\/\//.test(value)) {
-    const eid = URL.parse(value)?.searchParams.get("eid");
+    const link = URL.parse(value);
+    const target = link?.searchParams.get("continue");
+    const eid = (target ? URL.parse(target) : link)?.searchParams.get("eid");
     eventId = eid
       ? (Buffer.from(eid, "base64").toString("utf8").split(" ")[0] ?? "")
       : "";

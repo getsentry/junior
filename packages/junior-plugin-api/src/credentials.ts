@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { PluginContext } from "./context";
 import { nonBlankStringSchema, pluginCredentialSubjectSchema } from "./schemas";
 

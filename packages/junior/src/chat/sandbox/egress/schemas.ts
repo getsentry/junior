@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import {
   pluginAuthorizationSchema,

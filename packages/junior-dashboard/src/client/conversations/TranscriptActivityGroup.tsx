@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { ShimmerText } from "../components/ShimmerText";
@@ -10,10 +10,15 @@ import {
 } from "../components/ui/tooltip";
 import { formatMs } from "../format";
 import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
-import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
+import { isMemoryCaptureEvent } from "./conversationMemory";
+import {
+  isAgentInvocationResultMessage,
+  type RenderedTranscriptEntry,
+} from "./transcriptRenderModel";
 import { cn } from "../styles";
 import { useTranscriptSearch } from "./transcriptSearch";
 import { TranscriptActivityNesting } from "./TranscriptRailEvent";
+import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 function countLabel(count: number, singular: string, plural: string): string {
@@ -27,14 +32,54 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // Child agent rows stay in the main view, like their result events.
+  // Child agent rows stay in the main view. A run of them is one group card.
   if (entry.kind === "subagent") return false;
-  if (entry.kind === "message") return false;
+  // An agent invocation result left only for its recalled memories is
+  // activity of the Turn it started. Its child agent card shows the outcome.
+  if (entry.kind === "message") {
+    return isAgentInvocationResultMessage(entry.message);
+  }
+  // A Turn's captured memories stay visible, so the reader sees what it saved.
+  if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
+    return false;
+  }
   // A review card stays visible where the agent added the item.
   if (entry.kind === "tool" && reviewItemIdFromToolCall(entry.part)) {
     return false;
   }
   return true;
+}
+
+/**
+ * Keys of message rows that fold into activity: each quiet reply and the
+ * Event messages that started its Turn, and each Event message whose Turn
+ * ended without a reply. Event messages wait for the next reply; a message
+ * from a person clears them.
+ */
+export function quietTurnEntryKeys(
+  entries: readonly RenderedTranscriptEntry[],
+): Set<string> {
+  const keys = new Set<string>();
+  let eventKeys: string[] = [];
+  for (const entry of entries) {
+    if (entry.kind !== "message") continue;
+    const { message } = entry;
+    if (message.role === "user") {
+      if (message.noReply) {
+        keys.add(entry.key);
+        continue;
+      }
+      eventKeys = message.eventType ? [...eventKeys, entry.key] : [];
+      continue;
+    }
+    if (message.role !== "assistant") continue;
+    if (message.quiet) {
+      keys.add(entry.key);
+      for (const key of eventKeys) keys.add(key);
+    }
+    eventKeys = [];
+  }
+  return keys;
 }
 
 function entryStartMs(entry: RenderedTranscriptEntry): number | undefined {
@@ -99,25 +144,18 @@ export function activityGroupSummary(
     (entry) =>
       entry.kind === "context" && entry.part.event.type === "compaction",
   ).length;
-  const handoffs = entries.flatMap((entry) =>
-    entry.kind === "context" && entry.part.event.type === "handoff"
-      ? [entry.part.event]
-      : [],
-  );
   const structuredCount = entries.filter(
     (entry) => entry.kind === "structured_event",
   ).length;
   const attachmentsCount = entries.filter(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
-  const eventCount = entries.filter((entry) => entry.kind === "message").length;
-  const [onlyHandoff] = handoffs;
-  const handoffSummary =
-    handoffs.length === 1 && onlyHandoff
-      ? `model handoff to ${onlyHandoff.modelId} (${onlyHandoff.modelProfile})`
-      : handoffs.length > 1
-        ? countLabel(handoffs.length, "model handoff", "model handoffs")
-        : undefined;
+  const eventCount = entries.filter(
+    (entry) => entry.kind === "message" && entry.message.role !== "assistant",
+  ).length;
+  const quietReplyCount = entries.filter(
+    (entry) => entry.kind === "message" && entry.message.role === "assistant",
+  ).length;
 
   const parts = [
     toolCount > 0
@@ -129,7 +167,6 @@ export function activityGroupSummary(
     compactionCount > 0
       ? countLabel(compactionCount, "context compacted", "context compacted")
       : undefined,
-    handoffSummary,
     structuredCount > 0
       ? countLabel(structuredCount, "1 structured event", "structured events")
       : undefined,
@@ -137,6 +174,9 @@ export function activityGroupSummary(
       ? countLabel(attachmentsCount, "1 file delivery", "file deliveries")
       : undefined,
     eventCount > 0 ? countLabel(eventCount, "1 event", "events") : undefined,
+    quietReplyCount > 0
+      ? countLabel(quietReplyCount, "1 quiet reply", "quiet replies")
+      : undefined,
   ].filter((value): value is string => value !== undefined);
 
   return parts.length > 0 ? parts.join(" · ") : activityGroupLabel(entries);
@@ -148,18 +188,16 @@ function hasLiveActivity(entries: RenderedTranscriptEntry[]): boolean {
   );
 }
 
-/** Keep activity collapsed until the reader explicitly opens it. */
-export function activityGroupOpen(userOpen: boolean | null): boolean {
-  return userOpen ?? false;
-}
-
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
   entries: RenderedTranscriptEntry[];
+  /** Keeps the group open while it unmounts outside the viewport. */
+  openKey?: string;
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
   const { active: searchActive } = useTranscriptSearch();
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  // Activity stays collapsed until the reader opens it.
+  const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const rows = props.entries.map((entry) => (
     <Fragment key={entry.key}>{props.renderEntry(entry)}</Fragment>
   ));
@@ -175,14 +213,8 @@ export function TranscriptActivityGroup(props: {
     );
   }
 
-  const open = activityGroupOpen(userOpen);
-
   return (
-    <Collapsible
-      className="min-w-0 py-0.5"
-      onOpenChange={setUserOpen}
-      open={open}
-    >
+    <Collapsible className="min-w-0 py-0.5" onOpenChange={setOpen} open={open}>
       <TranscriptSummaryTrigger
         flush
         className={cn(

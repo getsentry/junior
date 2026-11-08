@@ -284,13 +284,13 @@ Webhook signing secret for events and PR or issue outcome reporting.
 
 </details>
 
-## Run migrations
+## Migrations
 
-```bash
-pnpm exec junior upgrade
-```
+The next Vercel deploy applies this plugin's migrations, because the scaffolded
+build runs [junior upgrade](/cli/upgrade/). For a local database, run
+`pnpm exec junior upgrade` yourself.
 
-This creates the `junior_github_pull_requests` and `junior_github_issues`
+The migrations create the `junior_github_pull_requests` and `junior_github_issues`
 projections used by webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.
@@ -304,6 +304,8 @@ Once configured, Junior can:
 - Push branches and open draft pull requests
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
 - Look up deployments and releases
+- Check githubstatus.com for open or recent incidents when GitHub requests or
+  checks fail
 - Watch or automate matching events when webhooks are enabled
 
 Bot-owned writes use installation credentials. Personal operations still use
@@ -595,9 +597,10 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   or event automation first. A webhook alone does not create either one.
 - Missing repository context: include `owner/repo`, or set a thread default
   repository.
-- A `403` that names `github_createIssue`, `github_updateIssue`,
-  `github_createPullRequest`, or `github_updatePullRequest` is a Junior routing
-  denial. Retry with the named tool.
+- A `403` that names `github_createIssue`, `github_getIssue`,
+  `github_updateIssue`, `github_createPullRequest`, or
+  `github_updatePullRequest` is a Junior routing denial. Retry with the named
+  tool.
 - Private OAuth prompt for a personal operation: complete the private
   authorization prompt. Do not paste personal access tokens into chat.
 - Permission failures on issue or PR workflows: update App permissions or the

@@ -4,9 +4,9 @@ import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
-  copyDashboardAssets,
   copyIncludedFiles,
   copyRuntimeContent,
+  resolveDashboardPublicAssetsDir,
 } from "@/build/copy-build-content";
 import {
   injectVirtualConfig,
@@ -20,6 +20,8 @@ import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
+  JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+  JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
@@ -185,6 +187,16 @@ function configureVercelDeployment(
       schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
     });
   }
+  if (
+    !nitro.options.vercel.config.crons.some(
+      (cron) => cron.path === JUNIOR_AUTO_ARCHIVE_ROUTE,
+    )
+  ) {
+    nitro.options.vercel.config.crons.push({
+      path: JUNIOR_AUTO_ARCHIVE_ROUTE,
+      schedule: JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
+    });
+  }
 
   nitro.options.vercel.functions ??= {};
   nitro.options.vercel.functions.maxDuration = defaultMaxDuration;
@@ -242,6 +254,18 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         );
 
         applyRolldownTreeshakeWorkaround(nitro);
+        if (dashboardEnabled(options.dashboard)) {
+          // Nitro resolves configured public assets before modules run, so
+          // this entry must already have its final shape. The dashboard
+          // package serves the same files from `/_junior/dashboard/assets/*`
+          // when no static file matches.
+          nitro.options.publicAssets.push({
+            baseURL: "/_junior/dashboard/assets",
+            dir: resolveDashboardPublicAssetsDir(cwd),
+            fallthrough: false,
+            maxAge: 31_536_000,
+          });
+        }
         nitro.options.traceDeps = [
           ...(nitro.options.traceDeps ?? []),
           ...CODEMODE_TRACE_DEPS,
@@ -292,9 +316,6 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             nitro.options.output.serverDir,
             compiledPluginCatalogConfig?.packages,
           );
-          if (dashboardEnabled(options.dashboard)) {
-            copyDashboardAssets(cwd, nitro.options.output.serverDir);
-          }
           copyIncludedFiles(
             cwd,
             nitro.options.output.serverDir,

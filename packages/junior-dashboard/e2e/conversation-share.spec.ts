@@ -35,10 +35,7 @@ for (const touch of [false, true]) {
               ).recordShare(data),
           });
         });
-        // Share sits in the title bar on a tablet and in the menu on a phone.
-        if (!touch) {
-          await page.getByRole("button", { name: "Conversation menu" }).click();
-        }
+        await page.getByRole("button", { name: "Conversation menu" }).click();
         await page.evaluate(() => navigator.clipboard.writeText("unchanged"));
         const shareButton = page.getByRole("button", {
           name: "Share",

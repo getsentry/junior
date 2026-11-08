@@ -1,34 +1,61 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
   ChevronRight,
-  CircleAlert,
   Inbox,
   LockKeyhole,
+  Mail,
+  MailOpen,
+  Pencil,
+  Pin,
   SquarePen,
 } from "lucide-react";
 import { Link } from "react-router";
 
-import { useArchiveConversation } from "./queries";
+import { useArchiveConversation } from "./conversationArchive";
+import { useConversationActionToasts } from "./conversationActionToasts";
+import { useMarkConversationUnread } from "./useMarkConversationUnread";
+import { usePinConversation } from "./usePinConversation";
+import { useRenameConversation } from "./useRenameConversation";
+import { RenameConversationDialog } from "./RenameConversationDialog";
+import {
+  PinnedConversationOrder,
+  usePinnedRowDrag,
+  type PinnedRowDrag,
+} from "./PinnedConversationOrder";
+import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
+  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
-import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
 import {
+  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import {
+  ConversationSidebarThreadRow,
+  ConversationSidebarThreadToggle,
+} from "./ConversationSidebarThreadRow";
+import { sidebarThreads } from "./sidebarThreads";
+import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
-import { SearchInput } from "../components/SearchInput";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import {
@@ -49,139 +76,135 @@ type ConversationSidebarEntry =
       label: string;
       sectionKey: string;
     }
-  | { conversation: Conversation; key: string; kind: "conversation" };
+  | { conversation: Conversation; key: string; kind: "conversation" }
+  | { conversation: Conversation; depth: number; key: string; kind: "thread" }
+  | {
+      expanded: boolean;
+      hiddenCount: number;
+      key: string;
+      kind: "thread-toggle";
+      rootId: string;
+    };
 
-// Tracks the attempted direction alongside the conversation so a failed
-// archive can never read the row's already-optimistic archived state.
-type ArchiveErrorState = { conversation: Conversation; wasArchiving: boolean };
+const ROW_ACTION_BUTTON_CLASS =
+  "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
+
+// While the row actions show, the row content fades out under them, so the
+// title does not end in a hard cut. --row-actions-width is set per row.
+const ROW_ACTIONS_FADE_CLASS =
+  "sm:group-hover:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))] sm:group-focus-within:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]";
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
-/** Render the compact personal conversation picker used by the home workspace. */
+/** Render the compact personal conversation picker beside the workspace. */
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
-  finishedConversationIds: ReadonlySet<string>;
-  /** Opened while unread; keeps its unread place until another one opens. */
-  heldConversationId?: string;
   loading: boolean;
-  query: string;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
-  /**
-   * `panel` = split-pane dock with internal scroll.
-   * `landing` = flow nav under create compose (parent owns scroll).
-   */
-  variant?: "panel" | "landing";
   onNewConversation(): void;
-  onQueryChange(value: string): void;
+  onReorderPins: ReorderPins;
 }) {
-  const variant = props.variant ?? "panel";
-  const isLanding = variant === "landing";
-  const [archivedConversation, setArchivedConversation] =
-    useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<ArchiveErrorState>();
-  const dismissArchivedConversation = useCallback(
-    () => setArchivedConversation(undefined),
-    [],
-  );
-  const handleArchiveError = useCallback(
-    (conversation: Conversation, wasArchiving: boolean) => {
-      setArchiveError({ conversation, wasArchiving });
+  const { clearActionError, showActionError, showArchiveError, showArchived } =
+    useConversationActionToasts();
+  const handlePinError = useCallback(
+    (conversation: Conversation, wasPinning: boolean) => {
+      showActionError(
+        conversation,
+        wasPinning ? "Could not pin" : "Could not unpin",
+      );
     },
-    [],
+    [showActionError],
   );
-  const handleArchived = useCallback((conversation: Conversation) => {
-    setArchiveError((current) =>
-      current?.conversation.id === conversation.id ? undefined : current,
-    );
-    setArchivedConversation(conversation);
-  }, []);
+  const handleUnreadError = useCallback(
+    (conversation: Conversation, wasMarkingUnread: boolean) => {
+      showActionError(
+        conversation,
+        wasMarkingUnread
+          ? "Could not mark as unread"
+          : "Could not mark as read",
+      );
+    },
+    [showActionError],
+  );
+  const handleRenameError = useCallback(
+    (conversation: Conversation) =>
+      showActionError(conversation, "Could not rename"),
+    [showActionError],
+  );
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
+  const [expandedThreadRoots, setExpandedThreadRoots] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const toggleThreads = useCallback((rootId: string) => {
+    setExpandedThreadRoots((current) => {
+      const next = new Set(current);
+      if (!next.delete(rootId)) next.add(rootId);
+      return next;
+    });
+  }, []);
   // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
   // arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
     () =>
       conversationSidebarEntries(
         buildConversationSections(props.conversations, {
-          attentionIds: new Set([
-            ...props.waitingConversations.keys(),
-            ...props.finishedConversationIds,
-            ...(props.heldConversationId ? [props.heldConversationId] : []),
-          ]),
+          attentionIds: attentionConversationIds(
+            props.conversations,
+            props.waitingConversations.keys(),
+          ),
           nowMs: Date.now(),
           timeZone: props.timeZone,
         }),
         collapsedKeys,
+        { expandedThreadRoots, selectedId: props.selectedId },
       ),
     [
       collapsedKeys,
+      expandedThreadRoots,
+      props.selectedId,
       props.conversations,
-      props.finishedConversationIds,
-      props.heldConversationId,
       props.timeZone,
       props.waitingConversations,
     ],
   );
+  const pinnedConversations = useMemo(
+    () =>
+      entries.flatMap((entry) =>
+        entry.kind === "conversation" && entry.conversation.pinnedAt
+          ? [entry.conversation]
+          : [],
+      ),
+    [entries],
+  );
+  const handleReorderError = useCallback(
+    (conversation: Conversation) =>
+      showActionError(conversation, "Could not reorder"),
+    [showActionError],
+  );
   return (
-    <aside
-      className={cn(
-        "relative min-w-0",
-        isLanding
-          ? "border-t border-dashboard-border bg-transparent"
-          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel",
-      )}
-    >
-      <div className="px-5 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2
-            className={cn(
-              "m-0 font-display font-medium leading-tight text-dashboard-text",
-              isLanding ? "text-base" : "text-lg",
-            )}
+    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
+      <div className="px-3 pb-1.5 pt-2.5">
+        {/* The chip centers on the rows' icon column, so the label lines up
+          with the conversation titles below. */}
+        <Button
+          className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-2 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-accent-text hover:[&_svg]:text-dashboard-accent-text focus-visible:[&_svg]:text-dashboard-accent-text"
+          onClick={props.onNewConversation}
+          size="menu"
+        >
+          <span
+            aria-hidden="true"
+            className="grid size-[1.125rem] place-items-center justify-self-center rounded-md bg-dashboard-accent/[0.14] dark:bg-dashboard-accent/[0.22]"
           >
-            {isLanding ? "Your conversations" : "Conversations"}
-          </h2>
-          <div className="flex items-center gap-0.5">
-            {isLanding ? null : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label="New conversation"
-                      className="size-7"
-                      onClick={props.onNewConversation}
-                      size="icon"
-                    >
-                      <SquarePen aria-hidden="true" size={15} />
-                    </Button>
-                  }
-                />
-                <TooltipContent size="compact">New conversation</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
+            <SquarePen className="size-3" strokeWidth={2.25} />
+          </span>
+          New conversation
+        </Button>
       </div>
-      <div className="px-4 pb-2">
-        <SearchInput
-          label="Search your conversations"
-          onChange={props.onQueryChange}
-          placeholder="Search conversations…"
-          size="compact"
-          value={props.query}
-        />
-      </div>
-      <div
-        className={cn(
-          "px-3",
-          isLanding
-            ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
-            : "min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
-        )}
-      >
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -189,75 +212,70 @@ export function ConversationSidebar(props: {
         ) : props.loading && entries.length === 0 ? (
           <ConversationRowsLoading />
         ) : (
-          <AnimatedList
-            ariaLabel="Your conversations"
-            className="grid gap-0.5"
-            empty={
-              !props.loading ? (
-                <div className="p-2">
-                  <EmptyTelemetry>
-                    No conversations match this view.
-                  </EmptyTelemetry>
-                </div>
-              ) : undefined
-            }
-            getKey={conversationEntryKey}
-            items={entries}
-            renderItem={(entry) =>
-              entry.kind === "section" ? (
-                <ConversationSectionHeading
-                  className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
-                  collapsed={entry.collapsed}
-                  count={entry.count}
-                  label={entry.label}
-                  onToggle={() => toggleSection(entry.sectionKey)}
-                />
-              ) : (
-                <ConversationSidebarRow
-                  conversation={entry.conversation}
-                  onArchiveError={handleArchiveError}
-                  onArchived={handleArchived}
-                  selected={entry.conversation.id === props.selectedId}
-                  unread={props.finishedConversationIds.has(
-                    entry.conversation.id,
-                  )}
-                  waiting={props.waitingConversations.get(
-                    entry.conversation.id,
-                  )}
-                />
-              )
-            }
-            role="navigation"
-          />
+          <PinnedConversationOrder
+            conversations={pinnedConversations}
+            onError={handleReorderError}
+            reorder={props.onReorderPins}
+          >
+            <AnimatedList
+              ariaLabel="Your conversations"
+              className="grid gap-0.5"
+              empty={
+                !props.loading ? (
+                  <div className="p-2">
+                    <EmptyTelemetry>
+                      No conversations match this view.
+                    </EmptyTelemetry>
+                  </div>
+                ) : undefined
+              }
+              getKey={conversationEntryKey}
+              items={entries}
+              renderItem={(entry) =>
+                entry.kind === "section" ? (
+                  <ConversationSectionHeading
+                    className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
+                    collapsed={entry.collapsed}
+                    count={entry.count}
+                    label={entry.label}
+                    onToggle={() => toggleSection(entry.sectionKey)}
+                  />
+                ) : entry.kind === "thread-toggle" ? (
+                  <ConversationSidebarThreadToggle
+                    expanded={entry.expanded}
+                    hiddenCount={entry.hiddenCount}
+                    onToggle={() => toggleThreads(entry.rootId)}
+                  />
+                ) : entry.kind === "thread" ? (
+                  <ConversationSidebarThreadRow
+                    conversation={entry.conversation}
+                    depth={entry.depth}
+                    selected={entry.conversation.id === props.selectedId}
+                    waiting={props.waitingConversations.has(
+                      entry.conversation.id,
+                    )}
+                  />
+                ) : (
+                  <ConversationSidebarEntryRow
+                    conversation={entry.conversation}
+                    onArchiveError={showArchiveError}
+                    onArchived={showArchived}
+                    onPinError={handlePinError}
+                    onPinned={clearActionError}
+                    onUnreadError={handleUnreadError}
+                    onRenameError={handleRenameError}
+                    selected={entry.conversation.id === props.selectedId}
+                    waiting={props.waitingConversations.get(
+                      entry.conversation.id,
+                    )}
+                  />
+                )
+              }
+              role="navigation"
+            />
+          </PinnedConversationOrder>
         )}
       </div>
-      {archivedConversation || archiveError ? (
-        <div
-          className={cn(
-            // Landing is content-tall (parent scrolls). Keep notices on the
-            // visible viewport instead of the end of the long list.
-            isLanding
-              ? "fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 grid gap-2"
-              : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2",
-          )}
-        >
-          {archiveError ? (
-            <ArchiveConversationErrorNotice
-              conversation={archiveError.conversation}
-              onDismiss={() => setArchiveError(undefined)}
-              wasArchiving={archiveError.wasArchiving}
-            />
-          ) : null}
-          {archivedConversation ? (
-            <ArchivedConversationNotice
-              // Remount on each archive so the expiry timer and restore mutation reset.
-              key={archivedConversation.id}
-              conversation={archivedConversation}
-              onRestored={dismissArchivedConversation}
-            />
-          ) : null}
-        </div>
-      ) : null}
     </aside>
   );
 }
@@ -265,17 +283,21 @@ export function ConversationSidebar(props: {
 /** Match the usual conversation row density while the first feed loads. */
 function ConversationRowsLoading() {
   return (
-    <div
-      aria-busy="true"
-      aria-live="polite"
-      className="grid gap-0.5"
-      role="status"
-    >
+    <div aria-busy="true" aria-live="polite" role="status">
       <span className="sr-only">Loading your conversations</span>
-      <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
+      <ConversationRowSkeletons />
+    </div>
+  );
+}
+
+/** Draw placeholder rows in the sidebar row geometry. Callers own the status text. */
+export function ConversationRowSkeletons() {
+  return (
+    <div aria-hidden="true" className="grid gap-0.5">
+      <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 10 }, (_, index) => (
         <div
-          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[1.625rem] pr-3"
+          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[2.125rem] pr-3"
           key={index}
         >
           <Skeleton
@@ -291,6 +313,7 @@ function ConversationRowsLoading() {
 function conversationSidebarEntries(
   sections: ConversationSection[],
   collapsedKeys: ReadonlySet<string>,
+  threads: { expandedThreadRoots: ReadonlySet<string>; selectedId?: string },
 ): ConversationSidebarEntry[] {
   return sections.flatMap((section, index) => {
     const collapsed = collapsedKeys.has(section.key);
@@ -304,23 +327,82 @@ function conversationSidebarEntries(
         label: section.label,
         sectionKey: section.key,
       },
-      ...(collapsed ? [] : section.conversations).map((conversation) => ({
-        conversation,
-        key: `conversation-${conversation.id}`,
-        kind: "conversation" as const,
-      })),
+      ...(collapsed ? [] : section.conversations).flatMap((conversation) => [
+        {
+          conversation,
+          key: `conversation-${conversation.id}`,
+          kind: "conversation" as const,
+        },
+        ...threadEntries(
+          conversation,
+          threads.expandedThreadRoots.has(conversation.id),
+          threads.selectedId,
+        ),
+      ]),
     ];
   });
 }
 
-const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
+/** List the sidebar Threads under one root, then its show more or fewer row. */
+function threadEntries(
+  root: Conversation,
+  expanded: boolean,
+  selectedId: string | undefined,
+): ConversationSidebarEntry[] {
+  const { collapsible, hiddenCount, threads } = sidebarThreads(root.threads, {
+    expanded,
+    selectedId,
+  });
+  const entries: ConversationSidebarEntry[] = threads.map((thread) => ({
+    ...thread,
+    key: `thread-${thread.conversation.id}`,
+    kind: "thread" as const,
+  }));
+  if (collapsible && (expanded || hiddenCount > 0)) {
+    entries.push({
+      expanded,
+      hiddenCount,
+      key: `thread-toggle-${root.id}`,
+      kind: "thread-toggle",
+      rootId: root.id,
+    });
+  }
+  return entries;
+}
+
+type ConversationSidebarRowProps = {
   conversation: Conversation;
+  /** Set on pinned rows, which drag to reorder. */
+  drag?: PinnedRowDrag;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onPinError(conversation: Conversation, wasPinning: boolean): void;
+  onPinned(conversation: Conversation): void;
+  onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
+  onRenameError(conversation: Conversation): void;
   selected: boolean;
-  unread: boolean;
   waiting?: WaitingConversation;
-}) {
+};
+
+/** Render one sidebar row. Only pinned rows join the drag order. */
+function ConversationSidebarEntryRow(
+  props: Omit<ConversationSidebarRowProps, "drag">,
+) {
+  return props.conversation.pinnedAt ? (
+    <PinnedSidebarRow {...props} />
+  ) : (
+    <ConversationSidebarRow {...props} />
+  );
+}
+
+function PinnedSidebarRow(props: Omit<ConversationSidebarRowProps, "drag">) {
+  const drag = usePinnedRowDrag(props.conversation.id);
+  return <ConversationSidebarRow {...props} drag={drag} />;
+}
+
+const ConversationSidebarRow = memo(function ConversationSidebarRow(
+  props: ConversationSidebarRowProps,
+) {
   const archive = useArchiveConversation(props.conversation.id, {
     // Read the attempted direction from the mutation call, not the (possibly
     // already optimistically updated) conversation prop, so a failed archive
@@ -334,109 +416,252 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       if (archived) props.onArchived(props.conversation);
     },
   });
+  const pin = usePinConversation(props.conversation.id, {
+    onError: (pinned) => props.onPinError(props.conversation, pinned),
+    onSuccess: () => props.onPinned(props.conversation),
+  });
+  const markUnread = useMarkConversationUnread(props.conversation.id, {
+    onError: (unread) => props.onUnreadError(props.conversation, unread),
+  });
+  const rename = useRenameConversation(props.conversation.id, {
+    onError: () => props.onRenameError(props.conversation),
+  });
+  const [renaming, setRenaming] = useState(false);
+  const prefetch = usePrefetchConversation(props.conversation.id);
+  const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
-  const emphasized = props.unread || Boolean(props.waiting);
+  const unread = Boolean(props.conversation.unread);
+  const emphasized = unread || Boolean(props.waiting);
+  const drag = props.drag;
+  // Unread tracks idle conversations only.
+  const canMarkUnread = isIdleConversation(props.conversation);
+  const archived = Boolean(props.conversation.archivedAt);
+  // The leading marker toggles read state. A waiting row's marker is about
+  // its review item, so it stays a plain marker.
+  const canToggleRead = !props.waiting && (unread || canMarkUnread);
+  const togglePin = () => pin.mutate(!pinned);
+  const toggleArchive = () =>
+    archive.mutate({
+      archived: !archived,
+      lastSeenAt: props.conversation.lastSeenAt,
+    });
   return (
-    <div
-      className={cn(
-        "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover",
-        props.selected && "bg-dashboard-surface-active",
-      )}
-    >
-      <Link
-        aria-current={props.selected ? "page" : undefined}
-        className="grid min-w-0 grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10"
-        to={conversationPath(props.conversation.id)}
+    <ContextMenu>
+      <ContextMenuTrigger
+        {...prefetch}
+        {...drag?.listeners}
+        className={cn(
+          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover data-popup-open:bg-dashboard-fill-hover",
+          props.selected && "bg-dashboard-surface-active",
+          drag?.dragging && "opacity-40",
+          archived
+            ? "[--row-actions-width:2.25rem]"
+            : "[--row-actions-width:4.25rem]",
+        )}
+        onKeyDown={drag?.onKeyDown}
+        ref={drag?.setNodeRef}
       >
-        <span className="grid place-items-center">
-          {emphasized ? (
-            <span
-              aria-label={props.waiting ? "Waiting on you" : "Unread"}
-              className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
-              role="img"
-            />
-          ) : props.conversation.visibility === "private" ? (
-            <LockKeyhole
-              aria-label="Private conversation"
-              className="size-3 shrink-0 text-dashboard-text-faint"
-            />
-          ) : null}
-        </span>
-        <span
+        <Link
+          aria-current={props.selected ? "page" : undefined}
+          aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            "min-w-0 truncate font-sans text-sm leading-snug",
-            emphasized
-              ? "font-semibold text-dashboard-text"
-              : status === "active"
+            "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+            ROW_ACTIONS_FADE_CLASS,
+            // A long press opens the row menu or drags a pin, not the iOS
+            // link callout.
+            "[-webkit-touch-callout:none]",
+          )}
+          // The browser's own link drag would take the pointer from the reorder.
+          draggable={drag ? false : undefined}
+          to={conversationPath(props.conversation.id)}
+        >
+          <span className="grid place-items-center">
+            {emphasized ? (
+              <span
+                aria-label={props.waiting ? "Waiting on you" : "Unread"}
+                className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
+                role="img"
+              />
+            ) : props.conversation.visibility === "private" ? (
+              <LockKeyhole
+                aria-label="Private conversation"
+                className="size-3 shrink-0 text-dashboard-text-faint"
+              />
+            ) : null}
+          </span>
+          <span
+            className={cn(
+              // The title fills its grid column, so the fade reaches only a
+              // title that does not fit, in place of an ellipsis.
+              "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
+              emphasized ? "font-semibold" : props.selected && "font-medium",
+              emphasized || props.selected || status === "active"
                 ? "text-dashboard-text"
                 : "text-dashboard-text-muted",
-          )}
-        >
-          {title}
-        </span>
-        <ConversationRowState
-          lastSeenAt={props.conversation.lastSeenAt}
-          status={status}
-        />
-      </Link>
-      {props.waiting ? (
-        <Link
-          className="mb-1.5 ml-[1.625rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-          to={conversationPath(props.conversation.id, { reviewItems: true })}
-        >
-          <Inbox
-            aria-hidden="true"
-            className="size-3 shrink-0 text-dashboard-text-muted"
-          />
-          <span className="min-w-0 truncate">{props.waiting.title}</span>
-          {props.waiting.count > 1 ? (
-            <span className="ml-auto shrink-0 text-dashboard-text-faint">
-              +{props.waiting.count - 1} more
-            </span>
-          ) : null}
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              "size-3 shrink-0 text-dashboard-text-muted",
-              props.waiting.count > 1 ? undefined : "ml-auto",
             )}
+          >
+            {title}
+          </span>
+          <ConversationRowState
+            lastSeenAt={props.conversation.lastSeenAt}
+            status={status}
           />
         </Link>
-      ) : null}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-              className="absolute right-1.5 top-0.5 z-10 grid size-7 cursor-pointer place-items-center rounded-md bg-dashboard-surface-active text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
-              disabled={archive.isPending}
-              onClick={() =>
-                archive.mutate({
-                  archived: !props.conversation.archivedAt,
-                  lastSeenAt: props.conversation.lastSeenAt,
-                })
+        {canToggleRead ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
+                  className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
+                  disabled={markUnread.isPending}
+                  onClick={() => markUnread.mutate(!unread)}
+                  type="button"
+                >
+                  {/* On hover, preview the state that a click sets. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "hidden size-1.5 rounded-full group-hover/read:block group-focus-visible/read:block",
+                      unread
+                        ? "border border-dashboard-text-muted"
+                        : "bg-dashboard-accent",
+                    )}
+                  />
+                </button>
               }
-              type="button"
-            >
-              {props.conversation.archivedAt ? (
-                <ArchiveRestore aria-hidden="true" size={14} />
-              ) : (
-                <Archive aria-hidden="true" size={14} />
+            />
+            <TooltipContent size="compact">
+              {unread ? "Mark as read" : "Mark as unread"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {props.waiting ? (
+          <Link
+            className="mb-1.5 ml-[2.125rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+            to={conversationPath(props.conversation.id, { reviewItems: true })}
+          >
+            <Inbox
+              aria-hidden="true"
+              className="size-3 shrink-0 text-dashboard-text-muted"
+            />
+            <span className="min-w-0 truncate">{props.waiting.title}</span>
+            {props.waiting.count > 1 ? (
+              <span className="ml-auto shrink-0 text-dashboard-text-faint">
+                +{props.waiting.count - 1} more
+              </span>
+            ) : null}
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-3 shrink-0 text-dashboard-text-muted",
+                props.waiting.count > 1 ? undefined : "ml-auto",
               )}
-            </button>
-          }
+            />
+          </Link>
+        ) : null}
+        {/* Mobile rows pin from the conversation menu, so only the archive
+          button takes row space there. Archived rows restore before they pin. */}
+        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+          {archived ? null : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
+                    aria-pressed={pinned}
+                    className={cn(ROW_ACTION_BUTTON_CLASS, "max-sm:hidden")}
+                    disabled={pin.isPending}
+                    onClick={togglePin}
+                    type="button"
+                  >
+                    <Pin
+                      aria-hidden="true"
+                      fill={pinned ? "currentColor" : "none"}
+                      size={14}
+                    />
+                  </button>
+                }
+              />
+              <TooltipContent size="compact">
+                {pinned ? "Unpin" : "Pin"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
+                  className={ROW_ACTION_BUTTON_CLASS}
+                  disabled={archive.isPending}
+                  onClick={toggleArchive}
+                  type="button"
+                >
+                  {archived ? (
+                    <ArchiveRestore aria-hidden="true" size={14} />
+                  ) : (
+                    <Archive aria-hidden="true" size={14} />
+                  )}
+                </button>
+              }
+            />
+            <TooltipContent size="compact">
+              {archived ? "Restore" : "Archive"}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {unread ? (
+          <ContextMenuItem onClick={() => markUnread.mutate(false)}>
+            <MailOpen aria-hidden="true" />
+            Mark as read
+          </ContextMenuItem>
+        ) : (
+          <ContextMenuItem
+            disabled={!canMarkUnread}
+            onClick={() => markUnread.mutate(true)}
+          >
+            <Mail aria-hidden="true" />
+            Mark as unread
+          </ContextMenuItem>
+        )}
+        {/* Archived rows restore before they pin, like the row buttons. */}
+        {archived ? null : (
+          <ContextMenuItem disabled={pin.isPending} onClick={togglePin}>
+            <Pin aria-hidden="true" />
+            {pinned ? "Unpin" : "Pin"}
+          </ContextMenuItem>
+        )}
+        <ContextMenuItem onClick={() => setRenaming(true)}>
+          <Pencil aria-hidden="true" />
+          Rename
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
+          {archived ? (
+            <ArchiveRestore aria-hidden="true" />
+          ) : (
+            <Archive aria-hidden="true" />
+          )}
+          {archived ? "Restore" : "Archive"}
+        </ContextMenuItem>
+      </ContextMenuContent>
+      {renaming ? (
+        <RenameConversationDialog
+          onClose={() => setRenaming(false)}
+          onSave={(next) => rename.mutate(next)}
+          title={title}
         />
-        <TooltipContent size="compact">
-          {props.conversation.archivedAt ? "Restore" : "Archive"}
-        </TooltipContent>
-      </Tooltip>
-    </div>
+      ) : null}
+    </ContextMenu>
   );
 });
 
-/** Show the row age, or the status when the conversation runs or failed. */
+/** Show the row age, or the status when the conversation runs, failed, or stopped. */
 function ConversationRowState(props: {
   lastSeenAt: string;
   status: ReturnType<typeof visualStatusForConversation>;
@@ -452,88 +677,16 @@ function ConversationRowState(props: {
   if (props.status === "failed") {
     return <span className="font-sans text-xs text-rose-400">Failed</span>;
   }
+  if (props.status === "stopped") {
+    return (
+      <span className="font-sans text-xs text-dashboard-text-muted">
+        Stopped
+      </span>
+    );
+  }
   return (
     <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
       {formatCompactAge(props.lastSeenAt)}
     </span>
-  );
-}
-
-function ArchiveConversationErrorNotice(props: {
-  conversation: Conversation;
-  onDismiss(): void;
-  wasArchiving: boolean;
-}) {
-  const title = conversationDisplayTitle(props.conversation);
-  const actionTitle = props.wasArchiving
-    ? "Could not archive"
-    : "Could not restore";
-  return (
-    <Notice
-      action={
-        <NoticeAction onClick={props.onDismiss} title="Dismiss" tone="error">
-          Dismiss
-        </NoticeAction>
-      }
-      detail={title}
-      icon={CircleAlert}
-      title={actionTitle}
-      tone="error"
-    />
-  );
-}
-
-function ArchivedConversationNotice(props: {
-  conversation: Conversation;
-  onRestored(): void;
-}) {
-  const restore = useArchiveConversation(props.conversation.id, {
-    onSuccess: (archived) => {
-      if (!archived) props.onRestored();
-    },
-  });
-  const title = conversationDisplayTitle(props.conversation);
-
-  useEffect(() => {
-    if (restore.isPending || restore.error) return;
-    const timeout = window.setTimeout(props.onRestored, 6_000);
-    return () => window.clearTimeout(timeout);
-  }, [
-    props.conversation.id,
-    props.onRestored,
-    restore.error,
-    restore.isPending,
-  ]);
-
-  return (
-    <Notice
-      action={
-        <NoticeAction
-          aria-label={`Undo archive for ${title}`}
-          disabled={restore.isPending}
-          onClick={() =>
-            restore.mutate({
-              archived: false,
-              lastSeenAt: props.conversation.lastSeenAt,
-            })
-          }
-          title={`Undo archive for ${title}`}
-        >
-          {restore.isPending ? "Restoring…" : "Undo"}
-        </NoticeAction>
-      }
-      detail={title}
-      icon={ArchiveRestore}
-      title="Conversation archived"
-    >
-      {restore.error ? (
-        <div
-          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-sans text-xs text-rose-50/85"
-          role="alert"
-        >
-          Could not restore the conversation.
-        </div>
-      ) : null}
-    </Notice>
   );
 }

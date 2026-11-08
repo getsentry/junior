@@ -12,6 +12,7 @@ import type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationPendingMessagesReport,
   ConversationReportEvent,
   ConversationReportEventData,
@@ -32,6 +33,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */
 export const NOW = "2026-08-07T12:00:00.000Z";
@@ -133,14 +135,85 @@ const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
 const DASHBOARD_QA_PLAN_CHECK_ID =
   "junior:internal:dashboard-qa:advisor-plan:claim-check";
-/** Process-local archive state so mock restore can be exercised in visual QA. */
-const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
+export const DASHBOARD_QA_THREAD_ID = "junior:internal:dashboard-qa:thread";
+export const DASHBOARD_QA_ARCHIVED_THREAD_ID =
+  "junior:internal:dashboard-qa:archived-thread";
+/** A Thread whose parent is the Thread above, not the root. */
+const DASHBOARD_QA_NESTED_THREAD_ID =
+  "junior:internal:dashboard-qa:thread:nested";
+/** Process-local pins so the Pinned section can be exercised in visual QA. */
+const mockPinnedConversationIds = new Set<string>();
+/** Process-local Pinned order from drag reorders. */
+const mockPinPositions = new Map<string, number>();
+/** Process-local conversations that the viewer marked unread. */
+const mockUnreadConversationIds = new Set<string>();
 
-/** Restore process-local archive state so tests sharing a worker do not leak state. */
-export function resetMockConversationArchiveState(): void {
-  mockArchivedConversationIds.clear();
-  mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
+/** Process-local renames so rename can be exercised in visual QA. */
+const mockTitles = new Map<string, string>();
+
+/** Process-local auto-archive choices for mock visual QA. */
+const mockAutoArchiveByConversationId = new Map<string, boolean>();
+
+/** Process-local archives. Like the API, an archive applies to everyone. */
+const initialMockArchives: [string, string][] = [
+  [ARCHIVED_CONVERSATION_ID, iso(NOW_MS, -3 * 24 * 60 * 60_000)],
+  [DASHBOARD_QA_ARCHIVED_THREAD_ID, iso(NOW_MS, -2 * 60 * 60_000)],
+];
+const mockArchivedAt = new Map(initialMockArchives);
+let mockArchiveCount = 0;
+
+/** Process-local Slack channels from Continue in Slack. */
+const mockSlackChannelByConversationId = new Map<
+  string,
+  { channel: string; channelName: string }
+>();
+
+/**
+ * Restore process-local archive, pin, unread, and auto-archive state so
+ * tests sharing a worker do not leak state.
+ */
+export function resetMockConversationViewerState(): void {
+  mockPinnedConversationIds.clear();
+  mockPinPositions.clear();
+  mockUnreadConversationIds.clear();
+  mockTitles.clear();
+  mockAutoArchiveByConversationId.clear();
+  mockArchivedAt.clear();
+  mockArchiveCount = 0;
+  for (const [id, at] of initialMockArchives) mockArchivedAt.set(id, at);
+  mockSlackChannelByConversationId.clear();
 }
+
+/**
+ * Add the mock archive, the viewer's pin and unread marks, and any rename to
+ * one conversation. Like the API, a child reports the pin of its root.
+ */
+function withMockViewerState<
+  T extends { conversationId: string; displayTitle: string; status: string },
+>(
+  report: T & { archivedAt?: string | null },
+  pinConversationId = report.conversationId,
+): T & {
+  archivedAt: string | undefined;
+  pinnedAt: string | null;
+  pinPosition?: number;
+  unread?: true;
+} {
+  const pinPosition = mockPinPositions.get(pinConversationId);
+  // Match the API: only idle conversations are unread.
+  const unread =
+    (report.status === "completed" || report.status === "stopped") &&
+    mockUnreadConversationIds.has(report.conversationId);
+  return {
+    ...report,
+    displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
+    archivedAt: mockArchivedAt.get(report.conversationId),
+    pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
+    ...(pinPosition === undefined ? undefined : { pinPosition }),
+    ...(unread ? { unread: true as const } : undefined),
+  };
+}
+
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -181,6 +254,7 @@ type DetailOptions = Omit<
   | "events"
   | "generatedAt"
   | "isParticipant"
+  | "kind"
   | "lastProgressAt"
   | "lastSeenAt"
   | "startedAt"
@@ -192,6 +266,7 @@ type DetailOptions = Omit<
   eventHistory?: ConversationDetailReport["eventHistory"];
   events: ConversationReportEvent[];
   isParticipant?: boolean;
+  kind?: ConversationDetailReport["kind"];
   lastProgressAt?: string;
   lastSeenAt?: string;
   startedAt: string;
@@ -199,9 +274,7 @@ type DetailOptions = Omit<
   surface?: ConversationDetailReport["surface"];
 };
 
-type MockConversation = ConversationDetailReport & {
-  parentConversationId?: string;
-};
+type MockConversation = ConversationDetailReport;
 
 function detail(
   nowMs: number,
@@ -213,6 +286,7 @@ function detail(
     eventHistory: options.eventHistory ?? { status: "available" },
     generatedAt: iso(nowMs),
     isParticipant: options.isParticipant ?? false,
+    kind: options.kind ?? "root",
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
     status: options.status ?? "completed",
@@ -292,14 +366,6 @@ function mockBrief(
               kind: "confirmed",
             },
           ],
-      openDecisions: live
-        ? [
-            {
-              text: "Roll back payments-v42 or patch the serializer path.",
-              owner: "Morgan Lee",
-            },
-          ]
-        : [],
       facts: live
         ? [
             "Checkout p95 increased from 210ms to 890ms.",
@@ -369,6 +435,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#42",
         label: "getsentry/payments#42",
+        objectType: "code_change",
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/42",
@@ -452,16 +519,27 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
       }),
-      reportEvent(3, iso(Date.parse(startedAt), 9_000), {
-        type: "turn_routed",
-        turnId: "active-turn",
-        modelProfile: "handoff",
-        modelId: "openai/gpt-5.6-sol",
-        reasoningLevel: "high",
-        confidence: 0.93,
-        source: "router",
-        costUsd: 0.0012,
-      }),
+      reportEvent(
+        3,
+        iso(Date.parse(startedAt), 9_000),
+        {
+          type: "assistant_message",
+          parts: [
+            {
+              type: "reasoning",
+              text: "Compare the latest deploy with the previous baseline.",
+            },
+          ],
+        },
+        {
+          model: { modelId: "openai/gpt-5.6-sol" },
+          modelCall: {
+            provider: "vercel-ai-gateway",
+            api: "openai-responses",
+            stopReason: "toolUse",
+          },
+        },
+      ),
       reportEvent(
         4,
         iso(Date.parse(startedAt), 10_000),
@@ -476,11 +554,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
         {
-          model: {
-            modelId: "openai/gpt-5.6-sol",
-            modelProfile: "handoff",
-            reasoningLevel: "high",
-          },
+          model: { modelId: "openai/gpt-5.6-sol" },
           modelCall: {
             provider: "vercel-ai-gateway",
             api: "openai-responses",
@@ -528,11 +602,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           ],
         },
         {
-          model: {
-            modelId: "openai/gpt-5.6-sol",
-            modelProfile: "handoff",
-            reasoningLevel: "high",
-          },
+          model: { modelId: "openai/gpt-5.6-sol" },
         },
       ),
       // Mixed markdown keeps font/legibility QA honest for long assistant replies.
@@ -658,6 +728,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/getsentry#21571",
         label: "getsentry/getsentry#21571",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/getsentry/pull/21571",
@@ -668,6 +739,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/getsentry#21572",
         label: "getsentry/getsentry#21572",
+        objectType: "code_change",
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/getsentry/pull/21572",
@@ -678,6 +750,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/getsentry#21569",
         label: "getsentry/getsentry#21569",
+        objectType: "code_change",
         plugin: "github",
         status: "draft",
         url: "https://github.com/getsentry/getsentry/pull/21569",
@@ -688,6 +761,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/sentry#121727",
         label: "getsentry/sentry#121727",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/sentry/pull/121727",
@@ -889,7 +963,6 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
       }),
       reportEvent(11, iso(Date.parse(startedAt), 56_000), {
         type: "compaction",
-        modelProfile: "standard",
         modelId: "openai/gpt-5.4",
         details: {
           reason: "capacity",
@@ -968,6 +1041,18 @@ Run targeted tests before broad suites, and keep durable explanations beside the
             bytes: 18211,
           },
           {
+            id: "qa-chart-png",
+            filename: "chart-detail.png",
+            contentType: "image/png",
+            bytes: 18211,
+          },
+          {
+            id: "qa-demo-mp4",
+            filename: "demo.mp4",
+            contentType: "video/mp4",
+            bytes: 5922,
+          },
+          {
             id: "qa-notes-txt",
             filename: "notes.txt",
             contentType: "text/plain",
@@ -1003,6 +1088,32 @@ Run targeted tests before broad suites, and keep durable explanations beside the
         role: "assistant",
         text: "I mean the empty, loading, and failed transcript states.",
       }),
+      // The reviewer card already shows this result, so the transcript
+      // hides the row.
+      reportEvent(20, iso(Date.parse(startedAt), 70_000), {
+        type: "message",
+        messageId: "qa-reviewer-result",
+        role: "user",
+        eventType: "agent_invocation.blocked",
+        trustedSummary: 'Child agent "reviewer" is blocked.',
+        text: "The reviewer needs access to the dashboard repository.",
+      }),
+      reportEvent(21, iso(Date.parse(startedAt), 80_000), {
+        type: "message",
+        messageId: "qa-github-review-comment",
+        role: "user",
+        eventType: "pull_request.review_comment.created",
+        eventNamespace: "github",
+        eventObjectType: "code_change",
+        trustedSummary: "New review comment on getsentry/getsentry#21572.",
+        text: "Can the empty state reuse the loading skeleton?",
+      }),
+      reportEvent(22, iso(Date.parse(startedAt), 86_000), {
+        type: "reply_posted",
+        plugin: "github",
+        text: "Yes. The empty state now reuses the loading skeleton.",
+        url: "https://github.com/getsentry/getsentry/pull/21572#discussion_r7",
+      }),
     ],
   });
 }
@@ -1021,6 +1132,8 @@ function advisorConversation(
   const conversation = detail(nowMs, {
     conversationId,
     displayTitle: "Advisor review",
+    // The viewer takes part, so QA shows that a Task still has no composer.
+    isParticipant: true,
     // A child keeps the Actor who started it, but that person did not write
     // its agent invocation input.
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
@@ -1044,7 +1157,52 @@ function advisorConversation(
       }),
     ],
   });
-  return { ...conversation, parentConversationId };
+  return {
+    ...conversation,
+    kind: "task",
+    parentConversationId,
+    archivedAt: mockArchivedAt.get(conversationId) ?? null,
+  };
+}
+
+/** A Thread in the dashboard QA tree. Its messages come from a person. */
+function threadConversation(
+  nowMs: number,
+  conversationId: string,
+  displayTitle: string,
+  text: string,
+  offsetMs: number,
+  parentConversationId = DASHBOARD_QA_CONVERSATION_ID,
+): MockConversation {
+  const startedAt = iso(nowMs, offsetMs);
+  return detail(nowMs, {
+    conversationId,
+    displayTitle,
+    kind: "thread",
+    // The viewer takes part, so QA shows that a person can message a Thread.
+    isParticipant: true,
+    parentConversationId,
+    archivedAt: mockArchivedAt.get(conversationId) ?? null,
+    actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+    startedAt,
+    lastSeenAt: iso(Date.parse(startedAt), 12_000),
+    lastProgressAt: iso(Date.parse(startedAt), 12_000),
+    cumulativeDurationMs: 12_000,
+    events: [
+      reportEvent(0, startedAt, {
+        type: "message",
+        messageId: `${conversationId}:input`,
+        role: "user",
+        text,
+      }),
+      reportEvent(1, iso(Date.parse(startedAt), 12_000), {
+        type: "message",
+        messageId: `${conversationId}:output`,
+        role: "assistant",
+        text: "Done. No differences found.",
+      }),
+    ],
+  });
 }
 
 function longConversation(nowMs: number): ConversationDetailReport {
@@ -1095,7 +1253,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
   events.push(
     reportEvent(nextSeq, iso(Date.parse(startedAt), 53_000), {
       type: "compaction",
-      modelProfile: "standard",
       modelId: "openai/gpt-5.4",
       summary:
         "The release is complete. Preserve the published version and continue by checking the update pull request.",
@@ -1109,17 +1266,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
         retainedMessageCount: 1,
         summaryChars: 980,
       },
-    }),
-  );
-  nextSeq += 1;
-  events.push(
-    reportEvent(nextSeq, iso(Date.parse(startedAt), 90_000), {
-      type: "handoff",
-      modelProfile: "fast",
-      modelId: "openai/gpt-5-mini",
-      reasoningLevel: "medium",
-      summary:
-        "Investigate the remaining deployment checks and report any actionable failure.",
     }),
   );
   nextSeq += 1;
@@ -1166,6 +1312,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/junior#2201",
         label: "getsentry/junior#2201",
+        objectType: "code_change",
         plugin: "github",
         status: "draft",
         url: "https://github.com/getsentry/junior/pull/2201",
@@ -1176,6 +1323,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#91",
         label: "getsentry/payments#91",
+        objectType: "code_change",
         plugin: "github",
         status: "open",
         url: "https://github.com/getsentry/payments/pull/91",
@@ -1186,6 +1334,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/relay#44",
         label: "getsentry/relay#44",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/relay/pull/44",
@@ -1254,6 +1403,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#77",
         label: "getsentry/payments#77",
+        objectType: "code_change",
         plugin: "github",
         status: "merged",
         url: "https://github.com/getsentry/payments/pull/77",
@@ -1264,6 +1414,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         kind: "resource_link",
         key: "getsentry/payments#61",
         label: "getsentry/payments#61",
+        objectType: "task",
         plugin: "github",
         status: "closed",
         url: "https://github.com/getsentry/payments/issues/61",
@@ -1465,17 +1616,12 @@ function eventAutomationRunConversation(
             slackUserName: "junior",
           },
           text: [
-            "[task]",
-            "",
-            "This is a task, not a message from a person.",
-            "",
-            "About: Issue · ACME-42",
-            'Created by: <@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.',
-            "Instructions: Summarize the closed issue",
-            "",
-            "Trusted summary: ACME-42 Checkout fails for saved cards was closed by Morgan Lee.",
-            "",
+            '<task about="Issue · ACME-42" event="issue.closed">',
+            '<created-by><@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>',
+            "<instructions>Summarize the closed issue</instructions>",
+            "<summary>ACME-42 Checkout fails for saved cards was closed by Morgan Lee.</summary>",
             "End with `finishAutomationRun`.",
+            "</task>",
           ].join("\n"),
         },
         { mentions: [MOCK_MENTION_MORGAN] },
@@ -1529,7 +1675,12 @@ function usage(cost: number) {
   };
 }
 
+/** Fixture Conversations with the mock sends of this process. */
 function mockConversations(nowMs: number): MockConversation[] {
+  return withMockSends(fixtureConversations(nowMs));
+}
+
+function fixtureConversations(nowMs: number): MockConversation[] {
   return [
     activeConversation(nowMs),
     dashboardQaConversation(nowMs),
@@ -1583,6 +1734,32 @@ function mockConversations(nowMs: number): MockConversation[] {
         },
       },
     ),
+    {
+      ...threadConversation(
+        nowMs,
+        DASHBOARD_QA_THREAD_ID,
+        "Check pinned row order",
+        "Check that pinned rows keep their order after a reload.",
+        -3 * 60 * 60_000,
+      ),
+      // The nested Thread below.
+      childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
+    },
+    threadConversation(
+      nowMs,
+      DASHBOARD_QA_NESTED_THREAD_ID,
+      "Recheck pin order in Safari",
+      "Recheck the pinned row order in Safari.",
+      -2.9 * 60 * 60_000,
+      DASHBOARD_QA_THREAD_ID,
+    ),
+    threadConversation(
+      nowMs,
+      DASHBOARD_QA_ARCHIVED_THREAD_ID,
+      "Compare sidebar badges",
+      "Compare the sidebar badges with the design.",
+      -3.5 * 60 * 60_000,
+    ),
     longConversation(nowMs),
     incidentConversation(nowMs),
     privateConversation(nowMs),
@@ -1610,7 +1787,6 @@ function mockConversations(nowMs: number): MockConversation[] {
       conversationId: ARCHIVED_CONVERSATION_ID,
       displayTitle: "Archived restore target",
       surface: "internal",
-      archivedAt: iso(nowMs, -3 * 24 * 60 * 60_000),
     }),
   ];
 }
@@ -1645,9 +1821,11 @@ function summaryFromConversation(
     brief: _brief,
     eventHistory: _eventHistory,
     events: _events,
+    forkedFromConversationId: _forkedFromConversationId,
+    forkedFromTitle: _forkedFromTitle,
+    forks: _forks,
     generatedAt: _generatedAt,
     modelUsage: _modelUsage,
-    parentConversationId: _parentConversationId,
     previousCursor: _previousCursor,
     sentryConversationUrl: _sentryConversationUrl,
     sourceTask: _sourceTask,
@@ -1657,36 +1835,97 @@ function summaryFromConversation(
     ...summary,
     ...(activityPreview ? { activityPreview } : undefined),
   };
-  const withArchiveState = mockArchivedConversationIds.has(
-    conversation.conversationId,
-  )
-    ? {
-        ...summaryWithActivity,
-        archivedAt:
-          summaryWithActivity.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
-      }
-    : { ...summaryWithActivity, archivedAt: undefined };
-  return withArchiveState.channel &&
-    PUBLIC_MOCK_CHANNEL_IDS.has(withArchiveState.channel)
-    ? { ...withArchiveState, locationId: `mock:${withArchiveState.channel}` }
-    : withArchiveState;
+  const withViewerState = withMockViewerState(summaryWithActivity);
+  return withViewerState.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(withViewerState.channel)
+    ? { ...withViewerState, locationId: `mock:${withViewerState.channel}` }
+    : withViewerState;
 }
 
+/**
+ * Find where a mock Thread nests, like the API: its nearest Thread or root
+ * ancestor. Returns undefined when an ancestor child is archived.
+ */
+function mockThreadPlacement(
+  byId: ReadonlyMap<string, MockConversation>,
+  thread: MockConversation,
+): string | undefined {
+  let placement: string | undefined;
+  for (
+    let ancestor = byId.get(thread.parentConversationId ?? "");
+    ancestor;
+    ancestor = byId.get(ancestor.parentConversationId ?? "")
+  ) {
+    if (ancestor.kind === "root") return placement ?? ancestor.conversationId;
+    if (ancestor.archivedAt) return undefined;
+    if (ancestor.kind === "thread") placement ??= ancestor.conversationId;
+  }
+  return undefined;
+}
+
+/** Group shown mock Threads by where they nest. */
+function mockThreadsByPlacement(
+  conversations: readonly MockConversation[],
+): Map<string, ConversationFeedItem[]> {
+  const byId = new Map(
+    conversations.map((conversation) => [
+      conversation.conversationId,
+      conversation,
+    ]),
+  );
+  const threadsByPlacement = new Map<string, ConversationFeedItem[]>();
+  for (const thread of conversations) {
+    if (thread.kind !== "thread" || thread.archivedAt) continue;
+    const placement = mockThreadPlacement(byId, thread);
+    if (!placement) continue;
+    threadsByPlacement.set(placement, [
+      ...(threadsByPlacement.get(placement) ?? []),
+      summaryFromConversation(thread),
+    ]);
+  }
+  return threadsByPlacement;
+}
+
+/**
+ * Match the API feed: roots only, each with its shown Threads nested under
+ * their nearest shown ancestor.
+ */
 function mockConversationFeed(nowMs: number): ConversationFeed {
+  const conversations = mockConversations(nowMs);
+  const threadsByPlacement = mockThreadsByPlacement(conversations);
+  const nest = (item: ConversationFeedItem): ConversationFeedItem => {
+    const threads = threadsByPlacement.get(item.conversationId);
+    return threads ? { ...item, threads: threads.map(nest) } : item;
+  };
   return {
     source: "conversation_index",
     generatedAt: iso(nowMs),
-    conversations: mockConversations(nowMs)
-      .filter((conversation) => !conversation.parentConversationId)
-      .map(summaryFromConversation),
+    conversations: conversations
+      .filter(
+        (conversation) =>
+          conversation.kind === "root" &&
+          !isUnlistedMockConversation(conversation.conversationId),
+      )
+      .map((root) => {
+        const summary = summaryFromConversation(root);
+        return summary.archivedAt ? summary : nest(summary);
+      }),
   };
 }
 
-/** Active root summaries used by mock aggregates and directories. */
+/**
+ * Active root summaries used by mock aggregates and directories. Like the
+ * feed, they leave out unlisted Conversations.
+ */
 function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
-  return mockConversationFeed(nowMs).conversations.filter(
-    (summary) => !summary.archivedAt,
-  );
+  return mockConversations(nowMs)
+    .filter(
+      (conversation) =>
+        conversation.kind === "root" &&
+        !isUnlistedMockConversation(conversation.conversationId),
+    )
+    .map(summaryFromConversation)
+    .filter((summary) => !summary.archivedAt);
 }
 
 function summaryTokenTotal(summary: ConversationSummaryReport): number {
@@ -1915,18 +2154,187 @@ export function readMockConversationFeed(
   return { ...feed, conversations };
 }
 
-/** Archive or restore one mock conversation for local dashboard visual QA. */
+/**
+ * Archive or restore one mock conversation for local dashboard visual QA,
+ * with the API's tree rules. Like the API, an archive applies to everyone.
+ */
 export function setMockConversationArchived(
   conversationId: string,
   archived: boolean,
-): { archivedAt: string | null } | undefined {
+  applyToChildren = false,
+): { archivedAt: string | null } | { error: string } | undefined {
+  const conversations = mockConversations(NOW_MS);
+  const conversation = conversations.find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  const parentOf = new Map(
+    conversations.map((item) => [
+      item.conversationId,
+      item.parentConversationId,
+    ]),
+  );
+  // Nearest first.
+  const ancestorsOf = (id: string) => {
+    const ancestors: string[] = [];
+    for (let parent = parentOf.get(id); parent; parent = parentOf.get(parent)) {
+      ancestors.push(parent);
+    }
+    return ancestors;
+  };
+  const descendantIds = conversations
+    .map((item) => item.conversationId)
+    .filter((id) => ancestorsOf(id).includes(conversationId));
+  if (archived) {
+    const unarchived = descendantIds.filter((id) => !mockArchivedAt.has(id));
+    if (unarchived.length > 0 && !applyToChildren) {
+      return {
+        error:
+          unarchived.length === 1
+            ? "1 child conversation is not archived. Pass applyToChildren to archive it too."
+            : `${unarchived.length} child conversations are not archived. Pass applyToChildren to archive them too.`,
+      };
+    }
+    // Like the API, one archive writes one time, so a restore can tell what
+    // this archive wrote.
+    const archivedAt = new Date(NOW_MS + ++mockArchiveCount).toISOString();
+    for (const id of [conversationId, ...unarchived]) {
+      mockArchivedAt.set(id, archivedAt);
+    }
+    // Match the API: archive also marks it read.
+    mockUnreadConversationIds.delete(conversationId);
+    return { archivedAt };
+  }
+  // Name the topmost archived ancestor, like the API.
+  const archivedAncestorId = ancestorsOf(conversationId)
+    .reverse()
+    .find((id) => mockArchivedAt.has(id));
+  if (archivedAncestorId) {
+    return {
+      error: `Conversation ${archivedAncestorId} above this one is archived. Restore it first.`,
+    };
+  }
+  const archivedAt = mockArchivedAt.get(conversationId);
+  for (const id of [
+    conversationId,
+    ...(applyToChildren && archivedAt
+      ? descendantIds.filter(
+          (descendantId) => mockArchivedAt.get(descendantId) === archivedAt,
+        )
+      : []),
+  ]) {
+    mockArchivedAt.delete(id);
+  }
+  // Match the API: a manual root restore turns auto-archive off.
+  if (conversation.kind === "root") {
+    mockAutoArchiveByConversationId.set(conversationId, false);
+  }
+  return { archivedAt: null };
+}
+
+/**
+ * Pin or unpin one mock conversation for local dashboard visual QA. Like the
+ * API, it refuses a child and names its root.
+ */
+export function setMockConversationPinned(
+  conversationId: string,
+  pinned: boolean,
+): { pinnedAt: string | null } | { error: string } | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  const rootId = mockAgentTree(conversation)?.[0]?.conversationId;
+  if (rootId) {
+    return {
+      error: `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${rootId}.`,
+    };
+  }
+  // Match the API: a new or removed pin has no place.
+  mockPinPositions.delete(conversationId);
+  if (pinned) {
+    mockPinnedConversationIds.add(conversationId);
+    // Match the API: a pin also restores an archived conversation.
+    mockArchivedAt.delete(conversationId);
+  } else {
+    mockPinnedConversationIds.delete(conversationId);
+  }
+  return { pinnedAt: pinned ? NOW : null };
+}
+
+/**
+ * Set the feed's unread flag of one mock conversation for local dashboard
+ * visual QA. The mock read position moves on its own, in `read-positions`.
+ */
+export function setMockConversationUnread(
+  conversationId: string,
+  unread: boolean,
+): boolean {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return false;
+  if (unread) mockUnreadConversationIds.add(conversationId);
+  else mockUnreadConversationIds.delete(conversationId);
+  return true;
+}
+
+/** Rename one mock conversation for local dashboard visual QA. */
+export function setMockConversationTitle(
+  conversationId: string,
+  title: string,
+): { title: string } | undefined {
   const exists = mockConversations(NOW_MS).some(
     (conversation) => conversation.conversationId === conversationId,
   );
   if (!exists) return undefined;
-  if (archived) mockArchivedConversationIds.add(conversationId);
-  else mockArchivedConversationIds.delete(conversationId);
-  return { archivedAt: archived ? NOW : null };
+  mockTitles.set(conversationId, title);
+  return { title };
+}
+
+/** Save the mock Pinned order, like the pin-order API. */
+export function setMockPinOrder(conversationIds: string[]): {
+  conversationIds: string[];
+} {
+  const placed = conversationIds.flatMap((conversationId, index) => {
+    if (!mockPinnedConversationIds.has(conversationId)) return [];
+    mockPinPositions.set(conversationId, index);
+    return [conversationId];
+  });
+  return { conversationIds: placed };
+}
+
+/** Archive every done mock conversation once, like the archive-done API. */
+export function archiveMockDoneConversations(): { archived: number } {
+  let archived = 0;
+  for (const summary of mockConversationFeed(NOW_MS).conversations) {
+    if (
+      summary.archivedAt ||
+      summary.pinnedAt ||
+      !summary.assignedWork ||
+      summary.unfinishedWork ||
+      !summary.finishedWorkAt ||
+      mockAutoArchiveByConversationId.get(summary.conversationId) === false
+    ) {
+      continue;
+    }
+    mockArchivedAt.set(summary.conversationId, NOW);
+    archived += 1;
+  }
+  return { archived };
+}
+
+/** Save a mock auto-archive choice for local dashboard visual QA. */
+export function setMockConversationAutoArchive(
+  conversationId: string,
+  autoArchive: boolean,
+): { autoArchive: boolean } | undefined {
+  const exists = mockConversations(NOW_MS).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  mockAutoArchiveByConversationId.set(conversationId, autoArchive);
+  return { autoArchive };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
@@ -2057,6 +2465,7 @@ export function readMockConversationChildAgents(
       ...(child.childAgentTotals
         ? { childAgentTotals: child.childAgentTotals }
         : undefined),
+      archivedAt: mockArchivedAt.get(childConversationId) ?? null,
       cumulativeDurationMs: child.cumulativeDurationMs,
       cumulativeUsage: child.cumulativeUsage,
     };
@@ -2067,6 +2476,7 @@ export function readMockConversationChildAgents(
         {
           ...childMetrics(DASHBOARD_QA_PLAN_CHECK_ID),
           conversationId: DASHBOARD_QA_PLAN_CHECK_ID,
+          kind: "task",
           status: "completed",
           task: "Check one claim in the dashboard plan.",
           title: "Check one plan claim",
@@ -2076,14 +2486,49 @@ export function readMockConversationChildAgents(
       conversationId,
     };
   }
+  // Match the API: archived children stay in the report.
+  const thread = (childConversationId: string, task: string) => {
+    const child = conversations.find(
+      (candidate) => candidate.conversationId === childConversationId,
+    )!;
+    return {
+      ...childMetrics(childConversationId),
+      conversationId: childConversationId,
+      kind: "thread",
+      status: "completed",
+      task,
+      title: child.displayTitle,
+      updatedAt: child.lastProgressAt,
+    } as const;
+  };
+  if (conversationId === DASHBOARD_QA_THREAD_ID) {
+    return {
+      agents: [
+        thread(
+          DASHBOARD_QA_NESTED_THREAD_ID,
+          "Recheck the pinned row order in Safari.",
+        ),
+      ],
+      conversationId,
+    };
+  }
   if (conversationId !== DASHBOARD_QA_CONVERSATION_ID) {
     return { agents: [], conversationId };
   }
   return {
     agents: [
+      thread(
+        DASHBOARD_QA_THREAD_ID,
+        "Check pinned row order with the person who reported it.",
+      ),
+      thread(
+        DASHBOARD_QA_ARCHIVED_THREAD_ID,
+        "Compare the sidebar badges with the design.",
+      ),
       {
         ...childMetrics(DASHBOARD_QA_REVIEW_ID),
         conversationId: DASHBOARD_QA_REVIEW_ID,
+        kind: "task",
         error: "GitHub access is needed to read the pull request.",
         name: "reviewer",
         status: "blocked",
@@ -2093,6 +2538,7 @@ export function readMockConversationChildAgents(
       {
         ...childMetrics(DASHBOARD_QA_PLAN_ID),
         conversationId: DASHBOARD_QA_PLAN_ID,
+        kind: "task",
         status: "completed",
         task: "Review the dashboard plan before editing.",
         title: "Review the dashboard plan",
@@ -2121,14 +2567,22 @@ function mockAgentTree(
   }
   return chain.map((item) => {
     if (!item.parentConversationId) {
-      return { conversationId: item.conversationId, label: item.displayTitle };
+      return {
+        conversationId: item.conversationId,
+        kind: "root" as const,
+        label: item.displayTitle,
+      };
     }
     const agent = readMockConversationChildAgents(
       item.parentConversationId,
     )?.agents.find((child) => child.conversationId === item.conversationId);
     return {
       conversationId: item.conversationId,
-      label: agent?.title ?? agent?.name ?? "Subagent",
+      kind: item.kind,
+      label:
+        agent?.title ??
+        agent?.name ??
+        (item.kind === "thread" ? "Thread" : "Task"),
     };
   });
 }
@@ -2142,34 +2596,70 @@ export function readMockConversationDetail(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  const { parentConversationId, ...conversationDetail } = conversation;
   const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
   const detail = {
-    ...conversationDetail,
+    ...conversation,
     ...(agentTree ? { agentTree } : undefined),
     canFork:
-      !parentConversationId &&
-      conversationDetail.eventHistory.status !== "redacted",
-  };
-  const withArchiveState = mockArchivedConversationIds.has(conversationId)
-    ? {
-        ...detail,
-        archivedAt: detail.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
-      }
-    : { ...detail, archivedAt: undefined };
-  const events = withArchiveState.events.slice(-limit);
-  const bounded =
-    events.length < withArchiveState.events.length && events[0]
+      !conversation.parentConversationId &&
+      !isUnlistedMockConversation(conversationId) &&
+      conversation.eventHistory.status !== "redacted",
+    ...(conversation.isParticipant
       ? {
-          ...withArchiveState,
+          autoArchive:
+            mockAutoArchiveByConversationId.get(conversationId) ?? false,
+        }
+      : undefined),
+  };
+  const withViewerState = withMockViewerState(
+    detail,
+    agentTree?.[0]?.conversationId,
+  );
+  const events = withViewerState.events.slice(-limit);
+  const bounded =
+    events.length < withViewerState.events.length && events[0]
+      ? {
+          ...withViewerState,
           events,
           previousCursor: mockBeforeCursor(conversationId, events[0].seq),
         }
-      : withArchiveState;
-  return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
-    ? { ...bounded, locationId: `mock:${bounded.channel}` }
-    : bounded;
+      : withViewerState;
+  const movedChannel = mockSlackChannelByConversationId.get(conversationId);
+  const located = movedChannel
+    ? { ...bounded, ...movedChannel }
+    : conversationId === DASHBOARD_QA_CONVERSATION_ID
+      ? // Stands in for a public dashboard conversation.
+        { ...bounded, canContinueInSlack: true as const }
+      : bounded;
+  return located.channel && PUBLIC_MOCK_CHANNEL_IDS.has(located.channel)
+    ? { ...located, locationId: `mock:${located.channel}` }
+    : located;
+}
+
+/** Move the mock dashboard conversation to a mock channel thread, once. */
+export function continueMockConversationInSlack(
+  conversationId: string,
+  locationId: string,
+):
+  | { channelName?: string; conversationId: string; locationUrl: string }
+  | undefined {
+  const channel = locationId.replace(/^mock:/, "");
+  const detail = readMockConversationDetail(conversationId);
+  const location = readMockLocationDirectory().locations.find(
+    (candidate) => candidate.id === locationId,
+  );
+  if (!detail?.canContinueInSlack || !location) return undefined;
+  const channelName = location.label.replace(/^#/, "");
+  mockSlackChannelByConversationId.set(conversationId, {
+    channel,
+    channelName,
+  });
+  return {
+    channelName,
+    conversationId,
+    locationUrl: `https://example.slack.com/archives/${channel}/p1770030000000100`,
+  };
 }
 
 /** Return the deterministic older page used to exercise transcript pagination. */
@@ -2212,6 +2702,39 @@ export function readMockConversationEvents(
       : conversation.previousCursor
         ? { previousCursor: conversation.previousCursor }
         : {}),
+  };
+}
+
+/**
+ * Return the page around a linked event or Turn. Mock transcripts fit one
+ * page, so it holds every event of the Conversation.
+ */
+export function readMockConversationEventsAround(
+  conversationId: string,
+  link: { event: number } | { turn: string },
+): ConversationEventPage | "turn-not-found" | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  if (
+    "turn" in link &&
+    !conversation.events.some(
+      ({ data }) =>
+        data.type === "turn_lifecycle" &&
+        data.state === "started" &&
+        data.turnId === link.turn,
+    )
+  ) {
+    return "turn-not-found";
+  }
+  return {
+    events: conversation.events,
+    eventHistory: conversation.eventHistory,
+    generatedAt: NOW,
+    ...(conversation.previousCursor
+      ? { previousCursor: conversation.previousCursor }
+      : undefined),
   };
 }
 

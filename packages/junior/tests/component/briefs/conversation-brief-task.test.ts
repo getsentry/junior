@@ -14,6 +14,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import { setBriefsConfig } from "@/chat/briefs/registration";
+import { botConfig } from "@/chat/config";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationBriefs,
@@ -69,7 +70,6 @@ vi.mock("@/chat/pi/client", async (importOriginal) => ({
             kind: "stated",
           },
         ],
-        openDecisions: [],
         facts: ["The task stores one version per Turn."],
         keywords: ["briefs", "storage"],
         urls: [
@@ -293,6 +293,7 @@ describe("Conversation Brief task", () => {
       modelId: TEST.calls[0]?.modelId,
       costUsd: 0.0042,
     });
+    expect(TEST.calls[0]?.modelId).toBe(botConfig.fastModelId);
     expect(rows[0]?.searchText).not.toBe("");
     expect(rows[0]?.content.links).toEqual([
       expect.objectContaining({
@@ -323,7 +324,6 @@ describe("Conversation Brief task", () => {
         modelId: TEST.calls[0]?.modelId,
         costUsd: 0.0042,
         decisions: 1,
-        openDecisions: 0,
         links: 3,
       },
     });
@@ -473,6 +473,7 @@ describe("Conversation Brief task", () => {
 
     const childConversationId = `local:briefs-child:${idSuffix}`;
     await getConversationStore().createChild({
+      kind: "task",
       childConversationId,
       parentConversationId: conversationId,
       nowMs: 10,

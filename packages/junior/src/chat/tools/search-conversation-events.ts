@@ -1,8 +1,7 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
-  type ConversationEventPage,
   type KnownConversationEventType,
 } from "@/chat/conversations/history";
 import {
@@ -19,7 +18,6 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const MAX_EVENT_DATA_BYTES = 4_000;
-const MAX_EVENTS_JSON_BYTES = 20_000;
 const MAX_IDENTITY_CHARS = 256;
 const textEncoder = new TextEncoder();
 
@@ -56,12 +54,6 @@ const searchConversationEventsOutputSchema = juniorToolOutputSchema.extend({
   events: z.array(projectedEventSchema),
   has_older: z.boolean().describe("Whether matching older events exist."),
   has_newer: z.boolean().describe("Whether matching newer events exist."),
-  omitted_event_count: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("Events omitted by the response byte limit."),
 });
 
 /** Create a deferred tool that searches one conversation's durable event log. */
@@ -70,7 +62,7 @@ export function createSearchConversationEventsTool(
 ) {
   return zodTool({
     description:
-      "Search the durable event log for one conversation, including messages, agent history, tool results, handoffs, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations in the current Slack workspace are accessible.",
+      "Search the durable event log for one conversation, including messages, agent history, tool results, and compactions. Defaults to the current conversation. Outside the current conversation tree, only retained public conversations in the current Slack workspace are accessible.",
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     annotations: {
@@ -149,51 +141,14 @@ export function createSearchConversationEventsTool(
         ...(beforeSeq === undefined ? undefined : { beforeSeq }),
         ...(types === undefined ? undefined : { types }),
       });
-      const newestFirst = afterSeq === undefined;
-      const projected = projectEventsForTool(page, { newestFirst });
-
       return {
         conversation_id: conversationId,
-        events: projected.events,
-        has_older:
-          page.hasOlder || (newestFirst && projected.omittedEventCount > 0),
-        has_newer:
-          page.hasNewer || (!newestFirst && projected.omittedEventCount > 0),
-        truncated: projected.omittedEventCount > 0,
-        ...(projected.omittedEventCount > 0
-          ? { omitted_event_count: projected.omittedEventCount }
-          : undefined),
+        events: page.events.map(projectEvent),
+        has_older: page.hasOlder,
+        has_newer: page.hasNewer,
       };
     },
   });
-}
-
-function projectEventsForTool(
-  page: ConversationEventPage,
-  options: { newestFirst: boolean },
-) {
-  const projected = page.events.map(projectEvent);
-  const events = [];
-  let jsonBytes = 2;
-  const candidates = options.newestFirst ? [...projected].reverse() : projected;
-
-  for (const event of candidates) {
-    const eventBytes = jsonByteLength(event);
-    const separatorBytes = events.length === 0 ? 0 : 1;
-    if (jsonBytes + separatorBytes + eventBytes > MAX_EVENTS_JSON_BYTES) {
-      break;
-    }
-    events.push(event);
-    jsonBytes += separatorBytes + eventBytes;
-  }
-
-  if (options.newestFirst) {
-    events.reverse();
-  }
-  return {
-    events,
-    omittedEventCount: projected.length - events.length,
-  };
 }
 
 function projectEvent(event: ConversationEvent) {
@@ -244,7 +199,6 @@ function eventIdentity(data: Record<string, unknown>) {
     "failureCode",
     "provider",
     "kind",
-    "modelProfile",
     "modelId",
   ] as const;
 

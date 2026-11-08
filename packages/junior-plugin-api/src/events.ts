@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { objectTypeSchema } from "./object-presentation";
 
 export const EVENT_SUMMARY_MAX_LENGTH = 4_000;
@@ -475,6 +475,16 @@ export const pluginEventsSchema = z
     isEnabled: z.function({ input: [], output: z.boolean() }).optional(),
     normalizeIdentifier: z
       .function({ input: [z.string()], output: z.string() })
+      .optional(),
+    /**
+     * The web page of one watched resource, so people can open it. Returns
+     * undefined when the resource has no page.
+     */
+    resourceUrl: z
+      .function({
+        input: [z.object({ identifier: z.string(), resourceType: z.string() })],
+        output: z.string().optional(),
+      })
       .optional(),
   })
   .strict()

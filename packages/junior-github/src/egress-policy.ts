@@ -315,17 +315,44 @@ type GitHubBodyWrite = {
     | "createIssue"
     | "createPullRequest"
     | "addPullRequestReview"
+    | "addPullRequestReviewThreadReply"
     | "updateIssue"
     | "updatePullRequest";
   method: "PATCH" | "POST";
   operation:
     | "github.issue.create"
     | "github.issue.update"
+    | "github.pull.comment.create"
     | "github.pull.create"
     | "github.pull.review.create"
     | "github.pull.update";
   restPath: RegExp;
 };
+
+const ISSUE_PATH = /^\/repos\/[^/]+\/[^/]+\/issues\/\d+$/;
+const ISSUE_READ_DENIAL = `Use github_getIssue to read a GitHub issue, not gh issue view or gh api. Read comments with gh api repos/OWNER/REPO/issues/NUMBER/comments. ${CREATE_TOOL_ROUTING_GUIDANCE}`;
+
+/** Match one-issue reads: the REST issue path or a GraphQL issue field. */
+function isGitHubIssueRead(input: {
+  bodyText?: string;
+  method: string;
+  upstreamUrl: URL;
+}): boolean {
+  if (isGitHubGraphqlUrl(input.upstreamUrl)) {
+    // `gh issue view` selects `issue(number:)` or `issueOrPullRequest(number:)`.
+    const parsed = parseGitHubGraphqlRequest(input.bodyText);
+    return (
+      input.method === "POST" &&
+      parsed !== undefined &&
+      /\b(?:issue|issueOrPullRequest)\s*\(/.test(parsed.normalized)
+    );
+  }
+  return (
+    isGitHubApiUrl(input.upstreamUrl) &&
+    HTTP_READ_METHODS.has(input.method) &&
+    ISSUE_PATH.test(input.upstreamUrl.pathname.toLowerCase())
+  );
+}
 
 const PULL_REQUEST_COMMENT_REACTIONS_PATH =
   /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/;
@@ -351,6 +378,13 @@ const GITHUB_BODY_WRITES = [
     method: "POST",
     operation: "github.pull.review.create",
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews$/,
+  },
+  {
+    denialMessage: `GitHub review thread replies must use the github_commentOnPullRequest tool with in_reply_to. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    graphqlField: "addPullRequestReviewThreadReply",
+    method: "POST",
+    operation: "github.pull.comment.create",
+    restPath: /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/comments\/[^/]+\/replies$/,
   },
   {
     denialMessage: `GitHub issue updates must use the github_updateIssue tool, which owns requester attribution and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
@@ -516,12 +550,7 @@ function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
   bodyText: string | undefined,
-  field:
-    | "createIssue"
-    | "createPullRequest"
-    | "addPullRequestReview"
-    | "updateIssue"
-    | "updatePullRequest",
+  field: GitHubBodyWrite["graphqlField"],
 ): boolean {
   if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) return false;
   const parsed = parseGitHubGraphqlRequest(bodyText);
@@ -555,6 +584,13 @@ function applyGitHubEgressPolicy(input: {
       allowed: input.operation === expectedOperation,
       denialMessage:
         "GitHub pull request feedback reactions must use the github_updatePullRequestFeedback tool.",
+    });
+  }
+
+  if (isGitHubIssueRead(input)) {
+    enforceEgressPolicy({
+      allowed: input.operation === "github.issue.get",
+      denialMessage: ISSUE_READ_DENIAL,
     });
   }
 

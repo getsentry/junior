@@ -2,11 +2,9 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
+import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
-import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
-import { createGrepTool } from "@/chat/tools/sandbox/grep";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
-import { createListDirTool } from "@/chat/tools/sandbox/list-dir";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
@@ -16,7 +14,7 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
-import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
+import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
@@ -62,7 +60,6 @@ import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createReadConversationEventTool } from "@/chat/tools/read-conversation-event";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
-import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import { disableTools, type ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
@@ -127,9 +124,6 @@ export function createTools(
     bash: createBashTool(),
     readFile: createReadFileTool(),
     editFile: createEditFileTool(),
-    grep: createGrepTool(),
-    findFiles: createFindFilesTool(),
-    listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
     webSearch: createWebSearchTool(
       botConfig.webSearchModelId,
@@ -137,7 +131,6 @@ export function createTools(
     ),
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
-      sandbox: context.workspace,
     }),
     ...createEventTools(context, eventCatalog),
     ...createAutomationTools(context, eventCatalog),
@@ -160,6 +153,11 @@ export function createTools(
       slackContext
         ? createSlackConversationBriefSearchPort(slackContext.teamId)
         : undefined,
+    );
+  }
+  if (context.workspace.createPreview) {
+    tools.createPreview = createCreatePreviewTool(
+      context.workspace.createPreview,
     );
   }
   if (context.supportsImageInput) {
@@ -214,25 +212,16 @@ export function createTools(
     });
   }
 
-  if (context.handoff) {
-    tools.handoff = createHandoffTool(context.handoff);
-  }
-
   if (context.spawnAgent) {
-    if (!context.spawnAgentProfiles) {
-      throw new Error("spawnAgent is missing its configured model profiles");
-    }
-    tools.spawnAgent = createSpawnAgentTool(
-      context.spawnAgent,
-      context.spawnAgentProfiles,
-    );
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
     tools.stopAgent = createStopAgentTool(context.conversationId);
   }
 
-  // A child agent that is too deep to start child agents can still list its
+  // A child agent that is too deep to start child agents can still find its
   // parent and siblings.
   if (context.spawnAgent || context.messageAgent) {
-    tools.listAgents = createListAgentsTool({
+    tools.searchAgents = createSearchAgentsTool({
+      ...(context.actor ? { actor: context.actor } : undefined),
       conversationId: context.conversationId,
       parentConversationId: context.parentConversationId,
     });
@@ -242,8 +231,8 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  // A child agent reports to its parent, whatever input started this Turn.
-  if (context.parentConversationId) {
+  // An Agent invocation reports to its parent.
+  if (context.agentInvocationId) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
 
@@ -373,7 +362,7 @@ export function createTools(
           reviewItemServices,
         ),
       },
-      context.parentConversationId
+      context.agentInvocationId
         ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`
         : undefined,
     ),

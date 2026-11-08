@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.275.0",
+  "version": "0.285.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -105,8 +105,10 @@
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
     "node-html-markdown": "^2.0.0",
+    "p-limit": "^7.3.1",
     "pg": "^8.16.3",
     "sharp": "^0.35.3",
+    "web-push": "^3.6.7",
     "yaml": "^2.9.0",
     "zod": "catalog:"
   },
@@ -133,6 +135,7 @@
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
+    "@types/web-push": "^3.6.4",
     "@typescript/typescript6": "6.0.2",
     "@vitest/coverage-v8": "4.1.12",
     "bullmq": "6.5.0",

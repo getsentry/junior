@@ -87,6 +87,8 @@ export interface PluginMcpConfig {
   url: string;
   /** Provider tools hidden from the model and callable only by plugin-owned wrapper tools. */
   wrappedTools?: string[];
+  /** Provider tools whose successful calls Junior records as audit events. */
+  auditTools?: string[];
 }
 
 /**

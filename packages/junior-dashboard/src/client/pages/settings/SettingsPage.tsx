@@ -22,8 +22,10 @@ import {
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
+import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";
 import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
 import type { DashboardCoreData } from "../../types";
+import { AutoArchiveSettings } from "./AutoArchiveSettings";
 import { SettingsPageLayout } from "./SettingsPageLayout";
 
 const dashboardCoreQueryKey = ["dashboard", "core"] as const;
@@ -108,6 +110,8 @@ export function SettingsPage({ identity }: SettingsPageProps) {
       </form>
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
+      <AutoArchiveSettings identity={identity} />
+      <NotificationSettingsCard />
       <CustomizationForm />
     </SettingsPageLayout>
   );

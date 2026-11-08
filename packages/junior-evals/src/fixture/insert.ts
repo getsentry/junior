@@ -16,8 +16,9 @@ import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
 import type { EventAutomation } from "@/chat/event-automations/types";
-import { upsertIdentity } from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
+import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import {
   insertReviewItem as insertStoredReviewItem,
   type ReviewItemContent,
@@ -28,7 +29,7 @@ import {
   type ScheduledAutomation,
 } from "@/chat/scheduled-automations/types";
 import { fixtureId } from "./ids";
-import type { SlackAuthor } from "./inputs";
+import type { ReviewDeskItem, SlackAuthor } from "./inputs";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID, slackAuthorEmail } from "./slack";
 
 /** A Slack channel that automations and mentions can target. */
@@ -103,6 +104,26 @@ async function insertSlackIdentity(author: Required<SlackAuthor>) {
     provider: "slack",
     providerSubjectId: author.userId,
     providerTenantId: SLACK_TEAM_ID,
+  });
+}
+
+/**
+ * Link a GitHub login to a Slack person, as account linking does, so Events
+ * that name the login resolve to that person.
+ */
+export async function insertLinkedGitHubIdentity(args: {
+  author?: SlackAuthor;
+  login: string;
+}): Promise<void> {
+  const slack = await insertSlackIdentity(resolveAuthor(args.author));
+  if (!slack.userId) {
+    throw new Error("Slack identity has no Junior user to link");
+  }
+  await upsertLinkedIdentity(getSqlExecutor(), slack.userId, {
+    handle: args.login,
+    kind: "user",
+    provider: "github",
+    providerSubjectId: `github-user-${args.login}`,
   });
 }
 
@@ -275,6 +296,34 @@ export async function insertReviewItem(args: {
 }
 
 /**
+ * Store an open Review item that an earlier Turn of a web Conversation
+ * added. It is assigned to the dashboard person `viewerEmail`.
+ */
+export async function insertWebReviewItem(args: {
+  conversationId: string;
+  item: ReviewDeskItem;
+  viewerEmail: string;
+}): Promise<{ id: string }> {
+  const user = await resolveViewerUserFromSql(getDb(), args.viewerEmail);
+  if (!user) throw new Error(`No Junior user for ${args.viewerEmail}`);
+  const item = await insertStoredReviewItem(getDb(), {
+    addedByConversationId: args.conversationId,
+    assignedToEveryone: false,
+    assigneeUserIds: [user.id],
+    body: args.item.body,
+    conversationIds: [args.conversationId],
+    dedupeKey: `ask:${fixtureId("review-item", 20)}`,
+    kind: args.item.request ? "action" : "notice",
+    nowMs: Date.now() - 60_000,
+    title: args.item.title,
+    visibility: "public",
+    ...(args.item.request ? { request: args.item.request } : undefined),
+  });
+  if (!item) throw new Error(`Review item ${args.item.title} is already open`);
+  return { id: item.id };
+}
+
+/**
  * Store a watch on a Conversation of the test. It lasts two weeks. A later
  * matching event, such as `conversation.continue(githubWebhook(...))`,
  * delivers to that Conversation.
@@ -315,23 +364,13 @@ export async function insertMemory(args: {
   kind?: "knowledge" | "preference" | "procedure";
   /** What the memory is about. Defaults to the person. */
   subjectType?: "conversation" | "user";
-  /**
-   * `private` is a memory from a direct message, which only the person can
-   * recall. Defaults to `public`, a memory from a public channel.
-   */
-  visibility?: "private" | "public";
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.author);
   const identity = await insertSlackIdentity(author);
   if (!identity.userId) {
     throw new Error(`The Slack person ${author.userId} has no User`);
   }
-  const visibility = args.visibility ?? "public";
-  const channel = slackChannel();
-  const channelId =
-    visibility === "private"
-      ? channel.channelId.replace(/^C/, "D")
-      : channel.channelId;
+  const { channelId } = slackChannel();
   const messageTs = FIXTURE_MESSAGE_TS;
   const store = createMemoryStore(
     getDb() as unknown as MemoryDb,
@@ -347,7 +386,7 @@ export async function insertMemory(args: {
         messageTs,
         teamId: SLACK_TEAM_ID,
         threadTs: messageTs,
-        visibility,
+        visibility: "public",
       }),
       userId: identity.userId,
     },

@@ -1,12 +1,15 @@
 /** SQL reporting adapter for usage stored on assistant history events. */
 import { and, eq, sql, type SQL } from "drizzle-orm";
+import * as z from "zod";
 import { notInheritedByForkChild } from "@/chat/agent-invocations/fork-history";
 import { notCopiedByFork } from "@/chat/conversations/fork";
 import {
-  conversationSubtree,
-  conversationSubtreeColumns,
-} from "@/chat/conversations/sql/subtree";
+  readSubtreeEventWatermarks,
+  seqRangeJoin,
+  type SeqRange,
+} from "@/chat/conversations/sql/event-watermarks";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { juniorConversationEvents } from "@/db/schema";
 import {
   agentTurnUsageSchema,
@@ -15,8 +18,14 @@ import {
   type AgentTurnUsage,
 } from "@/chat/usage";
 
-const message = sql`${juniorConversationEvents.payload}`;
-const usage = sql`${message}->'usage'`;
+// Read the payload fields once per row. Each `payload->...` detoasts the whole
+// payload again, an assistant payload holds the full reply content, and this
+// query has dozens of usage expressions per row.
+const assistantCall = sql`jsonb_to_record(${juniorConversationEvents.payload})
+  as assistant_call(provider jsonb, model jsonb, usage jsonb)`;
+const provider = sql`assistant_call.provider`;
+const model = sql`assistant_call.model`;
+const usage = sql`assistant_call.usage`;
 const cost = sql`${usage}->'cost'`;
 
 function nonnegativeNumber(
@@ -73,22 +82,31 @@ function definedNumber(value: number | null): number | undefined {
   return value === null ? undefined : value;
 }
 
-interface ModelUsageRow {
-  modelId: string;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cachedInputTokens: number | null;
-  cacheCreationTokens: number | null;
-  reasoningTokens: number | null;
-  totalTokens: number | null;
-  costInput: number | null;
-  costOutput: number | null;
-  costCacheRead: number | null;
-  costCacheWrite: number | null;
-  costTotal: number | null;
-}
+// Raw SQL sums of one model. Each field is a plain sum over assistant calls,
+// so the sums of two seq ranges add field by field.
+const modelUsageSumsSchema = z.object({
+  inputTokens: z.number().nullable(),
+  outputTokens: z.number().nullable(),
+  cachedInputTokens: z.number().nullable(),
+  cacheCreationTokens: z.number().nullable(),
+  reasoningTokens: z.number().nullable(),
+  totalTokens: z.number().nullable(),
+  costInput: z.number().nullable(),
+  costOutput: z.number().nullable(),
+  costCacheRead: z.number().nullable(),
+  costCacheWrite: z.number().nullable(),
+  costTotal: z.number().nullable(),
+});
+type ModelUsageSums = z.infer<typeof modelUsageSumsSchema>;
+const COST_FIELDS = new Set<keyof ModelUsageSums>([
+  "costInput",
+  "costOutput",
+  "costCacheRead",
+  "costCacheWrite",
+  "costTotal",
+]);
 
-function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
+function usageFromRow(row: ModelUsageSums): AgentTurnUsage | undefined {
   const components = {
     inputTokens: definedNumber(row.inputTokens),
     outputTokens: definedNumber(row.outputTokens),
@@ -124,28 +142,25 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
     : undefined;
 }
 
-/**
- * Aggregate real assistant calls by provider/model in SQL, for one
- * Conversation and all its child agents at any depth. Replayed history is not
- * another call; its tokens appear in the next call's input usage.
- */
-export async function readConversationModelUsageFromSql(
+/** Sum assistant calls by model id, in the given seq range of each Conversation. */
+async function sumModelUsage(
   executor: JuniorSqlDatabase,
-  options: { conversationId: string },
-): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
+  ranges: readonly SeqRange[],
+): Promise<Array<ModelUsageSums & { modelId: string }>> {
   // Prefer the model field when it already carries a vendor prefix so usage keys
-  // match turn_routed/handoff model ids (openai/gpt-5.6-sol), not the transport
+  // match configured model ids (openai/gpt-5.6-sol), not the transport
   // provider concatenated onto that id (vercel-ai-gateway/openai/gpt-5.6-sol).
+  const modelText = sql`(${model} #>> '{}')`;
   const modelId = sql<string>`case
-    when position('/' in coalesce(${message}->>'model', '')) > 0
-      then ${message}->>'model'
-    else concat(${message}->>'provider', '/', ${message}->>'model')
+    when position('/' in coalesce(${modelText}, '')) > 0
+      then ${modelText}
+    else concat(${provider} #>> '{}', '/', ${modelText})
   end`;
   const inputTokens = token("input", "inputTokens");
   const outputTokens = token("output", "outputTokens");
   const cachedInputTokens = token("cacheRead", "cachedInputTokens");
   const cacheCreationTokens = token("cacheWrite", "cacheCreationTokens");
-  const rows: ModelUsageRow[] = await executor
+  return await executor
     .db()
     .select({
       modelId,
@@ -169,30 +184,128 @@ export async function readConversationModelUsageFromSql(
       costTotal: summedCost(nonnegativeNumber(cost, "total")),
     })
     .from(juniorConversationEvents)
-    .innerJoin(
-      conversationSubtree([options.conversationId]),
-      eq(
-        conversationSubtreeColumns.conversationId,
-        juniorConversationEvents.conversationId,
-      ),
-    )
+    .innerJoin(...seqRangeJoin(ranges))
+    .crossJoinLateral(assistantCall)
     .where(
       and(
         eq(juniorConversationEvents.type, "assistant_message"),
         // Copied fork history is model context, not another model call.
         notCopiedByFork(),
         notInheritedByForkChild(),
-        sql`jsonb_typeof(${message}->'provider') = 'string'`,
-        sql`jsonb_typeof(${message}->'model') = 'string'`,
-        sql`coalesce(${message}->>'provider', '') <> ''`,
-        sql`coalesce(${message}->>'model', '') <> ''`,
+        sql`jsonb_typeof(${provider}) = 'string'`,
+        sql`jsonb_typeof(${model}) = 'string'`,
+        sql`coalesce(${provider} #>> '{}', '') <> ''`,
+        sql`coalesce(${modelText}, '') <> ''`,
       ),
     )
-    .groupBy(modelId)
-    .orderBy(modelId);
+    .groupBy(modelId);
+}
 
-  return rows.flatMap((row) => {
-    const modelUsage = usageFromRow(row);
-    return modelUsage ? [{ modelId: row.modelId, usage: modelUsage }] : [];
+const modelUsageCacheSchema = z.object({
+  conversations: z.record(
+    z.string(),
+    z.object({ seq: z.number().int(), originMs: z.number() }),
+  ),
+  models: z.record(z.string(), modelUsageSumsSchema),
+});
+type ModelUsageCache = z.infer<typeof modelUsageCacheSchema>;
+const EMPTY_MODEL_USAGE_CACHE: ModelUsageCache = {
+  conversations: {},
+  models: {},
+};
+// A read writes the entry only when events changed. A miss after this TTL
+// costs one full recompute, which is cheap for a Conversation that is idle.
+const MODEL_USAGE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function modelUsageCacheKey(conversationId: string): string {
+  return `conversation-model-usage:${conversationId}`;
+}
+
+function addSums(
+  field: keyof ModelUsageSums,
+  left: number | null,
+  right: number | null,
+): number | null {
+  if (left === null) return right;
+  if (right === null) return left;
+  // Match the round(..., 12) of a full recompute.
+  return COST_FIELDS.has(field)
+    ? Number((left + right).toFixed(12))
+    : left + right;
+}
+
+function mergeSums(
+  left: ModelUsageSums | undefined,
+  right: ModelUsageSums,
+): ModelUsageSums {
+  if (!left) return right;
+  const merged = { ...right };
+  for (const field of modelUsageSumsSchema.keyof().options) {
+    merged[field] = addSums(field, left[field], right[field]);
+  }
+  return merged;
+}
+
+/**
+ * Aggregate real assistant calls by provider/model in SQL, for one
+ * Conversation and all its child agents at any depth. Replayed history is not
+ * another call; its tokens appear in the next call's input usage.
+ *
+ * Reading assistant payloads is slow on long Conversations, so the sums are
+ * cached with the last seq that each Conversation in the subtree added. A read
+ * sums only later events. This is correct because a row at or below a seen
+ * seq never changes and never changes whether it counts:
+ * - Events are append-only. The per-Conversation event lock serializes
+ *   appends and is held to commit, so when seq N is visible, lower seqs are.
+ * - `notInheritedByForkChild` reads only lower seqs of the same Conversation.
+ * - `notCopiedByFork` reads a later fork note, but a fork commits its copied
+ *   events and the note in one transaction.
+ * Concurrent reads can overwrite each other's entry. Each entry is correct
+ * at its own seqs, so the last write wins safely.
+ */
+export async function readConversationModelUsageFromSql(
+  executor: JuniorSqlDatabase,
+  options: { conversationId: string },
+): Promise<Array<{ modelId: string; usage: AgentTurnUsage }>> {
+  const state = getStateAdapter();
+  const key = modelUsageCacheKey(options.conversationId);
+  const [stored, watermarks] = await Promise.all([
+    state.get(key),
+    readSubtreeEventWatermarks(executor.db(), [options.conversationId]),
+  ]);
+  const cached = modelUsageCacheSchema.safeParse(stored).data;
+  // Purge removes the whole subtree's events, so rebuild all on any mismatch.
+  const purged = watermarks.some(({ conversationId, seq, originMs }) => {
+    const seen = cached?.conversations[conversationId];
+    return (
+      seen && (seq === null || seq < seen.seq || originMs !== seen.originMs)
+    );
   });
+  const base = cached && !purged ? cached : EMPTY_MODEL_USAGE_CACHE;
+  const ranges: SeqRange[] = [];
+  const conversations: ModelUsageCache["conversations"] = {};
+  for (const { conversationId, seq, originMs } of watermarks) {
+    if (seq === null || originMs === null) continue;
+    conversations[conversationId] = { seq, originMs };
+    const fromSeq = base.conversations[conversationId]?.seq ?? -1;
+    if (seq > fromSeq) ranges.push({ conversationId, fromSeq, toSeq: seq });
+  }
+
+  let models = base.models;
+  if (ranges.length > 0 || base !== cached) {
+    const deltas =
+      ranges.length > 0 ? await sumModelUsage(executor, ranges) : [];
+    models = { ...base.models };
+    for (const { modelId, ...sums } of deltas) {
+      models[modelId] = mergeSums(models[modelId], sums);
+    }
+    await state.set(key, { conversations, models }, MODEL_USAGE_CACHE_TTL_MS);
+  }
+
+  return Object.entries(models)
+    .sort(([left], [right]) => (left < right ? -1 : 1))
+    .flatMap(([modelId, sums]) => {
+      const modelUsage = usageFromRow(sums);
+      return modelUsage ? [{ modelId, usage: modelUsage }] : [];
+    });
 }

@@ -52,7 +52,6 @@ function conversationWithMessages(
   return {
     schemaVersion: 1,
     messages,
-    compactions: [],
     processing: {},
     vision: {
       byFileId: {},

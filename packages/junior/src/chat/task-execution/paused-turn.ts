@@ -6,13 +6,13 @@
  * generation; started continues must durably record success, failure, auth
  * pause, or another safe pause boundary.
  */
+import { savedInputInstruction } from "@/chat/review-items/prompt-input";
 import {
   buildTurnFailureResponse,
   logException,
   logWarn,
   withLogContext,
 } from "@/chat/logging";
-import { botConfig } from "@/chat/config";
 import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -34,7 +34,8 @@ import {
 } from "./turn-cursor";
 import {
   loadTurnCheckpoint,
-  saveTurnCheckpoint,
+  lostWorkerBeforeFirstSave,
+  pauseLostWorkerTurn,
 } from "@/chat/task-execution/checkpoint";
 import {
   getPersistedThreadState,
@@ -49,7 +50,6 @@ import {
   getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
 import {
-  buildConversationContext,
   markConversationMessage,
   turnHasReply,
 } from "@/chat/services/conversation-memory";
@@ -120,6 +120,7 @@ export interface PausedTurnOptions {
 /** Per-worker controls for one paused turn. */
 export interface PausedTurnRunOptions {
   shouldYield?: () => boolean;
+  checkIn?: () => Promise<boolean>;
   /** Aborts the resumed Run when someone stops the Conversation. */
   stopSignal?: AbortSignal;
 }
@@ -580,11 +581,6 @@ async function runPausedTurnInContext(
 
         const locationConfiguration =
           getLocationConfigurationService(destination);
-        const conversationContext = dispatchId
-          ? undefined
-          : buildConversationContext(conversation, {
-              excludeMessageIds: [userMessage.id],
-            });
         const sandboxRef = getPersistedSandboxState(currentState);
         const routing = await resolveTurnSessionRouting({
           conversationId: payload.conversationId,
@@ -623,12 +619,15 @@ async function runPausedTurnInContext(
           initialStatus: latestProgressStatus(turnMessages),
           run: {
             instruction: {
-              ...(conversationContext
-                ? { context: conversationContext }
-                : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
-              text: userMessage.text,
+              ...(await savedInputInstruction({
+                runtime:
+                  Boolean(dispatchId) ||
+                  isEventConversationMessage(userMessage),
+                reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
+                text: userMessage.text,
+              })),
             },
             // A dispatch reads only history saved for this Turn. Other input
             // must not become part of a system Turn. Other Turns read
@@ -660,6 +659,7 @@ async function runPausedTurnInContext(
             },
             durability: {
               shouldYield: runOptions.shouldYield,
+              checkIn: runOptions.checkIn,
               recordPendingAuth: async (nextPendingAuth) => {
                 conversation.processing.pendingAuth = nextPendingAuth;
                 await persistThreadStateById(payload.conversationId, {
@@ -825,56 +825,8 @@ async function failStrandedTurnWithFallback(args: {
   return true;
 }
 
-/** Recovery resumes a turn at most once after its worker stops checking in. */
-const MAX_LOST_WORKER_RESUMES = 1;
 const LOST_WORKER_FAILURE =
   "Turn lost its worker before reaching a safe boundary";
-/**
- * Saved on the paused turn when recovery resumes it. The resumed run replaces
- * it at its first save.
- */
-export const LOST_WORKER_RESUME_MESSAGE =
-  "Turn lost its worker; resuming from its last boundary";
-
-/** True when a resumed turn lost its worker again before it saved anything. */
-function lostWorkerBeforeFirstSave(turn: TurnRecord): boolean {
-  return (
-    turn.errorMessage === LOST_WORKER_RESUME_MESSAGE &&
-    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES
-  );
-}
-
-/**
- * Pause a turn whose worker stopped checking in, so it resumes from its last
- * save. Returns false when the turn already used its resume or has no slice
- * left.
- */
-async function pauseLostWorkerTurn(turn: TurnRecord): Promise<boolean> {
-  if (
-    (turn.lostWorkerResumeCount ?? 0) >= MAX_LOST_WORKER_RESUMES ||
-    // Past the slice limit, the save fails the turn without a reply.
-    turn.sliceId + 1 > botConfig.maxSlicesPerTurn
-  ) {
-    return false;
-  }
-  const paused = await saveTurnCheckpoint({
-    mode: "paused",
-    reason: "retry",
-    conversationId: turn.conversationId,
-    turnId: turn.turnId,
-    sliceId: turn.sliceId,
-    messages: turn.piMessages,
-    lostWorkerResumeCount: (turn.lostWorkerResumeCount ?? 0) + 1,
-    errorMessage: LOST_WORKER_RESUME_MESSAGE,
-  });
-  if (!paused) return false;
-  logWarn("agent.turn.lost_worker.resumed", {
-    "app.ai.conversation_id": turn.conversationId,
-    "app.ai.session_id": turn.turnId,
-    "app.ai.resume_slice_id": paused.sliceId,
-  });
-  return true;
-}
 
 /** Resume the first valid paused Slack session for an idle conversation. */
 export async function runNextPausedTurn(

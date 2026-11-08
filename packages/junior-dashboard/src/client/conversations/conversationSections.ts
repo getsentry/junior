@@ -7,23 +7,27 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Sorts before every time section.
+// Pinned sorts first, then Needs attention, then every time section.
+const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -2 };
 const ATTENTION_SECTION = {
   key: "attention",
   label: "Needs attention",
-  order: Number.NEGATIVE_INFINITY,
+  order: -1,
 };
 
 /**
- * Group conversations into Needs attention, then by last activity: Today,
- * Yesterday, Previous 7 days, Previous 30 days, then one section per month.
+ * Group conversations into Pinned, then Needs attention, then by last
+ * activity: Today, Yesterday, Previous 7 days, Previous 30 days, then one
+ * section per month.
  *
- * Conversations in `attentionIds` go to Needs attention, newest first.
+ * A pinned conversation shows only in Pinned, even when it needs attention.
+ * Pinned follows the viewer's order; every other section, Needs attention
+ * too, lists the newest first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
   options: {
-    attentionIds?: ReadonlySet<string>;
+    attentionIds: ReadonlySet<string>;
     nowMs: number;
     timeZone: string;
   },
@@ -35,14 +39,16 @@ export function buildConversationSections(
   );
 
   for (const conversation of sorted) {
-    const section = options.attentionIds?.has(conversation.id)
-      ? ATTENTION_SECTION
-      : conversationSection(
-          activityTime(conversation),
-          nowDay,
-          options.nowMs,
-          options.timeZone,
-        );
+    const section = conversation.pinnedAt
+      ? PINNED_SECTION
+      : needsAttention(conversation, options.attentionIds)
+        ? ATTENTION_SECTION
+        : conversationSection(
+            activityTime(conversation),
+            nowDay,
+            options.nowMs,
+            options.timeZone,
+          );
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
@@ -51,31 +57,79 @@ export function buildConversationSections(
     }
   }
 
+  sections.get(PINNED_SECTION.key)?.conversations.sort(comparePinOrder);
   return [...sections.values()]
     .sort((left, right) => left.order - right.order)
     .map(({ order: _order, ...section }) => section);
 }
 
-/** Join the conversations that wait on the viewer or finished unseen. */
+/**
+ * True when the conversation waits on a person: its id is in `attentionIds`,
+ * or it has unfinished work, such as an open pull request, while Junior is
+ * not running in it.
+ */
+function needsAttention(
+  conversation: Conversation,
+  attentionIds: ReadonlySet<string>,
+): boolean {
+  return (
+    attentionIds.has(conversation.id) ||
+    (conversation.unfinishedWork === true && conversation.status !== "active")
+  );
+}
+
+/** Join the conversations that wait on the viewer or are unread. */
 export function attentionConversationIds(
-  waitingConversationIds: ReadonlySet<string>,
-  finishedConversationIds: ReadonlySet<string>,
+  conversations: readonly Conversation[],
+  waitingConversationIds: Iterable<string>,
 ): ReadonlySet<string> {
-  return new Set([...waitingConversationIds, ...finishedConversationIds]);
+  return new Set([
+    ...waitingConversationIds,
+    ...conversations
+      .filter((conversation) => conversation.unread)
+      .map((conversation) => conversation.id),
+  ]);
 }
 
 /**
- * Sort attention conversations to the front. The sort is stable, so each group
- * keeps the feed order. Paginated lists call this before paging, so page 1
- * holds every attention conversation.
+ * Sort pinned, then attention conversations to the front. Pinned follows the
+ * viewer's order. The sort is stable, so the other groups keep the feed order.
+ * Paginated lists call this before paging, so page 1 holds every pinned and
+ * attention conversation.
  */
-export function attentionFirst(
+export function pinnedAndAttentionFirst(
   conversations: Conversation[],
   attentionIds: ReadonlySet<string>,
 ): Conversation[] {
   const rank = (conversation: Conversation) =>
-    attentionIds.has(conversation.id) ? 0 : 1;
-  return [...conversations].sort((left, right) => rank(left) - rank(right));
+    conversation.pinnedAt
+      ? 0
+      : needsAttention(conversation, attentionIds)
+        ? 1
+        : 2;
+  return [...conversations].sort(
+    (left, right) =>
+      rank(left) - rank(right) ||
+      (left.pinnedAt && right.pinnedAt ? comparePinOrder(left, right) : 0),
+  );
+}
+
+/**
+ * Order pins by the viewer's places. Pins without a place, from before the
+ * first reorder or pinned since, go first, newest pin first. Activity never
+ * moves a pin.
+ */
+function comparePinOrder(left: Conversation, right: Conversation): number {
+  return (
+    (left.pinPosition ?? Number.NEGATIVE_INFINITY) -
+      (right.pinPosition ?? Number.NEGATIVE_INFINITY) ||
+    pinTime(right) - pinTime(left) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function pinTime(conversation: Conversation): number {
+  return conversation.pinnedAt ? Date.parse(conversation.pinnedAt) || 0 : 0;
 }
 
 function activityTime(conversation: Conversation): number {

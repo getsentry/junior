@@ -6,7 +6,7 @@ import {
   type PluginConversationEventDefinition,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { juniorConversations } from "@/db/schema";

@@ -1,34 +1,12 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { BundledLanguage } from "shiki/bundle/web";
-import {
-  createBundledHighlighter,
-  createSingletonShorthands,
-  guessEmbeddedLanguages,
-} from "shiki/core";
 
 import { cn } from "./styles";
-import { dashboardCodeLanguages } from "./code-languages";
 import {
   buildSearchDecorations,
   useTranscriptSearch,
 } from "./conversations/transcriptSearch";
-
-// Split themes, language grammars, and the engine into on-demand chunks.
-const { codeToHtml } = createSingletonShorthands(
-  createBundledHighlighter({
-    langs: dashboardCodeLanguages,
-    themes: {
-      "github-dark": () => import("shiki/themes/github-dark.mjs"),
-      "github-light": () => import("shiki/themes/github-light.mjs"),
-    },
-    engine: async () => {
-      const { createOnigurumaEngine } = await import("shiki/engine/oniguruma");
-      return createOnigurumaEngine(import("shiki/wasm"));
-    },
-  }),
-  { guessEmbeddedLanguages },
-);
 
 declare const shikiHtmlBrand: unique symbol;
 
@@ -51,6 +29,8 @@ export function HighlightedCode(props: {
       const decorations = normalizedQuery
         ? buildSearchDecorations(props.code, normalizedQuery)
         : [];
+      // Shiki loads on the first code block, not with the dashboard entry.
+      const { codeToHtml } = await import("./code-highlighter");
       return (await codeToHtml(props.code, {
         decorations: decorations.length ? decorations : undefined,
         lang: props.language,

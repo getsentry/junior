@@ -117,6 +117,7 @@ export function DetailsPanel(props: {
           <Button
             ref={closeRef}
             aria-label={closeLabel}
+            data-slot="details-panel-close"
             onClick={onClose}
             size="icon"
           >
@@ -124,7 +125,7 @@ export function DetailsPanel(props: {
           </Button>
         </div>
       </header>
-      <div className="min-h-0 overflow-y-auto overscroll-contain">
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
         {props.children}
       </div>
     </aside>

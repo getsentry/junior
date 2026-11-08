@@ -22,8 +22,6 @@ import { getStateAdapter } from "@/chat/state/adapter";
 // translate host egress failures into the same user-facing auth flow as direct
 // tool calls.
 
-export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
-
 const SANDBOX_EGRESS_TOKEN_VERSION = "v1";
 const SANDBOX_EGRESS_HMAC_CONTEXT = "junior.sandbox_egress.v1";
 const SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX = "sandbox-egress-auth-required";

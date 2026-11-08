@@ -8,7 +8,7 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationEventModel,
   conversationEventModelCall,
@@ -32,11 +32,10 @@ export const conversationReportSourceEventTypes = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
-  "turn_routed",
+  "reply_posted",
   "turn_completed",
   "turn_failed",
   "compaction",
-  "handoff",
   "subagent_started",
   "subagent_ended",
 ] as const;
@@ -393,9 +392,13 @@ function reportEventData(args: {
         ...(typeof data.meta?.eventType === "string"
           ? { eventType: data.meta.eventType }
           : undefined),
+        ...(typeof data.meta?.eventNamespace === "string"
+          ? { eventNamespace: data.meta.eventNamespace }
+          : undefined),
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
           : undefined),
+        ...(data.meta?.quiet === true ? { quiet: true as const } : undefined),
         ...(args.canExposePayload &&
         typeof data.meta?.trustedSummary === "string"
           ? { trustedSummary: data.meta.trustedSummary }
@@ -449,18 +452,15 @@ function reportEventData(args: {
         type: "attachments_delivered",
         attachments: data.attachments,
       };
-    case "turn_routed":
+    case "reply_posted":
+      if (!args.canExposePayload) {
+        return undefined;
+      }
       return {
-        type: "turn_routed",
-        turnId: data.turnId,
-        modelProfile: data.modelProfile,
-        modelId: data.modelId,
-        ...(data.costUsd !== undefined ? { costUsd: data.costUsd } : undefined),
-        reasoningLevel: data.reasoningLevel,
-        ...(data.confidence !== undefined
-          ? { confidence: data.confidence }
-          : undefined),
-        source: data.source,
+        type: "reply_posted",
+        plugin: data.plugin,
+        text: data.text,
+        ...(data.url ? { url: data.url } : undefined),
       };
     case "guardian_action_reviewed":
       return {
@@ -498,7 +498,6 @@ function reportEventData(args: {
     case "compaction":
       return {
         type: "compaction",
-        modelProfile: data.modelProfile,
         modelId: data.modelId,
         ...(args.canExposePayload && data.summary
           ? { summary: data.summary }
@@ -668,21 +667,6 @@ export function projectConversationReportEventPage(args: {
         };
         subagentStarts.delete(event.data.subagentInvocationId);
       }
-    } else if (event.data.type === "handoff") {
-      data = {
-        type: "handoff",
-        modelProfile: event.data.modelProfile,
-        modelId: event.data.modelId,
-        ...(event.data.reasoningLevel
-          ? { reasoningLevel: event.data.reasoningLevel }
-          : undefined),
-        ...(event.data.triggeringToolCallId
-          ? { triggeringToolCallId: event.data.triggeringToolCallId }
-          : undefined),
-        ...(args.canExposePayload && event.data.summary
-          ? { summary: event.data.summary }
-          : undefined),
-      };
     } else {
       data = reportEventData({
         canExposePayload: args.canExposePayload,

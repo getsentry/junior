@@ -3,8 +3,9 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
+  accountChooserLink,
   attendeeOutputSchema,
   attendeeResults,
   formatInterval,
@@ -210,7 +211,9 @@ export function createListCalendarEventsTool(ctx: GoogleToolContext) {
             ...(event.attendees
               ? { attendees: attendeeResults(event.attendees) }
               : undefined),
-            ...(event.htmlLink ? { url: event.htmlLink } : undefined),
+            ...(event.htmlLink
+              ? { url: accountChooserLink(event.htmlLink, ctx.accountEmail) }
+              : undefined),
             ...(event.hangoutLink
               ? { video_call_url: event.hangoutLink }
               : undefined),

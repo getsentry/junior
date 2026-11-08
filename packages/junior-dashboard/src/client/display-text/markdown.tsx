@@ -18,6 +18,7 @@ import {
 import { cn } from "../styles";
 import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
 import { renderTextTokens } from "./mentions";
+import { OutboundLink } from "../components/OutboundLink";
 
 /**
  * Render display text Markdown as readable prose.
@@ -30,6 +31,7 @@ import { renderTextTokens } from "./mentions";
  */
 export function MarkdownText(props: {
   chat?: boolean;
+  compact?: boolean;
   inline?: boolean;
   text: string;
 }): ReactNode {
@@ -54,7 +56,8 @@ export function MarkdownText(props: {
         "min-w-0 break-words text-dashboard-text [overflow-wrap:anywhere]",
         props.chat
           ? "font-sans text-base leading-relaxed"
-          : "font-sans text-sm leading-6 md:leading-7",
+          : "font-sans text-sm leading-6",
+        !props.chat && !props.compact && "md:leading-7",
       )}
     >
       <div className={cn("grid min-w-0", props.chat ? "gap-3" : "gap-2")}>
@@ -336,20 +339,23 @@ function TranscriptAnchor(props: { children: ReactNode; href?: string }) {
   // `safeHref` removes unsafe destinations. Keep their label text.
   if (!props.href) return <>{renderText(props.children)}</>;
 
-  const opensNewTab = /^https?:/i.test(props.href);
+  const label =
+    typeof props.children === "string" ? (
+      <SearchAwareLinkLabel href={props.href} label={props.children} />
+    ) : (
+      props.children
+    );
+  if (!/^https?:/i.test(props.href)) {
+    return (
+      <a className={ANCHOR_CLASS} href={props.href}>
+        {label}
+      </a>
+    );
+  }
   return (
-    <a
-      className={ANCHOR_CLASS}
-      href={props.href}
-      rel={opensNewTab ? "noreferrer" : undefined}
-      target={opensNewTab ? "_blank" : undefined}
-    >
-      {typeof props.children === "string" ? (
-        <SearchAwareLinkLabel href={props.href} label={props.children} />
-      ) : (
-        props.children
-      )}
-    </a>
+    <OutboundLink className={ANCHOR_CLASS} href={props.href}>
+      {label}
+    </OutboundLink>
   );
 }
 
@@ -364,7 +370,7 @@ function SearchAwareLinkLabel(props: { href: string; label: string }) {
   if (hrefMatches && !labelMatches) {
     return (
       <mark
-        className="rounded-[2px] bg-amber-400/20 px-0.5 text-inherit not-italic"
+        className="rounded-[2px] bg-amber-400/20 text-inherit not-italic"
         title={`Matched URL: ${props.href}`}
       >
         {props.label}

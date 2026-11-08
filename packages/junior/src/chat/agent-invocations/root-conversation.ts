@@ -6,7 +6,7 @@
  * own Conversation. A child agent never has a message from a person: its task
  * comes from its parent agent, so it reads the root of its parent chain. The
  * source is the root's `message` events: the durable visible transcript.
- * Compaction and handoff never rewrite these events, so an early request or a
+ * Compaction never rewrites these events, so an early request or a
  * later revocation is still there after the root's model history changes.
  *
  * A message counts as the user only when its stored author Identity is one
@@ -21,6 +21,7 @@
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
+import { readConversationLineage } from "@/chat/conversations/lineage";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
 import type { Conversation } from "@/chat/conversations/store";
 import {
@@ -60,17 +61,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function findRootConversation(
   conversationId: string,
 ): Promise<Conversation | undefined> {
-  const store = getConversationStore();
-  let conversation = await store.get({ conversationId });
-  for (let depth = 0; conversation?.parentConversationId; depth += 1) {
-    if (depth >= MAX_PARENT_DEPTH) {
-      return undefined;
-    }
-    conversation = await store.get({
-      conversationId: conversation.parentConversationId,
-    });
+  const lineage = await readConversationLineage(conversationId);
+  const root = lineage[0];
+  if (
+    !root ||
+    root.parentConversationId ||
+    lineage.length - 1 > MAX_PARENT_DEPTH
+  ) {
+    return undefined;
   }
-  return conversation;
+  return await getConversationStore().get({
+    conversationId: root.conversationId,
+  });
 }
 
 /**

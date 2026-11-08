@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
-import { defaultModelId } from "@/chat/model-profile";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import {
   processBackgroundCompaction,
@@ -38,7 +37,6 @@ function compaction(summary: string): HistoryReplacement {
     createdAtMs: 10,
     data: {
       type: "compaction",
-      modelProfile: "standard",
       modelId: "test/model",
       replacementHistory: [{ item: userMessage(summary, 10) }],
     },
@@ -58,7 +56,6 @@ describe("background compaction events", () => {
           type: "compaction_requested",
           markSeq: 0,
           historyVersion: 0,
-          modelProfile: "standard",
           modelId: "test/model",
         },
       },
@@ -68,7 +65,6 @@ describe("background compaction events", () => {
           type: "compaction_prepared",
           markSeq: 0,
           historyVersion: 0,
-          modelProfile: "standard",
           modelId: "test/model",
           outcome: "ready",
           summary: "The person picked the blue option.",
@@ -80,7 +76,6 @@ describe("background compaction events", () => {
           type: "compaction_prepared",
           markSeq: 0,
           historyVersion: 0,
-          modelProfile: "standard",
           modelId: "test/model",
           outcome: "failed",
           errorType: "timeout",
@@ -94,14 +89,12 @@ describe("background compaction events", () => {
         type: "compaction_requested",
         markSeq: 0,
         historyVersion: 0,
-        modelProfile: "standard",
         modelId: "test/model",
       },
       {
         type: "compaction_prepared",
         markSeq: 0,
         historyVersion: 0,
-        modelProfile: "standard",
         modelId: "test/model",
         outcome: "ready",
         summary: "The person picked the blue option.",
@@ -110,7 +103,6 @@ describe("background compaction events", () => {
         type: "compaction_prepared",
         markSeq: 0,
         historyVersion: 0,
-        modelProfile: "standard",
         modelId: "test/model",
         outcome: "failed",
         errorType: "timeout",
@@ -161,7 +153,7 @@ describe("background compaction events", () => {
   });
 });
 
-const MODEL_ID = defaultModelId(botConfig);
+const MODEL_ID = botConfig.modelId;
 
 function assistant(text: string, input = 0): AssistantMessage {
   return {
@@ -225,13 +217,9 @@ function liveAgent(inputSize: number): Agent {
   });
 }
 
-/**
- * Complete a Turn. The default start is before every event, so no ready
- * summary was passed over at its start.
- */
+/** Complete a Turn and return the background jobs that it sent. */
 async function completeTurn(
   agent: Agent,
-  turnStartedAtMs = 0,
 ): Promise<BackgroundCompactionMessage[]> {
   const sent: BackgroundCompactionMessage[] = [];
   await requestBackgroundCompaction({
@@ -239,9 +227,7 @@ async function completeTurn(
     conversationId: CONVERSATION_ID,
     conversationPrivacy: "private",
     modelId: MODEL_ID,
-    modelProfile: botConfig.defaultProfile,
     queue: { send: async (message) => void sent.push(message) },
-    turnStartedAtMs,
   });
   return sent;
 }
@@ -276,6 +262,8 @@ describe("background compaction job", () => {
         markSeq: first!.seq,
       },
     ]);
+    // A later model request waits for the pending request.
+    await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
 
     const model = replies(["<summary>The person picked blue.</summary>"]);
     await processBackgroundCompaction(sent[0]!, { streamFn: model.streamFn });
@@ -300,7 +288,6 @@ describe("background compaction job", () => {
     const request = {
       markSeq: first!.seq,
       historyVersion: 0,
-      modelProfile: botConfig.defaultProfile,
       modelId: MODEL_ID,
     };
     await expect(bookkeeping()).resolves.toEqual([
@@ -313,7 +300,7 @@ describe("background compaction job", () => {
       },
     ]);
 
-    // A summary that became ready during the Turn waits for the next Turn.
+    // A ready summary waits for the compaction threshold.
     await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
     // A repeated delivery writes nothing.
     await processBackgroundCompaction(sent[0]!, { streamFn: model.streamFn });
@@ -352,39 +339,33 @@ describe("background compaction job", () => {
     ]);
   });
 
-  it("requests again when a Turn started after a ready summary and did not swap it in", async () => {
+  it("keeps a ready summary for later Turns below the threshold", async () => {
     const events = getConversationEventStore();
     await events.append(CONVERSATION_ID, [
       { createdAtMs: 1, data: userMessage("First question.", 1) },
     ]);
     const mark = getAgentBackgroundCompactionMarkTokens(MODEL_ID);
-    const ready = async (job: BackgroundCompactionMessage | undefined) =>
-      await processBackgroundCompaction(job!, {
-        streamFn: replies(["<summary>Earlier work.</summary>"]).streamFn,
-      });
+    const [job] = await completeTurn(liveAgent(mark));
+    await processBackgroundCompaction(job!, {
+      streamFn: replies(["<summary>Earlier work.</summary>"]).streamFn,
+    });
 
-    await ready((await completeTurn(liveAgent(mark)))[0]);
-    await events.append(CONVERSATION_ID, [
-      { createdAtMs: 2, data: userMessage("Second question.", 2) },
-    ]);
-    // The History version is the same, so this Turn discarded the summary,
-    // for example because the history after its mark is too large now.
-    const [second] = await completeTurn(liveAgent(mark), Date.now());
-    expect(second).toBeDefined();
-    await ready(second);
-    await events.append(CONVERSATION_ID, [
-      { createdAtMs: 3, data: userMessage("Third question.", 3) },
-    ]);
-
-    // Two passed-over summaries reach the attempt limit.
-    await expect(completeTurn(liveAgent(mark), Date.now())).resolves.toEqual(
-      [],
-    );
+    // Later Turns at the mark stay below the threshold, so the summary is
+    // not swapped in yet. They do not pay for another summary.
+    for (const [seq, text] of [
+      [2, "Second question."],
+      [3, "Third question."],
+    ] as const) {
+      await events.append(CONVERSATION_ID, [
+        { createdAtMs: seq, data: userMessage(text, seq) },
+      ]);
+      await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
+    }
     expect(
       (await bookkeeping()).filter(
         (event) => event.type === "compaction_requested",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it("writes nothing when the history was replaced before the job ran", async () => {
@@ -435,7 +416,6 @@ describe("background compaction job", () => {
       createdAtMs: 10,
       data: {
         type: "compaction",
-        modelProfile: botConfig.defaultProfile,
         modelId: MODEL_ID,
         replacementHistory: [
           {

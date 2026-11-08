@@ -74,10 +74,8 @@ Set these values before running real turns:
 | `REDIS_URL`               | Yes                    | Runtime state, locks, and durable background automation records.  |
 | `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox actor context.        |
 | `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                          |
-| `AI_MODEL`                | No                     | Deprecated default model setting.                                 |
-| `AI_FAST_MODEL`           | No                     | Lightweight routing/classification model override.                |
-| `AI_HANDOFF_MODEL`        | No                     | Deprecated handoff model setting.                                 |
-| `AI_MODEL_PROFILES`       | No                     | Deprecated JSON map of named profiles.                            |
+| `AI_MODEL`                | No                     | Agent model override.                                             |
+| `AI_FAST_MODEL`           | No                     | Lightweight classification model override.                        |
 | `AI_EMBEDDING_MODEL`      | No                     | Embedding model override for plugin vector retrieval.             |
 | `AI_VISION_MODEL`         | No                     | Defaults to `openai/gpt-5.6-sol`; an empty value disables vision. |
 | `AI_WEB_SEARCH_MODEL`     | No                     | Search model override.                                            |
@@ -85,17 +83,21 @@ Set these values before running real turns:
 
 See [Config & Environment](/reference/config-and-env/) for the full reference.
 If you keep the default memory plugin enabled, use a Postgres database with
-pgvector support before running migrations. Local Postgres URLs automatically
-use the `postgres` driver; set `JUNIOR_DATABASE_DRIVER=postgres` for other
-non-Neon Postgres providers.
+pgvector support. Local Postgres URLs automatically use the `postgres` driver;
+set `JUNIOR_DATABASE_DRIVER=postgres` for other non-Neon Postgres providers.
 
 ## Run locally
 
-Start the local dev server:
+Apply the schema to your local database, then start the dev server:
 
 ```bash
+pnpm exec junior upgrade
 pnpm dev
 ```
+
+`pnpm dev` does not migrate the database. Run `junior upgrade` again after you
+add a plugin that owns tables or install a new Junior release. Vercel deploys
+run it for you; see [Deploy to Vercel](/start-here/deploy-to-vercel/).
 
 The app listens on `http://localhost:3000` by default.
 
@@ -189,7 +191,8 @@ Replace `example.com` with your company's email domain. Only Slack users and
 dashboard sign-ins on [allowed domains](/reference/config-and-env/#allowed-domains)
 can use Junior.
 
-Run the app check after changing plugins or skills:
+For fast feedback after you change plugins or skills, run the app check. The
+scaffolded CI workflow also runs it on each push:
 
 ```bash
 pnpm check
@@ -200,21 +203,9 @@ Scheduled automation tools and heartbeat behavior are built into Junior, while
 `githubPlugin()` enforces Git commit attribution. See [Automations](/concepts/automations/)
 and [GitHub Plugin](/extend/github-plugin/) for those setups.
 
-## Verify plugin content
-
-When enabled plugins declare sandbox runtime dependencies, the scaffolded build runs snapshot warmup:
-
-```json title="package.json"
-{
-  "scripts": {
-    "check": "junior check",
-    "dev": "nitro dev",
-    "build": "junior snapshot create && nitro build"
-  }
-}
-```
-
-Run `pnpm check` before `pnpm build` so manifest and skill issues fail early.
+You do not need to run `pnpm build` locally. The Vercel build runs migrations,
+sandbox snapshot warmup, and the app build. Snapshot warmup needs Vercel OIDC,
+so the scaffolded CI workflow skips it with `JUNIOR_SKIP_SNAPSHOT=1`.
 
 ## Next step
 

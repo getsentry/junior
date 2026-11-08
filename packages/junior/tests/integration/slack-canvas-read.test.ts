@@ -81,7 +81,7 @@ describe("createSlackCanvasReadTool", () => {
     });
   });
 
-  it("reads a bounded line range and exposes continuation details", async () => {
+  it("reads the whole canvas by default", async () => {
     const body = Array.from(
       { length: 1005 },
       (_, index) => `line ${index + 1}`,
@@ -112,23 +112,13 @@ describe("createSlackCanvasReadTool", () => {
       };
     };
 
-    expect(result.truncated).toBe(true);
-    expect(result.content).toBe(
-      Array.from({ length: 1000 }, (_, index) => `line ${index + 1}`).join(
-        "\n",
-      ),
-    );
+    // The tool pipeline, not this tool, cuts a long canvas for the model.
+    expect(result.truncated).toBe(false);
+    expect(result.content).toBe(body);
     expect(result.start_line).toBe(1);
-    expect(result.end_line).toBe(1000);
+    expect(result.end_line).toBe(1005);
     expect(result.total_lines).toBe(1005);
-    expect(result.continuation).toEqual({
-      arguments: {
-        canvas: "F0LONG",
-        offset: 1001,
-        limit: 1000,
-      },
-      reason: "file has more lines",
-    });
+    expect(result).not.toHaveProperty("continuation");
     expect(result.original_byte_length).toBe(body.length);
   });
 

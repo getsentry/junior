@@ -1,6 +1,6 @@
 ---
 name: junior-qa
-description: Validate Junior changes through local app-facing paths. Use for local client or agent QA, dashboard mock reporting UI QA, Docker sandbox provider QA (also from inside a Vercel Sandbox), PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...`, another `pnpm cli` command, or `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev`.
+description: Validate Junior changes through local app-facing paths. Use for local client or agent QA, dashboard mock reporting UI QA, sharing a preview URL of a running UI, Docker sandbox provider QA (also from inside a Vercel Sandbox), PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...`, another `pnpm cli` command, or `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev`.
 ---
 
 Use the local Junior CLI to exercise behavior the test suite does not prove well.
@@ -63,6 +63,10 @@ deterministic reporting records that are hard to produce through a live local
 chat. Plugin report data is pass-through from the configured reporting provider
 and needs separate validation.
 
+Messages sent from the composer or a Quick question do not run the agent. The
+mock shows a working Turn for 2 seconds, then a fixed reply. Sent messages
+stay until the dev server restarts.
+
 The root dev command owns local auth-disabled defaults and the production-like
 Nitro preset. If it fails to start, diagnose or report the dev runner failure;
 do not change `apps/example/nitro.config.ts`, dashboard auth settings, or OAuth
@@ -71,6 +75,25 @@ configuration to make visual QA run.
 Do not treat mock dashboard data as proof of runtime ingestion, Slack delivery,
 credential behavior, or model behavior. Pair it with local CLI or integration
 tests when the changed contract crosses those boundaries.
+
+### Share a Preview
+
+When a person wants to open the UI that you changed, send a preview URL:
+
+1. Push the branch, so a later Turn can make the preview again.
+2. Start the server in the background on all interfaces:
+   `(HOST=0.0.0.0 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true setsid nohup pnpm dev > /tmp/dev.log 2>&1 &)`
+3. Wait until `curl -s -o /dev/null -w '%{http_code}' localhost:3000/` returns
+   `200`.
+4. Call `createPreview` with port `3000`, and send the URL.
+
+Rules:
+
+- Anyone with the URL can open it. Serve mock data only. Do not give the
+  server provider credentials.
+- The URL stops working when the Sandbox stops. When the person asks to
+  refresh the preview, check out the branch, start the server again, and send
+  the new URL.
 
 ## Docker Sandbox QA
 

@@ -1,5 +1,11 @@
-import { TranscriptRow, TranscriptRows } from "./TranscriptRows";
 import { Skeleton } from "../components/ui/skeleton";
+import { cn } from "../styles";
+import {
+  TranscriptRow,
+  TranscriptRows,
+  transcriptAvatarClass,
+  transcriptColumnsClass,
+} from "./TranscriptRows";
 
 /** Match the usual transcript rhythm while the selected conversation loads. */
 export function TranscriptLoading() {
@@ -22,8 +28,8 @@ export function TranscriptLoading() {
 function MessageLoading(props: { width: string }) {
   return (
     <TranscriptRow>
-      <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3">
-        <Skeleton className="size-8 rounded-full" />
+      <div className={cn("grid", transcriptColumnsClass)}>
+        <Skeleton className={cn("rounded-full", transcriptAvatarClass)} />
         <div className="grid gap-2 pt-1">
           <div className="flex h-6 items-center">
             <Skeleton className="h-3 w-24 opacity-70" />

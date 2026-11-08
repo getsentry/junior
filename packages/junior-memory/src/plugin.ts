@@ -15,6 +15,7 @@ import { processMemorySession } from "./process-session";
 import { reembedMemories } from "./reembed";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
+import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
@@ -143,10 +144,11 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         });
       },
       async operationalReport(ctx) {
-        const extractionDays = await ctx.eventStats.costsByDay({
-          days: 90,
-          eventName: "memories_captured",
-        });
+        const extractionDays = await memoryCostsByDay(
+          ctx.eventStats,
+          extractionCostFlow,
+          90,
+        );
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
           extractionDays,
@@ -173,9 +175,13 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
         };
-        // Only the main agent writes memory. Child agent runs can read memory
-        // and suggest memories in their result.
-        if (ctx.source.kind === "agent_invocation") {
+        // All memory is public, so only a main agent in a public Conversation
+        // writes it. Child agents can suggest memories in their result. Other
+        // Sources, such as automations, carry no visibility, so they only read.
+        if (
+          !("visibility" in ctx.source) ||
+          ctx.source.visibility !== "public"
+        ) {
           return readTools;
         }
         return {

@@ -28,10 +28,8 @@ export interface CodeModeTelemetry {
   vmStartMs?: number;
   /** Time from VM ready until the script result settled. Absent when it did not start. */
   runMs?: number;
-  /** UTF-8 bytes of script output before truncation. */
+  /** UTF-8 bytes of the script output and return value JSON. */
   outputBytes: number;
-  /** True when output was cut to fit the output limit. */
-  outputTruncated: boolean;
   /** Absent when the script returned a result. */
   errorKind?: CodeModeErrorKind;
 }
@@ -54,7 +52,6 @@ export function codeModeSpanAttributes(
       ? { "app.codemode.run_ms": telemetry.runMs }
       : undefined),
     "app.codemode.output.bytes": telemetry.outputBytes,
-    "app.codemode.output.truncated": telemetry.outputTruncated,
     ...(telemetry.errorKind
       ? { "app.codemode.error.kind": telemetry.errorKind }
       : undefined),

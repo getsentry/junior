@@ -83,7 +83,7 @@ class MemoryConversationEventStore implements ConversationEventStore {
   }
 
   async loadMessageHistory(): Promise<MessageHistory> {
-    return { events: this.history, compaction: undefined, historyFromSeq: 0 };
+    return { events: this.history, historyFromSeq: 0 };
   }
 
   async loadHistory(): Promise<ConversationEvent[]> {

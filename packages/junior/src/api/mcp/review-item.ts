@@ -4,7 +4,7 @@
  * MCP Review items stay read-only. An answer or dismissal sends a message to
  * the linked Conversations, which can start a Turn.
  */
-import { z } from "zod";
+import * as z from "zod";
 import { getDashboardReviewItemLink } from "@/chat/dashboard-link";
 import { canActOnReviewItem } from "@/chat/review-items/access";
 import type { ReviewItem } from "@/chat/review-items/store";

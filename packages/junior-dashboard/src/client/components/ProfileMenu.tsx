@@ -1,5 +1,4 @@
 import {
-  Boxes,
   ChevronDown,
   LogOut,
   Settings,
@@ -9,21 +8,23 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
-import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { formatCostSummary, peoplePath } from "../format";
-import { pluginUserPagePath } from "../pages/user/PluginUserPage";
 import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
+import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
+import { navItemIcon } from "./layout/navIcons";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { Button, buttonVariants } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 type ProfileMenuProps = {
   identity: Identity;
   onSignOut(): Promise<void>;
   spend?: PersonalSpendReport;
-  userPages: PluginUserPageLink[];
+  /** Pages that live in this menu instead of the primary nav. */
+  pages: DashboardHeaderNavItem[];
   /**
    * `popover` is the avatar control at the bottom of the desktop nav rail.
    * `top-bar` is the spend and avatar control in the tall desktop top bar.
@@ -131,15 +132,14 @@ function SpendAmount({ value }: { value?: number }) {
   );
 }
 
-const profileLinkClass =
-  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none";
+const profileLinkClass = buttonVariants({ size: "menu" });
 
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
   identity,
   onSignOut,
   spend,
-  userPages,
+  pages,
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
@@ -151,9 +151,6 @@ export function ProfileMenu({
   const thirtyDaySpend = spend
     ? formatCostSummary({ total: spend.thirtyDaysUsd })
     : "—";
-  const profilePages = userPages.filter(
-    (page) => page.navigation === "profile",
-  );
 
   const identityBlock = (
     <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
@@ -170,7 +167,11 @@ export function ProfileMenu({
           ) : null}
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted">
+      <div
+        aria-label="Personal model spend"
+        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted"
+        role="group"
+      >
         <span>
           7d{" "}
           <span className="font-semibold text-dashboard-text">
@@ -201,34 +202,36 @@ export function ProfileMenu({
         <Settings aria-hidden="true" size={16} strokeWidth={2} />
         Settings
       </Link>
+      {pages.map((page) => {
+        const Icon = navItemIcon(page.key);
+        return (
+          <Link
+            className={profileLinkClass}
+            key={page.key}
+            onClick={close}
+            to={page.to}
+          >
+            <Icon aria-hidden="true" size={16} strokeWidth={2} />
+            {page.label}
+          </Link>
+        );
+      })}
       {identity.user.isAdmin ? (
         <Link className={profileLinkClass} onClick={close} to="/admin">
           <ShieldCheck aria-hidden="true" size={16} strokeWidth={2} />
           Admin
         </Link>
       ) : null}
-      {profilePages.map((page) => (
-        <Link
-          className={profileLinkClass}
-          key={`${page.pluginName}:${page.id}`}
-          onClick={close}
-          to={pluginUserPagePath(page.pluginName, page.id)}
-        >
-          <Boxes aria-hidden="true" size={16} strokeWidth={2} />
-          {page.label}
-        </Link>
-      ))}
-      <button
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none"
+      <Button
         onClick={() => {
           close();
           void onSignOut();
         }}
-        type="button"
+        size="menu"
       >
         <LogOut aria-hidden="true" size={16} strokeWidth={2} />
         Log out
-      </button>
+      </Button>
     </>
   );
 
@@ -270,20 +273,16 @@ export function ProfileMenu({
         <Link className={sheetItemClass} to="/settings">
           Settings
         </Link>
+        {pages.map((page) => (
+          <Link className={sheetItemClass} key={page.key} to={page.to}>
+            {page.label}
+          </Link>
+        ))}
         {identity.user.isAdmin ? (
           <Link className={sheetItemClass} to="/admin">
             Admin
           </Link>
         ) : null}
-        {profilePages.map((page) => (
-          <Link
-            className={sheetItemClass}
-            key={`${page.pluginName}:${page.id}`}
-            to={pluginUserPagePath(page.pluginName, page.id)}
-          >
-            {page.label}
-          </Link>
-        ))}
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
           data-mobile-nav-dismiss
@@ -321,6 +320,7 @@ export function ProfileMenu({
   }
 
   const topBar = variant === "top-bar";
+  const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
   return (
     <Popover
       onOpenChange={(nextOpen, details) => {
@@ -336,7 +336,11 @@ export function ProfileMenu({
       open={open}
     >
       <PopoverTrigger
-        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
+        aria-label={
+          topBar
+            ? `${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`
+            : menuLabel
+        }
         className={cn(
           "cursor-pointer rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           topBar

@@ -1,6 +1,6 @@
 import { declaredEventKeys } from "@sentry/junior-plugin-api";
 import { and, eq, inArray } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import {
   automationEditor,
   changeAutomationLifecycle,
@@ -53,6 +53,7 @@ import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
+import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 type UpdateInput = {
   title?: string;
@@ -323,6 +324,8 @@ export function createUpdateAutomationTool(
     })
     .strict();
   return zodTool({
+    exposure: "deferred",
+    source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
     annotations: {
       destructiveHint: true,

@@ -9,21 +9,34 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Code change**: a proposed repo change (pull request, merge request).
 - **Commit**: one repository revision. The host owns its id.
 - **Sandbox**: an isolated environment for a Run or snapshot build.
+- **Preview**: a public URL for a server that runs in a Sandbox. It stops
+  working when the Sandbox stops.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location.
+  from Location. Its `kind` is `root`, `thread`, or `task`, and never changes.
+- **Thread**: a child Conversation that people can message like a root. Say
+  "Slack thread" for the Location. A bare "Thread" is the Conversation.
+- **Task**: a child Conversation that only its parent messages. People can
+  view it. Existing code names with `task` (`task-execution`, the Ticket
+  `task` type, the `spawnAgent` `task` field) keep their meaning.
+- **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
+  bindings, Agent invocations). Not a UI word.
 - **Brief**: the versioned record of a Conversation's intent, outcome,
   decisions, facts, and evidence. Public Briefs outlive the transcript.
+- **Catch-up**: a short summary of the rows after a reader's read position,
+  and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
   Event, Automation, plugin dispatch, Agent invocation). Each Inbound message
   has one; a Turn stores the one that started it.
 - **Destination**: an explicit target for output or a side effect. Not a
   synonym for Location; a new Conversation stores it as its Location.
-- **Location**: the one outside place (Slack channel or thread) a Conversation
-  is delivered to. The Run carries it. It grants no delivery or visibility.
+- **Location**: the one outside place (a Slack channel or a Slack thread) a
+  Conversation is delivered to. The Run carries it. It grants no delivery or
+  visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
-  assistant Messages are stored.
+  assistant Messages are stored. Only a root Conversation delivers to its
+  Location. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
@@ -55,6 +68,13 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
+  Events are saved as skipped Messages and start no Turn. A stop marks the
+  Conversation and its child agents. A run that sees its stop late also stops
+  the child agents it tasked after the stop. A person's input sent after the
+  stop, or new work from a child's parent, ends the stop. A person's
+  stop keeps the Watches; an agent's `stopAgent` also cancels them. Reports
+  show it as `stopped` while no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.
@@ -67,19 +87,20 @@ Canonical words for Junior code and docs. One concept, one word.
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
   checkpoint**: the Redis resume cursor for one Turn.
-- **Turn route**: the Model profile and Reasoning level chosen before a Turn.
-- **Model profile**: a host model name (`standard`, `handoff`) with an
-  optional task-fit description for the router and `handoff`. **Reasoning
-  level**: `none`, `low`, `medium`, `high`, or `xhigh`.
+- **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
   tool calls), or `tool_result` event. Not `model_item` or `model_message`.
-- **History replacement**: a compaction or handoff that sets later history.
+- **History replacement**: a compaction that sets later history.
   **History version**: the internal partition loaded after it.
 - **Message**: normalized chat content stored for display, privacy, delivery,
   and search. **Message update**: later state stored as `message_updated`.
 - **Reply**: a destination-visible Message owned by delivery or reply-policy
   code. Execution code says turn, run, result, outcome, or delivery.
+- **Quiet message**: an Event Turn's assistant Message that the agent marked
+  as routine. Junior stores it but does not deliver it to the Location.
 - **Transcript**: a reporting view of Messages and history. Not storage.
+- **Quick question**: a hidden, read-only fork that asks about text in one
+  Reply. Keep as fork makes it a normal fork.
 - **Agent binding**: a parent-scoped name for one child Conversation.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
   its terminal result. Never shorten to "invocation".

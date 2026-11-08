@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import { LoadMorePagination } from "../components/Pagination";
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import {
   DetailsCard,
   DetailsList,
@@ -74,9 +75,9 @@ function ReviewItemRow(props: {
     if (props.defaultExpanded) setExpanded(true);
   }, [props.defaultExpanded]);
   return (
-    <>
+    <Collapsible className="min-w-0" onOpenChange={setExpanded} open={expanded}>
       <DetailsRow
-        expanded={expanded}
+        disclosure
         icon={<Inbox aria-hidden="true" className="size-3.5" />}
         meta={
           <span className="grid size-5 place-items-center">
@@ -86,14 +87,11 @@ function ReviewItemRow(props: {
             />
           </span>
         }
-        onToggle={() => setExpanded((value) => !value)}
         title={props.item.title}
       />
-      {expanded ? (
-        <div className="px-1.5 pb-1">
-          <ReviewItemCard item={props.item} />
-        </div>
-      ) : null}
-    </>
+      <CollapsibleContent className="px-1.5 pb-1">
+        <ReviewItemCard item={props.item} />
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

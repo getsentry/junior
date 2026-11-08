@@ -2,6 +2,7 @@ import { getDashboardAgentName } from "../../agentName";
 import { CopyButton } from "../../components/CopyButton";
 import { dashboardInlineLinkClass } from "../../styles";
 import { SettingsPageLayout } from "./SettingsPageLayout";
+import { OutboundLink } from "../../components/OutboundLink";
 
 const MCP_DOCS_URL = "https://junior.sentry.dev/operate/mcp-server/";
 
@@ -62,14 +63,9 @@ export function McpSettingsPage() {
 
       <p className="m-0 text-sm text-dashboard-text-muted">
         The client must support OAuth with Client ID Metadata Documents.{" "}
-        <a
-          className={dashboardInlineLinkClass}
-          href={MCP_DOCS_URL}
-          rel="noreferrer"
-          target="_blank"
-        >
+        <OutboundLink className={dashboardInlineLinkClass} href={MCP_DOCS_URL}>
           Read the MCP server docs
-        </a>
+        </OutboundLink>
         .
       </p>
     </SettingsPageLayout>

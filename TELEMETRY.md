@@ -33,6 +33,9 @@ move to the domain below.
 - Production keeps only audit info events (`app.log.audit:true`), such as
   `sandbox.egress.upstream.requested` for write grants. Outside production,
   that event is logged for every forwarded request.
+- `mcp.tool_call.completed` is an audit event for each successful call to a
+  tool in a plugin's `mcp.audit-tools`. `app.credential.account` is
+  `service_account` or `actor`.
 
 ## Query Recipes
 
@@ -82,14 +85,6 @@ Large tool results.
 dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.call.result.size:>20000'
 fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.result.size,span.duration
 sort=-gen_ai.tool.call.result.size
-```
-
-Search tool volume, truncation, and raw output size.
-
-```text
-dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
-fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
-sort=-timestamp
 ```
 
 Code Mode scripts, with their nested call counts and failures.
@@ -160,6 +155,14 @@ fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.allowed_when
 sort=-timestamp
 ```
 
+MCP audit tool calls, with the account that made them.
+
+```text
+dataset=logs query='app.log.audit:true event.name:mcp.tool_call.completed'
+fields=timestamp,user.id,app.actor.type,app.task.id,gen_ai.conversation.id,app.plugin.name,gen_ai.tool.name,app.credential.account
+sort=-timestamp
+```
+
 Slow model requests, with the phases before the gateway saw them. See
 [Model Requests](#model-requests).
 
@@ -204,12 +207,14 @@ attributes. Nested logs and spans inherit them.
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
+| Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
+| Phone notification missing or late   | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
 
 ## Code Mode
 
@@ -234,18 +239,17 @@ attributes below.
 
 Attributes on the `codemode` span:
 
-| Attribute                                      | Type    | Meaning                                                |
-| ---------------------------------------------- | ------- | ------------------------------------------------------ |
-| `app.codemode.script.bytes`                    | int     | script size in UTF-8 bytes                             |
-| `app.codemode.call.count`                      | int     | nested calls made, including rejected calls            |
-| `app.codemode.call.peak_concurrency`           | int     | most nested calls that ran at the same time            |
-| `app.codemode.call.rejected_count`             | int     | nested calls not allowed by action review              |
-| `app.codemode.call.batch_limit_rejected_count` | int     | nested calls refused by the per-drain batch limit      |
-| `app.codemode.vm.start_ms`                     | int     | time until the VM was ready                            |
-| `app.codemode.run_ms`                          | int     | time from VM ready until the result settled            |
-| `app.codemode.output.bytes`                    | int     | script output in UTF-8 bytes, before truncation        |
-| `app.codemode.output.truncated`                | boolean | output was cut to the output limit                     |
-| `app.codemode.error.kind`                      | string  | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
+| Attribute                                      | Type   | Meaning                                                |
+| ---------------------------------------------- | ------ | ------------------------------------------------------ |
+| `app.codemode.script.bytes`                    | int    | script size in UTF-8 bytes                             |
+| `app.codemode.call.count`                      | int    | nested calls made, including rejected calls            |
+| `app.codemode.call.peak_concurrency`           | int    | most nested calls that ran at the same time            |
+| `app.codemode.call.rejected_count`             | int    | nested calls not allowed by action review              |
+| `app.codemode.call.batch_limit_rejected_count` | int    | nested calls refused by the per-drain batch limit      |
+| `app.codemode.vm.start_ms`                     | int    | time until the VM was ready                            |
+| `app.codemode.run_ms`                          | int    | time from VM ready until the result settled            |
+| `app.codemode.output.bytes`                    | int    | script output and return value in UTF-8 bytes          |
+| `app.codemode.error.kind`                      | string | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
 
 - `app.codemode.vm.start_ms` and `app.codemode.run_ms` are absent when the VM
   did not start. `app.codemode.error.kind` is absent when the script returned
@@ -305,8 +309,18 @@ A compaction replaces the history when its estimate is above the threshold.
 - The span and all its children have `app.compaction.mode`. Group the summary
   `gen_ai.chat` spans by mode to compare duration and cache reads.
 - `app.turn.compaction_wait_ms` on `chat.turn` is the time that the Turn
-  waited on compaction in this execution slice. It is absent when no
-  compaction ran.
+  waited on summary compactions in this execution slice. It is absent when no
+  summary compaction ran.
+- `app.turn.compaction_swap_wait_ms` on `chat.turn` is the time that the Turn
+  waited on prepared-summary swaps, also when the swap was `not_ready` or
+  `discarded`. It includes the wait for a running summary at the input
+  limit. It is absent when no swap span ran.
+- After each replacement, the next model request logs
+  `context_compaction.next_request.completed` with
+  `app.compaction.next_input.size` (provider-reported input, cache included),
+  `app.compaction.threshold`, `app.compaction.mode`, and
+  `app.compaction.next_input.over_threshold`. When it is `true`, the
+  replacement did not get the history below the threshold.
 - Sentry data scrubbing removes the values of attribute keys that contain
   `token`. So these keys do not contain it, but the estimates count tokens.
 
@@ -314,56 +328,69 @@ Attributes on the `agent.context_compaction` span:
 
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
-| `app.compaction.mode`                 | string | `blocking`, `active`, `handoff`, `background` |
-| `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
+| `app.compaction.mode`                 | string | `blocking`, `active`, `background`            |
+| `app.compaction.outcome`              | string | `compacted`, `skipped`, or `summary_failed`   |
+| `app.compaction.skip_reason`          | string | why no summary was made above the threshold   |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
-| `app.compaction.replacement.estimate` | int    | estimated history tokens after compaction     |
+| `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
 | `app.compaction.threshold`            | int    | estimated tokens that start a compaction      |
 | `app.compaction.input_limit`          | int    | most estimated input tokens that a model gets |
 | `app.compaction.input_messages`       | int    | history messages before compaction            |
 | `app.compaction.retained_messages`    | int    | history messages kept with the summary        |
 | `app.compaction.summary_chars`        | int    | summary length in characters                  |
 
+- `app.compaction.replacement.estimate` counts the system prompt, tool
+  definitions, and the characters of each message. It ignores provider usage
+  on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
-  `handoff` runs for a model handoff.
+- `app.compaction.skip_reason`: `over_target` (the context that a
+  replacement keeps is above the target without a summary) or
+  `last_over_threshold` (the first model call after the latest full
+  compaction was above the threshold). A skipped compaction runs at the input limit.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
 `chat/services/context-compaction-swap.ts` owns it. The mode tells the swap
 point: `blocking` at Turn start, `active` between model calls. The span exists
-only when the current History version has a background compaction request or
-result.
+only when the history is above the threshold and the current History version
+has a background compaction request or result.
 
-| Attribute                         | Type   | Meaning                                         |
-| --------------------------------- | ------ | ----------------------------------------------- |
-| `app.compaction.outcome`          | string | `applied`, `not_ready`, or `discarded`          |
-| `app.compaction.discard_reason`   | string | why a ready summary was not used                |
-| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap      |
-| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary |
-| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages        |
-| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer       |
-| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                |
+A request younger than 45 seconds is a running summary. Below the input
+limit, the swap is `deferred` and no blocking summary runs. At the input
+limit, the swap polls until the summary has a result or the 45 seconds end.
 
-- `not_ready`: the job has not written a ready summary, or it failed. A
-  blocking compaction can still follow at the threshold.
+| Attribute                         | Type   | Meaning                                          |
+| --------------------------------- | ------ | ------------------------------------------------ |
+| `app.compaction.outcome`          | string | `applied`, `deferred`, `not_ready`, `discarded`  |
+| `app.compaction.discard_reason`   | string | why a ready summary was not used                 |
+| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap       |
+| `app.compaction.request.age_ms`   | int    | time from the pending request to the swap        |
+| `app.compaction.wait.timed_out`   | bool   | the wait at the input limit ended with no result |
+| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary  |
+| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages         |
+| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer        |
+| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                 |
+
+- `deferred`: a running summary exists, and the next model call fits below
+  the input limit. A later check swaps the summary in.
+- `not_ready`: the request is older than 45 seconds, the job failed, or the
+  wait ended. A blocking compaction can still follow at the threshold.
 - `app.compaction.discard_reason`: `history_version_changed`,
-  `profile_changed`, `over_target`, `conflict` (another replacement committed
-  first), or `split_tool_call` (the mark falls between a tool call and its
-  result).
+  `over_target`, `conflict` (another replacement committed first), or
+  `split_tool_call` (the mark falls between a tool call and its result).
 - A swap also sets `app.compaction.input.estimate`,
   `app.compaction.replacement.estimate`, and `app.compaction.threshold`.
-- A `handoff` span has only `app.compaction.mode`. A failed handoff or an
-  input above the limit sets `error.type`.
 
 ### Background Compaction
 
-A Turn whose last model request had a provider-reported input at or above
-the mark writes `compaction_requested` and logs
-`context_compaction.background.requested`. The mark is 70% of the compaction
-threshold. A queue job then writes `compaction_prepared`. The job has its own
-`agent.context_compaction` span with `app.compaction.mode:background`. It runs
-in a new trace and adds no `app.turn.compaction_wait_ms`.
+After each model request with a provider-reported input at or above the
+mark, also in the middle of a Turn, the Turn writes `compaction_requested`
+and logs `context_compaction.background.requested`. The mark is 70% of the
+compaction threshold. A queue job then writes `compaction_prepared`. The job
+has its own `agent.context_compaction` span with
+`app.compaction.mode:background`. It runs in a new trace and adds no
+`app.turn.compaction_wait_ms`.
 
 | Attribute                        | Type   | Meaning                                          |
 | -------------------------------- | ------ | ------------------------------------------------ |
@@ -397,6 +424,25 @@ dataset=spans query='span.op:chat.turn has:tags[app.turn.compaction_wait_ms,numb
 fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.compaction_wait_ms,number]),p50(span.duration)
 ```
 
+## Thread Context
+
+Each Turn prompt gets one `<thread-context>` block.
+`chat/conversations/thread-context.ts` sets these attributes when it builds
+the block: on `chat.reply` in a Slack Turn, on `chat.turn` in a web or Event
+Turn. The block holds only the Messages since the
+previous Turn when agent history exists.
+
+| Attribute                             | Type   | Meaning                                                   |
+| ------------------------------------- | ------ | --------------------------------------------------------- |
+| `app.thread_context.chars`            | int    | characters of the block, 0 when there is none             |
+| `app.thread_context.shown_messages`   | int    | Messages in the block                                     |
+| `app.thread_context.omitted_messages` | int    | Messages left out by the 60,000-character cap             |
+| `app.thread_context.cursor`           | string | `found`, `missing` (Turn before cursors), or `no_history` |
+| `app.thread_messages.trimmed`         | int    | oldest Messages dropped from the loaded window            |
+
+- `app.thread_messages.trimmed` is set in Turn preparation, only when the
+  loaded Messages pass the trim threshold. Trimming makes no model call.
+
 ## Invariants
 
 - `slack.message.ingress` records sender, team, and `app.slack.membership`
@@ -406,9 +452,11 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
   They follow the Sentry queue span conventions. `queue.process` starts a new
   trace.
-- `chat.turn` continues the trace of the oldest input `slack.message.ingress`
-  span and links to the other inputs and to `queue.process`. A resumed slice
-  continues the trace of the first slice.
+- `chat.turn` continues the trace of the oldest input: the
+  `slack.message.ingress` span, or the dashboard `http.server` request that
+  sent the Message. It links to the other inputs and to `queue.process`. A
+  resumed slice continues the trace of the first slice. An Event Turn has no
+  input trace, so its `chat.turn` is a child of `queue.process`.
 - `app.turn.delivery_lag_ms`, `app.turn.wait_ms`, and the `chat.turn` duration
   are contiguous. The timing attributes are absent when the value is negative
   (clock skew) and on resumed slices.
@@ -422,8 +470,152 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
   actions that need no review. Its `gen_ai.chat` children are the reviews.
 - `db.query.text` keeps placeholders. It never has parameter values or SQL
   comments.
+- Server spans and errors keep no URL query strings, fragments, request
+  bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it.
+
+## Plugin Tasks and Notifications
+
+- A `plugin.task` span runs each plugin task. `app.plugin.name`,
+  `app.plugin.task`, and `app.ai.turn.session_id` name the task and the
+  Turn. A web or Event Turn runs its tasks in its `chat.turn`, before the
+  queue message is acknowledged. A Slack Turn queues its tasks, so each task
+  is in its own trace. Find its Turn by `gen_ai.conversation.id`.
+- On `plugin.task` `notifyReply`, `app.notification.outcome` is `sent` or
+  `skipped`. `app.notification.skip_reason` says why it skipped, such as
+  `outside_hours` or `has_location`. A sent task has device counts and
+  `app.notification.reply_lag_ms`: the time from the completed Turn to the
+  end of the pushes.
+- A `notification.push.send` span sends to one browser. `server.address` is
+  the push service host. `app.notification.push.outcome` is `delivered`,
+  `gone` (the subscription is deleted), or `failed`. Spans, logs, and errors
+  keep no endpoint path, because the path identifies the device.
+- `notification.push.sent` logs the counts for one notification.
+  `app.notification.kind` is `reply` or `test`.
+
+Reply notification outcomes and lag.
+
+```text
+dataset=spans query='span.op:plugin.task app.plugin.task:notifyReply'
+fields=app.notification.outcome,app.notification.skip_reason,count(),p50(app.notification.reply_lag_ms),p95(app.notification.reply_lag_ms),p95(span.duration)
+```
+
+Push service latency and failures by host.
+
+```text
+dataset=spans query='span.op:notification.push.send'
+fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p95(span.duration)
+```
+
+## Dashboard
+
+- When `SENTRY_DSN` is set, dashboard pages send browser spans to the same
+  project. The `pageload` span continues the trace of the page request, and
+  dashboard API calls continue the browser trace.
+- The browser sends only spans and Reply ratings. It sends no errors,
+  breadcrumbs, or replays.
+- A Reply rating is Sentry user feedback with `source`
+  `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has the reader's
+  name and email, and the message is `Good reply` or `Bad reply`, plus the
+  reader's optional comment on a bad rating. It has no Reply text. Each Reply
+  sends at most one rating each time the reader opens its Conversation. The
+  dashboard hides the thumbs when it has no DSN.
+- Browser spans keep no URL query strings or fragments, and no element
+  `aria-label`, `title`, `alt`, `name`, or `type` values.
+- `pageload` and `navigation` spans have the dashboard route pattern as their
+  name, such as `/conversations/:conversationId`.
+- A `ui.render` span named `Conversation transcript shown` goes from the start
+  of the `pageload` or `navigation` span to the first render of the
+  Conversation transcript. `app.dashboard.load` is `pageload` or `navigation`.
+  Use it for the open time of a Conversation: the `pageload` or `navigation`
+  span ends only when all requests on the page stop, side panels included.
+- `app.dashboard.navigation.pre_fetch_ms` on a `pageload` span is the time
+  before the browser fetched the page. Sign-in redirects add to it.
+- A browser `http.client` span ends when the response headers arrive. A
+  `deserialize` span named `Read API response` goes from there to the
+  validated value: body download, `JSON.parse`, and the schema check.
+  `app.dashboard.response.json_parse_ms` and
+  `app.dashboard.response.schema_parse_ms` time the last two, and
+  `app.dashboard.response.chars` is the body length. `url.path` is the API
+  path. The span is sent only while a `pageload` or `navigation` is open, so
+  polls after it add no spans.
+- Sign-in redirects are their own traces. On `GET /auth/login`,
+  `app.sign_in.session_cookie` is `present` when the browser sent a session
+  cookie that the server did not accept, and `missing` when it sent none. On
+  the Google callback, `app.sign_in.previous_age_s` is the time since this
+  identity last signed in. A value below the session lifetime (8 hours by
+  default) means the browser lost its session before it expired.
+- A browser `http.client` span minus its child `http.server` span is the time
+  outside the function: network round trip and Vercel routing. Compare it by
+  `user.geo.country_code` on the `pageload` span.
+- In dashboard `http.server` spans, `function` spans time work on the
+  request thread between queries. The detail route has these:
+  - `Decode conversation events`
+  - `Project conversation events`
+  - `Attach conversation mentions`
+  - `Project conversation detail`
+  - `Validate conversation detail`
+- A `serialize` span named `Write API response` validates and serializes
+  each JSON response. `app.api.response.schema_parse_ms`,
+  `app.api.response.json_stringify_ms`, and `app.api.response.chars` split
+  it.
+- Request time that no span covers is other request-thread work, or the
+  event loop running other requests on the same `service.instance.id`.
+- A browser request after the `pageload` or `navigation` span ends, such as
+  a poll, is its own `http.client` segment. Add `!span.op:http.client` to
+  segment queries to leave them out.
+- `http.server` spans have the route pattern of the app that served the
+  request, also when the core app passes the request to the dashboard or a
+  plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
+  is `/api/internal/sandbox-egress/<token>`.
+
+Conversation open time, by the transcript render.
+
+```text
+dataset=spans query='span.op:ui.render span.name:"Conversation transcript shown"'
+fields=app.dashboard.load,count(),p50(span.duration),p95(span.duration)
+```
+
+Dashboard API response read time by path.
+
+```text
+dataset=spans query='span.op:deserialize span.name:"Read API response"'
+fields=url.path,count(),p50(span.duration),p95(span.duration)
+sort=-count()
+```
+
+Dashboard page load and navigation time by route.
+
+```text
+dataset=spans query='span.op:[pageload,navigation] is_transaction:true'
+fields=span.op,span.name,count(),p50(span.duration),p95(span.duration)
+sort=-count()
+```
+
+Server response serialization by route.
+
+```text
+dataset=spans query='span.op:serialize span.name:"Write API response"'
+fields=transaction,count(),p50(span.duration),p95(span.duration),p95(app.api.response.chars)
+sort=-count()
+```
+
+Why people sign in again.
+
+```text
+dataset=spans query='span.op:http.server transaction:"GET /auth/login" has:app.sign_in.session_cookie'
+fields=app.sign_in.session_cookie,count()
+```
+
+Dashboard API latency by route.
+
+```text
+dataset=spans query='span.op:http.server is_transaction:true span.name:"GET /api/*"'
+fields=span.name,count(),p50(span.duration),p95(span.duration)
+sort=-count()
+```
 
 ## Configuration
 

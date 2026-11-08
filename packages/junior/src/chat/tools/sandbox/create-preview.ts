@@ -1,0 +1,45 @@
+import * as z from "zod";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
+import { zodTool } from "@/chat/tool-support/zod-tool";
+import { SANDBOX_TOOL_SOURCE } from "@/chat/sandbox/tool-source";
+
+const outputSchema = juniorToolOutputSchema.extend({
+  url: z.string().url(),
+});
+
+/** Create a tool that gives a running sandbox server a public preview URL. */
+export function createCreatePreviewTool(
+  createPreview: NonNullable<SandboxWorkspace["createPreview"]>,
+) {
+  return zodTool({
+    exposure: "deferred",
+    source: SANDBOX_TOOL_SOURCE,
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
+    approvalMode: "approve",
+    description:
+      "Create a public HTTPS preview URL for a server running in the sandbox. Anyone with the URL can open it until the sandbox stops.",
+    executionMode: "sequential",
+    inputSchema: z
+      .object({
+        port: z
+          .number()
+          .int()
+          .min(1)
+          .max(65535)
+          .describe(
+            "Port that the server listens on. The server must listen on 0.0.0.0.",
+          ),
+      })
+      .strict(),
+    outputSchema,
+    async execute({ port }) {
+      return { url: await createPreview(port) };
+    },
+  });
+}

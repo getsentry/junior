@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";

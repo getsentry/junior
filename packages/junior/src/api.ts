@@ -4,6 +4,7 @@ import { getAttachmentStorage } from "./chat/attachments/storage";
 import { createConversationRoutes } from "./api/conversations/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
+import { createNotificationRoutes } from "./api/notifications/routes";
 import { jsonResponse } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
@@ -25,6 +26,10 @@ import {
   statsReportSchema,
 } from "./api/schema";
 import { readStatsReport } from "./api/stats";
+import { validateRequest } from "./api/validation";
+import { readVersions } from "./api/versions";
+import { requireViewer } from "./api/viewer";
+import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
 import { createSlackReviewItemShow } from "./chat/slack/review-item-card-sync";
@@ -40,6 +45,12 @@ import {
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
+export {
+  DEFAULT_AUTO_ARCHIVE_SETTINGS,
+  readUserAutoArchiveSettings,
+  updateUserAutoArchiveSettings,
+  type AutoArchiveSettings,
+} from "./api/conversations/auto-archive";
 export {
   readViewerAvatarUrl,
   resolveViewerUser,
@@ -81,6 +92,17 @@ export function createJuniorApi(
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
+  app.get(
+    "/api/versions",
+    requireViewer,
+    validateRequest("query", versionsQuerySchema, "Invalid query parameters."),
+    async (context) =>
+      jsonResponse(
+        versionsSchema,
+        await readVersions(context.get("viewer"), context.req.valid("query")),
+        { headers: { "cache-control": "private, no-store" } },
+      ),
+  );
 
   const queue =
     options.conversationWorkQueue ?? getVercelConversationWorkQueue();
@@ -102,6 +124,7 @@ export function createJuniorApi(
   );
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
+  app.route("/api/notifications", createNotificationRoutes());
   app.route("/api/personal-tokens", createPersonalTokenRoutes());
   app.route("/api/service-accounts", createServiceAccountRoutes());
   app.route("/api/people", createPeopleRoutes());

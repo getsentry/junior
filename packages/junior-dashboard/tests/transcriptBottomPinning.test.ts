@@ -16,6 +16,7 @@ function activeTurn(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     lastProgressAt: "2026-01-01T00:00:10.000Z",
@@ -439,6 +440,15 @@ describe("transcript bottom pinning", () => {
         hasPendingUpdate: true,
       }),
     ).toBe(false);
+    // Newer pages are not loaded, so the end is not the latest event.
+    expect(
+      shouldShowJumpToLatest({
+        enabled: false,
+        endsAtLatest: false,
+        following: false,
+        hasPendingUpdate: false,
+      }),
+    ).toBe(true);
   });
 
   it("lets a real leave-bottom scroll pause follow during a pin settle window", () => {

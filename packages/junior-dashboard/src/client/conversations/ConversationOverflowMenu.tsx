@@ -1,5 +1,11 @@
 import { Ellipsis } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { HeaderIconButton } from "./ConversationHeaderActions";
 
@@ -9,11 +15,13 @@ import { HeaderIconButton } from "./ConversationHeaderActions";
  * menu before it acts.
  */
 export function ConversationOverflowMenu(props: {
-  buttonRef?: Ref<HTMLButtonElement>;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
   children(close: () => void): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const localButtonRef = useRef<HTMLButtonElement>(null);
+  const buttonRef = props.buttonRef ?? localButtonRef;
 
   useEffect(() => {
     if (!open) return;
@@ -28,6 +36,9 @@ export function ConversationOverflowMenu(props: {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
       setOpen(false);
+      if (menuRef.current?.contains(document.activeElement)) {
+        buttonRef.current?.focus({ preventScroll: true });
+      }
     }
 
     document.addEventListener("pointerdown", closeOnOutsideClick);
@@ -36,12 +47,12 @@ export function ConversationOverflowMenu(props: {
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape, true);
     };
-  }, [open]);
+  }, [buttonRef, open]);
 
   return (
     <div className="relative" ref={menuRef}>
       <HeaderIconButton
-        ref={props.buttonRef}
+        ref={buttonRef}
         label={open ? "Close conversation menu" : "Conversation menu"}
         onClick={() => setOpen((value) => !value)}
         pressed={open}

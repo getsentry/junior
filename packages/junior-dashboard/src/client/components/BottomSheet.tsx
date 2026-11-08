@@ -31,7 +31,7 @@ export function BottomSheet(props: {
             {props.title ?? props.label}
           </SheetTitle>
         </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
           {props.children}
         </div>
       </SheetContent>

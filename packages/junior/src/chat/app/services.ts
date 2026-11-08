@@ -1,11 +1,6 @@
 import { completeDecision, completeText } from "@/chat/pi/client";
 import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
-import {
-  createConversationMemoryService,
-  type ConversationMemoryDeps,
-  type ConversationMemoryService,
-} from "@/chat/services/conversation-memory";
 import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import { listThreadReplies } from "@/chat/slack/channel";
 import {
@@ -28,7 +23,6 @@ import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 export interface JuniorRuntimeServices {
-  conversationMemory: ConversationMemoryService;
   executeTurn: ExecuteTurn;
   subscribedReplyPolicy: SubscribedReplyPolicy;
   visionContext: VisionContextService;
@@ -36,7 +30,6 @@ export interface JuniorRuntimeServices {
 
 export interface JuniorRuntimeServiceOverrides {
   agentRunner?: AgentRunner;
-  conversationMemory?: Partial<ConversationMemoryDeps>;
   subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
   sandbox?: {
     tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -47,9 +40,6 @@ export interface JuniorRuntimeServiceOverrides {
 export function createJuniorRuntimeServices(
   overrides: JuniorRuntimeServiceOverrides = {},
 ): JuniorRuntimeServices {
-  const conversationMemory = createConversationMemoryService({
-    completeText: overrides.conversationMemory?.completeText ?? completeText,
-  });
   const visionContext = createVisionContextService({
     attachmentStorage: overrides.visionContext?.attachmentStorage,
     completeText: overrides.visionContext?.completeText ?? completeText,
@@ -69,7 +59,6 @@ export function createJuniorRuntimeServices(
     });
 
   return {
-    conversationMemory,
     executeTurn: async (run, saveResult) =>
       await executeTurn(agentRunner, run, saveResult),
     subscribedReplyPolicy: createSubscribedReplyPolicy({

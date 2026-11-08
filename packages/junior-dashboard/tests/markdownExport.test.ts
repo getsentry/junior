@@ -23,6 +23,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     actorIdentity: { email: "alice@example.com" },
     channel: "C1",
     channelName: "proj-alpha",
@@ -243,7 +244,6 @@ describe("dashboard canonical-event Markdown export", () => {
         }),
         event(4, {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "openai/gpt-5.4",
           summary: "Keep the release state and continue monitoring CI.",
           details: {
@@ -256,13 +256,6 @@ describe("dashboard canonical-event Markdown export", () => {
             retainedMessageCount: 2,
             summaryChars: 1_200,
           },
-        }),
-        event(5, {
-          type: "handoff",
-          modelProfile: "fast",
-          modelId: "openai/gpt-5-mini",
-          reasoningLevel: "medium",
-          summary: "Investigate the remaining deployment failure.",
         }),
         event(6, {
           type: "turn_lifecycle",
@@ -291,11 +284,7 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain(
       "Keep the release state and continue monitoring CI.",
     );
-    expect(markdown).toContain("### Model handoff");
-    expect(markdown).toContain("- Profile: fast");
-    expect(markdown).toContain("- Model: openai/gpt-5-mini");
-    expect(markdown).toContain("- Reasoning: medium");
-    expect(markdown).toContain("Investigate the remaining deployment failure.");
+    expect(markdown).toContain("- Model: openai/gpt-5.4");
     expect(markdown).toContain("### Model connection failed");
     expect(markdown).toContain("- Code: model_execution_failed");
     expect(markdown).toContain("- Reason: network");

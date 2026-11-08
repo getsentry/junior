@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { automationResultSchema } from "@/chat/automation-result";
 import { isNoReplyMarker } from "@/chat/no-reply";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";

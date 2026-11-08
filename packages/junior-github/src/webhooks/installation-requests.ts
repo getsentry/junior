@@ -5,7 +5,7 @@
  * call GitHub directly. Other plugin code must use host egress.
  */
 import type { PluginCache } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   githubRequest,
   issueInstallationToken,
@@ -150,6 +150,7 @@ export async function loadRepositoryRole(
 }
 
 const pullRequestSchema = z.object({
+  auto_merge: z.object({}).nullable().optional(),
   draft: z.boolean().optional(),
   html_url: z.string().url(),
   mergeable_state: z.string().nullable().optional(),
@@ -172,6 +173,8 @@ export interface GitHubPullRequestMergeState {
    * only when GitHub says the pull request can merge cleanly.
    */
   approved: boolean;
+  /** A person turned on auto-merge, so GitHub merges it without them. */
+  autoMerge: boolean;
   draft: boolean;
   /**
    * GitHub's `mergeable_state`, such as `clean` or `blocked`. `clean` means
@@ -188,7 +191,7 @@ export interface GitHubPullRequestMergeState {
  * Read whether a pull request is ready to merge, with a read-only token.
  * GitHub computes `mergeable_state` after a change, so an unknown state is
  * read once more. Reviews load only for an open pull request that is not a
- * draft and can merge cleanly. Each reviewer counts by their latest
+ * draft, has no auto-merge, and can merge cleanly. Each reviewer counts by their latest
  * approval, change request, or dismissal. Comments do not change the result.
  */
 export async function loadPullRequestMergeState(
@@ -218,6 +221,7 @@ export async function loadPullRequestMergeState(
         : undefined;
     return {
       approved: false,
+      autoMerge: Boolean(pull.auto_merge),
       draft: pull.draft === true,
       ...(mergeableState ? { mergeableState } : undefined),
       state: pull.merged ? ("merged" as const) : pull.state,
@@ -226,7 +230,7 @@ export async function loadPullRequestMergeState(
     };
   };
   let state: GitHubPullRequestMergeState = await readPull();
-  if (state.state !== "open" || state.draft) return state;
+  if (state.state !== "open" || state.draft || state.autoMerge) return state;
   if (!state.mergeableState) state = await readPull();
   if (state.mergeableState !== "clean") return state;
 

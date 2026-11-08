@@ -25,7 +25,6 @@ import {
   formatTranscriptTimestampDetails,
   formatTranscriptDuration,
   formatUsageTotal,
-  parseMarkdownBlocks,
   peoplePath,
   slackLocationLabel,
   summarizeMessages,
@@ -59,6 +58,7 @@ function transcript(
 ): ConversationTranscript {
   const startedAt = "2026-01-01T00:00:00.000Z";
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -189,6 +189,7 @@ describe("dashboard conversation formatting", () => {
   it("formats conversation duration from cumulative execution time", () => {
     const [conversation] = buildConversations([
       {
+        kind: "root",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 7_000,
         displayTitle: "Conversation",
@@ -207,6 +208,7 @@ describe("dashboard conversation formatting", () => {
   it("omits conversation runtime when no execution time is recorded", () => {
     const [conversation] = buildConversations([
       {
+        kind: "root",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Conversation",
@@ -382,6 +384,7 @@ describe("dashboard conversation formatting", () => {
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 0,
       isParticipant: false,
+      kind: "root" as const,
       lastProgressAt: "2026-06-01T10:05:00.000Z",
       startedAt: "2026-06-01T10:00:00.000Z",
       status: "completed" as const,
@@ -408,6 +411,7 @@ describe("dashboard conversation formatting", () => {
     );
     expect(
       conversationActorLabel({
+        kind: "root",
         id: "1",
         cumulativeDurationMs: 0,
         displayTitle: "x",
@@ -426,24 +430,5 @@ describe("dashboard conversation formatting", () => {
         channelNameRedacted: false,
       }),
     ).toBe("#proj-alpha (C1)");
-  });
-});
-
-describe("transcript blocks", () => {
-  it("keeps prose as markdown and preserves fenced languages", () => {
-    expect(
-      parseMarkdownBlocks("The function returns a const value.")[0],
-    ).toMatchObject({
-      fenced: false,
-      language: "markdown",
-    });
-    expect(parseMarkdownBlocks('```json\n{"ok":true}\n```')[0]).toMatchObject({
-      fenced: true,
-      language: "json",
-    });
-    expect(parseMarkdownBlocks("```xml\n<root />\n```")[0]).toMatchObject({
-      fenced: true,
-      language: "xml",
-    });
   });
 });

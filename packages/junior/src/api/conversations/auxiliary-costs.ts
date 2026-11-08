@@ -1,13 +1,23 @@
-import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, inArray, sql, type SQL } from "drizzle-orm";
+import * as z from "zod";
 import {
-  conversationSubtree,
-  conversationSubtreeColumns,
-} from "@/chat/conversations/sql/subtree";
+  readSubtreeEventWatermarks,
+  seqRangeJoin,
+  type ConversationEventWatermark,
+  type SeqRange,
+} from "@/chat/conversations/sql/event-watermarks";
+import {
+  getStateAdapter,
+  getStateValues,
+  setStateValues,
+} from "@/chat/state/adapter";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
 import { notCopiedByFork } from "@/chat/conversations/fork";
 
+// `turn_routed` rows come from the retired Turn router. They still carry the
+// router cost of old Turns.
 function eventCost(): SQL<number | null> {
   return sql<number | null>`CASE
     WHEN ${juniorConversationEvents.type} = 'structured_event'
@@ -31,18 +41,66 @@ function addCostUsd(left: number, right: number): number {
   return Math.round((left + right) * 1e12) / 1e12;
 }
 
-/**
- * Aggregate additive event costs by namespaced operation. The total for each
- * selected Conversation includes itself and all its child agents at any depth.
- */
-export async function readConversationAuxiliaryCostsFromSql(
-  db: JuniorDatabase,
-  conversationIds: readonly string[],
-): Promise<Map<string, ConversationTreeAuxiliaryCosts>> {
-  if (conversationIds.length === 0) return new Map();
+// Match Postgres `ORDER BY` on these ASCII keys.
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
 
-  const scopeConversationId = conversationSubtreeColumns.scopeConversationId;
-  const isChildAgent = sql<boolean>`(${conversationSubtreeColumns.conversationId} <> ${scopeConversationId})`;
+/** Cost sums of one operation. Sums of two seq ranges add field by field. */
+const operationSumsSchema = z.object({
+  costUsd: z.number(),
+  events: z.number().int(),
+  name: z.string(),
+  namespace: z.string(),
+});
+type OperationSums = z.infer<typeof operationSumsSchema>;
+
+// One entry per Conversation, not per subtree. A list, a detail, and a child
+// agent row then reuse the same entries.
+const auxiliaryCostCacheSchema = z.object({
+  seq: z.number().int(),
+  originMs: z.number(),
+  operations: z.array(operationSumsSchema),
+});
+type AuxiliaryCostCache = z.infer<typeof auxiliaryCostCacheSchema>;
+// A read writes the entry only when events changed. A miss after this TTL
+// costs one full recompute, which is cheap for a Conversation that is idle.
+const AUXILIARY_COST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function auxiliaryCostCacheKey(conversationId: string): string {
+  return `conversation-auxiliary-costs:${conversationId}`;
+}
+
+function operationKey(operation: OperationSums): string {
+  return `${operation.namespace}\u0000${operation.name}`;
+}
+
+function mergeOperations(
+  operations: Iterable<OperationSums>,
+): Map<string, OperationSums> {
+  const merged = new Map<string, OperationSums>();
+  for (const operation of operations) {
+    const key = operationKey(operation);
+    const current = merged.get(key);
+    merged.set(
+      key,
+      current
+        ? {
+            ...current,
+            costUsd: addCostUsd(current.costUsd, operation.costUsd),
+            events: current.events + operation.events,
+          }
+        : operation,
+    );
+  }
+  return merged;
+}
+
+/** Sum additive event costs by operation, in the seq range of each Conversation. */
+async function sumOperationCosts(
+  db: JuniorDatabase,
+  ranges: readonly SeqRange[],
+): Promise<Array<OperationSums & { conversationId: string }>> {
   const namespace = sql<string>`CASE
     WHEN ${juniorConversationEvents.type} = 'structured_event'
       THEN ${juniorConversationEvents.payload}->>'namespace'
@@ -54,13 +112,9 @@ export async function readConversationAuxiliaryCostsFromSql(
     ELSE ${juniorConversationEvents.type}
   END`;
   const cost = eventCost();
-  const rows = await db
+  return await db
     .select({
-      conversationId: scopeConversationId,
-      childAgentCostUsd:
-        sql<number>`coalesce(round(sum(case when ${isChildAgent} then ${cost} end), 12), 0)::double precision`.mapWith(
-          Number,
-        ),
+      conversationId: juniorConversationEvents.conversationId,
       costUsd: sql<number>`round(sum(${cost}), 12)::double precision`.mapWith(
         Number,
       ),
@@ -69,49 +123,142 @@ export async function readConversationAuxiliaryCostsFromSql(
       namespace,
     })
     .from(juniorConversationEvents)
-    .innerJoin(
-      conversationSubtree(conversationIds),
-      eq(
-        conversationSubtreeColumns.conversationId,
-        juniorConversationEvents.conversationId,
-      ),
-    )
+    .innerJoin(...seqRangeJoin(ranges))
     .where(
       and(
-        or(
-          eq(juniorConversationEvents.type, "structured_event"),
-          inArray(juniorConversationEvents.type, [
-            "guardian_action_reviewed",
-            "turn_routed",
-          ]),
-        ),
+        inArray(juniorConversationEvents.type, [
+          "structured_event",
+          "guardian_action_reviewed",
+          "turn_routed",
+        ]),
         sql`${cost} >= 0`,
-        // A fork copies routing events, but their cost belongs to the source.
+        // A fork copies these events, but their cost belongs to the source.
         notCopiedByFork(),
       ),
     )
-    .groupBy(scopeConversationId, namespace, name)
-    .orderBy(scopeConversationId, namespace, name);
+    .groupBy(juniorConversationEvents.conversationId, namespace, name);
+}
+
+/**
+ * Read the cost operations of each Conversation, from its cache entry plus
+ * the events after the cached seq. The entry is correct for the same reasons
+ * as the model usage cache in `readConversationModelUsageFromSql`: events
+ * are append-only and appends commit in seq order, and a fork commits its
+ * copied events and its fork note in one transaction.
+ */
+async function readOperationsByConversation(
+  db: JuniorDatabase,
+  watermarks: readonly ConversationEventWatermark[],
+): Promise<Map<string, OperationSums[]>> {
+  const latest = new Map<string, { seq: number; originMs: number }>();
+  for (const { conversationId, seq, originMs } of watermarks) {
+    if (seq !== null && originMs !== null) {
+      latest.set(conversationId, { seq, originMs });
+    }
+  }
+  const state = getStateAdapter();
+  const watermarkEntries = [...latest];
+  // One batched read for the whole list, not one per Conversation.
+  const cachedValues = await getStateValues(
+    state,
+    watermarkEntries.map(([conversationId]) =>
+      auxiliaryCostCacheKey(conversationId),
+    ),
+  );
+  const entries = watermarkEntries.map(([conversationId, watermark], index) => {
+    const cached = auxiliaryCostCacheSchema.safeParse(cachedValues[index]).data;
+    // A purged Conversation starts again at seq 0 with a new first event.
+    const base =
+      cached &&
+      cached.seq <= watermark.seq &&
+      cached.originMs === watermark.originMs
+        ? cached
+        : undefined;
+    return { base, conversationId, watermark };
+  });
+  const ranges = entries.flatMap(({ base, conversationId, watermark }) =>
+    watermark.seq > (base?.seq ?? -1)
+      ? [{ conversationId, fromSeq: base?.seq ?? -1, toSeq: watermark.seq }]
+      : [],
+  );
+  const deltas = ranges.length > 0 ? await sumOperationCosts(db, ranges) : [];
+
+  const result = new Map<string, OperationSums[]>();
+  const writes: Array<{ key: string; value: AuxiliaryCostCache }> = [];
+  for (const { base, conversationId, watermark } of entries) {
+    if (base && base.seq === watermark.seq) {
+      result.set(conversationId, base.operations);
+      continue;
+    }
+    const operations = [
+      ...mergeOperations([
+        ...(base?.operations ?? []),
+        ...deltas.flatMap(({ conversationId: deltaId, ...operation }) =>
+          deltaId === conversationId ? [operation] : [],
+        ),
+      ]).values(),
+    ];
+    result.set(conversationId, operations);
+    writes.push({
+      key: auxiliaryCostCacheKey(conversationId),
+      value: { ...watermark, operations },
+    });
+  }
+  await setStateValues(state, writes, AUXILIARY_COST_CACHE_TTL_MS);
+  return result;
+}
+
+/**
+ * Aggregate additive event costs by namespaced operation. The total for each
+ * selected Conversation includes itself and all its child agents at any depth.
+ */
+export async function readConversationAuxiliaryCostsFromSql(
+  db: JuniorDatabase,
+  conversationIds: readonly string[],
+): Promise<Map<string, ConversationTreeAuxiliaryCosts>> {
+  if (conversationIds.length === 0) return new Map();
+
+  const watermarks = await readSubtreeEventWatermarks(db, conversationIds);
+  const operationsByConversation = await readOperationsByConversation(
+    db,
+    watermarks,
+  );
+  const membersByScope = new Map<string, string[]>();
+  for (const { scopeConversationId, conversationId } of watermarks) {
+    const members = membersByScope.get(scopeConversationId) ?? [];
+    members.push(conversationId);
+    membersByScope.set(scopeConversationId, members);
+  }
 
   const result = new Map<string, ConversationTreeAuxiliaryCosts>();
-  for (const row of rows) {
-    const current = result.get(row.conversationId) ?? {
-      total: { costUsd: 0, operations: [] },
-    };
-    current.total.costUsd = addCostUsd(current.total.costUsd, row.costUsd);
-    if (row.childAgentCostUsd > 0) {
-      current.childAgentCostUsd = addCostUsd(
-        current.childAgentCostUsd ?? 0,
-        row.childAgentCostUsd,
-      );
+  for (const [scopeConversationId, members] of membersByScope) {
+    let childAgentCostUsd = 0;
+    for (const member of members) {
+      if (member === scopeConversationId) continue;
+      for (const operation of operationsByConversation.get(member) ?? []) {
+        childAgentCostUsd = addCostUsd(childAgentCostUsd, operation.costUsd);
+      }
     }
-    current.total.operations.push({
-      costUsd: row.costUsd,
-      events: row.events,
-      name: row.name,
-      namespace: row.namespace,
+    const operations = [
+      ...mergeOperations(
+        members.flatMap((member) => operationsByConversation.get(member) ?? []),
+      ).values(),
+    ].sort(
+      (left, right) =>
+        compareText(left.namespace, right.namespace) ||
+        compareText(left.name, right.name),
+    );
+    if (operations.length === 0) continue;
+    result.set(scopeConversationId, {
+      total: {
+        costUsd: operations.reduce(
+          (total, operation) => addCostUsd(total, operation.costUsd),
+          0,
+        ),
+        operations,
+      },
+      ...(childAgentCostUsd > 0 ? { childAgentCostUsd } : undefined),
     });
-    result.set(row.conversationId, current);
   }
   return result;
 }

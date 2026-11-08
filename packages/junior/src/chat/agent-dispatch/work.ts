@@ -6,7 +6,7 @@
  * leases, retries, continuation, delivery, and recovery.
  */
 import type { StateAdapter } from "chat";
-import { z } from "zod";
+import * as z from "zod";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
@@ -108,13 +108,17 @@ interface EnqueueAgentDispatchOptions {
 export interface AgentDispatchConversationWorkerOptions {
   resumeTurn: (
     dispatch: DispatchRecord,
-    hooks: { shouldYield?: () => boolean },
+    hooks: {
+      shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
+    },
   ) => Promise<void>;
   runTurn: (
     dispatch: DispatchRecord,
     hooks: {
       ack: () => Promise<void>;
       shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
     },
   ) => Promise<DispatchTurnResult>;
 }
@@ -475,12 +479,14 @@ export function createAgentDispatchConversationWorker(
       if (resumesDurableTurn) {
         await options.resumeTurn(dispatch, {
           shouldYield: context.shouldYield,
+          checkIn: context.checkIn,
         });
         result = await readDispatchTurnResult(dispatch);
       } else {
         const runtimeResult = await options.runTurn(dispatch, {
           ack: acknowledge,
           shouldYield: context.shouldYield,
+          checkIn: context.checkIn,
         });
         result = runtimeResult.outcome
           ? runtimeResult

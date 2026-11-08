@@ -3,7 +3,7 @@ import {
   pluginStoredTokensSchema,
   type PluginStoredTokens,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 
 const LOCAL_CREDENTIAL_SYNC_CONTEXT = "junior.local-credential-sync.v1";

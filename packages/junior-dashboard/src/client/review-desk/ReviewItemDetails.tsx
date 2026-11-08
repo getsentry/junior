@@ -15,6 +15,7 @@ import {
   reviewItemStatusLabel,
   reviewItemSubjectHref,
 } from "./reviewItemFormat";
+import { OutboundLink } from "../components/OutboundLink";
 
 function Fact(props: { children: ReactNode; label: string }) {
   return (
@@ -105,14 +106,12 @@ export function ReviewItemDetails(props: {
           <DetailsCard title="Subject">
             <span className="text-sm">
               {subjectHref ? (
-                <a
+                <OutboundLink
                   className={dashboardInlineLinkClass}
                   href={subjectHref}
-                  rel="noreferrer"
-                  target="_blank"
                 >
                   {subject.title ?? subjectHref}
-                </a>
+                </OutboundLink>
               ) : (
                 (subject.title ?? subject.id)
               )}

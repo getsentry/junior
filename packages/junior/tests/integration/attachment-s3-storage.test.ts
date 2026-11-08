@@ -79,7 +79,7 @@ describe("S3 attachment storage", () => {
     ["memory", () => createAttachmentStorage({ provider: "memory" })],
     ["s3", () => s3Storage()],
   ])(
-    "%s storage round trips bytes and treats missing keys as absent",
+    "%s storage round trips bytes and byte ranges and treats missing keys as absent",
     async (_provider, create) => {
       const storage = create();
       const key = `contract/${Date.now()}/file.bin`;
@@ -89,6 +89,10 @@ describe("S3 attachment storage", () => {
       const stored = await storage.get(key);
       expect(Buffer.from(await new Response(stored).arrayBuffer())).toEqual(
         body,
+      );
+      const ranged = await storage.get(key, { start: 1, end: 2 });
+      expect(Buffer.from(await new Response(ranged).arrayBuffer())).toEqual(
+        Buffer.from([1, 2]),
       );
 
       await storage.delete([key, `${key}.missing`]);

@@ -12,22 +12,31 @@ test("opens conversation details beside the chat", async ({
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(page).toHaveTitle("Junior");
-  await expect(
-    page.getByRole("region", { name: "Conversations" }),
-  ).toBeVisible();
-  const privateConversation = page
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("heading", { name: "Direct Message" }) });
+  const sidebar = page.getByRole("navigation", {
+    name: "Your conversations",
+  });
+  const privateConversation = sidebar.getByRole("link", {
+    name: /Direct Message/,
+  });
   await expect(
     privateConversation.getByLabel("Private conversation"),
   ).toBeVisible();
-  const publicConversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Checkout latency triage" }),
+  const publicConversation = sidebar.getByRole("link", {
+    name: /Checkout latency triage/,
   });
   await expect(
     publicConversation.getByLabel("Private conversation"),
   ).toHaveCount(0);
-  await publicConversation.getByText("41 minutes ago", { exact: true }).click();
+  const runningConversation = sidebar.getByRole("link", {
+    name: /Investigate checkout latency/,
+  });
+  await expect(
+    runningConversation.getByRole("status", { name: "Running" }),
+  ).toBeVisible();
+  await expect(
+    publicConversation.getByRole("status", { name: "Running" }),
+  ).toHaveCount(0);
+  await publicConversation.click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
@@ -35,8 +44,7 @@ test("opens conversation details beside the chat", async ({
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
   await expect(page).toHaveTitle("Checkout latency triage - Junior");
-  await expect(page.getByRole("note")).toContainText("Public conversation");
-  await expect(page.getByRole("note")).toContainText("Public");
+  await expect(page.getByRole("note")).toHaveCount(0);
 
   const detailsButton = page.getByRole("button", {
     name: "Conversation details",
@@ -46,14 +54,17 @@ test("opens conversation details beside the chat", async ({
     name: "Conversation details",
     exact: true,
   });
+  const closeDetails = details.getByRole("button", {
+    name: "Close conversation details",
+    exact: true,
+  });
   // Wide viewports open details beside the chat by default.
   await expect(details).toBeVisible();
-  // Run facts live in details only, not in the title bar.
+  await expect(detailsButton).toBeHidden();
   const costMetric = page
-    .getByRole("main")
-    .locator('span[tabindex="0"]')
-    .filter({ hasText: /^\$0\.03$/ });
-  await expect(costMetric).toHaveCount(1);
+    .locator('header span[tabindex="0"]')
+    .filter({ hasText: /^\$0\.03$/, visible: true });
+  await expect(costMetric).toBeVisible();
   // Tooltips open on keyboard focus, not on focus after a mouse click. A key
   // press first makes this a keyboard focus.
   await page.keyboard.press("Shift");
@@ -70,16 +81,18 @@ test("opens conversation details beside the chat", async ({
   await expect(
     details.getByRole("link", { name: /getsentry\/payments#77/ }),
   ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/77");
-  await detailsButton.click();
+  await closeDetails.click();
   await expect(details).toBeHidden();
-  await expect(costMetric).toHaveCount(0);
+  await expect(costMetric).toBeVisible();
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: dashboard.baseURL,
   });
   const conversationUrl = page.url();
 
-  await detailsButton.click();
+  await detailsButton.press("Enter");
   await expect(details).toBeVisible();
+  await expect(detailsButton).toBeHidden();
+  await expect(closeDetails).toBeFocused();
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await page.getByRole("button", { name: "Hide search" }).click();
@@ -92,6 +105,7 @@ test("opens conversation details beside the chat", async ({
         Promise.reject(new DOMException("Clipboard denied", "NotAllowedError")),
     });
   });
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Share", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Could not copy the link" }),
@@ -104,12 +118,20 @@ test("opens conversation details beside the chat", async ({
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );
+  await page.getByRole("button", { name: "Close conversation menu" }).click();
 
-  // Memories stay collapsed until the reader asks for them.
+  // Details show memory counts. The full list replaces details in place.
   const memories = details.getByText("Use pnpm for repository commands.");
   await expect(memories).toBeHidden();
-  await details.getByRole("button", { name: "Show memories" }).click();
+  await details
+    .getByRole("button", { name: "1 recalled · 2 captured" })
+    .click();
   await expect(memories).toBeVisible();
+  await expect(
+    details.getByRole("heading", { name: "Memories" }),
+  ).toBeVisible();
+  await details.getByRole("button", { name: "Back to details" }).click();
+  await expect(memories).toBeHidden();
   await page.setViewportSize({ width: 1024, height: 900 });
   const sheet = page.getByRole("dialog", { name: "Conversation details" });
   await expect(sheet).toBeVisible();
@@ -122,12 +144,7 @@ test("opens conversation details beside the chat", async ({
   await expect(
     details.getByRole("button", { name: "Close conversation details" }),
   ).toBeFocused();
-  // The pointer still rests on the header Share icon. Move it off so Escape
-  // closes the panel, not the icon tooltip.
   await page.mouse.move(800, 600);
-  await expect(
-    page.getByRole("tooltip").filter({ hasText: /Share|Link copied/ }),
-  ).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(detailsButton).toBeFocused();
@@ -135,11 +152,19 @@ test("opens conversation details beside the chat", async ({
   await detailsButton.click();
   await expect(details).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await expect(page.getByRole("button", { name: "Event log" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open event log", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Share", exact: true }).focus();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Event log" })).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Open event log", exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Conversation menu" }),
+  ).toBeFocused();
   await expect(details).toBeVisible();
-  await detailsButton.click();
+  await closeDetails.click();
   await expect(details).toBeHidden();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -173,5 +198,112 @@ test("opens conversation details beside the chat", async ({
   // Each conversation opens with details beside the chat.
   await expect(details).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Private conversation");
-  await expect(page.getByRole("note")).toContainText("Private");
+});
+
+test("shows a Watch on linked work in its linked work row", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+  );
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  const watched = details.getByRole("link", {
+    name: /getsentry\/getsentry#21572/,
+  });
+  // The watched pull request is linked work, so it shows once.
+  await expect(watched).toHaveCount(1);
+  await expect(details.getByText("Also waiting on")).toBeVisible();
+  await expect(
+    details.getByRole("link", { name: /getsentry\/junior#2351/ }),
+  ).toBeVisible();
+
+  await details
+    .getByRole("button", { name: "Details for getsentry/getsentry#21572" })
+    .click();
+  await expect(
+    details.getByText(
+      "Fix failing checks and address requested changes on the dashboard PR.",
+    ),
+  ).toBeVisible();
+  await screenshot(page, "conversation-details-watched-linked-work");
+});
+
+test("shows recalled and captured memories in popovers", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+  );
+
+  // Captured memories stay out of the collapsed activity rows.
+  const captured = page.getByRole("button", { name: "Captured 2 memories" });
+  await expect(captured).toBeVisible();
+  await captured.click();
+  const capturedPopover = page.getByRole("dialog", {
+    name: "Captured 2 memories",
+  });
+  await expect(
+    capturedPopover.getByText("Use pnpm for repository commands."),
+  ).toBeVisible();
+  await expect(
+    capturedPopover.getByRole("img", { name: "Private" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-captured-memories-popover");
+  await page.keyboard.press("Escape");
+  await expect(capturedPopover).toBeHidden();
+
+  // A memory in details opens its Turn's popover in the transcript, even
+  // when a search hides that row.
+  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByPlaceholder("Search transcript…").fill("no such text");
+  await expect(captured).toBeHidden();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await details
+    .getByRole("button", { name: "1 recalled · 2 captured" })
+    .click();
+  await details
+    .getByRole("listitem")
+    .filter({ hasText: "Dashboard transcript events should remain" })
+    .getByRole("button", { name: "Go to message" })
+    .click();
+  await expect(capturedPopover).toBeVisible();
+  await expect(
+    details.getByRole("heading", { name: "Memories" }),
+  ).toBeVisible();
+  await screenshot(page, "conversation-memory-list-jump");
+});
+
+test("shows recalled memories under their prompt", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+  );
+
+  const recalled = page.getByRole("button", { name: "Recalled 1 memory" });
+  await recalled.click();
+  const popover = page.getByRole("dialog", { name: "Recalled 1 memory" });
+  await expect(
+    popover.getByText(
+      "Checkout latency investigations start with the deployment comparison dashboard.",
+    ),
+  ).toBeVisible();
+  await expect(
+    popover.getByRole("link", { name: /^Checkout latency investigations/ }),
+  ).toHaveAttribute("href", "/memories/memory-checkout-runbook");
+  await screenshot(page, "conversation-recalled-memories-popover");
+  await recalled.click();
+  await expect(popover).toBeHidden();
 });

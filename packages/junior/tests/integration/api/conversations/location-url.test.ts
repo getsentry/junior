@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { juniorConversations } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
@@ -107,6 +108,39 @@ describe("conversation Location URL", () => {
         channelName: "Direct Message",
         displayTitle: "Direct Message",
       });
+
+      // Instances share found domains, so a new instance skips team.info.
+      await expect(
+        getStateAdapter().get("slack-team-domain:T123"),
+      ).resolves.toBe("example");
+      await getStateAdapter().set("slack-team-domain:T456", "shared", 60_000);
+      await store.recordActivity({
+        conversationId: "slack:C456:1700000000.000300",
+        destination: {
+          platform: "slack",
+          teamId: "T456",
+          channelId: "C456",
+        },
+        nowMs: 3_000,
+        sessionSource: {
+          kind: "slack",
+          visibility: "public",
+          teamId: "T456",
+          channelId: "C456",
+          threadTs: "1700000000.000300",
+        },
+        source: "slack",
+        visibility: "public",
+      });
+      const sharedSummary = (
+        await readConversationFeedFromSql()
+      ).conversations.find(
+        (conversation) =>
+          conversation.conversationId === "slack:C456:1700000000.000300",
+      );
+      expect(sharedSummary?.locationUrl).toMatch(
+        /^https:\/\/shared\.slack\.com\/archives\/C456\//,
+      );
     } finally {
       await fixture.close();
     }

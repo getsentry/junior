@@ -1,9 +1,13 @@
-export { INPUT_IMAGE_TYPES } from "../chat/attachments/media";
+export {
+  INLINE_VIDEO_TYPES,
+  INPUT_IMAGE_TYPES,
+} from "../chat/attachments/media";
 export {
   MAX_INPUT_IMAGES,
   MAX_INPUT_IMAGE_BYTES,
 } from "../chat/attachments/input";
 export type { InputImage, MessageAttachment } from "../chat/attachments/input";
+export { isAgentInvocationResultEventType } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
@@ -49,14 +53,10 @@ export {
   acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
-  archiveConversationBodySchema,
-  archiveConversationResponseSchema,
-  cancelConversationPendingMessagesBodySchema,
-  cancelConversationPendingMessagesResponseSchema,
-  steerConversationPendingMessagesBodySchema,
-  steerConversationPendingMessagesResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
+  CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventHistorySchema,
@@ -64,10 +64,6 @@ export {
   conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
-  conversationPendingAuthorizationSchema,
-  conversationPendingMessageDeliverySchema,
-  conversationPendingMessageSchema,
-  conversationPendingMessagesReportSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
@@ -77,6 +73,29 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  cancelConversationPendingMessagesBodySchema,
+  cancelConversationPendingMessagesResponseSchema,
+  steerConversationPendingMessagesBodySchema,
+  steerConversationPendingMessagesResponseSchema,
+  conversationPendingAuthorizationSchema,
+  conversationPendingMessageDeliverySchema,
+  conversationPendingMessageSchema,
+  conversationPendingMessagesReportSchema,
+  conversationDetailWithMailboxReportSchema,
+  conversationUnchangedDetailWithMailboxSchema,
+} from "./schema/conversation-pending-messages";
+export {
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
+  archiveDoneConversationsResponseSchema,
+  conversationAutoArchiveSchema,
+} from "./schema/conversation-archive";
+export type {
+  ArchiveConversationBody,
+  ArchiveConversationResponse,
+  ConversationAutoArchive,
+} from "./schema/conversation-archive";
 export { conversationStatsReportSchema } from "./schema/conversation-stats";
 export type {
   ConversationMetricDay,
@@ -86,17 +105,62 @@ export type {
   GuardianStats,
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
+export {
+  continueConversationInSlackBodySchema,
+  continueConversationInSlackResponseSchema,
+} from "./schema/conversation-continue-in-slack";
+export type {
+  ContinueConversationInSlackBody,
+  ContinueConversationInSlackResponse,
+} from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export { conversationReadPositionSchema } from "./schema/conversation-read-position";
-export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  conversationReadPositionSchema,
+  conversationReadReportSchema,
+} from "./schema/conversation-read-position";
+export type {
+  ConversationReadPosition,
+  ConversationReadReport,
+} from "./schema/conversation-read-position";
+export {
+  conversationCatchUpBodySchema,
+  conversationCatchUpSchema,
+} from "./schema/conversation-catch-up";
+export type {
+  ConversationCatchUp,
+  ConversationCatchUpBody,
+} from "./schema/conversation-catch-up";
+export {
+  pinConversationBodySchema,
+  pinConversationResponseSchema,
+  reorderPinnedConversationsBodySchema,
+  reorderPinnedConversationsResponseSchema,
+} from "./schema/conversation-pin";
+export type {
+  PinConversationBody,
+  PinConversationResponse,
+  ReorderPinnedConversationsBody,
+  ReorderPinnedConversationsResponse,
+} from "./schema/conversation-pin";
+export {
+  conversationUnreadSchema,
+  markConversationUnreadBodySchema,
+} from "./schema/conversation-unread";
+export type {
+  ConversationUnread,
+  MarkConversationUnreadBody,
+} from "./schema/conversation-unread";
+export {
+  CONVERSATION_TITLE_MAX_LENGTH,
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "./schema/conversation-title";
+export type {
+  RenameConversationBody,
+  RenameConversationResponse,
+} from "./schema/conversation-title";
 export type {
   AcceptedConversationMessage,
-  ArchiveConversationBody,
-  ArchiveConversationResponse,
-  CancelConversationPendingMessagesBody,
-  CancelConversationPendingMessagesResponse,
-  SteerConversationPendingMessagesBody,
-  SteerConversationPendingMessagesResponse,
   ActorIdentity,
   ConversationActivityPreview,
   ConversationAgentTreeNode,
@@ -106,9 +170,7 @@ export type {
   ConversationEventPage,
   ConversationEventHistory,
   ConversationFeed,
-  ConversationPendingMessage,
-  ConversationPendingMessageDelivery,
-  ConversationPendingMessagesReport,
+  ConversationFeedItem,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -124,6 +186,15 @@ export type {
   CreateConversationBody,
   CreateConversationMessageBody,
 } from "./schema/conversation";
+export type {
+  CancelConversationPendingMessagesBody,
+  CancelConversationPendingMessagesResponse,
+  SteerConversationPendingMessagesBody,
+  SteerConversationPendingMessagesResponse,
+  ConversationPendingMessage,
+  ConversationPendingMessageDelivery,
+  ConversationPendingMessagesReport,
+} from "./schema/conversation-pending-messages";
 export {
   conversationChildAgentSchema,
   conversationChildAgentsReportSchema,
@@ -181,6 +252,17 @@ export {
   disconnectConnectionResponseSchema,
   startConnectionResponseSchema,
 } from "./schema/connection";
+export {
+  DEFAULT_NOTIFICATION_SCHEDULE,
+  isWithinNotificationSchedule,
+  notificationScheduleSchema,
+  notificationSettingsSchema,
+  testNotificationResponseSchema,
+} from "./schema/notification";
+export type {
+  NotificationSchedule,
+  NotificationSettings,
+} from "./schema/notification";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
@@ -295,3 +377,5 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export { versionsSchema } from "./schema/versions";
+export type { Versions } from "./schema/versions";

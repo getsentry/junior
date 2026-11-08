@@ -1,5 +1,4 @@
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
 
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
@@ -9,7 +8,10 @@ import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
 import type { TranscriptViewMessage } from "../types";
+import { useTranscriptRowOpen } from "./TranscriptRows";
 import { TranscriptSummaryTrigger } from "./TranscriptSummary";
+import { SourceMark } from "./SourceMark";
+import { eventMessageSource } from "./transcriptSource";
 
 function EventTypeChip(props: { eventType: string }) {
   return (
@@ -28,9 +30,13 @@ function batchSummary(events: readonly { label?: string }[]): string {
 }
 
 /** Render an Event Message whose heading expands its full text. */
-export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
+export function TranscriptEventView(props: {
+  message: TranscriptViewMessage;
+  /** Keeps the text open while the row unmounts outside the viewport. */
+  openKey?: string;
+}) {
   const { active: searchActive } = useTranscriptSearch();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const text = messageRawText(props.message);
   const redacted = props.message.parts.some(
     (part) => part.type === "text" && part.redacted,
@@ -38,6 +44,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
   const events = props.message.events ?? [];
   const mentions = props.message.mentions ?? [];
   const isBatch = events.length > 1;
+  const source = eventMessageSource(props.message);
   const summary = isBatch
     ? batchSummary(events)
     : (props.message.trustedSummary ?? props.message.eventType ?? "");
@@ -55,6 +62,7 @@ export function TranscriptEventView(props: { message: TranscriptViewMessage }) {
             text={summary}
           />
         </span>
+        {source ? <SourceMark provider={source} /> : null}
         {!isBatch && props.message.eventType ? (
           <EventTypeChip eventType={props.message.eventType} />
         ) : null}

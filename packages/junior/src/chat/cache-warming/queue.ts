@@ -1,5 +1,5 @@
 /** Send and receive delayed cache warmup messages. */
-import { z } from "zod";
+import * as z from "zod";
 import { getChatConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";

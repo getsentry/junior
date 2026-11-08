@@ -15,7 +15,7 @@ import {
   Timer,
   Users,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   conversationWatchesReportSchema,
   type ConversationWatch,
@@ -24,6 +24,12 @@ import {
 import { DisplayText } from "../display-text/DisplayText";
 import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
+import { conversationSideReadQueryKey } from "./queries";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { DetailsList, DetailsRow } from "./DetailsList";
 
@@ -36,7 +42,7 @@ export function useConversationWatches(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/watches`,
         signal,
       ),
-    queryKey: ["conversation", conversationId, "watches"],
+    queryKey: conversationSideReadQueryKey(conversationId, "watches"),
     retry: false,
   });
 }
@@ -69,83 +75,130 @@ const resourceIcons: Partial<Record<string, LucideIcon>> = {
 };
 
 /**
- * Show one Watch as a single line with its resource. Clicking the line shows
- * why the Watch exists and which events wake the Conversation. The expiry is
- * an internal limit, so the row does not show it.
+ * Show one Watch as a single line with its resource. When the resource has a
+ * web page, the line opens it and a chevron shows the details. Otherwise the
+ * line itself shows the details.
  */
 function WatchRow(props: { watch: ConversationWatch }) {
   const { watch } = props;
-  const [expanded, setExpanded] = useState(false);
   const Icon = watch.redacted
     ? LockKeyhole
     : (resourceIcons[watch.resourceType] ?? Eye);
   const resource = `${watch.namespace} ${watch.resourceType.replaceAll("_", " ")}`;
+  const icon = <Icon aria-hidden="true" className="size-3.5" />;
+  const title = watch.label ?? `Private ${resource}`;
+
+  return (
+    <Collapsible className="min-w-0">
+      {watch.url ? (
+        // The row opens the watched resource, like a linked work row. The
+        // chevron beside it shows the details.
+        <WatchDetailsRow label={title}>
+          <DetailsRow href={watch.url} icon={icon} title={title} />
+        </WatchDetailsRow>
+      ) : (
+        <DetailsRow
+          disclosure
+          icon={icon}
+          meta={<WatchChevron />}
+          title={title}
+        />
+      )}
+      <WatchDetails watches={[watch]} />
+    </Collapsible>
+  );
+}
+
+/**
+ * Place a link row beside a chevron that shows the Watch details under it.
+ * Use it inside a `Collapsible` that also holds `WatchDetails`.
+ */
+export function WatchDetailsRow(props: { children: ReactNode; label: string }) {
+  return (
+    <div className="flex min-w-0 items-start gap-0.5">
+      <div className="min-w-0 flex-1">{props.children}</div>
+      <CollapsibleTrigger
+        aria-label={`Details for ${props.label}`}
+        className="group grid size-8 shrink-0 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+      >
+        <WatchChevron />
+      </CollapsibleTrigger>
+    </div>
+  );
+}
+
+function WatchChevron() {
+  return (
+    <span className="grid size-5 place-items-center">
+      <ChevronRight
+        aria-hidden="true"
+        className={dashboardDisclosureChevronClass}
+      />
+    </span>
+  );
+}
+
+/**
+ * Show why each Watch exists and which events wake the Conversation. The
+ * expiry is an internal limit, so it does not show.
+ */
+export function WatchDetails(props: { watches: ConversationWatch[] }) {
+  return (
+    // Indent under the title: icon column, column gap, and row padding.
+    <CollapsibleContent className="grid min-w-0 gap-3 pb-2 pl-9 pr-1.5 pt-0.5 text-xs leading-4 text-dashboard-text-muted">
+      {props.watches.map((watch) => (
+        <WatchDetail key={watch.id} watch={watch} />
+      ))}
+    </CollapsibleContent>
+  );
+}
+
+function WatchDetail(props: { watch: ConversationWatch }) {
+  const { watch } = props;
   // A timer has one event, and its fire time already says when it wakes.
   const events = watch.firesAt ? [] : watch.events;
   const filters = Object.entries(watch.match ?? {});
-  const row = (
-    <DetailsRow
-      expanded={expanded}
-      icon={<Icon aria-hidden="true" className="size-3.5" />}
-      meta={
-        <span className="grid size-5 place-items-center">
-          <ChevronRight
-            aria-hidden="true"
-            className={dashboardDisclosureChevronClass}
-          />
-        </span>
-      }
-      onToggle={() => setExpanded((value) => !value)}
-      title={watch.label ?? `Private ${resource}`}
-    />
-  );
-  if (!expanded) return row;
-
   return (
-    <>
-      {row}
-      {/* Indent under the title: icon column, column gap, and row padding. */}
-      <div className="grid min-w-0 gap-1.5 pb-2 pl-9 pr-1.5 pt-0.5 text-xs leading-4 text-dashboard-text-muted">
-        {watch.intent ? (
-          <p className="m-0 break-words">
-            <DisplayText inline text={watch.intent} />
-          </p>
-        ) : null}
-        {watch.firesAt ? (
-          <p className="m-0">
-            Fires{" "}
-            <time dateTime={watch.firesAt}>
-              {formatTime(watch.firesAt, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </time>
-          </p>
-        ) : null}
-        {events.length > 0 || filters.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1">
-            {events.map((event) => (
-              <WatchChip key={event}>
-                {watchEventLabel(event, watch.resourceType)}
-              </WatchChip>
-            ))}
-            {filters.map(([key, value]) => (
-              <WatchChip filter key={`match:${key}`}>
-                {key.replaceAll("_", " ")}: {[value].flat().join(", ")}
-              </WatchChip>
-            ))}
-          </div>
-        ) : null}
-        {watch.childAgent ? (
-          <p className="m-0 flex min-w-0 items-center gap-1">
-            <Bot aria-hidden="true" className="size-3 shrink-0" />
-            <span className="truncate">
-              via {watch.childAgent.name ?? "subagent"}
-            </span>
-          </p>
-        ) : null}
-      </div>
-    </>
+    <div className="grid min-w-0 gap-1.5">
+      {watch.intent ? (
+        <p className="m-0 break-words">
+          <DisplayText inline text={watch.intent} />
+        </p>
+      ) : null}
+      {watch.firesAt ? (
+        <p className="m-0">
+          Fires{" "}
+          <time dateTime={watch.firesAt}>
+            {formatTime(watch.firesAt, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </time>
+        </p>
+      ) : null}
+      {events.length > 0 || filters.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1">
+          {events.map((event) => (
+            <WatchChip key={event}>
+              {watchEventLabel(event, watch.resourceType)}
+            </WatchChip>
+          ))}
+          {filters.map(([key, value]) => (
+            <WatchChip filter key={`match:${key}`}>
+              {key.replaceAll("_", " ")}: {[value].flat().join(", ")}
+            </WatchChip>
+          ))}
+        </div>
+      ) : null}
+      {watch.childAgent ? (
+        <p className="m-0 flex min-w-0 items-center gap-1">
+          <Bot aria-hidden="true" className="size-3 shrink-0" />
+          <span className="truncate">
+            via {watch.childAgent.name ?? "child conversation"}
+          </span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 

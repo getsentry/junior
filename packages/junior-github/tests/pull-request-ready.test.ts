@@ -99,6 +99,7 @@ function pullRequestAction(action: string, merged = false) {
 
 /** GitHub state that the mocked REST API returns. */
 interface GitHubState {
+  autoMerge?: boolean;
   draft: boolean;
   /** Each pull request read takes the next value. The last one repeats. */
   mergeableStates: Array<string | null>;
@@ -131,6 +132,9 @@ function mockGitHub(github: GitHubState, requests: string[]) {
         github.holdNextPullRead = undefined;
         await hold;
         return HttpResponse.json({
+          auto_merge: github.autoMerge
+            ? { enabled_by: { login: "someone" }, merge_method: "squash" }
+            : null,
           draft: github.draft,
           html_url: PULL_URL,
           mergeable_state: mergeableState,
@@ -360,6 +364,25 @@ describe("ready to merge notice", () => {
       await webhook.handler(checkSuiteCompleted());
       expect(calls.at(-1)).toEqual(notice);
 
+      // With auto-merge on, GitHub merges it, so the notice closes and no
+      // reviews load. Turning auto-merge off brings the notice back.
+      github.autoMerge = true;
+      requests.length = 0;
+      await webhook.handler(pullRequestAction("auto_merge_enabled"));
+      expect(requests).toEqual(["pull"]);
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        input: {
+          dedupeKey: DEDUPE_KEY,
+          reason: "Auto-merge is on.",
+          status: "dismissed",
+        },
+        kind: "close",
+      });
+      github.autoMerge = false;
+      await webhook.handler(pullRequestAction("auto_merge_disabled"));
+      expect(calls.at(-1)).toEqual(notice);
+
       github.merged = true;
       github.state = "closed";
       // The close fails once. A webhook that arrives during the failed
@@ -385,6 +408,8 @@ describe("ready to merge notice", () => {
         kind: "close",
       });
       expect(calls.map((call) => call.kind)).toEqual([
+        "upsert",
+        "close",
         "upsert",
         "close",
         "upsert",

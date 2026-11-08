@@ -13,7 +13,10 @@ import type {
   Plugin,
 } from "@sentry/junior/api/schema";
 
-import { conversationDetailQueryKey } from "../src/client/conversations/queries";
+import {
+  conversationDetailQueryKey,
+  useConversationData,
+} from "../src/client/conversations/queries";
 import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
   SubagentTranscriptDrawer,
@@ -25,6 +28,7 @@ import {
   ConversationAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
+import { conversationLinks } from "../src/client/conversations/ConversationLinkedWork";
 import { conversationFromDetail } from "../src/client/format";
 import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
@@ -81,6 +85,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 3_000,
     displayTitle: "Conversation",
@@ -368,24 +373,41 @@ describe("dashboard canonical-event components", () => {
           archive={{
             archived: false,
             disabled: false,
-            error: false,
             onClick: () => {},
             pending: false,
           }}
           conversationId="conversation-1"
           detailsOpen={false}
           onDetailsClick={() => {}}
-          live={false}
           onSearchChange={() => {}}
           onViewChange={() => {}}
+          pin={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            pinned: false,
+          }}
           privacy={null}
+          read={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            unread: false,
+          }}
           search=""
+          searchMatch={{
+            count: 0,
+            index: 0,
+            setMatches: () => {},
+            step: () => {},
+          }}
           title="Header QA"
           view="raw"
         />
       </MemoryRouter>,
     );
-    expect(html).toContain('aria-label="Close event log"');
+    expect(html).toContain('title="Back to conversation"');
+    expect(html).toMatch(/aria-current="page"[^>]*>Event log</);
     expect(html).not.toContain('aria-label="Search transcript"');
     expect(html).toContain('aria-label="Conversation details"');
     expect(html).toContain('aria-label="Conversation menu"');
@@ -553,7 +575,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("#proj-junior");
   });
 
-  it("shows a Slack icon for Slack-origin messages only", () => {
+  it("shows a provider icon for Slack and GitHub messages only", () => {
     const slackHtml = renderTranscript(
       conversation(
         [
@@ -591,6 +613,35 @@ describe("dashboard canonical-event components", () => {
             text: "Stays in Junior.",
             type: "message",
           }),
+          event(5, {
+            eventNamespace: "github",
+            eventType: "pull_request.review_comment.created",
+            messageId: "github-event",
+            role: "user",
+            text: "Review comment.",
+            trustedSummary: "New review comment.",
+            type: "message",
+          }),
+          event(6, {
+            eventNamespace: "junior",
+            eventType: "agent_invocation.finished",
+            messageId: "core-event",
+            role: "user",
+            text: "Child agent finished.",
+            trustedSummary: "Child agent finished.",
+            type: "message",
+          }),
+          event(7, {
+            plugin: "github",
+            text: "Replied on the pull request.",
+            type: "reply_posted",
+            url: "https://github.com/getsentry/junior/pull/1#issuecomment-7",
+          }),
+          event(8, {
+            plugin: "forge",
+            text: "Replied somewhere without a mark.",
+            type: "reply_posted",
+          }),
         ],
         { surface: "slack" },
       ),
@@ -611,6 +662,10 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain(">Slack<");
     // Known Slack user + assistant only. Null/web stay unmarked.
     expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
+    // The GitHub Event and the reply posted on GitHub. Plugins without a
+    // mark stay unmarked.
+    expect(slackHtml.match(/aria-label="GitHub"/g)).toHaveLength(2);
+    expect(slackHtml).toContain("Replied somewhere without a mark.");
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
@@ -645,51 +700,50 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("labels linked object types for assistive technology without guessing from URLs", () => {
+    const detail = conversation([], {
+      annotations: [
+        {
+          kind: "resource_link",
+          objectType: "task",
+          key: "issue",
+          label: "Issue",
+          plugin: "github",
+          status: "closed",
+          url: "https://example.com/issue",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          kind: "resource_link",
+          key: "pr",
+          label: "PR",
+          plugin: "github",
+          status: "closed",
+          url: "https://example.com/change",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          kind: "resource_link",
+          key: "other",
+          label: "Other",
+          plugin: "example",
+          url: "https://github.com/example/repo/pull/1",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+      sidebarAnnotations: [
+        {
+          key: "pr",
+          label: "repo",
+          objectType: "code_change",
+          status: "closed",
+        },
+      ],
+    });
     const html = renderToStaticMarkup(
-      <ConversationAnnotations
-        detail={conversation([], {
-          annotations: [
-            {
-              kind: "resource_link",
-              objectType: "task",
-              key: "issue",
-              label: "Issue",
-              plugin: "github",
-              status: "closed",
-              url: "https://example.com/issue",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-            {
-              kind: "resource_link",
-              key: "pr",
-              label: "PR",
-              plugin: "github",
-              status: "closed",
-              url: "https://example.com/change",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-            {
-              kind: "resource_link",
-              key: "other",
-              label: "Other",
-              plugin: "example",
-              url: "https://github.com/example/repo/pull/1",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-          ],
-          sidebarAnnotations: [
-            {
-              key: "pr",
-              label: "repo",
-              objectType: "code_change",
-              status: "closed",
-            },
-          ],
-        })}
-      />,
+      <ConversationAnnotations links={conversationLinks(detail)} />,
     );
     expect(html).toContain('aria-label="Ticket: closed"');
     expect(html).toContain('aria-label="Code change: closed"');
@@ -788,11 +842,6 @@ describe("dashboard canonical-event components", () => {
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
-        event(1, {
-          type: "handoff",
-          modelProfile: "fast",
-          modelId: "openai/gpt-5-mini",
-        }),
         event(2, {
           type: "turn_lifecycle",
           turnId: "turn-1",
@@ -805,7 +854,6 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
     expect(html).toContain("Context compacted");
-    expect(html).toContain("Model handoff");
     expect(html).toContain("Model connection failed");
     expect(html).toContain('data-transcript-failure-reason="network"');
     expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
@@ -1312,6 +1360,7 @@ describe("dashboard canonical-event components", () => {
       ],
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
@@ -1484,6 +1533,7 @@ describe("dashboard canonical-event components", () => {
       providerDestinationId: "C1",
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
@@ -1914,6 +1964,7 @@ describe("dashboard canonical-event components", () => {
 
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
+      kind: "root",
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 1_000,
       displayTitle: "Cached conversation",
@@ -1949,7 +2000,7 @@ describe("dashboard canonical-event components", () => {
             <Route
               path="/conversations/:conversationId"
               element={
-                <ConversationPage
+                <ConversationPageWithData
                   conversationId={summary.conversationId}
                   data={{
                     conversations: {
@@ -1978,11 +2029,19 @@ function conversationQueryClient(): QueryClient {
   });
 }
 
+/** Read the detail like the shell does, then render the page. */
+function ConversationPageWithData(
+  props: Omit<Parameters<typeof ConversationPage>[0], "detail">,
+) {
+  const detail = useConversationData(props.conversationId);
+  return <ConversationPage {...props} detail={detail} />;
+}
+
 function renderConversationPageWithClient(queryClient: QueryClient): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
-        <ConversationPage conversationId="conversation-1" />
+        <ConversationPageWithData conversationId="conversation-1" />
       </MemoryRouter>
     </QueryClientProvider>,
   );

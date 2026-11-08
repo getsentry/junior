@@ -6,7 +6,7 @@
  * stays small.
  */
 import { createHash } from "node:crypto";
-import { z } from "zod";
+import * as z from "zod";
 import { getQueueProvider } from "@/chat/queue/provider";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,

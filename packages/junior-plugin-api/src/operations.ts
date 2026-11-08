@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
@@ -28,7 +28,10 @@ export interface HeartbeatResult {
 }
 
 export interface UnfinishedWorkHookContext extends PluginContext {
-  /** Bounded conversation candidates selected by the host. */
+  /**
+   * Bounded conversation candidates selected by the host, with the child
+   * conversations of candidate roots. Work in a child counts for its root.
+   */
   conversationIds: string[];
 }
 
@@ -47,7 +50,8 @@ export interface UnfinishedWorkResult {
   /**
    * Latest time when all known work finished, keyed by conversation id.
    * ISO-8601 timestamps. Used with conversation activity to decide whether
-   * finished work still belongs in Priority.
+   * finished work still belongs in Priority, and whether auto-archive may
+   * archive the conversation for users who turned it on.
    */
   finishedWorkAtByConversationId?: Record<string, string>;
 }

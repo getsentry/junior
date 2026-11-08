@@ -10,11 +10,13 @@ import {
   inArray,
   isNull,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  juniorConversations,
   juniorReviewItemAssignees,
   juniorReviewItemConversations,
   juniorReviewItems,
@@ -591,6 +593,23 @@ export async function countReviewItemsNeedingUser(
 }
 
 /**
+ * Return a query for a token that changes when the open Review items that
+ * need a User change. An item that is added or changed moves the newest
+ * `updated_at`, and an item that closes or leaves the User changes the count.
+ */
+export function reviewItemsNeedingUserVersionQuery(
+  db: JuniorDatabase,
+  userId: string,
+) {
+  return db
+    .select({
+      version: sql<string>`concat_ws(':', count(*), max(${juniorReviewItems.updatedAt}))`,
+    })
+    .from(juniorReviewItems)
+    .where(reviewItemNeedsUser(userId));
+}
+
+/**
  * Find the Review items that a reader can see. Open items come first, so
  * the limit never drops an open item for a closed one. Then the newest
  * change comes first: `updated_at`, then `id`, both descending. With
@@ -626,8 +645,10 @@ export type WaitingConversation = {
 };
 
 /**
- * List the Conversations that wait on a User: each is linked to an open item
- * that needs the User (`reviewItemNeedsUser`).
+ * List the root Conversations that wait on a User: each root or one of its
+ * child conversations is linked to an open item that needs the User
+ * (`reviewItemNeedsUser`). An item that a child agent adds links the child,
+ * and the feed lists only roots.
  */
 export async function listWaitingConversations(
   db: JuniorDatabase,
@@ -635,7 +656,7 @@ export async function listWaitingConversations(
 ): Promise<WaitingConversation[]> {
   const rows = await db
     .selectDistinct({
-      conversationId: juniorReviewItemConversations.conversationId,
+      conversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorReviewItemConversations.conversationId})`,
       itemId: juniorReviewItems.id,
       title: juniorReviewItems.title,
       createdAt: juniorReviewItems.createdAt,
@@ -644,6 +665,13 @@ export async function listWaitingConversations(
     .innerJoin(
       juniorReviewItems,
       eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
+    )
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorReviewItemConversations.conversationId,
+      ),
     )
     .where(reviewItemNeedsUser(userId))
     .orderBy(desc(juniorReviewItems.createdAt), desc(juniorReviewItems.id));

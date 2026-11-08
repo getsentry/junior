@@ -11,7 +11,7 @@ import {
   type User,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   createMemoryStore,
   type CreateMemoryInput,
@@ -45,7 +45,6 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Memory id is required.",
   "Memory was not found in the current context.",
   "Memory id prefix is ambiguous.",
-  "Private memory requires a User.",
   "User memory requires a User.",
 ]);
 
@@ -502,7 +501,7 @@ export function createMemoryArchiveTool(context: MemoryToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Forget one active memory visible in the current context. This includes public memories and private memories owned by the current User. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
+      "Forget one active memory visible in the current context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
     executionMode: "sequential",
     inputSchema: archiveMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
@@ -556,7 +555,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall. Public memories are visible everywhere. Private memories belong to the current User.",
+      "Search active memories visible in the current context. Use when the model needs targeted memory recall.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

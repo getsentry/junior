@@ -1,4 +1,5 @@
-import { z, type ZodTypeAny } from "zod";
+import * as z from "zod";
+import type { ZodTypeAny } from "zod";
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type {
   AnyToolDefinition,

@@ -16,7 +16,7 @@ import {
   taskOutcomeSchema,
   type EventTriggerDescription,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z

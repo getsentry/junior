@@ -10,13 +10,17 @@ import {
 } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import * as Sentry from "@/chat/sentry";
+import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
+import type { AgentRun } from "@/chat/agent/types";
 import { closeDb } from "@/chat/db";
 import { withLogContext } from "@/chat/logging";
-import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import { withTurnSpan } from "@/chat/task-execution/turn-telemetry";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
+import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
+import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { appendInboundMessage } from "@/chat/task-execution/store";
@@ -36,6 +40,26 @@ import {
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
 import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
+import { createConversationFixture } from "../../fixtures/conversation";
+
+/** Reply "done" without running the agent. */
+const doneAgentRunner = {
+  run: async (run: AgentRun) => {
+    await deliverAssistantMessagesForTest(run, [{ text: "done" }]);
+    return completedAgentRun({
+      text: "done",
+      diagnostics: {
+        assistantMessageCount: 1,
+        modelId: "fake-agent-model",
+        outcome: "success" as const,
+        toolCalls: [],
+        toolErrorCount: 0,
+        toolResultCount: 0,
+        usedPrimaryText: true,
+      },
+    });
+  },
+};
 
 describe("conversation work telemetry", () => {
   const spans: ReturnType<typeof Sentry.spanToJSON>[] = [];
@@ -58,6 +82,7 @@ describe("conversation work telemetry", () => {
         op === "queue.publish" ||
         op === "queue.process" ||
         op === "slack.message.ingress" ||
+        op === "http.server" ||
         op === "chat.turn"
       ) {
         spans.push(json);
@@ -204,6 +229,57 @@ describe("conversation work telemetry", () => {
     ]);
   });
 
+  it("puts a dashboard turn in the trace of the request that sent it", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createConversationFixture();
+    const accepted = await Sentry.startNewTrace(() =>
+      Sentry.startSpan(
+        { name: "POST /api/conversations", op: "http.server" },
+        () =>
+          createAndEnqueueConversation(
+            {
+              actor,
+              idempotencyKey: "telemetry-1",
+              message: "Start a dashboard turn.",
+            },
+            { conversationStore, queue, state },
+          ),
+      ),
+    );
+    const worker = createConversationTurnWorker(doneAgentRunner);
+    await consumeConversationQueueMessage(queue.takeMessage(), {
+      messageId: "msg_1",
+      queue,
+      run: async (context) => {
+        const resolved = await resolveMailboxTurnWork(context);
+        if (!resolved) throw new Error("Expected Conversation mailbox work");
+        return await worker(context, resolved);
+      },
+      state,
+    });
+
+    const [request] = byOp("http.server");
+    const [workerSpan] = byOp("queue.process");
+    expect(workerSpan?.trace_id).not.toBe(request?.trace_id);
+    expect(byOp("chat.turn")).toEqual([
+      expect.objectContaining({
+        trace_id: request?.trace_id,
+        parent_span_id: request?.span_id,
+        attributes: expect.objectContaining({
+          "gen_ai.conversation.id": accepted.conversationId,
+          "app.turn.input_count": 1,
+          "app.turn.wait_ms": expect.any(Number),
+        }),
+        links: [
+          expect.objectContaining({
+            trace_id: workerSpan?.trace_id,
+            span_id: workerSpan?.span_id,
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it("puts a resumed slice in the trace of its first slice", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const turnId = "turn_1712345_0001";
@@ -237,7 +313,6 @@ describe("conversation work telemetry", () => {
     await persistThreadStateById(conversationId, {
       conversation: {
         schemaVersion: 1,
-        compactions: [],
         messages: [
           {
             id: "1712345.0001",
@@ -256,25 +331,7 @@ describe("conversation work telemetry", () => {
       Sentry.startSpan(
         { name: "conversation.work.process", op: "queue.process" },
         () =>
-          runNextPausedTurn(conversationId, {
-            agentRunner: {
-              run: async (run) => {
-                await deliverAssistantMessagesForTest(run, [{ text: "done" }]);
-                return completedAgentRun({
-                  text: "done",
-                  diagnostics: {
-                    assistantMessageCount: 1,
-                    modelId: "fake-agent-model",
-                    outcome: "success",
-                    toolCalls: [],
-                    toolErrorCount: 0,
-                    toolResultCount: 0,
-                    usedPrimaryText: true,
-                  },
-                });
-              },
-            },
-          }),
+          runNextPausedTurn(conversationId, { agentRunner: doneAgentRunner }),
       ),
     );
 

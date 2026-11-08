@@ -151,8 +151,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs:
-          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
       },
     });
     let sentWhilePaused = false;
@@ -219,8 +218,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs:
-          process.env.VITEST_EVALS_REPLAY_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
       },
     });
     let paused = false;
@@ -249,7 +247,7 @@ describe("Lifecycle and Resilience", () => {
     // continued run ignores the stop, succeeds, and posts the release status.
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
-      expect.stringContaining("stay out of this thread"),
+      "Stopped.",
     ]);
     expect(
       completedMcpToolCalls(

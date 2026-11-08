@@ -31,15 +31,12 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'packages/junior-evals/src/roach/**'
-              - 'packages/junior-evals/src/recording-rules.ts'
-              - 'packages/junior-evals/src/recording-run.ts'
-              - 'packages/junior-evals/src/recording-setup.ts'
+              - 'packages/junior-evals/roach.json'
+              - 'packages/junior-evals/src/fetch-setup.ts'
               - 'packages/junior-evals/src/proxy-dispatcher.ts'
               - 'packages/junior-evals/evals/classifiers/**'
               - 'packages/junior-evals/src/review-item-reply-harness.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
-              - 'packages/junior-evals/classifiers-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.classifiers.config.ts'
               - 'packages/junior-evals/package.json'
               - 'packages/junior-evals/scripts/report.mjs'

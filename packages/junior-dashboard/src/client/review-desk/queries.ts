@@ -20,8 +20,8 @@ import {
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson, post } from "../http";
 
-const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
-const COUNT_REFRESH_MS = 60_000;
+/** Prefix of every Review item read, for refreshes after a change. */
+export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 
 /**
  * List the open Review items that the viewer can see, one page at a time.
@@ -104,7 +104,10 @@ export function useLinkedConversationTitles(
   }).map((query) => query.data ?? undefined);
 }
 
-/** Count the open action items assigned to the viewer, for the nav. */
+/**
+ * Count the open action items assigned to the viewer, for the nav. The
+ * versions poll refreshes it when it changes.
+ */
 export function useReviewItemCountData(enabled: boolean) {
   return useQuery({
     enabled,
@@ -115,7 +118,6 @@ export function useReviewItemCountData(enabled: boolean) {
         "/api/review-items/count",
         signal,
       ),
-    refetchInterval: COUNT_REFRESH_MS,
     retry: false,
   });
 }
@@ -175,7 +177,6 @@ export function useWaitingConversations(): ReadonlyMap<
         "/api/review-items/waiting-conversations",
         signal,
       ),
-    refetchInterval: COUNT_REFRESH_MS,
     retry: false,
   });
   const conversations = query.data?.conversations;

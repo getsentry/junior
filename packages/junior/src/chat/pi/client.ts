@@ -42,7 +42,8 @@ registerApiProvider({
   stream: streamAnthropic,
   streamSimple: streamSimpleAnthropic,
 });
-import type { ZodTypeAny, z } from "zod";
+import type * as z from "zod";
+import type { ZodTypeAny } from "zod";
 import {
   extractGenAiUsageAttributes,
   normalizeGenAiFinishReason,

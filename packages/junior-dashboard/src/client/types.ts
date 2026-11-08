@@ -56,32 +56,22 @@ export type TranscriptViewSubagentPart = {
 export type TranscriptViewContextEventPart = {
   /** People mentioned in the summary, resolved by the API. */
   mentions?: ActorIdentity[];
-  event:
-    | {
-        createdAt: string;
-        type: "compaction";
-        modelId?: string;
-        modelProfile?: string;
-        summary?: string;
-        details?: {
-          reason: "capacity";
-          estimatedInputTokens: number;
-          replacementInputTokens?: number;
-          triggerTokens: number;
-          inputLimitTokens: number;
-          inputMessageCount: number;
-          retainedMessageCount: number;
-          summaryChars: number;
-        };
-      }
-    | {
-        createdAt: string;
-        modelId: string;
-        modelProfile: string;
-        reasoningLevel?: string;
-        summary?: string;
-        type: "handoff";
-      };
+  event: {
+    createdAt: string;
+    type: "compaction";
+    modelId?: string;
+    summary?: string;
+    details?: {
+      reason: "capacity";
+      estimatedInputTokens: number;
+      replacementInputTokens?: number;
+      triggerTokens: number;
+      inputLimitTokens: number;
+      inputMessageCount: number;
+      retainedMessageCount: number;
+      summaryChars: number;
+    };
+  };
   type: "context_event";
 };
 
@@ -91,6 +81,8 @@ export type TranscriptViewStructuredEventPart = {
   name: string;
   namespace: string;
   presentation: ConversationEventPresentation;
+  /** Turn that emitted the event. */
+  turnId?: string;
   type: "structured_event";
   version: number;
 };
@@ -114,6 +106,7 @@ export type TranscriptViewTurnContext = {
   kind: string;
   loadedAt: string;
   pluginName: string;
+  turnId: string;
   version: number;
 };
 
@@ -128,6 +121,8 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Namespace of the first Event, such as `github`. */
+  eventNamespace?: string;
   eventObjectType?: ObjectType;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
@@ -135,6 +130,10 @@ export type TranscriptViewMessage = {
   events?: ConversationReportMessageEvent[];
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
+  /** Quiet message: stored, but not delivered to the Location. */
+  quiet?: true;
+  /** Event message whose Turn ended without a reply. */
+  noReply?: true;
   /** Person changes to Review items that this message records. */
   reviewItemChanges?: ReviewItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */
@@ -145,13 +144,6 @@ export type TranscriptViewMessage = {
   messageId?: string;
   /** True while the message is accepted in the mailbox but not yet in history. */
   pending?: boolean;
-  route?: {
-    confidence?: number;
-    modelId: string;
-    modelProfile: string;
-    reasoningLevel: string;
-    source: "configured" | "inherited" | "router";
-  };
   eventId?: string;
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
@@ -160,6 +152,8 @@ export type TranscriptViewMessage = {
   /** Local images of a pending send that the server has not stored yet. */
   images?: InputImage[];
   parts: TranscriptViewPart[];
+  /** Plugin whose tool posted this Junior reply, such as `github`. */
+  postedTo?: string;
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
   sourceSeq: number;
@@ -173,6 +167,10 @@ export type Conversation = {
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;
+  pinnedAt?: string | null;
+  pinPosition?: number;
+  /** Idle with activity after the viewer last acted on it. Server-owned. */
+  unread?: boolean;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   channel?: string;
   channelName?: string;
@@ -194,6 +192,10 @@ export type Conversation = {
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
   isPriority?: boolean;
+  kind: ConversationSummaryReport["kind"];
+  parentConversationId?: string;
+  /** Visible Threads under this row, newest first. */
+  threads?: Conversation[];
   unfinishedWork?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };
@@ -217,7 +219,7 @@ export type SystemData = DashboardCoreData & {
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle";
+export type VisualStatus = "active" | "failed" | "idle" | "stopped";
 
 export type CodeBlock = {
   code: string;

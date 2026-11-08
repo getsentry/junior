@@ -1,40 +1,73 @@
-import type { ReactNode, Ref } from "react";
+import { useRef, type ReactNode, type Ref, type RefObject } from "react";
 import {
   Archive,
   ArchiveRestore,
   Info,
+  Mail,
+  MailOpen,
+  MessageSquareShare,
   MessagesSquare,
+  Pin,
+  PinOff,
   ScrollText,
   Search,
   X,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "../components/ui/button";
+import { Separator } from "../components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
+import { platformShortcut } from "../keyboard";
 import { cn } from "../styles";
+import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
+import { OutboundLink } from "../components/OutboundLink";
 
 export type ConversationArchiveAction = {
   archived: boolean;
   disabled: boolean;
-  error: boolean;
+  /** The message to show when the last archive change failed. */
+  error?: string;
   onClick(): void;
   pending: boolean;
 };
 
+export type ConversationContinueInSlackAction = {
+  disabled: boolean;
+  onClick(): void;
+};
+
+export type ConversationPinAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+  pinned: boolean;
+};
+
+export type ConversationReadAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+  unread: boolean;
+};
+
 /**
- * Show conversation actions in the `⋯` menu. On desktop the title bar shows
- * search, share, and details, so the menu leaves them out.
+ * Keep secondary conversation actions in the menu, with search and details
+ * available there on mobile too.
  */
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
+  pin: ConversationPinAction;
+  read: ConversationReadAction;
   conversationId: string;
+  /** Present only when the viewer can move this conversation to Slack. */
+  continueInSlack?: ConversationContinueInSlackAction;
   copyAction?: ReactNode;
   detailsOpen: boolean;
   onDetailsClick(): void;
@@ -46,9 +79,10 @@ export function ConversationHeaderActions(props: {
   view: TranscriptViewMode;
 }) {
   const mobile = props.placement === "mobile";
+  const eventLogOpen = props.view === "raw";
   return (
     <div className="grid gap-0.5">
-      {mobile && props.view === "rich" ? (
+      {mobile && !eventLogOpen ? (
         <MenuActionButton
           label={props.searchOpen ? "Hide search" : "Search transcript"}
           onClick={props.onSearchClick}
@@ -61,40 +95,6 @@ export function ConversationHeaderActions(props: {
           )}
         </MenuActionButton>
       ) : null}
-      <MenuActionButton
-        label="Conversation"
-        onClick={() => props.onViewChange("rich")}
-        pressed={props.view === "rich"}
-      >
-        <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
-      </MenuActionButton>
-      <MenuActionButton
-        label="Event log"
-        onClick={() => props.onViewChange("raw")}
-        pressed={props.view === "raw"}
-      >
-        <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
-      </MenuActionButton>
-      {mobile ? (
-        <ShareConversationButton
-          key={props.conversationId}
-          conversationId={props.conversationId}
-          layout="menu"
-        />
-      ) : null}
-      {props.copyAction}
-      <ArchiveConversationButton {...props.archive} />
-      {props.sentryConversationUrl ? (
-        <a
-          className={buttonVariants({ size: "menu" })}
-          href={props.sentryConversationUrl}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          <SentryGlyph />
-          Open in Sentry
-        </a>
-      ) : null}
       {mobile ? (
         <MenuActionButton
           label="Conversation details"
@@ -104,6 +104,65 @@ export function ConversationHeaderActions(props: {
           <Info aria-hidden="true" size={16} strokeWidth={2} />
         </MenuActionButton>
       ) : null}
+      {/* The copy action is a sibling keyed by the same id. Unique keys keep
+          React from duplicating menu rows on re-render. */}
+      <ShareConversationButton
+        key={`share:${props.conversationId}`}
+        conversationId={props.conversationId}
+      />
+      {props.copyAction}
+      {props.continueInSlack ? (
+        <MenuActionButton
+          disabled={props.continueInSlack.disabled}
+          label="Continue in Slack"
+          onClick={props.continueInSlack.onClick}
+        >
+          <MessageSquareShare aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+      ) : null}
+      <MenuActionButton
+        label={eventLogOpen ? "Back to conversation" : "Open event log"}
+        onClick={() => props.onViewChange(eventLogOpen ? "rich" : "raw")}
+      >
+        {eventLogOpen ? (
+          <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
+      {props.sentryConversationUrl ? (
+        <OutboundLink
+          className={buttonVariants({ size: "menu" })}
+          href={props.sentryConversationUrl}
+        >
+          <SentryGlyph />
+          Open in Sentry
+        </OutboundLink>
+      ) : null}
+      <Separator className="my-1 bg-dashboard-border-subtle" />
+      <MenuActionButton
+        disabled={props.read.disabled}
+        label={props.read.unread ? "Mark as read" : "Mark as unread"}
+        onClick={props.read.onClick}
+      >
+        {props.read.unread ? (
+          <MailOpen aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <Mail aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
+      <MenuActionButton
+        disabled={props.pin.disabled}
+        label={props.pin.pinned ? "Unpin" : "Pin"}
+        onClick={props.pin.onClick}
+      >
+        {props.pin.pinned ? (
+          <PinOff aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <Pin aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
+      <ArchiveConversationButton {...props.archive} />
     </div>
   );
 }
@@ -158,10 +217,16 @@ function ViewModeItem(props: {
 /** Shared icon control used by conversation and subagent transcript headers. */
 export function HeaderIconButton(props: {
   children: ReactNode;
+  controls?: string;
+  expanded?: boolean;
+  /** `aria-keyshortcuts` value for the shortcut. */
+  keyShortcuts?: string;
   ref?: Ref<HTMLButtonElement>;
   label: string;
   onClick(): void;
   pressed?: boolean;
+  /** Shortcut text shown in the tooltip, such as `⌘F`. */
+  shortcut?: string;
   /** Hide the tooltip, such as while the menu this button opens covers it. */
   tooltipDisabled?: boolean;
 }) {
@@ -171,6 +236,9 @@ export function HeaderIconButton(props: {
         render={
           <Button
             ref={props.ref}
+            aria-controls={props.controls}
+            aria-expanded={props.expanded}
+            aria-keyshortcuts={props.keyShortcuts}
             aria-label={props.label}
             aria-pressed={props.pressed}
             className={cn(
@@ -184,21 +252,37 @@ export function HeaderIconButton(props: {
           </Button>
         }
       />
-      <TooltipContent size="compact">{props.label}</TooltipContent>
+      <TooltipContent size="compact">
+        {props.label}
+        {props.shortcut ? (
+          <kbd className="ml-1.5 font-sans">{props.shortcut}</kbd>
+        ) : null}
+      </TooltipContent>
     </Tooltip>
   );
 }
 
-/** Toggle transcript search visibility with the shared header icon control. */
+/** Toggle transcript search with the header icon control or ⌘F / Ctrl+F. */
 export function TranscriptSearchToggle(props: {
+  inputRef: RefObject<HTMLInputElement | null>;
   onClick(): void;
   open: boolean;
 }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useTranscriptFindShortcut({
+    anchorRef: buttonRef,
+    inputRef: props.inputRef,
+    onOpen: props.onClick,
+    open: props.open,
+  });
   return (
     <HeaderIconButton
+      ref={buttonRef}
+      keyShortcuts={props.open ? undefined : "Meta+F Control+F"}
       label={props.open ? "Hide search" : "Search transcript"}
       onClick={props.onClick}
       pressed={props.open}
+      shortcut={props.open ? undefined : platformShortcut("f")}
     >
       {props.open ? (
         <X aria-hidden="true" size={15} strokeWidth={2} />
@@ -211,6 +295,7 @@ export function TranscriptSearchToggle(props: {
 
 function MenuActionButton(props: {
   children: ReactNode;
+  disabled?: boolean;
   label: string;
   onClick(): void;
   pressed?: boolean;
@@ -220,6 +305,7 @@ function MenuActionButton(props: {
       aria-label={props.label}
       aria-pressed={props.pressed}
       className={props.pressed ? "bg-dashboard-fill-strong" : undefined}
+      disabled={props.disabled}
       onClick={props.onClick}
       size="menu"
     >

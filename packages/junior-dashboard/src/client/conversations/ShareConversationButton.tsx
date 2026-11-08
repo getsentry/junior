@@ -3,18 +3,10 @@ import { useHref } from "react-router";
 import { Check, Share2 } from "lucide-react";
 
 import { Button } from "../components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { conversationPath } from "./conversationRoutes";
 
 /** Share a conversation link without changing who can access it. */
-export function ShareConversationButton(props: {
-  conversationId: string;
-  layout?: "button" | "icon" | "menu";
-}) {
+export function ShareConversationButton(props: { conversationId: string }) {
   const href = useHref(conversationPath(props.conversationId));
   const [status, setStatus] = useState<
     "idle" | "sharing" | "copied" | "copy-failed" | "share-failed"
@@ -68,55 +60,18 @@ export function ShareConversationButton(props: {
     }
   }
 
-  const content = (
+  return (
     <>
-      <Icon aria-hidden="true" size={16} strokeWidth={2} />
-      <span>{label}</span>
-    </>
-  );
-  const button =
-    props.layout === "icon" ? (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              focusableWhenDisabled
-              aria-label={label}
-              className="text-dashboard-text-muted"
-              disabled={status === "sharing"}
-              onClick={() => void shareLink()}
-              size="icon"
-            >
-              <Icon aria-hidden="true" size={15} />
-            </Button>
-          }
-        />
-        <TooltipContent size="compact" side="bottom">
-          {label}
-        </TooltipContent>
-      </Tooltip>
-    ) : props.layout === "menu" ? (
       <Button
         aria-label={label}
         disabled={status === "sharing"}
+        focusableWhenDisabled
         onClick={() => void shareLink()}
         size="menu"
       >
-        {content}
+        <Icon aria-hidden="true" size={16} strokeWidth={2} />
+        <span>{label}</span>
       </Button>
-    ) : (
-      <Button
-        aria-label={label}
-        disabled={status === "sharing"}
-        onClick={() => void shareLink()}
-      >
-        {content}
-      </Button>
-    );
-
-  return (
-    <>
-      {button}
       <span className="sr-only" role="status">
         {feedback}
       </span>

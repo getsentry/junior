@@ -6,7 +6,6 @@ import {
   CircleX,
   GitMerge,
   GitPullRequest,
-  Globe2,
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
@@ -43,7 +42,11 @@ import {
   type SidebarAnnotation,
   type SidebarAnnotationBadgeGroup,
 } from "./sidebarAnnotationBadges";
-import { conversationLinks, linkStatusLabel } from "./ConversationLinkedWork";
+import {
+  linkStatusLabel,
+  type ConversationLink,
+} from "./ConversationLinkedWork";
+import { OutboundLink } from "../components/OutboundLink";
 
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 
@@ -57,14 +60,12 @@ export function PendingAuthorization(props: {
 }) {
   return (
     <div className="mb-2 rounded-lg border border-dashboard-accent/20 bg-dashboard-accent/[0.07] px-3 py-2.5 font-sans text-sm text-dashboard-text">
-      <a
+      <OutboundLink
         className="font-medium text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-accent-text"
         href={props.authorization.authorizationUrl}
-        rel="noreferrer"
-        target="_blank"
       >
         {props.authorization.label}
-      </a>
+      </OutboundLink>
       <p className="mb-0 mt-1 text-xs text-dashboard-text-muted">
         {props.authorization.completionText}
       </p>
@@ -72,44 +73,26 @@ export function PendingAuthorization(props: {
   );
 }
 
-/** Show whether the selected conversation is public or private. */
+/**
+ * Mark a private conversation with a lock icon. Public is the default, so it
+ * gets no marker, which keeps the title bar short.
+ */
 export function ConversationPrivacyChip(props: {
   visibility: Conversation["visibility"];
 }) {
-  if (!props.visibility) return null;
-  const isPublic = props.visibility === "public";
-  const Icon = isPublic ? Globe2 : LockKeyhole;
-  const shortLabel = isPublic ? "Public" : "Private";
-  const fullLabel = isPublic ? "Public conversation" : "Private conversation";
-  const detail = isPublic
-    ? "Anyone in this workspace can see this transcript."
-    : "Only members of this conversation can see this transcript.";
+  if (props.visibility !== "private") return null;
+  const label =
+    "Private conversation. Only members of this conversation can see this transcript.";
   return (
     <span
-      className={
-        isPublic
-          ? "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-emphasis bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-          : "inline-flex max-w-full items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-fill-soft px-2 py-0.5 font-sans text-2xs font-medium text-dashboard-text-muted"
-      }
+      className="inline-flex items-center text-dashboard-text-muted"
       role="note"
-      title={`${fullLabel}. ${detail}`}
+      title={label}
     >
-      <Icon aria-hidden="true" className="size-3 shrink-0" />
-      <span aria-hidden="true" className="truncate">
-        {shortLabel}
-      </span>
-      <span className="sr-only">
-        {fullLabel}. {detail}
-      </span>
+      <LockKeyhole aria-hidden="true" className="size-3.5 shrink-0" />
+      <span className="sr-only">{label}</span>
     </span>
   );
-}
-
-/** True when the conversation has at least one resource-link annotation. */
-export function hasConversationAnnotations(
-  annotations: ConversationDetailReport["annotations"] | undefined,
-): boolean {
-  return Boolean(annotations?.some((annotation) => Boolean(annotation.url)));
 }
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
@@ -413,19 +396,15 @@ function SidebarAnnotationIcon(props: {
 
 /** Render linked work as a compact strip under the conversation title. */
 export function ConversationAnnotations(props: {
-  detail: ConversationDetailReport | undefined;
+  links: readonly ConversationLink[];
 }) {
-  const links = conversationLinks(props.detail);
-  if (links.length === 0) return null;
   return (
     <div className="flex gap-x-4 gap-y-2 overflow-x-auto">
-      {links.map((link) => (
-        <a
+      {props.links.map((link) => (
+        <OutboundLink
           className="inline-flex min-w-0 max-w-full shrink-0 items-center gap-2 rounded-md px-1 py-0.5 font-sans text-xs leading-snug text-dashboard-text no-underline transition-colors hover:text-dashboard-accent-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
           href={link.url}
           key={link.key}
-          rel="noreferrer"
-          target="_blank"
           title={[
             link.label,
             link.plugin,
@@ -442,7 +421,7 @@ export function ConversationAnnotations(props: {
             status={link.status}
           />
           <span className="min-w-0 break-words">{link.label}</span>
-        </a>
+        </OutboundLink>
       ))}
     </div>
   );
@@ -450,14 +429,9 @@ export function ConversationAnnotations(props: {
 
 function LocationLink(props: { label: string; locationUrl?: string }) {
   return props.locationUrl ? (
-    <a
-      className={dashboardInlineLinkClass}
-      href={props.locationUrl}
-      rel="noreferrer"
-      target="_blank"
-    >
+    <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
-    </a>
+    </OutboundLink>
   ) : (
     props.label
   );
@@ -481,7 +455,7 @@ function SourceTask(props: {
   );
 }
 
-/** Resolve the model still running an open turn, including mid-turn handoffs. */
+/** Resolve the model that an open turn last called. */
 export function liveModelId(
   detail: ConversationDetailReport | undefined,
 ): string | undefined {
@@ -496,21 +470,19 @@ export function liveModelId(
       if (openTurns.size === 0) modelId = undefined;
       continue;
     }
-    if (openTurns.size === 0) continue;
-    if (data.type === "turn_routed" && openTurns.has(data.turnId)) {
-      modelId = data.modelId;
-      continue;
-    }
-    if (data.type === "handoff") modelId = data.modelId;
+    if (openTurns.size > 0 && event.model) modelId = event.model.modelId;
   }
   return openTurns.size > 0 ? modelId : undefined;
 }
 
-/** True when runtime stats have content to show in details. */
-export function hasConversationStats(props: {
+type ConversationStatsProps = {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport;
-}): boolean {
+  showUsageBreakdown?: boolean;
+};
+
+/** True when runtime stats have content to show in details. */
+export function hasConversationStats(props: ConversationStatsProps): boolean {
   return conversationStatItems(props).length > 0;
 }
 
@@ -523,10 +495,7 @@ type ConversationStatItem = {
 };
 
 /** Render runtime, source, token, and cost metadata as a labeled list. */
-export function ConversationStats(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-}) {
+export function ConversationStats(props: ConversationStatsProps) {
   const stats = conversationStatItems(props);
   if (stats.length === 0) return null;
   return (
@@ -568,10 +537,40 @@ export function conversationLocation(
   );
 }
 
-function conversationStatItems(props: {
-  conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
-}): ConversationStatItem[] {
+/**
+ * Show the estimated cost of a conversation with its breakdown tooltip.
+ * Returns null until there is a cost or a live run to show.
+ */
+export function conversationCost(
+  conversation: Conversation | undefined,
+  detail: ConversationDetailReport | undefined,
+  tooltipPlacement?: "above" | "below",
+): ReactNode {
+  if (!conversation) return null;
+  const costSummary = summarizeCost(
+    detail?.cumulativeUsage ?? conversation.cumulativeUsage,
+  );
+  const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
+  const live = (detail?.status ?? conversation.status) === "active";
+  if (!costSummary && !auxiliaryCosts && !live) return null;
+  return (
+    <CostMetric
+      auxiliaryCosts={auxiliaryCosts}
+      childAgentTotals={
+        detail?.childAgentTotals ?? conversation.childAgentTotals
+      }
+      live={live}
+      liveModelId={liveModelId(detail)}
+      modelUsage={detail?.modelUsage}
+      summary={costSummary}
+      tooltipPlacement={tooltipPlacement}
+    />
+  );
+}
+
+function conversationStatItems(
+  props: ConversationStatsProps,
+): ConversationStatItem[] {
   if (!props.conversation) return [];
   const completeDetail = props.detail?.previousCursor
     ? undefined
@@ -580,7 +579,6 @@ function conversationStatItems(props: {
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
-  const costSummary = summarizeCost(usage);
   const durationLabel = formatConversationDuration(props.conversation);
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
@@ -589,6 +587,9 @@ function conversationStatItems(props: {
     props.detail?.childAgentTotals ?? props.conversation.childAgentTotals;
   const lastActivityAt = props.conversation.lastSeenAt;
   const location = conversationLocation(props.conversation, props.detail);
+  const cost = props.showUsageBreakdown
+    ? null
+    : conversationCost(props.conversation, props.detail);
   const rawStats: Array<ConversationStatItem | undefined> = [
     // The desktop title bar shows the location. Mobile hides that bar.
     location
@@ -638,7 +639,7 @@ function conversationStatItems(props: {
           label: "Runtime",
         }
       : undefined,
-    tokenSummary
+    tokenSummary && !props.showUsageBreakdown
       ? {
           content: (
             <TokenMetric
@@ -660,24 +661,9 @@ function conversationStatItems(props: {
           label: "Tokens",
         }
       : undefined,
-    costSummary ||
-    props.detail?.auxiliaryCosts ||
-    props.conversation.auxiliaryCosts ||
-    live
+    cost
       ? {
-          content: (
-            <CostMetric
-              auxiliaryCosts={
-                props.detail?.auxiliaryCosts ??
-                props.conversation.auxiliaryCosts
-              }
-              childAgentTotals={childAgentTotals}
-              live={live}
-              liveModelId={activeModelId}
-              modelUsage={props.detail?.modelUsage}
-              summary={costSummary}
-            />
-          ),
+          content: cost,
           key: "cost",
           label: "Cost",
         }
@@ -686,7 +672,7 @@ function conversationStatItems(props: {
       ? {
           content: <SubagentsMetric childAgentTotals={childAgentTotals} />,
           key: "subagents",
-          label: "Subagents",
+          label: "Child conversations",
         }
       : undefined,
   ];

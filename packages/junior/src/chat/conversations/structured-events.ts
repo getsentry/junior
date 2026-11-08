@@ -4,7 +4,7 @@ import {
   type ConversationEventPresentation,
   type PluginConversationEventDefinition,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 
 /** Reserved namespace for Junior-owned conversation metadata events. */
 export const JUNIOR_NATIVE_EVENT_NAMESPACE = "junior" as const;

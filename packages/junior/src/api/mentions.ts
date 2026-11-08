@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { lookupSlackUser } from "@/chat/slack/user";
+import { lookupSlackUserNames } from "@/chat/slack/user";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { ActorIdentity } from "./schema/conversation";
@@ -113,19 +113,17 @@ async function readMentionedPeople(
     return !person?.fullName && !person?.slackUserName;
   });
   if (tenantId && unnamed.length > 0) {
-    const profiles = await Promise.all(
-      unnamed.map((id) => lookupSlackUser(tenantId, id)),
-    );
-    unnamed.forEach((id, index) => {
-      const profile = profiles[index];
-      if (!profile?.fullName && !profile?.userName) return;
+    const profiles = await lookupSlackUserNames(tenantId, unnamed);
+    for (const id of unnamed) {
+      const profile = profiles.get(id);
+      if (!profile?.fullName && !profile?.userName) continue;
       people.set(id, {
         ...people.get(id),
         slackUserId: id,
         ...(profile.fullName ? { fullName: profile.fullName } : undefined),
         ...(profile.userName ? { slackUserName: profile.userName } : undefined),
       });
-    });
+    }
   }
   return people;
 }

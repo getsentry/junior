@@ -5,7 +5,7 @@
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
  * third-party APIs are MSW mocks. Other HTTP traffic goes through
  * Roach, the recording proxy, which replays model responses and the web pages that
- * `webFetch` reads. See `../recording-rules.ts`. The fixture replaces only the
+ * `webFetch` reads. See `roach.json`. The fixture replaces only the
  * Vercel Queue transports and `waitUntil` with in-process versions, so it
  * knows when the agent is idle.
  */
@@ -30,6 +30,7 @@ import {
   webImage,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
+import { actOnWebReviewItem } from "./review-desk";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
@@ -38,6 +39,7 @@ import type {
   Input,
   MentionInput,
   MessageInput,
+  ReviewItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
@@ -122,6 +124,8 @@ export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
+  /** Quiet messages: stored, but not delivered to the Slack thread. */
+  quietReplies: Reply[];
   /** Tool calls of the agent, with their results. */
   toolCalls: ToolCall[];
   /** Slack reactions that Junior added. */
@@ -396,6 +400,13 @@ export async function createFixtureAgent(
       });
       return;
     }
+    if (input.kind === "review_item_action") {
+      if (record.surface !== "web" || !record.started) {
+        throw new Error("A review item action continues a web Conversation");
+      }
+      await actOnWebReviewItem(api, input, record);
+      return;
+    }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
@@ -482,10 +493,11 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = (
-    first: MessageInput,
+    first: MessageInput | ReviewItemActionInput,
     history: CallOptions["history"],
   ): ConversationRecord => {
-    if (first.kind === "web_message") {
+    // A review desk action comes from the dashboard.
+    if (first.kind === "web_message" || first.kind === "review_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);
@@ -749,6 +761,7 @@ export async function createFixtureAgent(
         : undefined),
       compactions: events.compactions,
       files,
+      quietReplies: events.quietReplies,
       reactions,
       replies,
       statuses,
@@ -860,6 +873,7 @@ export async function createFixtureAgent(
       }),
       compactions: 0,
       files: [],
+      quietReplies: [],
       reactions: [],
       replies: [],
       statuses: [],

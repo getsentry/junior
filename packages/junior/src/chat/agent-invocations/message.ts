@@ -10,10 +10,8 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
-import {
-  createAgentInvocationForMessage,
-  getActiveAgentInvocationForConversation,
-} from "./store";
+import { createAgentInvocationForMessage } from "./create";
+import { getActiveAgentInvocationForConversation } from "./store";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
 import { PARENT_AGENT_TARGET } from "./types";
 import { enqueueAgentInvocation } from "./work";
@@ -72,7 +70,6 @@ export function bindMessageAgent(
     });
     if (!childConversationId) {
       await enqueueTopLevelAgentMessage({
-        actor,
         messageKey: `${run.turnId}:${call.toolCallId}`,
         queue,
         senderConversationId: run.conversationId,

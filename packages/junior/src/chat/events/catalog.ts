@@ -14,7 +14,7 @@ import {
   type PluginEvents,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 /**
@@ -38,7 +38,7 @@ export type EventResourceTypeLimits = {
 /** One source as a plugin or core registers it, before the catalog adds merged filters. */
 export type EventRegistrationInput = Pick<
   PluginEvents,
-  "events" | "resourceTypes" | "normalizeIdentifier"
+  "events" | "resourceTypes" | "normalizeIdentifier" | "resourceUrl"
 > & {
   /** Name people see for the source, such as GitHub. Defaults to the namespace. */
   displayName?: string;

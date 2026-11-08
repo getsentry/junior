@@ -118,20 +118,14 @@ export function isVisionEnabled(): boolean {
   return Boolean(botConfig.visionModelId);
 }
 
-/**
- * Report whether every profile model accepts image input. The router picks the
- * profile after attachments resolve, so native images need every profile to
- * read them.
- */
-function profileModelsAcceptImages(): boolean {
-  return Object.values(botConfig.profiles).every((profile) =>
-    resolveGatewayModel(profile.modelId).input.includes("image"),
-  );
+/** Report whether the main agent model accepts image input. */
+function agentModelAcceptsImages(): boolean {
+  return resolveGatewayModel(botConfig.modelId).input.includes("image");
 }
 
 /** Report whether the agent can read current-message images by any path. */
 export function canReadImages(): boolean {
-  return isVisionEnabled() || profileModelsAcceptImages();
+  return isVisionEnabled() || agentModelAcceptsImages();
 }
 
 class ImageAttachmentProcessingError extends Error {
@@ -407,7 +401,7 @@ async function resolveUserAttachmentsWithDeps(
     // Providers reject an image whose bytes do not match its media type, so
     // send the detected type. Slack's declared type can be wrong.
     const nativeImageMediaType =
-      isImageAttachment && profileModelsAcceptImages()
+      isImageAttachment && agentModelAcceptsImages()
         ? detectImageMediaType(data)
         : undefined;
     if (nativeImageMediaType) {

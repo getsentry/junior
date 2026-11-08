@@ -8,7 +8,7 @@ import {
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { afterEach, expect, it } from "vitest";
-import { z } from "zod";
+import * as z from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   createPluginAnnotations,

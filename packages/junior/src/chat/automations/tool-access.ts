@@ -1,6 +1,6 @@
 /** Automation access for the Automation tools. */
 import type { Identity, User } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { automationListQuerySchema } from "@/api/schema/automation";
 import { isUserActor, type UserActor } from "@/chat/actor";
 import { getDb } from "@/chat/db";

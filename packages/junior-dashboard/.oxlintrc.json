@@ -8,8 +8,16 @@
       "specifier": "../../tools/oxlint/anti-slop/index.ts"
     },
     {
+      "name": "junior",
+      "specifier": "../../tools/oxlint/junior/index.ts"
+    },
+    {
       "name": "display-text",
       "specifier": "./oxlint/display-text.ts"
+    },
+    {
+      "name": "text-control",
+      "specifier": "./oxlint/text-control.ts"
     }
   ],
   "ignorePatterns": [
@@ -27,6 +35,7 @@
     "tools/oxlint/anti-slop/**"
   ],
   "rules": {
+    "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/preserve-manual-memoization": "off",
@@ -56,9 +65,17 @@
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "display-text/no-raw-display-text": "error",
+    "text-control/no-raw-text-control": "error",
     "no-restricted-imports": [
       "error",
       {
+        "paths": [
+          {
+            "name": "@sentry/browser",
+            "importNames": ["init"],
+            "message": "init() bundles every default integration. Build a BrowserClient, as in client/sentry.ts."
+          }
+        ],
         "patterns": [
           {
             "group": [
@@ -83,6 +100,12 @@
     ]
   },
   "overrides": [
+    {
+      "files": ["src/client/components/ui/**"],
+      "rules": {
+        "text-control/no-raw-text-control": "off"
+      }
+    },
     {
       "files": ["src/client/display-text/**"],
       "rules": {

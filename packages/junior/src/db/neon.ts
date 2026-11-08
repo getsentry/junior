@@ -170,7 +170,15 @@ export function createNeonJuniorSqlExecutor(args: {
 }): NeonJuniorSqlExecutor {
   const pool = new Pool({
     connectionString: args.connectionString,
-    max: 3,
+    // One function instance serves many requests at once, and they share this
+    // pool. A dashboard page load sends about ten requests, and the
+    // conversation list alone can hold three connections for seconds. With a
+    // smaller pool, the other requests wait for a free connection.
+    max: 10,
+    // The pg default closes a client after 10s idle, which is also the
+    // dashboard poll interval, so most polls and page loads opened new
+    // WebSockets. Idle clients to the Neon pooler hold no Postgres backend.
+    idleTimeoutMillis: 60_000,
     statement_timeout: args.statementTimeoutMs,
   });
   // An idle client can fail when the server closes it. The pool replaces the
