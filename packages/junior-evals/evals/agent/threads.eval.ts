@@ -2,7 +2,6 @@ import { describe, expect } from "vitest";
 import { slackMention, webMessage } from "@junior-evals/fixture/inputs";
 import {
   completedToolCalls,
-  toolCallsOf,
   toolOutput,
   type ToolCall,
 } from "@junior-evals/fixture/results";
@@ -16,14 +15,6 @@ function spawnInput(call: ToolCall): SpawnInput {
 
 function childId(call: ToolCall): string {
   return (toolOutput(call) as { conversation_id: string }).conversation_id;
-}
-
-function archivedIds(calls: ToolCall[]): string[] {
-  return calls.map(
-    (call) =>
-      (call.input as { conversation_id?: string } | undefined)
-        ?.conversation_id ?? "",
-  );
 }
 
 // The pick case never names a kind. These cases measure whether Junior picks a
@@ -69,15 +60,15 @@ describe("Threads", () => {
       ),
     );
 
-    const cleanup = await conversation.continue(
+    await conversation.continue(
       webMessage("Archive the threads that are done."),
     );
 
-    expect(archivedIds(completedToolCalls("archiveAgent", cleanup))).toContain(
-      childId(upgrade!),
-    );
-    expect(archivedIds(toolCallsOf("archiveAgent", cleanup))).not.toContain(
-      childId(changelog!),
+    // Read the result as the dashboard shows it, however the agent made the
+    // calls.
+    expect((await conversation.child(childId(upgrade!))).archived).toBe(true);
+    expect((await conversation.child(childId(changelog!))).archived).toBe(
+      false,
     );
   });
 });

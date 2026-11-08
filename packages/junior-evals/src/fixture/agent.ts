@@ -142,6 +142,8 @@ export interface Conversation extends HarnessRun {
   threadTitles: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Whether the dashboard shows the Conversation as archived after the call. */
+  archived: boolean;
   /** Slack user ids of the participants that the dashboard lists after the call. */
   participantSlackUserIds: string[];
   /**
@@ -774,6 +776,7 @@ export async function createFixtureAgent(
       participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles,
       title: detail.displayTitle,
+      archived: Boolean(detail.archivedAt),
       toolCalls: events.toolCalls,
       turns: events.turns,
     });
@@ -894,6 +897,7 @@ export async function createFixtureAgent(
       participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles: [],
       title: detail.displayTitle,
+      archived: Boolean(detail.archivedAt),
       toolCalls: [],
       turns: [],
     });
