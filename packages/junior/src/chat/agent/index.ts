@@ -1096,13 +1096,15 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
+          // A model call can complete before an abort, such as an auth
+          // pause, so log its input first. An aborted call reports none.
+          logFirstInputAfterReplacement();
           // Pi runs this hook after an abort, such as an auth pause, but no
           // model call follows. Sandbox work here fails on the aborted signal
           // and hides why the run stopped. Steering stays queued.
           if (hookSignal?.aborted) {
             return undefined;
           }
-          logFirstInputAfterReplacement();
           // Pi waits for this hook before each later model call. The span
           // shows that wait between `gen_ai.chat` spans.
           const stepUpdate = await withSpan(
