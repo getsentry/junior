@@ -320,9 +320,9 @@ that time, the next turn writes the full history to the cache again. Junior
 keeps the cache of an idle Conversation warm when a warmup is likely to cost
 less than that write.
 
-- Junior warms only `anthropic/` models with a cached prefix of at least 50K
-  tokens. It does not warm models that use a thinking budget, because the
-  budget adds output tokens to each warmup.
+- Junior warms only models whose cache write costs more than a cache read,
+  with a cached prefix of at least 50K tokens. It does not warm models that
+  use a thinking budget, because the budget adds output tokens to each warmup.
 - When a turn ends, Junior stores the last model request in the `StateAdapter`.
   Junior deletes it when the next turn starts, when warmups stop, or after 55
   minutes.
@@ -335,13 +335,14 @@ less than that write.
   Turns that a person started and Turns that an event or automation started,
   and for the first, second to third, and later Turns of a Conversation. Until
   Junior has recorded gaps for a group, it sends no warmups for that group.
-- When 3 of the last 20 warmups of a model miss the cache or fail, Junior stops
-  warmups for that model. They start again 6 hours after the last warmup.
+- A warmup that misses the cache ends warming for its idle period and sends a
+  Sentry warning. When 10 of the last 20 warmups miss or fail, Junior stops all
+  warming for 24 hours and sends a Sentry error.
 - `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
   requests and drops warmups that are already in the queue. The default is
   `true`.
-- `PI_CACHE_RETENTION=long` turns warming off, because the long cache lasts an
-  hour.
+- Junior sends model requests with the short cache retention, so
+  `PI_CACHE_RETENTION` does not change it.
 
 Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
 `cache_warmup`, and as `cache_warming.*` logs.

@@ -30,7 +30,8 @@ import { getChatConfig } from "@/chat/config";
 import { runWithLogContext } from "@/chat/log-context";
 import { logInfo, logWarn } from "@/chat/logging";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
-import type { ThinkingLevel } from "@/chat/pi/sdk";
+import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
+import { captureMessage } from "@/chat/sentry";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   decideWarmup,
@@ -51,12 +52,17 @@ const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * 60_000;
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
-// One miss costs about one cache write, which is (write / read) warmups. So
-// the breaker opens at a low miss count among the recent warmups of a model.
-// A success does not reset it. The list expires after a quiet period.
+// A miss ends only its own idle period. When many recent warmups of all
+// models miss, the warmup request is likely broken, so warming stops for
+// every Conversation for a day.
 const BREAKER_OUTCOMES_MAX = 20;
-const BREAKER_MAX_MISSES = 3;
-const BREAKER_TTL_MS = 6 * 60 * 60_000;
+const BREAKER_MAX_MISSES = 10;
+const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * 60_000;
+const BREAKER_OPEN_TTL_MS = 24 * 60 * 60_000;
+// The recorder sets this retention on agent requests, so Pi's
+// PI_CACHE_RETENTION does not change them. The cost model and the warmup
+// timing use the short TTL.
+const CACHE_RETENTION: CacheRetention = "short";
 
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
@@ -85,6 +91,7 @@ interface ModelRequest {
   model: Model<Api>;
   context: Context;
   reasoning?: ThinkingLevel;
+  cacheRetention?: CacheRetention;
   startedAtMs: number;
 }
 
@@ -102,7 +109,8 @@ const warmupsKey = (conversationId: string, generation: string) =>
 /** Set by the first of the reply and the horizon to record the gap. */
 const gapClaimKey = (conversationId: string, generation: string) =>
   `${KEY_PREFIX}:gap_claim:${conversationId}:${generation}`;
-const breakerKey = (modelId: string) => `${KEY_PREFIX}:breaker:${modelId}`;
+const breakerOutcomesKey = `${KEY_PREFIX}:breaker:outcomes`;
+const breakerOpenKey = `${KEY_PREFIX}:breaker:open`;
 
 async function connectedState() {
   const state = getStateAdapter();
@@ -110,24 +118,24 @@ async function connectedState() {
   return state;
 }
 
-// Only Anthropic models have the 5 minute cache TTL that the model assumes.
-// Other providers on the Anthropic Messages API cache in other ways.
-// Budget thinking adds the thinking budget to the one-token output limit, so
-// a warmup could cost as much as a short answer. Adaptive thinking does not.
-function supportsWarming(
-  model: Model<Api>,
-  reasoning: ThinkingLevel | undefined,
-): boolean {
-  return (
+type ConnectedState = Awaited<ReturnType<typeof connectedState>>;
+
+// Warming pays only when a cache write costs more than a read. Pi adds a
+// thinking budget to the one-token output limit on the Anthropic Messages API
+// for models without adaptive thinking. Then a warmup could cost as much as a
+// short answer, and a smaller budget would miss the cached messages.
+function supportsWarming(request: ModelRequest): boolean {
+  const { model, reasoning } = request;
+  const budgetThinking =
+    reasoning !== undefined &&
     model.api === "anthropic-messages" &&
-    model.id.startsWith("anthropic/") &&
+    (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking !==
+      true;
+  return (
     model.cost.cacheRead > 0 &&
     model.cost.cacheWrite > model.cost.cacheRead &&
-    (!reasoning ||
-      (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking ===
-        true) &&
-    // Long retention keeps the cache for an hour, so warmups are not needed.
-    process.env.PI_CACHE_RETENTION !== "long"
+    !budgetThinking &&
+    request.cacheRetention === CACHE_RETENTION
   );
 }
 
@@ -168,7 +176,7 @@ function snapshotContext(context: Context): Context {
 // The reply and the horizon can run at the same time. Only the first one to
 // claim the idle period records its gap.
 async function recordGap(
-  state: Awaited<ReturnType<typeof connectedState>>,
+  state: ConnectedState,
   conversationId: string,
   idle: IdlePeriod,
   gapMs: number,
@@ -192,7 +200,7 @@ async function recordGap(
 }
 
 async function startIdlePeriod(
-  state: Awaited<ReturnType<typeof connectedState>>,
+  state: ConnectedState,
   conversationId: string,
   request: ModelRequest,
   message: AssistantMessage,
@@ -204,10 +212,7 @@ async function startIdlePeriod(
     sinceMs: request.startedAtMs,
   };
   const prefixTokens = message.usage.cacheRead + message.usage.cacheWrite;
-  if (
-    !supportsWarming(request.model, request.reasoning) ||
-    prefixTokens < MIN_WARMUP_PREFIX_TOKENS
-  ) {
+  if (!supportsWarming(request) || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
   const snapshot = gzipSync(
@@ -305,7 +310,10 @@ async function recordModelCall(
 
 /** Records the model calls of one agent run and schedules cache warmups. */
 export interface CacheWarmingRecorder {
-  /** Wrap the stream function so the recorder sees each model request. */
+  /**
+   * Wrap the stream function so the recorder sees each model request. The
+   * wrapper also sets the cache retention that warming assumes.
+   */
   wrap(base?: StreamFn): StreamFn;
   /** Record the finished assistant message of the last model request. */
   record(message: AssistantMessage): Promise<void>;
@@ -328,6 +336,7 @@ export function createCacheWarmingRecorder(
     wrap:
       (base = streamSimple) =>
       (model, context, options) => {
+        const cacheRetention = options?.cacheRetention ?? CACHE_RETENTION;
         lastRequest = {
           model,
           // Copy the list, so later changes to the run do not change it.
@@ -335,9 +344,10 @@ export function createCacheWarmingRecorder(
           ...(options?.reasoning
             ? { reasoning: options.reasoning }
             : undefined),
+          cacheRetention,
           startedAtMs: Date.now(),
         };
-        return base(model, context, options);
+        return base(model, context, { ...options, cacheRetention });
       },
     record: async (message) => {
       const request = lastRequest;
@@ -364,10 +374,34 @@ export function createCacheWarmingRecorder(
   };
 }
 
-async function breakerOpen(modelId: string): Promise<boolean> {
-  const state = await connectedState();
-  const outcomes = await state.getList<number>(breakerKey(modelId));
-  return outcomes.filter((miss) => miss === 1).length >= BREAKER_MAX_MISSES;
+// Count one warmup outcome. Open the breaker when too many recent warmups
+// missed. Only the call that opens it reports to Sentry.
+async function countOutcome(
+  state: ConnectedState,
+  modelId: string,
+  miss: boolean,
+): Promise<void> {
+  await state.appendToList(breakerOutcomesKey, miss ? 1 : 0, {
+    maxLength: BREAKER_OUTCOMES_MAX,
+    ttlMs: BREAKER_OUTCOMES_TTL_MS,
+  });
+  if (!miss) return;
+  const outcomes = await state.getList<number>(breakerOutcomesKey);
+  const misses = outcomes.filter((outcome) => outcome === 1).length;
+  if (
+    misses >= BREAKER_MAX_MISSES &&
+    (await state.setIfNotExists(breakerOpenKey, true, BREAKER_OPEN_TTL_MS))
+  ) {
+    captureMessage("Cache warming stopped: too many warmups missed the cache", {
+      level: "error",
+      fingerprint: ["cache_warming.breaker.opened"],
+      tags: { "gen_ai.request.model": modelId },
+      extra: {
+        "app.cache_warming.misses": misses,
+        "app.cache_warming.outcomes": outcomes.length,
+      },
+    });
+  }
 }
 
 /**
@@ -409,7 +443,7 @@ export async function runCacheWarmup(
         "app.cache_warming.cycle": message.cycle,
         "app.cache_warming.prefix_tokens": warm.prefixTokens,
       };
-      if (await breakerOpen(warm.modelId)) {
+      if (await state.get<boolean>(breakerOpenKey)) {
         logInfo("cache_warming.warmup.skipped", {
           ...attributes,
           "app.cache_warming.skip_reason": "breaker_open",
@@ -452,17 +486,13 @@ export async function runCacheWarmup(
         gunzipSync(Buffer.from(snapshot, "base64")).toString("utf8"),
       ) as Context;
       const startedAtMs = Date.now();
-      const countOutcome = (miss: boolean) =>
-        state.appendToList(breakerKey(warm.modelId), miss ? 1 : 0, {
-          maxLength: BREAKER_OUTCOMES_MAX,
-          ttlMs: BREAKER_TTL_MS,
-        });
       const { message: result } = await completeText({
         modelId: warm.modelId,
         system: context.systemPrompt,
         messages: context.messages,
         ...(context.tools ? { tools: context.tools } : undefined),
         ...(warm.reasoning ? { thinkingLevel: warm.reasoning } : undefined),
+        cacheRetention: CACHE_RETENTION,
         // The output is not used.
         maxTokens: 1,
         messageAttributeMode: "metadata",
@@ -473,7 +503,7 @@ export async function runCacheWarmup(
       }).catch(async (error: unknown) => {
         // A request that the provider rejects fails the same way for each
         // Conversation. Count it, so the breaker stops these requests.
-        await countOutcome(true);
+        await countOutcome(state, warm.modelId, true);
         await stop();
         throw error;
       });
@@ -488,13 +518,22 @@ export async function runCacheWarmup(
         warm.prefixTokens * REFRESHED_READ_FRACTION
       ) {
         // The request did not match the cached prefix, so it wrote a new
-        // cache entry. Stop this idle period and count the miss for the model.
-        await countOutcome(true);
+        // cache entry. Stop this idle period and count the miss.
         logWarn("cache_warming.warmup.failed", attributes);
+        captureMessage("Cache warmup missed the cache", {
+          level: "warning",
+          fingerprint: ["cache_warming.warmup.missed", warm.modelId],
+          tags: { "gen_ai.request.model": warm.modelId },
+          extra: {
+            "app.cache_warming.read_fraction":
+              result.usage.cacheRead / warm.prefixTokens,
+          },
+        });
+        await countOutcome(state, warm.modelId, true);
         await stop();
         return;
       }
-      await countOutcome(false);
+      await countOutcome(state, warm.modelId, false);
       logInfo("cache_warming.warmup.completed", attributes);
 
       await state.set(

@@ -106,4 +106,44 @@ describe("cache warming gap segments", () => {
 
     expect(await segmentGaps("user:1")).toEqual([7 * MINUTE]);
   });
+
+  it("warms only short-retention requests of models whose cache write costs more than a read", async () => {
+    const warmupsAfterTurn = async (
+      modelId: string,
+      cacheRetention?: "short" | "long",
+    ) => {
+      mocks.sendCacheWarmup.mockClear();
+      await getStateAdapter().delete(
+        `junior:cache_warming:conversation:${conversationId}`,
+      );
+      const base = vi.fn();
+      const recorder = createCacheWarmingRecorder(conversationId, true);
+      recorder.wrap(base as never)(
+        resolveGatewayModel(modelId),
+        context,
+        cacheRetention ? { cacheRetention } : {},
+      );
+      await recorder.record({ ...finalReply, model: modelId });
+      return {
+        sentRetention: base.mock.calls[0]?.[2]?.cacheRetention,
+        warmups: mocks.sendCacheWarmup.mock.calls.length,
+      };
+    };
+
+    expect(await warmupsAfterTurn("anthropic/claude-opus-5.5")).toEqual({
+      sentRetention: "short",
+      warmups: 2,
+    });
+    // Cache writes cost more than reads on this OpenAI model too.
+    expect(await warmupsAfterTurn("openai/gpt-5.6-sol")).toMatchObject({
+      warmups: 2,
+    });
+    // The cache write has no price of its own, so the model skips it.
+    expect(await warmupsAfterTurn("openai/gpt-5.5")).toMatchObject({
+      warmups: 0,
+    });
+    expect(await warmupsAfterTurn("anthropic/claude-opus-5.5", "long")).toEqual(
+      { sentRetention: "long", warmups: 0 },
+    );
+  });
 });
