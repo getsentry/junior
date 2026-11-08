@@ -8,6 +8,7 @@ import {
   type StateAdapter,
 } from "chat";
 import * as z from "zod";
+import { editMarkerSchema } from "./inbound-edit";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { getActiveTraceContext, logException } from "@/chat/logging";
 import type {
@@ -403,8 +404,7 @@ const slackInstallationSchema = z
   .strict() satisfies z.ZodType<SlackInstallationContext>;
 
 const slackConversationMessageMetadataBaseSchema = z.object({
-  /** Core edit marker. See `withEditMarker`. */
-  edit: z.object({ inboundMessageId: z.string().optional() }).optional(),
+  edit: editMarkerSchema.optional(),
   installation: slackInstallationSchema.optional(),
   message: serializedMessageSchema,
   platform: z.literal("slack"),
