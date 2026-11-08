@@ -909,5 +909,24 @@ describe("local agent runner", () => {
       failureCode: "delivery_failed",
     });
     expect(JSON.stringify(lifecycle)).not.toContain(rawDeliveryError);
+
+    // The next turn learns that the person never saw the lost reply.
+    await getTurnLifecycle().start({
+      conversationId: conversationId!,
+      createdAtMs: Date.now(),
+      inputMessageIds: ["next-message"],
+      surface: "internal",
+      turnId: "next-turn",
+    });
+    expect(
+      await loadTurnConversationNotes({
+        conversationId: conversationId!,
+        turnId: "next-turn",
+      }),
+    ).toEqual([
+      expect.stringContaining(
+        "Your reply was not delivered, so the person did not see it.",
+      ),
+    ]);
   });
 });
