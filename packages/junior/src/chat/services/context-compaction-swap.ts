@@ -170,6 +170,7 @@ async function swapPreparedCompaction(
   const triggerTokens = getAgentContextCompactionTriggerTokens(args.modelId);
   const estimatedTokens = estimateHistoryTokens(
     sourceMessages,
+    args.modelId,
     args.requestOverheadTokens,
   );
   if (estimatedTokens <= triggerTokens) {
@@ -312,6 +313,7 @@ async function applyPreparedSummary(
   const messages = replacement.map((entry) => entry.message);
   const replacementTokens = estimateReplacementTokens(
     messages,
+    args.modelId,
     args.requestOverheadTokens,
   );
   const targetTokens = calculateContextCompactionTargetTokens(
@@ -324,6 +326,7 @@ async function applyPreparedSummary(
     "app.compaction.carried_messages": kept.length,
     "app.compaction.carried.estimate": estimateReplacementTokens(
       trimmedEntries.map((entry) => entry.message),
+      args.modelId,
     ),
     "app.compaction.trimmed_results": trimming.trimmedResults,
     "app.compaction.trimmed_chars": trimming.removedChars,

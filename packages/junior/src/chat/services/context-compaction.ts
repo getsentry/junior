@@ -19,6 +19,7 @@ import {
   estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
+  getTokenEstimateProfile,
 } from "@/chat/services/context-budget";
 import {
   contextProvenance,
@@ -69,6 +70,7 @@ export interface CompactContextResult {
     | "deferred"
     | "history_conflict"
     | "missing_context"
+    | "over_input_limit"
     | "over_target"
     | "summary_failed";
 }
@@ -554,6 +556,7 @@ function measuredInputTokens(message: PiMessage): number | undefined {
  */
 export function estimateHistoryTokens(
   messages: PiMessage[],
+  modelId: string,
   requestOverheadTokens = 0,
 ): number {
   const estimate = estimateContextTokens(messages);
@@ -563,12 +566,20 @@ export function estimateHistoryTokens(
       ? undefined
       : timestampOf(messages[estimate.lastUsageIndex]!);
   if (
+    estimate.lastUsageIndex !== null &&
     usageAt !== undefined &&
     (summaryAt === undefined || usageAt > summaryAt)
   ) {
-    return estimate.tokens;
+    // The usage counts the request up to that call. Estimate the rest by size.
+    return (
+      estimate.usageTokens +
+      estimateMessagesTokens(
+        messages.slice(estimate.lastUsageIndex + 1),
+        modelId,
+      )
+    );
   }
-  return estimateReplacementTokens(messages, requestOverheadTokens);
+  return estimateReplacementTokens(messages, modelId, requestOverheadTokens);
 }
 
 /**
@@ -602,12 +613,29 @@ function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
  */
 export function estimateReplacementTokens(
   messages: PiMessage[],
+  modelId: string,
   requestOverheadTokens = 0,
 ): number {
-  return messages.reduce(
-    (total, message) => total + estimateTokens(message),
-    requestOverheadTokens,
-  );
+  return requestOverheadTokens + estimateMessagesTokens(messages, modelId);
+}
+
+/** Estimate messages from their size at the model's characters per token. */
+function estimateMessagesTokens(
+  messages: PiMessage[],
+  modelId: string,
+): number {
+  const profile = getTokenEstimateProfile(modelId);
+  return messages.reduce((total, message) => {
+    // Pi counts characters / 4. Scale that to the model's characters per token.
+    const tokens = Math.ceil(
+      (estimateTokens(message) * 4) / profile.charsPerToken,
+    );
+    const overhead =
+      (message as { role?: unknown }).role === "toolResult"
+        ? profile.toolResultOverheadTokens
+        : 0;
+    return total + tokens + overhead;
+  }, 0);
 }
 
 async function loadLastInstruction(conversationId: string) {
@@ -636,11 +664,16 @@ type CompactionSource =
 
 function loadCompactionSource(
   messages: PiMessage[],
+  modelId: string,
   requestOverheadTokens: number | undefined,
 ): CompactionSource {
   if (messages.length > 0) {
     return {
-      estimatedTokens: estimateHistoryTokens(messages, requestOverheadTokens),
+      estimatedTokens: estimateHistoryTokens(
+        messages,
+        modelId,
+        requestOverheadTokens,
+      ),
       messages,
     };
   }
@@ -661,6 +694,7 @@ export async function compactActiveContextIfNeeded(
   const pendingMessages = args.pendingMessages ?? [];
   const source = loadCompactionSource(
     [...args.piMessages, ...pendingMessages.map((entry) => entry.message)],
+    args.modelId,
     args.requestOverheadTokens,
   );
   if ("reason" in source) {
@@ -685,14 +719,19 @@ async function compactActiveAboveThreshold(
   const retainUserMessages =
     args.mode === "blocking" && pendingMessages.length > 0;
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
-  const skip = (reason: "last_over_threshold" | "over_target") => {
+  const skip = (
+    reason: "last_over_threshold" | "over_input_limit" | "over_target",
+  ) => {
     setSpanAttributes({
       "app.compaction.outcome": "skipped",
       "app.compaction.skip_reason": reason,
       "app.compaction.input.estimate": source.estimatedTokens,
       "app.compaction.threshold": triggerTokens,
     });
-    return { compacted: false, reason: "over_target" } as const;
+    return {
+      compacted: false,
+      reason: reason === "over_input_limit" ? reason : "over_target",
+    } as const;
   };
   // A summary replaces only agent history. When the kept context alone stays
   // over the threshold, another summary cannot get under it, and the next
@@ -744,6 +783,7 @@ async function compactActiveAboveThreshold(
     [...retainedUserMessages, ...contextEntries, ...instructionEntries].map(
       (entry) => entry.message,
     ),
+    args.modelId,
     args.requestOverheadTokens,
   );
   if (
@@ -751,6 +791,11 @@ async function compactActiveAboveThreshold(
     keptTokens > calculateContextCompactionTargetTokens(triggerTokens)
   ) {
     return skip("over_target");
+  }
+  // When the kept context alone is at the input limit, no summary can fit.
+  // The model request still runs: the provider decides if it fits.
+  if (keptTokens >= inputLimitTokens) {
+    return skip("over_input_limit");
   }
 
   await args.onCompactionStart?.();
@@ -797,6 +842,7 @@ async function compactActiveAboveThreshold(
   const messages = replacement.map((entry) => entry.message);
   const replacementInputTokens = estimateReplacementTokens(
     messages,
+    args.modelId,
     args.requestOverheadTokens,
   );
   if (replacementInputTokens >= inputLimitTokens) {

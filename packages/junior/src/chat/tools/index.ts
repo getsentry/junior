@@ -18,6 +18,7 @@ import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
@@ -114,6 +115,10 @@ export function createTools(
       : context.attachmentStorage,
   );
   const eventCatalog = getEventCatalog();
+  const modelCost = {
+    conversationId: context.conversationId,
+    ...(context.turnId ? { turnId: context.turnId } : undefined),
+  };
   const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
@@ -142,13 +147,6 @@ export function createTools(
   tools.readConversationEvent = createReadConversationEventTool(context);
   if (context.conversationPrivacy === "public") {
     tools.searchConversationBriefs = createSearchConversationBriefsTool(
-      slackContext
-        ? {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          }
-        : { kind: "public" },
       context.conversationId,
       slackContext
         ? createSlackConversationBriefSearchPort(slackContext.teamId)
@@ -175,6 +173,7 @@ export function createTools(
       {
         modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
+        promptCost: modelCost,
         sandbox: context.workspace,
       },
       hooks.toolOverrides?.imageGenerate,
@@ -213,8 +212,9 @@ export function createTools(
   }
 
   if (context.spawnAgent) {
-    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent, modelCost);
     tools.stopAgent = createStopAgentTool(context.conversationId);
+    tools.archiveAgent = createArchiveAgentTool(context.conversationId);
   }
 
   // A child agent that is too deep to start child agents can still find its
@@ -259,11 +259,7 @@ export function createTools(
     if (context.conversationPrivacy === "public") {
       tools.searchConversationMessages =
         createSlackConversationMessageSearchTool(
-          {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          },
+          slackContext.teamId,
           context.conversationId,
         );
     }

@@ -9,7 +9,6 @@ import {
 import type {
   ConversationMessageSearchFilters,
   ConversationMessageSearchResult,
-  ConversationMessageSearchScope,
   ConversationMessageSearchStore,
 } from "../message-search";
 
@@ -26,7 +25,6 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
     currentConversationId: string;
     filters: ConversationMessageSearchFilters;
     limit: number;
-    scope: ConversationMessageSearchScope;
   }): Promise<ConversationMessageSearchResult[]> {
     const db = this.executor.db();
     const query = args.filters.query?.trim() || undefined;
@@ -45,13 +43,12 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       ? sql<string>`ts_headline('english', ${text}, ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`
       : sql<string>`left(${text}, ${EXCERPT_WITHOUT_QUERY_CHARS})`;
 
+    // Results are Slack threads, so the Slack tool can describe each match.
     const conditions: SQL[] = [
       eq(juniorConversations.source, "slack"),
       isNull(juniorConversations.parentConversationId),
       isNull(juniorConversations.transcriptPurgedAt),
       ne(juniorConversations.conversationId, args.currentConversationId),
-      eq(juniorDestinations.provider, args.scope.provider),
-      eq(juniorDestinations.providerTenantId, args.scope.providerTenantId),
       eq(juniorDestinations.visibility, "public"),
       eq(juniorConversationEvents.type, "message"),
       sql`${role} in ('user', 'assistant')`,

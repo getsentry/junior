@@ -1,4 +1,5 @@
 import { useId, useMemo, useRef, useState } from "react";
+import { Check } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { continueConversationInSlackResponseSchema } from "@sentry/junior/api/schema";
 import { useLocationDirectoryData } from "../api";
@@ -16,7 +17,15 @@ import {
   FieldError,
   FieldLabel,
 } from "../components/ui/field";
-import { NativeSelect } from "../components/ui/native-select";
+import { MatchedLabel } from "../components/MatchedLabel";
+import { quickOpenMatch } from "../components/quickOpenMatch";
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../components/ui/command";
 import { useSheet } from "../components/ui/useSheet";
 import { DashboardApiError, post } from "../http";
 import { conversationDetailQueryKey } from "./queries";
@@ -30,10 +39,9 @@ export function ContinueInSlackDialog(props: {
   conversationId: string;
   onClose(): void;
 }) {
-  const selectId = useId();
-  const errorId = `${selectId}-error`;
-  const selectRef = useRef<HTMLSelectElement>(null);
-  const sheet = useSheet(props.onClose, selectRef);
+  const errorId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const sheet = useSheet(props.onClose, searchRef);
   const queryClient = useQueryClient();
   const directory = useLocationDirectoryData();
   const channels = useMemo(
@@ -46,8 +54,16 @@ export function ContinueInSlackDialog(props: {
         .sort((left, right) => left.label.localeCompare(right.label)),
     [directory.data],
   );
+  const [query, setQuery] = useState("");
+  const rows = useMemo(
+    () => channelRows(channels, query.trim()),
+    [channels, query],
+  );
   const [locationId, setLocationId] = useState("");
-  const selected = locationId || channels[0]?.id || "";
+  // A filter that hides the picked channel moves the pick to the best match.
+  const selected = rows.some((row) => row.channel.id === locationId)
+    ? locationId
+    : (rows[0]?.channel.id ?? "");
   const move = useMutation({
     mutationFn: (id: string) =>
       post(
@@ -119,30 +135,62 @@ export function ContinueInSlackDialog(props: {
           >
             <DialogTitle>Continue in Slack</DialogTitle>
             <Field>
-              <FieldLabel htmlFor={selectId}>Channel</FieldLabel>
-              <NativeSelect
-                ref={selectRef}
-                id={selectId}
-                aria-describedby={error ? errorId : undefined}
-                aria-invalid={error ? true : undefined}
-                disabled={
-                  move.isPending || directory.isPending || !channels.length
-                }
-                onChange={(event) => setLocationId(event.target.value)}
+              {/* cmdk names its input from `label` and owns the input id. */}
+              <FieldLabel>Channel</FieldLabel>
+              {/* Pointer moves do not change the pick; a click or the arrow keys do. */}
+              <Command
+                className="rounded-lg border border-dashboard-border"
+                disablePointerSelection
+                label="Channel"
+                loop
+                onValueChange={setLocationId}
+                shouldFilter={false}
                 value={selected}
+                vimBindings={false}
               >
-                {directory.isPending ? (
-                  <option value="">Loading channels…</option>
-                ) : channels.length ? (
-                  channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      {channel.label}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">No public channels yet</option>
-                )}
-              </NativeSelect>
+                <CommandInput
+                  ref={searchRef}
+                  aria-describedby={error ? errorId : undefined}
+                  aria-invalid={error ? true : undefined}
+                  disabled={move.isPending}
+                  onValueChange={setQuery}
+                  placeholder="Search channels…"
+                  spellCheck={false}
+                  value={query}
+                />
+                <CommandList className="max-h-64 sm:max-h-64">
+                  <CommandEmpty>
+                    {directory.isPending
+                      ? "Loading channels…"
+                      : channels.length
+                        ? "No matching channels."
+                        : "No public channels yet."}
+                  </CommandEmpty>
+                  {rows.slice(0, ROW_LIMIT).map((row) => (
+                    <CommandItem
+                      key={row.channel.id}
+                      disabled={move.isPending}
+                      onSelect={setLocationId}
+                      value={row.channel.id}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        <MatchedLabel
+                          label={row.channel.label}
+                          matches={row.matches}
+                        />
+                      </span>
+                      {row.channel.id === selected ? (
+                        <Check aria-hidden="true" />
+                      ) : null}
+                    </CommandItem>
+                  ))}
+                </CommandList>
+                {rows.length > ROW_LIMIT ? (
+                  <p className="m-0 border-t border-dashboard-border-subtle px-4 py-2 font-sans text-xs text-dashboard-text-muted">
+                    Type to find more channels.
+                  </p>
+                ) : null}
+              </Command>
               <FieldDescription>
                 Junior starts a thread there with this conversation. You can
                 move a conversation once.
@@ -167,4 +215,25 @@ export function ContinueInSlackDialog(props: {
       </DialogContent>
     </Dialog>
   );
+}
+
+// Large workspaces know thousands of channels; render the best matches.
+const ROW_LIMIT = 50;
+
+type ChannelRow<T> = { channel: T; matches?: number[] };
+
+/** Rank channels by quick-open match, like the conversation switcher. */
+function channelRows<T extends { label: string }>(
+  channels: T[],
+  query: string,
+): ChannelRow<T>[] {
+  if (!query) return channels.map((channel) => ({ channel }));
+  return channels
+    .flatMap((channel) => {
+      const match = quickOpenMatch(channel.label, query);
+      return match
+        ? [{ channel, matches: match.indices, score: match.score }]
+        : [];
+    })
+    .sort((left, right) => right.score - left.score);
 }

@@ -150,6 +150,7 @@ describe("user approval for child agents", () => {
           toolName === "spawnAgent"
             ? createSpawnAgentTool(
                 bindSpawnAgent(parent, { conversationStore, queue, state })!,
+                { owner: "none" },
               )
             : createMessageAgentTool(
                 bindMessageAgent(parent, { queue, state })!,

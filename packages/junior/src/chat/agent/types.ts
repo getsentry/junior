@@ -25,6 +25,7 @@ import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-rep
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
+import type { ChildAgentKind } from "@/chat/agent-invocations/types";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -75,6 +76,8 @@ export type AgentSteeringMessage = {
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   agentType?: AgentType;
+  /** Omitted means a Task. */
+  kind?: ChildAgentKind;
   name?: string;
   reasoningLevel?: TurnReasoningLevel;
   task: string;

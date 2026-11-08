@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import * as z from "zod";
 import { logWarn } from "@/chat/logging";
-import type { completeObject } from "@/chat/pi/client";
+import type { completeObject } from "@/chat/core-model";
 import {
   GUARDIAN_ACTION_POLICY,
   GUARDIAN_BLOCK_RULES,
@@ -179,7 +179,9 @@ export function createGuardianActionReviewer(options: {
           prompt: guardianPrompt(proposal),
           maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
           temperature: 0,
-          promptName: "junior.guardian_action_review",
+          operation: "guardian_action_review",
+          // `guardian_action_reviewed` stores the cost.
+          cost: { owner: "caller" },
           signal,
           metadata: {
             conversationId: proposal.context.conversationId,

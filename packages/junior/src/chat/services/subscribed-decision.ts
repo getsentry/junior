@@ -428,7 +428,8 @@ export async function decideSubscribedThreadReply(args: {
     state: string;
     questions: SubscribedReplyRouterQuestions;
     metadata: Record<string, string>;
-    promptName: string;
+    operation: "passive_reply_route";
+    cost: { owner: "caller" };
   }) => Promise<{
     answers: {
       route: { choice: string; probabilities?: Record<string, number> };
@@ -517,7 +518,9 @@ export async function decideSubscribedThreadReply(args: {
         actorId: args.input.context.actorId ?? "",
         runId: args.input.context.runId ?? "",
       },
-      promptName: "junior.passive_reply_route",
+      operation: "passive_reply_route",
+      // `passive_reply_routed` stores the cost.
+      cost: { owner: "caller" },
     });
     return {
       ...(result.costUsd !== undefined

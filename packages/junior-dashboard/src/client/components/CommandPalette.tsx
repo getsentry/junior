@@ -10,6 +10,7 @@ import { useNavigate } from "react-router";
 import { useConversationsData } from "../api";
 import { formatCompactAge } from "../conversations/conversationAge";
 import {
+  FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
   conversationPath,
 } from "../conversations/conversationRoutes";
@@ -19,6 +20,7 @@ import { isPlatformShortcut, platformShortcut } from "../keyboard";
 import type { Conversation } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
+import { MatchedLabel } from "./MatchedLabel";
 import { quickOpenMatch } from "./quickOpenMatch";
 import {
   Command,
@@ -48,6 +50,8 @@ type PaletteItem = {
   matches?: number[];
   meta?: string;
   score: number;
+  /** Navigation state for the destination page. */
+  state?: typeof FOCUS_REPLY_STATE;
   to: string;
 };
 
@@ -164,7 +168,7 @@ function CommandPaletteBody(props: {
                 <CommandItem
                   key={item.id}
                   onSelect={() => {
-                    navigate(item.to);
+                    navigate(item.to, { state: item.state });
                     props.onClose();
                   }}
                   value={item.id}
@@ -185,29 +189,6 @@ function CommandPaletteBody(props: {
         ))}
       </CommandList>
     </Command>
-  );
-}
-
-/** Show `label` with the matched characters emphasized. */
-function MatchedLabel(props: { label: string; matches?: number[] }) {
-  const { label, matches } = props;
-  if (!matches?.length) return <>{label}</>;
-  const matched = new Set(matches);
-  const runs: { chars: string; matched: boolean }[] = [];
-  for (let index = 0; index < label.length; index += 1) {
-    const isMatched = matched.has(index);
-    const last = runs.at(-1);
-    if (last?.matched === isMatched) last.chars += label[index];
-    else runs.push({ chars: label[index]!, matched: isMatched });
-  }
-  return runs.map((run, index) =>
-    run.matched ? (
-      <span className="font-semibold text-dashboard-accent-text" key={index}>
-        {run.chars}
-      </span>
-    ) : (
-      run.chars
-    ),
   );
 }
 
@@ -310,6 +291,8 @@ function conversationItem(
       ? "Archived"
       : formatCompactAge(conversation.lastSeenAt),
     score: match?.score ?? 0,
+    // The reader switched there to talk, so the reply box takes focus.
+    state: FOCUS_REPLY_STATE,
     to: conversationPath(conversation.id),
   };
 }

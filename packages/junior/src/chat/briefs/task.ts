@@ -10,7 +10,7 @@ import { botConfig } from "@/chat/config";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { getSqlExecutor } from "@/chat/db";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject } from "@/chat/core-model";
 import { briefUpdatedEvent, briefUpdatedEventV1 } from "./events";
 import { generateBrief } from "./generate";
 import { briefInputFromSql } from "./input";
@@ -162,7 +162,9 @@ export async function updateConversationBrief(
           completeObject({
             ...request,
             modelId,
-            promptName: "junior.brief_update",
+            operation: "brief_update",
+            // `brief_updated` stores the cost.
+            cost: { owner: "caller" },
           }),
         input,
         previous: previous?.content,

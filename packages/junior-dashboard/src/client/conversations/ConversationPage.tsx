@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
@@ -38,6 +38,7 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  requestsReplyFocus,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
@@ -393,6 +394,14 @@ export function ConversationPage(props: {
     view === "rich" &&
     detail.data?.isParticipant &&
     detail.data.kind !== "task";
+  // A navigation can ask for the reply box. Ask the footer once for it, so
+  // coming back from the event log does not focus it again.
+  const location = useLocation();
+  const [replyFocusDoneKey, setReplyFocusDoneKey] = useState<string>();
+  const replyFocusRequest =
+    requestsReplyFocus(location.state) && location.key !== replyFocusDoneKey
+      ? location.key
+      : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
@@ -850,8 +859,10 @@ export function ConversationPage(props: {
                 <ConversationPageDock
                   conversationId={conversationId}
                   detail={detail}
+                  focusRequest={replyFocusRequest}
                   hasNewerPage={Boolean(history.newer)}
                   live={live}
+                  onFocusRequestDone={setReplyFocusDoneKey}
                   onPinRequest={requestPin}
                   ref={replyRef}
                 />

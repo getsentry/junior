@@ -156,6 +156,7 @@ describe("stopping child agents", () => {
         {
           conversation_id: running.childConversationId,
           error: "Stopped by the parent conversation",
+          kind: "task",
           name: "researcher",
           relation: "child",
           status: "stopped",
