@@ -57,6 +57,7 @@ import {
   renameConversationBodySchema,
   renameConversationResponseSchema,
 } from "../schema/conversation-title";
+import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import { stopConversationTurnResponseSchema } from "../schema/conversation-stop";
 import {
@@ -90,6 +91,7 @@ import { readConversationDetailEtag } from "./detail-etag";
 import { forkConversationForViewer, keepQuickQuestionForViewer } from "./fork";
 import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
+import { readConversationOutline } from "./outline";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { steerConversationPendingMessagesForViewer } from "./steer-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
@@ -483,6 +485,25 @@ export function createConversationRoutes(
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
+    },
+  );
+
+  app.get(
+    "/:conversationId/outline",
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const { conversationId } = context.req.valid("param");
+      const viewer = context.get("viewer");
+      const outline = await readConversationOutline(
+        conversationId,
+        viewer ? { viewer } : undefined,
+      );
+      if (!outline) throwApiError(404, "Conversation not found.");
+      return jsonResponse(conversationOutlineSchema, outline);
     },
   );
 
