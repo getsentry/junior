@@ -313,7 +313,8 @@ A compaction replaces the history when its estimate is above the threshold.
   summary compaction ran.
 - `app.turn.compaction_swap_wait_ms` on `chat.turn` is the time that the Turn
   waited on prepared-summary swaps, also when the swap was `not_ready` or
-  `discarded`. It is absent when no swap span ran.
+  `discarded`. It includes the wait for a running summary at the input
+  limit. It is absent when no swap span ran.
 - After each replacement, the next model request logs
   `context_compaction.next_request.completed` with
   `app.compaction.next_input.size` (provider-reported input, cache included),
@@ -355,18 +356,26 @@ point: `blocking` at Turn start, `active` between model calls. The span exists
 only when the history is above the threshold and the current History version
 has a background compaction request or result.
 
-| Attribute                         | Type   | Meaning                                         |
-| --------------------------------- | ------ | ----------------------------------------------- |
-| `app.compaction.outcome`          | string | `applied`, `not_ready`, or `discarded`          |
-| `app.compaction.discard_reason`   | string | why a ready summary was not used                |
-| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap      |
-| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary |
-| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages        |
-| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer       |
-| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                |
+A request younger than 45 seconds is a running summary. Below the input
+limit, the swap is `deferred` and no blocking summary runs. At the input
+limit, the swap polls until the summary has a result or the 45 seconds end.
 
-- `not_ready`: the job has not written a ready summary, or it failed. A
-  blocking compaction can still follow at the threshold.
+| Attribute                         | Type   | Meaning                                          |
+| --------------------------------- | ------ | ------------------------------------------------ |
+| `app.compaction.outcome`          | string | `applied`, `deferred`, `not_ready`, `discarded`  |
+| `app.compaction.discard_reason`   | string | why a ready summary was not used                 |
+| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap       |
+| `app.compaction.request.age_ms`   | int    | time from the pending request to the swap        |
+| `app.compaction.wait.timed_out`   | bool   | the wait at the input limit ended with no result |
+| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary  |
+| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages         |
+| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer        |
+| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                 |
+
+- `deferred`: a running summary exists, and the next model call fits below
+  the input limit. A later check swaps the summary in.
+- `not_ready`: the request is older than 45 seconds, the job failed, or the
+  wait ended. A blocking compaction can still follow at the threshold.
 - `app.compaction.discard_reason`: `history_version_changed`,
   `over_target`, `conflict` (another replacement committed first), or
   `split_tool_call` (the mark falls between a tool call and its result).

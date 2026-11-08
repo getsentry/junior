@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   commitMessages,
@@ -12,6 +13,8 @@ import { closeConversationFixture } from "../fixtures/conversation";
 const MODEL_ID = "openai/gpt-5.4";
 // Above the compaction threshold of the default 400k token window.
 const OVERSIZED_TEXT = "x".repeat(1_600_000);
+// Above the 360k threshold, below the 380k input limit.
+const NEAR_LIMIT_TEXT = "x".repeat(1_480_000);
 const LONG_LOG = Array.from(
   { length: 400 },
   (_, index) => `step ${index} checksum ${(index * 7_919).toString(16)}`,
@@ -93,11 +96,38 @@ async function prepareSummary(
   return committed;
 }
 
+/** Commit history and a background summary request that is still running. */
+async function requestSummary(
+  conversationId: string,
+  messages: PiMessage[],
+  requestedAtMs = Date.now(),
+) {
+  const committed = await commitMessages({ conversationId, messages });
+  await getConversationEventStore().append(conversationId, [
+    {
+      createdAtMs: requestedAtMs,
+      data: {
+        type: "compaction_requested",
+        markSeq: committed.committedSeq,
+        historyVersion: committed.historyVersion,
+        modelId: MODEL_ID,
+      },
+    },
+  ]);
+  return committed;
+}
+
 const firstTurn = [
   user("<current-instruction>Find build 7421.</current-instruction>", 1),
   toolCall("call-1", 2),
   toolResult("call-1", OVERSIZED_TEXT, 3),
   assistant("Found build 7421.", 4),
+];
+const nearLimitTurn = [
+  firstTurn[0]!,
+  firstTurn[1]!,
+  toolResult("call-1", NEAR_LIMIT_TEXT, 3),
+  firstTurn[3]!,
 ];
 
 describe("background compaction swap", () => {
@@ -287,6 +317,126 @@ describe("background compaction swap", () => {
     expect(
       (await loadConversationProjection({ conversationId })).messages,
     ).toEqual([...earlier, ...afterMark]);
+  });
+
+  it("defers to a running summary below the input limit, at Turn start and between model calls", async () => {
+    const conversationId = "local:web:swap-defer";
+    const committed = await requestSummary(conversationId, nearLimitTurn);
+    const prompt = user(
+      "<current-instruction>What was the checksum?</current-instruction>",
+      5,
+    );
+    const summarize = vi.fn(async () => "Unused.");
+    const args = {
+      conversationId,
+      modelId: MODEL_ID,
+      piMessages: nearLimitTurn,
+    };
+
+    const turnStart = await compactWithPreparedSummary(
+      {
+        ...args,
+        mode: "blocking",
+        pendingMessages: [
+          { message: prompt, provenance: { authority: "instruction" } },
+        ],
+      },
+      summarize,
+    );
+    const between = await compactWithPreparedSummary(
+      { ...args, mode: "active" },
+      summarize,
+    );
+
+    // The next model call still fits, so the Turn goes on with the full
+    // history until the summary is ready.
+    expect(turnStart).toEqual({ compacted: false, reason: "deferred" });
+    expect(between).toEqual({ compacted: false, reason: "deferred" });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(
+      await getConversationEventStore().loadCurrentHistoryVersion(
+        conversationId,
+      ),
+    ).toBe(committed.historyVersion);
+  });
+
+  it("waits at the input limit for a running summary and swaps it in", async () => {
+    const conversationId = "local:web:swap-wait";
+    const committed = await requestSummary(conversationId, firstTurn);
+    const ready = sleep(200).then(() =>
+      getConversationEventStore().append(conversationId, [
+        {
+          createdAtMs: Date.now(),
+          data: {
+            type: "compaction_prepared",
+            markSeq: committed.committedSeq,
+            historyVersion: committed.historyVersion,
+            modelId: MODEL_ID,
+            outcome: "ready",
+            summary: "The person asked for the deploy checksum of build 7421.",
+          },
+        },
+      ]),
+    );
+    const summarize = vi.fn(async () => "Unused.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: firstTurn,
+      },
+      summarize,
+    );
+    await ready;
+
+    expect(summarize).not.toHaveBeenCalled();
+    expect(result.compacted).toBe(true);
+    expect(result.piMessages!.map(textOf).join("\n")).toContain(
+      "deploy checksum of build 7421",
+    );
+  });
+
+  it("runs the blocking summary when the wait for a running summary ends", async () => {
+    const conversationId = "local:web:swap-wait-timeout";
+    // The wait counts from the request, so less than a second is left.
+    await requestSummary(conversationId, firstTurn, Date.now() - 44_500);
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "active",
+        modelId: MODEL_ID,
+        piMessages: firstTurn,
+      },
+      summarize,
+    );
+
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.piMessages!.map(textOf).join("\n")).toContain(
+      "Fresh summary.",
+    );
+  });
+
+  it("runs the blocking summary at once for a stale request below the input limit", async () => {
+    const conversationId = "local:web:swap-stale-request";
+    await requestSummary(conversationId, nearLimitTurn, Date.now() - 46_000);
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        piMessages: nearLimitTurn,
+      },
+      summarize,
+    );
+
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.compacted).toBe(true);
   });
 
   it("discards a summary of an older History version and runs the blocking compaction", async () => {

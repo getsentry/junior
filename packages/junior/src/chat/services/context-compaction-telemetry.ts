@@ -20,8 +20,9 @@ import { logInfo, withSpan, type SetSpanAttributes } from "@/chat/logging";
 export type CompactionMode = "blocking" | "active" | "background";
 
 /**
- * `summary` may call the model. `swap` only checks for a prepared summary and
- * swaps it in, so its wait is apart from summary calls.
+ * `summary` may call the model. `swap` only checks for a prepared summary,
+ * waits for a running one, and swaps it in, so its wait is apart from summary
+ * calls.
  */
 type CompactionWork = "summary" | "swap";
 
