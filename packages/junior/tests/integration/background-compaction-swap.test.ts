@@ -567,6 +567,43 @@ describe("background compaction swap", () => {
     ).toEqual(turn);
   });
 
+  it("skips a summary at Turn start when the system prompt and tools alone are at the input limit", async () => {
+    const conversationId = "local:web:compaction-kept-at-input-limit";
+    const context = [
+      user("<runtime-turn-context>Slack</runtime-turn-context>", 1),
+    ];
+    await commitMessages({ conversationId, messages: context });
+    const summarize = vi.fn(async () => "Fresh summary.");
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        pendingMessages: [
+          {
+            message: user(
+              "<current-instruction>What is the capital of France?</current-instruction>",
+              2,
+            ),
+            provenance: { authority: "instruction" },
+          },
+        ],
+        piMessages: context,
+        // Above the 380k input limit of the default 400k token window.
+        requestOverheadTokens: 381_000,
+      },
+      summarize,
+    );
+
+    // The model request still runs. The provider decides if it fits.
+    expect(result).toEqual({ compacted: false, reason: "over_input_limit" });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual(context);
+  });
+
   it("compacts again only at the input limit when the last compaction stayed above the threshold", async () => {
     const conversationId = "local:web:compaction-last-over-threshold";
     const summaryAt = Date.now();

@@ -69,6 +69,7 @@ export interface CompactContextResult {
     | "deferred"
     | "history_conflict"
     | "missing_context"
+    | "over_input_limit"
     | "over_target"
     | "summary_failed";
 }
@@ -685,14 +686,19 @@ async function compactActiveAboveThreshold(
   const retainUserMessages =
     args.mode === "blocking" && pendingMessages.length > 0;
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
-  const skip = (reason: "last_over_threshold" | "over_target") => {
+  const skip = (
+    reason: "last_over_threshold" | "over_input_limit" | "over_target",
+  ) => {
     setSpanAttributes({
       "app.compaction.outcome": "skipped",
       "app.compaction.skip_reason": reason,
       "app.compaction.input.estimate": source.estimatedTokens,
       "app.compaction.threshold": triggerTokens,
     });
-    return { compacted: false, reason: "over_target" } as const;
+    return {
+      compacted: false,
+      reason: reason === "over_input_limit" ? reason : "over_target",
+    } as const;
   };
   // A summary replaces only agent history. When the kept context alone stays
   // over the threshold, another summary cannot get under it, and the next
@@ -751,6 +757,11 @@ async function compactActiveAboveThreshold(
     keptTokens > calculateContextCompactionTargetTokens(triggerTokens)
   ) {
     return skip("over_target");
+  }
+  // When the kept context alone is at the input limit, no summary can fit.
+  // The model request still runs: the provider decides if it fits.
+  if (keptTokens >= inputLimitTokens) {
+    return skip("over_input_limit");
   }
 
   await args.onCompactionStart?.();
