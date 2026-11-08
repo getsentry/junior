@@ -20,6 +20,17 @@ it("needs every space-separated term", () => {
   );
 });
 
+it("treats a camelCase capital as a word start", () => {
+  const score = (label: string, query: string) =>
+    quickOpenMatch(label, query)!.score;
+  expect(score("Investigate isolationScope leak", "scope")).toBeGreaterThan(
+    score("Investigate telescope leak", "scope"),
+  );
+  expect(quickOpenMatch("Fix getCurrentHub usage", "curnet")?.indices).toEqual([
+    7, 8, 9, 10, 11, 12,
+  ]);
+});
+
 it("ranks a word-start run over a mid-word run over a scatter", () => {
   const score = (label: string) => quickOpenMatch(label, "deploy")!.score;
   expect(score("Deploy notes")).toBeGreaterThan(score("Redeploy notes"));
