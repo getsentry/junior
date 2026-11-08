@@ -15,8 +15,8 @@ import {
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  calculateContextCompactionTargetTokens,
   estimateTextTokens,
+  exceedsCompactionTarget,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
@@ -745,10 +745,7 @@ async function compactActiveAboveThreshold(
     ),
     args.requestOverheadTokens,
   );
-  if (
-    belowInputLimit &&
-    keptTokens > calculateContextCompactionTargetTokens(triggerTokens)
-  ) {
+  if (belowInputLimit && exceedsCompactionTarget(keptTokens, triggerTokens)) {
     return skip("over_target");
   }
 

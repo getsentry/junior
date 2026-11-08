@@ -308,9 +308,11 @@ describe("background compaction swap", () => {
 
   it("skips a summary when the kept context alone stays above the target", async () => {
     const conversationId = "local:web:compaction-kept-over-target";
-    // Turn context that every replacement keeps, above the 288k target.
+    // Turn context that every replacement keeps: 200k tokens at 4 characters
+    // per token, but 320k at the 2.5 that thread context measures, above the
+    // 288k target.
     const turn = [
-      user(`<thread-context>${"t".repeat(1_200_000)}</thread-context>`, 1),
+      user(`<thread-context>${"t".repeat(800_000)}</thread-context>`, 1),
       user("<current-instruction>Check the deploy.</current-instruction>", 1),
       {
         ...toolCall("call-1", 2),

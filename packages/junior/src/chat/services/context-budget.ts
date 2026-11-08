@@ -9,6 +9,8 @@ const COMPACTION_TARGET_RATIO = 0.8;
 // is ready before blocking compaction would run.
 const BACKGROUND_COMPACTION_MARK_RATIO = 0.7;
 const FALLBACK_CONTEXT_WINDOW_TOKENS = 400_000;
+const ESTIMATE_CHARS_PER_TOKEN = 4;
+const TARGET_CHARS_PER_TOKEN = 2.5;
 
 export interface ModelContextBudget {
   contextWindow: number;
@@ -20,7 +22,7 @@ function positiveInteger(value: number, fallback: number): number {
 
 /** Estimate text tokens with the shared coarse heuristic used for local budgets. */
 export function estimateTextTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  return Math.ceil(text.length / ESTIMATE_CHARS_PER_TOKEN);
 }
 
 /** Estimate the tokens that the system prompt and tool definitions add to a model request. */
@@ -63,6 +65,22 @@ export function calculateContextCompactionTargetTokens(
   triggerTokens: number,
 ): number {
   return Math.max(1, Math.floor(triggerTokens * COMPACTION_TARGET_RATIO));
+}
+
+/**
+ * Check a replacement estimate against the compaction target. Estimates count
+ * 4 characters per token, but provider usage on Slack thread context measured
+ * about 2.6. This check counts 2.5, so a replacement that it accepts is under
+ * the target in practice.
+ */
+export function exceedsCompactionTarget(
+  estimatedTokens: number,
+  triggerTokens: number,
+): boolean {
+  return (
+    (estimatedTokens * ESTIMATE_CHARS_PER_TOKEN) / TARGET_CHARS_PER_TOKEN >
+    calculateContextCompactionTargetTokens(triggerTokens)
+  );
 }
 
 /** Cap one model's advertised context capacity with the host bot configuration. */

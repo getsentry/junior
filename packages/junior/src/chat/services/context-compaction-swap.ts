@@ -23,7 +23,7 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
-  calculateContextCompactionTargetTokens,
+  exceedsCompactionTarget,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
@@ -235,9 +235,6 @@ async function applyPreparedSummary(
     messages,
     args.requestOverheadTokens,
   );
-  const targetTokens = calculateContextCompactionTargetTokens(
-    budget.triggerTokens,
-  );
   setSpanAttributes({
     "app.compaction.input.estimate": budget.estimatedTokens,
     "app.compaction.replacement.estimate": replacementTokens,
@@ -249,7 +246,7 @@ async function applyPreparedSummary(
     "app.compaction.trimmed_results": trimming.trimmedResults,
     "app.compaction.trimmed_chars": trimming.removedChars,
   });
-  if (replacementTokens > targetTokens) {
+  if (exceedsCompactionTarget(replacementTokens, budget.triggerTokens)) {
     return discard("over_target");
   }
 
