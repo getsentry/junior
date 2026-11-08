@@ -131,7 +131,7 @@ describe("cache warming gap segments", () => {
     await state.delete("junior:cache_warming:gaps:user:1");
   });
 
-  it("warms only short-retention requests of 5 minute caches whose write costs more than a read", async () => {
+  it("warms only short-retention requests of fixed-TTL caches whose write costs more than a read", async () => {
     const warmupsAfterTurn = async (
       modelId: string,
       cacheRetention?: "short" | "long",
@@ -148,31 +148,39 @@ describe("cache warming gap segments", () => {
         cacheRetention ? { cacheRetention } : {},
       );
       await recorder.record({ ...finalReply, model: modelId });
+      const warmup = mocks.sendCacheWarmup.mock.calls[0]?.[0] as
+        | Extract<CacheWarmupMessage, { kind: "warmup" }>
+        | undefined;
       return {
         sentRetention: base.mock.calls[0]?.[2]?.cacheRetention,
         warmups: mocks.sendCacheWarmup.mock.calls.length,
+        ttlMinutes: warmup
+          ? Math.round((warmup.cacheExpiresAtMs - Date.now()) / 60_000)
+          : undefined,
       };
     };
 
+    // The warmup and the horizon message.
     expect(await warmupsAfterTurn("anthropic/claude-opus-5.5")).toEqual({
       sentRetention: "short",
       warmups: 2,
+      ttlMinutes: 5,
     });
-    // Alibaba's explicit cache also lasts 5 minutes.
     expect(await warmupsAfterTurn("alibaba/qwen3.7-plus")).toMatchObject({
       warmups: 2,
+      ttlMinutes: 5,
     });
-    // Cache writes cost more than reads on this OpenAI model too, but its
-    // cache does not have the 5 minute TTL.
+    // OpenAI's cache lasts 30 minutes, so its warmup is due later.
     expect(await warmupsAfterTurn("openai/gpt-5.6-sol")).toMatchObject({
-      warmups: 0,
+      warmups: 2,
+      ttlMinutes: 30,
     });
     // The cache write has no price of its own, so the model skips it.
     expect(await warmupsAfterTurn("openai/gpt-5.5")).toMatchObject({
       warmups: 0,
     });
-    expect(await warmupsAfterTurn("anthropic/claude-opus-5.5", "long")).toEqual(
-      { sentRetention: "long", warmups: 0 },
-    );
+    expect(
+      await warmupsAfterTurn("anthropic/claude-opus-5.5", "long"),
+    ).toMatchObject({ sentRetention: "long", warmups: 0 });
   });
 });

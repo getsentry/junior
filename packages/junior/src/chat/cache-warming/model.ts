@@ -43,15 +43,10 @@ const BLEND_PSEUDOCOUNT = 20;
 export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
 
 /**
- * Short cache TTL of the providers that Junior warms (`SHORT_TTL_PROVIDERS` in
- * `warmup.ts`). Junior uses the default short retention.
- */
-export const SHORT_CACHE_TTL_MS = 5 * MINUTE_MS;
-
-/**
  * Junior watches an idle period for this long. A person who replies later
- * counts as a person who did not reply. Warmups stop before this time, so the
- * model only needs reply chances inside it.
+ * counts as a person who did not reply. The reply chance of a warmup counts
+ * only replies before this time. For a cache that outlives the horizon, this
+ * is less than the real chance, so Junior warms less, never more.
  *
  * The horizon message is signed when the idle period starts, and a queue
  * signature is valid for 60 minutes (`QUEUE_SIGNATURE_MAX_AGE_MS`). The other
@@ -181,6 +176,8 @@ export interface WarmupDecisionInput {
   globalGapsMs: readonly number[];
   /** Time since the cached request started. */
   idleMs: number;
+  /** How long the cache lives after a read (`cacheTtlMs` in `warmup.ts`). */
+  cacheTtlMs: number;
   prefixTokens: number;
   cacheReadPrice: number;
   cacheWritePrice: number;
@@ -219,7 +216,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const probability = returnProbability(
     histogram,
     input.idleMs,
-    SHORT_CACHE_TTL_MS,
+    Math.min(input.cacheTtlMs, IDLE_HORIZON_MS - input.idleMs),
   );
   const decision = (reason: WarmupDecision["reason"]): WarmupDecision => ({
     warm: reason === "warm",
@@ -233,7 +230,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   if (threshold >= 1) {
     return decision("no_savings");
   }
-  if (input.idleMs + SHORT_CACHE_TTL_MS > IDLE_HORIZON_MS) {
+  if (input.idleMs >= IDLE_HORIZON_MS) {
     return decision("horizon");
   }
   return decision(probability >= threshold ? "warm" : "unlikely_return");

@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { decideWarmup, NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 
 const MINUTE = 60_000;
-// Anthropic Opus prices in $/MTok.
-const prices = { cacheReadPrice: 0.2, cacheWritePrice: 5 };
+// Anthropic Opus prices in $/MTok and its 5-minute cache.
+const prices = {
+  cacheReadPrice: 0.2,
+  cacheWritePrice: 5,
+  cacheTtlMs: 5 * MINUTE,
+};
 
 function gaps(count: number, gapMs: number): number[] {
   return Array.from({ length: count }, () => gapMs);
@@ -74,10 +78,37 @@ describe("decideWarmup", () => {
     expect(
       decideWarmup({
         ...input,
-        globalGapsMs: gaps(100, 52 * MINUTE),
-        idleMs: 51 * MINUTE,
+        globalGapsMs: gaps(100, 56 * MINUTE),
+        idleMs: 55 * MINUTE,
       }),
     ).toMatchObject({ warm: false, reason: "horizon" });
+  });
+
+  it("uses the cache TTL of the model", () => {
+    const input = {
+      ...prices,
+      conversationGapsMs: [],
+      prefixTokens: 200_000,
+      // 30 of 100 idle periods get a reply after 40 minutes.
+      globalGapsMs: [...gaps(30, 40 * MINUTE), ...gaps(70, NO_REPLY_GAP_MS)],
+    };
+
+    // A 5-minute cache at 4 minutes: no reply comes in the next 5 minutes.
+    expect(decideWarmup({ ...input, idleMs: 4 * MINUTE })).toMatchObject({
+      warm: false,
+      reason: "unlikely_return",
+    });
+    // A 30-minute cache at 28 minutes: the replies at 40 minutes come before
+    // it expires.
+    const long = { ...input, cacheTtlMs: 30 * MINUTE };
+    expect(decideWarmup({ ...long, idleMs: 28 * MINUTE })).toMatchObject({
+      warm: true,
+    });
+    // Near the horizon, only replies before the horizon count.
+    expect(decideWarmup({ ...long, idleMs: 50 * MINUTE })).toMatchObject({
+      warm: false,
+      reason: "unlikely_return",
+    });
   });
 
   it("uses one threshold for each warmup and stops when returns get rare", () => {

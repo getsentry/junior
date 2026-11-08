@@ -42,7 +42,6 @@ import {
   MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
-  SHORT_CACHE_TTL_MS,
   warmupMarginMs,
 } from "./model";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
@@ -59,22 +58,23 @@ const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
-// A miss ends only its own idle period. When many recent warmups of all
-// models miss, the warmup request is likely broken, so warming stops for
-// every Conversation for a day.
+// A miss ends only its own idle period. When many recent warmups of one
+// provider miss, its warmup request or cache is likely broken, so warming of
+// that provider stops for every Conversation for a day.
 const BREAKER_OUTCOMES_MAX = 20;
 const BREAKER_MAX_MISSES = 10;
 const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * MINUTE_MS;
 const BREAKER_OPEN_TTL_MS = 24 * 60 * MINUTE_MS;
 // While warming is on, the recorder sets this retention on agent requests, so
 // Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
-// timing use the short TTL.
+// timing use the TTL of this retention (`CACHE_TTL_MS`).
 const CACHE_RETENTION: CacheRetention = "short";
 
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
   modelId: string;
   prefixTokens: number;
+  cacheTtlMs: number;
   reasoning?: ThinkingLevel;
 }
 
@@ -116,8 +116,13 @@ const warmupsKey = (conversationId: string, generation: string) =>
 /** Set by the first of the reply and the horizon to record the gap. */
 const gapClaimKey = (conversationId: string, generation: string) =>
   `${KEY_PREFIX}:gap_claim:${conversationId}:${generation}`;
-const breakerOutcomesKey = `${KEY_PREFIX}:breaker:outcomes`;
-const breakerOpenKey = `${KEY_PREFIX}:breaker:open`;
+// The breaker is per provider, so a provider whose cache behaves differently
+// than its TTL says cannot stop warming for the others.
+const breakerOutcomesKey = (provider: string) =>
+  `${KEY_PREFIX}:breaker:${provider}:outcomes`;
+const breakerOpenKey = (provider: string) =>
+  `${KEY_PREFIX}:breaker:${provider}:open`;
+const providerOf = (modelId: string) => modelId.split("/")[0] ?? "";
 
 async function connectedState() {
   const state = getStateAdapter();
@@ -127,23 +132,38 @@ async function connectedState() {
 
 type ConnectedState = Awaited<ReturnType<typeof connectedState>>;
 
-// Providers whose explicit cache lasts SHORT_CACHE_TTL_MS and is refreshed by
-// a read. The warmup timing and the reply chance use that TTL. Other caches
-// last longer or have no fixed TTL, so warmups would be extra cost, and their
-// misses would open the breaker for every model.
+// How long the cache of each provider lives after a write or a read. The
+// warmup timing and the reply chance use it. Warming needs a fixed TTL that a
+// read refreshes. Providers without one are not listed and are not warmed.
 //
 // The TTLs come from models.dev (`cache.explicit.ttl` in
 // providers/<provider>/models/*.toml; its api.json does not publish them).
-// Every Anthropic model lists ["5m", "1h"] and every Alibaba Qwen model with
-// an explicit cache lists ["5m"]. Check them again when a provider is added:
+// Check them again when a provider or model family is added:
 // - https://github.com/anomalyco/models.dev/tree/dev/providers/anthropic/models
+//   Every model lists ["5m", "1h"]. Junior uses the short retention.
 // - https://github.com/anomalyco/models.dev/tree/dev/providers/alibaba/models
+//   Every Qwen model with an explicit cache lists ["5m"].
+// - https://github.com/anomalyco/models.dev/tree/dev/providers/openai/models
+//   GPT-5.6 and later list ["30m"]. Earlier models list ["24h"] or nothing,
+//   and Pi gives them no cache write price, so the price check skips them.
 // The provider docs say that a cache hit resets the TTL:
 // - https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
 // - https://www.alibabacloud.com/help/en/model-studio/context-cache
-// Not listed: OpenAI (AI Gateway caches it implicitly, at least 30 minutes),
-// MiniMax (no TTL on models.dev).
-const SHORT_TTL_PROVIDERS = new Set(["anthropic", "alibaba"]);
+// - https://platform.openai.com/docs/guides/prompt-caching ("A 30-minute
+//   read refreshes coverage to at least 30 minutes after that read.")
+// Not listed: MiniMax (no TTL on models.dev).
+const CACHE_TTL_MS: Record<string, number> = {
+  anthropic: 5 * MINUTE_MS,
+  alibaba: 5 * MINUTE_MS,
+  openai: 30 * MINUTE_MS,
+};
+
+// Return the cache TTL of a model that Junior can warm.
+function cacheTtlMs(request: ModelRequest): number | undefined {
+  return supportsWarming(request)
+    ? CACHE_TTL_MS[providerOf(request.model.id)]
+    : undefined;
+}
 
 // Warming pays only when a cache write costs more than a read. Pi adds a
 // thinking budget to the one-token output limit on the Anthropic Messages API
@@ -157,7 +177,7 @@ function supportsWarming(request: ModelRequest): boolean {
     (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking !==
       true;
   return (
-    SHORT_TTL_PROVIDERS.has(model.id.split("/")[0] ?? "") &&
+    CACHE_TTL_MS[providerOf(model.id)] !== undefined &&
     model.cost.cacheRead > 0 &&
     model.cost.cacheWrite > model.cost.cacheRead &&
     !budgetThinking &&
@@ -176,12 +196,12 @@ async function scheduleWarmup(
     "cacheExpiresAtMs"
   >,
   requestStartedAtMs: number,
-  prefixTokens: number,
+  warm: WarmState,
 ): Promise<void> {
-  const cacheExpiresAtMs = requestStartedAtMs + SHORT_CACHE_TTL_MS;
+  const cacheExpiresAtMs = requestStartedAtMs + warm.cacheTtlMs;
   await sendCacheWarmup(
     { ...message, cacheExpiresAtMs },
-    cacheExpiresAtMs - warmupMarginMs(prefixTokens) - Date.now(),
+    cacheExpiresAtMs - warmupMarginMs(warm.prefixTokens) - Date.now(),
   );
 }
 
@@ -246,7 +266,8 @@ async function startIdlePeriod(
     sinceMs: request.startedAtMs,
   };
   const prefixTokens = message.usage.cacheRead + message.usage.cacheWrite;
-  if (!supportsWarming(request) || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
+  const ttlMs = cacheTtlMs(request);
+  if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
   // State values are JSON, so the compressed bytes are stored as base64.
@@ -270,6 +291,7 @@ async function startIdlePeriod(
     warm: {
       modelId: request.model.id,
       prefixTokens,
+      cacheTtlMs: ttlMs,
       ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
     },
   };
@@ -335,7 +357,7 @@ async function recordModelCall(
     await scheduleWarmup(
       { kind: "warmup", conversationId, cycle: 1, generation },
       request.startedAtMs,
-      next.idle.warm.prefixTokens,
+      next.idle.warm,
     );
     await sendCacheWarmup(
       { kind: "horizon", conversationId, generation },
@@ -425,20 +447,25 @@ async function countOutcome(
   modelId: string,
   miss: boolean,
 ): Promise<void> {
-  await state.appendToList(breakerOutcomesKey, miss ? 1 : 0, {
+  const provider = providerOf(modelId);
+  await state.appendToList(breakerOutcomesKey(provider), miss ? 1 : 0, {
     maxLength: BREAKER_OUTCOMES_MAX,
     ttlMs: BREAKER_OUTCOMES_TTL_MS,
   });
   if (!miss) return;
-  const outcomes = await state.getList<number>(breakerOutcomesKey);
+  const outcomes = await state.getList<number>(breakerOutcomesKey(provider));
   const misses = outcomes.filter((outcome) => outcome === 1).length;
   if (
     misses >= BREAKER_MAX_MISSES &&
-    (await state.setIfNotExists(breakerOpenKey, true, BREAKER_OPEN_TTL_MS))
+    (await state.setIfNotExists(
+      breakerOpenKey(provider),
+      true,
+      BREAKER_OPEN_TTL_MS,
+    ))
   ) {
     captureMessage("Cache warming stopped: too many warmups missed the cache", {
       level: "error",
-      fingerprint: ["cache_warming.breaker.opened"],
+      fingerprint: ["cache_warming.breaker.opened", provider],
       tags: { "gen_ai.request.model": modelId },
       extra: {
         "app.cache_warming.misses": misses,
@@ -500,7 +527,7 @@ export async function runCacheWarmup(
         await stop();
         return;
       }
-      if (await state.get<boolean>(breakerOpenKey)) {
+      if (await state.get<boolean>(breakerOpenKey(providerOf(warm.modelId)))) {
         logInfo("cache_warming.warmup.skipped", {
           ...attributes,
           "app.cache_warming.skip_reason": "breaker_open",
@@ -516,6 +543,7 @@ export async function runCacheWarmup(
         ),
         globalGapsMs: await state.getList<number>(segmentGapsKey(idle.segment)),
         idleMs: Date.now() - idle.sinceMs,
+        cacheTtlMs: warm.cacheTtlMs,
         prefixTokens: warm.prefixTokens,
         cacheReadPrice: model.cost.cacheRead,
         cacheWritePrice: model.cost.cacheWrite,
@@ -610,7 +638,7 @@ export async function runCacheWarmup(
             generation,
           },
           startedAtMs,
-          warm.prefixTokens,
+          warm,
         );
       }
     },
