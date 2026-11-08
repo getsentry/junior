@@ -24,12 +24,16 @@ function api(email?: string) {
   return app;
 }
 
-function postAudio(app: ReturnType<typeof api>, body: BodyInit, type: string) {
+function postAudio(app: ReturnType<typeof api>, body: unknown) {
   return app.request("http://localhost/api/transcriptions", {
-    body,
-    headers: { "content-type": type },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+    headers: { "content-type": "application/json" },
     method: "POST",
   });
+}
+
+function base64(bytes: Uint8Array) {
+  return Buffer.from(bytes).toString("base64");
 }
 
 function fakeGateway() {
@@ -56,11 +60,9 @@ describe("transcriptions API", () => {
     // EBML header, so the AI SDK detects WebM.
     const audio = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3]);
 
-    const response = await postAudio(
-      api("person@example.com"),
-      audio,
-      "audio/webm;codecs=opus",
-    );
+    const response = await postAudio(api("person@example.com"), {
+      audio: base64(audio),
+    });
 
     expect(response.status).toBe(200);
     expect(transcriptionSchema.parse(await response.json())).toEqual({
@@ -69,7 +71,7 @@ describe("transcriptions API", () => {
     expect(requests).toEqual([
       {
         body: expect.objectContaining({
-          audio: Buffer.from(audio).toString("base64"),
+          audio: base64(audio),
           mediaType: "audio/webm",
         }),
         modelId: "spacexai/grok-stt",
@@ -92,11 +94,9 @@ describe("transcriptions API", () => {
       ),
     );
 
-    const response = await postAudio(
-      api("person@example.com"),
-      new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1]),
-      "audio/webm",
-    );
+    const response = await postAudio(api("person@example.com"), {
+      audio: base64(new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1])),
+    });
 
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({
@@ -104,18 +104,19 @@ describe("transcriptions API", () => {
     });
   });
 
-  it("rejects anonymous, non-audio, and empty requests before the model", async () => {
+  it("rejects anonymous, malformed, empty, and oversized requests before the model", async () => {
     const requests = fakeGateway();
     const signedIn = api("person@example.com");
 
     const responses = await Promise.all([
-      postAudio(api(), new Uint8Array([1]), "audio/webm"),
-      postAudio(signedIn, "hello", "text/plain"),
-      postAudio(signedIn, new Uint8Array(), "audio/webm"),
+      postAudio(api(), { audio: "AAAA" }),
+      postAudio(signedIn, { audio: "not base64!" }),
+      postAudio(signedIn, { audio: "" }),
+      postAudio(signedIn, { audio: "A".repeat(4_500_000) }),
     ]);
 
     expect(responses.map((response) => response.status)).toEqual([
-      401, 415, 400,
+      401, 400, 400, 413,
     ]);
     expect(requests).toEqual([]);
   });

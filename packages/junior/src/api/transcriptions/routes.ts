@@ -9,9 +9,10 @@ import {
 import { jsonResponse, throwApiError } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
-  MAX_TRANSCRIPTION_AUDIO_BYTES,
+  transcriptionRequestSchema,
   transcriptionSchema,
 } from "../schema/transcription";
+import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 
 /** Create the route that turns one dashboard dictation recording into text. */
@@ -22,18 +23,18 @@ export function createTranscriptionRoutes(): Hono<JuniorApiEnv> {
     "/",
     requireViewer,
     bodyLimit({
-      maxSize: MAX_TRANSCRIPTION_AUDIO_BYTES,
+      maxSize: 4_450_000,
       onError: () => {
         throwApiError(413, "Recording is too long.");
       },
     }),
+    validateRequest(
+      "json",
+      transcriptionRequestSchema,
+      "Send the recording as base64 audio.",
+    ),
     async (context) => {
-      const contentType = context.req.header("content-type") ?? "";
-      if (!contentType.toLowerCase().startsWith("audio/")) {
-        throwApiError(415, "Send the recording as audio.");
-      }
-      const audio = new Uint8Array(await context.req.arrayBuffer());
-      if (!audio.byteLength) throwApiError(400, "Recording is empty.");
+      const audio = Buffer.from(context.req.valid("json").audio, "base64");
       try {
         const { text } = await transcribeAudio({
           audio,

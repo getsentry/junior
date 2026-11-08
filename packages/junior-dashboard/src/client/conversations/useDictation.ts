@@ -1,6 +1,6 @@
 import { transcriptionSchema } from "@sentry/junior/api/schema";
 import { useEffect, useRef, useState } from "react";
-import { DashboardApiError, postBlob } from "../http";
+import { DashboardApiError, post } from "../http";
 
 /** Longest dictation. Keeps the upload under the transcription body limit. */
 export const DICTATION_MAX_SECONDS = 120;
@@ -13,11 +13,14 @@ const RECORDING_TYPES = [
   "audio/ogg;codecs=opus",
 ];
 
+// Browsers default to about 128 kbps. Speech needs much less, and a fixed
+// rate keeps 2 minutes near 1 MB in every browser, under the upload limit.
+const RECORDING_BITS_PER_SECOND = 64_000;
+
 // Where one dictation is: asking for the mic, recording, or transcribing.
 type DictationState = "idle" | "starting" | "recording" | "transcribing";
 
 type DictationSession = {
-  abort: AbortController;
   cancelled: boolean;
   recorder?: MediaRecorder;
   stream?: MediaStream;
@@ -67,12 +70,9 @@ export function useDictation(callbacks: DictationCallbacks): Dictation {
   const transcribe = async (session: DictationSession, audio: Blob) => {
     setState("transcribing");
     try {
-      const { text } = await postBlob(
-        transcriptionSchema,
-        "/api/transcriptions",
-        audio,
-        session.abort.signal,
-      );
+      const { text } = await post(transcriptionSchema, "/api/transcriptions", {
+        audio: await readBase64(audio),
+      });
       if (session.cancelled) return;
       if (text) callbacksRef.current.onText(text);
       else callbacksRef.current.onError("No speech heard. Try again.");
@@ -90,10 +90,7 @@ export function useDictation(callbacks: DictationCallbacks): Dictation {
 
   const start = async () => {
     if (sessionRef.current) return;
-    const session: DictationSession = {
-      abort: new AbortController(),
-      cancelled: false,
-    };
+    const session: DictationSession = { cancelled: false };
     sessionRef.current = session;
     callbacksRef.current.onError(undefined);
     setState("starting");
@@ -118,10 +115,10 @@ export function useDictation(callbacks: DictationCallbacks): Dictation {
       const mimeType = RECORDING_TYPES.find((type) =>
         MediaRecorder.isTypeSupported(type),
       );
-      const recorder = new MediaRecorder(
-        session.stream,
-        mimeType ? { mimeType } : undefined,
-      );
+      const recorder = new MediaRecorder(session.stream, {
+        audioBitsPerSecond: RECORDING_BITS_PER_SECOND,
+        ...(mimeType ? { mimeType } : undefined),
+      });
       const chunks: Blob[] = [];
       recorder.addEventListener("dataavailable", (event) => {
         if (event.data.size) chunks.push(event.data);
@@ -169,10 +166,9 @@ export function useDictation(callbacks: DictationCallbacks): Dictation {
   return { cancel, start, state, stop };
 }
 
-// Drop the clip and the request, and turn the mic off.
+// Drop the clip and any text still on its way, and turn the mic off.
 function abandon(session: DictationSession): void {
   session.cancelled = true;
-  session.abort.abort();
   if (session.recorder?.state === "recording") session.recorder.stop();
   releaseMicrophone(session);
 }
@@ -180,6 +176,15 @@ function abandon(session: DictationSession): void {
 function releaseMicrophone(session: DictationSession): void {
   window.clearTimeout(session.timeout);
   for (const track of session.stream?.getTracks() ?? []) track.stop();
+}
+
+function readBase64(audio: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => resolve(String(reader.result).split(",", 2)[1]!);
+    reader.readAsDataURL(audio);
+  });
 }
 
 function microphoneErrorMessage(error: unknown): string {

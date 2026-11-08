@@ -135,25 +135,6 @@ export async function post<T>(
   return readResponseJson(response, schema);
 }
 
-/** Send one authenticated POST request with a binary body, such as audio. */
-export async function postBlob<T>(
-  schema: ZodType<T>,
-  path: string,
-  body: Blob,
-  signal: AbortSignal,
-): Promise<T> {
-  const response = await fetchDashboard(path, {
-    body,
-    credentials: "same-origin",
-    headers: { "content-type": body.type },
-    method: "POST",
-    signal,
-  });
-  if (response.status === 401) restartDashboardSignIn();
-  if (!response.ok) await throwDashboardApiError(path, response);
-  return readResponseJson(response, schema);
-}
-
 /** Send one authenticated PUT request and validate its response. */
 export async function put<T>(
   schema: ZodType<T>,
