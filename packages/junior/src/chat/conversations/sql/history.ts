@@ -38,7 +38,10 @@ import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
 import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
-import { recordConversationParticipant } from "./participants";
+import {
+  recordConversationParticipant,
+  rootConversationIsArchived,
+} from "./participants";
 
 type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
@@ -298,17 +301,25 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         ),
       );
+    // A person who restores an archived root also subscribes again, so a
+    // restored root is never left in no feed (contract:
+    // `api/conversations/subscription.ts`).
+    const rootArchived = await rootConversationIsArchived(
+      this.executor,
+      conversationId,
+    );
     let restores = false;
     for (const row of rows) {
       const { data } = eventFromRow(row);
       if (!row.actorIdentityId || data.type !== "message") continue;
+      const unarchives = eventUnarchivesConversation(data);
       const isPerson = await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
         conversationId,
         atMs: row.createdAt.getTime(),
-        resubscribe: eventAddressesJunior(data),
+        resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
-      restores ||= isPerson && eventUnarchivesConversation(data);
+      restores ||= isPerson && unarchives;
     }
     // Archive is shared, so any person's message restores it for everyone.
     if (restores) {

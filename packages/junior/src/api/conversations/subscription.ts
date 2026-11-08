@@ -40,8 +40,10 @@ import { readConversationAccessFromSql } from "./access";
  *   Pin and Subscribe also subscribe them again.
  * - Given the last subscribed participant, when they unsubscribe, then the
  *   root and its unarchived descendants are archived for everyone. No feed
- *   shows it anymore. The next person's Message restores it, as with any
- *   archive.
+ *   shows it anymore.
+ * - Given an archived root, when a person restores it (any Message that
+ *   restores an archive, or Unarchive), then that person is subscribed
+ *   again. A restored root never sits in no feed.
  *
  * Rules that follow:
  * - A subscription belongs to the root, like a pin. A child id resolves to

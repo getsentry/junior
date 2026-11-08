@@ -68,6 +68,13 @@ async function person(name: string) {
       });
       expect(response.status).toBe(200);
     },
+    async restore() {
+      const response = await patch(`/${CONVERSATION_ID}/archive`, {
+        archived: false,
+        lastSeenAt: new Date(nowMs).toISOString(),
+      });
+      expect(response.status).toBe(200);
+    },
     async setSubscribed(subscribed: boolean) {
       const response = await patch(`/${CONVERSATION_ID}/subscription`, {
         subscribed,
@@ -171,7 +178,7 @@ describe("conversation subscription", () => {
     expect(await ana.feed()).toEqual([CONVERSATION_ID]);
   });
 
-  it("the last subscriber leaving archives it for everyone, and the next Message restores it", async () => {
+  it("the last subscriber leaving archives it for everyone", async () => {
     const { ana, ben } = await sharedThread();
 
     await ana.setSubscribed(false);
@@ -179,9 +186,20 @@ describe("conversation subscription", () => {
     await ben.setSubscribed(false);
     expect((await ana.open()).archivedAt).toEqual(expect.any(String));
     expect(await ana.feed("?status=archived")).toEqual([CONVERSATION_ID]);
+  });
 
-    await say(ben, true);
+  it("whoever restores an archived conversation is subscribed again", async () => {
+    const { ana, ben } = await sharedThread();
+    await ana.setSubscribed(false);
+    await ben.setSubscribed(false);
+
+    // A Message that does not address Junior still restores the archive.
+    await say(ben, false);
     expect(await ben.feed()).toEqual([CONVERSATION_ID]);
     expect(await ana.feed()).toEqual([]);
+
+    await ben.setSubscribed(false);
+    await ana.restore();
+    expect(await ana.feed()).toEqual([CONVERSATION_ID]);
   });
 });
