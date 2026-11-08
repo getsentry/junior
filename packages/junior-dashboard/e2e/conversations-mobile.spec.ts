@@ -171,6 +171,15 @@ test("starts a new conversation from a centered compose empty state", async ({
   await expect(
     page.getByRole("searchbox", { name: "Search your conversations" }),
   ).toBeVisible();
+
+  // A short new transcript must not leave the reply composer mid-screen.
+  await composer.fill("Check the deploy");
+  await composer.press("Enter");
+  await expect(page).toHaveURL(/\/conversations\/.+/);
+  await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
+  const reply = page.getByPlaceholder("Message Junior…");
+  await reply.focus();
+  await expectFocusedComposerAtVisualViewportBottom(reply, 844);
 });
 
 test.describe("on a touch screen", () => {
@@ -190,6 +199,46 @@ test.describe("on a touch screen", () => {
     await composer.pressSequentially("Second line");
     await expect(composer).toHaveValue("First line\nSecond line");
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  });
+
+  test("opens the keyboard on home only when the dashboard opens there", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize(mobile);
+    await page.goto(dashboard.baseURL);
+
+    const composer = page.getByLabel("Start a conversation");
+    await expect(composer).toBeFocused();
+
+    const conversation = page.getByRole("link", {
+      name: /Investigate checkout latency/,
+    });
+    const heading = page.getByRole("heading", {
+      name: "Investigate checkout latency",
+    });
+    await conversation.click();
+    await expect(heading).toBeVisible();
+    await page.getByRole("link", { name: "Back to conversations" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeVisible();
+    await expect(composer).not.toBeFocused();
+
+    // A browser back gesture returns to home too.
+    await conversation.click();
+    await expect(heading).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeVisible();
+    await expect(composer).not.toBeFocused();
+
+    // A tablet shows the list beside home. Its create button asks to type.
+    await page.setViewportSize({ height: 800, width: 1024 });
+    await conversation.first().click();
+    await expect(heading).toBeVisible();
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(composer).toBeFocused();
   });
 });
 
@@ -256,6 +305,13 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByLabel("Signed in as Dashboard User")).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+  const accountMenu = page.getByLabel("Account menu for Dashboard User");
+  await expect(
+    accountMenu.getByRole("link", { name: "Code", exact: true }),
+  ).toBeVisible();
+  await expect(
+    accountMenu.getByRole("link", { name: "System", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "API tokens" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
   const closeNavigation = page.getByRole("button", {
@@ -693,6 +749,7 @@ test("keeps the message in view while earlier history and late content load", as
     cumulativeDurationMs: 1_000,
     displayTitle: "Long history",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,

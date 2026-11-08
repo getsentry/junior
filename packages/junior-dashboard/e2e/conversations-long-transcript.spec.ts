@@ -27,6 +27,7 @@ async function mockLongConversation(
     cumulativeDurationMs: 1_000,
     displayTitle: "Long transcript",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -102,7 +103,9 @@ async function mockLongConversation(
   await page.route(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
-      await route.fulfill({ json: route.request().postDataJSON() });
+      await route.fulfill({
+        json: { ...route.request().postDataJSON(), unreadReply: false },
+      });
     },
   );
   await page.route(

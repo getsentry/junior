@@ -50,7 +50,7 @@ NPM dependencies (1): agent-browser@latest
 Runtime postinstall (1): agent-browser install
 Resolving sandbox snapshot profile...
 Building sandbox snapshot...
-Sandbox snapshot create complete: runtime=node22 resolve_outcome=rebuilt cache_hit=false dependency_count=2 profile_hash=abc snapshot_id=snap_123 rebuild_reason=cache_miss
+Sandbox snapshot create complete: runtime=node24 resolve_outcome=rebuilt cache_hit=false dependency_count=2 profile_hash=abc snapshot_id=snap_123 rebuild_reason=cache_miss
 ```
 
 The profile always includes Junior's core sandbox tools, so every build resolves a snapshot. The scaffolded build script runs it:

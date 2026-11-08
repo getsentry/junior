@@ -34,6 +34,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
@@ -619,8 +620,8 @@ describe("agent invocation identity and concurrency", () => {
       });
 
       // A stop of the idle child ends its watches and records the stop, so
-      // a timer event that already reached it is dropped, and a later timer
-      // never fires.
+      // a timer event that already reached it is saved to its transcript
+      // with no Turn, and a later timer never fires.
       await execute(
         childTools.watchTimer!,
         { after_ms: 60_000, intent: "Check once more." },
@@ -644,6 +645,9 @@ describe("agent invocation identity and concurrency", () => {
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
       await harness.drainQueuedWork();
       expect(harness.requests()).toHaveLength(2);
+      await expect(
+        stoppedConversationMessageTexts(child.childConversationId),
+      ).resolves.toEqual([expect.stringContaining("Check once more.")]);
       await expect(searchAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });

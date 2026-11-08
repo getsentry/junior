@@ -3,7 +3,7 @@ import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { readLocationConfigurationValues } from "@/chat/configuration/sql";
 import { getConversationStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
-import { completeText } from "@/chat/pi/client";
+import { completeText } from "@/chat/core-model";
 import { getPluginConversationTitleContext } from "@/chat/plugins/conversation-title-context";
 import { getThreadTitleSourceMessage } from "@/chat/services/conversation-memory";
 import {
@@ -139,6 +139,7 @@ async function ensureConversationTitleOnce(args: {
       title = await generateShortTitle({
         completeText,
         context,
+        cost: { conversationId: args.conversationId },
         kind,
         sourceText,
       });

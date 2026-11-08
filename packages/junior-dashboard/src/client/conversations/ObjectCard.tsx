@@ -3,7 +3,7 @@ import {
   objectFactFields,
   objectPresentation,
 } from "@sentry/junior-plugin-api";
-import { ArrowUpRight, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { AutomationCard } from "../components/AutomationCard";
 import { StatusChip } from "../components/StatusChip";
@@ -13,6 +13,7 @@ import {
   CollapsibleTrigger,
 } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
+import { OutboundLink } from "../components/OutboundLink";
 
 /** Show the latest saved annotation. Opening a source is always explicit. */
 export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
@@ -61,14 +62,12 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
             {type} · {card.plugin} · {card.label}
           </p>
           {card.url ? (
-            <a
+            <OutboundLink
               href={card.url}
-              target="_blank"
-              rel="noreferrer"
               className="break-words text-base font-semibold text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
             >
               {card.title}
-            </a>
+            </OutboundLink>
           ) : (
             <strong className="break-words text-base text-dashboard-text">
               {card.title}
@@ -107,15 +106,12 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
         {card.url && (
-          <a
+          <OutboundLink
             href={card.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+            className="font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
           >
             Open {type.toLowerCase()}
-            <ArrowUpRight aria-hidden="true" size={14} />
-          </a>
+          </OutboundLink>
         )}
         <span className="text-dashboard-text-muted">Latest saved state</span>
       </div>

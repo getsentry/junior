@@ -31,7 +31,7 @@ const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
 /**
  * Check that a top-level agent can message another top-level agent under
  * `policies/conversation-access.md`. A private Conversation is isolated, so
- * only public agents in the same provider tenant can message each other.
+ * only public agents can message each other.
  * Every target that the sender cannot reach gets the same error, so the
  * error does not show that a private Conversation exists.
  */

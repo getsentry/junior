@@ -7,7 +7,10 @@ import {
   reply,
   webMessage,
 } from "@junior-evals/fixture/inputs";
-import { rejectNextModelRequest } from "@junior-evals/fixture/gateway";
+import {
+  rejectNextModelRequest,
+  rejectNextModelRequestAsTooLong,
+} from "@junior-evals/fixture/gateway";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import {
   completedMcpToolCalls,
@@ -119,10 +122,12 @@ describe("Lifecycle and Resilience", () => {
   test("when the final reply puts the context over the compaction limit, reply once without compacting", async ({
     agent,
   }) => {
-    // An 8,000 token context window sets the compaction limit at 7,200 tokens.
-    // The message history is small, so the turn starts without compaction.
-    // The measured usage of the reply also counts the system prompt and tools,
-    // which puts it over the limit. No model request follows the reply.
+    // An 8,000 token context window sets the compaction limit at 7,200 tokens
+    // and the input limit at 7,600 tokens. The system prompt and tools alone
+    // are over the input limit, so the context is over it at Turn start. A
+    // summary replaces only the message history and cannot get under it, so
+    // the Turn sends the request without one. The measured usage of the reply
+    // is over the limit too. No model request follows the reply.
     const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
     const conversation = await run(
       slackMention("In one short sentence, what is the capital of France?"),
@@ -130,8 +135,39 @@ describe("Lifecycle and Resilience", () => {
 
     expect(conversation.replies).toHaveLength(1);
     expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
+    ]);
+  });
+
+  test("when the provider rejects a context over the input limit, skip the summary and post a safe failure reply", async ({
+    agent,
+  }) => {
+    // The same 8,000 token context window: the context is over the input
+    // limit at Turn start, so the Turn sends the request without a summary.
+    // Injected fault: the provider rejects the request as too long.
+    rejectNextModelRequestAsTooLong();
+    const { run } = await agent({ limits: { contextWindowTokens: 8_000 } });
+    const conversation = await run(
+      slackMention("In one short sentence, what is the capital of France?"),
+    );
+
+    expect(conversation.compactions).toBe(0);
+    expect(conversation.statuses).not.toContainEqual(
+      expect.stringMatching(/compact/i),
+    );
+    expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    // The fixed copy of a rejected request. It does not yet say that the
+    // conversation is too large for the model.
+    expect(
+      conversation.replies.map((reply) =>
+        reply.text.replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
+      ),
+    ).toEqual([
+      "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
     ]);
   });
 
@@ -247,7 +283,7 @@ describe("Lifecycle and Resilience", () => {
     // continued run ignores the stop, succeeds, and posts the release status.
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["no_reply"]);
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
-      expect.stringContaining("stay out of this thread"),
+      "Stopped.",
     ]);
     expect(
       completedMcpToolCalls(

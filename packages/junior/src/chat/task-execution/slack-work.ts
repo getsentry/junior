@@ -26,7 +26,6 @@ import {
 } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
 import { removeReactionFromMessage } from "@/chat/slack/outbound";
 import { getMessageTs } from "@/chat/runtime/thread-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -461,7 +460,11 @@ export interface CreateSlackConversationWorkerOptions {
   ) => Promise<SlackActorProfile | null | undefined>;
   runNextPausedTurn: (
     conversationId: string,
-    options: { shouldYield: () => boolean; stopSignal?: AbortSignal },
+    options: {
+      checkIn: () => Promise<boolean>;
+      shouldYield: () => boolean;
+      stopSignal?: AbortSignal;
+    },
   ) => Promise<boolean>;
   runtime: SlackInboxTurnRuntime;
   state?: StateAdapter;
@@ -676,6 +679,7 @@ export function createSlackConversationWorker(
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
               shouldYield: context.shouldYield,
+              checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
             });
           },
@@ -683,6 +687,9 @@ export function createSlackConversationWorker(
       } catch (error) {
         if (isCooperativeTurnYieldError(error)) {
           return { status: "yielded" } satisfies ConversationWorkerResult;
+        }
+        if (isTurnInputCommitLostError(error)) {
+          return { status: "lost_lease" } satisfies ConversationWorkerResult;
         }
         throw error;
       }
@@ -794,14 +801,9 @@ export function createSlackConversationWorker(
               ack,
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
+              checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
               telemetry,
-              subscribeThread: async () =>
-                await subscribeSlackThreadForMessage({
-                  messageCreatedAtMs: latestRecord.createdAtMs,
-                  state,
-                  thread,
-                }),
             });
           } else {
             await options.runtime.handleSubscribedMessage(
@@ -815,6 +817,7 @@ export function createSlackConversationWorker(
                 ack,
                 isFinalAttempt: context.attempt.isFinalAttempt,
                 shouldYield: context.shouldYield,
+                checkIn: context.checkIn,
                 stopSignal: context.stopSignal?.(),
                 telemetry,
               },
@@ -847,6 +850,20 @@ export function createSlackConversationWorker(
   };
 }
 
+/** Return the mailbox id of one Slack message or event in a Conversation. */
+export function slackInboundMessageId(args: {
+  conversationId: string;
+  installation?: SlackInstallationContext;
+  slackId: string;
+}): string {
+  return [
+    "slack",
+    args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
+    args.conversationId,
+    args.slackId,
+  ].join(":");
+}
+
 /** Serialize a Slack message and the active trace into the durable mailbox. */
 export function buildSlackInboundMessage(args: {
   conversationId: string;
@@ -870,12 +887,11 @@ export function buildSlackInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     destination,
-    inboundMessageId: [
-      "slack",
-      args.installation?.teamId ?? args.installation?.enterpriseId ?? "unknown",
-      args.conversationId,
-      args.message.id,
-    ].join(":"),
+    inboundMessageId: slackInboundMessageId({
+      conversationId: args.conversationId,
+      installation: args.installation,
+      slackId: args.message.id,
+    }),
     delivery:
       args.message.isMention || hasInterruptOverride ? "interrupt" : "defer",
     source: "slack",

@@ -507,10 +507,10 @@ function hasMergedEvidence(input: BriefInput): boolean {
 /** Build the text indexed for a Brief without adding transcript content. */
 function buildBriefSearchText(
   brief: ConversationBrief,
-  title?: string,
+  input: BriefInput,
 ): string {
-  return [
-    title,
+  const values = [
+    input.title,
     brief.summary,
     brief.intent,
     brief.outcome.text,
@@ -518,13 +518,15 @@ function buildBriefSearchText(
     ...brief.facts,
     ...brief.keywords,
     ...brief.links.map((link) => link.label),
+    // Stored links stop at MAX_LINKS. Index every linked object so a later
+    // Conversation still finds an issue that a long run of PRs pushed out.
+    ...deterministicLinks(input).map((link) => link.label),
     ...brief.record.participants.map((participant) => participant.name),
     ...brief.record.codeChanges.map(
       (change) => `${change.repository}#${change.number} ${change.state}`,
     ),
-  ]
-    .filter((value): value is string => Boolean(value?.trim()))
-    .join("\n");
+  ].filter((value): value is string => Boolean(value?.trim()));
+  return [...new Set(values)].join("\n");
 }
 
 /** Generate one bounded Brief and attach only deterministic evidence links. */
@@ -581,7 +583,7 @@ export async function generateBrief(
         mergedClaim && hasLinkedEvidence && !hasMergedEvidence(input),
       resourceCount: input.resources.length,
     },
-    searchText: buildBriefSearchText(normalized.brief, input.title),
+    searchText: buildBriefSearchText(normalized.brief, input),
     throughIndex: args.throughIndex,
   };
 }

@@ -72,6 +72,11 @@ export interface Conversation {
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
+  /**
+   * When the Conversation was archived for everyone. Only archive, auto-archive,
+   * pin, and a person's message write it; `upsertConversation` does not.
+   */
+  archivedAtMs?: number;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the
@@ -99,6 +104,8 @@ export interface Conversation {
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
   transcriptPurgedAtMs?: number;
+  /** When a person stopped this Conversation. Unset when it is not stopped. */
+  stoppedAtMs?: number;
   /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }

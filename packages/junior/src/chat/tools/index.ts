@@ -4,10 +4,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
-import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
-import { createGrepTool } from "@/chat/tools/sandbox/grep";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
-import { createListDirTool } from "@/chat/tools/sandbox/list-dir";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
@@ -117,6 +114,10 @@ export function createTools(
       : context.attachmentStorage,
   );
   const eventCatalog = getEventCatalog();
+  const modelCost = {
+    conversationId: context.conversationId,
+    ...(context.turnId ? { turnId: context.turnId } : undefined),
+  };
   const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
@@ -127,9 +128,6 @@ export function createTools(
     bash: createBashTool(),
     readFile: createReadFileTool(),
     editFile: createEditFileTool(),
-    grep: createGrepTool(),
-    findFiles: createFindFilesTool(),
-    listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
     webSearch: createWebSearchTool(
       botConfig.webSearchModelId,
@@ -137,7 +135,6 @@ export function createTools(
     ),
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
-      sandbox: context.workspace,
     }),
     ...createEventTools(context, eventCatalog),
     ...createAutomationTools(context, eventCatalog),
@@ -149,13 +146,6 @@ export function createTools(
   tools.readConversationEvent = createReadConversationEventTool(context);
   if (context.conversationPrivacy === "public") {
     tools.searchConversationBriefs = createSearchConversationBriefsTool(
-      slackContext
-        ? {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          }
-        : { kind: "public" },
       context.conversationId,
       slackContext
         ? createSlackConversationBriefSearchPort(slackContext.teamId)
@@ -182,6 +172,7 @@ export function createTools(
       {
         modelId: botConfig.imageGenerationModelId,
         canSendFilesToActiveConversation,
+        promptCost: modelCost,
         sandbox: context.workspace,
       },
       hooks.toolOverrides?.imageGenerate,
@@ -220,7 +211,7 @@ export function createTools(
   }
 
   if (context.spawnAgent) {
-    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent);
+    tools.spawnAgent = createSpawnAgentTool(context.spawnAgent, modelCost);
     tools.stopAgent = createStopAgentTool(context.conversationId);
   }
 
@@ -266,11 +257,7 @@ export function createTools(
     if (context.conversationPrivacy === "public") {
       tools.searchConversationMessages =
         createSlackConversationMessageSearchTool(
-          {
-            kind: "public_provider_tenant",
-            provider: "slack",
-            providerTenantId: slackContext.teamId,
-          },
+          slackContext.teamId,
           context.conversationId,
         );
     }

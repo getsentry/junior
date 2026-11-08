@@ -30,7 +30,6 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
 import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
@@ -51,10 +50,7 @@ import {
 } from "./location";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-type ConversationRow = Omit<
-  typeof juniorConversations.$inferSelect,
-  "legacyArchivedAt"
->;
+type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
@@ -291,6 +287,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
+    ...(row.archivedAt
+      ? { archivedAtMs: row.archivedAt.getTime() }
+      : undefined),
     ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
     ...(actor ? { actor } : undefined),
@@ -300,6 +299,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.title ? { title: row.title } : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
+      : undefined),
+    ...(msFromDate(row.stoppedAt) !== undefined
+      ? { stoppedAtMs: msFromDate(row.stoppedAt) }
       : undefined),
     ...(visibility ? { visibility } : undefined),
   };
@@ -389,14 +391,17 @@ export class SqlStore implements ConversationStore {
             }
             return;
           }
-          const parent = await this.get({
-            conversationId: args.parentConversationId,
-          });
-          if (!parent) {
+          const parentRow = await this.readConversationRow(
+            args.parentConversationId,
+          );
+          if (!parentRow) {
             throw new Error(
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
+          // A child stores its parent's Destination row and Location, so it
+          // reads visibility and Location from its own row, the same as a root.
+          const { location } = conversationFromRow(parentRow);
           const child: Conversation = {
             ...emptyConversation({
               conversationId: args.childConversationId,
@@ -405,8 +410,12 @@ export class SqlStore implements ConversationStore {
             }),
             kind: args.kind,
             parentConversationId: args.parentConversationId,
+            ...(location ? { location } : undefined),
           };
-          await this.upsertConversation({ conversation: child });
+          await this.upsertConversation({
+            conversation: child,
+            destinationId: parentRow.conversation.destinationId ?? undefined,
+          });
         },
       );
     });
@@ -600,7 +609,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -735,7 +744,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: conversationReadColumns(),
+        conversation: juniorConversations,
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -757,6 +766,8 @@ export class SqlStore implements ConversationStore {
   /** Upsert the conversation row while preserving previously discovered nullable metadata fields. */
   private async upsertConversation(args: {
     conversation: Conversation;
+    /** A new child's Destination row, copied from its parent. */
+    destinationId?: string;
   }): Promise<void> {
     const { conversation } = args;
     if ((conversation.kind === "root") !== !conversation.parentConversationId) {
@@ -780,7 +791,7 @@ export class SqlStore implements ConversationStore {
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
-    const destinationId = await this.upsertDestination(
+    const upsertedDestinationId = await this.upsertDestination(
       destinationUpsertFromDestination({
         channelName: conversation.channelName,
         conversationId: conversation.conversationId,
@@ -791,6 +802,7 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
+    const destinationId = upsertedDestinationId ?? args.destinationId;
     const location = locationForWrite({
       destination: conversation.destination,
       destinationId,

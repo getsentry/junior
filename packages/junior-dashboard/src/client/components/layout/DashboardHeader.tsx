@@ -3,7 +3,10 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Link, NavLink } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
-import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
+import {
+  COMMAND_PALETTE_LABEL,
+  COMMAND_PALETTE_SHORTCUT,
+} from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { Button } from "../ui/button";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
@@ -105,39 +108,54 @@ export function DashboardHeader(props: {
 
   return (
     <header className="relative bg-dashboard-bg md:hidden md:tall:block">
-      <div className="hidden w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-5 px-7 py-3 md:tall:grid">
-        <Link
-          aria-label={`${getDashboardAgentName()} home`}
-          className="flex items-center text-inherit no-underline"
-          to="/"
-        >
-          <JuniorLogo />
-        </Link>
-        <nav aria-label="Primary" className="flex min-w-0 items-center gap-1">
+      {/* Equal side tracks center the command palette trigger in the window,
+          like an editor's title bar. When the nav needs more room, the
+          trigger shrinks instead of covering it. Below lg the nav can be
+          wider than the window, so it scrolls and the trigger is an icon. */}
+      <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:tall:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
+        <div className="flex items-center gap-5 max-lg:min-w-0">
           <Link
-            aria-current={props.workspaceActive ? "page" : undefined}
-            className={navLinkClass({ isActive: props.workspaceActive })}
+            aria-label={`${getDashboardAgentName()} home`}
+            className="flex items-center text-inherit no-underline"
             to="/"
           >
-            Conversations
+            <JuniorLogo />
           </Link>
-          {props.navItems.map((item) => (
-            <NavLink className={navLinkClass} key={item.key} to={item.to}>
-              {item.label}
-              <NavCount count={item.count} />
-            </NavLink>
-          ))}
-        </nav>
-        <div className="flex items-center gap-3 justify-self-end">
-          <Button
-            aria-keyshortcuts="Meta+K Control+K"
-            className="w-56 justify-start font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
-            onClick={props.onSearch}
+          <nav
+            aria-label="Primary"
+            className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
           >
+            <Link
+              aria-current={props.workspaceActive ? "page" : undefined}
+              className={navLinkClass({ isActive: props.workspaceActive })}
+              to="/"
+            >
+              Conversations
+            </Link>
+            {props.navItems.map((item) => (
+              <NavLink className={navLinkClass} key={item.key} to={item.to}>
+                {item.label}
+                <NavCount count={item.count} />
+              </NavLink>
+            ))}
+          </nav>
+        </div>
+        <Button
+          aria-keyshortcuts="Meta+K Control+K"
+          className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+          onClick={props.onSearch}
+        >
+          <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
             <Search aria-hidden="true" className="size-4 shrink-0" />
-            <span className="flex-1 text-left">Search…</span>
-            <kbd className="font-sans text-xs">{COMMAND_PALETTE_SHORTCUT}</kbd>
-          </Button>
+            <span className="truncate max-lg:sr-only">
+              {COMMAND_PALETTE_LABEL}…
+            </span>
+          </span>
+          <kbd className="font-sans text-xs max-xl:hidden">
+            {COMMAND_PALETTE_SHORTCUT}
+          </kbd>
+        </Button>
+        <div className="flex items-center gap-3 justify-self-end">
           {props.profile}
         </div>
       </div>
@@ -234,7 +252,7 @@ export function DashboardHeader(props: {
                   size="menu"
                 >
                   <Search aria-hidden="true" className="size-4" />
-                  Search
+                  {COMMAND_PALETTE_LABEL}
                 </Button>
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}

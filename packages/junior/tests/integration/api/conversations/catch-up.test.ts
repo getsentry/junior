@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { conversationCatchUpSchema } from "@/api/schema";
+import {
+  conversationCatchUpSchema,
+  conversationDetailReportSchema,
+} from "@/api/schema";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import {
   closeDb,
@@ -117,6 +120,24 @@ describe("conversation catch-up API", () => {
     expect(prompt).toContain("I pushed a Safari fix to PR #12.");
     expect(prompt).not.toContain("Please open a PR for the login fix.");
     expect(prompt).not.toContain("A later Brief that the reader has not seen.");
+
+    // The Conversation pays for its catch-up.
+    const detail = conversationDetailReportSchema.parse(
+      await (
+        await app.request(
+          `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+        )
+      ).json(),
+    );
+    expect(detail.auxiliaryCosts?.operations).toEqual([
+      expect.objectContaining({
+        costUsd: expect.any(Number),
+        events: 1,
+        name: "conversation_catch_up",
+        namespace: "junior",
+      }),
+    ]);
+    expect(detail.auxiliaryCosts!.costUsd).toBeGreaterThan(0);
   });
 
   it("rejects readers who cannot see the transcript and empty ranges", async () => {

@@ -37,6 +37,7 @@ import {
   annotateToolResult,
   saveObjectAnnotations,
 } from "@/chat/conversations/annotation-results";
+import { recordToolReply } from "@/chat/conversations/tool-replies";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
@@ -911,7 +912,12 @@ export function getPluginTools(
           annotateToolResult(
             context.conversationId,
             pluginName,
-            await execute.call(definition, input, options),
+            await recordToolReply({
+              conversationId: context.conversationId,
+              plugin: pluginName,
+              result: await execute.call(definition, input, options),
+              toolCallId: options.toolCallId,
+            }),
           );
         tools[name] = wrapped;
       } else tools[name] = definition;

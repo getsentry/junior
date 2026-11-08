@@ -88,7 +88,7 @@ function message(eventType?: string): RenderedTranscriptEntry {
 function turnMessage(
   key: string,
   role: "assistant" | "user",
-  meta: { eventType?: string; quiet?: true } = {},
+  meta: { eventType?: string; noReply?: true; quiet?: true } = {},
 ): RenderedTranscriptEntry {
   return {
     key,
@@ -164,19 +164,27 @@ describe("transcript activity group", () => {
     ).toBe("1 event · 300ms");
   });
 
-  it("folds quiet replies with the Event messages that started their Turn", () => {
+  it("folds quiet replies and unanswered Event messages", () => {
     const entries = [
       turnMessage("person", "user"),
       turnMessage("loud-reply", "assistant"),
+      turnMessage("deploy", "user", {
+        eventType: "pull_request.comment.created",
+        noReply: true,
+      }),
       turnMessage("ci", "user", { eventType: "pull_request.checks.failed" }),
       tool("fix"),
       turnMessage("quiet-reply", "assistant", { quiet: true }),
       turnMessage("review", "user", { eventType: "pull_request.merged" }),
       turnMessage("merged-reply", "assistant"),
     ];
-    expect([...quietTurnEntryKeys(entries)]).toEqual(["quiet-reply", "ci"]);
-    expect(activityGroupSummary([entries[2]!, entries[3]!, entries[4]!])).toBe(
-      "1 tool call · 1 event · 1 quiet reply",
+    expect([...quietTurnEntryKeys(entries)]).toEqual([
+      "deploy",
+      "quiet-reply",
+      "ci",
+    ]);
+    expect(activityGroupSummary(entries.slice(2, 6))).toBe(
+      "1 tool call · 2 events · 1 quiet reply",
     );
   });
 

@@ -31,6 +31,7 @@ export async function mockReadPositionConversation(
     cumulativeDurationMs: 1_000,
     displayTitle: "Read position",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -93,7 +94,9 @@ export async function mockReadPositionConversation(
       };
       state.reported.push(lastReadSeq);
       stored = Math.max(stored, lastReadSeq);
-      await route.fulfill({ json: { lastReadSeq: stored } });
+      await route.fulfill({
+        json: { lastReadSeq: stored, unreadReply: false },
+      });
     },
   );
   const events = (from: number, to: number) =>

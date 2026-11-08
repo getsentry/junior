@@ -1,6 +1,7 @@
 import { getChildAgentLabel } from "@/chat/agent-invocations/store";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationLineage } from "@/chat/conversations/lineage";
+import type { ConversationKind } from "@/chat/conversations/store";
 import { getConversationStore, getDb } from "@/chat/db";
 import type { ConversationAgentTreeNode } from "../schema/conversation";
 import type { ConversationAccessReader } from "./access";
@@ -9,7 +10,11 @@ import { conversationSummaryFromStoredConversation } from "./projection";
 
 /** Bound the parent chain that one agent tree reads. */
 const MAX_AGENT_TREE_DEPTH = 16;
-const CHILD_LABEL = "Subagent";
+
+/** Name a child the viewer cannot read, or one with no agent label. */
+function childLabel(kind: ConversationKind): string {
+  return kind === "thread" ? "Thread" : "Task";
+}
 
 /**
  * Read the agent tree of a child Conversation: its parent chain, root first,
@@ -33,6 +38,9 @@ export async function readConversationAgentTree(
     return undefined;
   }
   const ids = lineage.map((entry) => entry.conversationId);
+  const kindById = new Map(
+    lineage.map((entry) => [entry.conversationId, entry.kind]),
+  );
   // After a cycle or the depth bound, the first entry is still a child.
   const root = lineage[0]!.parentConversationId
     ? undefined
@@ -59,15 +67,21 @@ export async function readConversationAgentTree(
           durationMs: 0,
           firstHumanMessageText: firstHumanMessageTextByConversation.get(id),
         });
-        return { conversationId: id, label: summary.displayTitle };
+        return {
+          conversationId: id,
+          kind: "root" as const,
+          label: summary.displayTitle,
+        };
       }
+      const kind = kindById.get(id)!;
       if (!itemAccess?.canViewPrivateContent) {
-        return { conversationId: id, label: CHILD_LABEL };
+        return { conversationId: id, kind, label: childLabel(kind) };
       }
       const agent = await getChildAgentLabel(id);
       return {
         conversationId: id,
-        label: agent?.title ?? agent?.agentName ?? CHILD_LABEL,
+        kind,
+        label: agent?.title ?? agent?.agentName ?? childLabel(kind),
       };
     }),
   );

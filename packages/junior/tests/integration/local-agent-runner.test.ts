@@ -648,10 +648,11 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[1]?.instruction.context).toContain("first question");
-    expect(agentRuns[1]?.instruction.context).toContain(
-      "reply to first question",
-    );
+    // Agent history carries the first exchange, so thread context omits it.
+    const secondHistory = JSON.stringify(agentRuns[1]?.history ?? []);
+    expect(secondHistory).toContain("first question");
+    expect(secondHistory).toContain("reply to first question");
+    expect(agentRuns[1]?.instruction.context).toBeUndefined();
 
     const state = await getPersistedThreadState(conversationId!);
     expect(state.conversation).not.toHaveProperty("stats");
@@ -908,5 +909,24 @@ describe("local agent runner", () => {
       failureCode: "delivery_failed",
     });
     expect(JSON.stringify(lifecycle)).not.toContain(rawDeliveryError);
+
+    // The next turn learns that the person never saw the lost reply.
+    await getTurnLifecycle().start({
+      conversationId: conversationId!,
+      createdAtMs: Date.now(),
+      inputMessageIds: ["next-message"],
+      surface: "internal",
+      turnId: "next-turn",
+    });
+    expect(
+      await loadTurnConversationNotes({
+        conversationId: conversationId!,
+        turnId: "next-turn",
+      }),
+    ).toEqual([
+      expect.stringContaining(
+        "Your reply was not delivered, so the person did not see it.",
+      ),
+    ]);
   });
 });

@@ -56,6 +56,7 @@ export {
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationEventHistorySchema,
@@ -113,8 +114,14 @@ export type {
   ContinueConversationInSlackResponse,
 } from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export { conversationReadPositionSchema } from "./schema/conversation-read-position";
-export type { ConversationReadPosition } from "./schema/conversation-read-position";
+export {
+  conversationReadPositionSchema,
+  conversationReadReportSchema,
+} from "./schema/conversation-read-position";
+export type {
+  ConversationReadPosition,
+  ConversationReadReport,
+} from "./schema/conversation-read-position";
 export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -136,6 +143,14 @@ export type {
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
 export {
+  conversationUnreadSchema,
+  markConversationUnreadBodySchema,
+} from "./schema/conversation-unread";
+export type {
+  ConversationUnread,
+  MarkConversationUnreadBody,
+} from "./schema/conversation-unread";
+export {
   CONVERSATION_TITLE_MAX_LENGTH,
   renameConversationBodySchema,
   renameConversationResponseSchema,
@@ -155,6 +170,7 @@ export type {
   ConversationEventPage,
   ConversationEventHistory,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -361,3 +377,5 @@ export type {
   ReviewItemChangeRecord,
   ReviewItemPayload,
 } from "./schema/review-item";
+export { versionsSchema } from "./schema/versions";
+export type { Versions } from "./schema/versions";

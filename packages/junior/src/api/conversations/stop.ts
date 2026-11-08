@@ -1,6 +1,6 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getProductionSlackAdapter } from "@/chat/app/production";
-import { stopConversationTurn } from "@/chat/conversations/stop";
+import { stopConversation } from "@/chat/conversations/stop";
 import { webActorUserIds } from "@/chat/conversations/legacy-web-actor-id";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getDb } from "@/chat/db";
@@ -12,7 +12,8 @@ import type { StopConversationTurnResponse } from "../schema/conversation-stop";
 import { readConversationAccessFromSql } from "./access";
 
 /**
- * Stop the active Turn for one conversation participant.
+ * Stop one Conversation for a participant: its active Turn, its session, and
+ * every child agent below it.
  *
  * The stop also removes the human messages queued before it. The viewer's own
  * web text comes back in the response so the dashboard can restore it to the
@@ -39,12 +40,12 @@ export async function stopConversationTurnForViewer(
   }
 
   try {
-    const result = await stopConversationTurn({
+    const result = await stopConversation({
       conversationId,
       conversationStore,
       queue: services.queue,
     });
-    if (result.status === "no_work") {
+    if (result.status !== "requested") {
       return {
         conversationId,
         status: "no_work",

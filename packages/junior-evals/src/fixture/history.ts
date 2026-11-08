@@ -17,6 +17,7 @@ import type {
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { appendConversationMessages } from "@/chat/conversations/messages";
+import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import {
   commitAcceptedReply,
   commitMessages,
@@ -39,6 +40,7 @@ import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
 import { parseContent } from "@/chat/slack/message/content";
 import type { PiMessage } from "@/chat/pi/messages";
+import { latestConversationMessageSeq } from "@/chat/services/conversation-memory";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import {
@@ -103,6 +105,17 @@ export type LoadedConversation =
 interface HistoryTurn {
   input: MessageInput;
   replies: HistoryReply[];
+}
+
+/** The highest saved Message seq, which a real Turn records as its cursor. */
+async function savedMessageSeq(
+  conversationId: string,
+): Promise<number | undefined> {
+  const history =
+    await getConversationEventStore().loadMessageHistory(conversationId);
+  return latestConversationMessageSeq({
+    messages: projectConversationMessages(history),
+  });
 }
 
 function groupTurns(items: HistoryItem[]): {
@@ -481,17 +494,26 @@ export async function loadHistory(args: {
         visibility,
       });
     }
-    // A turn stores its input, then starts.
+    // A turn stores its input, then starts. Like a real turn, a Slack turn
+    // records the cursor after it reloads its input, and a web turn before.
+    const webCursor = await savedMessageSeq(conversationId);
     state.messages.push(message.conversationMessage);
     await appendConversationMessages(getConversationEventStore(), {
       conversation: state,
       conversationId,
     });
+    const threadContextThroughSeq =
+      conversation.surface === "slack"
+        ? await savedMessageSeq(conversationId)
+        : webCursor;
     await lifecycle.start({
       conversationId,
       createdAtMs: message.conversationMessage.createdAtMs,
       inputMessageIds: [message.conversationMessage.id],
       surface: conversation.surface === "slack" ? "slack" : "api",
+      ...(threadContextThroughSeq === undefined
+        ? undefined
+        : { threadContextThroughSeq }),
       turnId,
     });
     agentHistory.push(message.agentMessage);

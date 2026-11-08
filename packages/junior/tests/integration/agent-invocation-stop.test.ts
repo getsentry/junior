@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentRun } from "@/chat/agent/types";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import {
   createAgentInvocation,
@@ -19,7 +18,7 @@ import type {
   TerminalAgentInvocation,
 } from "@/chat/agent-invocations/types";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
-import { stopConversationTurn } from "@/chat/conversations/stop";
+import { stopConversation } from "@/chat/conversations/stop";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -30,16 +29,14 @@ import {
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
+  abortableAgentRunner,
   invocationInput,
   loadSubagentEvents,
   loadTurnEvents,
   parentConversationId,
   prepareParentConversation,
 } from "../fixtures/agent-invocations";
-import {
-  createConversationWorkHarness,
-  deferred,
-} from "../fixtures/conversation-work";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 
 async function stopAgent(
   conversationId: string,
@@ -56,20 +53,6 @@ async function searchAgents() {
     await createSearchAgentsTool({ conversationId: parentConversationId })
       .execute!({}, {})
   ).agents;
-}
-
-/** Wait until the run is aborted, then fail like an aborted agent run. */
-async function waitForAbort(run: AgentRun): Promise<never> {
-  const signal = run.signal;
-  if (!signal) {
-    throw new Error("Child run has no stop signal");
-  }
-  if (!signal.aborted) {
-    await new Promise((resolve) =>
-      signal.addEventListener("abort", resolve, { once: true }),
-    );
-  }
-  throw signal.reason;
 }
 
 /**
@@ -101,27 +84,6 @@ async function createHarness(agentRunner: AgentRunner) {
         { conversationStore, queue, state },
       ),
     state,
-  };
-}
-
-/** Run each child until a stop aborts it, and report when it starts. */
-function abortableAgentRunner() {
-  let started = deferred<void>();
-  const runs: AgentRun[] = [];
-  return {
-    agentRunner: {
-      run: async (run: AgentRun) => {
-        runs.push(run);
-        started.resolve(undefined);
-        return await waitForAbort(run);
-      },
-    } satisfies AgentRunner,
-    runs,
-    /** Wait for the next run to start. */
-    started: async () => {
-      await started.promise;
-      started = deferred<void>();
-    },
   };
 }
 
@@ -257,8 +219,8 @@ describe("stopping child agents", () => {
         getAgentInvocation(pending.invocationId),
       ).resolves.toMatchObject({ status: "stopped" });
 
-      // A stop that does not come from stopAgent still reaches the parent,
-      // and it also stops the child agents of the child.
+      // A person's stop of the child still reaches the parent, and it also
+      // stops the child agents of the child.
       const external = await harness.spawn({
         idempotencyKey: "stop-external",
         input: "long task",
@@ -271,7 +233,7 @@ describe("stopping child agents", () => {
       const processing = harness.processNext(external.childConversationId);
       await runner.started();
       await expect(
-        stopConversationTurn({
+        stopConversation({
           conversationId: external.childConversationId,
           conversationStore: harness.conversationStore,
           queue: harness.queue,

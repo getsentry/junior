@@ -15,6 +15,7 @@ import {
   type ConversationArchiveAction,
   type ConversationContinueInSlackAction,
   type ConversationPinAction,
+  type ConversationReadAction,
 } from "./ConversationHeaderActions";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
@@ -46,6 +47,7 @@ export function ConversationHeader(props: {
   onViewChange(value: TranscriptViewMode): void;
   pin: ConversationPinAction;
   privacy: ReactNode;
+  read: ConversationReadAction;
   search: string;
   searchMatch: TranscriptSearchMatch;
   sentryConversationUrl?: string;
@@ -97,7 +99,15 @@ export function ConversationHeader(props: {
 
   const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
     <ConversationHeaderActions
-      archive={props.archive}
+      archive={{
+        ...props.archive,
+        // A child archive opens a confirm, and a restore keeps the page open,
+        // so close the menu here.
+        onClick: () => {
+          close();
+          props.archive.onClick();
+        },
+      }}
       conversationId={props.conversationId}
       continueInSlack={
         props.continueInSlack && {
@@ -109,6 +119,7 @@ export function ConversationHeader(props: {
         }
       }
       pin={props.pin}
+      read={props.read}
       copyAction={props.copyAction}
       detailsOpen={detailsOpen}
       onDetailsClick={() => {
@@ -132,8 +143,9 @@ export function ConversationHeader(props: {
 
   const showMobileHeader =
     searchOpenVisible ||
-    props.archive.error ||
+    Boolean(props.archive.error) ||
     props.pin.error ||
+    props.read.error ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -276,12 +288,17 @@ export function ConversationHeader(props: {
         ) : null}
         {props.archive.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not update archive state.
+            {props.archive.error}
           </div>
         ) : null}
         {props.pin.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update pin.
+          </div>
+        ) : null}
+        {props.read.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not update read state.
           </div>
         ) : null}
       </header>

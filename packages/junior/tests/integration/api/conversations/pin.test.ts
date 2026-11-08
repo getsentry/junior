@@ -99,7 +99,7 @@ describe("conversation pin API", () => {
     await closeDb();
   });
 
-  it("sorts the viewer's pins first and unpins on archive", async () => {
+  it("sorts the viewer's pins first, keeps pins on archive, and restores on pin", async () => {
     const older = "local:test:pin-older";
     const newer = "local:test:pin-newer";
     await storeConversation({
@@ -139,6 +139,25 @@ describe("conversation pin API", () => {
       { conversationId: newer, pinned: false },
       { conversationId: older, pinned: false },
     ]);
+    // A child uses its root's pin, so the API refuses a child pin or unpin
+    // and names the root.
+    const child = "agent:pin-child";
+    await getConversationStore().createChild({
+      childConversationId: child,
+      kind: "task",
+      parentConversationId: newer,
+    });
+    for (const pinned of [true, false]) {
+      const childPin = await setPin(app, child, pinned);
+      expect(childPin.status).toBe(409);
+      await expect(childPin.json()).resolves.toEqual({
+        error: `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${newer}.`,
+      });
+    }
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: older, pinned: true },
+      { conversationId: newer, pinned: false },
+    ]);
     // A pin is viewer state, so an open detail page revalidates.
     const pinnedDetail = await app.request(detailPath, {
       headers: { [CONVERSATION_DETAIL_VERSION_HEADER]: unpinnedEtag },
@@ -160,11 +179,21 @@ describe("conversation pin API", () => {
       },
     );
     expect(archive.status).toBe(200);
+    // Archive applies to everyone but leaves each person's pin alone.
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(older, { viewer }),
       ).pinnedAt,
-    ).toBeNull();
+    ).toEqual(expect.any(String));
+    await expect(feedIds({ viewer: other.viewer })).resolves.toEqual([
+      { conversationId: newer, pinned: false },
+    ]);
+    // A pin restores the archive for everyone.
+    expect((await setPin(other.app, older, true)).status).toBe(200);
+    await expect(feedIds({ viewer })).resolves.toEqual([
+      { conversationId: older, pinned: true },
+      { conversationId: newer, pinned: false },
+    ]);
   });
 
   it("keeps the viewer's Pinned order until a pin changes", async () => {
@@ -239,12 +268,21 @@ describe("conversation pin API", () => {
       nowMs: 1_000,
       visibility: "private",
     });
+    // A child of a hidden conversation must not reveal it, so access comes
+    // before the child refusal, which names the root.
+    const hiddenChild = "agent:pin-private-child";
+    await getConversationStore().createChild({
+      childConversationId: hiddenChild,
+      kind: "task",
+      parentConversationId: hidden,
+    });
     const { app, viewer } = await authenticatedApi("reader@example.com");
 
     // A reader of a public conversation is not a participant. A pin would add
     // a participant row, which grants send and control access.
     expect((await setPin(app, shared, true)).status).toBe(404);
     expect((await setPin(app, hidden, true)).status).toBe(404);
+    expect((await setPin(app, hiddenChild, true)).status).toBe(404);
     await expect(feedIds({ viewer })).resolves.toEqual([]);
     expect(
       conversationDetailReportSchema.parse(

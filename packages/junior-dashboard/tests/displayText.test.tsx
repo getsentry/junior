@@ -9,7 +9,11 @@ function renderedLinks(text: string) {
   return {
     html,
     links: [...html.matchAll(/<a [^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g)].map(
-      ([, href, label]) => ({ href, label }),
+      // Drop the outbound icon so labels compare as text.
+      ([, href, label]) => ({
+        href,
+        label: label?.replace(/<svg.*<\/svg>/, ""),
+      }),
     ),
   };
 }

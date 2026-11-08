@@ -15,9 +15,11 @@ import {
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  calculateContextCompactionTargetTokens,
   estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
+  getTokenEstimateProfile,
 } from "@/chat/services/context-budget";
 import {
   contextProvenance,
@@ -38,6 +40,7 @@ import {
 } from "@/chat/pi/conversation-events";
 import {
   COMPACTION_SUMMARY_PREFIX,
+  hasCompactedConversationContext,
   isCompactionSummaryText,
 } from "@/chat/services/context-compaction-marker";
 import {
@@ -64,8 +67,11 @@ export interface CompactContextResult {
   piMessages?: PiMessage[];
   reason?:
     | "below_threshold"
+    | "deferred"
     | "history_conflict"
     | "missing_context"
+    | "over_input_limit"
+    | "over_target"
     | "summary_failed";
 }
 
@@ -492,9 +498,112 @@ export function renderCompactionSummary(summary: string): string {
   ].join("\n");
 }
 
-/** Measure provider-visible history without counting host-only message fields. */
-export function estimateHistoryTokens(messages: PiMessage[]): number {
-  return estimateContextTokens(messages).tokens;
+function timestampOf(message: PiMessage): number | undefined {
+  const { timestamp } = message as { timestamp?: unknown };
+  return typeof timestamp === "number" ? timestamp : undefined;
+}
+
+/** Find the latest compaction summary in history. */
+function latestSummaryIndex(messages: PiMessage[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (
+      (message as { role?: unknown }).role === "user" &&
+      hasCompactedConversationContext([message])
+    ) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/** Find when the latest compaction summary in history was written. */
+function latestSummaryTimestamp(messages: PiMessage[]): number | undefined {
+  const index = latestSummaryIndex(messages);
+  return index < 0 ? undefined : timestampOf(messages[index]!);
+}
+
+/**
+ * Read the input size that the provider reported for one model call. Output
+ * is left out: it is not part of the request that the call measured.
+ */
+function measuredInputTokens(message: PiMessage): number | undefined {
+  const { role, stopReason, usage } = message as {
+    role?: unknown;
+    stopReason?: unknown;
+    usage?: { input?: number; cacheRead?: number; cacheWrite?: number };
+  };
+  if (
+    role !== "assistant" ||
+    !usage ||
+    stopReason === "aborted" ||
+    stopReason === "error"
+  ) {
+    return undefined;
+  }
+  const tokens =
+    (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+  return tokens > 0 ? tokens : undefined;
+}
+
+/**
+ * Measure provider-visible history without counting host-only message fields.
+ *
+ * Provider usage counts the request that produced it. A replacement keeps
+ * assistant messages that are older than its summary, and their usage counts
+ * the history before the replacement. So when the latest usage is older than
+ * the latest summary, estimate each message by size.
+ */
+export function estimateHistoryTokens(
+  messages: PiMessage[],
+  modelId: string,
+  requestOverheadTokens = 0,
+): number {
+  const estimate = estimateContextTokens(messages);
+  const summaryAt = latestSummaryTimestamp(messages);
+  const usageAt =
+    estimate.lastUsageIndex === null
+      ? undefined
+      : timestampOf(messages[estimate.lastUsageIndex]!);
+  if (
+    estimate.lastUsageIndex !== null &&
+    usageAt !== undefined &&
+    (summaryAt === undefined || usageAt > summaryAt)
+  ) {
+    // The usage counts the request up to that call. Estimate the rest by size.
+    return (
+      estimate.usageTokens +
+      estimateMessagesTokens(
+        messages.slice(estimate.lastUsageIndex + 1),
+        modelId,
+      )
+    );
+  }
+  return estimateReplacementTokens(messages, modelId, requestOverheadTokens);
+}
+
+/**
+ * Read the provider-reported input of the first model call after the latest
+ * full compaction. That request held only the summary and the kept context,
+ * so another full compaction of the same context cannot get much below it.
+ * A swap also keeps agent history from before its summary. A full compaction
+ * can still drop that history, so a swap gives no such size.
+ */
+function measuredReplacementTokens(messages: PiMessage[]): number | undefined {
+  const summaryIndex = latestSummaryIndex(messages);
+  if (summaryIndex < 0) return undefined;
+  const summaryAt = timestampOf(messages[summaryIndex]!);
+  if (summaryAt === undefined) return undefined;
+  for (const message of messages.slice(summaryIndex + 1)) {
+    const timestamp = timestampOf(message);
+    if (timestamp === undefined || timestamp <= summaryAt) {
+      if ((message as { role?: unknown }).role !== "user") return undefined;
+      continue;
+    }
+    const tokens = measuredInputTokens(message);
+    if (tokens !== undefined) return tokens;
+  }
+  return undefined;
 }
 
 /**
@@ -504,12 +613,29 @@ export function estimateHistoryTokens(messages: PiMessage[]): number {
  */
 export function estimateReplacementTokens(
   messages: PiMessage[],
+  modelId: string,
   requestOverheadTokens = 0,
 ): number {
-  return messages.reduce(
-    (total, message) => total + estimateTokens(message),
-    requestOverheadTokens,
-  );
+  return requestOverheadTokens + estimateMessagesTokens(messages, modelId);
+}
+
+/** Estimate messages from their size at the model's characters per token. */
+function estimateMessagesTokens(
+  messages: PiMessage[],
+  modelId: string,
+): number {
+  const profile = getTokenEstimateProfile(modelId);
+  return messages.reduce((total, message) => {
+    // Pi counts characters / 4. Scale that to the model's characters per token.
+    const tokens = Math.ceil(
+      (estimateTokens(message) * 4) / profile.charsPerToken,
+    );
+    const overhead =
+      (message as { role?: unknown }).role === "toolResult"
+        ? profile.toolResultOverheadTokens
+        : 0;
+    return total + tokens + overhead;
+  }, 0);
 }
 
 async function loadLastInstruction(conversationId: string) {
@@ -536,10 +662,18 @@ type CompactionSource =
       reason: "missing_context";
     };
 
-function loadCompactionSource(messages: PiMessage[]): CompactionSource {
+function loadCompactionSource(
+  messages: PiMessage[],
+  modelId: string,
+  requestOverheadTokens: number | undefined,
+): CompactionSource {
   if (messages.length > 0) {
     return {
-      estimatedTokens: estimateHistoryTokens(messages),
+      estimatedTokens: estimateHistoryTokens(
+        messages,
+        modelId,
+        requestOverheadTokens,
+      ),
       messages,
     };
   }
@@ -558,10 +692,11 @@ export async function compactActiveContextIfNeeded(
   summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
 ): Promise<CompactContextResult> {
   const pendingMessages = args.pendingMessages ?? [];
-  const source = loadCompactionSource([
-    ...args.piMessages,
-    ...pendingMessages.map((entry) => entry.message),
-  ]);
+  const source = loadCompactionSource(
+    [...args.piMessages, ...pendingMessages.map((entry) => entry.message)],
+    args.modelId,
+    args.requestOverheadTokens,
+  );
   if ("reason" in source) {
     return { compacted: false, reason: source.reason };
   }
@@ -569,7 +704,7 @@ export async function compactActiveContextIfNeeded(
   if (source.estimatedTokens <= triggerTokens) {
     return { compacted: false, reason: "below_threshold" };
   }
-  return await withCompactionSpan(args.mode, () =>
+  return await withCompactionSpan(args.mode, "summary", () =>
     compactActiveAboveThreshold(args, summarize, source, triggerTokens),
   );
 }
@@ -583,34 +718,34 @@ async function compactActiveAboveThreshold(
   const pendingMessages = args.pendingMessages ?? [];
   const retainUserMessages =
     args.mode === "blocking" && pendingMessages.length > 0;
-  await args.onCompactionStart?.();
-
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
-  let summary: string;
-  try {
-    summary = await summarize(args.piMessages, args.signal);
-  } catch (error) {
-    if (source.estimatedTokens >= inputLimitTokens) {
-      throw new ContextInputLimitExceededError(
-        source.estimatedTokens,
-        inputLimitTokens,
-      );
-    }
-    logWarn("context_compaction.active.summary.failed", {
-      "app.context_input_limit_tokens": inputLimitTokens,
-      "app.context_tokens_estimated": source.estimatedTokens,
-      "exception.message":
-        error instanceof Error ? error.message : String(error),
+  const skip = (
+    reason: "last_over_threshold" | "over_input_limit" | "over_target",
+  ) => {
+    setSpanAttributes({
+      "app.compaction.outcome": "skipped",
+      "app.compaction.skip_reason": reason,
+      "app.compaction.input.estimate": source.estimatedTokens,
+      "app.compaction.threshold": triggerTokens,
     });
-    setSpanAttributes({ "app.compaction.outcome": "summary_failed" });
-    return { compacted: false, reason: "summary_failed" };
+    return {
+      compacted: false,
+      reason: reason === "over_input_limit" ? reason : "over_target",
+    } as const;
+  };
+  // A summary replaces only agent history. When the kept context alone stays
+  // over the threshold, another summary cannot get under it, and the next
+  // model call would compact again. Then compact only at the input limit.
+  const belowInputLimit = source.estimatedTokens < inputLimitTokens;
+  const measuredTokens = measuredReplacementTokens(source.messages);
+  if (
+    belowInputLimit &&
+    measuredTokens !== undefined &&
+    measuredTokens > triggerTokens
+  ) {
+    return skip("last_over_threshold");
   }
 
-  const continuation = appendOpenPlan(
-    renderCompactionSummary(summary),
-    source.messages,
-  );
-  const summaryMessage = userMessage(continuation);
   const retainedInstruction =
     pendingMessages.length === 0 && !retainUserMessages
       ? await loadLastInstruction(args.conversationId)
@@ -639,15 +774,57 @@ async function compactActiveAboveThreshold(
       ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
       : undefined),
   }));
-  const summaryEntry = {
-    message: summaryMessage,
-    provenance: contextProvenance,
-  };
   // At Turn start, earlier asks and the summary come first, then the new
   // Turn's context and instruction, as they would after a normal Turn.
   const retainedUserMessages = retainUserMessages
     ? await loadRetainedUserMessages(args.conversationId, instructionMessages)
     : [];
+  const keptTokens = estimateReplacementTokens(
+    [...retainedUserMessages, ...contextEntries, ...instructionEntries].map(
+      (entry) => entry.message,
+    ),
+    args.modelId,
+    args.requestOverheadTokens,
+  );
+  if (
+    belowInputLimit &&
+    keptTokens > calculateContextCompactionTargetTokens(triggerTokens)
+  ) {
+    return skip("over_target");
+  }
+  // When the kept context alone is at the input limit, no summary can fit.
+  // The model request still runs: the provider decides if it fits.
+  if (keptTokens >= inputLimitTokens) {
+    return skip("over_input_limit");
+  }
+
+  await args.onCompactionStart?.();
+  let summary: string;
+  try {
+    summary = await summarize(args.piMessages, args.signal);
+  } catch (error) {
+    if (source.estimatedTokens >= inputLimitTokens) {
+      throw new ContextInputLimitExceededError(
+        source.estimatedTokens,
+        inputLimitTokens,
+      );
+    }
+    logWarn("context_compaction.active.summary.failed", {
+      "app.context_input_limit_tokens": inputLimitTokens,
+      "app.context_tokens_estimated": source.estimatedTokens,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+    setSpanAttributes({ "app.compaction.outcome": "summary_failed" });
+    return { compacted: false, reason: "summary_failed" };
+  }
+
+  const summaryEntry = {
+    message: userMessage(
+      appendOpenPlan(renderCompactionSummary(summary), source.messages),
+    ),
+    provenance: contextProvenance,
+  };
   const replacement: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
@@ -665,6 +842,7 @@ async function compactActiveAboveThreshold(
   const messages = replacement.map((entry) => entry.message);
   const replacementInputTokens = estimateReplacementTokens(
     messages,
+    args.modelId,
     args.requestOverheadTokens,
   );
   if (replacementInputTokens >= inputLimitTokens) {

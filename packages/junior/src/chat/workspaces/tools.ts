@@ -29,6 +29,11 @@ import {
 } from "./store";
 import type { Workspace } from "./types";
 
+const WORKSPACES_TOOL_SOURCE = {
+  id: "workspaces",
+  description: "Create, replace, or delete Workspace recipes.",
+} as const;
+
 /** Record optional reporting without changing the switchWorkspace outcome. */
 async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
   if (!process.env.DATABASE_URL) return;
@@ -229,6 +234,8 @@ function createWorkspaceWriteTools(
     workspaceWriteSchemas(providers);
   return {
     createWorkspace: zodTool({
+      exposure: "deferred",
+      source: WORKSPACES_TOOL_SOURCE,
       approvalMode: "review",
       describeProposal: (input) => describeWorkspaceWrite("Create", input),
       executionMode: "sequential",
@@ -252,6 +259,8 @@ function createWorkspaceWriteTools(
       },
     }),
     updateWorkspace: zodTool({
+      exposure: "deferred",
+      source: WORKSPACES_TOOL_SOURCE,
       approvalMode: "review",
       describeProposal: ({ id: _id, ...input }) =>
         describeWorkspaceWrite("Replace", input),
@@ -289,6 +298,8 @@ function createWorkspaceWriteTools(
       },
     }),
     deleteWorkspace: zodTool({
+      exposure: "deferred",
+      source: WORKSPACES_TOOL_SOURCE,
       approvalMode: "review",
       describeProposal: ({ id }) => `Delete Workspace ${id}.`,
       executionMode: "sequential",

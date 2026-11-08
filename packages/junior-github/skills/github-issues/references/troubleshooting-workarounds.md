@@ -14,7 +14,6 @@ Use this table to recover quickly while keeping operations deterministic.
 | `permission_denied` with `source: "upstream"`              | GitHub rejected the forwarded request.                                       | Read GitHub's error first. If the message says GitHub denied access, verify the target, App permissions, and installation scope. Do not request user OAuth for a bot-owned issue operation. |
 | 404 Not Found                                              | Issue number or repo is wrong.                                               | Validate repo + issue ID with `github_getIssue`.                                                                                                                                            |
 | Issue label mutation fails                                 | Wrong REST payload or wrong repo context.                                    | Use the allowlisted issue labels endpoint with an explicit `owner/repo` path and valid JSON input.                                                                                          |
-| Comment command fails with empty body                      | JSON input is missing a non-empty `body`.                                    | Ensure the REST comment payload contains a non-empty `body` before retrying.                                                                                                                |
 
 ## Retry guidance
 

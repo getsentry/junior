@@ -37,7 +37,7 @@ rule:
               field: arguments
               has:
                 kind: identifier
-                regex: ^(THREAD_OPTOUT_ACK|SLACK_SESSION_STOP_ACK)$
+                regex: ^(THREAD_OPTOUT_ACK|SLACK_STOP_ACK)$
 constraints:
   THREAD:
     regex: (^|\.)thread$

@@ -4,7 +4,6 @@ import {
   extractContent,
   extractContentDetails,
   extractWebFetchResponse,
-  truncateWebFetchContent,
 } from "@/chat/tools/web/fetch-content";
 
 describe("web fetch content conversion", () => {
@@ -17,7 +16,7 @@ describe("web fetch content conversion", () => {
       "</body></html>",
     ].join("");
 
-    const result = extractContent(html, "text/html", 5000);
+    const result = extractContent(html, "text/html");
     expect(result).toContain("# Title");
     expect(result).toContain("[world](https://example.com)");
     expect(result).toContain("- One");
@@ -28,23 +27,9 @@ describe("web fetch content conversion", () => {
     const result = extractContent(
       '{"name":"junior","ok":true}',
       "application/json",
-      5000,
     );
     expect(result).toContain('"name": "junior"');
     expect(result).toContain('"ok": true');
-  });
-
-  it("applies different limits to canonical extracted content", () => {
-    const content = "Slack streaming guidance ".repeat(600);
-
-    const short = truncateWebFetchContent(content, 6000);
-    const long = truncateWebFetchContent(content, 8000);
-
-    expect(short.content.length).toBeLessThanOrEqual(6003);
-    expect(long.content.length).toBeLessThanOrEqual(8003);
-    expect(long.content.length).toBeGreaterThan(short.content.length);
-    expect(short.truncated).toBe(true);
-    expect(long.truncated).toBe(true);
   });
 
   it("prefers main document content over page chrome", () => {
@@ -57,21 +42,18 @@ describe("web fetch content conversion", () => {
         "</body></html>",
       ].join(""),
       "text/html",
-      5000,
     );
 
     expect(result.title).toBe("Docs & API");
     expect(result.content).toContain("# Streaming agents");
     expect(result.content).toContain("start, append, and stop");
     expect(result.content).not.toContain("Pricing Login");
-    expect(result.truncated).toBe(false);
   });
 
   it("does not decode title entities more than once", () => {
     const result = extractContentDetails(
       "<html><head><title>Safe &amp;lt;tag&amp;gt;</title></head><body><main>Body</main></body></html>",
       "text/html",
-      5000,
     );
 
     expect(result.title).toBe("Safe &lt;tag&gt;");
@@ -90,7 +72,6 @@ describe("web fetch content conversion", () => {
         "</body></html>",
       ].join(""),
       "text/html",
-      5000,
     );
 
     expect(result.content).toContain("# Outer article");
@@ -99,46 +80,41 @@ describe("web fetch content conversion", () => {
     expect(result.content).not.toContain("Footer links");
   });
 
-  it("accepts large documentation pages while keeping extracted output bounded", async () => {
+  it("keeps all extracted text of a large page", async () => {
     const paragraph = `<p>${"Slack streaming docs ".repeat(800)}</p>`;
     const html = `<html><body>${paragraph.repeat(30)}</body></html>`;
 
-    const { result, fullContent } = await extractWebFetchResponse(
+    const result = await extractWebFetchResponse(
       new URL("https://docs.example.com/large"),
       new Response(html, {
         status: 200,
         headers: { "content-type": "text/html" },
       }),
-      1200,
     );
 
     expect(Buffer.byteLength(html)).toBeGreaterThan(256_000);
-    expect(result.content.length).toBeLessThanOrEqual(1203);
-    expect(result.content).toContain("Slack streaming docs");
+    // The tool pipeline cuts long content for the model, not the tool.
+    expect(result.content.length).toBeGreaterThan(400_000);
     expect(result.source_bytes).toBe(Buffer.byteLength(html));
-    expect(result.extracted_chars).toBeGreaterThan(result.content.length);
-    expect(result.truncated).toBe(true);
-    expect(fullContent.length).toBe(result.extracted_chars);
+    expect(result.truncated).toBe(false);
   });
 
   it("keeps the first part of a page over the byte limit", async () => {
     const paragraph = `<p>${"Slack streaming docs ".repeat(800)}</p>`;
     const html = `<html><body><main>${paragraph.repeat(80)}</main></body></html>`;
 
-    const { result } = await extractWebFetchResponse(
+    const result = await extractWebFetchResponse(
       new URL("https://docs.example.com/huge"),
       new Response(html, {
         status: 200,
         headers: { "content-type": "text/html" },
       }),
-      1200,
     );
 
     expect(Buffer.byteLength(html)).toBeGreaterThan(MAX_FETCH_BYTES);
     expect(result.content).toContain("Slack streaming docs");
     expect(result.source_bytes).toBe(MAX_FETCH_BYTES);
     expect(result.truncated).toBe(true);
-    expect(result.source_truncated).toBe(true);
   });
 
   it("cancels a body that stalls past the read timeout", async () => {

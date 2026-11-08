@@ -62,8 +62,6 @@ function clearSkippedTurnIfActive(
 export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   const services = createJuniorRuntimeServices(options.services);
   const prepareTurnState = createPrepareTurnState({
-    compactConversationIfNeeded:
-      services.conversationMemory.compactConversationIfNeeded,
     hydrateConversationVisionContext:
       services.visionContext.hydrateConversationVisionContext,
     resolveBackfillMessageActors: async (messages, destination) => {

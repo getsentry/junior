@@ -61,7 +61,7 @@ Split long files at a feature boundary. Do not compress formatting to pass.
 - `TERMINOLOGY.md`: canonical words for code and docs.
 - `TELEMETRY.md`: span, metric, and attribute names.
 - `policies/correctness-complexity.md`: how much design a fix needs.
-- `policies/interface-design.md`: function and module shape.
+- `policies/interface-design.md`: function and module shape, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.
 - `policies/runtime-boundary-schemas.md`: validating data at runtime edges.
 - `policies/provider-boundaries.md`: what belongs in core vs. a plugin.

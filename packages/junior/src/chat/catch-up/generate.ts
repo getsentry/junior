@@ -1,5 +1,5 @@
 import type { BriefEntry, ConversationBrief } from "@/chat/briefs/schema";
-import type { completeText } from "@/chat/pi/client";
+import type { completeText, ConversationModelCost } from "@/chat/core-model";
 
 /** Bound the request so a long unread range keeps a fixed cost. */
 const MAX_INPUT_CHARS = 40_000;
@@ -105,6 +105,7 @@ export async function generateCatchUp(args: {
   brief?: CatchUpBrief;
   completeText: typeof completeText;
   conversationId: string;
+  cost: ConversationModelCost;
   entries: BriefEntry[];
   modelId: string;
   omittedEarlierRows: boolean;
@@ -122,7 +123,8 @@ export async function generateCatchUp(args: {
     ],
     metadata: { conversationId: args.conversationId, modelId: args.modelId },
     modelId: args.modelId,
-    promptName: "junior.conversation_catch_up",
+    operation: "conversation_catch_up",
+    cost: args.cost,
     system: CATCH_UP_PROMPT,
     temperature: 0,
   });

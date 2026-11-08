@@ -44,7 +44,8 @@ function subscribeToTouchKeyboard(onChange: () => void) {
   return () => media.removeEventListener("change", onChange);
 }
 
-function touchKeyboardMatches() {
+/** True when the device types on a touch keyboard. */
+export function touchKeyboardMatches() {
   return window.matchMedia(TOUCH_KEYBOARD_QUERY).matches;
 }
 
@@ -81,6 +82,8 @@ export function conversationAttemptForSubmit(
 
 /** Imperative composer actions for the reply footer and the create view. */
 export type ConversationComposerHandle = {
+  /** Add text as a new paragraph after the draft, with the cursor below it. */
+  appendText(text: string): void;
   /** True when the draft has room for these images right now. */
   canRestoreImages(images: readonly InputImage[]): boolean;
   /** Put the cursor in the draft. */
@@ -404,6 +407,21 @@ export const ConversationComposer = memo(function ConversationComposer(
   };
 
   useImperativeHandle(props.ref, () => ({
+    appendText: (text) => {
+      const draft = draftRef.current.text.trimEnd();
+      // The blank line ends a Markdown block, so the next words start anew.
+      const next = {
+        ...draftRef.current,
+        text: `${draft && `${draft}\n\n`}${text}\n\n`,
+      };
+      replaceMessage(next);
+      storeDraft(storageKey, next);
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(next.text.length, next.text.length);
+      textarea.scrollTop = textarea.scrollHeight;
+    },
     canRestoreImages: (images) =>
       !images.length || composerImagesFit([...images, ...imagesRef.current]),
     focus: () => textareaRef.current?.focus({ preventScroll: true }),
@@ -529,9 +547,11 @@ export const ConversationComposer = memo(function ConversationComposer(
         <BareTextarea
           // Chat is technical: ids, paths, code. Suppress browser IME assist
           // that fights identifiers, unless the user turns autocorrect on in
-          // settings.
+          // settings. Android Chrome maps `autocomplete="off"` to
+          // TYPE_TEXT_FLAG_NO_SUGGESTIONS, which also turns off keyboard
+          // autocorrect, so leave it out when autocorrect is on.
           autoCapitalize={autocorrect ? "sentences" : "off"}
-          autoComplete="off"
+          autoComplete={autocorrect ? undefined : "off"}
           autoCorrect={autocorrect ? "on" : "off"}
           className={cn(
             "min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-sans text-base leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-faint",

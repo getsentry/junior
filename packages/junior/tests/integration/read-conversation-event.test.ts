@@ -76,7 +76,7 @@ async function runScript(source: string) {
     turnId: "turn-read-event",
   });
   const { scriptTools } = planToolExposure(createTools([], {}, context()));
-  const { result } = await runCodeModeScript({
+  const result = await runCodeModeScript({
     countToolCall: resume.countToolCall,
     pipeline: createToolPipeline({
       actionReview,
@@ -115,7 +115,7 @@ describe("readConversationEvent", () => {
     await closeDb();
   });
 
-  it("reads a large tool result from a replaced history version in pages", async () => {
+  it("reads a large tool result from a replaced history version", async () => {
     await recordSlackConversation({
       channelId: "C123",
       conversationId: CURRENT_CONVERSATION_ID,
@@ -165,10 +165,12 @@ describe("readConversationEvent", () => {
         if (!page.has_more) break;
         offset += page.text.length;
       }
+      const whole = await tools.readConversationEvent({ seq: ${toolResult!.seq} });
       return {
         first: { ...pages[0], text: undefined },
         pageCount: pages.length,
         text: pages.map((page) => page.text).join(""),
+        whole: { hasMore: whole.has_more, text: whole.text },
       };
     `);
 
@@ -177,8 +179,11 @@ describe("readConversationEvent", () => {
       first: Record<string, unknown>;
       pageCount: number;
       text: string;
+      whole: { hasMore: boolean; text: string };
     };
     expect(value.text).toBe(log);
+    // With no limit, the tool returns all of the text.
+    expect(value.whole).toEqual({ hasMore: false, text: log });
     expect(value.pageCount).toBe(Math.ceil(log.length / 15_000));
     expect(value.first).toMatchObject({
       conversation_id: CURRENT_CONVERSATION_ID,
@@ -229,7 +234,8 @@ describe("readConversationEvent", () => {
         api: "openai-responses",
         provider: "openai",
         model: "test-model",
-        usage: {},
+        // Above the compaction threshold, so the Turn swaps the summary in.
+        usage: { input: 400_000, output: 20, totalTokens: 400_020 },
         stopReason: "toolUse",
         timestamp,
       }) as PiMessage;
@@ -283,7 +289,7 @@ describe("readConversationEvent", () => {
     expect(seq).toBeDefined();
 
     const result = await runScript(`
-      return await tools.readConversationEvent({ seq: ${seq}, limit: 50000 });
+      return await tools.readConversationEvent({ seq: ${seq} });
     `);
     expect(result.value).toMatchObject({ tool_name: "bash", text: log });
   });

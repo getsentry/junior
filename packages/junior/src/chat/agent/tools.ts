@@ -77,7 +77,7 @@ import type { ResumeState } from "@/chat/agent/resume";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject } from "@/chat/core-model";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
@@ -482,29 +482,30 @@ export async function wireAgentTools(
       switch: agentSandbox.switchWorkspace,
     },
   } satisfies ToolRuntimeContext;
-  const childAgent = Boolean(args.run.agentInvocationId);
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,
-      childAgent,
       conversationId: args.run.conversationId,
       credentialContext: args.run.credentialContext,
       destination: toolRoute.destination,
       source: runSource,
       userIntent: args.currentUserIntent,
-      evidence: () =>
-        buildToolActionEvidence(args.currentAgentMessages(), { childAgent }),
-      // The root Conversation labels each message with its real author, so
-      // the Actor's earlier messages can authorize. A child has no message
-      // from a person, so this is its only authority. A root Run of a system
-      // Actor, such as an event Turn, is not the author of the person's
-      // messages, so it keeps only the unlabeled evidence. Read for each
-      // action.
-      ...(childAgent || args.currentActor?.platform !== "system"
+      evidence: () => buildToolActionEvidence(args.currentAgentMessages()),
+      // The Run's Conversation labels each message with its real author, so
+      // the requester's earlier messages can authorize. The requester is the
+      // Actor of the Run's instructions, or nothing when an agent writes
+      // them. A Run of a system Actor, such as an event Turn, is not the
+      // author of the person's messages, so it keeps only the unlabeled
+      // evidence, unless its instructions have their own provenance. Read
+      // for each action.
+      ...(args.run.instruction.provenance ||
+      (args.currentActor && args.currentActor.platform !== "system")
         ? {
             rootConversation: async () =>
               await readRootConversation({
-                actor: args.currentActor,
+                actor: args.run.instruction.provenance
+                  ? args.run.instruction.provenance.actor
+                  : args.currentActor,
                 conversationId: args.run.conversationId,
               }),
           }

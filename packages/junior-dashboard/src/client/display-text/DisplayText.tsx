@@ -73,6 +73,10 @@ function DisplayTextBlocks(props: {
         return (
           <div
             className="group/code relative min-w-0 overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-2.5 pl-3 pr-10"
+            // A quote of selected text reads it for the code fence.
+            data-code-language={
+              block.language === "markdown" ? undefined : block.language
+            }
             key={index}
           >
             <HighlightedCode code={block.code} language={block.language} />

@@ -289,6 +289,9 @@ importers:
       node-html-markdown:
         specifier: ^2.0.0
         version: 2.0.0
+      p-limit:
+        specifier: ^7.3.1
+        version: 7.3.1
       pg:
         specifier: ^8.16.3
         version: 8.21.0

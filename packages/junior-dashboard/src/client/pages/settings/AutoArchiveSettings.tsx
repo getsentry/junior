@@ -83,9 +83,10 @@ export function AutoArchiveSettings({
             Auto-archive conversations when done
           </span>
           <span className="text-xs text-dashboard-text-muted">
-            Archive a conversation for you when all of its linked work, such as
-            pull requests, is merged or closed and nobody replies during the
-            wait time. You can change this for each conversation in its details.
+            Archive a conversation for everyone when all of its linked work,
+            such as pull requests, is merged or closed and nobody replies during
+            the wait time. You can change this for each conversation in its
+            details.
           </span>
         </span>
       </label>

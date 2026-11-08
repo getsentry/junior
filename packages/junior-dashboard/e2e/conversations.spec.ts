@@ -411,6 +411,7 @@ test("scrolls long conversation and transcript panes independently", async ({
     conversationId: `long-${index}`,
     cumulativeDurationMs: 1_000 + index,
     displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
@@ -560,6 +561,18 @@ test("shows personal spend and groups profile and session actions", async ({
   await expect(
     popover.getByRole("link", { name: "Settings", exact: true }),
   ).toHaveAttribute("href", "/settings");
+  // Low-traffic pages live here instead of the primary nav.
+  await expect(
+    popover.getByRole("link", { name: "Code", exact: true }),
+  ).toHaveAttribute("href", "/code");
+  await expect(
+    popover.getByRole("link", { name: "System", exact: true }),
+  ).toHaveAttribute("href", "/system");
+  await expect(
+    rail
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^(Code|System)$/ }),
+  ).toHaveCount(0);
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
 
   await page.keyboard.press("Escape");
@@ -632,7 +645,7 @@ test("inspects and copies a child agent transcript", async ({
   await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
-  // Details lists child agents with the runtime status.
+  // Details lists Tasks with the runtime status.
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
@@ -641,16 +654,16 @@ test("inspects and copies a child agent transcript", async ({
     exact: true,
   });
   await expect(
-    details.getByRole("heading", { name: "Subagents 2", exact: true }),
+    details.getByRole("heading", { name: "Tasks 2", exact: true }),
   ).toBeVisible();
-  const subagents = details.getByRole("list", { name: "Subagents" });
-  await expect(subagents.getByRole("listitem")).toHaveCount(2);
-  await expect(subagents.getByRole("listitem").first()).toContainText(
+  const tasks = details.getByRole("region", { name: "Tasks" });
+  await expect(tasks.getByRole("listitem")).toHaveCount(2);
+  await expect(tasks.getByRole("listitem").first()).toContainText(
     "GitHub access is needed to read the pull request.",
   );
   await screenshot(page, "conversation-subagents");
-  // A row opens the same child transcript drawer as the transcript row.
-  await subagents
+  // A row opens the same Task transcript drawer as the transcript row.
+  await tasks
     .getByRole("button", {
       name: /^blocked Review the open dashboard pull requests/,
     })
@@ -758,6 +771,27 @@ test("inspects and copies a child agent transcript", async ({
       ),
   );
   await expect(entry).toBeFocused();
+
+  // A child uses its root's pin, so its own page cannot pin, even for a
+  // participant of the root. The QA root has none, so mark the viewer as one.
+  const childDetailPath = `/api/conversations/${encodeURIComponent(childConversationId)}`;
+  await page.route(
+    (url) => url.pathname === childDetailPath,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        json: { ...(await response.json()), isParticipant: true },
+        response,
+      });
+    },
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await expect(
+    page.getByRole("button", { name: "Pin", exact: true }),
+  ).toBeDisabled();
 });
 
 test("rates a Junior Reply once, with time to change it", async ({

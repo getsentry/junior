@@ -73,7 +73,11 @@ test("opens where the reader left off and reports what they read", async ({
   ).toHaveCount(0);
   await screenshot(page, "conversation-unread-marker", { view: "mobile" });
 
-  // Reading the first screen moves the shared position past the marker.
+  // Opening is not reading. Input in the transcript is, so the first screen
+  // then moves the shared position past the marker.
+  expect(reported).toEqual([]);
+  await transcript.hover();
+  await page.mouse.wheel(0, 1);
   await expect.poll(() => reported.at(-1) ?? 0).toBeGreaterThan(20);
   await page.getByRole("button", { name: "Jump to latest" }).click();
   await expect(latest).toBeInViewport();
@@ -209,6 +213,8 @@ test.describe("opens at new messages after a cached reopen", () => {
 
     // Leaving right after a scroll still saves the place.
     const reportCount = mock.reported.length;
+    await transcript.hover();
+    await page.mouse.wheel(0, 1);
     await transcript
       .getByText("Transcript message 52 ")
       .scrollIntoViewIfNeeded();
@@ -422,6 +428,7 @@ test("opens far behind at the read position and loads newer pages after it", asy
     cumulativeDurationMs: 1_000,
     displayTitle: "Far behind",
     isParticipant: true,
+    kind: "root",
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,

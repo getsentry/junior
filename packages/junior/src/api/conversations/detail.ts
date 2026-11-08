@@ -15,7 +15,7 @@ import {
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
 import { attachConversationMentions } from "./mentions";
-import { readConversationRecordFromSql } from "./list";
+import { readConversationRecordFromSql } from "./record";
 import {
   conversationEventHistory,
   conversationSummaryFromStoredConversation,
@@ -51,8 +51,8 @@ function projectConversationDetail(args: {
   appendCursor?: string;
   /** Events hold only the events after the request's `after` cursor. */
   appended?: boolean;
-  archivedAtMs?: number;
   pinnedAtMs?: number;
+  unreadReply?: boolean;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
@@ -85,8 +85,8 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
-      archivedAtMs: args.archivedAtMs,
       pinnedAtMs: args.pinnedAtMs,
+      unreadReply: args.unreadReply,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
@@ -304,6 +304,7 @@ async function readConversationDetailFromSql(
           }),
         }),
     ...state.viewerMarks,
+    unreadReply: state.unreadReply,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,

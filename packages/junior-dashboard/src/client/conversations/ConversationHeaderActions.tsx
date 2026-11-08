@@ -3,6 +3,8 @@ import {
   Archive,
   ArchiveRestore,
   Info,
+  Mail,
+  MailOpen,
   MessageSquareShare,
   MessagesSquare,
   Pin,
@@ -25,11 +27,13 @@ import { cn } from "../styles";
 import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
+import { OutboundLink } from "../components/OutboundLink";
 
 export type ConversationArchiveAction = {
   archived: boolean;
   disabled: boolean;
-  error: boolean;
+  /** The message to show when the last archive change failed. */
+  error?: string;
   onClick(): void;
   pending: boolean;
 };
@@ -46,6 +50,13 @@ export type ConversationPinAction = {
   pinned: boolean;
 };
 
+export type ConversationReadAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+  unread: boolean;
+};
+
 /**
  * Keep secondary conversation actions in the menu, with search and details
  * available there on mobile too.
@@ -53,6 +64,7 @@ export type ConversationPinAction = {
 export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
   pin: ConversationPinAction;
+  read: ConversationReadAction;
   conversationId: string;
   /** Present only when the viewer can move this conversation to Slack. */
   continueInSlack?: ConversationContinueInSlackAction;
@@ -119,17 +131,26 @@ export function ConversationHeaderActions(props: {
         )}
       </MenuActionButton>
       {props.sentryConversationUrl ? (
-        <a
+        <OutboundLink
           className={buttonVariants({ size: "menu" })}
           href={props.sentryConversationUrl}
-          rel="noopener noreferrer"
-          target="_blank"
         >
           <SentryGlyph />
           Open in Sentry
-        </a>
+        </OutboundLink>
       ) : null}
       <Separator className="my-1 bg-dashboard-border-subtle" />
+      <MenuActionButton
+        disabled={props.read.disabled}
+        label={props.read.unread ? "Mark as read" : "Mark as unread"}
+        onClick={props.read.onClick}
+      >
+        {props.read.unread ? (
+          <MailOpen aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <Mail aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
       <MenuActionButton
         disabled={props.pin.disabled}
         label={props.pin.pinned ? "Unpin" : "Pin"}

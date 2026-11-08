@@ -16,6 +16,7 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  markConversationUnreadBodySchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
   renameConversationBodySchema,
@@ -34,6 +35,8 @@ import {
   continueConversationInSlackBodySchema,
   continueConversationInSlackResponseSchema,
   conversationReadPositionSchema,
+  conversationReadReportSchema,
+  conversationUnreadSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
@@ -50,6 +53,7 @@ import {
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemWaitingConversationsSchema,
+  versionsSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationParamsSchema,
@@ -66,6 +70,7 @@ import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
 import {
   markMockConversationRead,
+  setMockConversationReadState,
   withMockReadPosition,
 } from "./read-positions";
 import {
@@ -107,7 +112,7 @@ import {
 } from "./sends";
 import { readMockConversationWatches } from "./watches";
 
-function errorResponse(error: string, status: 400 | 401 | 404): Response {
+function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
 }
 
@@ -437,7 +442,7 @@ export function createMockReportingApi(): Hono<{
       body.data.lastReadSeq,
     );
     return result
-      ? jsonResponse(conversationReadPositionSchema, result)
+      ? jsonResponse(conversationReadReportSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.post("/conversations/:conversationId/catch-up", async (c) => {
@@ -486,10 +491,11 @@ export function createMockReportingApi(): Hono<{
     const result = setMockConversationArchived(
       params.data.conversationId,
       body.data.archived,
+      body.data.applyToChildren,
     );
-    return result
-      ? jsonResponse(archiveConversationResponseSchema, result)
-      : errorResponse("Conversation not found.", 404);
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(archiveConversationResponseSchema, result);
   });
   app.patch("/conversations/:conversationId/pin", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -504,8 +510,25 @@ export function createMockReportingApi(): Hono<{
       params.data.conversationId,
       body.data.pinned,
     );
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(pinConversationResponseSchema, result);
+  });
+  app.patch("/conversations/:conversationId/unread", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = markConversationUnreadBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationReadState(
+      params.data.conversationId,
+      body.data.unread,
+    );
     return result
-      ? jsonResponse(pinConversationResponseSchema, result)
+      ? jsonResponse(conversationUnreadSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/title", async (c) => {
@@ -604,6 +627,16 @@ export function createMockReportingApi(): Hono<{
     }
     return errorResponse("Attachment not found.", 404);
   });
+  // Mock data changes only through this tab's writes, which refresh their
+  // own reads, so the tokens stay fixed. Mock details have no tree token, so
+  // the poll does not refresh them.
+  app.get("/versions", () =>
+    jsonResponse(versionsSchema, {
+      conversations: "mock",
+      reviewItems: "mock",
+      spend: "mock",
+    }),
+  );
   // Mock reporting has no Review items. Answer the reads here so the
   // dashboard does not query a database that has no review item tables.
   app.get("/review-items", () =>

@@ -85,6 +85,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 3_000,
     displayTitle: "Conversation",
@@ -372,7 +373,6 @@ describe("dashboard canonical-event components", () => {
           archive={{
             archived: false,
             disabled: false,
-            error: false,
             onClick: () => {},
             pending: false,
           }}
@@ -388,6 +388,12 @@ describe("dashboard canonical-event components", () => {
             pinned: false,
           }}
           privacy={null}
+          read={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            unread: false,
+          }}
           search=""
           searchMatch={{
             count: 0,
@@ -569,7 +575,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("#proj-junior");
   });
 
-  it("shows a Slack icon for Slack-origin messages only", () => {
+  it("shows a provider icon for Slack and GitHub messages only", () => {
     const slackHtml = renderTranscript(
       conversation(
         [
@@ -607,6 +613,35 @@ describe("dashboard canonical-event components", () => {
             text: "Stays in Junior.",
             type: "message",
           }),
+          event(5, {
+            eventNamespace: "github",
+            eventType: "pull_request.review_comment.created",
+            messageId: "github-event",
+            role: "user",
+            text: "Review comment.",
+            trustedSummary: "New review comment.",
+            type: "message",
+          }),
+          event(6, {
+            eventNamespace: "junior",
+            eventType: "agent_invocation.finished",
+            messageId: "core-event",
+            role: "user",
+            text: "Child agent finished.",
+            trustedSummary: "Child agent finished.",
+            type: "message",
+          }),
+          event(7, {
+            plugin: "github",
+            text: "Replied on the pull request.",
+            type: "reply_posted",
+            url: "https://github.com/getsentry/junior/pull/1#issuecomment-7",
+          }),
+          event(8, {
+            plugin: "forge",
+            text: "Replied somewhere without a mark.",
+            type: "reply_posted",
+          }),
         ],
         { surface: "slack" },
       ),
@@ -627,6 +662,10 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain(">Slack<");
     // Known Slack user + assistant only. Null/web stay unmarked.
     expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
+    // The GitHub Event and the reply posted on GitHub. Plugins without a
+    // mark stay unmarked.
+    expect(slackHtml.match(/aria-label="GitHub"/g)).toHaveLength(2);
+    expect(slackHtml).toContain("Replied somewhere without a mark.");
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
@@ -1321,6 +1360,7 @@ describe("dashboard canonical-event components", () => {
       ],
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
@@ -1493,6 +1533,7 @@ describe("dashboard canonical-event components", () => {
       providerDestinationId: "C1",
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
@@ -1923,6 +1964,7 @@ describe("dashboard canonical-event components", () => {
 
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
+      kind: "root",
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 1_000,
       displayTitle: "Cached conversation",

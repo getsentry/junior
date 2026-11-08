@@ -35,7 +35,7 @@ function authenticatedApi(email: string) {
 describe("personal spend API", () => {
   afterEach(() => vi.useRealTimers());
 
-  test("caches seven and thirty day spend until a recorded Turn changes it", async () => {
+  test("reads seven and thirty day spend as it changes", async () => {
     vi.useFakeTimers({ now: new Date("2026-06-15T12:00:00.000Z") });
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
@@ -127,15 +127,6 @@ describe("personal spend API", () => {
         .set({ usage: { cost: { total: 1.1 } } })
         .where(eq(juniorConversations.conversationId, "slack:C1:123"));
 
-      const cachedResponse = await app.request(
-        "http://localhost/api/people/me/spend",
-      );
-      const cached = personalSpendReportSchema.parse(
-        await cachedResponse.json(),
-      );
-      expect(cached).toEqual(first);
-
-      vi.advanceTimersByTime(5 * 60_000 + 1);
       const refreshedResponse = await app.request(
         "http://localhost/api/people/me/spend",
       );
@@ -146,10 +137,7 @@ describe("personal spend API", () => {
         sevenDaysUsd: 1.3,
         thirtyDaysUsd: 1.7,
       });
-      expect(refreshed.generatedAt).not.toBe(first.generatedAt);
 
-      // A recorded Turn changes the spend version, so the next read skips
-      // the cache before its TTL ends.
       vi.advanceTimersByTime(1_000);
       await store.recordExecution({
         conversationId: "slack:C1:older",

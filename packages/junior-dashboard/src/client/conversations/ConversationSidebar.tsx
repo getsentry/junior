@@ -15,6 +15,7 @@ import { Link } from "react-router";
 
 import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
+import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { usePinConversation } from "./usePinConversation";
 import { useRenameConversation } from "./useRenameConversation";
 import { RenameConversationDialog } from "./RenameConversationDialog";
@@ -27,6 +28,7 @@ import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
+  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { formatCompactAge } from "./conversationAge";
@@ -34,10 +36,16 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import {
+  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import {
+  ConversationSidebarThreadRow,
+  ConversationSidebarThreadToggle,
+} from "./ConversationSidebarThreadRow";
+import { sidebarThreads } from "./sidebarThreads";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
@@ -68,7 +76,15 @@ type ConversationSidebarEntry =
       label: string;
       sectionKey: string;
     }
-  | { conversation: Conversation; key: string; kind: "conversation" };
+  | { conversation: Conversation; key: string; kind: "conversation" }
+  | { conversation: Conversation; depth: number; key: string; kind: "thread" }
+  | {
+      expanded: boolean;
+      hiddenCount: number;
+      key: string;
+      kind: "thread-toggle";
+      rootId: string;
+    };
 
 const ROW_ACTION_BUTTON_CLASS =
   "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
@@ -84,16 +100,12 @@ const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
-  finishedConversationIds: ReadonlySet<string>;
-  /** Opened while unread; keeps its unread place until another one opens. */
-  heldConversationId?: string;
   loading: boolean;
   selectedId?: string;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
   onNewConversation(): void;
   onReorderPins: ReorderPins;
-  onUnreadChange(conversation: Conversation, unread: boolean): void;
 }) {
   const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
@@ -106,6 +118,17 @@ export function ConversationSidebar(props: {
     },
     [showActionError],
   );
+  const handleUnreadError = useCallback(
+    (conversation: Conversation, wasMarkingUnread: boolean) => {
+      showActionError(
+        conversation,
+        wasMarkingUnread
+          ? "Could not mark as unread"
+          : "Could not mark as read",
+      );
+    },
+    [showActionError],
+  );
   const handleRenameError = useCallback(
     (conversation: Conversation) =>
       showActionError(conversation, "Could not rename"),
@@ -113,27 +136,37 @@ export function ConversationSidebar(props: {
   );
   const { collapsedKeys, toggle: toggleSection } =
     useCollapsedConversationSections();
+  const [expandedThreadRoots, setExpandedThreadRoots] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const toggleThreads = useCallback((rootId: string) => {
+    setExpandedThreadRoots((current) => {
+      const next = new Set(current);
+      if (!next.delete(rootId)) next.add(rootId);
+      return next;
+    });
+  }, []);
   // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
   // arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
     () =>
       conversationSidebarEntries(
         buildConversationSections(props.conversations, {
-          attentionIds: new Set([
-            ...props.waitingConversations.keys(),
-            ...props.finishedConversationIds,
-            ...(props.heldConversationId ? [props.heldConversationId] : []),
-          ]),
+          attentionIds: attentionConversationIds(
+            props.conversations,
+            props.waitingConversations.keys(),
+          ),
           nowMs: Date.now(),
           timeZone: props.timeZone,
         }),
         collapsedKeys,
+        { expandedThreadRoots, selectedId: props.selectedId },
       ),
     [
       collapsedKeys,
+      expandedThreadRoots,
+      props.selectedId,
       props.conversations,
-      props.finishedConversationIds,
-      props.heldConversationId,
       props.timeZone,
       props.waitingConversations,
     ],
@@ -207,6 +240,21 @@ export function ConversationSidebar(props: {
                     label={entry.label}
                     onToggle={() => toggleSection(entry.sectionKey)}
                   />
+                ) : entry.kind === "thread-toggle" ? (
+                  <ConversationSidebarThreadToggle
+                    expanded={entry.expanded}
+                    hiddenCount={entry.hiddenCount}
+                    onToggle={() => toggleThreads(entry.rootId)}
+                  />
+                ) : entry.kind === "thread" ? (
+                  <ConversationSidebarThreadRow
+                    conversation={entry.conversation}
+                    depth={entry.depth}
+                    selected={entry.conversation.id === props.selectedId}
+                    waiting={props.waitingConversations.has(
+                      entry.conversation.id,
+                    )}
+                  />
                 ) : (
                   <ConversationSidebarEntryRow
                     conversation={entry.conversation}
@@ -214,12 +262,9 @@ export function ConversationSidebar(props: {
                     onArchived={showArchived}
                     onPinError={handlePinError}
                     onPinned={clearActionError}
+                    onUnreadError={handleUnreadError}
                     onRenameError={handleRenameError}
-                    onUnreadChange={props.onUnreadChange}
                     selected={entry.conversation.id === props.selectedId}
-                    unread={props.finishedConversationIds.has(
-                      entry.conversation.id,
-                    )}
                     waiting={props.waitingConversations.get(
                       entry.conversation.id,
                     )}
@@ -268,6 +313,7 @@ export function ConversationRowSkeletons() {
 function conversationSidebarEntries(
   sections: ConversationSection[],
   collapsedKeys: ReadonlySet<string>,
+  threads: { expandedThreadRoots: ReadonlySet<string>; selectedId?: string },
 ): ConversationSidebarEntry[] {
   return sections.flatMap((section, index) => {
     const collapsed = collapsedKeys.has(section.key);
@@ -281,13 +327,47 @@ function conversationSidebarEntries(
         label: section.label,
         sectionKey: section.key,
       },
-      ...(collapsed ? [] : section.conversations).map((conversation) => ({
-        conversation,
-        key: `conversation-${conversation.id}`,
-        kind: "conversation" as const,
-      })),
+      ...(collapsed ? [] : section.conversations).flatMap((conversation) => [
+        {
+          conversation,
+          key: `conversation-${conversation.id}`,
+          kind: "conversation" as const,
+        },
+        ...threadEntries(
+          conversation,
+          threads.expandedThreadRoots.has(conversation.id),
+          threads.selectedId,
+        ),
+      ]),
     ];
   });
+}
+
+/** List the sidebar Threads under one root, then its show more or fewer row. */
+function threadEntries(
+  root: Conversation,
+  expanded: boolean,
+  selectedId: string | undefined,
+): ConversationSidebarEntry[] {
+  const { collapsible, hiddenCount, threads } = sidebarThreads(root.threads, {
+    expanded,
+    selectedId,
+  });
+  const entries: ConversationSidebarEntry[] = threads.map((thread) => ({
+    ...thread,
+    key: `thread-${thread.conversation.id}`,
+    kind: "thread" as const,
+  }));
+  if (collapsible && (expanded || hiddenCount > 0)) {
+    entries.push({
+      expanded,
+      hiddenCount,
+      key: `thread-toggle-${root.id}`,
+      kind: "thread-toggle",
+      rootId: root.id,
+    });
+  }
+  return entries;
 }
 
 type ConversationSidebarRowProps = {
@@ -298,10 +378,9 @@ type ConversationSidebarRowProps = {
   onArchived(conversation: Conversation): void;
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
+  onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
   onRenameError(conversation: Conversation): void;
-  onUnreadChange(conversation: Conversation, unread: boolean): void;
   selected: boolean;
-  unread: boolean;
   waiting?: WaitingConversation;
 };
 
@@ -341,6 +420,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
     onError: (pinned) => props.onPinError(props.conversation, pinned),
     onSuccess: () => props.onPinned(props.conversation),
   });
+  const markUnread = useMarkConversationUnread(props.conversation.id, {
+    onError: (unread) => props.onUnreadError(props.conversation, unread),
+  });
   const rename = useRenameConversation(props.conversation.id, {
     onError: () => props.onRenameError(props.conversation),
   });
@@ -350,11 +432,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
-  const emphasized = props.unread || Boolean(props.waiting);
+  const unread = Boolean(props.conversation.unread);
+  const emphasized = unread || Boolean(props.waiting);
   const drag = props.drag;
   // Unread tracks idle conversations only.
-  const canMarkUnread = props.conversation.status === "completed";
+  const canMarkUnread = isIdleConversation(props.conversation);
   const archived = Boolean(props.conversation.archivedAt);
+  // The leading marker toggles read state. A waiting row's marker is about
+  // its review item, so it stays a plain marker.
+  const canToggleRead = !props.waiting && (unread || canMarkUnread);
   const togglePin = () => pin.mutate(!pinned);
   const toggleArchive = () =>
     archive.mutate({
@@ -423,6 +509,35 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             status={status}
           />
         </Link>
+        {canToggleRead ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
+                  className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
+                  disabled={markUnread.isPending}
+                  onClick={() => markUnread.mutate(!unread)}
+                  type="button"
+                >
+                  {/* On hover, preview the state that a click sets. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "hidden size-1.5 rounded-full group-hover/read:block group-focus-visible/read:block",
+                      unread
+                        ? "border border-dashboard-text-muted"
+                        : "bg-dashboard-accent",
+                    )}
+                  />
+                </button>
+              }
+            />
+            <TooltipContent size="compact">
+              {unread ? "Mark as read" : "Mark as unread"}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         {props.waiting ? (
           <Link
             className="mb-1.5 ml-[2.125rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
@@ -500,17 +615,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {props.unread ? (
-          <ContextMenuItem
-            onClick={() => props.onUnreadChange(props.conversation, false)}
-          >
+        {unread ? (
+          <ContextMenuItem onClick={() => markUnread.mutate(false)}>
             <MailOpen aria-hidden="true" />
             Mark as read
           </ContextMenuItem>
         ) : (
           <ContextMenuItem
             disabled={!canMarkUnread}
-            onClick={() => props.onUnreadChange(props.conversation, true)}
+            onClick={() => markUnread.mutate(true)}
           >
             <Mail aria-hidden="true" />
             Mark as unread
@@ -548,7 +661,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   );
 });
 
-/** Show the row age, or the status when the conversation runs or failed. */
+/** Show the row age, or the status when the conversation runs, failed, or stopped. */
 function ConversationRowState(props: {
   lastSeenAt: string;
   status: ReturnType<typeof visualStatusForConversation>;
@@ -563,6 +676,13 @@ function ConversationRowState(props: {
   }
   if (props.status === "failed") {
     return <span className="font-sans text-xs text-rose-400">Failed</span>;
+  }
+  if (props.status === "stopped") {
+    return (
+      <span className="font-sans text-xs text-dashboard-text-muted">
+        Stopped
+      </span>
+    );
   }
   return (
     <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">

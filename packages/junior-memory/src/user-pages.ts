@@ -31,7 +31,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
   return {
     id: "memories",
     label: "Memories",
-    navigation: "primary",
+    navigation: "profile",
     description: "Public memories Junior can use across conversations.",
     async read(ctx, input) {
       const page = await listMemories(ctx.db as MemoryDb, {
