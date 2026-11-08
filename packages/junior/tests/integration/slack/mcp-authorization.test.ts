@@ -16,7 +16,6 @@ import {
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import {
   EVAL_MCP_AUTH_PROVIDER,
-  issueNoEvalMcpRefreshTokens,
   requireEvalMcpWriteScope,
   revokeEvalMcpGrant,
 } from "../../msw/handlers/eval-mcp-auth";
@@ -121,9 +120,8 @@ describe("Slack MCP authorization", () => {
   it("sends a new link that asks for the scope the provider requires", async () => {
     const user = "USTEPUP";
     // Injected fault: the MCP server needs a scope the first sign-in lacks.
+    // The provider issues refresh tokens, but a refresh keeps the old scope.
     requireEvalMcpWriteScope();
-    // Injected fault: Junior cannot refresh, so it must ask again.
-    issueNoEvalMcpRefreshTokens();
     const harness = await askForBudget({ user, ts: "1712345.3001" });
     const [firstLink] = slackApiOutbox.authorizationLinks(user);
 

@@ -74,7 +74,7 @@ interface AuthorizationGrant {
 /** The access that the person granted with their last sign-in. */
 interface ProviderGrant {
   accessToken: string;
-  refreshToken?: string;
+  refreshToken: string;
   scope: string;
 }
 
@@ -82,7 +82,6 @@ let authorizationGrant: AuthorizationGrant | undefined;
 let clientRegistered = false;
 let grant: ProviderGrant | undefined;
 let issuedTokens = 0;
-let issuesRefreshTokens = true;
 let requiresWriteScope = false;
 let releasePushCalls = 0;
 
@@ -103,14 +102,6 @@ export function revokeEvalMcpGrant(): void {
  */
 export function requireEvalMcpWriteScope(): void {
   requiresWriteScope = true;
-}
-
-/**
- * Injected fault: the provider issues access tokens without a refresh token,
- * as many providers do.
- */
-export function issueNoEvalMcpRefreshTokens(): void {
-  issuesRefreshTokens = false;
 }
 
 function issueToken(kind: "access" | "refresh"): string {
@@ -194,7 +185,6 @@ export function resetEvalMcpAuthMockState(): void {
   clientRegistered = false;
   grant = undefined;
   issuedTokens = 0;
-  issuesRefreshTokens = true;
   requiresWriteScope = false;
   releasePushCalls = 0;
 }
@@ -915,7 +905,7 @@ export const evalMcpAuthHandlers = [
     const params = new URLSearchParams(bodyText);
     if (params.get("grant_type") === "refresh_token") {
       if (
-        !grant?.refreshToken ||
+        !grant ||
         params.get("client_id") !== EVAL_MCP_CLIENT_ID ||
         params.get("refresh_token") !== grant.refreshToken
       ) {
@@ -953,9 +943,7 @@ export const evalMcpAuthHandlers = [
 
     grant = {
       accessToken: issueToken("access"),
-      ...(issuesRefreshTokens
-        ? { refreshToken: issueToken("refresh") }
-        : undefined),
+      refreshToken: issueToken("refresh"),
       scope: authorizationGrant.scope ?? EVAL_MCP_READ_SCOPE,
     };
     authorizationGrant = undefined;
@@ -964,9 +952,7 @@ export const evalMcpAuthHandlers = [
       access_token: grant.accessToken,
       token_type: "Bearer",
       expires_in: 3600,
-      ...(grant.refreshToken
-        ? { refresh_token: grant.refreshToken }
-        : undefined),
+      refresh_token: grant.refreshToken,
       scope: grant.scope,
     });
   }),
