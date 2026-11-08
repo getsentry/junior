@@ -155,7 +155,7 @@ describe("background compaction events", () => {
 
 const MODEL_ID = botConfig.modelId;
 
-function assistant(text: string, input = 0): AssistantMessage {
+function assistant(text: string, input = 0, costUsd = 0): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
@@ -168,18 +168,24 @@ function assistant(text: string, input = 0): AssistantMessage {
       cacheRead: 0,
       cacheWrite: 0,
       totalTokens: input,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: {
+        input: 0,
+        output: costUsd,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: costUsd,
+      },
     },
     stopReason: "stop",
     timestamp: 0,
   };
 }
 
-/** A model stream that answers each call with the next text. */
+/** A model stream that answers each call with the next text, at $0.001. */
 function replies(texts: string[]): { calls: Context[]; streamFn: StreamFn } {
   const calls: Context[] = [];
   const streamFn: StreamFn = (_model, context) => {
-    const message = assistant(texts[calls.length]!);
+    const message = assistant(texts[calls.length]!, 0, 0.001);
     calls.push({ ...context, messages: [...context.messages] });
     const stream = createAssistantMessageEventStream();
     queueMicrotask(() => {
@@ -295,6 +301,7 @@ describe("background compaction job", () => {
       {
         type: "compaction_prepared",
         ...request,
+        costUsd: 0.001,
         outcome: "ready",
         summary: "The person picked blue.",
       },

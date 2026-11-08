@@ -14,6 +14,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
   estimateTextTokens,
@@ -689,7 +690,10 @@ function loadCompactionSource(
  */
 export async function compactActiveContextIfNeeded(
   args: ActiveContextCompactionArgs,
-  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
+  summarize: (
+    messages: PiMessage[],
+    signal?: AbortSignal,
+  ) => Promise<ContextSummary>,
 ): Promise<CompactContextResult> {
   const pendingMessages = args.pendingMessages ?? [];
   const source = loadCompactionSource(
@@ -711,7 +715,10 @@ export async function compactActiveContextIfNeeded(
 
 async function compactActiveAboveThreshold(
   args: ActiveContextCompactionArgs,
-  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
+  summarize: (
+    messages: PiMessage[],
+    signal?: AbortSignal,
+  ) => Promise<ContextSummary>,
   source: { estimatedTokens: number; messages: PiMessage[] },
   triggerTokens: number,
 ): Promise<CompactContextResult> {
@@ -800,8 +807,9 @@ async function compactActiveAboveThreshold(
 
   await args.onCompactionStart?.();
   let summary: string;
+  let costUsd: number | undefined;
   try {
-    summary = await summarize(args.piMessages, args.signal);
+    ({ summary, costUsd } = await summarize(args.piMessages, args.signal));
   } catch (error) {
     if (source.estimatedTokens >= inputLimitTokens) {
       throw new ContextInputLimitExceededError(
@@ -867,6 +875,7 @@ async function compactActiveAboveThreshold(
         retainedMessageCount,
         summaryChars: summary.length,
       },
+      ...(costUsd === undefined ? undefined : { costUsd }),
       summary,
       replacementHistory: replacement.map((entry) => ({
         item: historyItemFromPiMessage(entry.message, entry.provenance),
