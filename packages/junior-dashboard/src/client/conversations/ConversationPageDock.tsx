@@ -11,11 +11,13 @@ import { latestReviewItemId } from "../review-desk/reviewItemFormat";
 export function ConversationPageDock(props: {
   conversationId: string;
   detail: ConversationData;
+  focusRequest?: string;
   /** True when newer transcript pages are not loaded. */
   hasNewerPage: boolean;
   live: boolean;
+  onFocusRequestDone(key: string): void;
   onPinRequest(): void;
-  ref: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
+  ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
 }) {
   const { detail } = props;
   // Key on the event array, not the whole detail object. Metadata-only polls
@@ -41,6 +43,8 @@ export function ConversationPageDock(props: {
       // Only pass committed ids for mailbox de-dupe. The full transcript is
       // too large to re-enter the footer on every live poll while typing.
       committedMessageIds={mailboxCommittedIds}
+      focusRequest={props.focusRequest}
+      onFocusRequestDone={props.onFocusRequestDone}
       onPinRequest={props.onPinRequest}
       pendingAuthorization={detail.pendingAuthorization}
       // Keep the cancel watermark off props. Live polls refresh generatedAt

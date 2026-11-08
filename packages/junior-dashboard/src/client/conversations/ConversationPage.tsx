@@ -93,10 +93,7 @@ import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { ChatLayout } from "./ChatLayout";
-import {
-  touchKeyboardMatches,
-  type ConversationComposerHandle,
-} from "./ConversationComposer";
+import type { ConversationComposerHandle } from "./ConversationComposer";
 import { ConversationOutline } from "./ConversationOutline";
 import {
   QuickQuestionPanel,
@@ -155,8 +152,7 @@ export function ConversationPage(props: {
     () => false,
   );
   const pageRef = useRef<HTMLDivElement>(null);
-  const replyRef =
-    useRef<Pick<ConversationComposerHandle, "appendText" | "focus">>(null);
+  const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
@@ -393,20 +389,14 @@ export function ConversationPage(props: {
     view === "rich" &&
     detail.data?.isParticipant &&
     detail.data.kind !== "task";
-  // A navigation that asks for the reply box focuses it once, when it shows.
-  // Coming back from the event log does not focus it again. On a touch
-  // screen, focus would open the keyboard over the transcript.
+  // A navigation can ask for the reply box. Ask the footer once for it, so
+  // coming back from the event log does not focus it again.
   const location = useLocation();
-  const replyFocusKey = requestsReplyFocus(location.state)
-    ? location.key
-    : undefined;
-  const replyFocusedKey = useRef<string>(undefined);
-  useEffect(() => {
-    if (!canReply || !replyFocusKey) return;
-    if (replyFocusedKey.current === replyFocusKey) return;
-    replyFocusedKey.current = replyFocusKey;
-    if (!touchKeyboardMatches()) replyRef.current?.focus();
-  }, [canReply, replyFocusKey]);
+  const [replyFocusDoneKey, setReplyFocusDoneKey] = useState<string>();
+  const replyFocusRequest =
+    requestsReplyFocus(location.state) && location.key !== replyFocusDoneKey
+      ? location.key
+      : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
   useEffect(() => {
@@ -862,8 +852,10 @@ export function ConversationPage(props: {
                 <ConversationPageDock
                   conversationId={conversationId}
                   detail={detail}
+                  focusRequest={replyFocusRequest}
                   hasNewerPage={Boolean(history.newer)}
                   live={live}
+                  onFocusRequestDone={setReplyFocusDoneKey}
                   onPinRequest={requestPin}
                   ref={replyRef}
                 />
