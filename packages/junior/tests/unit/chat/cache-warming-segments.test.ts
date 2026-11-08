@@ -134,6 +134,10 @@ describe("cache warming gap segments", () => {
       sentRetention: "short",
       warmups: 2,
     });
+    // Alibaba's explicit cache also lasts 5 minutes.
+    expect(await warmupsAfterTurn("alibaba/qwen3.7-plus")).toMatchObject({
+      warmups: 2,
+    });
     // Cache writes cost more than reads on this OpenAI model too, but its
     // cache does not have the 5 minute TTL.
     expect(await warmupsAfterTurn("openai/gpt-5.6-sol")).toMatchObject({

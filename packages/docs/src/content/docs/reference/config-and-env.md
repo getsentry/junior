@@ -320,10 +320,11 @@ that time, the next turn writes the full history to the cache again. Junior
 keeps the cache of an idle Conversation warm when a warmup is likely to cost
 less than that write.
 
-- Junior warms only `anthropic/` models, because their short cache lasts 5
-  minutes and a read refreshes it. The model's cache write must cost more than
-  a cache read, and the cached prefix must be at least 50K tokens. It does not warm models that
-  use a thinking budget, because the budget adds output tokens to each warmup.
+- Junior warms only `anthropic/` and `alibaba/` models, because their explicit
+  cache lasts 5 minutes and a read refreshes it. The model's cache write must
+  cost more than a cache read, and the cached prefix must be at least 50K
+  tokens. It does not warm models that use a thinking budget, because the
+  budget adds output tokens to each warmup.
 - When a turn ends, Junior stores the last model request in the `StateAdapter`.
   Junior deletes it when the next turn starts, when warmups stop, or after 55
   minutes.

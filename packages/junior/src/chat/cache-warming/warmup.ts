@@ -120,12 +120,23 @@ async function connectedState() {
 
 type ConnectedState = Awaited<ReturnType<typeof connectedState>>;
 
-// Providers whose short cache lasts SHORT_CACHE_TTL_MS and is refreshed by a
-// read. The warmup timing and the reply chance use that TTL. Other caches, such
-// as OpenAI's, last longer, so warmups would be extra cost, and their misses
-// would open the breaker for every model. Add a provider when its TTL is
-// verified.
-const SHORT_TTL_PROVIDERS = new Set(["anthropic"]);
+// Providers whose explicit cache lasts SHORT_CACHE_TTL_MS and is refreshed by
+// a read. The warmup timing and the reply chance use that TTL. Other caches
+// last longer or have no fixed TTL, so warmups would be extra cost, and their
+// misses would open the breaker for every model.
+//
+// The TTLs come from models.dev (`cache.explicit.ttl` in
+// providers/<provider>/models/*.toml; its api.json does not publish them).
+// Every Anthropic model lists ["5m", "1h"] and every Alibaba Qwen model with
+// an explicit cache lists ["5m"]. Check them again when a provider is added:
+// - https://github.com/anomalyco/models.dev/tree/dev/providers/anthropic/models
+// - https://github.com/anomalyco/models.dev/tree/dev/providers/alibaba/models
+// The provider docs say that a cache hit resets the TTL:
+// - https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+// - https://www.alibabacloud.com/help/en/model-studio/context-cache
+// Not listed: OpenAI (AI Gateway caches it implicitly, at least 30 minutes),
+// MiniMax (no TTL on models.dev).
+const SHORT_TTL_PROVIDERS = new Set(["anthropic", "alibaba"]);
 
 // Warming pays only when a cache write costs more than a read. Pi adds a
 // thinking budget to the one-token output limit on the Anthropic Messages API
