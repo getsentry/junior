@@ -126,7 +126,9 @@ describe("cache warming gap segments", () => {
     await runCacheWarmup(warmup);
 
     expect(
-      await state.getList<number>("junior:cache_warming:breaker:outcomes"),
+      await state.getList<number>(
+        "junior:cache_warming:breaker:anthropic:outcomes",
+      ),
     ).toEqual([]);
     await state.delete("junior:cache_warming:gaps:user:1");
   });
