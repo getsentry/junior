@@ -16,7 +16,7 @@ import {
   getConversationWorkState,
   startConversationWork,
 } from "@/chat/task-execution/store";
-import { juniorConversations, juniorDestinations } from "@/db/schema";
+import { juniorDestinations } from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -137,39 +137,6 @@ describe("continue a dashboard conversation in Slack", () => {
       fixture,
     );
     const locationId = await publicChannelLocationId(fixture);
-    const childConversationId = `${conversationId}:task`;
-    const grandchildConversationId = `${childConversationId}:task`;
-    await fixture.conversationStore.createChild({
-      childConversationId,
-      kind: "task",
-      parentConversationId: conversationId,
-    });
-    await fixture.conversationStore.createChild({
-      childConversationId: grandchildConversationId,
-      kind: "task",
-      parentConversationId: childConversationId,
-    });
-    const descendants = async () =>
-      await Promise.all(
-        [childConversationId, grandchildConversationId].map(async (id) => {
-          const [row] = await getDb()
-            .select({ destinationId: juniorConversations.destinationId })
-            .from(juniorConversations)
-            .where(eq(juniorConversations.conversationId, id));
-          const child = await fixture.conversationStore.get({
-            conversationId: id,
-          });
-          return {
-            destinationId: row?.destinationId,
-            location: child?.location,
-            visibility: child?.visibility,
-          };
-        }),
-      );
-    for (const descendant of await descendants()) {
-      expect(descendant.destinationId).not.toBe(locationId);
-      expect(descendant.location).toBeUndefined();
-    }
     const app = viewerApp(fixture);
     expect((await readDetail(app, conversationId)).canContinueInSlack).toBe(
       true,
@@ -202,20 +169,6 @@ describe("continue a dashboard conversation in Slack", () => {
     expect(
       (await fixture.conversationStore.get({ conversationId }))?.location,
     ).toMatchObject({ channelId: "C123", threadTs: THREAD_TS });
-    // The move gives each descendant the new Location and Destination row,
-    // so a child Run reads the channel's visibility.
-    const moved = {
-      destinationId: locationId,
-      location: {
-        id: locationId,
-        provider: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: THREAD_TS,
-      },
-      visibility: "public",
-    };
-    await expect(descendants()).resolves.toEqual([moved, moved]);
 
     // The move is one-way and happens once.
     const again = await continueInSlack(app, conversationId, locationId);
@@ -267,16 +220,6 @@ describe("continue a dashboard conversation in Slack", () => {
         .slice(before)
         .map((message) => message.conversationId),
     ).toEqual([conversationId]);
-
-    // Descendants read the channel's Destination row, not the dashboard's.
-    await fixture.conversationStore.recordDestinationVisibility({
-      destination: SLACK_DESTINATION,
-      visibility: "private",
-    });
-    await expect(descendants()).resolves.toEqual([
-      { ...moved, visibility: "private" },
-      { ...moved, visibility: "private" },
-    ]);
   });
 
   it("sends a dashboard message that races the move to Slack", async () => {

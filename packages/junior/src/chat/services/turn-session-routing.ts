@@ -97,13 +97,9 @@ export async function resolveConversationRouting(args: {
   let location: Conversation["location"];
 
   for (const conversation of chain) {
-    // Take the Location from the Conversation that owns the Destination. A
-    // child's copy of its root's Location must not choose where to post.
-    if (!destination && conversation.destination) {
-      destination = conversation.destination;
-      location = conversation.location;
-    }
+    destination ??= conversation.destination;
     source ??= conversation.sessionSource;
+    location ??= conversation.location;
     if (destination && source) {
       break;
     }

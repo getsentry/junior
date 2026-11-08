@@ -46,7 +46,6 @@ import {
 import {
   locationForWrite,
   locationFromRow,
-  saveLocationOnDescendants,
   visibilityFromLocationRow,
 } from "./location";
 import { conversationKindFromRow } from "./conversation-row";
@@ -394,17 +393,6 @@ export class SqlStore implements ConversationStore {
             }
             return;
           }
-          // Hold the parent row until this commits, so a Location change on
-          // the parent either waits for this child or finishes before it is
-          // copied. saveLocationOnDescendants relies on this.
-          await this.executor
-            .db()
-            .select({ conversationId: juniorConversations.conversationId })
-            .from(juniorConversations)
-            .where(
-              eq(juniorConversations.conversationId, args.parentConversationId),
-            )
-            .for("share");
           const parentRow = await this.readConversationRow(
             args.parentConversationId,
           );
@@ -908,19 +896,6 @@ export class SqlStore implements ConversationStore {
     const row = rows[0];
     if (!row?.rootConversationId) {
       throw new Error("Conversation parent is missing its persisted root");
-    }
-    // A root write changes the stored Location only when it adds one or adds
-    // its thread. locationForWrite rejects any other change.
-    if (
-      !conversation.parentConversationId &&
-      location &&
-      (!conversation.location ||
-        location.threadTs !== conversation.location.threadTs)
-    ) {
-      await saveLocationOnDescendants(
-        this.executor,
-        conversation.conversationId,
-      );
     }
     // A conflict keeps the stored parent. A history append can create the row
     // first under the event lock, so a new child can find a root row here.

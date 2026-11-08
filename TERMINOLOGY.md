@@ -36,9 +36,7 @@ Canonical words for Junior code and docs. One concept, one word.
   visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
   assistant Messages are stored. Only a root Conversation delivers to its
-  Location. A child stores its output and returns it to its parent. A child
-  keeps its root's Location for provider config and tools, and it may use
-  provider tools, including Slack writes.
+  Location. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
