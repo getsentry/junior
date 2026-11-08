@@ -68,10 +68,13 @@ const SNAPSHOT_ZSTD_PARAMS = {
   params: { [zlibConstants.ZSTD_c_compressionLevel]: 1 },
 };
 
-const GLOBAL_GAPS_MAX = 2_000;
-const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
+/** Gaps kept in each segment list. */
+export const GLOBAL_GAPS_MAX = 2_000;
+/** A segment list expires this long after its last gap. */
+export const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
 const CONVERSATION_GAPS_MAX = 50;
-const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
+/** The Turn count of a Conversation resets after this long with no call. */
+export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
@@ -97,7 +100,9 @@ interface ConversationCacheState {
   idle?: IdlePeriod;
 }
 
-const segmentGapsKey = (segment: string) => `${KEY_PREFIX}:gaps:${segment}`;
+/** State list of the recent reply gaps (ms) of one `gapSegment`. */
+export const segmentGapsKey = (segment: string) =>
+  `${KEY_PREFIX}:gaps:${segment}`;
 const conversationKey = (conversationId: string) =>
   `${KEY_PREFIX}:conversation:${conversationId}`;
 /**
