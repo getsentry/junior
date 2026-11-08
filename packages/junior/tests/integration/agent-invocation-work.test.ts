@@ -111,9 +111,10 @@ describe("agent invocation conversation work", () => {
       const child = await conversationStore.get({
         conversationId: created.childConversationId,
       });
-      // The child stores the root's Location and Destination row, but it has
-      // no Destination to deliver to.
+      // The child stores the root's Location and Destination. Only a root
+      // delivers to them.
       expect(child).toMatchObject({
+        destination: slackDestination,
         location: {
           provider: "slack",
           teamId: "T123",
@@ -123,7 +124,6 @@ describe("agent invocation conversation work", () => {
         parentConversationId: slackParentConversationId,
         visibility: "public",
       });
-      expect(child).not.toHaveProperty("destination");
       expect(child).not.toHaveProperty("sessionSource");
       const queueMessage = queue.takeMessage();
 

@@ -90,7 +90,7 @@ export async function appendConversationMessageForViewer(
   if (!conversation) {
     throwApiError(404, "Conversation not found.");
   }
-  if (!acceptsWebMessages(conversationId, conversation.destination)) {
+  if (!acceptsWebMessages(conversation)) {
     throwApiError(409, "Conversation does not accept web messages.");
   }
 

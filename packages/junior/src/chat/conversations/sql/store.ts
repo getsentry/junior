@@ -290,9 +290,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.archivedAt
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
-    // A child's Destination row gives its visibility and Location. It is not
-    // a Destination to deliver to.
-    ...(destination && !row.parentConversationId ? { destination } : undefined),
+    ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
     ...(actor ? { actor } : undefined),
     ...(row.channelName ? { channelName: row.channelName } : undefined),
