@@ -58,17 +58,23 @@ function histogramOf(gapsMs: readonly number[]): GapHistogram {
 }
 
 // A conversation with few gaps leans on the global gaps. Each conversation
-// gap moves the weight by 1/BLEND_PSEUDOCOUNT.
+// gap moves the weight by 1/BLEND_PSEUDOCOUNT. The two histograms are mixed as
+// shares, so the much larger global list does not hide the conversation gaps.
 function blendHistograms(
   conversation: GapHistogram,
   global: GapHistogram,
 ): GapHistogram {
+  if (conversation.total === 0 || global.total === 0) {
+    return conversation.total === 0 ? global : conversation;
+  }
   const weight = Math.min(conversation.total / BLEND_PSEUDOCOUNT, 1);
   return {
     counts: conversation.counts.map(
-      (count, index) => weight * count + (1 - weight) * global.counts[index]!,
+      (count, index) =>
+        (weight * count) / conversation.total +
+        ((1 - weight) * global.counts[index]!) / global.total,
     ),
-    total: weight * conversation.total + (1 - weight) * global.total,
+    total: 1,
   };
 }
 

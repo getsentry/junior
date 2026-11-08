@@ -37,6 +37,20 @@ describe("decideWarmup", () => {
     expect(decision).toMatchObject({ warm: false, reason: "unlikely_return" });
   });
 
+  it("gives a conversation's own gaps their share next to a large global list", () => {
+    const decision = decideWarmup({
+      ...prices,
+      // Half of the weight is on this conversation's slow replies, even though
+      // the global list is 200 times longer.
+      conversationGapsMs: gaps(10, 3 * 60 * MINUTE),
+      globalGapsMs: gaps(2_000, 5 * MINUTE),
+      idleMs: 4 * MINUTE,
+      prefixTokens: 200_000,
+    });
+
+    expect(decision.returnProbability).toBeCloseTo(0.5);
+  });
+
   it("counts idle periods with no reply and stops at the idle horizon", () => {
     const input = {
       ...prices,

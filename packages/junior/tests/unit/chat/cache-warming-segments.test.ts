@@ -62,8 +62,12 @@ const segmentGaps = (segment: string) =>
   getStateAdapter().getList<number>(`junior:cache_warming:gaps:${segment}`);
 
 describe("cache warming gap segments", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
+    await getStateAdapter().delete(
+      `junior:cache_warming:conversation:${conversationId}`,
+    );
   });
 
   it("records each gap in the segment of the Turn that started the idle period", async () => {
@@ -81,5 +85,25 @@ describe("cache warming gap segments", () => {
     expect(await segmentGaps("system:1")).toEqual([NO_REPLY_GAP_MS]);
     expect(await segmentGaps("user:2-3")).toEqual([7 * MINUTE]);
     expect(await segmentGaps("user:1")).toEqual([]);
+  });
+
+  it("does not record a no-reply gap after a reply recorded the real gap", async () => {
+    vi.useFakeTimers();
+    await endTurn(true);
+    const horizon = scheduledHorizon();
+    vi.advanceTimersByTime(7 * MINUTE);
+
+    // The person replies right after the horizon message reads the idle
+    // period, before it records the no-reply gap.
+    const state = getStateAdapter();
+    const get = state.get.bind(state);
+    vi.spyOn(state, "get").mockImplementationOnce(async (key) => {
+      const value = await get(key);
+      await endTurn(true);
+      return value;
+    });
+    await runCacheWarmup(horizon);
+
+    expect(await segmentGaps("user:1")).toEqual([7 * MINUTE]);
   });
 });
