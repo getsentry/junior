@@ -1,11 +1,12 @@
 /**
- * Reads the authority of an action from its root Conversation.
+ * Reads the authority of an action from the Conversation of its Run, or from
+ * the root for a child agent.
  *
- * When Guardian reviews an action, the runtime walks up to the root
- * Conversation and reads the messages there. For a root Run, the root is its
- * own Conversation. A child agent never has a message from a person: its task
- * comes from its parent agent, so it reads the root of its parent chain. The
- * source is the root's `message` events: the durable visible transcript.
+ * When Guardian reviews an action, the runtime reads the messages of the
+ * Conversation that the Run belongs to. A child agent never has a message
+ * from a person: its task comes from its parent agent, so it reads the root
+ * of its parent chain. The source is the `message` events: the durable
+ * visible transcript.
  * Compaction never rewrites these events, so an early request or a
  * later revocation is still there after the root's model history changes.
  *
@@ -214,17 +215,21 @@ async function readOpeningMessage(
 }
 
 /**
- * Read a bounded projection of the root Conversation for Guardian review of
- * one action. `actor` is the Actor of the Run. Only messages that the same
- * Actor wrote, or the Automation run's own instruction for a system Actor,
- * are labeled as authority. When `conversationId` is a root, it reads that
- * Conversation.
+ * Read a bounded projection of the Conversation that authorizes one action
+ * for Guardian review. `actor` is the Actor of the Run. Only messages that
+ * the same Actor wrote, or the Automation run's own instruction for a system
+ * Actor, are labeled as authority. `childAgent` is a Run that a parent agent
+ * or an Event started: it reads the root of `conversationId`. Each other Run
+ * reads `conversationId` itself.
  */
 export async function readRootConversation(args: {
   actor: Actor | undefined;
+  childAgent: boolean;
   conversationId: string;
 }): Promise<RootConversation> {
-  const root = await findRootConversation(args.conversationId);
+  const root = args.childAgent
+    ? await findRootConversation(args.conversationId)
+    : await getConversationStore().get({ conversationId: args.conversationId });
   if (!root || !args.actor) {
     return { messages: [], truncated: false };
   }

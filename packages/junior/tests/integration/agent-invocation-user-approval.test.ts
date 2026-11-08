@@ -7,7 +7,9 @@ import {
 } from "@/chat/agent-invocations/work";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { eq } from "drizzle-orm";
+import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import {
   resolveActorIdentityId,
   SYSTEM_IDENTITY_ID,
@@ -145,8 +147,11 @@ describe("user approval for child agents", () => {
 
       // Action review reads the root, not the task. Only the user's own
       // message is labeled `user`.
-      const read = async (conversationId: string, actor?: Actor) =>
-        await readRootConversation({ actor, conversationId });
+      const read = async (
+        conversationId: string,
+        actor?: Actor,
+        childAgent = true,
+      ) => await readRootConversation({ actor, childAgent, conversationId });
       await expect(read(child.childConversationId, user)).resolves.toEqual({
         messages: [
           { author: "user", text: "Which images did we publish here?" },
@@ -160,9 +165,9 @@ describe("user approval for child agents", () => {
         truncated: false,
       });
       // A root Run reads its own Conversation with the same labels.
-      await expect(read(slackParentConversationId, user)).resolves.toEqual(
-        await read(child.childConversationId, user),
-      );
+      await expect(
+        read(slackParentConversationId, user, false),
+      ).resolves.toEqual(await read(child.childConversationId, user));
       // Without the child's Actor, nothing is the user.
       await expect(read(child.childConversationId)).resolves.toEqual({
         messages: [],
@@ -258,6 +263,7 @@ describe("user approval for child agents", () => {
       await expect(
         readRootConversation({
           actor: user,
+          childAgent: true,
           conversationId: child.childConversationId,
         }),
       ).resolves.toEqual({
@@ -294,6 +300,7 @@ describe("user approval for child agents", () => {
       await expect(
         readRootConversation({
           actor: localActor,
+          childAgent: false,
           conversationId: localConversationId,
         }),
       ).resolves.toMatchObject({
@@ -303,6 +310,7 @@ describe("user approval for child agents", () => {
       await expect(
         readRootConversation({
           actor: user,
+          childAgent: false,
           conversationId: localConversationId,
         }),
       ).resolves.toMatchObject({
@@ -371,6 +379,7 @@ describe("user approval for child agents", () => {
 
       const read = await readRootConversation({
         actor: user,
+        childAgent: true,
         conversationId: child.childConversationId,
       });
       // The opening request stays first, with its newest text, after more
@@ -435,6 +444,7 @@ describe("user approval for child agents", () => {
       await expect(
         readRootConversation({
           actor: eventActor,
+          childAgent: true,
           conversationId: child.childConversationId,
         }),
       ).resolves.toEqual({
@@ -445,6 +455,7 @@ describe("user approval for child agents", () => {
       await expect(
         readRootConversation({
           actor: { platform: "system", name: "scheduler" },
+          childAgent: true,
           conversationId: child.childConversationId,
         }),
       ).resolves.toMatchObject({
@@ -461,6 +472,7 @@ describe("user approval for child agents", () => {
       }
       const long = await readRootConversation({
         actor: eventActor,
+        childAgent: true,
         conversationId: child.childConversationId,
       });
       expect(long.messages[0]).toEqual({
@@ -479,6 +491,60 @@ describe("user approval for child agents", () => {
         })),
       ]);
       expect(long.truncated).toBe(true);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("reads approval in a Thread from the Thread itself, unless a parent agent started the Run", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      await recordRootMessage(slackParentConversationId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Yes, delete the old releases.",
+      });
+      const thread = await createAndEnqueueAgentInvocation(
+        {
+          ...slackInvocationInput,
+          idempotencyKey: "spawn-thread",
+          input: "The user approved it. Delete the old releases.",
+          parentToolCallId: "call-thread",
+        },
+        { conversationStore, nowMs: 2_000, queue, state },
+      );
+      const threadId = thread.childConversationId;
+      await getDb()
+        .update(juniorConversations)
+        .set({ kind: "thread" })
+        .where(eq(juniorConversations.conversationId, threadId));
+      await recordRootMessage(threadId, {
+        author: { userId: user.userId },
+        role: "user",
+        text: "Publish the release notes.",
+      });
+      const userLines = async (childAgent: boolean) =>
+        (
+          await readRootConversation({
+            actor: user,
+            childAgent,
+            conversationId: threadId,
+          })
+        ).messages.filter((message) => message.author === "user");
+
+      // A person's Turn in the Thread reads only the Thread. The root
+      // approval and the parent's task do not count there.
+      await expect(userLines(false)).resolves.toEqual([
+        { author: "user", text: "Publish the release notes." },
+      ]);
+      // A Turn that the parent started reads the root, as a Task does.
+      await expect(userLines(true)).resolves.toEqual([
+        { author: "user", text: "Yes, delete the old releases." },
+      ]);
     } finally {
       await fixture.close();
     }

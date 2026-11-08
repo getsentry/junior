@@ -84,8 +84,9 @@ export interface RootConversationMessage {
 }
 
 /**
- * Bounded projection of the root Conversation, read by core when Guardian
- * reviews one action. For a root Run, it is the Run's own Conversation.
+ * Bounded projection of the Conversation that authorizes an action, read by
+ * core when Guardian reviews it: the Run's own Conversation, or the root for
+ * a child agent.
  */
 export interface RootConversation {
   messages: RootConversationMessage[];
