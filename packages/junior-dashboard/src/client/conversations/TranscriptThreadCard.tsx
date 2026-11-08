@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import { useContext } from "react";
 import { Link } from "react-router";
 
 import { useWaitingConversations } from "../review-desk/queries";
@@ -11,7 +12,7 @@ import {
 import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
-import { useFeedThread } from "./feedThreads";
+import { FeedThreads } from "./feedThreads";
 import { HighlightText } from "./transcriptSearch";
 
 /**
@@ -25,7 +26,7 @@ export function TranscriptThreadCard(props: {
   timestamp?: number;
 }) {
   const id = props.part.childConversationId;
-  const thread = useFeedThread(id);
+  const thread = useContext(FeedThreads).get(id);
   const waiting = useWaitingConversations().has(id);
   const prefetch = usePrefetchConversation(id);
   const title =

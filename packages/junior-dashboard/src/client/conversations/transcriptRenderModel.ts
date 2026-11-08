@@ -22,8 +22,8 @@ import { memoryRecallContent } from "./turnContext";
 /**
  * True for the parent Event message that delivers agent invocation results.
  * Core writes `subagent_ended` before it sends the result, so the Thread card
- * or Task line already shows the outcome. The transcript keeps this message only for
- * the memories its Turn recalled, folded into activity.
+ * or Task line already shows the outcome. The transcript keeps this message
+ * only for the memories its Turn recalled, folded into activity.
  */
 export function isAgentInvocationResultMessage(
   message: Pick<TranscriptViewMessage, "eventType" | "role">,

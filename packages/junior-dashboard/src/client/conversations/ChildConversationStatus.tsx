@@ -7,7 +7,7 @@ import { cn } from "../styles";
 import type { Conversation, VisualStatus } from "../types";
 
 /** The status a Thread or Task shows today. */
-export type ChildConversationStatus = "waiting" | VisualStatus;
+type ChildConversationStatus = "waiting" | VisualStatus;
 
 /**
  * Pick the status of a Thread or Task from runtime state, never from model

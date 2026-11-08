@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext } from "react";
 
 import type { Conversation } from "../types";
 
@@ -24,8 +24,3 @@ export function feedThreadsById(
 export const FeedThreads = createContext<ReadonlyMap<string, Conversation>>(
   new Map(),
 );
-
-/** Return the feed row of one Thread, when the feed shows it. */
-export function useFeedThread(id: string): Conversation | undefined {
-  return useContext(FeedThreads).get(id);
-}
