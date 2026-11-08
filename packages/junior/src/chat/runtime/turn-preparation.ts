@@ -16,7 +16,7 @@ import { getThreadTs } from "@/chat/runtime/thread-context";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
   buildConversationContext,
-  estimateConversationContextTokens,
+  estimateConversationMessagesTokens,
   isHumanConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
@@ -53,6 +53,7 @@ export interface PreparedTurnState {
   configuration?: Record<string, unknown>;
   locationConfiguration?: LocationConfigurationService;
   conversation: ThreadConversationState;
+  /** Latest thread Messages for reply decisions. A Turn prompt builds its own. */
   conversationContext?: string;
   sandboxRef?: SandboxRef;
   userMessageAlreadyReplied?: boolean;
@@ -258,6 +259,11 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     // turn's messages capture their image-context meta) but before compaction
     // trims the working set, so every live message reaches SQL at least once.
     await persistConversationMessages({ conversation, conversationId });
+    if (conversationId) {
+      // Reload so every Message has its seq. The Turn saves the highest seq
+      // as its thread context cursor.
+      await hydrateConversationMessages({ conversation, conversationId });
+    }
 
     await deps.compactConversationIfNeeded(conversation, {
       threadId: args.context.threadId,
@@ -279,7 +285,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     setSpanAttributes({
       "app.backfill_source": backfillSource ?? "none",
       "app.context_tokens_estimated":
-        estimateConversationContextTokens(conversation),
+        estimateConversationMessagesTokens(conversation),
     });
 
     return {

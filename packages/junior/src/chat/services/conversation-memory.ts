@@ -18,11 +18,19 @@ import {
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
 import { escapeXml } from "@/chat/xml";
+import { isEventConversationMessage } from "@/chat/events/actor";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
 const CONTEXT_COMPACTION_BATCH_SIZE = 24;
 const CONTEXT_MAX_COMPACTIONS = 16;
 const CONTEXT_MAX_MESSAGE_CHARS = 3200;
+// About 24k tokens at 2.5 characters per token. Counting at 4 characters per
+// token undercounts thread text.
+const THREAD_CONTEXT_MAX_CHARS = 60_000;
+const THREAD_CONTEXT_OPEN = '<thread-context authority="evidence-only">';
+const THREAD_CONTEXT_CLOSE = "</thread-context>";
+const THREAD_CONTEXT_OMITTED_NOTE =
+  "Older Messages of this thread are not shown. Find them with the searchConversationEvents and readConversationEvent tools.";
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
 
 export interface ConversationMemoryDeps {
@@ -119,11 +127,17 @@ function authorDisplayField(
   return value;
 }
 
-/** Estimate the token cost of the current visible conversation context. */
-export function estimateConversationContextTokens(
+/** Estimate the visible Message working set that thread compaction bounds. */
+export function estimateConversationMessagesTokens(
   conversation: ThreadConversationState,
 ): number {
-  return estimateTextTokens(buildConversationContext(conversation) ?? "");
+  const text = [
+    ...conversation.compactions.map((compaction) => compaction.summary),
+    ...conversation.messages.map((message) =>
+      renderConversationMessageLine(message, conversation),
+    ),
+  ].join("\n");
+  return estimateTextTokens(text);
 }
 
 export function upsertConversationMessage(
@@ -232,95 +246,112 @@ function isTakeOnly(message: ConversationMessage): boolean {
   );
 }
 
+function renderThreadContextMessage(
+  message: ConversationMessage,
+  conversation: ThreadConversationState,
+  index: number,
+): string {
+  const author = escapeXml(conversationAuthorDisplayName(message));
+  const actorIdAttr = message.author?.userId
+    ? ` actor_id="${escapeXml(message.author.userId)}"`
+    : "";
+  const ts = new Date(message.createdAtMs).toISOString();
+  const slackTsAttr = message.meta?.slackTs
+    ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
+    : "";
+  return [
+    `  <message index="${index}" ts="${ts}" role="${message.role}" author="${author}"${actorIdAttr}${slackTsAttr}>`,
+    renderConversationMessageLine(message, conversation),
+    "  </message>",
+  ].join("\n");
+}
+
+// A Message that the agent history does not hold: no mention, no Event, and
+// not Turn input. Backfilled Messages have no mention, so they count.
+function isUntaggedThreadMessage(message: ConversationMessage): boolean {
+  return (
+    message.role === "user" &&
+    !message.meta?.explicitMention &&
+    !isEventConversationMessage(message)
+  );
+}
+
+/** Return the highest saved Message seq, the thread context cursor of a Turn. */
+export function latestConversationMessageSeq(
+  conversation: Pick<ThreadConversationState, "messages">,
+): number | undefined {
+  let latest: number | undefined;
+  for (const message of conversation.messages) {
+    if (message.seq !== undefined && (latest ?? -1) < message.seq) {
+      latest = message.seq;
+    }
+  }
+  return latest;
+}
+
 /**
- * Render thread history as structured XML. Each compaction and message is
- * wrapped with index/ts metadata so the model can reference prior items
- * individually instead of treating the whole block as one flat narrative.
+ * Render the thread Messages that this Turn needs as one evidence-only block.
+ *
+ * With agent history, earlier Turns already hold their thread context, Turn
+ * input, and replies. So only untagged Messages saved after the cursor of the
+ * previous Turn are new. Without history, show the latest Messages. Both keep
+ * the newest Messages under one hard size cap, so the block cannot grow with
+ * the thread.
  */
 export function buildConversationContext(
   conversation: ThreadConversationState,
   options: {
     /** Turn input Messages, which the prompt already holds. */
     excludeMessageIds?: readonly string[];
+    /**
+     * Set when agent history exists. `afterSeq` is the cursor of the previous
+     * Turn. A Conversation from before cursors has none.
+     */
+    history?: { afterSeq?: number };
   } = {},
 ): string | undefined {
-  const messages = conversation.messages.filter(
+  const { history } = options;
+  const candidates = conversation.messages.filter(
     (entry) =>
-      !options.excludeMessageIds?.includes(entry.id) && !isTakeOnly(entry),
+      !options.excludeMessageIds?.includes(entry.id) &&
+      !isTakeOnly(entry) &&
+      (!history ||
+        (isUntaggedThreadMessage(entry) &&
+          (history.afterSeq === undefined ||
+            entry.seq === undefined ||
+            entry.seq > history.afterSeq))),
   );
-  if (messages.length === 0 && conversation.compactions.length === 0) {
+  // Keep the newest Messages that fit. The index of a Message is its position
+  // in the block.
+  let first = candidates.length;
+  let chars = 0;
+  while (first > 0) {
+    const size = renderThreadContextMessage(
+      candidates[first - 1]!,
+      conversation,
+      first,
+    ).length;
+    if (chars + size > THREAD_CONTEXT_MAX_CHARS) break;
+    chars += size;
+    first -= 1;
+  }
+  const shown = candidates
+    .slice(first)
+    .map((message, index) =>
+      renderThreadContextMessage(message, conversation, index + 1),
+    );
+  if (shown.length === 0) {
     return undefined;
   }
-
-  const lines: string[] = [];
-
-  if (conversation.compactions.length > 0) {
-    lines.push("<thread-compactions>");
-    for (const [index, compaction] of conversation.compactions.entries()) {
-      lines.push(
-        `  <compaction index="${index + 1}" covered_messages="${compaction.coveredMessageCount}" created_at="${new Date(compaction.createdAtMs).toISOString()}">`,
-        compaction.summary,
-        "  </compaction>",
-      );
-    }
-    lines.push("</thread-compactions>");
-  }
-
-  if (messages.length > 0) {
-    if (lines.length > 0) {
-      lines.push("");
-    }
-    lines.push('<thread-context authority="evidence-only">');
-    for (const [index, message] of messages.entries()) {
-      const author = escapeXml(conversationAuthorDisplayName(message));
-      const actorIdAttr = message.author?.userId
-        ? ` actor_id="${escapeXml(message.author.userId)}"`
-        : "";
-      const ts = new Date(message.createdAtMs).toISOString();
-      const slackTsAttr = message.meta?.slackTs
-        ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
-        : "";
-      lines.push(
-        `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${actorIdAttr}${slackTsAttr}>`,
-        renderConversationMessageLine(message, conversation),
-        "  </message>",
-      );
-    }
-    lines.push("</thread-context>");
+  const lines = [THREAD_CONTEXT_OPEN, ...shown, THREAD_CONTEXT_CLOSE];
+  // Thread compaction also drops older Messages from the working set.
+  if (
+    shown.length < candidates.length ||
+    (!history && conversation.compactions.length > 0)
+  ) {
+    lines.push(THREAD_CONTEXT_OMITTED_NOTE);
   }
   return lines.join("\n");
-}
-
-const THREAD_CONTEXT_OPEN = '<thread-context authority="evidence-only">';
-const THREAD_CONTEXT_CLOSE = "</thread-context>";
-
-/**
- * Keep ambient history as one evidence-only block.
- *
- * When durable context already ends a thread-context envelope, append message
- * lines inside that envelope. Otherwise wrap the new messages in one envelope.
- */
-export function appendThreadContextMessages(
-  baseContext: string | undefined,
-  messageLines: string[],
-): string | undefined {
-  const base = baseContext?.trim();
-  if (messageLines.length === 0) {
-    return base || undefined;
-  }
-  const entryBlock = messageLines.join("\n");
-  if (!base) {
-    return [THREAD_CONTEXT_OPEN, entryBlock, THREAD_CONTEXT_CLOSE].join("\n");
-  }
-  const closeIdx = base.lastIndexOf(THREAD_CONTEXT_CLOSE);
-  if (closeIdx >= 0) {
-    const before = base.slice(0, closeIdx).replace(/\s*$/, "");
-    const after = base.slice(closeIdx);
-    return `${before}\n${entryBlock}\n${after}`;
-  }
-  return [base, "", THREAD_CONTEXT_OPEN, entryBlock, THREAD_CONTEXT_CLOSE].join(
-    "\n",
-  );
 }
 
 function pruneCompactions(
@@ -454,7 +485,7 @@ async function compactConversationIfNeededWithDeps(
   },
   deps: ConversationMemoryDeps,
 ): Promise<void> {
-  let estimatedTokens = estimateConversationContextTokens(conversation);
+  let estimatedTokens = estimateConversationMessagesTokens(conversation);
   setSpanAttributes({
     "app.context_tokens_estimated": estimatedTokens,
   });
@@ -489,7 +520,7 @@ async function compactConversationIfNeededWithDeps(
     conversation.compactions = pruneCompactions(conversation.compactions);
     conversation.messages = conversation.messages.slice(compactCount);
 
-    estimatedTokens = estimateConversationContextTokens(conversation);
+    estimatedTokens = estimateConversationMessagesTokens(conversation);
     setSpanAttributes({
       "app.compaction_messages_covered": compactCount,
       "app.compaction.trigger_tokens": triggerTokens,

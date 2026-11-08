@@ -21,6 +21,7 @@ import {
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -52,7 +53,7 @@ import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { decideReply } from "@/chat/services/assistant-reply";
 import { botConfig } from "@/chat/config";
 import {
-  buildConversationContext,
+  latestConversationMessageSeq,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
@@ -556,6 +557,7 @@ export function createConversationTurnWorker(
             createdAtMs: Date.now(),
             inputMessageIds,
             surface,
+            threadContextThroughSeq: latestConversationMessageSeq(conversation),
             turnId,
           });
           if (stopSignal?.aborted) {
@@ -670,8 +672,12 @@ export function createConversationTurnWorker(
               instruction: {
                 ...instructionInputs,
                 storedAttachments: attachments,
-                context: buildConversationContext(conversation, {
+                context: await buildTurnThreadContext({
+                  conversation,
+                  conversationId: context.conversationId,
                   excludeMessageIds: inputMessageIds,
+                  hasHistory: piMessages.length > 0,
+                  turnId,
                 }),
               },
               history: piMessages,

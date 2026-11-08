@@ -50,7 +50,6 @@ import {
   getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
 import {
-  buildConversationContext,
   markConversationMessage,
   turnHasReply,
 } from "@/chat/services/conversation-memory";
@@ -582,11 +581,6 @@ async function runPausedTurnInContext(
 
         const locationConfiguration =
           getLocationConfigurationService(destination);
-        const conversationContext = dispatchId
-          ? undefined
-          : buildConversationContext(conversation, {
-              excludeMessageIds: [userMessage.id],
-            });
         const sandboxRef = getPersistedSandboxState(currentState);
         const routing = await resolveTurnSessionRouting({
           conversationId: payload.conversationId,
@@ -625,9 +619,6 @@ async function runPausedTurnInContext(
           initialStatus: latestProgressStatus(turnMessages),
           run: {
             instruction: {
-              ...(conversationContext
-                ? { context: conversationContext }
-                : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               ...(await savedInputInstruction({

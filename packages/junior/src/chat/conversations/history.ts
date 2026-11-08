@@ -293,6 +293,8 @@ const turnStartedEventDataSchema = z
     turnId: z.string().min(1),
     inputMessageIds: z.array(z.string().min(1)).min(1),
     surface: conversationTurnSurfaceSchema,
+    /** Highest Message seq known when the Turn built its thread context. */
+    threadContextThroughSeq: z.number().int().nonnegative().optional(),
   })
   .strict()
   .refine(

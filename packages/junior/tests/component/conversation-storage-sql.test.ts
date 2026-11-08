@@ -1267,12 +1267,14 @@ INSERT INTO junior_conversation_events (
           text: "first",
           createdAtMs: 1_000,
           meta: { replied: true },
+          seq: 0,
         },
         {
           id: "m2",
           role: "assistant",
           text: "reply",
           createdAtMs: 2_000,
+          seq: 1,
         },
       ]);
       expect(await store.loadHistory(CONVERSATION_ID)).toHaveLength(3);

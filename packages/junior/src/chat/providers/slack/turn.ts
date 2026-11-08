@@ -76,6 +76,7 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import {
+  latestConversationMessageSeq,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -142,6 +143,7 @@ import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import {
   scheduleSessionCompletedPluginTasks,
   type ScheduleSessionCompletedPluginTasksOptions,
@@ -158,7 +160,6 @@ import type {
   DispatchTurnResult,
 } from "@/chat/agent-dispatch/types";
 import {
-  appendRecentMessagesToContext,
   collectAttachments,
   inboundMessageActor,
   inboundMessageProvenance,
@@ -686,6 +687,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               ]),
             ],
             surface: options.execution?.surface ?? "slack",
+            threadContextThroughSeq: latestConversationMessageSeq(
+              preparedState.conversation,
+            ),
             turnId,
           });
         }
@@ -961,7 +965,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             activeTurnId,
           });
           let piMessages = loadedPiMessages.piMessages;
-          const hasDurablePromptHistory = Boolean(piMessages?.length);
+          // Batched steering below is this Turn's input, not earlier history.
+          const hasHistory = Boolean(piMessages?.length);
           // Each batched steering message keeps its own Actor and authority.
           const batchedSteeringMessages = (
             await resolveSteeringMessages(
@@ -1023,10 +1028,22 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             actor?.userId ?? parseActorUserId(message.author.userId);
           const activeInstructionAuthorName =
             actor?.fullName ?? actor?.userName;
-          const promptConversationContext = appendRecentMessagesToContext(
-            preparedState.conversationContext,
-            options.queuedMessages ?? [],
-          );
+          const promptConversationContext = await buildTurnThreadContext({
+            conversation: preparedState.conversation,
+            conversationId,
+            // Queued mentions steer in as history. Queued untagged Messages
+            // reach the agent only through thread context.
+            excludeMessageIds: [
+              ...(options.queuedMessages ?? [])
+                .filter((queued) => queued.explicitMention)
+                .map((queued) => queued.message.id),
+              ...(preparedState.userMessageId
+                ? [preparedState.userMessageId]
+                : []),
+            ],
+            hasHistory,
+            turnId,
+          });
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
                 accept: (messages: AgentSteeringMessage[]) => Promise<void>,
@@ -1083,7 +1100,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   : undefined),
                 ...(slackMessageTs ? { slackTs: slackMessageTs } : undefined),
               },
-              includeConversationContextWithHistory: hasDurablePromptHistory,
               ...savedInput,
               context: promptConversationContext,
               inboundAttachmentCount: turnAttachments.length,

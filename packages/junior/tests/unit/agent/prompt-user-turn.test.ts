@@ -81,9 +81,7 @@ describe("buildUserTurnText", () => {
           "  </message>",
           "</thread-context>",
         ].join("\n"),
-        includeConversationContextWithHistory: true,
       },
-      history: [{ role: "user" } as never],
     });
 
     expect(input.contextContentParts).toEqual([
@@ -140,9 +138,7 @@ describe("buildUserTurnText", () => {
       instruction: {
         text: "summarize",
         context: "earlier humans discussed filing a ticket",
-        includeConversationContextWithHistory: true,
       },
-      history: [{ role: "user" } as never],
     });
 
     expect(input.contextContentParts).toEqual([

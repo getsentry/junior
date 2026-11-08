@@ -287,8 +287,6 @@ async function executeAgentRunInPrivacyContext(
   const requireAutomationResult = run.dispatch?.declaresResult === true;
   const input = {
     actor: run.instruction.actor,
-    includeConversationContextWithPiMessages:
-      run.instruction.includeConversationContextWithHistory,
     messageText: run.instruction.text,
     userAttachments: run.instruction.attachments
       ? [...run.instruction.attachments]
@@ -596,7 +594,6 @@ async function executeAgentRunInPrivacyContext(
     // ── Prompt input ─────────────────────────────────────────────────
     const { contextContentParts, userContentParts } = buildPromptInput({
       instruction: run.instruction,
-      history: run.history,
     });
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
