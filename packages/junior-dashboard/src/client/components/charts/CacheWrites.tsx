@@ -9,6 +9,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { dashboardDisclosureChevronClass } from "../../styles";
 
 /** Identify the largest cache writes within the page's selected time window. */
@@ -40,50 +48,51 @@ export function CacheWrites(props: {
           Top three by tokens written per {unit}, within the selected time
           window. Large writes alone do not mean a cache problem.
         </p>
-        <div className="overflow-x-auto">
-          <table
-            aria-label="Largest cache writes"
-            className="w-full min-w-80 table-fixed border-collapse font-sans text-xs tabular-nums"
-          >
-            <thead className="text-dashboard-text-muted">
-              <tr>
-                <th scope="col" className="py-2 text-left font-normal">
-                  {props.bucketUnit === "day" ? "Day" : "Starting at"}
-                </th>
-                <th scope="col" className="w-24 py-2 text-right font-normal">
-                  Written
-                </th>
-                <th scope="col" className="w-24 py-2 text-right font-normal">
-                  From cache
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranked.map((day) => (
-                <tr
-                  key={day.date}
-                  className="border-t border-dashboard-border-subtle"
+        <Table
+          aria-label="Largest cache writes"
+          className="min-w-80 table-fixed font-sans text-xs tabular-nums"
+        >
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col" className="px-0 py-2 font-normal">
+                {props.bucketUnit === "day" ? "Day" : "Starting at"}
+              </TableHead>
+              <TableHead
+                scope="col"
+                className="w-24 px-0 py-2 text-right font-normal"
+              >
+                Written
+              </TableHead>
+              <TableHead
+                scope="col"
+                className="w-24 px-0 py-2 text-right font-normal"
+              >
+                From cache
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {ranked.map((day) => (
+              <TableRow key={day.date}>
+                <TableHead
+                  scope="row"
+                  className="px-0 py-2 font-normal whitespace-normal"
                 >
-                  <th
-                    scope="row"
-                    className="py-2 text-left font-normal text-dashboard-text-muted"
-                  >
-                    {formatActivityTooltipDate(day.date)}
-                  </th>
-                  <td className="py-2 text-right text-dashboard-text">
-                    {formatCompactNumber(day.cacheCreationTokens)}
-                  </td>
-                  <td className="py-2 text-right text-dashboard-text">
-                    {formatCacheShare(
-                      day.cachedInputTokens,
-                      cacheInputTotal(day),
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  {formatActivityTooltipDate(day.date)}
+                </TableHead>
+                <TableCell className="px-0 py-2 text-right whitespace-normal">
+                  {formatCompactNumber(day.cacheCreationTokens)}
+                </TableCell>
+                <TableCell className="px-0 py-2 text-right whitespace-normal">
+                  {formatCacheShare(
+                    day.cachedInputTokens,
+                    cacheInputTotal(day),
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </CollapsibleContent>
     </Collapsible>
   );

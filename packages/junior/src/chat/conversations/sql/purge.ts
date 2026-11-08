@@ -1,7 +1,8 @@
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
+import { dismissOpenReviewItems } from "@/chat/review-items/store";
 import {
   juniorConversationEvents,
   juniorConversationBriefs,
@@ -9,7 +10,9 @@ import {
   juniorDestinations,
   juniorAgentBindings,
   juniorAgentInvocations,
+  juniorReviewItems,
 } from "@/db/schema";
+import { touchConversationDetail } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
@@ -119,12 +122,27 @@ export async function selectExpiredRoots(
         where bindings.parent_conversation_id = tree.conversation_id
            or bindings.child_conversation_id = tree.conversation_id
       )
+      or exists (
+        select 1 from junior_review_items review_items
+        where review_items.added_by_conversation_id = tree.conversation_id
+          and review_items.status = 'open'
+          and review_items.automation_id is null
+      )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
         and (
           exists (
             select 1 from junior_conversation_briefs briefs
             where briefs.conversation_id = tree.conversation_id
+          )
+          or exists (
+            select 1 from junior_review_items review_items
+            where review_items.added_by_conversation_id = tree.conversation_id
+              and review_items.visibility = 'private'
+              and (
+                review_items.status <> 'open'
+                or review_items.automation_id is null
+              )
           )
           or exists (
             select 1 from junior_conversations metadata
@@ -172,7 +190,9 @@ export async function selectExpiredRoots(
  * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
- * conversations keep only safe metadata. The metadata rows themselves survive.
+ * conversations keep only safe metadata. Non-public content also loses its
+ * Briefs and the Review items that it added. The metadata rows themselves
+ * survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -297,6 +317,12 @@ export async function purgeConversationTree(
                 inArray(juniorAgentBindings.childConversationId, ids),
               ),
             );
+          // No agent can act on an item after its Conversation is purged.
+          await dismissOpenReviewItems(executor.db(), {
+            addedByConversationIds: ids,
+            nowMs: args.nowMs,
+            reason: "Conversation purged",
+          });
           await requestAttachmentDeletion(executor, ids, args.nowMs);
           const scrubMetadata = args.retention
             ? !isPublic
@@ -306,6 +332,24 @@ export async function purgeConversationTree(
               .db()
               .delete(juniorConversationBriefs)
               .where(inArray(juniorConversationBriefs.conversationId, ids));
+            // A private Review item holds content from its Conversation. A
+            // public item stays, even when its destination later turned
+            // private, because other Conversations can still link to it. An
+            // open item of an Automation also stays, because a later run can
+            // still change it. A later purge deletes it after it closes.
+            await executor
+              .db()
+              .delete(juniorReviewItems)
+              .where(
+                and(
+                  inArray(juniorReviewItems.addedByConversationId, ids),
+                  eq(juniorReviewItems.visibility, "private"),
+                  or(
+                    ne(juniorReviewItems.status, "open"),
+                    isNull(juniorReviewItems.automationId),
+                  ),
+                ),
+              );
           }
           await executor
             .db()
@@ -317,6 +361,7 @@ export async function purgeConversationTree(
                 : undefined),
             })
             .where(inArray(juniorConversations.conversationId, ids));
+          await touchConversationDetail(executor.db(), ids);
           return { purged: true, conversations: ids.length };
         },
       );

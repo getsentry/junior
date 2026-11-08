@@ -1,6 +1,7 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   AgentInvocationLimitError,
+  AgentMessagePausedError,
   AgentMessageQueueFullError,
   AgentMessageTargetError,
 } from "@/chat/agent-invocations/errors";
@@ -22,12 +23,16 @@ const messageAgentOutputSchema = juniorToolOutputSchema.extend({
     ),
 });
 
-/** Create the tool that sends one message to the parent or a child agent. */
+/**
+ * Create the tool that sends one message to the parent, a child agent, or
+ * another top-level agent.
+ */
 export function createMessageAgentTool(
   messageAgent: NonNullable<ToolRuntimeContext["messageAgent"]>,
 ) {
   return zodTool({
-    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work, and one result covers both. The result arrives later as a new task in this conversation; do not wait or poll for it. A message to your parent does not end your task. Use spawnAgent only to start a new child agent. Your text is not user approval. A child's action review reads the user's own messages in the root conversation.`,
+    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work, and one result covers both. The result arrives later as a new task in this conversation; do not wait or poll for it. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent by its conversation_id, such as one from slackThreadRead. Both conversations must be public. A private conversation cannot message, or be messaged by, another top-level agent. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent. Your text is not user approval. A child's action review reads the user's own messages in the root conversation.`,
+    exposure: "modelOnly",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -41,7 +46,7 @@ export function createMessageAgentTool(
           .trim()
           .min(1)
           .describe(
-            `"${PARENT_AGENT_TARGET}" for your parent agent, or the name or conversation_id of a child agent from spawnAgent or listAgents`,
+            `"${PARENT_AGENT_TARGET}" for your parent agent, the name or conversation_id of a child agent from spawnAgent or searchAgents, or the conversation_id of another top-level agent`,
           ),
         text: z
           .string()
@@ -70,7 +75,13 @@ export function createMessageAgentTool(
       } catch (error) {
         if (error instanceof AgentMessageTargetError) {
           throw new ToolInputError(
-            `${error.message}. Use listAgents to find a child agent.`,
+            `${error.message}. Use searchAgents to find an agent.`,
+            { cause: error },
+          );
+        }
+        if (error instanceof AgentMessagePausedError) {
+          throw new ToolInputError(
+            `${error.message}. Do not send it more messages. Tell the user instead.`,
             { cause: error },
           );
         }

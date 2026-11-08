@@ -24,36 +24,12 @@ import type { Skill } from "@/chat/skills";
 import type { JuniorToolOutput } from "@/chat/tool-support/structured-result";
 import type { WebActor, LocalActor, Actor, SlackActor } from "@/chat/actor";
 import type { SlackActionToken } from "@/chat/slack/action-token";
-import type {
-  ModelProfile,
-  ModelProfileConfig,
-} from "@/chat/model-profile";
 import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads";
 import type { MessageAgent, SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-
-interface HandoffProfile {
-  description?: string;
-  name: ModelProfile;
-}
-
-export interface SpawnAgentProfileControl {
-  activeProfile: () => ModelProfile;
-  defaultProfile: ModelProfile;
-  profiles: Readonly<Record<string, ModelProfileConfig>>;
-}
-
-interface HandoffControl {
-  activeProfile: HandoffProfile;
-  /** Non-empty list of other configured profiles. */
-  profiles: readonly [HandoffProfile, ...HandoffProfile[]];
-  execute: (
-    profile: ModelProfile,
-    options: { signal?: AbortSignal; toolCallId: string },
-  ) => Promise<void>;
-}
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -62,7 +38,6 @@ export interface ImageGenerateToolDeps {
 export interface WebFetchToolDeps {
   execute?: (input: {
     url: string;
-    max_chars?: number;
   }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
@@ -102,10 +77,10 @@ interface BaseToolRuntimeContext {
     /** True when a successful run sends a message to stored Destinations. */
     sendsMessage: boolean;
   };
-  handoff?: HandoffControl;
+  /** Queue of the app. Without it, Review item tools use the Vercel queue. */
+  conversationWorkQueue?: ConversationWorkQueue;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
-  spawnAgentProfiles?: SpawnAgentProfileControl;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
@@ -113,7 +88,11 @@ interface BaseToolRuntimeContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId: string;
-  /** Parent of a child agent Conversation. Unset for a root Conversation. */
+  /** Turn that runs this tool call. */
+  turnId?: string;
+  /** Agent invocation that this Run advances. See `AgentRun.agentInvocationId`. */
+  agentInvocationId?: string;
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */
   location?: Location;

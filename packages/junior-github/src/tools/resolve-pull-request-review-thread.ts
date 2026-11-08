@@ -5,8 +5,13 @@ import {
   pluginToolOutputSchema,
   type PluginToolOutput,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+} from "../tool-support/github-api.js";
 
 /**
  * GraphQL-only GitHub mutation. There is no REST endpoint and no first-class
@@ -28,12 +33,12 @@ const inputSchema = z
       .describe(
         'Repository in "owner/name" format. Required because GraphQL has no repo path.',
       ),
-    threadId: z
+    thread_id: z
       .string()
       .trim()
       .min(1)
       .describe(
-        "GitHub pull request review thread node ID (the same `threadId` / `id` variable used by `gh api graphql` resolveReviewThread).",
+        "GitHub pull request review thread node ID (the `threadId` / `id` variable used by `gh api graphql` resolveReviewThread).",
       ),
   })
   .strict();
@@ -42,41 +47,15 @@ const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("resolvePullRequestReviewThread"),
   repo: z.string(),
   number: z.number(),
-  threadId: z.string(),
+  thread_id: z.string(),
   resolved: z.boolean(),
 });
 interface Result extends PluginToolOutput {
   target: "resolvePullRequestReviewThread";
   repo: string;
   number: number;
-  threadId: string;
+  thread_id: string;
   resolved: boolean;
-}
-
-function parseRepo(value: string) {
-  const parts = value.split("/").map((part) => part.trim());
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubError(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim()) return message.trim();
-  }
-  return "GitHub request failed";
 }
 
 /** Resolve one review thread after GitHub proves it belongs to a bot-authored PR. */
@@ -85,6 +64,10 @@ export function createGitHubResolvePullRequestReviewThreadTool(
   botEmail: string | undefined,
 ) {
   return definePluginTool({
+    // No action review: the tool checks in code that the bot authored the pull
+    // request, and it changes only the thread's resolved state, which is
+    // reversible.
+    approvalMode: "approve",
     annotations: {
       destructiveHint: true,
       idempotentHint: true,
@@ -123,23 +106,20 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           }
         }
       }`;
-      const lookupResponse = await ctx.egress.fetch({
-        provider: "github",
+      const lookupResponse = await githubApi(ctx.egress, {
         operation: "github.pull.review-thread.get",
-        request: new Request("https://api.github.com/graphql", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            operationName: "ReviewThreadOwnership",
-            query,
-            variables: { threadId: parsedInput.data.threadId },
-          }),
-        }),
+        method: "POST",
+        path: "/graphql",
+        body: {
+          operationName: "ReviewThreadOwnership",
+          query,
+          variables: { threadId: parsedInput.data.thread_id },
+        },
       });
-      const lookupPayload = await readJson(lookupResponse);
+      const lookupPayload = lookupResponse.body;
       if (!lookupResponse.ok) {
         throw new Error(
-          `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubError(lookupPayload)}`,
+          `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubErrorMessage(lookupPayload)}`,
         );
       }
       // GitHub's GraphQL shape is out of Junior's control and can add fields
@@ -199,7 +179,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           target: "resolvePullRequestReviewThread",
           repo: repo.ref,
           number: pullRequest.number,
-          threadId: thread.id,
+          thread_id: thread.id,
           resolved: true,
         };
       }
@@ -210,23 +190,20 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           thread { id isResolved }
         }
       }`;
-      const resolveResponse = await ctx.egress.fetch({
-        provider: "github",
+      const resolveResponse = await githubApi(ctx.egress, {
         operation: `github.pull.review-thread.resolve:${repo.ref.toLowerCase()}`,
-        request: new Request("https://api.github.com/graphql", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            operationName: "ResolveReviewThread",
-            query: mutation,
-            variables: { threadId: thread.id },
-          }),
-        }),
+        method: "POST",
+        path: "/graphql",
+        body: {
+          operationName: "ResolveReviewThread",
+          query: mutation,
+          variables: { threadId: thread.id },
+        },
       });
-      const resolvePayload = await readJson(resolveResponse);
+      const resolvePayload = resolveResponse.body;
       if (!resolveResponse.ok) {
         throw new Error(
-          `GitHub review thread resolution failed with HTTP ${resolveResponse.status}: ${githubError(resolvePayload)}`,
+          `GitHub review thread resolution failed with HTTP ${resolveResponse.status}: ${githubErrorMessage(resolvePayload)}`,
         );
       }
       const resolveResultSchema = z
@@ -263,7 +240,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         target: "resolvePullRequestReviewThread",
         repo: repo.ref,
         number: pullRequest.number,
-        threadId: resolved.id,
+        thread_id: resolved.id,
         resolved: true,
       };
     },

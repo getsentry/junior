@@ -2,7 +2,7 @@ import type {
   ManagedMcpToolDescriptor,
   McpAuthorizationContext,
 } from "@/chat/mcp/tool-manager";
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -255,7 +255,7 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       readOnlyHint: true,
     },
     description:
-      "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, Junior connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
+      "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, the runtime connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
     inputSchema: z
       .object({
         query: z
@@ -269,7 +269,7 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
           .string()
           .min(1)
           .describe(
-            "Optional provider name to list or search within. If configured but not yet connected, Junior activates it on demand.",
+            "Optional provider name to list or search within. If configured but not yet connected, the runtime activates it on demand.",
           )
           .optional(),
         intent: z

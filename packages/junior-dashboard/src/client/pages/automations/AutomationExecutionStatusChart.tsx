@@ -42,7 +42,7 @@ export function AutomationExecutionStatusChart(props: {
     <Card className="min-h-[15rem] p-4 sm:p-5">
       <div>
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-          Executions over time
+          Runs over time
         </h2>
         <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"

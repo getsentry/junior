@@ -37,12 +37,41 @@ const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
   // sandbox egress proxy's header transforms are the sole credential source.
   GIT_ASKPASS: "/bin/true",
   GIT_CONFIG_NOSYSTEM: "1",
-  GIT_CONFIG_COUNT: "2",
-  GIT_CONFIG_KEY_0: "credential.helper",
-  GIT_CONFIG_VALUE_0: "",
-  GIT_CONFIG_KEY_1: "http.emptyAuth",
-  GIT_CONFIG_VALUE_1: "true",
 };
+
+/** Git config the runtime always applies through `GIT_CONFIG_COUNT`. */
+const RUNTIME_GIT_CONFIG: ReadonlyArray<readonly [string, string]> = [
+  ["credential.helper", ""],
+  ["http.emptyAuth", "true"],
+];
+
+/**
+ * Combine command Git config env entries with the runtime entries.
+ *
+ * Plugin hooks can add Git config with `GIT_CONFIG_COUNT`. Their entries keep
+ * their order, and the runtime entries come last so credential isolation
+ * always wins.
+ */
+function gitConfigEnv(env: Record<string, string>): Record<string, string> {
+  const count = Number.parseInt(env.GIT_CONFIG_COUNT ?? "0", 10) || 0;
+  const entries: Array<readonly [string, string]> = [];
+  for (let index = 0; index < count; index++) {
+    const key = env[`GIT_CONFIG_KEY_${index}`];
+    if (key) {
+      entries.push([key, env[`GIT_CONFIG_VALUE_${index}`] ?? ""]);
+    }
+  }
+  entries.push(...RUNTIME_GIT_CONFIG);
+
+  const result: Record<string, string> = {
+    GIT_CONFIG_COUNT: String(entries.length),
+  };
+  entries.forEach(([key, value], index) => {
+    result[`GIT_CONFIG_KEY_${index}`] = key;
+    result[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return result;
+}
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`;
@@ -54,11 +83,12 @@ function buildEnvExports(options: NonInteractiveShellOptions): string[] {
     lines.push(`export PATH="${options.path}"`);
   }
 
-  for (const [key, value] of Object.entries(NON_INTERACTIVE_ENV)) {
-    lines.push(`export ${key}=${shellQuote(value)}`);
-  }
-
-  for (const [key, value] of Object.entries(options.env ?? {})) {
+  const env = {
+    ...NON_INTERACTIVE_ENV,
+    ...options.env,
+    ...gitConfigEnv(options.env ?? {}),
+  };
+  for (const [key, value] of Object.entries(env)) {
     lines.push(`export ${key}=${shellQuote(value)}`);
   }
 
@@ -109,7 +139,9 @@ export async function runNonInteractiveCommand(
     ...(input.cwd ? { cwd: input.cwd } : undefined),
     ...(input.signal ? { signal: input.signal } : undefined),
     ...(input.sudo !== undefined ? { sudo: input.sudo } : undefined),
-    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : undefined),
+    ...(input.timeoutMs !== undefined
+      ? { timeoutMs: input.timeoutMs }
+      : undefined),
   };
   return await sandbox.runCommand(command);
 }

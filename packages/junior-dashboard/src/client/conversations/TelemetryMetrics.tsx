@@ -90,7 +90,7 @@ function agentSplitLines(
     { value: "By agent", valueStyle: "heading" },
     { label: "this agent", value: format(total - subagents) },
     {
-      label: plural("subagent", childAgentTotals.count),
+      label: plural("child conversation", childAgentTotals.count),
       value: format(subagents),
     },
   ];
@@ -115,7 +115,6 @@ function modelHeading(
 /** Rows shown before the rest of a list rolls into one "N more" line. */
 const MODEL_LIMIT = 4;
 const AUXILIARY_LIMIT = 3;
-const DETAILS_FOOTER = "Full breakdown in Details";
 
 type RankedRow = UsageCardRow & { amount: number };
 
@@ -222,7 +221,6 @@ function tokenCard(
   compactionCount: number | undefined,
   liveModelId: string | undefined,
   childAgentTotals: ConversationChildAgentTotals | undefined,
-  detailsHint: boolean,
 ): UsageCardProps {
   const models = modelRows(
     modelUsage,
@@ -232,7 +230,6 @@ function tokenCard(
     formatCompactNumber,
   );
   return {
-    footer: detailsHint && models.length ? DETAILS_FOOTER : undefined,
     note: compactionCount ? plural("compaction", compactionCount) : undefined,
     sections: models.length
       ? [
@@ -278,7 +275,6 @@ function costCard(
   auxiliaryCosts: ConversationAuxiliaryCosts | undefined,
   liveModelId: string | undefined,
   childAgentTotals: ConversationChildAgentTotals | undefined,
-  detailsHint: boolean,
 ): UsageCardProps | undefined {
   const total = totalConversationCost(summary, auxiliaryCosts);
   if (!total) return undefined;
@@ -315,10 +311,6 @@ function costCard(
     });
   }
   return {
-    footer:
-      detailsHint && (models.length || operations.length)
-        ? DETAILS_FOOTER
-        : undefined,
     sections,
     split: agentSplit(
       childAgentTotals,
@@ -341,6 +333,8 @@ export function auxiliaryOperationLabel(
     "junior/turn_routed": "Thinking routing",
     "memory/memories_captured": "Memory extraction",
     "memory/memories_recalled": "Memory recall",
+    "memory/task_model_called": "Memory extraction",
+    "memory/user_prompt_model_called": "Memory recall",
   };
   const key = `${operation.namespace}/${operation.name}`;
   return (
@@ -354,12 +348,11 @@ export function CostMetric(props: {
   align?: "left" | "right";
   auxiliaryCosts?: ConversationAuxiliaryCosts;
   childAgentTotals?: ConversationChildAgentTotals;
-  /** Point to conversation details, which has the full breakdown. */
-  detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
   summary: CostUsageSummary | undefined;
+  tooltipPlacement?: "above" | "below";
 }) {
   // Model history can include calls not yet counted in saved Run totals.
   const summary = summarizeModelCost(props.modelUsage) ?? props.summary;
@@ -375,12 +368,11 @@ export function CostMetric(props: {
     props.auxiliaryCosts,
     props.liveModelId,
     props.childAgentTotals,
-    Boolean(props.detailsHint),
   );
   return (
     <MetricValue
       align={props.align}
-      tooltipPlacement="above"
+      tooltipPlacement={props.tooltipPlacement ?? "above"}
       tooltip={
         !card && props.liveModelId
           ? [modelHeading(props.liveModelId, props.liveModelId)]
@@ -398,8 +390,6 @@ export function TokenMetric(props: {
   align?: "left" | "right";
   childAgentTotals?: ConversationChildAgentTotals;
   compactionCount?: number;
-  /** Point to conversation details, which has the full breakdown. */
-  detailsHint?: boolean;
   live?: boolean;
   liveModelId?: string;
   modelUsage?: ConversationModelUsage[];
@@ -417,7 +407,6 @@ export function TokenMetric(props: {
             props.compactionCount,
             props.liveModelId,
             props.childAgentTotals,
-            Boolean(props.detailsHint),
           )}
         />
       }
@@ -469,7 +458,7 @@ export function SubagentsMetric(props: {
   childAgentTotals: ConversationChildAgentTotals | undefined;
 }) {
   if (!props.childAgentTotals) return null;
-  const label = plural("subagent", props.childAgentTotals.count);
+  const label = plural("child conversation", props.childAgentTotals.count);
   return (
     <MetricValue
       tooltip={[

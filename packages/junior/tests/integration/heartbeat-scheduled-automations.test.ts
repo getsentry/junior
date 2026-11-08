@@ -19,6 +19,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
@@ -40,12 +41,17 @@ let creatorIdentityId = "";
 function testHeartbeat(
   request: Parameters<typeof heartbeat>[0],
   waitUntil: Parameters<typeof heartbeat>[1],
-  options: Parameters<typeof heartbeat>[2] = {},
+  options: Partial<Parameters<typeof heartbeat>[2]> = {},
 ) {
+  const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
-    ...options,
-    conversationWorkQueue:
-      options.conversationWorkQueue ?? conversationWorkQueue,
+    conversationWorkQueue: queue,
+    dispatchForIdentity:
+      options.dispatchForIdentity ??
+      createIdentityDispatcher({
+        allowedDomains: [],
+        conversationWorkQueue: () => queue,
+      }),
   });
 }
 
@@ -176,6 +182,9 @@ describe("scheduled automation heartbeat", () => {
           kind: "one_off",
           timezone: "UTC",
         },
+        task: {
+          text: "Post a digest for the Automation creator. Summarize the latest state.",
+        },
       }),
     );
 
@@ -198,11 +207,12 @@ describe("scheduled automation heartbeat", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toContain("[task]");
+    expect(dispatchRecord?.input).toMatch(/^<task>\n/);
     expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
-    expect(dispatchRecord?.input).toContain("Created by: <@U039RR91S>");
+    expect(dispatchRecord?.input).toContain("<created-by><@U039RR91S>.");
+    // The run gets the creator mention, not the stored phrase.
     expect(dispatchRecord?.input).toContain(
-      "Instructions: Post a digest. Summarize the latest state.",
+      "<instructions>Post a digest for <@U039RR91S>. Summarize the latest state.</instructions>",
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");

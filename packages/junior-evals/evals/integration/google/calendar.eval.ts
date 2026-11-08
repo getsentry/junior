@@ -143,7 +143,7 @@ describe("Google Calendar", () => {
 
     const conversation = await run(
       slackMention(
-        `book a 30 minute meeting called "Stream prep" with ${SAM_EMAIL} next tuesday at 2pm pacific`,
+        `book a 30 minute meeting called "Stream prep" with ${SAM_EMAIL} on tuesday october 13 at 2pm pacific`,
       ),
     );
 
@@ -182,7 +182,7 @@ describe("Google Calendar", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The reply says that Junior's Google account is not connected and that a Junior admin must connect it.",
+          "The reply says that the Google account is not connected and that an admin must connect it.",
         ],
         fail: [
           "Do not offer meeting times as if calendars were checked.",

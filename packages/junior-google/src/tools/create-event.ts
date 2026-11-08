@@ -4,7 +4,7 @@ import {
   PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   emailListSchema,
   googleApiError,
@@ -89,11 +89,11 @@ const inputSchema = z
     end: z.iso
       .datetime({ offset: true })
       .describe("Event end, RFC 3339 with offset."),
-    timeZone: timeZoneSchema,
+    time_zone: timeZoneSchema,
     attendees: emailListSchema(50).describe(
-      "Email addresses of required attendees. Junior adds the requester automatically when it knows their email.",
+      "Email addresses of required attendees. The tool adds the requester automatically when their email is known.",
     ),
-    optionalAttendees: emailListSchema(50)
+    optional_attendees: emailListSchema(50)
       .default([])
       .describe("Email addresses to invite as optional attendees."),
     repeat: repeatSchema
@@ -131,8 +131,8 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       readOnlyHint: false,
     },
     describeProposal(input) {
-      const optional = input.optionalAttendees.length
-        ? ` (optional: ${input.optionalAttendees.join(", ")})`
+      const optional = input.optional_attendees.length
+        ? ` (optional: ${input.optional_attendees.join(", ")})`
         : "";
       const repeat = input.repeat
         ? `, repeating ${recurrenceRule(input.repeat)}`
@@ -140,11 +140,11 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return `Create Google Calendar event "${input.title}" from ${input.start} to ${input.end}${repeat} and email invites to ${input.attendees.join(", ") || "the requester"}${optional}.`;
     },
     description:
-      "Create a Google Calendar event organized by Junior's own Google account and email invites to the attendees. Every event gets a Google Meet link. Junior can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
+      "Create a Google Calendar event organized by your own Google account and email invites to the attendees. Every event gets a Google Meet link. You can later change or cancel it. Use after the requester confirms the time, or when they already gave an exact time. Check the time with findMeetingTimes first unless the requester says to book it anyway. Only people in the company's Google Workspace domains can be invited.",
     inputSchema,
     outputSchema,
     async execute(input, options) {
-      const timeZone = input.timeZone ?? (await ctx.users.resolveTimezone());
+      const timeZone = input.time_zone ?? (await ctx.users.resolveTimezone());
       const startMs = Date.parse(input.start);
       const endMs = Date.parse(input.end);
       if (endMs <= startMs) {
@@ -155,7 +155,7 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       }
       const attendees = await withRequester(ctx, input.attendees);
       const required = new Set(attendees);
-      const optionalAttendees = [...new Set(input.optionalAttendees)].filter(
+      const optionalAttendees = [...new Set(input.optional_attendees)].filter(
         (email) => !required.has(email),
       );
       if (attendees.length + optionalAttendees.length === 0) {
@@ -219,7 +219,11 @@ export function createCreateCalendarEventTool(ctx: GoogleToolContext) {
       return {
         target: "createCalendarEvent" as const,
         created,
-        ...ownEventResult(ownEventSchema.parse(event.body), timeZone),
+        ...ownEventResult(
+          ownEventSchema.parse(event.body),
+          timeZone,
+          ctx.accountEmail,
+        ),
       };
     },
   });

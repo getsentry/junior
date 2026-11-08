@@ -1,13 +1,14 @@
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { createEventAutomationTool } from "@/chat/tools/create-event-automation";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
 import { createWatchEventsTool } from "@/chat/tools/watch-events";
 import { juniorAutomations } from "@/db/schema/automations";
 import { context, execute } from "../../fixtures/event-automations";
@@ -37,14 +38,10 @@ const TEAM_ID = "T123";
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
-function trigger(
-  identifier = "current_channel",
-  match?: Record<string, string>,
-) {
+function trigger(match?: Record<string, string>) {
   return {
+    type: "event" as const,
     namespace: "slack",
-    identifier,
-    resourceType: "channel",
     label: "New messages in #discuss-integration",
     events: ["message.posted"],
     ...(match ? { match } : undefined),
@@ -118,9 +115,10 @@ describe("Slack channel-message automations", () => {
       TEAM_ID,
     );
     const { automation } = (await execute(
-      createEventAutomationTool(channelContext, catalog),
+      createAutomationTool(automationToolContext(channelContext), catalog),
       {
-        instruction: "Answer the question, or tag <@U123> if you can't.",
+        instruction:
+          "Answer the question, or tag the Automation creator if you can't.",
         title: "Triage discuss-integration",
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
@@ -134,7 +132,7 @@ describe("Slack channel-message automations", () => {
       await getEventAutomation(fixture.sql.db(), automation.id),
     ).toMatchObject({
       credentialMode: "system",
-      trigger: { identifier: "C123", namespace: "slack" },
+      trigger: { match: { channelId: "C123" }, namespace: "slack" },
     });
 
     // A thread reply, a bot post, and a message in another channel do not run it.
@@ -177,10 +175,16 @@ describe("Slack channel-message automations", () => {
     expect(dispatch?.input).toContain("How do I connect the Jira integration?");
 
     // Creator credentials cannot be turned on later.
-    await execute(createUpdateEventAutomationTool(channelContext, catalog), {
-      automationId: automation.id,
-      credentialMode: "creator",
-    });
+    await execute(
+      createUpdateAutomationTool(
+        automationToolContext(channelContext),
+        catalog,
+      ),
+      {
+        automation_id: automation.id,
+        credential_mode: "creator",
+      },
+    );
     expect(
       await getEventAutomation(fixture.sql.db(), automation.id),
     ).toMatchObject({ credentialMode: "system" });
@@ -196,14 +200,14 @@ describe("Slack channel-message automations", () => {
       TEAM_ID,
     );
     const { automation } = (await execute(
-      createEventAutomationTool(channelContext, catalog),
+      createAutomationTool(automationToolContext(channelContext), catalog),
       {
         instruction: "Triage each new alert.",
         title: "Triage alerts",
         outcomes: [
           { action: "send_message", destination: "current_conversation" },
         ],
-        trigger: trigger("current_channel", { userId: "U777" }),
+        trigger: trigger({ user_id: "U777" }),
       },
     )) as { automation: { id: string } };
 
@@ -243,19 +247,87 @@ describe("Slack channel-message automations", () => {
     );
 
     await expect(
-      execute(createEventAutomationTool(channelContext, catalog), {
-        instruction: "Summarize new messages.",
-        title: "Summarize secrets",
-        outcomes: [],
-        trigger: trigger("C999"),
-      }),
+      execute(
+        createAutomationTool(automationToolContext(channelContext), catalog),
+        {
+          instruction: "Summarize new messages.",
+          title: "Summarize secrets",
+          outcomes: [],
+          trigger: trigger({ channel_id: "C999" }),
+        },
+      ),
     ).rejects.toThrow("can watch only the channel where it posts");
+
+    // A message runs only automations that post in its own channel, even
+    // when a saved row names that channel and posts somewhere else.
+    const { automation } = (await execute(
+      createAutomationTool(automationToolContext(channelContext), catalog),
+      {
+        instruction: "Summarize new messages.",
+        title: "Summarize messages",
+        outcomes: [],
+        trigger: trigger(),
+      },
+    )) as { automation: { id: string } };
+    await fixture.sql
+      .db()
+      .update(juniorAutomations)
+      .set({
+        channelId: "C999",
+        record: sql`jsonb_set(${juniorAutomations.record}, '{destination,channelId}', '"C999"')`,
+      })
+      .where(eq(juniorAutomations.id, automation.id));
+    expect((await postChannelMessage({ ts: "1712345.0006" })).status).toBe(200);
+    expect(queue.sentRecords()).toEqual([]);
+
+    // An update cannot drop the channel filter.
+    const { automation: scoped } = (await execute(
+      createAutomationTool(automationToolContext(channelContext), catalog),
+      {
+        instruction: "Summarize new messages.",
+        title: "Summarize scoped messages",
+        outcomes: [],
+        trigger: trigger(),
+      },
+      "create-scoped",
+    )) as { automation: { id: string } };
+    await execute(
+      createUpdateAutomationTool(
+        automationToolContext(channelContext),
+        catalog,
+      ),
+      {
+        automation_id: scoped.id,
+        trigger: { ...trigger(), match: { channel_id: null } },
+      },
+      "drop-channel",
+    );
+    expect(await getEventAutomation(fixture.sql.db(), scoped.id)).toMatchObject(
+      { trigger: { match: { channelId: "C123" } } },
+    );
+
+    // A trigger saved with the channel as its identifier keeps running.
+    await fixture.sql
+      .db()
+      .update(juniorAutomations)
+      .set({
+        identifier: "C123",
+        record: sql`jsonb_set(jsonb_set(${juniorAutomations.record} #- '{trigger,match}', '{trigger,identifier}', '"C123"'), '{trigger,resourceType}', '"channel"')`,
+      })
+      .where(eq(juniorAutomations.id, scoped.id));
+    const saved = await getEventAutomation(fixture.sql.db(), scoped.id);
+    expect(saved?.trigger).toMatchObject({ identifier: "C123" });
+    expect(saved?.trigger.match).toBeUndefined();
+    expect((await postChannelMessage({ ts: "1712345.0007" })).status).toBe(200);
+    expect(queue.sentRecords()).toHaveLength(1);
 
     // A DM is not a channel, so the automation could never run there.
     await expect(
       execute(
-        createEventAutomationTool(
-          context("U123", "D123", "private", undefined, TEAM_ID),
+        createAutomationTool(
+          automationToolContext(
+            context("U123", "D123", "private", undefined, TEAM_ID),
+          ),
           catalog,
         ),
         {
@@ -272,11 +344,11 @@ describe("Slack channel-message automations", () => {
       execute(createWatchEventsTool(channelContext, catalog), {
         namespace: "slack",
         identifier: "C123",
-        resourceType: "channel",
+        resource_type: "channel",
         label: "New messages",
         events: ["message.posted"],
         intent: "Tell me about new messages.",
       }),
-    ).rejects.toThrow("Use createEventAutomation");
+    ).rejects.toThrow("Use createAutomation");
   });
 });

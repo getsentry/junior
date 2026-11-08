@@ -2,15 +2,12 @@
  * Durable conversation event history port.
  *
  * Events append under the conversation lease in stable sequence order.
- * Compaction and handoff replace the active model history without rewriting
- * prior events. Unsupported stored events remain readable as opaque facts,
+ * Compaction replaces the active model history without rewriting prior
+ * events. Unsupported stored events remain readable as opaque facts,
  * while malformed known events fail loudly. Provider-specific message fields
  * are validated by the Pi adapter when it restores model context.
  */
-import { z } from "zod";
-import type { ConversationCompaction } from "@/chat/state/conversation";
-import { modelProfileSchema } from "@/chat/model-profile";
-import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
+import * as z from "zod";
 import { conversationMessageProvenanceSchema } from "./provenance";
 import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
 
@@ -54,7 +51,7 @@ const nativeReplacementHistoryItemSchema = z
   .object({
     item: agentHistoryItemSchema,
     // Preserve the copied item's position when a turn resumes. Synthetic
-    // summary and handoff items have no source event.
+    // summary items have no source event.
     sourceEventSeq: z.number().int().nonnegative().optional(),
   })
   .strict();
@@ -79,29 +76,33 @@ const compactionDetailsSchema = z
   })
   .strict();
 
-const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("handoff"),
-      modelProfile: modelProfileSchema,
-      modelId: z.string().min(1),
-      reasoningLevel: z.string().min(1).optional(),
-      triggeringToolCallId: z.string().min(1).optional(),
-      summary: z.string().min(1).optional(),
-      replacementHistory: replacementHistorySchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("compaction"),
-      modelProfile: modelProfileSchema,
-      modelId: z.string().min(1),
-      details: compactionDetailsSchema.optional(),
-      summary: z.string().min(1).optional(),
-      replacementHistory: replacementHistorySchema,
-    })
-    .strict(),
-]);
+// Model profiles are retired. Stored rows may still carry `modelProfile`.
+const legacyModelProfileSchema = z.string().min(1).optional();
+
+const historyReplacementEventDataSchema = z
+  .object({
+    type: z.literal("compaction"),
+    modelProfile: legacyModelProfileSchema,
+    modelId: z.string().min(1),
+    details: compactionDetailsSchema.optional(),
+    summary: z.string().min(1).optional(),
+    replacementHistory: replacementHistorySchema,
+  })
+  .strict();
+
+// Model handoff is retired. Stored handoff rows still start a History version,
+// so replay reads their replacement history. Nothing writes new ones.
+const legacyHandoffEventDataSchema = z
+  .object({
+    type: z.literal("handoff"),
+    modelProfile: legacyModelProfileSchema,
+    modelId: z.string().min(1),
+    reasoningLevel: z.string().min(1).optional(),
+    triggeringToolCallId: z.string().min(1).optional(),
+    summary: z.string().min(1).optional(),
+    replacementHistory: replacementHistorySchema,
+  })
+  .strict();
 
 /** Validate an event that intentionally replaces active model history. */
 export const historyReplacementSchema = z
@@ -113,6 +114,14 @@ export const historyReplacementSchema = z
 
 /** One atomically persisted model-history replacement. */
 export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
+
+/**
+ * Result of a history replacement. `historyVersion` is the new version when
+ * replaced, or the current version that did not match when in conflict.
+ */
+export type HistoryReplacementResult =
+  | { status: "replaced"; historyVersion: number }
+  | { status: "conflict"; historyVersion: number };
 
 const mcpProviderConnectedEventDataSchema = z
   .object({
@@ -212,20 +221,24 @@ const messageHandledEventDataSchema = z
   })
   .strict();
 
+// Sets where loaded Message history starts, after trimming. The name is from
+// thread compaction. Its old rows also have summaries, which nothing reads.
 const messagesSummarizedEventDataSchema = z
   .object({
     type: z.literal("messages_summarized"),
     historyFromSeq: z.number().int().nonnegative(),
-    compactions: z.array(
-      z
-        .object({
-          coveredMessageCount: z.number().int().nonnegative(),
-          createdAtMs: z.number(),
-          id: z.string().min(1),
-          summary: z.string(),
-        })
-        .strict(),
-    ) satisfies z.ZodType<ConversationCompaction[]>,
+    compactions: z
+      .array(
+        z
+          .object({
+            coveredMessageCount: z.number().int().nonnegative(),
+            createdAtMs: z.number(),
+            id: z.string().min(1),
+            summary: z.string(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -283,6 +296,8 @@ const turnStartedEventDataSchema = z
     turnId: z.string().min(1),
     inputMessageIds: z.array(z.string().min(1)).min(1),
     surface: conversationTurnSurfaceSchema,
+    /** Highest Message seq known when the Turn built its thread context. */
+    threadContextThroughSeq: z.number().int().nonnegative().optional(),
   })
   .strict()
   .refine(
@@ -291,16 +306,18 @@ const turnStartedEventDataSchema = z
     "turn input message ids must be unique",
   );
 
-const turnRoutedEventDataSchema = z
+// The Turn router is retired. Stored routing rows stay in active history and
+// replay skips them. Nothing writes new ones.
+const legacyTurnRoutedEventDataSchema = z
   .object({
     type: z.literal("turn_routed"),
     turnId: z.string().min(1),
-    modelProfile: modelProfileSchema,
+    modelProfile: z.string().min(1),
     modelId: z.string().min(1),
     costUsd: z.number().finite().nonnegative().optional(),
-    reasoningLevel: z.enum(TURN_REASONING_LEVELS),
+    reasoningLevel: z.string().min(1),
     confidence: z.number().min(0).max(1).optional(),
-    source: z.enum(["configured", "inherited", "router"]),
+    source: z.string().min(1),
   })
   .strict();
 
@@ -346,11 +363,22 @@ const attachmentsDeliveredEventDataSchema = z
   })
   .strict();
 
+/** Host-owned transcript item for a reply that a plugin tool posted. */
+const replyPostedEventDataSchema = z
+  .object({
+    type: z.literal("reply_posted"),
+    plugin: z.string().min(1),
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+    toolCallId: z.string().min(1),
+  })
+  .strict();
+
 const turnCompletedEventDataSchema = z
   .object({
     type: z.literal("turn_completed"),
     turnId: z.string().min(1),
-    outcome: z.enum(["success", "no_reply", "cancelled"]),
+    outcome: z.enum(["success", "no_reply", "cancelled", "blocked"]),
   })
   .strict();
 
@@ -398,6 +426,36 @@ const subagentEndedEventDataSchema = z
   })
   .strict();
 
+// Background compaction bookkeeping. A request marks the history that a
+// prepared summary covers. A later Turn swaps the summary in only when the
+// History version still matches. Neither event is model context.
+const compactionRequestedEventDataSchema = z
+  .object({
+    type: z.literal("compaction_requested"),
+    // Last event seq that the summary covers.
+    markSeq: z.number().int().nonnegative(),
+    historyVersion: z.number().int().nonnegative(),
+    modelProfile: legacyModelProfileSchema,
+    modelId: z.string().min(1),
+  })
+  .strict();
+
+const compactionPreparedFields = compactionRequestedEventDataSchema.extend({
+  type: z.literal("compaction_prepared"),
+});
+
+const compactionPreparedEventDataSchema = z.discriminatedUnion("outcome", [
+  compactionPreparedFields.extend({
+    outcome: z.literal("ready"),
+    summary: z.string().min(1),
+  }),
+  compactionPreparedFields.extend({
+    outcome: z.literal("failed"),
+    // A fixed label only. Do not store raw exception text.
+    errorType: z.string().min(1).max(64),
+  }),
+]);
+
 /** Prevent ordinary appends from bypassing history-replacement validation. */
 const appendableConversationEventDataSchema = z.union([
   messageEventDataSchema,
@@ -414,17 +472,21 @@ const appendableConversationEventDataSchema = z.union([
   turnContextEventDataSchema,
   structuredConversationEventDataSchema,
   attachmentsDeliveredEventDataSchema,
-  turnRoutedEventDataSchema,
+  replyPostedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
   subagentEndedEventDataSchema,
+  compactionRequestedEventDataSchema,
+  compactionPreparedEventDataSchema,
 ]);
 
 /** Strict event-data contract reused by the SQL row codec. */
 export const conversationEventDataSchema = z.union([
   appendableConversationEventDataSchema,
   historyReplacementEventDataSchema,
+  legacyHandoffEventDataSchema,
+  legacyTurnRoutedEventDataSchema,
   unownedMcpProviderConnectedEventDataSchema,
 ]);
 
@@ -454,6 +516,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
+  "reply_posted",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -461,6 +524,8 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "subagent_ended",
   "handoff",
   "compaction",
+  "compaction_requested",
+  "compaction_prepared",
 ] as const;
 
 /** One known durable conversation event type name. */
@@ -514,7 +579,7 @@ export const conversationEventSchema = z.union([
 /** One versioned event read from the durable conversation log. */
 export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
-/** A decoded message-summary event and its readable history boundary. */
+/** A decoded event that sets where readable Message history starts. */
 export type MessagesSummarizedEvent = Omit<
   Extract<ConversationEvent, { schemaVersion: 1 | 2 }>,
   "data"
@@ -525,7 +590,6 @@ export type MessagesSummarizedEvent = Omit<
 /** Projection-ready message events paired with their authoritative boundary. */
 export interface MessageHistory {
   events: ConversationEvent[];
-  compaction: MessagesSummarizedEvent | undefined;
   historyFromSeq: number;
 }
 
@@ -609,11 +673,16 @@ export interface ConversationEventStore {
     events: NewConversationEvent[],
     options?: { activity?: "preserve" },
   ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>>;
-  /** Replace active model history with a compaction or handoff event. */
+  /**
+   * Replace active model history with a compaction event.
+   * With `expectedHistoryVersion`, write nothing and return a conflict when
+   * the current History version differs.
+   */
   replaceHistory(
     conversationId: string,
     replacement: HistoryReplacement,
-  ): Promise<void>;
+    options?: { expectedHistoryVersion?: number },
+  ): Promise<HistoryReplacementResult>;
   /** One event selected by its retry-stable key across history versions. */
   loadByIdempotencyKey(
     conversationId: string,

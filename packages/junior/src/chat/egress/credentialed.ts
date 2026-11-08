@@ -8,9 +8,9 @@ import {
   selectSandboxEgressGrant,
   type SandboxEgressGrantSelection,
 } from "@/chat/sandbox/egress/credentials";
+import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
 import {
   clearSandboxEgressCredentialLease,
-  SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
   type SandboxEgressCredentialContext,
@@ -190,20 +190,15 @@ function egressAttributes(input: {
   };
 }
 
-function redactedProxyPath(pathname: string): string {
-  if (pathname.startsWith(`${SANDBOX_EGRESS_PROXY_PATH}/`)) {
-    return `${SANDBOX_EGRESS_PROXY_PATH}/<token>`;
-  }
-  return pathname;
-}
-
 function routingAttributes(
   request: Request,
   upstreamUrl?: URL,
 ): Record<string, unknown> {
   const proxyUrl = new URL(request.url);
   const attributes: Record<string, unknown> = {
-    "app.sandbox.egress.proxy_path": redactedProxyPath(proxyUrl.pathname),
+    "app.sandbox.egress.proxy_path": redactSandboxEgressProxyPath(
+      proxyUrl.pathname,
+    ),
   };
   if (upstreamUrl) {
     attributes["app.sandbox.egress.upstream_path"] = upstreamUrl.pathname;
@@ -312,7 +307,7 @@ function unreadableBodyResponse(eventId: string | undefined): Response {
     {
       source: "junior-egress",
       error:
-        "Junior's sandbox egress proxy could not read the request body, so it did not send the request upstream.",
+        "The sandbox egress proxy could not read the request body, so it did not send the request upstream.",
       ...(eventId ? { sentryEventId: eventId } : undefined),
     },
     { status: 500, headers: { "cache-control": "no-store" } },
@@ -349,8 +344,8 @@ function grantSelectionBodyTooLargeMessage(
   inspection: GitHubBodyInspection,
 ): string {
   return inspection === "graphql"
-    ? "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials."
-    : "GitHub pull request review request body is too large for Junior to inspect before issuing credentials.";
+    ? "GitHub GraphQL request body is too large to inspect before issuing credentials."
+    : "GitHub pull request review request body is too large to inspect before issuing credentials.";
 }
 
 function grantSelectionBodyText(input: {

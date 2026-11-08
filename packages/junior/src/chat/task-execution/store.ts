@@ -17,6 +17,8 @@ export {
   hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
+  moveIdleConversationDestination,
+  releaseInboundMessage,
   type AgentInput,
   type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,
@@ -243,6 +245,36 @@ export async function appendInboundMessage(args: {
   return result;
 }
 
+/**
+ * Record an inbound message id that skips the mailbox. When the claim is
+ * saved but its metadata write fails, this releases the claim, so a
+ * redelivery can claim it again.
+ */
+export async function claimInboundMessage(args: {
+  message: workState.InboundMessageClaim;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.claimInboundMessage(args);
+  if (result.status === "claimed") {
+    try {
+      await recordExecutionMetadata({
+        conversationId: args.message.conversationId,
+        conversationStore: args.conversationStore,
+        state: args.state,
+      });
+    } catch (error) {
+      await workState.releaseInboundMessage({
+        message: args.message,
+        state: args.state,
+      });
+      throw error;
+    }
+  }
+  return result;
+}
+
 async function enqueueAfterAppend(args: {
   appendResult: AppendExclusiveInboundMessageResult;
   message: InboundMessage;
@@ -366,10 +398,15 @@ export async function stopConversationWork(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  /** Runs once the stop request is saved, before its metadata write. */
+  onStopSaved?: () => void;
+  /** Stop only person input sent at or before this time. */
+  sentAtOrBeforeMs?: number;
   state?: StateAdapter;
 }) {
   const result = await workState.stopConversationWork(args);
   if (result.status === "requested") {
+    args.onStopSaved?.();
     await recordExecutionMetadata(args);
   }
   return result;
@@ -519,6 +556,18 @@ export async function cancelHumanFacingPendingMessages(args: {
   return result;
 }
 
+/** Mark one author's queued web messages as interrupts. */
+export async function steerWebPendingMessages(args: {
+  authorIds: readonly string[];
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  // Delivery mode is not part of execution metadata, so there is nothing to record.
+  return await workState.steerWebPendingMessages(args);
+}
+
 /** Mark the leased conversation as needing another queue-delivered slice. */
 export async function requestAnotherSlice(args: {
   conversationId: string;
@@ -608,6 +657,10 @@ export async function deadLetterAttempt(args: {
 
 /** Recover an expired lease and persist the resulting retry state. */
 export async function clearExpiredConversationLease(args: {
+  beforeWorkStops?: (
+    conversationId: string,
+    inboundMessageIds: readonly string[],
+  ) => Promise<void>;
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;

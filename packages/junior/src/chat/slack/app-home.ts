@@ -12,7 +12,7 @@ import type {
   StoredProviderAccount,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
-import { getRuntimeMetadata } from "@/chat/config";
+import { botConfig, getRuntimeMetadata } from "@/chat/config";
 
 interface HomeView {
   type: "home";
@@ -153,7 +153,7 @@ export async function buildHomeView(
         type: "header",
         text: {
           type: "plain_text",
-          text: "Junior",
+          text: botConfig.userName,
         },
       },
       {

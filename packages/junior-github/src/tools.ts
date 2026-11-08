@@ -3,13 +3,17 @@ import type {
   ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { createGitHubCloneRepositoryTool } from "./tools/clone-repository.js";
+import { createGitHubCommentOnIssueTool } from "./tools/comment-on-issue.js";
+import { createGitHubCommentOnPullRequestTool } from "./tools/comment-on-pull-request.js";
 import { createGitHubIssueTool } from "./tools/create-issue.js";
 import { createGitHubGetDeploymentTool } from "./tools/get-deployment.js";
+import { createGitHubGetIssueTool } from "./tools/get-issue.js";
 import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
 import type { GitHubPullRequestSubscriptionConfig } from "./events/pull-request.js";
 import { createGitHubGetPullRequestTool } from "./tools/get-pull-request.js";
 import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
+import { createGitHubGetStatusTool } from "./tools/get-status.js";
 import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
 import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-request-feedback.js";
@@ -24,15 +28,19 @@ export function createGitHubTools(
 ): Record<string, PluginToolDefinition> {
   return {
     cloneRepository: createGitHubCloneRepositoryTool(ctx),
+    commentOnIssue: createGitHubCommentOnIssueTool(ctx.egress),
+    commentOnPullRequest: createGitHubCommentOnPullRequestTool(ctx.egress),
     createIssue: createGitHubIssueTool(ctx),
     createPullRequest: createGitHubPullRequestTool(
       ctx,
       pullRequestSubscription,
     ),
     getDeployment: createGitHubGetDeploymentTool(ctx),
+    getIssue: createGitHubGetIssueTool(ctx),
     getPullRequest: createGitHubGetPullRequestTool(ctx),
     getRelease: createGitHubGetReleaseTool(ctx),
     getRepository: createGitHubGetRepositoryTool(ctx),
+    getStatus: createGitHubGetStatusTool(ctx),
     resolvePullRequestReviewThread:
       createGitHubResolvePullRequestReviewThreadTool(ctx, botEmail),
     submitPullRequestReview: createGitHubSubmitPullRequestReviewTool(

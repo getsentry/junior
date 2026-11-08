@@ -247,53 +247,43 @@ function appendContextEvent(
   timestamp: number | undefined,
 ): void {
   const event = part.event;
-  lines.push(
-    "",
-    event.type === "handoff" ? "### Model handoff" : "### Context compacted",
-  );
+  lines.push("", "### Context compacted");
   addEventMeta(lines, conversationTranscript, timestamp);
-  if (event.type === "handoff") {
-    addMetaLine(lines, "Model", event.modelId);
-    addMetaLine(lines, "Profile", event.modelProfile);
-    addMetaLine(lines, "Reasoning", event.reasoningLevel);
-  } else {
-    addMetaLine(lines, "Profile", event.modelProfile);
-    addMetaLine(lines, "Model", event.modelId);
-    if (event.details) {
+  addMetaLine(lines, "Model", event.modelId);
+  if (event.details) {
+    addMetaLine(
+      lines,
+      "Estimated input tokens",
+      String(event.details.estimatedInputTokens),
+    );
+    if (event.details.replacementInputTokens !== undefined) {
       addMetaLine(
         lines,
-        "Estimated input tokens",
-        String(event.details.estimatedInputTokens),
-      );
-      if (event.details.replacementInputTokens !== undefined) {
-        addMetaLine(
-          lines,
-          "Replacement input tokens",
-          String(event.details.replacementInputTokens),
-        );
-      }
-      addMetaLine(
-        lines,
-        "Compaction trigger",
-        String(event.details.triggerTokens),
-      );
-      addMetaLine(lines, "Input limit", String(event.details.inputLimitTokens));
-      addMetaLine(
-        lines,
-        "Input messages",
-        String(event.details.inputMessageCount),
-      );
-      addMetaLine(
-        lines,
-        "Retained messages",
-        String(event.details.retainedMessageCount),
-      );
-      addMetaLine(
-        lines,
-        "Summary characters",
-        String(event.details.summaryChars),
+        "Replacement input tokens",
+        String(event.details.replacementInputTokens),
       );
     }
+    addMetaLine(
+      lines,
+      "Compaction trigger",
+      String(event.details.triggerTokens),
+    );
+    addMetaLine(lines, "Input limit", String(event.details.inputLimitTokens));
+    addMetaLine(
+      lines,
+      "Input messages",
+      String(event.details.inputMessageCount),
+    );
+    addMetaLine(
+      lines,
+      "Retained messages",
+      String(event.details.retainedMessageCount),
+    );
+    addMetaLine(
+      lines,
+      "Summary characters",
+      String(event.details.summaryChars),
+    );
   }
   if (event.summary) {
     lines.push("", "#### Continuation summary", "", event.summary);

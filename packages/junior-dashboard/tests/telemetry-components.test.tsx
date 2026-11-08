@@ -13,7 +13,10 @@ import type {
   Plugin,
 } from "@sentry/junior/api/schema";
 
-import { conversationDetailQueryKey } from "../src/client/conversations/queries";
+import {
+  conversationDetailQueryKey,
+  useConversationData,
+} from "../src/client/conversations/queries";
 import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
   SubagentTranscriptDrawer,
@@ -25,9 +28,9 @@ import {
   ConversationAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
+import { conversationLinks } from "../src/client/conversations/ConversationLinkedWork";
 import { conversationFromDetail } from "../src/client/format";
-import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
-import { TranscriptText } from "../src/client/conversations/TranscriptText";
+import { DisplayText } from "../src/client/display-text/DisplayText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
 import { TranscriptSearchProvider } from "../src/client/conversations/transcriptSearch";
 import { ConversationPage } from "../src/client/conversations/ConversationPage";
@@ -82,6 +85,7 @@ function conversation(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 3_000,
     displayTitle: "Conversation",
@@ -118,7 +122,6 @@ function systemData(): SystemData {
       authRequired: false,
       basePath: "/",
       sentryConversationLinks: false,
-      timeZone: "UTC",
       version: "0.0.0-test",
     },
     me: { user: { email: "viewer@example.com", isAdmin: false } },
@@ -195,7 +198,7 @@ describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="line">
-        <TranscriptMarkdown
+        <DisplayText
           text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
         />
       </TranscriptSearchProvider>,
@@ -210,7 +213,7 @@ describe("dashboard canonical-event components", () => {
   it("highlights a markdown link label when search matches its URL", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="docs.sentry.io">
-        <TranscriptMarkdown text="[product docs](https://docs.sentry.io/platforms/)" />
+        <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
       </TranscriptSearchProvider>,
     );
 
@@ -224,7 +227,7 @@ describe("dashboard canonical-event components", () => {
   it("preserves snake_case identifiers while rendering emphasis", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown text="some_var_name and *italic text*" />
+        <DisplayText text="some_var_name and *italic text*" />
       </TranscriptSearchProvider>,
     );
 
@@ -237,7 +240,7 @@ describe("dashboard canonical-event components", () => {
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+        <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
       </TranscriptSearchProvider>,
     );
 
@@ -253,9 +256,8 @@ describe("dashboard canonical-event components", () => {
   it("renders code-like user prose as markdown", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText
-          mentions={[]}
-          role="user"
+        <DisplayText
+          chat
           text="The function reads a const value and returns it."
         />
       </QueryClientProvider>,
@@ -269,11 +271,7 @@ describe("dashboard canonical-event components", () => {
   it("renders fenced XML as highlighted code", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <TranscriptText
-          mentions={[]}
-          role="user"
-          text={"```xml\n<root />\n```"}
-        />
+        <DisplayText chat text={"```xml\n<root />\n```"} />
       </QueryClientProvider>,
     );
 
@@ -285,7 +283,7 @@ describe("dashboard canonical-event components", () => {
   it("renders labeled event sections followed by semantic lists", () => {
     const html = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown text={"Handling:\n- first item\n- second item"} />
+        <DisplayText text={"Handling:\n- first item\n- second item"} />
       </TranscriptSearchProvider>,
     );
 
@@ -296,8 +294,8 @@ describe("dashboard canonical-event components", () => {
 
     const slackHtml = renderToStaticMarkup(
       <TranscriptSearchProvider query="">
-        <TranscriptMarkdown
-          text={"Checking:\n• first item\n• second item\n2) next step"}
+        <DisplayText
+          text={"Checking:\n• first item\n• second item\n\n2) next step"}
         />
       </TranscriptSearchProvider>,
     );
@@ -306,6 +304,21 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain("•");
     expect(slackHtml).toContain('<ol class="');
     expect(slackHtml).toContain('start="2"');
+
+    const nestedHtml = renderToStaticMarkup(
+      <TranscriptSearchProvider query="">
+        <DisplayText
+          text={">you're right\n>second line\n\n- parent\n  - child\n\n~~old~~"}
+        />
+      </TranscriptSearchProvider>,
+    );
+
+    expect(nestedHtml).toMatch(
+      /<blockquote[^>]*>\s*<p[^>]*>you&#x27;re right<br\/>/,
+    );
+    expect(nestedHtml).not.toContain("&gt;you");
+    expect(nestedHtml).toMatch(/<li[^>]*>parent\s*<ul/);
+    expect(nestedHtml).toContain(">old</del>");
   });
 
   it("keeps a running tool name searchable and accessible", () => {
@@ -353,34 +366,53 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("5.0s · 5kb");
   });
 
-  it("exposes pressed state for transcript view controls", () => {
+  it("names the event log in the title bar and keeps actions in the menu", () => {
     const html = renderToStaticMarkup(
-      <ConversationHeader
-        archive={{
-          archived: false,
-          disabled: false,
-          error: false,
-          onClick: () => {},
-          pending: false,
-        }}
-        conversationId="conversation-1"
-        detailsOpen={false}
-        onDetailsClick={() => {}}
-        live={false}
-        onSearchChange={() => {}}
-        onViewChange={() => {}}
-        privacy={null}
-        search=""
-        title="Header QA"
-        view="raw"
-      />,
+      <MemoryRouter>
+        <ConversationHeader
+          archive={{
+            archived: false,
+            disabled: false,
+            onClick: () => {},
+            pending: false,
+          }}
+          conversationId="conversation-1"
+          detailsOpen={false}
+          onDetailsClick={() => {}}
+          onSearchChange={() => {}}
+          onViewChange={() => {}}
+          pin={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            pinned: false,
+          }}
+          privacy={null}
+          read={{
+            disabled: false,
+            error: false,
+            onClick: () => {},
+            unread: false,
+          }}
+          search=""
+          searchMatch={{
+            count: 0,
+            index: 0,
+            setMatches: () => {},
+            step: () => {},
+          }}
+          title="Header QA"
+          view="raw"
+        />
+      </MemoryRouter>,
     );
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-label="Conversation"');
-    expect(html).toContain('aria-label="Event log"');
+    expect(html).toContain('title="Back to conversation"');
+    expect(html).toMatch(/aria-current="page"[^>]*>Event log</);
     expect(html).not.toContain('aria-label="Search transcript"');
     expect(html).toContain('aria-label="Conversation details"');
-    expect(html).toContain('aria-label="Archive"');
+    expect(html).toContain('aria-label="Conversation menu"');
+    // Archive and the view switch wait in the closed menu.
+    expect(html).not.toContain('aria-label="Archive"');
   });
 
   it("shows responding state independently from live transcript following", () => {
@@ -510,16 +542,28 @@ describe("dashboard canonical-event components", () => {
             messageId: "event-1",
             role: "user",
             eventType: "pull_request.merged",
-            trustedSummary: "<@U456> merged PR #42.",
+            trustedSummary: "<@U456> merged PR #42 for <@U123>.",
             text: "PR merged.",
           },
           undefined,
-          [{ fullName: "Riley Park", slackUserId: "U456" }],
+          [
+            {
+              email: "taylor@example.com",
+              fullName: "Taylor Chen",
+              slackUserId: "U123",
+            },
+            { fullName: "Riley Park", slackUserId: "U456" },
+          ],
         ),
       ]),
     );
 
-    expect(html).toContain("@Riley Park</span> merged PR #42.");
+    expect(html).toContain("@Riley Park</span> merged PR #42 for");
+    // The Event heading is a disclosure button, which cannot hold a link.
+    expect(html).toContain("@Taylor Chen</span>.");
+    expect(html.match(/href="\/people\/taylor%40example.com"/g)).toHaveLength(
+      1,
+    );
     expect(html).not.toContain("&lt;@");
     expect(html).not.toContain("&lt;#");
     expect(html).toMatch(
@@ -531,7 +575,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("#proj-junior");
   });
 
-  it("shows a Slack icon for Slack-origin messages only", () => {
+  it("shows a provider icon for Slack and GitHub messages only", () => {
     const slackHtml = renderTranscript(
       conversation(
         [
@@ -569,6 +613,35 @@ describe("dashboard canonical-event components", () => {
             text: "Stays in Junior.",
             type: "message",
           }),
+          event(5, {
+            eventNamespace: "github",
+            eventType: "pull_request.review_comment.created",
+            messageId: "github-event",
+            role: "user",
+            text: "Review comment.",
+            trustedSummary: "New review comment.",
+            type: "message",
+          }),
+          event(6, {
+            eventNamespace: "junior",
+            eventType: "agent_invocation.finished",
+            messageId: "core-event",
+            role: "user",
+            text: "Child agent finished.",
+            trustedSummary: "Child agent finished.",
+            type: "message",
+          }),
+          event(7, {
+            plugin: "github",
+            text: "Replied on the pull request.",
+            type: "reply_posted",
+            url: "https://github.com/getsentry/junior/pull/1#issuecomment-7",
+          }),
+          event(8, {
+            plugin: "forge",
+            text: "Replied somewhere without a mark.",
+            type: "reply_posted",
+          }),
         ],
         { surface: "slack" },
       ),
@@ -589,6 +662,10 @@ describe("dashboard canonical-event components", () => {
     expect(slackHtml).not.toContain(">Slack<");
     // Known Slack user + assistant only. Null/web stay unmarked.
     expect(slackHtml.match(/aria-label="Slack"/g)).toHaveLength(2);
+    // The GitHub Event and the reply posted on GitHub. Plugins without a
+    // mark stay unmarked.
+    expect(slackHtml.match(/aria-label="GitHub"/g)).toHaveLength(2);
+    expect(slackHtml).toContain("Replied somewhere without a mark.");
     expect(dashboardRootHtml).not.toContain("Dashboard");
     expect(dashboardRootHtml).not.toContain('aria-label="Slack"');
   });
@@ -623,51 +700,50 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("labels linked object types for assistive technology without guessing from URLs", () => {
+    const detail = conversation([], {
+      annotations: [
+        {
+          kind: "resource_link",
+          objectType: "task",
+          key: "issue",
+          label: "Issue",
+          plugin: "github",
+          status: "closed",
+          url: "https://example.com/issue",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          kind: "resource_link",
+          key: "pr",
+          label: "PR",
+          plugin: "github",
+          status: "closed",
+          url: "https://example.com/change",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+        {
+          kind: "resource_link",
+          key: "other",
+          label: "Other",
+          plugin: "example",
+          url: "https://github.com/example/repo/pull/1",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+      sidebarAnnotations: [
+        {
+          key: "pr",
+          label: "repo",
+          objectType: "code_change",
+          status: "closed",
+        },
+      ],
+    });
     const html = renderToStaticMarkup(
-      <ConversationAnnotations
-        detail={conversation([], {
-          annotations: [
-            {
-              kind: "resource_link",
-              objectType: "task",
-              key: "issue",
-              label: "Issue",
-              plugin: "github",
-              status: "closed",
-              url: "https://example.com/issue",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-            {
-              kind: "resource_link",
-              key: "pr",
-              label: "PR",
-              plugin: "github",
-              status: "closed",
-              url: "https://example.com/change",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-            {
-              kind: "resource_link",
-              key: "other",
-              label: "Other",
-              plugin: "example",
-              url: "https://github.com/example/repo/pull/1",
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:01.000Z",
-            },
-          ],
-          sidebarAnnotations: [
-            {
-              key: "pr",
-              label: "repo",
-              objectType: "code_change",
-              status: "closed",
-            },
-          ],
-        })}
-      />,
+      <ConversationAnnotations links={conversationLinks(detail)} />,
     );
     expect(html).toContain('aria-label="Ticket: closed"');
     expect(html).toContain('aria-label="Code change: closed"');
@@ -766,11 +842,6 @@ describe("dashboard canonical-event components", () => {
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
-        event(1, {
-          type: "handoff",
-          modelProfile: "fast",
-          modelId: "openai/gpt-5-mini",
-        }),
         event(2, {
           type: "turn_lifecycle",
           turnId: "turn-1",
@@ -783,7 +854,6 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
     expect(html).toContain("Context compacted");
-    expect(html).toContain("Model handoff");
     expect(html).toContain("Model connection failed");
     expect(html).toContain('data-transcript-failure-reason="network"');
     expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
@@ -845,8 +915,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('alt="chart.png"');
     expect(html).toContain("notes.txt");
     expect(html).toContain("text/plain · 42 B");
-    expect(html).toContain("image/png · 17.8 KB");
-    expect(html).toContain(">Close<");
     expect(html).toContain(
       "/api/conversations/conversation-1/attachments/att-1",
     );
@@ -1206,7 +1274,6 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(html).toContain("Conversation failed to load.");
-    expect(html).toContain('data-tone="error"');
     expect(html).toContain('role="alert"');
   });
 
@@ -1293,6 +1360,7 @@ describe("dashboard canonical-event components", () => {
       ],
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
@@ -1465,6 +1533,7 @@ describe("dashboard canonical-event components", () => {
       providerDestinationId: "C1",
       recentConversations: [
         {
+          kind: "root",
           conversationId: "slack:C1:100",
           cumulativeDurationMs: 1_000,
           displayTitle: "Investigate checkout",
@@ -1895,6 +1964,7 @@ describe("dashboard canonical-event components", () => {
 
   it("renders cached canonical conversation detail through decoded routing", () => {
     const summary: ConversationSummaryReport = {
+      kind: "root",
       conversationId: "slack:C1:123",
       cumulativeDurationMs: 1_000,
       displayTitle: "Cached conversation",
@@ -1930,7 +2000,7 @@ describe("dashboard canonical-event components", () => {
             <Route
               path="/conversations/:conversationId"
               element={
-                <ConversationPage
+                <ConversationPageWithData
                   conversationId={summary.conversationId}
                   data={{
                     conversations: {
@@ -1959,11 +2029,19 @@ function conversationQueryClient(): QueryClient {
   });
 }
 
+/** Read the detail like the shell does, then render the page. */
+function ConversationPageWithData(
+  props: Omit<Parameters<typeof ConversationPage>[0], "detail">,
+) {
+  const detail = useConversationData(props.conversationId);
+  return <ConversationPage {...props} detail={detail} />;
+}
+
 function renderConversationPageWithClient(queryClient: QueryClient): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
-        <ConversationPage conversationId="conversation-1" />
+        <ConversationPageWithData conversationId="conversation-1" />
       </MemoryRouter>
     </QueryClientProvider>,
   );

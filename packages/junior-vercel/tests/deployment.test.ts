@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { vercelPlugin } from "../src";
 import { createVercelDeploymentTool } from "../src/tools/deployment";
 
@@ -19,22 +19,13 @@ function toolFixture(
 }
 
 describe("Vercel deployment", () => {
-  beforeEach(() => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "");
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("resolves a channel project and returns a commit-scoped subscribable resource", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", " webhook-secret ");
     const { fetch, tool } = toolFixture();
 
     await expect(
       tool.execute?.(
         {
-          commitSha: COMMIT_SHA,
+          commit_sha: COMMIT_SHA,
           project: "junior",
           target: "production",
           team: "sentry",
@@ -42,13 +33,13 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment" },
       ),
     ).resolves.toMatchObject({
-      commitSha: COMMIT_SHA.toLowerCase(),
-      deploymentTarget: "production",
-      projectId: "prj_junior",
+      commit_sha: COMMIT_SHA.toLowerCase(),
+      deployment_target: "production",
+      project_id: "prj_junior",
       subscribable: {
         namespace: "vercel",
         identifier: `prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
-        suggestedEvents: [
+        suggested_events: [
           "deployment.succeeded",
           "deployment.error",
           "deployment.canceled",
@@ -85,12 +76,11 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment-legacy-project" },
       ),
     ).resolves.toMatchObject({
-      projectId: "QmLegacyProject123",
+      project_id: "QmLegacyProject123",
     });
   });
 
   it("returns a project-wide subscribable resource when commit and target are omitted", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();
 
     await expect(
@@ -99,9 +89,9 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment-project" },
       ),
     ).resolves.toMatchObject({
-      commitSha: null,
-      deploymentTarget: null,
-      projectId: "prj_junior",
+      commit_sha: null,
+      deployment_target: null,
+      project_id: "prj_junior",
       subscribable: {
         identifier: "prj_junior",
         label: "Vercel deployments for prj_junior",
@@ -111,7 +101,6 @@ describe("Vercel deployment", () => {
   });
 
   it("returns a target-scoped subscribable resource without a commit", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();
 
     await expect(
@@ -120,9 +109,9 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment-target" },
       ),
     ).resolves.toMatchObject({
-      commitSha: null,
-      deploymentTarget: "production",
-      projectId: "prj_junior",
+      commit_sha: null,
+      deployment_target: "production",
+      project_id: "prj_junior",
       subscribable: {
         identifier: "prj_junior:production",
         label: "Vercel production deployments for prj_junior",
@@ -132,18 +121,17 @@ describe("Vercel deployment", () => {
   });
 
   it("defaults a commit-scoped watch to production when target is omitted", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture();
 
     await expect(
       tool.execute?.(
-        { commitSha: COMMIT_SHA, project: "junior" },
+        { commit_sha: COMMIT_SHA, project: "junior" },
         { toolCallId: "deployment-default-target" },
       ),
     ).resolves.toMatchObject({
-      commitSha: COMMIT_SHA.toLowerCase(),
-      deploymentTarget: "production",
-      projectId: "prj_junior",
+      commit_sha: COMMIT_SHA.toLowerCase(),
+      deployment_target: "production",
+      project_id: "prj_junior",
       subscribable: {
         identifier: `prj_junior:production:${COMMIT_SHA.toLowerCase()}`,
       },
@@ -155,7 +143,7 @@ describe("Vercel deployment", () => {
 
     await tool.execute?.(
       {
-        commitSha: COMMIT_SHA,
+        commit_sha: COMMIT_SHA,
         project: "junior",
         target: "production",
         team: "team_sentry",
@@ -172,20 +160,7 @@ describe("Vercel deployment", () => {
     });
   });
 
-  it("omits the subscribable hint when webhook verification is unavailable", async () => {
-    const { tool } = toolFixture();
-
-    const result = await tool.execute?.(
-      { project: "junior", target: "staging" },
-      { toolCallId: "deployment-without-webhooks" },
-    );
-
-    expect(result).not.toHaveProperty("subscribable");
-    expect(result).not.toHaveProperty("data.subscribable");
-  });
-
   it("omits the subscribable hint when the host cannot create subscriptions", async () => {
-    vi.stubEnv("VERCEL_WEBHOOK_SECRET", "webhook-secret");
     const { tool } = toolFixture(undefined, false);
 
     const result = await tool.execute?.(

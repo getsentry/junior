@@ -1,14 +1,17 @@
 import {
   defineJuniorPlugin,
+  type HeartbeatHookContext,
   type RouteRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { getDispatchRecord } from "@/chat/agent-dispatch/store";
-import { getSqlExecutor } from "@/chat/db";
+import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { usersInfoOk } from "../fixtures/slack/factories/api";
+import { createWaitUntilCollector } from "../fixtures/wait-until";
 import {
   createConversationWorkQueueTestAdapter,
   type ConversationWorkQueueTestAdapter,
@@ -18,12 +21,15 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 
-/** Seed one Slack member and, optionally, a provider account linked by OAuth. */
+/**
+ * Seed one Slack member and, optionally, a provider account linked by OAuth.
+ * Return the User id.
+ */
 async function seedSlackUser(args: {
   email: string;
   linked?: { handle?: string; provider: string; subjectId: string };
   slackUserId: string;
-}): Promise<void> {
+}): Promise<string> {
   const slack = await upsertIdentity(getSqlExecutor(), {
     kind: "user",
     provider: "slack",
@@ -32,26 +38,46 @@ async function seedSlackUser(args: {
     email: args.email,
     emailVerified: true,
   });
-  if (!args.linked) return;
-  await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
-    kind: "user",
-    provider: args.linked.provider,
-    providerSubjectId: args.linked.subjectId,
-    ...(args.linked.handle ? { handle: args.linked.handle } : undefined),
-  });
+  if (args.linked) {
+    await upsertLinkedIdentity(getSqlExecutor(), slack.userId!, {
+      kind: "user",
+      provider: args.linked.provider,
+      providerSubjectId: args.linked.subjectId,
+      ...(args.linked.handle ? { handle: args.linked.handle } : undefined),
+    });
+  }
+  return slack.userId!;
 }
 
-describe("plugin route Identity dispatch", () => {
+/** Read the Conversation and the first Message that an Identity dispatch made. */
+async function readStartedConversation(conversationId: string) {
+  const conversation = await getConversationStore().get({ conversationId });
+  const work = await getConversationWorkState({ conversationId });
+  return {
+    actor: conversation?.actor,
+    destination: conversation?.destination,
+    message: work?.execution.pendingMessages[0]?.input,
+    visibility: conversation?.visibility,
+  };
+}
+
+describe("plugin Identity dispatch", () => {
   let agent: RouteRegistrationHookContext["agent"];
   let googleAgent: RouteRegistrationHookContext["agent"];
+  let onGoogleHeartbeat: (
+    agent: HeartbeatHookContext["agent"],
+  ) => Promise<void> = async () => {};
+  let app: Awaited<ReturnType<typeof createApp>>;
   let queue: ConversationWorkQueueTestAdapter;
+  const waitUntil = createWaitUntilCollector();
 
   async function startApp(allowedDomains?: string[]): Promise<void> {
     await disconnectStateAdapter();
     queue = createConversationWorkQueueTestAdapter();
-    await createApp({
+    app = await createApp({
       ...(allowedDomains ? { allowedDomains } : undefined),
       conversationWorkQueue: () => queue,
+      waitUntil: waitUntil.fn,
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: { name: "demo", displayName: "Demo", description: "Demo" },
@@ -70,6 +96,9 @@ describe("plugin route Identity dispatch", () => {
             description: "Google",
           },
           hooks: {
+            async heartbeat(ctx) {
+              await onGoogleHeartbeat(ctx.agent);
+            },
             routes(ctx) {
               googleAgent = ctx.agent;
               return [];
@@ -81,11 +110,12 @@ describe("plugin route Identity dispatch", () => {
   }
 
   beforeEach(async () => {
+    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
     await startApp();
   });
 
-  it("starts one private DM dispatch for a linked current Slack member", async () => {
-    await seedSlackUser({
+  it("starts one public web Conversation for a linked current Slack member", async () => {
+    const userId = await seedSlackUser({
       email: "requester@example.com",
       linked: { provider: "demo", subjectId: "1001" },
       slackUserId: "U123",
@@ -98,36 +128,38 @@ describe("plugin route Identity dispatch", () => {
 
     const result = await agent.dispatchForIdentity(request);
 
-    expect(result).toEqual({ id: expect.any(String), status: "created" });
+    expect(result).toEqual({
+      conversationId: expect.stringMatching(/^local:web:/),
+      status: "created",
+    });
     if (result.status !== "created") throw new Error("Expected a dispatch");
-    expect(
-      getCapturedSlackApiCalls("conversations.open").map(
-        (call) => call.params.users,
-      ),
-    ).toEqual(["U123"]);
-    expect(queue.sentRecords()).toHaveLength(1);
-    await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
-      credentialSubject: {
-        type: "user",
-        userId: "U123",
-        allowedWhen: "private-direct-conversation",
-        binding: {
-          type: "slack-direct-conversation",
-          teamId: "T123",
-          channelId: "D0TEST",
-          signature: expect.any(String),
-        },
-      },
-      destination: { platform: "slack", teamId: "T123", channelId: "D0TEST" },
-      destinationVisibility: "private",
-      input: "Look at demo issue 7.",
-      plugin: "demo",
-      source: { kind: "plugin_dispatch" },
+    // The work is not in Slack.
+    expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ conversationId: result.conversationId }),
+    ]);
+    await expect(
+      readStartedConversation(result.conversationId),
+    ).resolves.toMatchObject({
+      actor: { email: "requester@example.com" },
+      destination: { platform: "local" },
+      message: { authorId: userId, text: "Look at demo issue 7." },
+      visibility: "public",
+    });
+    // The dashboard lists it for the person and shows it to everyone else.
+    const access = await readConversationAccessFromSql(
+      getDb(),
+      [result.conversationId],
+      { id: userId, email: "requester@example.com", identities: [] },
+    );
+    expect(access.get(result.conversationId)).toMatchObject({
+      isParticipant: true,
+      visibility: "public",
     });
 
     // A redelivered webhook reuses its idempotency key.
     await expect(agent.dispatchForIdentity(request)).resolves.toEqual({
-      id: result.id,
+      conversationId: result.conversationId,
       status: "already_exists",
     });
   });
@@ -186,7 +218,6 @@ describe("plugin route Identity dispatch", () => {
     expect(
       getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
     ).toEqual(["U456"]);
-    expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
     expect(queue.sentRecords()).toEqual([]);
   });
 
@@ -208,7 +239,59 @@ describe("plugin route Identity dispatch", () => {
         subjectId: "1005",
       }),
     ).resolves.toEqual({ status: "not_linked" });
-    expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
     expect(queue.sentRecords()).toEqual([]);
+  });
+
+  it("starts work from a heartbeat for a verified email of a current member", async () => {
+    const mayaUserId = await seedSlackUser({
+      email: "maya@example.com",
+      slackUserId: "U900",
+    });
+    await seedSlackUser({ email: "stale@example.com", slackUserId: "U901" });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U900", email: "Maya@Example.com" }),
+    });
+    // The person changed the email of their Slack profile.
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U901", email: "new@example.com" }),
+    });
+    const results: unknown[] = [];
+    // The Google plugin shares a native provider name. That blocks only
+    // `subjectId`, not a verified email.
+    onGoogleHeartbeat = async (heartbeatAgent) => {
+      for (const verifiedEmail of [
+        "MAYA@example.com",
+        "nobody@example.com",
+        "stale@example.com",
+      ]) {
+        results.push(
+          await heartbeatAgent.dispatchForIdentity({
+            idempotencyKey: `email-${verifiedEmail}`,
+            input: "Find us 30 minutes next week.",
+            verifiedEmail,
+          }),
+        );
+      }
+    };
+
+    const response = await app.request("/api/internal/heartbeat", {
+      headers: { authorization: "Bearer heartbeat-secret" },
+    });
+    expect(response.status).toBe(202);
+    await waitUntil.flush();
+
+    expect(results).toEqual([
+      { conversationId: expect.any(String), status: "created" },
+      { status: "not_linked" },
+      { status: "not_linked" },
+    ]);
+    const [created] = results as { conversationId: string }[];
+    await expect(
+      readStartedConversation(created!.conversationId),
+    ).resolves.toMatchObject({
+      actor: { email: "maya@example.com" },
+      message: { authorId: mayaUserId, text: "Find us 30 minutes next week." },
+      visibility: "public",
+    });
   });
 });

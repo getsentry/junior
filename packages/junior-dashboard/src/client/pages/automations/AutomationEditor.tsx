@@ -16,13 +16,11 @@ import { useToastManager } from "../../components/ui/toast";
 import { FormNotice } from "../../components/FormNotice";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { DashboardApiError, fetchDashboardJson, patch } from "../../http";
+import { AutomationDraftChanges } from "./AutomationDraftChanges";
 import { AutomationFormSection } from "./AutomationFormSection";
 import { AutomationScheduleFields } from "./AutomationScheduleFields";
 import { AutomationEventFields } from "./AutomationEventFields";
-import {
-  AutomationOutcomeFields,
-  AutomationOutcomeList,
-} from "./AutomationOutcomeFields";
+import { AutomationOutcomeFields } from "./AutomationOutcomeFields";
 import {
   automationDraftChanges,
   createAutomationDraft,
@@ -43,6 +41,8 @@ export function AutomationEditor(props: {
   );
   const [fields, setFields] = useState<Record<string, string[]>>({});
   const [latest, setLatest] = useState<AutomationEdit>();
+  // Undo remounts the fields, so fields with local state show the saved value.
+  const [undoCount, setUndoCount] = useState(0);
   const form = useRef<HTMLFormElement>(null);
   const allowLeave = useRef(false);
   const navigate = useNavigate();
@@ -116,6 +116,10 @@ export function AutomationEditor(props: {
     save.error instanceof DashboardApiError && save.error.code === "conflict";
   const change = (value: Partial<AutomationDraft>) =>
     setDraft((current) => ({ ...current, ...value }));
+  const undo = (key: keyof AutomationDraft) => {
+    change({ [key]: createAutomationDraft(original)[key] });
+    setUndoCount((count) => count + 1);
+  };
   const fieldError = (key: string) =>
     Object.entries(fields)
       .filter(([name]) => name === key || name.startsWith(`${key}.`))
@@ -124,12 +128,14 @@ export function AutomationEditor(props: {
   const triggerField = original.kind === "scheduled" ? "schedule" : "trigger";
   const owned = original.ownedByViewer;
   const creator = props.summary.createdBy;
-  // Core switches a non-creator's execution change to system credentials.
+  // Core switches a non-creator's execution or outcome change to system
+  // credentials.
   const dropsCreatorCredentials =
     !owned &&
     original.credentialMode === "creator" &&
     (changes.instruction !== undefined ||
-      (original.kind === "event" && changes.trigger !== undefined));
+      changes[triggerField] !== undefined ||
+      changes.outcomes !== undefined);
   const triggerError = fieldError(triggerField);
   const inputState = (key: string) => ({
     "aria-invalid": Boolean(fieldError(key)) || undefined,
@@ -246,90 +252,99 @@ export function AutomationEditor(props: {
       {owned ? null : (
         <p className="mt-0 mb-6 max-w-2xl text-sm leading-relaxed text-dashboard-text-muted">
           {creator} created this automation. You can edit it because it is in a
-          public channel. Only {creator} can change where results go or turn on
-          their connected accounts. Version history keeps every saved change.
+          public channel. Only {creator} can turn on their connected accounts.
+          Version history keeps every saved change.
         </p>
       )}
-      <fieldset disabled={save.isPending} className="min-w-0">
-        <AutomationFormSection
-          title="What to do"
-          detail="Give Junior a clear instruction and a name you can find later."
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-10">
+        <fieldset
+          key={undoCount}
+          disabled={save.isPending}
+          className="min-w-0 [&>section:first-of-type]:border-t-0 [&>section:first-of-type]:pt-0"
         >
-          <Field>
-            <FieldLabel htmlFor="title">Title</FieldLabel>
-            <Input
-              size="comfortable"
-              id="title"
-              value={draft.title}
-              placeholder={props.summary.title}
-              onChange={(e) => change({ title: e.target.value })}
-              {...inputState("title")}
-            />
-            <FieldError id="title-error">{fieldError("title")}</FieldError>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="instruction">Instruction</FieldLabel>
-            <Textarea
-              id="instruction"
-              rows={8}
-              value={draft.instruction}
-              onChange={(e) => change({ instruction: e.target.value })}
-              {...inputState("instruction")}
-              className="resize-y text-base leading-relaxed sm:text-sm"
-            />
-            <p className="m-0 text-right text-xs text-dashboard-text-muted">
-              {draft.instruction.length.toLocaleString()} / 4,000
-            </p>
-            <FieldError id="instruction-error">
-              {fieldError("instruction")}
-            </FieldError>
-          </Field>
-        </AutomationFormSection>
-        <AutomationFormSection
-          title="When to run"
-          detail={
-            original.kind === "scheduled"
-              ? "Choose a schedule in a specific timezone."
-              : "Run when a matching event occurs."
-          }
-        >
-          <div
-            id={`${triggerField}-error`}
-            tabIndex={-1}
-            aria-invalid={Boolean(triggerError) || undefined}
-            className="grid min-w-0 gap-5 outline-none"
+          <AutomationFormSection
+            changed={
+              changes.title !== undefined || changes.instruction !== undefined
+            }
+            title="What to do"
+            detail="Give Junior a clear instruction and a name you can find later."
           >
-            {triggerError ? (
+            <Field>
+              <FieldLabel htmlFor="title">Title</FieldLabel>
+              <Input
+                size="comfortable"
+                id="title"
+                value={draft.title}
+                placeholder={props.summary.title}
+                onChange={(e) => change({ title: e.target.value })}
+                {...inputState("title")}
+              />
+              <FieldError id="title-error">{fieldError("title")}</FieldError>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="instruction">Instruction</FieldLabel>
+              <Textarea
+                id="instruction"
+                rows={8}
+                value={draft.instruction}
+                onChange={(e) => change({ instruction: e.target.value })}
+                {...inputState("instruction")}
+                className="resize-y text-base leading-relaxed sm:text-sm"
+              />
+              <p className="m-0 text-right text-xs text-dashboard-text-muted">
+                {draft.instruction.length.toLocaleString()} / 4,000
+              </p>
+              <FieldError id="instruction-error">
+                {fieldError("instruction")}
+              </FieldError>
+            </Field>
+          </AutomationFormSection>
+          <AutomationFormSection
+            changed={changes[triggerField] !== undefined}
+            title="When to run"
+            detail={
+              original.kind === "scheduled"
+                ? "Choose a schedule in a specific timezone."
+                : "Run when a matching event occurs."
+            }
+          >
+            <div
+              id={`${triggerField}-error`}
+              tabIndex={-1}
+              aria-invalid={Boolean(triggerError) || undefined}
+              className="grid min-w-0 gap-5 outline-none"
+            >
+              {triggerError ? (
+                <p role="alert" className="m-0 text-sm text-rose-300">
+                  {triggerError}
+                </p>
+              ) : null}
+              {original.kind === "scheduled" ? (
+                <AutomationScheduleFields
+                  automation={original}
+                  value={draft.schedule}
+                  onChange={(schedule) => change({ schedule })}
+                />
+              ) : (
+                <AutomationEventFields
+                  value={draft.trigger ?? original.trigger}
+                  original={original.trigger}
+                  disabled={save.isPending}
+                  onChange={(trigger) => change({ trigger })}
+                />
+              )}
+            </div>
+          </AutomationFormSection>
+          <AutomationFormSection
+            changed={changes.outcomes !== undefined}
+            title="Where results go"
+            detail="Choose who gets a message after successful work."
+          >
+            {fieldError("outcomes") ? (
               <p role="alert" className="m-0 text-sm text-rose-300">
-                {triggerError}
+                {fieldError("outcomes")}
               </p>
             ) : null}
-            {original.kind === "scheduled" ? (
-              <AutomationScheduleFields
-                automation={original}
-                value={draft.schedule}
-                onChange={(schedule) => change({ schedule })}
-              />
-            ) : (
-              <AutomationEventFields
-                value={draft.trigger ?? original.trigger}
-                original={original.trigger}
-                disabled={save.isPending}
-                onChange={(trigger) => change({ trigger })}
-              />
-            )}
-          </div>
-        </AutomationFormSection>
-        <AutomationFormSection
-          title="Where results go"
-          detail="Choose who gets a message after successful work."
-        >
-          {fieldError("outcomes") ? (
-            <p role="alert" className="m-0 text-sm text-rose-300">
-              {fieldError("outcomes")}
-            </p>
-          ) : null}
-          {owned ? (
             <AutomationOutcomeFields
               value={draft.outcomes}
               original={original.outcomes}
@@ -337,86 +352,84 @@ export function AutomationEditor(props: {
               disabled={save.isPending}
               onChange={(outcomes) => change({ outcomes })}
             />
-          ) : (
-            <>
-              <AutomationOutcomeList
-                outcomes={original.outcomes}
-                destination={props.summary.destination}
-              />
-              <p className="m-0 text-xs text-dashboard-text-muted">
-                Only {creator} can change where results go.
-              </p>
-            </>
-          )}
-        </AutomationFormSection>
-        <AutomationFormSection
-          title="Credentials"
-          detail="Choose which connected accounts Junior can use."
-        >
-          <RadioGroup
-            aria-label="Credential mode"
-            disabled={save.isPending}
-            className="divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-emphasis"
-            onValueChange={(credentialMode: "creator" | "system") =>
-              change({ credentialMode })
-            }
-            value={dropsCreatorCredentials ? "system" : draft.credentialMode}
+          </AutomationFormSection>
+          <AutomationFormSection
+            changed={changes.credentialMode !== undefined}
+            title="Credentials"
+            detail="Choose which connected accounts Junior can use."
           >
-            {(
-              [
+            <RadioGroup
+              aria-label="Credential mode"
+              disabled={save.isPending}
+              className="divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-emphasis"
+              onValueChange={(credentialMode: "creator" | "system") =>
+                change({ credentialMode })
+              }
+              value={dropsCreatorCredentials ? "system" : draft.credentialMode}
+            >
+              {(
                 [
-                  "creator",
-                  owned
-                    ? "Your connected accounts"
-                    : `${creator}’s connected accounts`,
-                  owned
-                    ? "Uses accounts connected by you, the creator."
-                    : `Uses accounts connected by ${creator}. Only ${creator} can turn this on.`,
-                ],
-                [
-                  "system",
-                  "System credentials only",
-                  owned
-                    ? "Does not use your connected accounts. Some work may not be possible."
-                    : "Does not use anyone’s connected accounts. Some work may not be possible.",
-                ],
-              ] as const
-            ).map(([value, label, detail]) => (
-              <label
-                key={value}
-                className="flex cursor-pointer items-start gap-3 px-4 py-4 has-data-checked:bg-dashboard-fill-soft has-data-disabled:cursor-not-allowed has-data-disabled:opacity-60"
-              >
-                <RadioGroupItem
-                  className="mt-0.5"
-                  value={value}
-                  disabled={
-                    value === "creator" &&
-                    !owned &&
-                    (original.credentialMode !== "creator" ||
-                      dropsCreatorCredentials)
-                  }
-                />
-                <span>
-                  <span className="block text-sm font-medium">{label}</span>
-                  <span className="mt-1 block text-xs leading-relaxed text-dashboard-text-muted">
-                    {detail}
+                  [
+                    "creator",
+                    owned
+                      ? "Your connected accounts"
+                      : `${creator}’s connected accounts`,
+                    owned
+                      ? "Uses accounts connected by you, the creator."
+                      : `Uses accounts connected by ${creator}. Only ${creator} can turn this on.`,
+                  ],
+                  [
+                    "system",
+                    "System credentials only",
+                    owned
+                      ? "Does not use your connected accounts. Some work may not be possible."
+                      : "Does not use anyone’s connected accounts. Some work may not be possible.",
+                  ],
+                ] as const
+              ).map(([value, label, detail]) => (
+                <label
+                  key={value}
+                  className="flex cursor-pointer items-start gap-3 px-4 py-4 has-data-checked:bg-dashboard-fill-soft has-data-disabled:cursor-not-allowed has-data-disabled:opacity-60"
+                >
+                  <RadioGroupItem
+                    className="mt-0.5"
+                    value={value}
+                    disabled={
+                      value === "creator" &&
+                      !owned &&
+                      (original.credentialMode !== "creator" ||
+                        dropsCreatorCredentials)
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">{label}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-dashboard-text-muted">
+                      {detail}
+                    </span>
                   </span>
-                </span>
-              </label>
-            ))}
-          </RadioGroup>
-          {dropsCreatorCredentials ? (
-            <FormNotice title="Saving switches this automation to system credentials.">
-              Only {creator} can let a changed instruction
-              {original.kind === "event" ? " or trigger" : ""} use their
-              connected accounts.
-            </FormNotice>
-          ) : null}
-          {fieldError("credentialMode") ? (
-            <p role="alert">{fieldError("credentialMode")}</p>
-          ) : null}
-        </AutomationFormSection>
-      </fieldset>
+                </label>
+              ))}
+            </RadioGroup>
+            {dropsCreatorCredentials ? (
+              <FormNotice title="Saving switches this automation to system credentials.">
+                Only {creator} can let a changed instruction,
+                {original.kind === "event" ? " trigger," : " schedule,"} or
+                result destination use their connected accounts.
+              </FormNotice>
+            ) : null}
+            {fieldError("credentialMode") ? (
+              <p role="alert">{fieldError("credentialMode")}</p>
+            ) : null}
+          </AutomationFormSection>
+        </fieldset>
+        <AutomationDraftChanges
+          changes={changes}
+          disabled={save.isPending}
+          onUndo={undo}
+          original={original}
+          summary={props.summary}
+        />
+      </div>
       <p className="mb-5 text-xs leading-relaxed text-dashboard-text-muted sm:hidden">
         Changes apply to future work. Saving does not run this automation.
       </p>

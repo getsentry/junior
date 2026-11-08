@@ -15,7 +15,6 @@ import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
 
 export {
   getGatewayApiKey,
-  MISSING_GATEWAY_CREDENTIALS_ERROR,
   resolveGatewayCredential,
   type GatewayCredential,
 } from "@/chat/pi/gateway-auth";
@@ -25,6 +24,7 @@ import {
   Experimental_DecisionRefusalError,
   generateObject,
   NoObjectGeneratedError,
+  rerank,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
@@ -41,7 +41,8 @@ registerApiProvider({
   stream: streamAnthropic,
   streamSimple: streamSimpleAnthropic,
 });
-import type { ZodTypeAny, z } from "zod";
+import type * as z from "zod";
+import type { ZodTypeAny } from "zod";
 import {
   extractGenAiUsageAttributes,
   normalizeGenAiFinishReason,
@@ -184,6 +185,7 @@ export const GEN_AI_SERVER_ADDRESS = "ai-gateway.vercel.sh";
 export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
+const GEN_AI_OPERATION_RERANK = "rerank" as const;
 const GEN_AI_OPERATION_DECIDE = "decide" as const;
 // AI Gateway input rates in USD per million tokens. Keep estimates
 // model-specific so unlisted configured models remain explicitly unknown.
@@ -199,6 +201,9 @@ const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
   "openai/text-embedding-ada-002": 0.1,
   "voyage/voyage-3.5": 0.06,
   "voyage/voyage-3.5-lite": 0.02,
+  "voyage/voyage-4": 0.06,
+  "voyage/voyage-4-large": 0.12,
+  "voyage/voyage-4-lite": 0.02,
 };
 // Decision models bill input tokens only.
 const DECISION_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -250,7 +255,12 @@ export function resolveGatewayModel(modelId: string): Model<any> {
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }
-  return matched;
+  // AI Gateway groups requests into a session by `x-session-affinity`. Pi
+  // sends it only for calls that pass a `sessionId`.
+  return {
+    ...matched,
+    compat: { ...matched.compat, sendSessionAffinityHeaders: true },
+  };
 }
 
 /** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
@@ -269,8 +279,8 @@ export async function completeText(params: {
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
-  const apiKey = credential?.token;
-  const authMode = credential?.mode ?? "api_key";
+  const apiKey = credential.token;
+  const authMode = credential.mode;
   const effectivePrivacy = getCurrentConversationPrivacy() ?? "private";
   const messageAttributeMode =
     params.messageAttributeMode ??
@@ -335,7 +345,7 @@ export async function completeText(params: {
             messages: params.messages,
           },
           {
-            ...(apiKey ? { apiKey } : undefined),
+            apiKey,
             temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
@@ -492,9 +502,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
-  );
+  const provider = createGatewayProvider({ apiKey: credential.token });
   let result: GenerateObjectResult<unknown>;
   try {
     result = await withSpan(
@@ -535,7 +543,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : undefined),
@@ -578,9 +586,7 @@ export async function completeDecision<
   costUsd?: number;
 }> {
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
-  );
+  const provider = createGatewayProvider({ apiKey: credential.token });
   try {
     const result = await withSpan(
       `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
@@ -618,7 +624,7 @@ export async function completeDecision<
           : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
       },
     );
     return {
@@ -637,8 +643,20 @@ export async function completeDecision<
   }
 }
 
+/** Map the input type to the provider option for models that embed queries and documents differently. */
+function embeddingProviderOptions(
+  modelId: string,
+  inputType: "document" | "query" | undefined,
+): { voyage: { inputType: "document" | "query" } } | undefined {
+  if (inputType === undefined || !modelId.startsWith("voyage/")) {
+    return undefined;
+  }
+  return { voyage: { inputType } };
+}
+
 /** Generate text embeddings through the host-owned AI Gateway provider. */
 export async function embedTexts(params: {
+  inputType?: "document" | "query";
   modelId: string;
   texts: string[];
   signal?: AbortSignal;
@@ -655,8 +673,10 @@ export async function embedTexts(params: {
     throw new Error("Embedding text is required.");
   }
   const credential = await resolveGatewayCredential();
-  const provider = createGatewayProvider(
-    credential ? { apiKey: credential.token } : {},
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  const providerOptions = embeddingProviderOptions(
+    params.modelId,
+    params.inputType,
   );
   try {
     const result = await withSpan(
@@ -667,6 +687,7 @@ export async function embedTexts(params: {
         const result = await embedMany({
           model: provider.embeddingModel(params.modelId),
           values: texts,
+          ...(providerOptions !== undefined ? { providerOptions } : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
@@ -705,7 +726,7 @@ export async function embedTexts(params: {
         "gen_ai.request.model": params.modelId,
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
-        "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+        "gen_ai.provider.auth_mode": credential.mode,
       },
     );
     return {
@@ -728,6 +749,98 @@ export async function embedTexts(params: {
     logException(providerError, "ai.embeddings.failed", {
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
+      "gen_ai.request.model": params.modelId,
+    });
+    throw providerError;
+  }
+}
+
+/** Read the billed cost that AI Gateway reports in provider metadata. */
+function gatewayCostUsd(providerMetadata: unknown): number | undefined {
+  const cost = (
+    providerMetadata as { gateway?: { cost?: unknown } } | undefined
+  )?.gateway?.cost;
+  const value = typeof cost === "string" ? Number(cost) : cost;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+/** Score documents against one query through the host-owned AI Gateway provider. */
+export async function rerankTexts(params: {
+  documents: string[];
+  modelId: string;
+  query: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{ costUsd?: number; scores: number[] }> {
+  const query = params.query.trim();
+  if (!query || params.documents.length === 0) {
+    throw new Error("Reranking query and documents are required.");
+  }
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  try {
+    return await withSpan(
+      `${GEN_AI_OPERATION_RERANK} ${params.modelId}`,
+      "gen_ai.rerank",
+      logContextFromMetadata(params.modelId, params.metadata),
+      async (setSpanAttributes) => {
+        const result = await rerank({
+          model: provider.rerankingModel(params.modelId),
+          query,
+          documents: params.documents,
+        });
+        // The SDK sorts by score. Plugins get scores in input order.
+        const scores = params.documents.map(() => Number.NaN);
+        for (const { originalIndex, score } of result.ranking) {
+          scores[originalIndex] = score;
+        }
+        if (
+          result.ranking.length !== params.documents.length ||
+          !scores.every(Number.isFinite)
+        ) {
+          throw createProviderError(
+            "Reranking provider returned invalid scores.",
+            {
+              kind: "invalid_response",
+              modelId: params.modelId,
+            },
+          );
+        }
+        const costUsd = gatewayCostUsd(result.providerMetadata);
+        if (costUsd !== undefined) {
+          setSpanAttributes(
+            extractGenAiUsageAttributes({
+              cost: { total: costUsd },
+            }),
+          );
+        }
+        return {
+          ...(costUsd !== undefined ? { costUsd } : undefined),
+          scores,
+        };
+      },
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
+        "gen_ai.request.model": params.modelId,
+        "server.address": GEN_AI_SERVER_ADDRESS,
+        "server.port": GEN_AI_SERVER_PORT,
+        "gen_ai.provider.auth_mode": credential.mode,
+        "app.rerank.document.count": params.documents.length,
+      },
+    );
+  } catch (error) {
+    const providerError = createProviderError(error, {
+      modelId: params.modelId,
+    });
+    if (isProviderRetryError(providerError)) {
+      throw providerError;
+    }
+
+    logException(providerError, "ai.rerank.failed", {
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
       "gen_ai.request.model": params.modelId,
     });
     throw providerError;

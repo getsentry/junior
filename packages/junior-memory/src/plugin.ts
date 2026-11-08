@@ -12,17 +12,24 @@ import {
   type MemoryToolContext,
 } from "./tools";
 import { processMemorySession } from "./process-session";
+import { reembedMemories } from "./reembed";
 import { createMemoryPromptContributions } from "./recall";
 import { buildMemoryOperationalReport } from "./operational-report";
+import { extractionCostFlow, memoryCostsByDay } from "./model-cost";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
   memoriesRecalledEvent,
 } from "./events";
-import type { MemoryDb } from "./store";
+import { archiveExpiredMemoriesInAllScopes, type MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
+const HEARTBEAT_REEMBED_BATCH_SIZE = 100;
+// The host stops waiting for a plugin heartbeat after 25s. Leave time for the
+// batch that is in progress when this budget ends.
+const HEARTBEAT_REEMBED_BUDGET_MS = 15_000;
+const HEARTBEAT_EXPIRED_ARCHIVE_LIMIT = 100;
 
 export interface MemoryPluginOptions {
   /** Disable automatic prompt recall while keeping explicit memory tools available. */
@@ -92,7 +99,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     manifest: {
       name: "memory",
       displayName: "Memory",
-      description: "Long-term Junior memory storage and recall",
+      description: "Long-term memory storage and recall",
     },
     model: modelId
       ? { structuredModelId: modelId }
@@ -117,11 +124,31 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         },
     userPages: [createMemoryUserPage()],
     hooks: {
-      async operationalReport(ctx) {
-        const extractionDays = await ctx.eventStats.costsByDay({
-          days: 90,
-          eventName: "memories_captured",
+      async heartbeat(ctx) {
+        const deadlineMs = Date.now() + HEARTBEAT_REEMBED_BUDGET_MS;
+        const db = ctx.db as MemoryDb;
+        // Archive before the re-embed. It is one bounded DB batch, so it
+        // cannot starve the re-embed, and an embedder failure cannot stop it.
+        // The re-embed deadline includes the time of this batch.
+        await archiveExpiredMemoriesInAllScopes({
+          db,
+          limit: HEARTBEAT_EXPIRED_ARCHIVE_LIMIT,
+          nowMs: ctx.nowMs,
         });
+        // Embedding spans show progress. The host logs failures.
+        await reembedMemories({
+          batchSize: HEARTBEAT_REEMBED_BATCH_SIZE,
+          db,
+          deadlineMs,
+          embedder: ctx.embedder,
+        });
+      },
+      async operationalReport(ctx) {
+        const extractionDays = await memoryCostsByDay(
+          ctx.eventStats,
+          extractionCostFlow,
+          90,
+        );
         return await buildMemoryOperationalReport({
           db: ctx.db as MemoryDb,
           extractionDays,
@@ -148,9 +175,13 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
         };
-        // Only the main agent writes memory. Child agent runs can read memory
-        // and suggest memories in their result.
-        if (ctx.source.kind === "agent_invocation") {
+        // All memory is public, so only a main agent in a public Conversation
+        // writes it. Child agents can suggest memories in their result. Other
+        // Sources, such as automations, carry no visibility, so they only read.
+        if (
+          !("visibility" in ctx.source) ||
+          ctx.source.visibility !== "public"
+        ) {
           return readTools;
         }
         return {
@@ -171,7 +202,6 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         ? {
             async userPrompt(ctx) {
               return await createMemoryPromptContributions({
-                agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
                   : undefined),
@@ -183,6 +213,8 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                   ? { locationId: ctx.locationId }
                   : undefined),
                 log: ctx.log,
+                reranker: ctx.reranker,
+                setSpanAttributes: ctx.setSpanAttributes,
                 source: ctx.source,
                 text: ctx.text,
                 users: ctx.users,

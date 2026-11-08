@@ -6,13 +6,17 @@ import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/he
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
+import type { IdentityDispatcher } from "./identity";
 import {
   listPendingAgentInvocationMailboxAppends,
   listPendingAgentInvocationResults,
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
-import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import {
+  endAgentInvocationsOfStoppedWork,
+  enqueueAgentInvocation,
+} from "@/chat/agent-invocations/work";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -50,6 +54,7 @@ async function runWithTimeout<T>(
 /** Run plugin heartbeat hooks with bounded per-invocation work. */
 export async function runPluginHeartbeats(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   limit?: number;
   nowMs: number;
 }): Promise<void> {
@@ -70,6 +75,7 @@ export async function runPluginHeartbeats(args: {
           heartbeat(
             createHeartbeatContext({
               conversationWorkQueue: args.conversationWorkQueue,
+              dispatchForIdentity: args.dispatchForIdentity,
               plugin,
               nowMs: args.nowMs,
             }),
@@ -183,10 +189,14 @@ export async function recoverPendingAgentInvocationResults(args: {
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   nowMs: number;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
+  // Runs before result recovery, so an invocation that this ends is sent to
+  // its parent in the same heartbeat.
   await recoverConversationWork({
+    beforeWorkStops: endAgentInvocationsOfStoppedWork,
     nowMs: args.nowMs,
     queue,
   });
@@ -223,6 +233,7 @@ export async function runHeartbeat(args: {
   }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,
+    dispatchForIdentity: args.dispatchForIdentity,
     nowMs: args.nowMs,
   });
 }

@@ -1,109 +1,11 @@
 # @sentry/junior-dashboard
 
-The dashboard is an authenticated reporting surface over Junior conversation
-read models. It does not participate in agent execution or mutate conversation
-state. Signed-in users may update their own profile fields, such as display
-name, through dashboard settings.
+Authenticated browser dashboard for Junior conversations, automations, and
+runtime diagnostics. It mounts into the same Nitro deployment as Junior.
 
-## Boundaries
+```bash
+pnpm add @sentry/junior @sentry/junior-dashboard
+```
 
-- `createDashboardApp` mounts the dashboard routes and receives host
-  configuration through `JuniorDashboardOptions`.
-- Core owns the Better Auth session and passes it in as `auth`. Core accepts
-  only Google Workspace accounts on the allowed domains. Dashboard routes fail
-  closed when identity or required configuration is missing.
-- The installable shell is static only: a public web app manifest, theme color,
-  and install icon. There is no service worker and no offline app shell cache.
-- API schemas under `src/api/` define the client/server boundary.
-- Connected accounts (`/settings/connections`) use the core `/api/connections`
-  contract. It lists plugins with user OAuth, starts OAuth in a new tab, and
-  disconnects. The page refreshes on window focus after OAuth finishes.
-- Plugin user pages use the core `/api/user-pages` contract and render under
-  `/plugins/:plugin/:page/*`. Plugins choose primary dashboard navigation or the
-  signed-in user menu. Core-rendered lists own metrics, search query state,
-  cursor pagination, record inspection, destructive confirmation, and
-  authenticated plugin REST actions.
-- Conversation detail and mailbox use one TanStack Query snapshot. Read the
-  mailbox first, then history: workers commit input before they acknowledge it.
-  Publish both in one render so input moves from queue to transcript without a
-  gap. Poll every 2 seconds while active or waiting for input, and every 10
-  seconds while idle so other Sources can wake the open Conversation.
-- Detail polls use an ETag (a hash of the response, except `generatedAt`).
-  After checking access, the server returns `304` for unchanged content. The
-  client reuses its parsed detail but always refreshes the mailbox. Local detail
-  edits clear the ETag. This saves transfer and parsing, not database reads.
-- Local sends stay visible until a server snapshot contains their Message id.
-  Web ingress and the browser share one Message id function. The browser derives
-  the id before the first local render and before POST starts. This also
-  removes duplicates when a poll arrives before the accept response. Only Turn
-  lifecycle events enable the thinking indicator; queued work is not thinking.
-- Earlier event pages use a separate infinite query loaded on demand. The client
-  derives one ordered transcript from those immutable responses; paginated reads
-  never write into another resource's cache.
-- The server adapts canonical runtime events into privacy-safe reporting events.
-  The transcript combines tool and subagent updates. The event log keeps each
-  event in sequence order, with readable details and optional raw JSON.
-  Search covers loaded pages; earlier events load on demand.
-- Private conversation access requires authenticated authorization at the
-  server boundary. Client-side route hiding is not authorization.
-- The package remains stateless apart from normal auth/session infrastructure
-  and signed-in profile settings. Junior conversation storage is the reporting
-  authority; canonical user rows own profile fields such as display name.
-
-Mock reporting data exists for local UI development only and must not be
-reachable as a production fallback.
-
-Browser journeys live in `e2e/`, with one Playwright spec per user-facing page.
-Keep these journeys small. Use them for behavior that needs a real browser:
-navigation, interaction, accessibility state, request contracts, and realistic
-failure recovery. Use visual QA for layout, responsive rendering, styling, and
-copy-only changes. Do not add pixel geometry, element size, computed style,
-fixed-delay checks, or broad console and page error assertions to browser E2E.
-Assert the user-visible outcome or external contract named by the journey.
-
-Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
-`test` from `./test` so every page gets the fixed current time and common API
-stubs. Keep one Playwright spec per user-facing route. Split by journey when the file
-length limit requires it. After the page has loaded,
-call `screenshot(page, name)` from `e2e/screenshot.ts` so visual review has a
-desktop and mobile image. Browser tests run in the dark theme. Pass
-`lightTheme: true` when a page also needs light theme images.
-Page behavior does not belong in a cross-page aggregate spec. Tests under
-`tests/` cover modules and component integration without standing in for
-browser E2E.
-
-Mock reports and browser tests use one fixed current time: `NOW`
-(`2026-08-07T12:00:00.000Z`). History in the mocks is relative to that time, so
-labels like "5 minutes ago" stay stable.
-
-Dashboard E2E writes screenshots to
-`.playwright/junior-dashboard/screenshots/`. Frameshift saves this complete set
-on the default branch. On a pull request, it compares the new set with the
-saved set and links the report from the pull request.
-
-Frameshift saves each report as a `frameshift-report/*` Git tag. The nightly
-`frameshift-cleanup.yml` workflow deletes reports older than 7 days. It keeps
-the report for the current head of each open pull request.
-
-## Browser assets
-
-`client/code-languages.ts` lists languages and aliases with explicit imports.
-Load these grammars, the engine, and the `github-dark` theme on demand. Do not
-import Shiki's full bundle: it includes unused themes.
-
-The server embeds `client.js` and its chunks. Both dashboard and core routes
-must serve them. Cache content-hashed chunks privately; keep the entry uncached.
-If highlighting cannot load, show plain text without reloading the page.
-
-Mount and format tool payloads only when opened or searched.
-
-## Type scale
-
-Font sizes come from the named scale in `src/tailwind.css` (`text-2xs` through
-`text-4xl`). Reserve `text-2xs` (12px) for compact badges and chart
-annotations; use `text-xs` (13px) or larger for body copy, controls, subtext,
-and standalone metadata. Prefer those steps over arbitrary `text-[Nrem]` values.
-
-User-facing setup lives in
-`packages/docs/src/content/docs/operate/dashboard.md`. Follow
-`../../policies/data-redaction.md` and `../../policies/frontend-components.md`.
+Install the same version as `@sentry/junior`. Setup, auth, and configuration:
+https://junior.sentry.dev/operate/dashboard/

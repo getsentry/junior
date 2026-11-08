@@ -1,0 +1,1 @@
+ALTER TABLE "junior_review_items" ADD COLUMN "added_by_turn_id" text;

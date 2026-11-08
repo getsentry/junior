@@ -1,5 +1,6 @@
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
   juniorIdentities,
@@ -30,6 +31,50 @@ function spendWindow(nowMs: number) {
   const thirtyDayStart = new Date(currentDay);
   thirtyDayStart.setUTCDate(thirtyDayStart.getUTCDate() - THIRTY_DAY_OFFSET);
   return { end, sevenDayStart, thirtyDayStart };
+}
+
+/**
+ * Return a query for a cheap change marker of one viewer's spend window.
+ *
+ * Writes that record Conversation metrics also move `updated_at` forward, so
+ * the marker changes when spend can change. The window start is part of the
+ * marker, so it also changes when the window moves at UTC midnight.
+ */
+export function personalSpendVersionQuery(
+  db: JuniorDatabase,
+  email: string,
+  nowMs: number,
+) {
+  const normalizedEmail = normalizeEmail(email);
+  const { end, thirtyDayStart } = spendWindow(nowMs);
+  return db
+    .select({
+      version: sql<string>`concat_ws(':', ${thirtyDayStart.toISOString().slice(0, 10)}::text, count(*), max(${juniorConversations.updatedAt}))`,
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+    )
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(
+      normalizedEmail
+        ? and(
+            verifiedActorWhere(normalizedEmail),
+            gte(juniorConversations.lastActivityAt, thirtyDayStart),
+            lte(juniorConversations.lastActivityAt, end),
+          )
+        : sql`false`,
+    );
+}
+
+/** Read the change marker of one viewer's spend window. */
+export async function readPersonalSpendVersion(
+  email: string,
+  nowMs = Date.now(),
+): Promise<string> {
+  const [row] = await personalSpendVersionQuery(getDb(), email, nowMs);
+  return row?.version ?? "";
 }
 
 /** Read one viewer's rolling model spend with one bounded aggregate query. */

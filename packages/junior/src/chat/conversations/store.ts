@@ -15,12 +15,25 @@ export type ConversationSource =
   | "slack"
   | "web";
 
+/**
+ * Where a Conversation sits in its tree. A root has no parent. A Thread is a
+ * child that people can message. A Task is a child that only its parent
+ * messages. A Conversation never changes kind.
+ */
+export type ConversationKind = "root" | "thread" | "task";
+
 export type ConversationStatus =
   | "paused"
   | "failed"
   | "idle"
   | "pending"
   | "running";
+
+/** Cumulative duration and usage that one Run reported. */
+export interface ConversationRunMetrics {
+  durationMs: number;
+  usage?: AgentTurnUsage;
+}
 
 export interface ConversationExecution {
   lastCheckpointAtMs?: number;
@@ -52,14 +65,18 @@ export interface Conversation {
   // reads use Location and provider output uses Delivery.
   destination?: Destination;
   execution: ConversationExecution;
-  executionMetrics?: {
-    durationMs: number;
-    runId?: string;
-    usage?: AgentTurnUsage;
-  };
+  /** Metrics of the latest Run that wrote metrics. */
+  executionMetrics?: ConversationRunMetrics & { runId?: string };
+  /** Immutable kind. Set when the Conversation is created. */
+  kind: ConversationKind;
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
+  /**
+   * When the Conversation was archived for everyone. Only archive, auto-archive,
+   * pin, and a person's message write it; `upsertConversation` does not.
+   */
+  archivedAtMs?: number;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the
@@ -87,20 +104,28 @@ export interface Conversation {
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
   transcriptPurgedAtMs?: number;
+  /** When a person stopped this Conversation. Unset when it is not stopped. */
+  stoppedAtMs?: number;
   /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
-  /** Create one Conversation with an immutable parent. */
+  /** Create one Conversation with an immutable parent and kind. */
   createChild(args: {
     childConversationId: string;
+    kind: Exclude<ConversationKind, "root">;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
   }): Promise<void>;
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
+  /** Read one Run's stored metrics, including a Run that is not the latest. */
+  getRunMetrics(args: {
+    conversationId: string;
+    runId: string;
+  }): Promise<ConversationRunMetrics | undefined>;
   /** Resolve the durable conversation bound to one provider conversation. */
   getConversationIdByProviderConversation(args: {
     provider: string;
@@ -123,6 +148,16 @@ export interface ConversationStore {
     providerTenantId?: string;
   }): Promise<ConversationPrivacy | undefined>;
   /**
+   * Store live visibility for a Destination that has no Conversation yet,
+   * such as a channel that an Automation moves to.
+   */
+  recordDestinationVisibility(args: {
+    channelName?: string;
+    destination: Destination;
+    nowMs?: number;
+    visibility: ConversationPrivacy;
+  }): Promise<void>;
+  /**
    * Resolve one Slack channel id from a known destination display name.
    *
    * Matches only destinations Junior already stored for this workspace. Exact
@@ -144,7 +179,11 @@ export interface ConversationStore {
     /** Source normalized to a stable session locator; set-once when absent. */
     sessionSource?: Source;
     title?: string;
-    /** Confirmed destination visibility; omit when unavailable. */
+    /**
+     * Current visibility from its owner, such as a Slack event channel type. It
+     * replaces the visibility of the shared Destination row. Omit it for saved
+     * values, such as visibility captured when an Automation was created.
+     */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   /**
@@ -159,15 +198,16 @@ export interface ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
-    metrics: {
-      durationMs: number;
-      usage?: AgentTurnUsage;
-    } | null;
+    metrics: ConversationRunMetrics | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
-    /** Confirmed destination visibility; omit when unavailable. */
+    /**
+     * Current visibility from its owner, such as a Slack event channel type. It
+     * replaces the visibility of the shared Destination row. Omit it for saved
+     * values, such as visibility captured when an Automation was created.
+     */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   listByActivity(args?: {

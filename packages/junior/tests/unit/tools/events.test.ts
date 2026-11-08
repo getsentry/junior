@@ -1,5 +1,6 @@
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { eventCatalogEntry } from "@/chat/events/catalog";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -36,7 +37,7 @@ const context: ToolRuntimeContext = {
 };
 
 const GITHUB_EVENTS = {
-  github: {
+  github: eventCatalogEntry({
     resourceTypes: [
       {
         type: "pull_request",
@@ -47,8 +48,21 @@ const GITHUB_EVENTS = {
         suggestedEvents: ["pull_request.checks.failed"],
       },
     ],
+    events: {
+      "pull_request.checks.failed": { reach: "resource" },
+      "pull_request.review.changes_requested": { reach: "resource" },
+    },
     normalizeIdentifier: (identifier: string) => identifier.toLowerCase(),
-  },
+  }),
+};
+
+const VERCEL_EVENTS = {
+  vercel: eventCatalogEntry({
+    resourceTypes: [
+      { type: "deployment", supportedEvents: ["deployment.succeeded"] },
+    ],
+    events: { "deployment.succeeded": { reach: "resource" } },
+  }),
 };
 
 describe("event tools", () => {
@@ -74,7 +88,7 @@ describe("event tools", () => {
         {
           identifier: "GetSentry/Junior#1",
           namespace: "github",
-          resourceType: "pull_request",
+          resource_type: "pull_request",
           label: "GitHub PR #1",
           events: [
             "pull_request.checks.failed",
@@ -86,6 +100,7 @@ describe("event tools", () => {
       ),
     ).resolves.toMatchObject({
       subscription_status: "active",
+      expires_at: "2027-01-15T08:00:00.000Z",
       stop_watching: {
         execution_tool: "executeTool",
         execution_example: {
@@ -115,7 +130,7 @@ describe("event tools", () => {
       {
         identifier: "getsentry/junior#1",
         namespace: "github",
-        resourceType: "pull_request",
+        resource_type: "pull_request",
         label: "GitHub PR #1",
         events: ["pull_request.checks.failed"],
         intent: "Report failed checks.",
@@ -130,31 +145,43 @@ describe("event tools", () => {
     );
   });
 
-  it("keeps inspection and stopping in the resource-watch catalog", () => {
+  it("loads only watch creation up front among resource-watch tools", () => {
     const tools = createEventTools(context, GITHUB_EVENTS);
     const exposure = planToolExposure(tools);
 
-    expect(exposure.directTools).toHaveProperty("searchEventTypes");
     expect(exposure.directTools).toHaveProperty("watchEvents");
+    expect(exposure.directTools).not.toHaveProperty("searchEventTypes");
+    expect(exposure.directTools).toHaveProperty("watchTimer");
     expect(exposure.directTools).not.toHaveProperty("listWatches");
     expect(exposure.directTools).not.toHaveProperty("stopWatchingResources");
     expect(exposure.catalogTools).toHaveProperty("listWatches");
+    expect(exposure.catalogTools.searchEventTypes).toMatchObject({
+      source: { id: "resource-watches" },
+    });
     expect(exposure.catalogTools.stopWatchingResources).toMatchObject({
       source: { id: "resource-watches" },
     });
   });
 
   it("searches enabled event types without creating a watch", async () => {
+    const authors = {
+      kind: "string" as const,
+      description: "GitHub usernames of the pull request authors",
+      list: true as const,
+      events: ["pull_request.checks.failed"],
+    };
     const tools = createEventTools(context, {
-      vercel: {
-        resourceTypes: [
-          {
-            type: "deployment",
-            supportedEvents: ["deployment.succeeded"],
-          },
-        ],
-      },
-      ...GITHUB_EVENTS,
+      ...VERCEL_EVENTS,
+      github: eventCatalogEntry({
+        ...GITHUB_EVENTS.github,
+        resourceTypes: GITHUB_EVENTS.github.resourceTypes.map(
+          (resourceType) => ({ ...resourceType, matchFields: { authors } }),
+        ),
+        events: {
+          ...GITHUB_EVENTS.github.events,
+          "pull_request.checks.failed": { reach: { anyOf: ["authors"] } },
+        },
+      }),
     });
 
     await expect(
@@ -162,16 +189,28 @@ describe("event tools", () => {
       tools.searchEventTypes!.execute!({ query: "review changes events" }, {}),
     ).resolves.toMatchObject({
       namespace: null,
-      totalMatches: 1,
-      resourceTypes: [
+      total_matches: 1,
+      resource_types: [
         {
           namespace: "github",
           type: "pull_request",
-          supportedEvents: [
+          supported_events: [
             "pull_request.checks.failed",
             "pull_request.review.changes_requested",
           ],
-          suggestedEvents: ["pull_request.checks.failed"],
+          suggested_events: ["pull_request.checks.failed"],
+          // The agent needs `events` to pick events that the filter matches.
+          match_fields: { authors },
+        },
+      ],
+      // The reach of each event is given once for its namespace.
+      namespaces: [
+        {
+          namespace: "github",
+          reach: {
+            "pull_request.checks.failed": { any_of: ["authors"] },
+            "pull_request.review.changes_requested": "resource",
+          },
         },
       ],
     });
@@ -180,14 +219,7 @@ describe("event tools", () => {
 
   it("exposes active plugin namespaces as an enum", () => {
     const tool = createEventTools(context, {
-      vercel: {
-        resourceTypes: [
-          {
-            type: "deployment",
-            supportedEvents: ["deployment.succeeded"],
-          },
-        ],
-      },
+      ...VERCEL_EVENTS,
       ...GITHUB_EVENTS,
     }).watchEvents!;
 
@@ -203,14 +235,14 @@ describe("event tools", () => {
           },
         },
         namespace: { enum: ["github", "vercel"] },
-        resourceType: { enum: ["deployment", "pull_request"] },
+        resource_type: { enum: ["deployment", "pull_request"] },
       },
     });
   });
 
   it("rejects events unsupported by the selected resource type", async () => {
     const tool = createEventTools(context, {
-      github: {
+      github: eventCatalogEntry({
         resourceTypes: [
           { type: "issue", supportedEvents: ["issue.closed"] },
           {
@@ -218,7 +250,11 @@ describe("event tools", () => {
             supportedEvents: ["pull_request.merged"],
           },
         ],
-      },
+        events: {
+          "issue.closed": { reach: "resource" },
+          "pull_request.merged": { reach: "resource" },
+        },
+      }),
     }).watchEvents!;
 
     await expect(
@@ -226,14 +262,16 @@ describe("event tools", () => {
         {
           identifier: "getsentry/junior#1",
           namespace: "github",
-          resourceType: "issue",
+          resource_type: "issue",
           label: "GitHub issue #1",
           events: ["pull_request.merged"],
           intent: "Report closure.",
         },
         {},
       ),
-    ).rejects.toThrow(/github:issue.*does not support event/);
+    ).rejects.toThrow(
+      /github issue watch cannot be created\. "pull_request\.merged" is not an event/,
+    );
     expect(createSubscription).not.toHaveBeenCalled();
   });
 
@@ -245,11 +283,11 @@ describe("event tools", () => {
         {
           identifier: "getsentry/junior#1",
           namespace: "github",
-          resourceType: "pull_request",
+          resource_type: "pull_request",
           label: "GitHub PR #1",
           events: ["pull_request.checks.failed"],
           intent: "Report failed checks.",
-          ttlMs: 31 * 24 * 60 * 60 * 1000,
+          ttl_ms: 31 * 24 * 60 * 60 * 1000,
         },
         {},
       ),

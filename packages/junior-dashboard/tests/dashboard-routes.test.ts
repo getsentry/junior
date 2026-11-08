@@ -5,7 +5,33 @@ import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import type { DashboardSession } from "../src/auth";
 import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
 
-const { resolveViewerUser, updateViewerDisplayName } = vi.hoisted(() => ({
+const {
+  readUserAutoArchiveSettings,
+  readViewerAvatarUrl,
+  resolveViewerUser,
+  updateUserAutoArchiveSettings,
+  updateViewerDisplayName,
+} = vi.hoisted(() => ({
+  readUserAutoArchiveSettings: vi.fn(async (_userId: string) => ({
+    autoArchiveDefault: false,
+    autoArchiveGraceHours: 24,
+  })),
+  readViewerAvatarUrl: vi.fn(
+    async (): Promise<string | undefined> => undefined,
+  ),
+  updateUserAutoArchiveSettings: vi.fn(
+    async (
+      _userId: string,
+      settings: {
+        autoArchiveDefault?: boolean;
+        autoArchiveGraceHours?: number;
+      },
+    ) => ({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
+      ...settings,
+    }),
+  ),
   resolveViewerUser: vi.fn(async (email: string) => ({
     email,
     id: `user:${email}`,
@@ -20,7 +46,10 @@ const { resolveViewerUser, updateViewerDisplayName } = vi.hoisted(() => ({
 }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
+  readUserAutoArchiveSettings,
+  readViewerAvatarUrl,
   resolveViewerUser,
+  updateUserAutoArchiveSettings,
   updateViewerDisplayName,
 }));
 
@@ -189,10 +218,12 @@ describe("dashboard routes", () => {
     process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     let callbackURL: string | undefined;
+    let errorCallbackURL: string | undefined;
     const app = createDashboardApp({
       allowedDomains: ["sentry.io"],
-      auth: auth(null, (value) => {
+      auth: auth(null, (value, errorValue) => {
         callbackURL = value;
+        errorCallbackURL = errorValue;
       }),
     });
     const canonicalLogin =
@@ -228,6 +259,8 @@ describe("dashboard routes", () => {
     expect(callbackURL).toBe(
       "https://junior.example.com/conversations/slack%3AC1%3A123?view=tools",
     );
+    // A failed callback restarts sign-in toward the same page, not `/`.
+    expect(errorCallbackURL).toBe(canonicalLogin);
   });
 
   it("preserves non-root dashboard base paths through Google sign-in", async () => {
@@ -336,6 +369,8 @@ describe("dashboard routes", () => {
     expect(me.status).toBe(200);
     expect(me.headers.get("cache-control")).toBe("no-store");
     expect(await me.json()).toEqual({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
       user: {
         email: "dev@example.com",
         emailVerified: true,
@@ -381,12 +416,6 @@ describe("dashboard routes", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(await response.json()).toEqual({ error: "unauthenticated" });
     }
-
-    const client = await app.fetch(
-      new Request("http://localhost/_junior/dashboard/client.js"),
-    );
-    expect(client.status).toBe(302);
-    expect(client.headers.get("location")).toBe("http://localhost/auth/login");
   });
 
   it("allows verified users from an allowed Google hosted domain", async () => {
@@ -456,6 +485,8 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -467,6 +498,37 @@ describe("dashboard routes", () => {
       "user:person@sentry.io",
       "New Name",
     );
+
+    const autoArchive = await app.fetch(
+      new Request("http://localhost/api/me", {
+        body: JSON.stringify({
+          autoArchiveDefault: true,
+          autoArchiveGraceHours: 72,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+    expect(autoArchive.status).toBe(200);
+    await expect(autoArchive.json()).resolves.toMatchObject({
+      autoArchiveDefault: true,
+      autoArchiveGraceHours: 72,
+      user: { name: "Person" },
+    });
+    expect(updateUserAutoArchiveSettings).toHaveBeenCalledWith(
+      "user:person@sentry.io",
+      { autoArchiveDefault: true, autoArchiveGraceHours: 72 },
+    );
+
+    const tooLong = await app.fetch(
+      new Request("http://localhost/api/me", {
+        body: JSON.stringify({ autoArchiveGraceHours: 24 * 8 }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+    expect(tooLong.status).toBe(400);
+    expect(updateViewerDisplayName).toHaveBeenCalledTimes(1);
   });
 
   it("rejects an empty display name", async () => {
@@ -513,6 +575,8 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -522,8 +586,19 @@ describe("dashboard routes", () => {
     });
     expect(updateViewerDisplayName).not.toHaveBeenCalled();
 
+    await app.fetch(
+      new Request("http://localhost/api/me", {
+        body: JSON.stringify({ autoArchiveDefault: true }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+    expect(updateUserAutoArchiveSettings).not.toHaveBeenCalled();
+
     const me = await app.fetch(new Request("http://localhost/api/me"));
     expect(await me.json()).toEqual({
+      autoArchiveDefault: true,
+      autoArchiveGraceHours: 24,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -534,6 +609,7 @@ describe("dashboard routes", () => {
   });
 
   it("returns the signed-in identity", async () => {
+    readViewerAvatarUrl.mockResolvedValueOnce("/api/people/avatars/identity-1");
     const app = dashboard({
       session: {
         token: "secret-session-token",
@@ -548,13 +624,17 @@ describe("dashboard routes", () => {
     const me = await app.fetch(new Request("http://localhost/api/me"));
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({
+      autoArchiveDefault: false,
+      autoArchiveGraceHours: 24,
       user: {
+        avatarUrl: "/api/people/avatars/identity-1",
         email: "person@sentry.io",
         emailVerified: true,
         isAdmin: false,
         name: "Dashboard User",
       },
     });
+    expect(readViewerAvatarUrl).toHaveBeenCalledWith("user:person@sentry.io");
   });
 
   it("returns safe dashboard config signals", async () => {

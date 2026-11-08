@@ -100,7 +100,7 @@ export class McpServiceAccountRequiredError extends McpToolError {
 
   constructor(provider: string, displayName: string) {
     super(
-      `${displayName} is not available yet. Junior uses a shared ${displayName} account for everyone, and a Junior admin must connect it on the dashboard Admin page.`,
+      `${displayName} is not available yet. This app uses a shared ${displayName} account for everyone, and an admin must connect it on the dashboard Admin page.`,
     );
     this.name = "McpServiceAccountRequiredError";
     this.provider = provider;

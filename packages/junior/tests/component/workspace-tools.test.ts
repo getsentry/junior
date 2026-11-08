@@ -224,6 +224,7 @@ describe("Workspace tools", () => {
 
       const delivered: LocalAgentReply[] = [];
       const results: LocalToolResult[] = [];
+      let firstRequestText = "";
 
       await runLocalAgentTurn(
         {
@@ -233,7 +234,14 @@ describe("Workspace tools", () => {
         {
           agentRunner: createModelAgentRunner(
             createModelStream([
-              { type: "toolCall", name: "listWorkspaces", arguments: {} },
+              {
+                type: "toolCall",
+                name: "listWorkspaces",
+                arguments: {},
+                onRequest: (context) => {
+                  firstRequestText = JSON.stringify(context.messages);
+                },
+              },
               {
                 type: "toolCall",
                 name: "switchWorkspace",
@@ -300,6 +308,11 @@ describe("Workspace tools", () => {
       expect(delivered).toEqual([
         { text: "The missing Workspace was not found." },
       ]);
+      // The context message names each Workspace and its repositories, so the
+      // agent can switch without a rejected clone or a listWorkspaces call.
+      expect(firstRequestText).toContain("<workspaces>");
+      expect(firstRequestText).toContain("- relay: getsentry/relay");
+      expect(firstRequestText).toContain("- sentry-web: getsentry/sentry");
       await expect(
         deleteTool.execute!(
           { id: workspace.id },

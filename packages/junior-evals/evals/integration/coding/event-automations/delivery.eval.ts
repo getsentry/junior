@@ -55,7 +55,7 @@ describe("Event automation delivery", () => {
 
     expect(delivery.replies).toHaveLength(1);
     expect(delivery.toolCalls.map((call) => call.name)).not.toContain(
-      "deleteEventAutomation",
+      "deleteAutomation",
     );
   });
 

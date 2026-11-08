@@ -8,6 +8,7 @@ import type {
   TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
+import type { ConversationKind } from "@/chat/conversations/store";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { RequesterInstruction } from "@/chat/events/requester";
@@ -24,7 +25,6 @@ import type { AgentTurnSurface } from "@/chat/task-execution/checkpoint";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
-import type { ModelProfile } from "@/chat/model-profile";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
 import type {
   ImageGenerateToolDeps,
@@ -34,6 +34,8 @@ import type {
 } from "@/chat/tools/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { BackgroundCompactionQueue } from "@/chat/services/background-compaction-queue";
 
 /** One attachment the model may see for the current instruction. */
 export type AgentAttachment = {
@@ -59,19 +61,22 @@ export type AgentInstructionActor = {
 /** One mid-turn steered user message drained from the durable mailbox. */
 export type AgentSteeringMessage = {
   actor?: AgentInstructionActor;
+  /** `runtime` text is already a rendered input tag. Omitted means `person`. */
+  kind?: AgentInstructionInput["kind"];
   /** Provenance of this queued/steered message, carrying its original author. */
   provenance: ConversationMessageProvenance;
   omittedImageAttachmentCount?: number;
   text: string;
   timestampMs?: number;
   attachments?: AgentAttachment[];
+  /** Stored images that the agent runner loads into `attachments`. */
+  storedAttachments?: readonly MessageAttachment[];
 };
 
 /** Model-safe input for one asynchronously delegated child-agent task. */
 export type SpawnAgentInput = {
   agentType?: AgentType;
   name?: string;
-  profile: ModelProfile;
   reasoningLevel?: TurnReasoningLevel;
   task: string;
   title?: string;
@@ -88,9 +93,15 @@ export type SpawnAgent = (
   options: { signal?: AbortSignal; toolCallId: string },
 ) => Promise<SpawnAgentResult>;
 
-/** Model-safe input for one message to the parent or a child agent. */
+/**
+ * Model-safe input for one message to the parent, a child agent, or another
+ * top-level agent.
+ */
 export type MessageAgentInput = {
-  /** `parent`, or the name or Conversation id of a child agent. */
+  /**
+   * `parent`, the name or Conversation id of a child agent, or the
+   * Conversation id of another top-level agent.
+   */
   to: string;
   text: string;
 };
@@ -105,15 +116,35 @@ export type MessageAgentResult = {
   delivery: "queued" | "started";
 };
 
-/** Runtime-bound capability to message the parent or a child agent. */
+/**
+ * Runtime-bound capability to message the parent, a child agent, or another
+ * top-level agent.
+ */
 export type MessageAgent = (
   input: MessageAgentInput,
   options: { signal?: AbortSignal; toolCallId: string },
 ) => Promise<MessageAgentResult>;
 
+/**
+ * One input of a Turn. Each input is its own prompt content part, in order.
+ * A `person` input is words that a person typed; the prompt shows it in
+ * `<current-instruction>` with the Actor of the instruction. A `runtime`
+ * input is already rendered as its own tag by the runtime, such as `<task>`,
+ * `<agent-result>`, or `<review-item-answer>`.
+ */
+export type AgentInstructionInput =
+  | { kind: "person"; text: string }
+  | { kind: "runtime"; text: string };
+
 /** Current user instruction for one agent-run slice. */
 export type AgentInstruction = {
+  /** Text of every input, for skill commands and action review. */
   text: string;
+  /**
+   * Prompt inputs in order. Omitted means one person input: `text` by
+   * `actor`.
+   */
+  inputs?: readonly AgentInstructionInput[];
   attachments?: readonly AgentAttachment[];
   /** Durable web image references, resolved by the host before execution. */
   storedAttachments?: readonly MessageAttachment[];
@@ -122,11 +153,6 @@ export type AgentInstruction = {
   /** Host-owned turn context shown to the model near the instruction. */
   context?: string;
   actor?: AgentInstructionActor;
-  /**
-   * When history is present, still include `context` in the prompt. Default is
-   * to omit conversation context once durable history already carries it.
-   */
-  includeConversationContextWithHistory?: boolean;
 };
 
 /** Dispatch identity carried on plugin-authored runs. */
@@ -146,11 +172,7 @@ export type AgentDispatch = {
 };
 
 /** Optional agent capabilities that a run slice can turn off. */
-export const AGENT_RUN_FEATURES = [
-  "handoff",
-  "interactive-auth",
-  "subagents",
-] as const;
+export const AGENT_RUN_FEATURES = ["interactive-auth", "subagents"] as const;
 
 /** One optional agent capability controlled per run. */
 export type AgentFeature = (typeof AGENT_RUN_FEATURES)[number];
@@ -186,11 +208,16 @@ export class RetryableDeliveryError extends Error {
 export type AgentDurability = {
   /** Schedule delegated work with authority bound by the active parent run. */
   spawnAgent?: SpawnAgent;
-  /** Message the parent or a child agent with the authority of this run. */
+  /** Message the parent, a child, or a top-level agent from this run. */
   messageAgent?: MessageAgent;
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
+  /**
+   * Return false when the durable worker no longer holds the Conversation
+   * Lease. The run checks it before each saved step and each reply.
+   */
+  checkIn?: () => Promise<boolean>;
   drainSteeringMessages?: (
     accept: (messages: AgentSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentSteeringMessage[]>;
@@ -214,7 +241,11 @@ export type AgentEvent =
 /** Resolved environment and optional per-run tool test overrides. */
 export type AgentEnvironment = {
   attachmentStorage?: AttachmentStorage;
+  /** Queue for background compaction jobs. Without it, Turns request none. */
+  backgroundCompactionQueue?: BackgroundCompactionQueue;
   configuration?: Record<string, unknown>;
+  /** Queue of the app, for tools that wake other Conversations. */
+  conversationWorkQueue?: ConversationWorkQueue;
   locationConfiguration?: LocationConfigurationService;
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
@@ -239,9 +270,13 @@ export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
   /**
-   * Parent of a child agent Conversation. The final reply of this run goes to
-   * that parent, not to a person. Unset for a root Conversation.
+   * Agent invocation that this Run advances. Only the Agent invocation worker
+   * sets it. Its input is agent-written, and its final reply goes to the
+   * parent. Behavior that depends on that reads this field, not the
+   * Conversation kind: a person's Turn in a Thread has no Agent invocation.
    */
+  agentInvocationId?: string;
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
   turnId: string;
@@ -298,9 +333,7 @@ export type AgentRun = {
   deadlineAtMs?: number;
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
-  /** Fixed model profile for this run. */
-  modelProfile?: ModelProfile;
-  /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
+  /** Explicit per-agent reasoning level. Overrides the configured default. */
   reasoning?: TurnReasoningLevel;
   environment?: AgentEnvironment;
 
@@ -335,7 +368,10 @@ export function actorFromRun(
   return undefined;
 }
 
-/** Reject contradictory provider coordinates before the run touches state. */
+/**
+ * Reject contradictory provider coordinates before the run touches state.
+ * `conversationKind` comes from the stored Conversation, never from the Run.
+ */
 export function assertRunConsistency(
   run: Pick<
     AgentRun,
@@ -347,6 +383,7 @@ export function assertRunConsistency(
     | "actor"
     | "dispatch"
   >,
+  conversationKind?: ConversationKind,
 ): void {
   const { destination, source } = run;
   switch (source.kind) {
@@ -391,6 +428,11 @@ export function assertRunConsistency(
       }
       switch (destination.platform) {
         case "local": {
+          // A person's Turn in a Thread replies in the Thread. Its
+          // Destination is the Thread's own copy of its root's.
+          if (conversationKind === "thread") {
+            break;
+          }
           if (source.conversationId !== destination.conversationId) {
             throw new TypeError(
               "Source and destination conversation IDs do not match",

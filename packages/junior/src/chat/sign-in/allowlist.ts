@@ -4,7 +4,7 @@
  * Workspace account whose `hd` claim is one of them. Slack and the dashboard
  * share one list.
  */
-import { z } from "zod";
+import * as z from "zod";
 
 /** Read a list env var: a JSON string array or comma-separated values. */
 export function readEnvList(name: string): string[] | undefined {
@@ -62,4 +62,21 @@ export function isAllowedDomain(
 ): boolean {
   if (allowedDomains.length === 0) return true;
   return Boolean(domain && allowedDomains.includes(domain.toLowerCase()));
+}
+
+/**
+ * Return whether a verified sign-in email is on an allowed domain. Sign-in
+ * needs a configured list, so an empty list allows no email.
+ */
+export function isAllowedSignInEmail(
+  email: string,
+  allowedDomains: readonly string[],
+): boolean {
+  const normalized = email.trim().toLowerCase();
+  const separator = normalized.lastIndexOf("@");
+  return (
+    allowedDomains.length > 0 &&
+    separator > 0 &&
+    isAllowedDomain(normalized.slice(separator + 1), allowedDomains)
+  );
 }

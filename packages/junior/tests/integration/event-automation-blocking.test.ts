@@ -1,3 +1,7 @@
+import { createAutomationTool } from "@/chat/automations/tools/create";
+import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
+import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
+import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
@@ -7,14 +11,13 @@ import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createDeleteEventAutomationTool } from "@/chat/tools/delete-event-automation";
-import { createUpdateEventAutomationTool } from "@/chat/tools/update-event-automation";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { juniorAutomations } from "@/db/schema/automations";
 import {
   changesRequestedEvent,
   context,
   createTask,
-  EVENT_CATALOG,
+  useGitHubEvents,
   execute,
   teamId,
 } from "../fixtures/event-automations";
@@ -57,9 +60,11 @@ describe("event automation blocking", () => {
       source: "local",
       nowMs: Date.now(),
     });
+    await useGitHubEvents();
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fixture.sql
       .db()
       .delete(juniorAutomations)
@@ -76,10 +81,16 @@ describe("event automation blocking", () => {
     const read = async () => (await getEventAutomation(db, automation.id))!;
     // The creator resumes or pauses it from chat.
     const setStatus = (status: "active" | "paused") =>
-      execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-        automationId: automation.id,
-        status,
-      });
+      execute(
+        createUpdateAutomationTool(
+          automationToolContext(context()),
+          getEventCatalog(),
+        ),
+        {
+          automation_id: automation.id,
+          status,
+        },
+      );
     const ingest = (eventKey: string) =>
       ingestEventAutomations(changesRequestedEvent(eventKey), {
         queue,
@@ -124,10 +135,16 @@ describe("event automation blocking", () => {
 
     // Another person in the channel cannot resume it.
     await expect(
-      execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        automationId: automation.id,
-        status: "active",
-      }),
+      execute(
+        createUpdateAutomationTool(
+          automationToolContext(context("U999")),
+          getEventCatalog(),
+        ),
+        {
+          automation_id: automation.id,
+          status: "active",
+        },
+      ),
     ).rejects.toThrow("Only the creator");
     expect(await read()).toMatchObject({ status: "blocked" });
 
@@ -207,19 +224,31 @@ describe("event automation blocking", () => {
     expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
 
     // Resume clears the count, so the next Event runs at once.
-    await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-      automationId: automation.id,
-      status: "active",
-    });
+    await execute(
+      createUpdateAutomationTool(
+        automationToolContext(context()),
+        getEventCatalog(),
+      ),
+      {
+        automation_id: automation.id,
+        status: "active",
+      },
+    );
     expect(await ingest("github:after-resume", nextWindowMs)).toEqual({
       dispatched: 2,
     });
 
     // Recreating a deleted automation also starts a new window.
     const remove = (automationId: string) =>
-      execute(createDeleteEventAutomationTool(context(), EVENT_CATALOG), {
-        automationId,
-      });
+      execute(
+        createDeleteAutomationTool(
+          automationToolContext(context()),
+          getEventCatalog(),
+        ),
+        {
+          automation_id: automationId,
+        },
+      );
     await remove(sibling.id);
     await fill("github:refill", maxRuns - 1, nextWindowMs);
     await remove(automation.id);
@@ -231,5 +260,55 @@ describe("event automation blocking", () => {
       dispatched: 1,
     });
     // Filling the window takes about three times the cap in sequential ingests.
+  }, 30_000);
+
+  it("counts each event once, however many resources it is published for", async () => {
+    const { automation } = (await execute(
+      createAutomationTool(automationToolContext(context()), getEventCatalog()),
+      {
+        instruction: "Summarize the failed deployment.",
+        trigger: {
+          type: "event",
+          namespace: "github",
+          label: "Failed deployments",
+          events: ["deployment.failed"],
+        },
+      },
+      "any-deployment",
+    )) as { automation: { id: string } };
+    // A trigger with no identifier gets every copy of an event. Repeated
+    // copies must not fill the run list and block it early.
+    const copies = 12;
+    const occur = async (eventKey: string, nowMs: number) => {
+      let dispatched = 0;
+      for (let index = 0; index < copies; index += 1) {
+        const result = await ingestEventAutomations(
+          {
+            eventKey,
+            eventType: "deployment.failed",
+            occurredAtMs: nowMs,
+            namespace: "github",
+            identifier: `deployment-source:getsentry/repo-${index}:abc`,
+            trustedSummary: "A deployment failed.",
+          },
+          { nowMs, queue, teamId },
+        );
+        dispatched += result.dispatched;
+      }
+      return dispatched;
+    };
+    const nowMs = Date.now();
+    for (let index = 0; index < botConfig.maxEventAutomationRuns; index += 1) {
+      expect(await occur(`github:deploy-${index}`, nowMs)).toBe(1);
+    }
+    const db = fixture.sql.db();
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "active",
+    });
+    // The limit is the same as for a trigger with an identifier.
+    expect(await occur("github:deploy-over", nowMs)).toBe(0);
+    expect(await getEventAutomation(db, automation.id)).toMatchObject({
+      status: "blocked",
+    });
   }, 30_000);
 });

@@ -1,10 +1,7 @@
 import { createPluginCache } from "@/chat/plugins/cache";
-import {
-  identityDispatchOptionsSchema,
-  type HeartbeatHookContext,
-  type IdentityDispatchOptions,
-  type IdentityDispatchResult,
-  type PluginRegistration,
+import type {
+  HeartbeatHookContext,
+  PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import {
   bindEventAutomationCredentialSubject,
@@ -12,12 +9,9 @@ import {
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
 import { getDb } from "@/chat/db";
-import { createEventTeamIdResolver } from "@/chat/events/workspace";
-import { findLinkedSlackMember } from "@/chat/identities/linked-slack-member";
-import { logInfo } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
+import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
-import { openSlackDirectMessage } from "@/chat/slack/outbound";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buildDispatchId,
@@ -25,6 +19,7 @@ import {
   getPluginDispatchProjection,
   isTerminalDispatchStatus,
 } from "./store";
+import type { IdentityDispatcher } from "./identity";
 import { enqueueAgentDispatch } from "./work";
 import type { BoundDispatchOptions, SlackDispatchOptions } from "./types";
 import {
@@ -96,17 +91,24 @@ async function dispatch(args: {
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   nowMs: number;
   plugin: string | PluginRegistration;
 }): HeartbeatHookContext {
   const pluginName =
     typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;
   let dispatchCount = 0;
+  const assertDispatchBudget = () => {
+    if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
+      throw new Error("Plugin heartbeat exceeded the dispatch limit");
+    }
+  };
   return {
     plugin: { name: pluginName },
     cache: createPluginCache(pluginName),
     nowMs: args.nowMs,
     db: getDb(),
+    embedder: createPluginEmbedder(pluginName),
     state: createPluginState(pluginName),
     log: createPluginLogger(pluginName),
     agent: {
@@ -116,9 +118,7 @@ export function createHeartbeatContext(args: {
           options,
           pluginName,
         );
-        if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
-          throw new Error("Plugin heartbeat exceeded the dispatch limit");
-        }
+        assertDispatchBudget();
         const result = await dispatch({
           conversationWorkQueue: args.conversationWorkQueue,
           nowMs: args.nowMs,
@@ -128,6 +128,13 @@ export function createHeartbeatContext(args: {
         dispatchCount += 1;
         return result;
       },
+      async dispatchForIdentity(options) {
+        assertDispatchBudget();
+        // Count every attempt, so one heartbeat cannot make unbounded Slack
+        // lookups for people who do not match.
+        dispatchCount += 1;
+        return await args.dispatchForIdentity(pluginName, options);
+      },
       async get(id) {
         return await getPluginDispatchProjection({
           plugin: pluginName,
@@ -135,76 +142,6 @@ export function createHeartbeatContext(args: {
         });
       },
     },
-  };
-}
-
-/**
- * Build the plugin route entry point that starts private DM work for the
- * person behind one provider Identity.
- *
- * The provider is always the calling plugin. Work starts only when the
- * Identity is linked to exactly one Slack user in the bot's workspace, that
- * user is a current human member, and the user's Slack email is on the allowed
- * domains, as for Slack ingress. Without a Slack bot, nothing is linked.
- */
-export function createIdentityDispatcher(args: {
-  allowedDomains: readonly string[];
-  conversationWorkQueue: () => ConversationWorkQueue;
-}): (
-  plugin: string,
-  options: IdentityDispatchOptions,
-) => Promise<IdentityDispatchResult> {
-  const resolveSlackTeamId = createEventTeamIdResolver();
-  const notLinked = (plugin: string, reason: string) => {
-    logInfo("dispatch.identity.not_linked", {
-      "app.plugin.name": plugin,
-      "app.dispatch.identity.reason": reason,
-    });
-    return { status: "not_linked" } as const;
-  };
-
-  return async (plugin, options) => {
-    const request = identityDispatchOptionsSchema.parse(options);
-    const teamId = await resolveSlackTeamId();
-    if (!teamId) {
-      return notLinked(plugin, "no_slack_bot");
-    }
-    const member = await findLinkedSlackMember({
-      allowedDomains: args.allowedDomains,
-      provider: plugin,
-      providerSubjectId: request.subjectId,
-      slackTeamId: teamId,
-    });
-    if (member.status === "not_linked") {
-      return notLinked(plugin, member.reason);
-    }
-    const { slackUserId } = member;
-
-    const dispatchOptions: SlackDispatchOptions = {
-      idempotencyKey: request.idempotencyKey,
-      credentialSubject: {
-        type: "user",
-        userId: slackUserId,
-        allowedWhen: "private-direct-conversation",
-      },
-      destination: {
-        platform: "slack",
-        teamId,
-        channelId: await openSlackDirectMessage(slackUserId),
-      },
-      destinationVisibility: "private",
-      input: request.input,
-      ...(request.replyAttribution
-        ? { replyAttribution: request.replyAttribution }
-        : undefined),
-    };
-    validateDispatchOptions(dispatchOptions);
-    return await dispatch({
-      conversationWorkQueue: args.conversationWorkQueue(),
-      nowMs: Date.now(),
-      options: bindDispatchCredentialSubject(dispatchOptions, plugin),
-      plugin,
-    });
   };
 }
 
@@ -267,6 +204,8 @@ export async function dispatchScheduledAutomation(args: {
     };
   };
 }) {
+  // Also the signed credential binding label. A rename breaks existing task
+  // credentials.
   const plugin = "scheduler";
   const { credentialSubject, outcomes, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });

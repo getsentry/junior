@@ -1,3 +1,7 @@
+import {
+  dashboardBootstrapSchema,
+  type DashboardBootstrap,
+} from "../src/api/schema";
 import type { DashboardAuth, DashboardSession } from "../src/auth";
 
 export const dashboardEnvNames = [
@@ -9,7 +13,6 @@ export const dashboardEnvNames = [
   "JUNIOR_BASE_URL",
   "VERCEL_PROJECT_PRODUCTION_URL",
   "VERCEL_URL",
-  "JUNIOR_DASHBOARD_AUTH_REQUIRED",
   "JUNIOR_DASHBOARD_TRUSTED_ORIGINS",
   "JUNIOR_DASHBOARD_MOCK_CONVERSATIONS",
   "SENTRY_DSN",
@@ -24,7 +27,7 @@ export function resetDashboardEnv(): void {
 /** Build a fixed dashboard auth edge for route tests. */
 export function auth(
   session: DashboardSession | null,
-  onSignIn?: (callbackURL: string) => void,
+  onSignIn?: (callbackURL: string, errorCallbackURL: string) => void,
 ): DashboardAuth {
   return {
     async handler() {
@@ -33,12 +36,22 @@ export function auth(
     async getSession() {
       return session;
     },
-    async signInWithGoogle(_request, callbackURL) {
-      onSignIn?.(callbackURL);
+    async signInWithGoogle(_request, callbackURL, errorCallbackURL) {
+      onSignIn?.(callbackURL, errorCallbackURL);
       return Response.redirect(
         "https://accounts.google.com/o/oauth2/v2/auth",
         302,
       );
     },
   };
+}
+
+/** Read the core data the page shell embeds for the client's first render. */
+export function embeddedBootstrap(
+  html: string,
+): DashboardBootstrap | undefined {
+  const match = /window\.__JUNIOR_DASHBOARD_BOOTSTRAP__ = (.*);\n/.exec(html);
+  return match
+    ? dashboardBootstrapSchema.parse(JSON.parse(match[1]!))
+    : undefined;
 }

@@ -1,11 +1,15 @@
 import type { StateAdapter } from "chat";
+import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
+  getDb,
 } from "@/chat/db";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import { juniorIdentities } from "@/db/schema";
 import { setExperimentalFeatures } from "@/chat/experimental";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { authTestOk } from "../../fixtures/slack/factories/api";
@@ -25,6 +29,22 @@ import {
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+
+/** Read the Identity id that Slack ingress saved for one author. */
+async function slackIdentityId(userId: string): Promise<string> {
+  const rows = await getDb()
+    .select({ id: juniorIdentities.id })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.provider, "slack"),
+        eq(juniorIdentities.providerSubjectId, userId),
+      ),
+    );
+  const id = rows[0]?.id;
+  if (!id) throw new Error(`No Slack Identity for ${userId}`);
+  return id;
+}
 
 function failIsSubscribed(state: StateAdapter): StateAdapter {
   return new Proxy(state, {
@@ -262,6 +282,7 @@ describe("Slack webhook persistence contract", () => {
           data: expect.objectContaining({
             type: "message",
             text: "follow-up without another mention",
+            authorIdentityId: await slackIdentityId("U123"),
             meta: expect.objectContaining({
               replied: false,
               skippedReason: "passive_disabled:passive-routing",
@@ -274,7 +295,7 @@ describe("Slack webhook persistence contract", () => {
     }
   });
 
-  it("keeps passive-routing history on the Slack thread id when a bound Conversation exists", async () => {
+  it("keeps passive-routing history on the bound Conversation", async () => {
     setExperimentalFeatures(undefined);
     try {
       const queue = createConversationWorkQueueTestAdapter();
@@ -323,7 +344,7 @@ describe("Slack webhook persistence contract", () => {
       expect(response.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
       await expect(
-        getConversationEventStore().loadMessageHistory(threadId),
+        getConversationEventStore().loadMessageHistory(conversationId),
       ).resolves.toEqual({
         events: [
           expect.objectContaining({
@@ -333,14 +354,12 @@ describe("Slack webhook persistence contract", () => {
             }),
           }),
         ],
-        compaction: undefined,
         historyFromSeq: expect.any(Number),
       });
       await expect(
-        getConversationEventStore().loadMessageHistory(conversationId),
+        getConversationEventStore().loadMessageHistory(threadId),
       ).resolves.toEqual({
         events: [],
-        compaction: undefined,
         historyFromSeq: expect.any(Number),
       });
     } finally {
@@ -348,7 +367,7 @@ describe("Slack webhook persistence contract", () => {
     }
   });
 
-  it("unsubscribes a stopped thread without enqueuing mailbox work when passive routing is off", async () => {
+  it("keeps a stopped thread subscribed without enqueuing mailbox work when passive routing is off", async () => {
     setExperimentalFeatures(undefined);
     try {
       const queue = createConversationWorkQueueTestAdapter();
@@ -360,12 +379,8 @@ describe("Slack webhook persistence contract", () => {
       await state.subscribe(canonicalThreadId);
 
       for (const message of [
-        { text: "<@UOTHER> stop", ts: "1712345.000811", subscribed: true },
-        {
-          text: `<@${SLACK_BOT_USER_ID}> stop`,
-          ts: "1712345.000812",
-          subscribed: false,
-        },
+        { text: "<@UOTHER> stop", ts: "1712345.000811" },
+        { text: `<@${SLACK_BOT_USER_ID}> stop`, ts: "1712345.000812" },
       ]) {
         const response = await handleSlackWebhookAndFlush({
           request: slackWebhookRequest(
@@ -384,13 +399,10 @@ describe("Slack webhook persistence contract", () => {
           },
         });
         expect(response.status).toBe(200);
-        await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(
-          message.subscribed,
-        );
+        await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(true);
       }
       // Stop is control flow, not a mailbox message: it never enters the
-      // durable Run queue, so a mention-route stop cannot resubscribe the
-      // thread by starting a new Turn.
+      // durable Run queue, so the stop starts no Turn.
       expect(queue.queuedMessages()).toEqual([]);
     } finally {
       setExperimentalFeatures({ "passive-routing": true });
@@ -445,6 +457,15 @@ describe("Slack webhook persistence contract", () => {
     expect(response.status).toBe(200);
     expect(queue.sentRecords()).toEqual([
       expect.objectContaining({ conversationId }),
+    ]);
+    const work = await getConversationWorkState({ conversationId, state });
+    expect(work?.execution.pendingMessages).toEqual([
+      expect.objectContaining({
+        input: expect.objectContaining({
+          authorId: "U123",
+          authorIdentityId: await slackIdentityId("U123"),
+        }),
+      }),
     ]);
   });
 

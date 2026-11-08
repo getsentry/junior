@@ -1,6 +1,6 @@
 ---
 title: Slack App Setup
-description: Configure Slack events, interactivity, slash commands, and App Home for a Junior deployment.
+description: Configure Slack events, interactivity, and App Home for a Junior deployment.
 type: tutorial
 summary: Create or update a Slack app so Junior can receive events and reply in threads.
 prerequisites:
@@ -32,23 +32,22 @@ Use `SLACK_BOT_TOKEN` for normal bot replies. Use `SLACK_BOT_USER_TOKEN` only wh
 
 ## Configure bot scopes
 
-Grant the smallest scopes that cover the Slack features you enable. A typical Junior installation needs scopes for mentions, posting replies, reading thread context, reactions, user lookup, file workflows, and slash command handling.
+Grant the smallest scopes that cover the Slack features you enable. A typical Junior installation needs scopes for mentions, posting replies, reading thread context, reactions, user lookup, and file workflows.
 
-| Capability                                         | Slack scopes to verify                                                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Mentions                                           | `app_mentions:read`                                                                                          |
-| Thread replies and private auth prompts            | `chat:write`                                                                                                 |
-| Processing reactions                               | `reactions:write`                                                                                            |
-| User lookup and App Home ownership                 | `users:read`                                                                                                 |
-| Slash command configured by `JUNIOR_SLASH_COMMAND` | `commands`                                                                                                   |
-| Thread and channel history in channels and DMs     | `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `mpim:history` as needed |
-| On-demand join of public channels                  | `channels:join` **required** to join a public channel when reading linked threads or history                 |
-| Public workspace search (messages)                 | `search:read.public` **required** for interactive public Slack search                                        |
-| Public workspace search (files)                    | `search:read.files` **required** when searching public files                                                 |
-| Public workspace search (users)                    | `search:read.users` **required** when searching people via public search                                     |
-| File/image context and generated files             | `files:read`, `files:write` when file workflows are enabled                                                  |
-| Direct links back to Slack conversations           | `team:read`                                                                                                  |
-| Slack assistant status/title surfaces              | `assistant:write` and other assistant scopes required by your Slack app configuration                        |
+| Capability                                     | Slack scopes to verify                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Mentions                                       | `app_mentions:read`                                                                                          |
+| Thread replies and private auth prompts        | `chat:write`                                                                                                 |
+| Processing reactions                           | `reactions:write`                                                                                            |
+| User lookup and App Home ownership             | `users:read`                                                                                                 |
+| Thread and channel history in channels and DMs | `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `mpim:history` as needed |
+| On-demand join of public channels              | `channels:join` **required** to join a public channel when reading linked threads or history                 |
+| Public workspace search (messages)             | `search:read.public` **required** for interactive public Slack search                                        |
+| Public workspace search (files)                | `search:read.files` **required** when searching public files                                                 |
+| Public workspace search (users)                | `search:read.users` **required** when searching people via public search                                     |
+| File/image context and generated files         | `files:read`, `files:write` when file workflows are enabled                                                  |
+| Direct links back to Slack conversations       | `team:read`                                                                                                  |
+| Slack assistant status/title surfaces          | `assistant:write` and other assistant scopes required by your Slack app configuration                        |
 
 Slack requires reinstalling the app after scope changes. Reinstall before debugging runtime behavior.
 
@@ -74,10 +73,20 @@ Subscribe to the events that match your usage:
 | `entity_details_requested`    | Open and refresh Work Object details.                |
 | Slack assistant thread events | Assistant-thread title, status, and prompt surfaces. |
 | `agent_session_stopped`       | Slack's stop button for a running Junior Turn.       |
+| `channel_created`             | Optional auto-join of new public channels.           |
 
 If your app relies on subscribed-thread follow-ups in shared channels, enable the channel message events required by that Slack app model and confirm the bot is present in those channels.
 
-Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn. The thread stays subscribed. The `stop` keyword also makes Junior leave the thread.
+Slack shows a stop button on a working thread only when the app subscribes to `agent_session_stopped`. Existing apps must add this bot event in the Slack app settings. The button stops the current Turn, the same as the `stop` keyword. The thread stays subscribed.
+
+To make Junior join each new public channel, subscribe to `channel_created` and turn on the option. Junior does not join channels that existed before. The app needs `channels:join`.
+
+```ts title="server.ts"
+export default await createApp({
+  plugins,
+  slack: { autoJoinNewChannels: true },
+});
+```
 
 For object previews, enable **Work Object Previews → Item and Task** in the Slack app settings. Existing apps must also add `entity_details_requested` to their bot event subscriptions; deploying Junior does not update Slack app settings.
 
@@ -89,17 +98,7 @@ Set the Interactivity request URL to the same webhook route:
 https://<your-domain>/api/webhooks/slack
 ```
 
-Junior uses interactivity for App Home actions such as disconnecting provider accounts.
-
-## Add the slash command
-
-Create the slash command configured by `JUNIOR_SLASH_COMMAND` with this request URL. The default command is `/jr`:
-
-```text
-https://<your-domain>/api/webhooks/slack
-```
-
-Junior uses `<command> link` and `<command> unlink` for provider account management flows.
+Junior uses interactivity for App Home actions such as disconnecting provider accounts. It also uses it when Junior asks for input. A simple question shows one button for each choice, and the first click is the answer. Other questions show a button that opens a form. The answer is sent as a reply from the person who answered, in the same thread. Junior then replaces the controls with that person's answer.
 
 ## Verify locally
 
@@ -109,7 +108,7 @@ For local development, expose your dev server with a tunnel:
 cloudflared tunnel --url http://localhost:3000
 ```
 
-Then set Slack Event Subscriptions, Interactivity, and the configured slash command to the tunnel URL plus `/api/webhooks/slack`.
+Then set Slack Event Subscriptions and Interactivity to the tunnel URL plus `/api/webhooks/slack`.
 
 Verify the setup:
 

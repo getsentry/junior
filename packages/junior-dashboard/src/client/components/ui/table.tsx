@@ -37,6 +37,19 @@ function TableBody({ className, ...props }: ComponentProps<"tbody">) {
   );
 }
 
+function TableFooter({ className, ...props }: ComponentProps<"tfoot">) {
+  return (
+    <tfoot
+      data-slot="table-footer"
+      className={cn(
+        "border-t border-dashboard-border font-medium [&>tr]:last:border-b-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 function TableRow({ className, ...props }: ComponentProps<"tr">) {
   return (
     <tr
@@ -77,4 +90,12 @@ function TableCell({ className, ...props }: ComponentProps<"td">) {
   );
 }
 
-export { Table, TableHeader, TableBody, TableHead, TableRow, TableCell };
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+};

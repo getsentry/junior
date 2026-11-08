@@ -66,9 +66,10 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
       <div className="pointer-events-none relative z-[1] grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2">
         <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
           <ConversationListStatusIcon
-            finishedSinceSeen={false}
+            unread={false}
             isPrivate={conversation.visibility === "private"}
             status={visualStatusForConversation(conversation)}
+            waitingOnViewer={false}
           />
         </span>
         <div className="min-w-0 truncate font-display text-sm text-dashboard-text">

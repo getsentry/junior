@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createOrGetDispatch,
   getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
@@ -9,6 +10,11 @@ import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
+import {
+  LOST_WORKER_RESUME_MESSAGE,
+  saveTurnCheckpoint,
+} from "@/chat/task-execution/checkpoint";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
@@ -27,8 +33,8 @@ import {
 import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
+import { createConversationWorkHarness } from "../fixtures/conversation-work";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -66,7 +72,7 @@ describe("agent dispatch conversation work", () => {
       input,
     );
     const modelStream = vi.fn(createModelStream([sendMessage("Done")]));
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(modelStream),
     );
 
@@ -115,12 +121,27 @@ describe("agent dispatch conversation work", () => {
   }, 15_000);
 
   it("runs enqueued dispatch work through production routing with exact authority", async () => {
-    const dispatch = await createDispatch(
-      "shared-runtime",
-      undefined,
-      undefined,
-      { label: "Scheduled automation", detail: "Weekly" },
-    );
+    const store = getConversationStore();
+    // A live Slack event saw the channel as private after the Automation saved
+    // its public visibility.
+    await store.recordActivity({
+      conversationId: "slack:C123:1700000000.000300",
+      destination,
+      source: "slack",
+      visibility: "private",
+    });
+    const { record: dispatch } = await createOrGetDispatch({
+      nowMs: Date.now(),
+      options: {
+        destination,
+        destinationVisibility: "public",
+        idempotencyKey: "shared-runtime",
+        input: "Post the scheduled digest.",
+        replyAttribution: { label: "Scheduled automation", detail: "Weekly" },
+        source: { kind: "scheduled_automation" },
+      },
+      plugin: "scheduler",
+    });
     const agentRunner = createModelAgentRunner(
       createModelStream([sendMessage("Scheduled digest")]),
     );
@@ -129,14 +150,13 @@ describe("agent dispatch conversation work", () => {
       queue,
       run: runWork,
       state,
-    } = await createAgentDispatchWorkHarness(agentRunner);
+    } = await createConversationWorkHarness(agentRunner);
 
     const titleRequests: TitleModelRequest[] = [];
     mockTitleModel("Weekly digest for the platform team", {
       onRequest: (request) => titleRequests.push(request),
     });
     const conversationId = getDispatchConversationId(dispatch);
-    const store = getConversationStore();
     const titleWork: Promise<unknown>[] = [];
     const waitUntil = (work: Promise<unknown>) => titleWork.push(work);
 
@@ -193,6 +213,15 @@ describe("agent dispatch conversation work", () => {
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });
+    // Only live provider signals refresh the visibility that the channel's
+    // Conversations share.
+    await expect(
+      store.getDestinationVisibility({
+        provider: "slack",
+        providerDestinationId: destination.channelId,
+        providerTenantId: destination.teamId,
+      }),
+    ).resolves.toBe("private");
   }, 15_000);
 
   it("binds the default same-channel outcome reply to the dispatch's origin thread", async () => {
@@ -210,7 +239,7 @@ describe("agent dispatch conversation work", () => {
       ],
       { ...destination, threadTs: "1700000000.000200" },
     );
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(
         createModelStream([sendMessage("Scheduled digest")]),
       ),
@@ -248,7 +277,7 @@ describe("agent dispatch conversation work", () => {
         },
       ],
     );
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(createModelStream([sendMessage("Work complete")])),
     );
 
@@ -264,9 +293,17 @@ describe("agent dispatch conversation work", () => {
     ).toEqual(["D123", "C456"]);
   });
 
-  it("completes work with no outcomes without posting the model result", async () => {
+  it("posts nothing for work with no outcomes, also when the run fails", async () => {
     const dispatch = await createDispatch(
       "no-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Apply the requested maintenance.",
+      [],
+    );
+    const lostDispatch = await createDispatch(
+      "no-outcomes-lost-worker",
       undefined,
       undefined,
       undefined,
@@ -280,18 +317,22 @@ describe("agent dispatch conversation work", () => {
           name: "finishAutomationRun",
           arguments: { result: "no_action", reason: "Maintenance complete" },
         },
+        { type: "toolCall", name: "systemTime", arguments: {} },
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
-      await createAgentDispatchWorkHarness(agentRunner);
+      await createConversationWorkHarness(agentRunner);
+    const processNext = async (softYieldAfterMs?: number) =>
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run,
+        softYieldAfterMs,
+        state,
+      });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
-    await processConversationQueueMessage(queue.takeMessage(), {
-      queue,
-      run,
-      state,
-    });
+    await processNext();
 
     expect(slackApiOutbox.messages()).toEqual([]);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
@@ -300,6 +341,34 @@ describe("agent dispatch conversation work", () => {
     });
     expect(runAgent).toHaveBeenCalledOnce();
     expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+
+    // The second run pauses, and its resumed worker dies before it saves.
+    // Recovery fails the run, and the failure still posts nothing.
+    await enqueueAgentDispatch(lostDispatch, { queue, state });
+    await processNext(0);
+    const conversationId = getDispatchConversationId(lostDispatch);
+    const turnId = getDispatchTurnId(lostDispatch.id);
+    const paused = await getTurnRecord(conversationId, turnId);
+    if (paused?.state !== "paused") throw new Error("expected paused turn");
+    await saveTurnCheckpoint({
+      conversationId,
+      errorMessage: LOST_WORKER_RESUME_MESSAGE,
+      lostWorkerResumeCount: 1,
+      messages: paused.piMessages,
+      mode: "paused",
+      reason: "retry",
+      sliceId: paused.sliceId,
+      turnId,
+    });
+    await processNext();
+
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      state: "failed",
+    });
+    await expect(getDispatchRecord(lostDispatch.id)).resolves.toMatchObject({
+      status: "failed",
+    });
+    expect(slackApiOutbox.messages()).toEqual([]);
   });
 
   it("projects a previously delivered reply without running the agent again", async () => {
@@ -329,7 +398,7 @@ describe("agent dispatch conversation work", () => {
       },
     );
     await persistConversationMessages({ conversation, conversationId });
-    const { queue, run, state } = await createAgentDispatchWorkHarness(
+    const { queue, run, state } = await createConversationWorkHarness(
       neverRunAgentRunner(),
     );
 

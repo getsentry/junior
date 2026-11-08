@@ -5,15 +5,15 @@ import {
   AutomationEditError,
   editAutomationFields,
 } from "@/chat/automations/edit-rules";
-import {
-  requireEventIdentifier,
-  type EventCatalog,
-} from "@/chat/events/catalog";
+import type { EventCatalog } from "@/chat/events/catalog";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { requireSlackChannelMessageScope } from "@/chat/slack/channel-message-events";
-import { requireSupportedEventAutomationTrigger } from "./tool-support";
+import {
+  requireSlackChannelMessageScope,
+  slackChannelMessageTrigger,
+} from "@/chat/slack/channel-message-events";
+import { requireEventAutomationTrigger } from "./tool-support";
 import type { EventAutomation } from "./types";
-import type { z } from "zod";
+import type * as z from "zod";
 
 function changesEventAutomationTrigger(
   current: EventAutomation["trigger"],
@@ -36,32 +36,28 @@ export async function editEventAutomation(
   input: z.output<typeof eventAutomationEditSchema>,
   isCreator: boolean,
   catalog: EventCatalog,
+  options?: { inputKeys: boolean },
 ): Promise<EventAutomation> {
   let trigger = current.trigger;
   if (input.trigger !== undefined) {
+    const inputTrigger = slackChannelMessageTrigger(
+      input.trigger,
+      current.destination.channelId,
+    );
     // An unchanged selector may contain a now-unsupported match field. Keep it.
     if (
-      changesEventAutomationTrigger(current.trigger, input.trigger) ||
-      current.trigger.resourceType !== input.trigger.resourceType
+      changesEventAutomationTrigger(current.trigger, inputTrigger) ||
+      current.trigger.resourceType !== inputTrigger.resourceType
     ) {
       try {
-        const match = requireSupportedEventAutomationTrigger(
-          catalog,
-          input.trigger,
-        );
-        trigger = {
-          ...input.trigger,
-          identifier: requireEventIdentifier(catalog, input.trigger),
-          events: [...new Set(input.trigger.events)],
-          match,
-        };
+        trigger = requireEventAutomationTrigger(catalog, inputTrigger, options);
       } catch (error) {
         if (error instanceof ToolInputError)
           throw new AutomationEditError(error.message, "trigger");
         throw error;
       }
     } else {
-      trigger = { ...current.trigger, label: input.trigger.label };
+      trigger = { ...current.trigger, label: inputTrigger.label };
     }
   }
   const changesExecution =

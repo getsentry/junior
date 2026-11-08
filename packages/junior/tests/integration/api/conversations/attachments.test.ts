@@ -82,6 +82,92 @@ describe("conversation attachment API", () => {
     expect(await response.text()).toBe("hello image");
   });
 
+  it("serves one byte range so media players can play and seek", async () => {
+    const conversationId = "slack:C-public:video-attachment";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: {
+        channelId: "CPUBLIC",
+        platform: "slack",
+        teamId: "TPUBLIC",
+      },
+      nowMs: 1,
+      source: "slack",
+      title: "Video attachment conversation",
+      visibility: "public",
+    });
+    const storage = createMemoryAttachmentStorage();
+    const stored = await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 10,
+        data: Buffer.from("0123456789"),
+        filename: "demo.mp4",
+        mimeType: "video/mp4",
+        path: "/tmp/demo.mp4",
+      },
+      storage,
+    });
+    const app = apiWithViewer(undefined, storage);
+    const read = (range?: string) =>
+      app.request(
+        `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`,
+        range ? { headers: { range } } : undefined,
+      );
+
+    const whole = await read();
+    expect(whole.status).toBe(200);
+    expect(whole.headers.get("accept-ranges")).toBe("bytes");
+    expect(whole.headers.get("content-disposition")).toMatch(/^inline;/);
+    expect(await whole.text()).toBe("0123456789");
+
+    // Safari probes with `bytes=0-1` before it plays a video.
+    for (const [range, body, contentRange] of [
+      ["bytes=0-1", "01", "bytes 0-1/10"],
+      ["bytes=4-", "456789", "bytes 4-9/10"],
+      ["bytes=-3", "789", "bytes 7-9/10"],
+      ["bytes=8-99", "89", "bytes 8-9/10"],
+    ] as const) {
+      const partial = await read(range);
+      expect(partial.status).toBe(206);
+      expect(partial.headers.get("content-range")).toBe(contentRange);
+      expect(partial.headers.get("content-length")).toBe(String(body.length));
+      expect(partial.headers.get("content-type")).toBe("video/mp4");
+      expect(await partial.text()).toBe(body);
+    }
+
+    const unsatisfiable = await read("bytes=10-");
+    expect(unsatisfiable.status).toBe(416);
+    expect(unsatisfiable.headers.get("content-range")).toBe("bytes */10");
+
+    const empty = await storeAttachment({
+      conversationId,
+      db: getSqlExecutor(),
+      file: {
+        bytes: 0,
+        data: Buffer.alloc(0),
+        filename: "empty.mp4",
+        mimeType: "video/mp4",
+        path: "/tmp/empty.mp4",
+      },
+      storage,
+    });
+    const emptySuffix = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${empty.id}`,
+      { headers: { range: "bytes=-3" } },
+    );
+    expect(emptySuffix.status).toBe(416);
+    expect(emptySuffix.headers.get("content-range")).toBe("bytes */0");
+
+    // HTTP lets a server ignore a range header it does not support.
+    for (const range of ["bytes=0-1,4-5", "bytes=5-2", "items=0-1"]) {
+      const ignored = await read(range);
+      expect(ignored.status).toBe(200);
+      expect(await ignored.text()).toBe("0123456789");
+    }
+  });
+
   it("returns attachment bytes only to private-conversation participants", async () => {
     const conversationId = "slack:C-private:attachment";
     await getConversationStore().recordActivity({

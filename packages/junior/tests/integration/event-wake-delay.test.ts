@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { enqueueEventNotification } from "@/chat/events/notification";
 import { createWatch } from "@/chat/events/store";
 import type { AgentRun } from "@/chat/agent/types";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { findActorIdentityId } from "@/chat/identities/actor";
 import {
   appendAndEnqueueWebMessage,
   createConversationId,
@@ -13,6 +15,7 @@ import {
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
+import { getTurnRecord } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import type {
   ConversationWorkerContext,
@@ -236,6 +239,24 @@ describe("event wake delay", () => {
       "Please check now",
     );
     expect(userMessages).toHaveLength(2);
+    // Ingress sets each Message author. The event Turn stays system-acted.
+    expect(userMessages.map((message) => message.authorIdentityId)).toEqual([
+      await findActorIdentityId(getDb(), actor),
+      await findActorIdentityId(getDb(), EVENT_SYSTEM_ACTOR),
+    ]);
+    expect(userMessages.every((message) => message.authorIdentityId)).toBe(
+      true,
+    );
+    expect(agentRuns[1]?.actor).toMatchObject({ platform: "system" });
+    // Each Turn keeps the Identity of its Actor, not of the event author.
+    const turns = await Promise.all(
+      agentRuns.map((agentRun) =>
+        getTurnRecord(conversationId, agentRun.turnId),
+      ),
+    );
+    expect(turns.map((turn) => turn?.actorIdentityId)).toEqual(
+      userMessages.map((message) => message.authorIdentityId),
+    );
     // The one message lists every Event, not only the first.
     expect(userMessages[1]!.meta?.events).toEqual([
       expect.objectContaining({
@@ -259,33 +280,32 @@ describe("event wake delay", () => {
     // Each Watch states its instructions once and keeps its Events together.
     const text = userMessages[1]!.text;
     expect(text).toContain("You received 4 events.");
-    expect(text.match(/Instructions: /g)).toHaveLength(3);
+    expect(text.match(/<instructions>/g)).toHaveLength(3);
     expect(text).toContain(
       [
-        `About: ${prWatch.label}`,
-        "People involved: <@U123>",
-        `Instructions: ${prWatch.intent}`,
+        `<watch about="${prWatch.label}">`,
+        '<people><@U123> (did Event 1; called "dcramer" in the Event data)</people>',
+        'If your reply is to <@U123>, write to them as "you". Otherwise call them <@U123>, not "dcramer".',
+        `<instructions>${prWatch.intent}</instructions>`,
       ].join("\n"),
     );
     expect(text).toContain(
       "- pull_request.review_comment.created: Reply on the thread.",
     );
-    expect(text).toMatch(
-      /Event 1: pull_request\.review\.approved\nDone by: <@U123>\. [^\n]*"dcramer"[^\n]*\nTrusted summary: Approved by dcramer\.\n\nEvent 2: pull_request\.review_comment\.created/,
+    expect(text).toContain(
+      '<event index="1" type="pull_request.review.approved">\n<summary>Approved by dcramer.</summary>\n</event>\n<event index="2" type="pull_request.review_comment.created">',
     );
     expect(text).toContain(
       [
-        `About: ${deployWatch.label}`,
-        `Instructions: ${deployWatch.intent}`,
-        "",
-        "Event 3: deployment.succeeded",
+        `<watch about="${deployWatch.label}">`,
+        `<instructions>${deployWatch.intent}</instructions>`,
+        '<event index="3" type="deployment.succeeded">',
       ].join("\n"),
     );
     expect(text).toContain(
       [
-        `Instructions: ${releaseWatch.intent}`,
-        "",
-        "Event 4: pull_request.merged",
+        `<instructions>${releaseWatch.intent}</instructions>`,
+        '<event index="4" type="pull_request.merged">',
       ].join("\n"),
     );
   });

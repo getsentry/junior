@@ -16,7 +16,30 @@ export class AutomationEditError extends ToolInputError {
   }
 }
 
-/** Apply shared title, instruction, outcome, and creator credential rules. */
+/**
+ * Only the creator can start work with creator credentials. Anyone who can
+ * manage the Automation can switch it to system credentials, and then resume
+ * it or run it now.
+ */
+export function requireCredentialStart(
+  automation: EventAutomation | ScheduledAutomation,
+  isCreator: boolean,
+): void {
+  if (isCreator || automation.credentialMode !== "creator") return;
+  const kind = "schedule" in automation ? "scheduled" : "event";
+  throw new AutomationEditError(
+    `This ${kind} automation uses its creator's credentials. Only the creator can resume it or run it now. Switch it to system credentials first.`,
+    "credentialMode",
+  );
+}
+
+/**
+ * Apply shared title, instruction, outcome, and creator credential rules.
+ * Anyone who can manage the Automation can change any field except turning on
+ * creator credentials. A non-creator change to execution or outcomes switches
+ * it to system credentials, so creator credential output stays where the
+ * creator approved.
+ */
 export async function editAutomationFields(
   current: EventAutomation | ScheduledAutomation,
   input: AutomationEditFields,
@@ -28,12 +51,6 @@ export async function editAutomationFields(
     throw new AutomationEditError(
       `Only the ${kind} automation creator can enable creator credential use.`,
       "credentialMode",
-    );
-  }
-  if (input.outcomes !== undefined && !isCreator) {
-    throw new AutomationEditError(
-      `Only the ${kind} automation creator can change message destinations.`,
-      "outcomes",
     );
   }
   let outcomes = current.outcomes;
@@ -68,11 +85,12 @@ export async function editAutomationFields(
       }
     }
   }
+  const changesOutcomes = !isDeepStrictEqual(outcomes, current.outcomes);
   return {
     title: input.title ?? current.title,
     task: { text: input.instruction ?? current.task.text },
     credentialMode:
-      changesExecution && !isCreator
+      (changesExecution || changesOutcomes) && !isCreator
         ? ("system" as const)
         : (input.credentialMode ?? current.credentialMode),
     outcomes,

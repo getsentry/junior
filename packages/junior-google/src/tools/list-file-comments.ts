@@ -2,7 +2,7 @@ import {
   definePluginTool,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   fileReferenceSchema,
   GOOGLE_FILE_TYPES,
@@ -15,12 +15,12 @@ import type { GoogleToolContext } from "./shared";
 const inputSchema = z
   .object({
     file: fileReferenceSchema("Google Docs, Sheets, or Slides"),
-    pageToken: z
+    page_token: z
       .string()
       .min(1)
       .max(2048)
       .optional()
-      .describe("nextPageToken from an earlier call, to read more comments."),
+      .describe("next_page_token from an earlier call, to read more comments."),
   })
   .strict();
 
@@ -31,15 +31,15 @@ const replyOutputSchema = z.object({
     .describe("Set when the reply resolved or reopened the comment."),
   author: z.string().optional(),
   content: z.string(),
-  createdTime: z.string().optional(),
+  created_at: z.string().optional(),
 });
 
 const commentOutputSchema = z.object({
   author: z.string().optional(),
-  commentId: z.string(),
+  comment_id: z.string(),
   content: z.string(),
-  createdTime: z.string().optional(),
-  quotedText: z
+  created_at: z.string().optional(),
+  quoted_text: z
     .string()
     .optional()
     .describe("The file text that the comment is attached to."),
@@ -50,11 +50,11 @@ const commentOutputSchema = z.object({
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("listGoogleFileComments"),
   comments: z.array(commentOutputSchema),
-  fileId: z.string(),
-  nextPageToken: z
+  file_id: z.string(),
+  next_page_token: z
     .string()
     .optional()
-    .describe("Set when the file has more comments. Pass it as pageToken."),
+    .describe("Set when the file has more comments. Pass it as page_token."),
 });
 
 const authorSchema = z
@@ -103,7 +103,7 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as Junior's own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass nextPageToken as pageToken to read more. Comments can be private: share only what the requester needs.",
+      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass next_page_token as page_token to read more. Comments can be private: share only what the requester needs.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -117,7 +117,7 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
         query: {
           fields: COMMENT_FIELDS,
           pageSize: "100",
-          ...(input.pageToken ? { pageToken: input.pageToken } : undefined),
+          ...(input.page_token ? { pageToken: input.page_token } : undefined),
         },
       });
       const { comments, nextPageToken } = commentListSchema.parse(
@@ -129,13 +129,13 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
           ...(comment.author?.displayName
             ? { author: comment.author.displayName }
             : undefined),
-          commentId: comment.id,
+          comment_id: comment.id,
           content: comment.content,
           ...(comment.createdTime
-            ? { createdTime: comment.createdTime }
+            ? { created_at: comment.createdTime }
             : undefined),
           ...(comment.quotedFileContent?.value
-            ? { quotedText: comment.quotedFileContent.value }
+            ? { quoted_text: comment.quotedFileContent.value }
             : undefined),
           replies: comment.replies.map((reply) => ({
             ...(reply.action ? { action: reply.action } : undefined),
@@ -144,13 +144,13 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
               : undefined),
             content: reply.content,
             ...(reply.createdTime
-              ? { createdTime: reply.createdTime }
+              ? { created_at: reply.createdTime }
               : undefined),
           })),
           resolved: comment.resolved === true,
         })),
-        fileId: ref.fileId,
-        ...(nextPageToken ? { nextPageToken } : undefined),
+        file_id: ref.fileId,
+        ...(nextPageToken ? { next_page_token: nextPageToken } : undefined),
       };
     },
   });

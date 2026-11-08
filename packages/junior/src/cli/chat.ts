@@ -246,11 +246,9 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createAgentInvocationWorker, routeAgentInvocationWork } =
-    await import("@/chat/agent-invocations/work");
-  const { startAgentInvocationsForChildInput } =
+  const { createChildConversationWorker } =
     await import("@/chat/agent-invocations/result");
-  const { skipInputBeforeConversationStop } =
+  const { skipInputAfterConversationStop } =
     await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
@@ -261,33 +259,25 @@ async function prepareLocalChatRun(
     if (!agentRunner) {
       throw new Error("Local agent runner is not ready");
     }
-    const run = routeAgentInvocationWork({
-      // The local queue carries only child Conversation work.
-      fallbackWorker: async (context) => {
-        const skipped = await skipInputBeforeConversationStop(context);
-        if (skipped) {
-          return skipped;
-        }
-        const started = await startAgentInvocationsForChildInput(context, {
-          queue: localConversationWork.queue,
-        });
-        if (!started) {
-          throw new Error("Local child queue received non-invocation work");
-        }
-        return started;
-      },
-      invocationWorker: createAgentInvocationWorker(agentRunner),
+    const childWorker = createChildConversationWorker(agentRunner, {
+      queue: localConversationWork.queue,
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,
-      run,
+      // The local queue carries only child Conversation work.
+      run: async (context) => {
+        const stopped = await skipInputAfterConversationStop(context);
+        return "skipped" in stopped
+          ? stopped.skipped
+          : await childWorker(stopped.context);
+      },
     });
   });
   agentRunner = createAgentRunner(executeAgentRun, {
     // The local CLI does not send child results or messages back to the
-    // root Conversation, so only the root gets messageAgent here.
+    // root Conversation, so an Agent invocation gets no messageAgent here.
     bindMessageAgent: (request) =>
-      request.parentConversationId
+      request.agentInvocationId
         ? undefined
         : bindMessageAgent(request, { queue: localConversationWork.queue }),
     bindSpawnAgent: (request) =>

@@ -31,6 +31,11 @@ function heartbeatIdempotencyKey(
 
 /** Requeue expired leases and stranded mailbox work without running the agent. */
 export async function recoverConversationWork(args: {
+  /** Ends what a conversation owns when its last attempt loses its worker. */
+  beforeWorkStops?: (
+    conversationId: string,
+    inboundMessageIds: readonly string[],
+  ) => Promise<void>;
   limit?: number;
   nowMs: number;
   queue: ConversationWorkQueue;
@@ -94,6 +99,7 @@ export async function recoverConversationWork(args: {
           work.execution.lease.expiresAtMs <= args.nowMs
         ) {
           const recovery = await clearExpiredConversationLease({
+            beforeWorkStops: args.beforeWorkStops,
             conversationId,
             nowMs: args.nowMs,
             state: args.state,

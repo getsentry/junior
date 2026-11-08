@@ -22,6 +22,7 @@ import {
   type ConversationEventStore,
   type ConversationEventData,
   type HistoryReplacement,
+  type HistoryReplacementResult,
   type MessageHistory,
   type MessagesSummarizedEvent,
   type NewConversationEvent,
@@ -34,6 +35,8 @@ import {
 import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
+import { restoreArchivedPath } from "./conversation-tree";
+import { conversationDetailTouch } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -114,7 +117,7 @@ function insertFromEvent(
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
-function eventFromRow(row: ConversationEventRow): ConversationEvent {
+export function eventFromRow(row: ConversationEventRow): ConversationEvent {
   const payload =
     row.actorIdentityId &&
     typeof row.payload === "object" &&
@@ -239,16 +242,20 @@ class SqlConversationEventStore implements ConversationEventStore {
               actorIdentityId,
             ),
           );
-          if (actorIdentityId) {
-            await recordConversationParticipant(this.executor, {
-              actorIdentityId,
+        }
+        const db = this.executor.db();
+        await db
+          .with(conversationDetailTouch(db, [conversationId]))
+          .insert(juniorConversationEvents)
+          .values(rows);
+        for (const event of pending) {
+          if (event.data.type === "turn_started") {
+            await this.recordTurnInputParticipants(
               conversationId,
-              atMs: event.createdAtMs,
-              restoreArchive: eventUnarchivesConversation(event.data),
-            });
+              event.data.inputMessageIds,
+            );
           }
         }
-        await this.executor.db().insert(juniorConversationEvents).values(rows);
         return rows.map((row) => ({
           seq: row.seq,
           historyVersion: row.historyVersion,
@@ -257,27 +264,86 @@ class SqlConversationEventStore implements ConversationEventStore {
     );
   }
 
+  /**
+   * Add the authors of Turn input messages to the conversation.
+   * Only people who start a Turn join it. Thread context, such as backfilled
+   * or skipped messages, keeps its author without membership.
+   */
+  private async recordTurnInputParticipants(
+    conversationId: string,
+    inputMessageIds: readonly string[],
+  ): Promise<void> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, "message"),
+          inArray(
+            sql<string>`${juniorConversationEvents.payload}->>'messageId'`,
+            [...inputMessageIds],
+          ),
+        ),
+      );
+    let restores = false;
+    for (const row of rows) {
+      const { data } = eventFromRow(row);
+      if (!row.actorIdentityId || data.type !== "message") continue;
+      const isPerson = await recordConversationParticipant(this.executor, {
+        actorIdentityId: row.actorIdentityId,
+        conversationId,
+        atMs: row.createdAt.getTime(),
+      });
+      restores ||= isPerson && eventUnarchivesConversation(data);
+    }
+    // Archive is shared, so any person's message restores it for everyone.
+    if (restores) {
+      await restoreArchivedPath(this.executor.db(), conversationId);
+    }
+  }
+
   async replaceHistory(
     conversationId: string,
     replacement: HistoryReplacement,
-  ): Promise<void> {
+    options: { expectedHistoryVersion?: number } = {},
+  ): Promise<HistoryReplacementResult> {
     const parsed = historyReplacementSchema.parse(replacement);
-    await withConversationEventLock(this.executor, conversationId, async () => {
-      await ensureConversationRow(this.executor, conversationId, Date.now());
-      const cursor = await this.readCursor(conversationId);
-      const historyVersion = (cursor.maxHistoryVersion ?? 0) + 1;
-      await this.executor
-        .db()
-        .insert(juniorConversationEvents)
-        .values(
-          insertFromEvent(
-            conversationId,
-            cursor.nextSeq,
-            historyVersion,
-            parsed,
-          ),
-        );
-    });
+    return withConversationEventLock(
+      this.executor,
+      conversationId,
+      async () => {
+        const cursor = await this.readCursor(conversationId);
+        const currentHistoryVersion = cursor.maxHistoryVersion ?? 0;
+        // Checked under the event lock so a concurrent replacement or a newer
+        // compaction cannot slip in between the check and the write.
+        if (
+          options.expectedHistoryVersion !== undefined &&
+          options.expectedHistoryVersion !== currentHistoryVersion
+        ) {
+          return {
+            status: "conflict" as const,
+            historyVersion: currentHistoryVersion,
+          };
+        }
+        await ensureConversationRow(this.executor, conversationId, Date.now());
+        const historyVersion = currentHistoryVersion + 1;
+        const db = this.executor.db();
+        await db
+          .with(conversationDetailTouch(db, [conversationId]))
+          .insert(juniorConversationEvents)
+          .values(
+            insertFromEvent(
+              conversationId,
+              cursor.nextSeq,
+              historyVersion,
+              parsed,
+            ),
+          );
+        return { status: "replaced" as const, historyVersion };
+      },
+    );
   }
 
   async loadCurrentHistoryVersion(conversationId: string): Promise<number> {
@@ -412,10 +478,9 @@ class SqlConversationEventStore implements ConversationEventStore {
       )
       .orderBy(desc(juniorConversationEvents.seq))
       .limit(1);
-    const compaction = compactionRow
-      ? messagesSummarizedEventFromRow(compactionRow)
-      : undefined;
-    const historyFromSeq = compaction?.data.historyFromSeq ?? 0;
+    const historyFromSeq = compactionRow
+      ? messagesSummarizedEventFromRow(compactionRow).data.historyFromSeq
+      : 0;
     const rows = await this.executor
       .db()
       .select()
@@ -428,7 +493,7 @@ class SqlConversationEventStore implements ConversationEventStore {
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
-    return { events: rows.map(eventFromRow), compaction, historyFromSeq };
+    return { events: rows.map(eventFromRow), historyFromSeq };
   }
 
   async loadHistory(conversationId: string): Promise<ConversationEvent[]> {

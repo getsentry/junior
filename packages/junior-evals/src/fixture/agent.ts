@@ -5,7 +5,7 @@
  * compaction, Postgres, and Redis are real. Slack, Vercel Blob, and other
  * third-party APIs are MSW mocks. Other HTTP traffic goes through
  * Roach, the recording proxy, which replays model responses and the web pages that
- * `webFetch` reads. See `../recording-rules.ts`. The fixture replaces only the
+ * `webFetch` reads. See `roach.json`. The fixture replaces only the
  * Vercel Queue transports and `waitUntil` with in-process versions, so it
  * knows when the agent is idle.
  */
@@ -15,34 +15,38 @@ import { type HarnessRun, type TranscriptEvent } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { acceptedConversationMessageSchema } from "@/api/schema";
 import { forkConversationResponseSchema } from "@/api/schema";
-import {
-  createConversationId,
-  webActorFromEmail,
-} from "@/chat/conversations/web-input";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { createConversationId } from "@/chat/conversations/web-input";
+import { findUserByEmail, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import {
+  expectAccepted,
+  jsonRequest,
+  steerQueuedWebMessage,
+  webImage,
+} from "./dashboard-requests";
 import { fixtureId } from "./ids";
+import { actOnWebReviewItem } from "./review-desk";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
-  FileInput,
   HistoryItem,
   HistoryReply,
   Input,
   MentionInput,
   MessageInput,
+  ReviewItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
   hasHistory,
   loadHistory,
   WEB_VIEWER_EMAIL,
+  webViewerActor,
   type LoadedConversation,
 } from "./history";
 import type { VisibleMessage } from "./judge";
@@ -55,6 +59,7 @@ import {
   readCallEvents,
   readFailedCallRun,
   readConversationDetail,
+  participantSlackUserIds,
   slackCallReplies,
   toHarnessRun,
   VIEWER_HEADER,
@@ -69,7 +74,7 @@ import {
   installSlackMock,
   isAppMention,
   postSlackAssistantThreadStarted,
-  postSlackCommand,
+  postSlackAppHomeUnlink,
   postSlackMessageEvent,
   slackAuthorEmail,
   SLACK_APP,
@@ -119,6 +124,8 @@ export interface Conversation extends HarnessRun {
   conversationId: string;
   /** Assistant messages that people saw. */
   replies: Reply[];
+  /** Quiet messages: stored, but not delivered to the Slack thread. */
+  quietReplies: Reply[];
   /** Tool calls of the agent, with their results. */
   toolCalls: ToolCall[];
   /** Slack reactions that Junior added. */
@@ -134,6 +141,8 @@ export interface Conversation extends HarnessRun {
   threadTitles: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Slack user ids of the participants that the dashboard lists after the call. */
+  participantSlackUserIds: string[];
   /**
    * The label of the connect prompt that the dashboard shows to the person
    * after the call, when a turn waits for their authorization.
@@ -218,6 +227,10 @@ export async function createFixtureAgent(
     pluginTaskQueue: (consume) => ({
       send: async (message) => track(consume(message)),
     }),
+    // Background compaction jobs also run in process.
+    backgroundCompactionQueue: (consume) => ({
+      send: async (message) => track(consume(message)),
+    }),
     waitUntil: (task) => track(typeof task === "function" ? task() : task),
   });
   // The dashboard mounts the same API after sign-in. Each request signs in
@@ -241,15 +254,17 @@ export async function createFixtureAgent(
     if (!closed) {
       closed = true;
       await blob.close();
-      // Each Slack person is also a dashboard person with their email.
+      // Each Slack person is also a dashboard person with their email. A web
+      // Actor id is the User id.
+      const authors = slack.authors();
+      const webUsers = await Promise.all(
+        [WEB_VIEWER_EMAIL, ...authors.map(slackAuthorEmail)].map((email) =>
+          findUserByEmail(email),
+        ),
+      );
       await forgetAuthorizations([
-        webActorFromEmail(WEB_VIEWER_EMAIL).userId,
-        ...slack
-          .authors()
-          .flatMap((author) => [
-            author.userId,
-            webActorFromEmail(slackAuthorEmail(author)).userId,
-          ]),
+        ...authors.map((author) => author.userId),
+        ...webUsers.flatMap((user) => (user ? [user.id] : [])),
       ]);
     }
   };
@@ -348,7 +363,7 @@ export async function createFixtureAgent(
           app,
           link: prompt.url,
           provider: input.provider,
-          userId: webActorFromEmail(record.viewerEmail).userId,
+          userId: (await webViewerActor(record.viewerEmail)).userId,
         });
         return;
       }
@@ -372,18 +387,24 @@ export async function createFixtureAgent(
       });
       return;
     }
-    if (input.kind === "slack_command") {
+    if (input.kind === "app_home_unlink") {
       if (record.surface !== "slack") {
-        throw new Error("slackCommand() continues a Slack Conversation");
+        throw new Error("appHomeUnlink() continues a Slack Conversation");
       }
       const { userId } = slack.registerAuthor(
         input.author ?? DEFAULT_SLACK_AUTHOR,
       );
-      await postSlackCommand(app, {
-        channel: record.channelId,
-        text: input.text,
+      await postSlackAppHomeUnlink(app, {
+        provider: input.provider,
         user: userId,
       });
+      return;
+    }
+    if (input.kind === "review_item_action") {
+      if (record.surface !== "web" || !record.started) {
+        throw new Error("A review item action continues a web Conversation");
+      }
+      await actOnWebReviewItem(api, input, record);
       return;
     }
     const started = record.started;
@@ -392,7 +413,7 @@ export async function createFixtureAgent(
       const path = started
         ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
         : "/api/conversations";
-      await expectAccepted(
+      const accepted = await expectAccepted(
         await api.request(
           path,
           jsonRequest(record.viewerEmail, {
@@ -406,6 +427,13 @@ export async function createFixtureAgent(
           }),
         ),
       );
+      if (input.steer) {
+        await steerQueuedWebMessage(api, {
+          conversationId: record.conversationId,
+          inboundMessageId: accepted.messageId,
+          viewerEmail: record.viewerEmail,
+        });
+      }
       return;
     }
     if (record.surface !== "slack") {
@@ -465,10 +493,11 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = (
-    first: MessageInput,
+    first: MessageInput | ReviewItemActionInput,
     history: CallOptions["history"],
   ): ConversationRecord => {
-    if (first.kind === "web_message") {
+    // A review desk action comes from the dashboard.
+    if (first.kind === "web_message" || first.kind === "review_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);
@@ -732,9 +761,11 @@ export async function createFixtureAgent(
         : undefined),
       compactions: events.compactions,
       files,
+      quietReplies: events.quietReplies,
       reactions,
       replies,
       statuses,
+      participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles,
       title: detail.displayTitle,
       toolCalls: events.toolCalls,
@@ -842,9 +873,11 @@ export async function createFixtureAgent(
       }),
       compactions: 0,
       files: [],
+      quietReplies: [],
       reactions: [],
       replies: [],
       statuses: [],
+      participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles: [],
       title: detail.displayTitle,
       toolCalls: [],
@@ -904,8 +937,8 @@ export async function createFixtureAgent(
     if (first.kind === "complete_auth") {
       throw new Error("completeAuth() continues a Conversation");
     }
-    if (first.kind === "slack_command") {
-      throw new Error("slackCommand() continues a Slack Conversation");
+    if (first.kind === "app_home_unlink") {
+      throw new Error("appHomeUnlink() continues a Slack Conversation");
     }
     return await converse(
       newConversation(first, options.history),
@@ -962,35 +995,4 @@ function heartbeatSecret(): string {
     throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
   }
   return secret;
-}
-
-/** An image as the dashboard sends it with a message. */
-function webImage(image: FileInput) {
-  if (!image.content) throw new Error(`Image ${image.name} needs content`);
-  return {
-    contentType: image.mimeType,
-    data: image.content.toString("base64"),
-    filename: image.name,
-  };
-}
-
-/** A JSON POST signed in as `viewerEmail`. */
-function jsonRequest(viewerEmail: string, body: unknown): RequestInit {
-  return {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      [VIEWER_HEADER]: viewerEmail,
-    },
-    body: JSON.stringify(body),
-  };
-}
-
-async function expectAccepted(response: Response) {
-  if (response.status !== 200) {
-    throw new Error(
-      `Web message returned ${response.status}: ${await response.text()}`,
-    );
-  }
-  return acceptedConversationMessageSchema.parse(await response.json());
 }

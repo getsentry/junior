@@ -1,8 +1,9 @@
+import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewStructuredEventPart } from "../types";
-import { MentionText } from "./transcriptMentions";
+import { DisplayText } from "../display-text/DisplayText";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
-import { TranscriptSummary } from "./TranscriptSummary";
+import { TranscriptSummaryTrigger } from "./TranscriptSummary";
 
 type TranscriptPresentationEventPart = TranscriptViewStructuredEventPart;
 
@@ -33,8 +34,8 @@ export function TranscriptStructuredEventView(props: {
               </div>
             )}
             {detail.description ? (
-              <div className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-dashboard-text-muted">
-                <MentionText mentions={mentions} text={detail.description} />
+              <div className="mt-1">
+                <DisplayText mentions={mentions} text={detail.description} />
               </div>
             ) : null}
             {detail.content ? (
@@ -58,27 +59,35 @@ export function TranscriptStructuredEventView(props: {
         ))}
       </div>
     ) : null;
+  const collapsible = details.length > 0 && !search.active;
+  // The header can sit inside the row button, so it uses only inline elements
+  // and no links.
   const header = (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
-      <div className="min-w-0">
-        <div className="text-sm font-medium leading-6 text-dashboard-text">
+    <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 max-md:grid-cols-[minmax(0,1fr)]">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium leading-6 text-dashboard-text">
           <HighlightText text={presentation.title} />
-        </div>
+        </span>
         {presentation.preview ? (
-          <div className="mt-0.5 truncate text-xs text-dashboard-text-muted">
-            <MentionText mentions={mentions} text={presentation.preview} />
-          </div>
+          <span className="mt-0.5 block truncate text-xs text-dashboard-text-muted">
+            <DisplayText
+              inline
+              links={!collapsible}
+              mentions={mentions}
+              text={presentation.preview}
+            />
+          </span>
         ) : null}
-      </div>
+      </span>
       {timestamp ? (
         <span className="text-xs leading-6 tabular-nums text-dashboard-text-muted max-md:hidden">
           {timestamp}
         </span>
       ) : null}
-    </div>
+    </span>
   );
 
-  if (details.length === 0 || search.active) {
+  if (!collapsible) {
     return (
       <div className={surfaceClass}>
         {header}
@@ -87,9 +96,11 @@ export function TranscriptStructuredEventView(props: {
     );
   }
   return (
-    <details className={`group/plugin-event ${surfaceClass}`}>
-      <TranscriptSummary flush>{header}</TranscriptSummary>
-      {body}
-    </details>
+    <Collapsible className={surfaceClass}>
+      <TranscriptSummaryTrigger flush className="block">
+        {header}
+      </TranscriptSummaryTrigger>
+      <CollapsibleContent hiddenUntilFound>{body}</CollapsibleContent>
+    </Collapsible>
   );
 }

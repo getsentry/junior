@@ -1,5 +1,5 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import { z } from "zod";
+import * as z from "zod";
 
 export const juniorToolContinuationSchema = z
   .object({

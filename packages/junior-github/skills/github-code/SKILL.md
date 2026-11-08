@@ -13,16 +13,17 @@ Use `git` and `gh` for repository work.
 | Update PR title/body/base/state | `github_updatePullRequest`                                                                                    |
 | Mark PR ready / draft           | `github_updatePullRequest` with `draft: false` / `draft: true`                                                |
 | Submit PR review                | `github_submitPullRequestReview`                                                                              |
+| Comment on PR / reply in thread | `github_commentOnPullRequest` (`in_reply_to` for a thread reply)                                              |
 | Resolve review thread           | `github_resolvePullRequestReviewThread`                                                                       |
 | Clone missing repo              | `github_cloneRepository` (not `git clone` or `gh repo clone`); on Workspace match error use `switchWorkspace` |
 
 ## Open when needed
 
-| Need                          | Read                                                                                   |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| Commands and permissions      | [references/api-surface.md](references/api-surface.md)                                 |
-| Edit, verify, and open a PR   | [references/workflow.md](references/workflow.md)                                       |
-| Command or permission failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Need                               | Read                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| Commands and permissions           | [references/api-surface.md](references/api-surface.md)                                 |
+| Edit, verify, and open a PR        | [references/workflow.md](references/workflow.md)                                       |
+| Command, permission, or CI failure | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Always
 
@@ -37,6 +38,6 @@ Use `git` and `gh` for repository work.
 - Stop for an unclear target, missing access, destructive work, or a GitHub permission failure.
 - Code changes always end in a pushed branch and a PR. Do not ask whether to open one. Skip it only when the user opts out or asks for investigation only.
 - Open the PR ready for review when the work is complete and the checks pass. Open a draft when work, checks, or decisions remain. A scope or follow-up question is not a reason to stop: open the PR, and name the question in the PR body and the report.
-- Report repo, branch, PR, checks, and skipped checks.
+- Link the PR. Mention checks only when they failed or were skipped.
 
 Do not install or repair the GitHub plugin from this skill.

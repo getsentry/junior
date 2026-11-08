@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { avatarPath } from "../../fixtures/avatar";
 import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
 import {
@@ -48,7 +49,7 @@ describe("Automations API", () => {
     expect(response.status).toBe(401);
   });
 
-  test("lists owned and public automations but only deletes viewer-owned tasks", async () => {
+  test("lists owned and public automations and denies private deletes", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
@@ -113,7 +114,7 @@ describe("Automations API", () => {
       await fixture.sql
         .db()
         .update(juniorIdentities)
-        .set({ avatarUrl: "https://example.com/aisha.png" })
+        .set({ avatarUrl: "https://avatars.slack-edge.com/aisha_512.png" })
         .where(eq(juniorIdentities.id, otherIdentity!.id));
 
       // Keep fixture times inside the trailing 7-day stats window.
@@ -133,6 +134,21 @@ describe("Automations API", () => {
           7: countSince(7 * dayMs),
           30: countSince(30 * dayMs),
           90: countSince(90 * dayMs),
+        };
+      };
+      const costWindows = (...runs: Array<[atMs: number, costUsd: number]>) => {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const costSince = (agoMs: number) =>
+          Math.round(
+            runs
+              .filter(([atMs]) => atMs >= nowMs - agoMs)
+              .reduce((total, [, costUsd]) => total + costUsd, 0) * 1e12,
+          ) / 1e12;
+        return {
+          1: costSince(1 * dayMs),
+          7: costSince(7 * dayMs),
+          30: costSince(30 * dayMs),
+          90: costSince(90 * dayMs),
         };
       };
       const startDate = todayUtc.toISOString().slice(0, 10);
@@ -360,7 +376,7 @@ describe("Automations API", () => {
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: avatarPath(otherIdentity!.id),
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -373,7 +389,7 @@ describe("Automations API", () => {
           }),
           expect.objectContaining({
             createdBy: "Aisha Patel",
-            createdByAvatarUrl: "https://example.com/aisha.png",
+            createdByAvatarUrl: avatarPath(otherIdentity!.id),
             createdByEmail: "aisha@example.com",
             destination: expect.objectContaining({
               label: "#incident-response",
@@ -395,7 +411,6 @@ describe("Automations API", () => {
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
             id: "event_automations_api",
-            match: { action: ["closed", "resolved"] },
             kind: "event",
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
@@ -403,7 +418,12 @@ describe("Automations API", () => {
             runs: runWindows(eventRunAtMs),
             source: "linear",
             totalRuns: 1,
-            triggerAvailable: false,
+            // Linear is not enabled here, so the saved trigger has a problem.
+            trigger: {
+              events: ["issue closed"],
+              filters: ["action is closed or resolved"],
+              problems: ["The plugin for this source is not enabled."],
+            },
           }),
           expect.objectContaining({
             createdByEmail: "viewer@example.com",
@@ -416,6 +436,11 @@ describe("Automations API", () => {
             lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
             ownedByViewer: true,
+            // Spend sums the linked Conversation cost of each run.
+            costUsd: costWindows(
+              [scheduledRun1AtMs, 0.18],
+              [scheduledRun2AtMs, 0.42],
+            ),
             runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
             schedule: "Schedule unavailable",
             timezone: "UTC",
@@ -446,8 +471,8 @@ describe("Automations API", () => {
         .automations.find(
           (automation) => automation.id === "event_public_tasks_api",
         );
-      expect(unverifiedCreator?.createdByAvatarUrl).toBe(
-        "https://example.com/aisha.png",
+      expect(unverifiedCreator?.createdByAvatarUrl).toEqual(
+        avatarPath(otherIdentity!.id),
       );
       expect(unverifiedCreator?.createdByEmail).toBeUndefined();
 
@@ -759,12 +784,12 @@ describe("Automations API", () => {
         true,
       );
 
-      const deniedPublicDelete = await authenticatedApi(
+      const deniedPrivateDelete = await authenticatedApi(
         "viewer@example.com",
       ).request("http://localhost/api/automations/event_public_tasks_api", {
         method: "DELETE",
       });
-      expect(deniedPublicDelete.status).toBe(404);
+      expect(deniedPrivateDelete.status).toBe(404);
 
       const deletedScheduled = await authenticatedApi(
         "viewer@example.com",

@@ -101,7 +101,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'",
     );
     expect(search).toMatchObject({
-      files: [{ fileId: DOC_ID, title: "Q4 plan", type: "document" }],
+      files: [{ file_id: DOC_ID, title: "Q4 plan", type: "document" }],
       truncated: true,
     });
 
@@ -121,7 +121,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     }
     expect(doc).toMatchObject({
       content: "# Q4 plan\n\nShip it.",
-      documentId: DOC_ID,
+      document_id: DOC_ID,
       title: "Q4 plan",
       truncated: false,
     });
@@ -138,9 +138,9 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       comments: [
         {
           author: "Bob",
-          commentId: "c1",
+          comment_id: "c1",
           content: "Which quarter?",
-          quotedText: "Ship it.",
+          quoted_text: "Ship it.",
           replies: [
             { author: "Alice", content: "Q4." },
             { action: "resolve", author: "Bob", content: "" },
@@ -148,8 +148,8 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           resolved: true,
         },
       ],
-      fileId: DOC_ID,
-      nextPageToken: "page-2",
+      file_id: DOC_ID,
+      next_page_token: "page-2",
     });
   });
 
@@ -175,14 +175,14 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const hidden = run(tools, "readGoogleDoc", { document: DOC_ID });
     await expect(hidden).rejects.toThrow(PluginToolInputError);
     await expect(hidden).rejects.toThrow(
-      `Junior's Google account (${ACCOUNT_EMAIL}) cannot open this file`,
+      `Your Google account (${ACCOUNT_EMAIL}) cannot open this file`,
     );
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
     ).rejects.toThrow('"Budget" is not a Google Doc');
     await expect(
       run(tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow("A Junior admin must reconnect it");
+    ).rejects.toThrow("An admin must reconnect it");
   });
 
   it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {
@@ -280,7 +280,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           truncated: false,
         },
       ],
-      spreadsheetId: SHEET_ID,
+      spreadsheet_id: SHEET_ID,
       tabs: ["Q4", "Bob's tab"],
       title: "Budget",
       truncated: false,
@@ -293,11 +293,11 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       "slides.googleapis.com",
     );
     expect(slides).toMatchObject({
-      presentationId: SLIDES_ID,
-      slideCount: 2,
+      presentation_id: SLIDES_ID,
+      slide_count: 2,
       slides: [
-        { notes: "Say hello.", slideNumber: 1, text: "Kickoff\nQ4 | Ship" },
-        { slideNumber: 2, text: "" },
+        { notes: "Say hello.", slide_number: 1, text: "Kickoff\nQ4 | Ship" },
+        { slide_number: 2, text: "" },
       ],
       title: "Kickoff",
       truncated: false,

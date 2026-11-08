@@ -41,13 +41,9 @@ import {
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
-  loadLastModelProfile,
-  loadTurnRoute,
-  openConversationProjection,
   recordAgentsInstructionsUpdated,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
-  recordTurnRoute,
 } from "@/chat/conversations/projection";
 import {
   agentInstructionProvenance,
@@ -64,8 +60,6 @@ import {
 } from "@/chat/credentials/context";
 import {
   GEN_AI_PROVIDER_NAME,
-  completeObject,
-  completeText,
   getGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
@@ -79,7 +73,10 @@ import {
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
+import {
+  isTurnInputCommitLostError,
+  TurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
@@ -98,12 +95,7 @@ import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
-import {
-  configuredTurnRoute,
-  selectTurnRoute,
-  toPiReasoningLevel,
-  type TurnRoute,
-} from "@/chat/services/turn-router";
+import { toPiReasoningLevel } from "@/chat/reasoning-level";
 import {
   addAgentTurnUsage,
   agentTurnCostUsd,
@@ -116,13 +108,12 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
-  TURN_LIMIT_DISABLED_REASON,
+  TURN_LIMIT_WRAP_UP_MESSAGE,
   TurnBudgetExceededError,
   TurnToolCallLimitExceededError,
   createTurnLimitGate,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
-import { disabledToolMessage } from "@/chat/tools/definition";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -131,11 +122,11 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { getConversationStore } from "@/chat/db";
+import type { ConversationKind } from "@/chat/conversations/store";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
   actorFromRun,
-  isAgentRunFeatureDisabled,
   surfaceFromRun,
   type AgentRun,
 } from "@/chat/agent/types";
@@ -147,42 +138,36 @@ import {
   assemblePrompt,
   buildPromptInput,
   buildSteeringPiMessage,
+  loadPromptTurnContext,
 } from "@/chat/agent/prompt";
-import { wireAgentTools } from "@/chat/agent/tools";
+import {
+  createPromptHookContext,
+  createRunSandbox,
+  wireAgentTools,
+} from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
 import {
-  modelIdForProfile,
-  ModelProfileNotConfiguredError,
-  profileConfig,
-  type ModelProfile,
-} from "@/chat/model-profile";
-import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
+  estimateRequestOverheadTokens,
+  getAgentContextCompactionTriggerTokens,
+} from "@/chat/services/context-budget";
+import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import {
-  applyHandoff,
-  commitHandoff,
-  exclusiveToolName,
-  handoffControl,
-  toolsForHandoffProfile,
-  type PendingHandoff,
-} from "@/chat/agent/handoff";
-import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
+  lastRequestInputSize,
+  requestBackgroundCompaction,
+} from "@/chat/services/background-compaction";
+import {
+  logInputAfterCompaction,
+  type CompactionMode,
+} from "@/chat/services/context-compaction-telemetry";
+import {
+  buildAgentModelRequest,
+  CONTEXT_COMPACTION_PROMPT_NAME,
+  requestContextSummary,
+} from "@/chat/agent/context-summary";
+import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
-
-/** Read visibility from the Conversation, or from its nearest parent with one. */
-async function readRunConversationVisibility(
-  conversationId: string,
-): Promise<ConversationPrivacy | undefined> {
-  const conversationStore = getConversationStore();
-  let conversation = await conversationStore.get({ conversationId });
-  while (!conversation?.visibility && conversation?.parentConversationId) {
-    conversation = await conversationStore.get({
-      conversationId: conversation.parentConversationId,
-    });
-  }
-  return conversation?.visibility;
-}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -242,7 +227,11 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const visibility = await readRunConversationVisibility(run.conversationId);
+  // A child reads visibility from its own Destination row, the same as a root.
+  const conversation = await getConversationStore().get({
+    conversationId: run.conversationId,
+  });
+  const visibility = conversation?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
   });
@@ -276,6 +265,7 @@ export async function executeAgentRun(
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         run,
+        conversation?.kind,
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -286,6 +276,7 @@ export async function executeAgentRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
+  conversationKind: ConversationKind | undefined,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: StreamFn | undefined,
@@ -293,12 +284,9 @@ async function executeAgentRunInPrivacyContext(
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
-  const runId = run.runId;
   const requireAutomationResult = run.dispatch?.declaresResult === true;
   const input = {
     actor: run.instruction.actor,
-    includeConversationContextWithPiMessages:
-      run.instruction.includeConversationContextWithHistory,
     messageText: run.instruction.text,
     userAttachments: run.instruction.attachments
       ? [...run.instruction.attachments]
@@ -367,7 +355,7 @@ async function executeAgentRunInPrivacyContext(
 
   signal?.throwIfAborted();
 
-  assertRunConsistency(run);
+  assertRunConsistency(run, conversationKind);
 
   const replyStartedAtMs = Date.now();
   const configuredTurnDeadlineAtMs = replyStartedAtMs + botConfig.turnTimeoutMs;
@@ -386,6 +374,9 @@ async function executeAgentRunInPrivacyContext(
   let lastKnownSandboxRef = state.sandboxRef;
   let mcpToolManager: McpToolManager | undefined;
   let closeTools: (() => Promise<void>) | undefined;
+  // Pre-agent work that runs beside routing. The run waits for it to settle,
+  // so a routing or wiring failure does not leave it running.
+  let preAgentSetup: Promise<unknown> | undefined;
   let connectedMcpProviders = new Set<string>();
   let turnUsage: AgentTurnUsage | undefined;
   let priorPhaseUsage: AgentTurnUsage | undefined;
@@ -396,23 +387,12 @@ async function executeAgentRunInPrivacyContext(
   const toolCalls: string[] = [];
   let shouldTrace = false;
   let getSandboxRef: (() => typeof state.sandboxRef) | undefined;
-  const configuredReasoningLevel =
-    policy.reasoningLevel ?? botConfig.reasoningLevel;
-  let turnRoute: TurnRoute | undefined = configuredReasoningLevel
-    ? configuredTurnRoute(
-        botConfig.defaultProfile,
-        configuredReasoningLevel,
-        policy.reasoningLevel ? "agent_config" : "default",
-      )
-    : undefined;
-  let activeModelProfile: ModelProfile = botConfig.defaultProfile;
-  let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
+  const reasoningLevel = policy.reasoningLevel ?? botConfig.reasoningLevel;
+  const activeModelId = botConfig.modelId;
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
   const slackSource = runSource.kind === "slack" ? runSource : undefined;
-  const slackChannelId = run.location?.channelId ?? slackSource?.channelId;
-  const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
   const credentialUserId = run.credentialContext
     ? credentialUserSubjectId(run.credentialContext)
@@ -432,6 +412,17 @@ async function executeAgentRunInPrivacyContext(
     }
     connectedMcpProviders.add(provider);
   };
+  // A worker can stall past its Lease and come back after another worker
+  // took the Conversation. Check the Lease right before each side effect.
+  const requireConversationLease = async (
+    action: "reply" | "save",
+  ): Promise<void> => {
+    if (durability.checkIn && !(await durability.checkIn())) {
+      throw new TurnInputCommitLostError(
+        `Conversation Lease lost before ${action} for conversation=${conversationId} turn=${turnId}`,
+      );
+    }
+  };
   const recordActiveMcpProviders = async () => {
     if (!mcpToolManager) {
       return;
@@ -441,9 +432,6 @@ async function executeAgentRunInPrivacyContext(
     }
   };
   try {
-    const projection = await openConversationProjection({ conversationId });
-    activeModelProfile = run.modelProfile ?? projection.modelProfile;
-    activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
 
@@ -482,9 +470,9 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
-    // A child agent's input is a parent agent task or another agent's
+    // An Agent invocation's input is a parent agent task or another agent's
     // output. An agent wrote it, so it has no Actor.
-    const childAgent = Boolean(run.parentConversationId);
+    const childAgent = Boolean(run.agentInvocationId);
     const turnStartProvenance = childAgent
       ? agentInstructionProvenance
       : instructionProvenanceFor(actor);
@@ -604,126 +592,48 @@ async function executeAgentRunInPrivacyContext(
       skillSandbox,
     });
     // ── Prompt input ─────────────────────────────────────────────────
-    const { contextContentParts, routerBlocks, userContentParts } =
-      buildPromptInput({
-        instruction: run.instruction,
-        history: run.history,
-      });
+    const { contextContentParts, userContentParts } = buildPromptInput({
+      instruction: run.instruction,
+    });
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
-    const handoffEnabled = !isAgentRunFeatureDisabled(
-      policy.disabledFeatures,
-      "handoff",
-    );
-    // One profile with a fixed reasoning level leaves the router no choice.
-    const routeIsFixed =
-      Object.keys(botConfig.profiles).length === 1 &&
-      (profileConfig(botConfig, activeModelProfile).reasoningLevel ??
-        configuredReasoningLevel) !== undefined;
-    const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
-    if (storedTurnRoute) {
-      const replacementOverridesRoute =
-        projection.replacementSeq !== undefined &&
-        projection.replacementSeq > storedTurnRoute.seq &&
-        activeModelProfile !== storedTurnRoute.modelProfile;
-      if (replacementOverridesRoute) {
-        const activeProfileConfig = profileConfig(
-          botConfig,
-          activeModelProfile,
-        );
-        // A replacement committed after routing is authority. This includes
-        // compaction after handoff because handoff does not rewrite the route.
-        turnRoute = {
-          profile: activeModelProfile,
-          reasoningLevel:
-            activeProfileConfig.reasoningLevel ??
-            storedTurnRoute.reasoningLevel,
-          reason: `resumed_handoff:${storedTurnRoute.modelProfile}:${activeModelProfile}`,
-        };
-      } else {
-        turnRoute = {
-          profile: storedTurnRoute.modelProfile,
-          reasoningLevel: storedTurnRoute.reasoningLevel,
-          ...(storedTurnRoute.confidence !== undefined
-            ? { confidence: storedTurnRoute.confidence }
-            : undefined),
-          reason: `persisted:${storedTurnRoute.source}`,
-          source: storedTurnRoute.source,
-        };
-      }
-    } else if (handoffEnabled && !routeIsFixed) {
-      // Route each new turn from the last Turn's profile. The router can keep
-      // unfinished work there or move a new request to another profile.
-      const lastProfile = await loadLastModelProfile({ conversationId });
-      turnRoute = await selectTurnRoute({
-        completeObject,
-        conversationContext: input.conversationContext,
-        context: {
-          threadId: conversationId,
-          channelId: slackChannelId,
-          actorId: slackActor?.userId,
-          runId,
-        },
-        currentProfile:
-          lastProfile && Object.hasOwn(botConfig.profiles, lastProfile)
-            ? lastProfile
-            : botConfig.defaultProfile,
-        currentTurnBlocks: routerBlocks,
-        fastModelId: botConfig.fastModelId,
-        messageText: userInput,
-        profiles: botConfig.profiles,
-      });
-      const routedProfileReasoningLevel = profileConfig(
-        botConfig,
-        turnRoute.profile,
-      ).reasoningLevel;
-      if (configuredReasoningLevel && !routedProfileReasoningLevel) {
-        turnRoute = {
-          ...turnRoute,
-          reasoningLevel: configuredReasoningLevel,
-          reason: `configured:${policy.reasoningLevel ? "agent_config" : "default"}:${turnRoute.reason}`,
-        };
-      }
-    } else {
-      const activeProfileConfig = profileConfig(botConfig, activeModelProfile);
-      const reasoningSource = policy.reasoningLevel
-        ? "agent_config"
-        : activeProfileConfig.reasoningLevel
-          ? "profile"
-          : "default";
-      turnRoute = {
-        profile: activeModelProfile,
-        reasoningLevel:
-          policy.reasoningLevel ??
-          activeProfileConfig.reasoningLevel ??
-          botConfig.reasoningLevel ??
-          "medium",
-        reason: `fixed:${reasoningSource}`,
-        source: "configured",
-      };
-    }
-
-    const routedModelProfile = turnRoute.profile;
-    const routedModelId = modelIdForProfile(botConfig, routedModelProfile);
-    if (!storedTurnRoute) {
-      await recordTurnRoute({
-        conversationId,
-        turnId,
-        modelProfile: routedModelProfile,
-        modelId: routedModelId,
-        ...(turnRoute.costUsd !== undefined
-          ? { costUsd: turnRoute.costUsd }
-          : undefined),
-        reasoningLevel: turnRoute.reasoningLevel,
-        ...(turnRoute.confidence !== undefined
-          ? { confidence: turnRoute.confidence }
-          : undefined),
-        source: turnRoute.source ?? "configured",
-      });
-    }
-    activeModelProfile = routedModelProfile;
-    activeModelId = routedModelId;
+    // ── Pre-agent setup ──────────────────────────────────────────────
+    // Sandbox setup and prompt Turn context such as memory recall do not
+    // read one another's results, so they run at the same time.
+    const runSandbox = await createRunSandbox({
+      availableSkills,
+      configurationValues,
+      currentActor: actor,
+      currentActors: runActors,
+      durability,
+      onSandboxRefChanged: (sandboxRef) => {
+        lastKnownSandboxRef = sandboxRef;
+      },
+      run,
+      skillSandbox,
+      spanContext,
+      state,
+    });
+    closeTools = async () => runSandbox.agentSandbox.close();
+    getSandboxRef = () => runSandbox.agentSandbox.sandboxRef();
+    const repositoryInstructionsPromise = runSandbox.agentSandbox.sandboxRef()
+      ? runSandbox.agentSandbox.captureRepositoryInstructions()
+      : Promise.resolve(undefined);
+    const promptTurnContextPromise = loadPromptTurnContext({
+      context: createPromptHookContext({ actor, run, userInput }),
+      currentActor: actor,
+      existingSessionPiMessages: existingSessionRecord?.piMessages,
+      existingTurnStartMessageIndex:
+        existingSessionRecord?.turnStartMessageIndex,
+      resumedFromSessionRecord,
+      turnId,
+      userContentParts,
+    });
+    preAgentSetup = Promise.allSettled([
+      repositoryInstructionsPromise,
+      promptTurnContextPromise,
+    ]);
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
@@ -742,65 +652,8 @@ async function executeAgentRunInPrivacyContext(
       );
       return hasAgentTurnUsage(usage) ? usage : undefined;
     };
-    // baseInstructions is filled after prompt assembly; applyHandoff closes over it.
+    // Prompt assembly fills this; compaction updates close over it.
     let baseInstructions = "";
-    let pendingHandoff: PendingHandoff | undefined;
-    const handoffMetadata = {
-      threadId: conversationId,
-      channelId: slackChannelId,
-      actorId: slackActor?.userId,
-      runId,
-    };
-    const scheduleHandoff = async (args: {
-      profile: ModelProfile;
-      runtimeContextSourceMessages?: PiMessage[];
-      signal?: AbortSignal;
-      sourceMessages: PiMessage[];
-      triggeringToolCallId?: string;
-    }) => {
-      const pending = await commitHandoff({
-        activeModelProfile,
-        beforeMessageCount: runResume.beforeMessageCount,
-        conversationContext: input.conversationContext,
-        conversationId,
-        metadata: handoffMetadata,
-        onStatus: observers.onStatus,
-        profile: args.profile,
-        runtimeContextSourceMessages: args.runtimeContextSourceMessages,
-        signal: args.signal,
-        sourceMessages: args.sourceMessages,
-        triggeringToolCallId: args.triggeringToolCallId,
-        turnRoute: turnRoute!,
-      });
-      if (!pending) {
-        return;
-      }
-      priorPhaseUsage = addAgentTurnUsage(priorPhaseUsage, pending.phaseUsage);
-      pendingHandoff = pending;
-      activeModelProfile = pending.modelProfile;
-      activeModelId = pending.modelId;
-      turnRoute = pending.turnRoute;
-    };
-    const handoffExecute = async (
-      profile: ModelProfile,
-      options: { signal?: AbortSignal; toolCallId: string },
-    ) =>
-      await scheduleHandoff({
-        profile,
-        signal: options.signal,
-        sourceMessages: [...agent!.state.messages],
-        triggeringToolCallId: options.toolCallId,
-      });
-    const requestHandoff = handoffControl({
-      activeProfile: activeModelProfile,
-      enabled: handoffEnabled,
-      execute: handoffExecute,
-    });
-    const spawnAgentProfiles = {
-      activeProfile: () => activeModelProfile,
-      defaultProfile: botConfig.defaultProfile,
-      profiles: botConfig.profiles,
-    };
 
     setTags({
       ...runLogContext,
@@ -812,7 +665,6 @@ async function executeAgentRunInPrivacyContext(
       abortAgent: () => agent?.abort(),
       activeSkills,
       currentActor: actor,
-      currentActors: runActors,
       currentAgentMessages,
       currentTurnMessages,
       currentUserIntent,
@@ -829,15 +681,11 @@ async function executeAgentRunInPrivacyContext(
         pendingPiHookError = error;
         agent?.abort();
       },
-      onSandboxRefChanged: (sandboxRef) => {
-        lastKnownSandboxRef = sandboxRef;
-      },
       preAgentPromptMessages,
       recordConnectedMcpProvider,
-      requestHandoff,
-      spawnAgentProfiles,
       resume: runResume,
       run,
+      sandbox: runSandbox,
       skillSandbox,
       spanContext,
       state,
@@ -849,10 +697,11 @@ async function executeAgentRunInPrivacyContext(
     });
     mcpToolManager = wiring.mcpToolManager;
     closeTools = wiring.close;
-    getSandboxRef = () => wiring.getSandboxRef();
-    const initialRepositoryInstructions = wiring.getSandboxRef()
-      ? await wiring.captureRepositoryInstructions()
-      : undefined;
+    const [initialRepositoryInstructions, promptTurnContext] =
+      await Promise.all([
+        repositoryInstructionsPromise,
+        promptTurnContextPromise,
+      ]);
     const recordAgentsTransition = async (
       instructions: typeof initialRepositoryInstructions,
     ) => {
@@ -872,25 +721,6 @@ async function executeAgentRunInPrivacyContext(
       await recordAgentsTransition(initialRepositoryInstructions);
     }
     const getPendingAuthPause = wiring.getPendingAuthPause;
-    const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
-      if (!pendingHandoff) {
-        return undefined;
-      }
-      const pending = pendingHandoff;
-      pendingHandoff = undefined;
-      return applyHandoff({
-        agent: agent!,
-        baseInstructions,
-        pending,
-        resume: runResume,
-        tools: toolsForHandoffProfile({
-          activeProfile: pending.modelProfile,
-          agentTools: wiring.agentTools,
-          enabled: handoffEnabled,
-          execute: handoffExecute,
-        }),
-      });
-    };
     // ── Prompt context ───────────────────────────────────────────────
     const {
       baseInstructions: assembledBaseInstructions,
@@ -927,10 +757,9 @@ async function executeAgentRunInPrivacyContext(
       resumedFromSessionRecord,
       run,
       spanContext,
-      turnId,
       disabledTools: wiring.disabledTools,
       toolGuidance: wiring.toolGuidance,
-      toolRuntimeContext: wiring.toolRuntimeContext,
+      turnContext: promptTurnContext,
       userContentParts,
     });
     baseInstructions = assembledBaseInstructions;
@@ -953,6 +782,36 @@ async function executeAgentRunInPrivacyContext(
       shouldPromptAgent,
     });
     runResume.setTurnContexts(turnContexts);
+    // The same stream as the agent loop, so the summary request reaches the
+    // provider like an agent call. Only its span gets the prompt name.
+    const summaryStreamFn = createTracedStreamFn({
+      conversationPrivacy,
+      promptName: CONTEXT_COMPACTION_PROMPT_NAME,
+      ...(streamFn ? { base: streamFn } : undefined),
+    });
+    // The replacement waiting for the provider-reported input of the next
+    // model request.
+    let replacementAwaitingInput:
+      | { messageCount: number; mode: CompactionMode }
+      | undefined;
+    /** Log the first provider-reported input after a replacement. */
+    const logFirstInputAfterReplacement = (): void => {
+      if (!replacementAwaitingInput) {
+        return;
+      }
+      const inputSize = lastRequestInputSize(
+        agent!.state.messages.slice(replacementAwaitingInput.messageCount),
+      );
+      if (!inputSize) {
+        return;
+      }
+      logInputAfterCompaction({
+        inputSize,
+        mode: replacementAwaitingInput.mode,
+        threshold: getAgentContextCompactionTriggerTokens(activeModelId),
+      });
+      replacementAwaitingInput = undefined;
+    };
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -963,23 +822,22 @@ async function executeAgentRunInPrivacyContext(
       }>,
       clearSteeringQueueOnCommit = false,
       pairPendingRuntimeContext = false,
+      mode: "blocking" | "active" = "active",
     ): Promise<AgentLoopTurnUpdate | undefined> => {
-      const compaction = await compactActiveContextIfNeeded(
+      // A ready background summary replaces history without a model call.
+      const compaction = await compactWithPreparedSummary(
         {
-          conversationContext: input.conversationContext,
           conversationId,
-          metadata: {
-            threadId: conversationId,
-            channelId: slackChannelId,
-            actorId: slackActor?.userId,
-            runId,
-          },
           modelId: activeModelId,
-          modelProfile: activeModelProfile,
           onCompactionStart: () =>
             observers.onStatus?.({ text: "Compacting context" }),
           pendingMessages,
+          mode,
           piMessages: messages,
+          requestOverheadTokens: estimateRequestOverheadTokens(
+            agent!.state.systemPrompt,
+            agent!.state.tools,
+          ),
           ...(pairPendingRuntimeContext && pendingMessages
             ? {
                 runtimeContextMessages: [
@@ -991,9 +849,15 @@ async function executeAgentRunInPrivacyContext(
           signal: hookSignal,
           turnStartMessageIndex: runResume.turnStartMessageIndex,
         },
-        {
-          completeText: (args) => completeText(args),
-        },
+        async (summaryMessages, summarySignal) =>
+          await requestContextSummary(
+            await buildAgentModelRequest(
+              agent!,
+              summaryMessages,
+              summarySignal,
+            ),
+            summaryStreamFn,
+          ),
       );
       if (!compaction.compacted || !compaction.piMessages) {
         return undefined;
@@ -1015,6 +879,7 @@ async function executeAgentRunInPrivacyContext(
         throw error;
       }
       agent!.state.messages = replacement;
+      replacementAwaitingInput = { messageCount: replacement.length, mode };
       runResume.setBeforeMessageCount(replacement.length);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
@@ -1028,6 +893,19 @@ async function executeAgentRunInPrivacyContext(
         },
       };
     };
+    /**
+     * Request a background summary when the model call that just ended was at
+     * or above the mark. It runs after each model call, so a long Turn gets a
+     * summary before it reaches the compaction threshold.
+     */
+    const requestBackgroundCompactionAfterModelCall = async (): Promise<void> =>
+      await requestBackgroundCompaction({
+        agent: agent!,
+        conversationId,
+        conversationPrivacy,
+        modelId: activeModelId,
+        queue: run.environment?.backgroundCompactionQueue,
+      });
     // ── Agent execution ──────────────────────────────────────────────
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
@@ -1041,6 +919,7 @@ async function executeAgentRunInPrivacyContext(
         return;
       }
       try {
+        await requireConversationLease("reply");
         await delivery(message);
         acceptedToolFreeAssistant = true;
       } catch (error) {
@@ -1121,12 +1000,14 @@ async function executeAgentRunInPrivacyContext(
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
+      // One AI Gateway session per Conversation, not a prompt fingerprint.
+      sessionId: conversationId,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
         ...(streamFn ? { base: streamFn } : undefined),
       }),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage, toolCall }) => {
+      beforeToolCall: async ({ assistantMessage }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
@@ -1165,13 +1046,7 @@ async function executeAgentRunInPrivacyContext(
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
-          return {
-            block: true,
-            reason: disabledToolMessage(
-              toolCall.name,
-              TURN_LIMIT_DISABLED_REASON,
-            ),
-          };
+          return { block: true, reason: TURN_LIMIT_WRAP_UP_MESSAGE };
         }
         // The tool-call total only grows, so a stop under it came from spend.
         const limitError =
@@ -1217,37 +1092,66 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
-          const handoffUpdate = applyPendingHandoff();
+          // A model call can complete before an abort, such as an auth
+          // pause, so log its input first. An aborted call reports none.
+          logFirstInputAfterReplacement();
           // Pi runs this hook after an abort, such as an auth pause, but no
           // model call follows. Sandbox work here fails on the aborted signal
           // and hides why the run stopped. Steering stays queued.
           if (hookSignal?.aborted) {
-            return handoffUpdate;
+            return undefined;
           }
-          // Pi appends steering after this hook returns, so add AGENTS.md
-          // context first to commit the same message order.
-          const contextUpdate = await repositoryInstructionsContext.applyUpdate(
-            handoffUpdate,
-            nextTurn.context,
+          // Pi waits for this hook before each later model call. The span
+          // shows that wait between `gen_ai.chat` spans.
+          const stepUpdate = await withSpan(
+            "agent.step.prepare",
+            "agent.step.prepare",
+            {},
+            async () => {
+              // Pi appends steering after this hook returns, so add AGENTS.md
+              // context first to commit the same message order.
+              const contextUpdate =
+                await repositoryInstructionsContext.applyUpdate(
+                  nextTurn.context,
+                );
+              const pendingMessages = await drainSteeringMessages();
+              // Pi also runs this hook after the final reply. Another model
+              // call follows only after tool results or steering. Compaction
+              // here would drop the delivered reply and start a retry. A
+              // background request does not change history, so it still runs.
+              if (
+                nextTurn.toolResults.length === 0 &&
+                pendingMessages.length === 0
+              ) {
+                await requestBackgroundCompactionAfterModelCall();
+                return contextUpdate;
+              }
+              const capacityUpdate = await applyActiveContextCompaction(
+                contextUpdate
+                  ? currentAgentMessages()
+                  : (nextTurn.context.messages as PiMessage[]),
+                hookSignal,
+                pendingMessages,
+                true,
+              );
+              // After a replacement, the usage of the last model call counts
+              // the old history. The next model call reports the new size.
+              if (!capacityUpdate) {
+                await requestBackgroundCompactionAfterModelCall();
+              }
+              return capacityUpdate
+                ? { ...contextUpdate, ...capacityUpdate }
+                : contextUpdate;
+            },
           );
-          const pendingMessages = await drainSteeringMessages();
-          const capacityUpdate = await applyActiveContextCompaction(
-            contextUpdate
-              ? currentAgentMessages()
-              : (nextTurn.context.messages as PiMessage[]),
-            hookSignal,
-            pendingMessages,
-            true,
-          );
+          // A yield is normal control flow, so it stays out of the span.
           const yieldError = runResume.prepareYieldIfDue(
             currentAgentMessages(),
           );
           if (yieldError) {
             throw yieldError;
           }
-          return capacityUpdate
-            ? { ...contextUpdate, ...capacityUpdate }
-            : contextUpdate;
+          return stepUpdate;
         } catch (error) {
           pendingPiHookError ??=
             error instanceof Error ? error : new Error(String(error));
@@ -1257,7 +1161,7 @@ async function executeAgentRunInPrivacyContext(
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(activeModelId),
-        thinkingLevel: toPiReasoningLevel(turnRoute.reasoningLevel),
+        thinkingLevel: toPiReasoningLevel(reasoningLevel),
         tools: wiring.agentTools,
       },
     });
@@ -1267,25 +1171,23 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
-        if (pendingHandoff) {
-          return;
-        }
-        return runResume
-          .persistSafeBoundary([...agent!.state.messages])
-          .then(() => undefined);
+        return requireConversationLease("save")
+          .then(() => runResume.persistSafeBoundary([...agent!.state.messages]))
+          .then(
+            () => undefined,
+            (error: unknown) => {
+              // Pi turns a listener error into a failed model message, so
+              // keep the error for the step to rethrow.
+              pendingPiHookError ??=
+                error instanceof Error ? error : new Error(String(error));
+              throw error;
+            },
+          );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
         if (
           event.message.stopReason === "error" ||
           event.message.stopReason === "aborted"
-        ) {
-          return;
-        }
-        if (
-          event.message.content.some(
-            (part) =>
-              part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
-          )
         ) {
           return;
         }
@@ -1361,7 +1263,7 @@ async function executeAgentRunInPrivacyContext(
             agent!.state.messages = [...agent!.state.messages, contextMessage];
           }
           if (!shouldPromptAgent) {
-            await repositoryInstructionsContext.applyUpdate(undefined, {
+            await repositoryInstructionsContext.applyUpdate({
               messages: agent!.state.messages,
               systemPrompt: agent!.state.systemPrompt,
               tools: agent!.state.tools,
@@ -1423,12 +1325,7 @@ async function executeAgentRunInPrivacyContext(
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "invoke_agent",
                   "gen_ai.request.model": activeModelId,
-                  ...(turnRoute
-                    ? {
-                        "gen_ai.request.reasoning.level":
-                          turnRoute.reasoningLevel,
-                      }
-                    : undefined),
+                  "gen_ai.request.reasoning.level": reasoningLevel,
                   "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
                   "app.ai.turn_deadline_remaining_ms": Math.max(
                     0,
@@ -1476,32 +1373,6 @@ async function executeAgentRunInPrivacyContext(
           };
 
           let run: Promise<unknown>;
-          let handoffApplied = false;
-          const requestedProfile =
-            activeModelProfile === botConfig.defaultProfile
-              ? turnRoute!.profile
-              : undefined;
-          if (
-            requestedProfile &&
-            requestedProfile !== botConfig.defaultProfile
-          ) {
-            const handoffAbortController = new AbortController();
-            await runAgentStep(
-              scheduleHandoff({
-                profile: requestedProfile,
-                runtimeContextSourceMessages: shouldPromptAgent
-                  ? [
-                      ...(contextMessage ? [contextMessage] : []),
-                      freshPromptMessage,
-                    ]
-                  : undefined,
-                signal: handoffAbortController.signal,
-                sourceMessages: [...agent!.state.messages],
-              }),
-              () => handoffAbortController.abort(),
-            );
-            handoffApplied = Boolean(applyPendingHandoff());
-          }
           const compactionAbortController = new AbortController();
           const capacityUpdate = await runAgentStep(
             applyActiveContextCompaction(
@@ -1517,15 +1388,11 @@ async function executeAgentRunInPrivacyContext(
                 : undefined,
               false,
               Boolean(contextMessage),
+              // The person waits on this one, before the first model request.
+              "blocking",
             ),
             () => compactionAbortController.abort(),
           );
-          if (shouldPromptAgent && handoffApplied && !capacityUpdate) {
-            await runResume.requireDurableInputCheckpoint([
-              ...agent!.state.messages,
-              freshPromptMessage,
-            ]);
-          }
           run =
             shouldPromptAgent && !capacityUpdate
               ? agent!.prompt(freshPromptMessage)
@@ -1669,14 +1536,7 @@ async function executeAgentRunInPrivacyContext(
         {
           "gen_ai.operation.name": "invoke_agent",
           "gen_ai.agent.model": activeModelId,
-          "gen_ai.agent.model_profile": activeModelProfile,
-          "gen_ai.agent.reasoning.level": turnRoute.reasoningLevel,
-          "gen_ai.agent.reasoning.level_reason": turnRoute.reason,
-          ...(turnRoute.confidence !== undefined
-            ? {
-                "gen_ai.agent.reasoning.level_confidence": turnRoute.confidence,
-              }
-            : undefined),
+          "gen_ai.agent.reasoning.level": reasoningLevel,
           "gen_ai.output.type": "text",
           ...(conversationPrivacy
             ? { "app.conversation.privacy": conversationPrivacy }
@@ -1699,6 +1559,8 @@ async function executeAgentRunInPrivacyContext(
       unsubscribe();
     }
 
+    // The caller saves the completed Turn after this returns.
+    await requireConversationLease("save");
     await recordActiveMcpProviders();
     // Generation completing is not durable completion: the session record
     // stays at its latest running safe boundary here. The destination owns the
@@ -1716,7 +1578,7 @@ async function executeAgentRunInPrivacyContext(
       generatedFileCount: generatedFiles.length,
       shouldTrace,
       usage: turnUsage,
-      executionProfile: turnRoute,
+      reasoningLevel,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
       requireAutomationResult,
@@ -1736,6 +1598,10 @@ async function executeAgentRunInPrivacyContext(
       error instanceof AssistantMessageDeliveryError
         ? error.originalError
         : error;
+    // Another worker holds the Lease. Do not complete or park the Turn.
+    if (isTurnInputCommitLostError(runError)) {
+      throw runError;
+    }
     if (
       runError instanceof AuthPausePersistenceError ||
       isTurnExecutionLimitExceededError(runError)
@@ -1753,7 +1619,9 @@ async function executeAgentRunInPrivacyContext(
     // Soft yield after a pure assistant tail is already a no-op (not
     // continuable). Soft yield after delivery + steering still parks so the
     // steered work can run on the next slice.
-    if (resume?.timedOut && acceptedToolFreeAssistant && agent && turnRoute) {
+    if (resume?.timedOut && acceptedToolFreeAssistant && agent) {
+      // The caller saves the completed Turn after this returns.
+      await requireConversationLease("save");
       await recordActiveMcpProviders();
       const piMessages = [...agent.state.messages];
       return {
@@ -1768,7 +1636,7 @@ async function executeAgentRunInPrivacyContext(
           generatedFileCount: generatedFiles.length,
           shouldTrace,
           usage: turnUsage,
-          executionProfile: turnRoute,
+          reasoningLevel,
           assistantUserName: botConfig.userName,
           modelId: activeModelId,
         }),
@@ -1788,9 +1656,6 @@ async function executeAgentRunInPrivacyContext(
       throw error.originalError;
     }
 
-    if (error instanceof ModelProfileNotConfiguredError) {
-      throw error;
-    }
     if (isProviderRetryError(error)) {
       throw error;
     }
@@ -1823,11 +1688,7 @@ async function executeAgentRunInPrivacyContext(
           outcome: "provider_error",
           modelId: activeModelId,
           assistantMessageCount: 0,
-          ...(turnRoute
-            ? {
-                reasoningLevel: turnRoute.reasoningLevel,
-              }
-            : undefined),
+          reasoningLevel,
           toolCalls: [],
           toolResultCount: 0,
           toolErrorCount: 0,
@@ -1839,6 +1700,7 @@ async function executeAgentRunInPrivacyContext(
       },
     };
   } finally {
+    await preAgentSetup;
     await closeTools?.();
   }
 }

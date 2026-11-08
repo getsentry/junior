@@ -1,8 +1,9 @@
 import type { Attachment } from "chat";
 import type { MessageAttachment } from "@/chat/attachments/input";
-import { and, eq, inArray, isNull } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/db/db";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
+import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
 
 /** Save the vision summary for a stored Slack attachment. */
 export async function recordSlackAttachment(args: {
@@ -11,8 +12,9 @@ export async function recordSlackAttachment(args: {
   db: JuniorSqlDatabase;
   visionSummary: string;
 }): Promise<void> {
-  await args.db
-    .db()
+  const db = args.db.db();
+  await db
+    .with(conversationDetailTouch(db, [args.conversationId]))
     .update(juniorAttachments)
     .set({ visionSummary: args.visionSummary })
     .where(
@@ -66,6 +68,29 @@ export async function matchSlackAttachments(args: {
         eq(juniorAttachments.conversationId, args.conversationId),
         eq(juniorAttachments.provider, "slack"),
         inArray(juniorAttachments.providerId, args.providerIds),
+        isNull(juniorAttachments.deleteRequestedAt),
+      ),
+    );
+}
+
+/**
+ * Fingerprint the live Slack attachments that `matchSlackAttachments` can
+ * return for a Conversation. It changes when one is stored or deleted, so a
+ * reader can tell that stored messages may now show other files.
+ */
+export function slackAttachmentsVersionQuery(
+  db: JuniorDatabase,
+  conversationId: string,
+) {
+  return db
+    .select({
+      version: sql<string>`coalesce(md5(string_agg(${juniorAttachments.id}, ',' order by ${juniorAttachments.id})), '')`,
+    })
+    .from(juniorAttachments)
+    .where(
+      and(
+        eq(juniorAttachments.conversationId, conversationId),
+        eq(juniorAttachments.provider, "slack"),
         isNull(juniorAttachments.deleteRequestedAt),
       ),
     );

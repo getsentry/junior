@@ -1,4 +1,6 @@
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
+import { notificationsTaskRegistration } from "@/chat/notifications/task";
+import { readWebPushConfig } from "@/chat/notifications/web-push";
 import { briefsTaskRegistration } from "./task";
 
 type BriefsConfig = Readonly<{ enabled?: boolean }>;
@@ -17,7 +19,10 @@ export function isBriefsEnabled(): boolean {
   return configuredBriefs.enabled === true;
 }
 
-/** Return enabled core task registrations. */
+/** Return enabled core task registrations: Briefs and reply notifications. */
 export function coreTaskRegistrations(): PluginRegistration[] {
-  return isBriefsEnabled() ? [briefsTaskRegistration] : [];
+  return [
+    ...(isBriefsEnabled() ? [briefsTaskRegistration] : []),
+    ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
+  ];
 }

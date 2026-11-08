@@ -58,6 +58,10 @@ describe("Watch Event people", () => {
             resourceTypes: [
               { type: "job", supportedEvents: ["job.failed", "job.succeeded"] },
             ],
+            events: {
+              "job.failed": { reach: "resource" },
+              "job.succeeded": { reach: "resource" },
+            },
           },
           hooks: {
             tools(ctx) {
@@ -103,7 +107,7 @@ describe("Watch Event people", () => {
         identifier: "job-1",
         label: "Demo job 1",
         namespace: "demo",
-        supportedEvents: ["job.failed", "job.succeeded"],
+        supported_events: ["job.failed", "job.succeeded"],
         type: "job",
       },
     });
@@ -137,13 +141,17 @@ describe("Watch Event people", () => {
     const [succeeded, failed] = (work?.messages ?? []).map(
       (message) => message.input.text,
     );
-    expect(succeeded).toContain("People involved: <@U123>, <@U456>\n");
+    // The doer is in the people involved, so they are listed once, with the
+    // handle that the Event uses for them.
     expect(succeeded).toContain(
-      'Done by: <@U123>. This person did what this Event describes. The Event calls them "REQUESTER". That is the same person. They are also in People involved.',
+      '<people><@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456></people>\n',
     );
+    expect(succeeded).not.toContain("<done-by>");
     expect(succeeded).toContain("Tell the people involved.");
     // Watch guidance applies only to its own event type.
-    expect(failed).toContain("People involved: <@U123>, <@U456>\n");
+    expect(failed).toContain(
+      '<people><@U123> (did what this Event describes; called "REQUESTER" in the Event data), <@U456></people>\n',
+    );
     expect(failed).not.toContain("Tell the people involved.");
   });
 });

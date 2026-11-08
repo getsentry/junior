@@ -12,15 +12,17 @@ const {
   extractWebFetchResponseMock: vi.fn(),
 }));
 
-vi.mock("@/chat/tools/web/network", () => ({
+vi.mock("@/chat/tools/web/network", async (importOriginal) => ({
   assertPublicUrl: assertPublicUrlMock,
   fetchTextWithRedirects: fetchTextWithRedirectsMock,
+  readResponseBytes: (
+    await importOriginal<typeof import("@/chat/tools/web/network")>()
+  ).readResponseBytes,
   withTimeout: withTimeoutMock,
 }));
 
 vi.mock("@/chat/tools/web/fetch-content", () => ({
   extractWebFetchResponse: extractWebFetchResponseMock,
-  MAX_FETCH_CHARS: 120000,
 }));
 
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
@@ -45,18 +47,20 @@ describe("web fetch tool", () => {
     extractWebFetchResponseMock.mockResolvedValue({
       url: safeUrl.toString(),
       content: "hello",
+      truncated: false,
     });
 
     const tool = createWebFetchTool({});
     const execute = tool.execute!;
     const result = await execute(
-      { url: "https://example.com/article", max_chars: 1200 },
+      { url: "https://example.com/article" },
       {} as never,
     );
 
     expect(result).toEqual({
       url: safeUrl.toString(),
       content: "hello",
+      truncated: false,
     });
     expect(assertPublicUrlMock).toHaveBeenCalledTimes(1);
     expect(fetchTextWithRedirectsMock).toHaveBeenCalledTimes(1);
@@ -64,7 +68,6 @@ describe("web fetch tool", () => {
     expect(extractWebFetchResponseMock).toHaveBeenCalledWith(
       safeUrl,
       expect.any(Response),
-      1200,
     );
   });
 

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -8,6 +8,7 @@ import {
 } from "@/api/schema/conversation";
 import {
   briefCodeChangeSchema,
+  briefResourceLabel,
   parseBriefInput,
   type BriefCodeChange,
   type BriefInput,
@@ -130,7 +131,7 @@ export function briefInputFromSnapshot(
       annotation.url !== null && Date.parse(annotation.createdAt) <= boundaryMs
         ? [
             {
-              label: annotation.label,
+              label: briefResourceLabel(annotation),
               url: annotation.url,
               ...(annotation.status
                 ? { status: annotation.status }
@@ -157,7 +158,9 @@ export function completedTurnIndexesFromSnapshot(
     .filter(
       (event) =>
         event.data.type === "turn_lifecycle" &&
-        (event.data.state === "succeeded" || event.data.state === "no_reply"),
+        (event.data.state === "succeeded" ||
+          event.data.state === "no_reply" ||
+          event.data.state === "blocked"),
     )
     .map((event) => event.seq);
 }

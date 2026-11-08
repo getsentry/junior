@@ -129,7 +129,7 @@ export function googleGrantForEgress(ctx: EgressHookContext): PluginGrant {
     // Sandbox commands carry no operation. Deny them so the account can only
     // be used through tools that apply Junior's disclosure rules.
     throw new EgressPolicyDenied(
-      "Google APIs are only available through Junior's Google tools.",
+      "Google APIs are only available through the Google tools.",
     );
   }
   const url = new URL(ctx.request.url);
@@ -145,7 +145,7 @@ export function googleGrantForEgress(ctx: EgressHookContext): PluginGrant {
   return {
     access: rule.access,
     name: GRANT_NAME,
-    reason: `Use Junior's Google account for ${operation}`,
+    reason: `Use the connected Google account for ${operation}`,
   };
 }
 
@@ -153,7 +153,7 @@ function unavailable(message: string): PluginCredentialResult {
   return { type: "unavailable", message };
 }
 
-const NOT_CONNECTED_MESSAGE = `Junior's Google account is not connected. A Junior admin must connect it on the dashboard Admin page or with \`junior google connect\`.`;
+const NOT_CONNECTED_MESSAGE = `Your own Google account is not connected. It is not the requester's account, and the requester cannot connect it. An admin must connect it on the dashboard Admin page or with \`junior google connect\`.`;
 
 /** Mint a short-lived access token for Junior's Google account. */
 export async function issueGoogleCredential(
@@ -184,9 +184,7 @@ export async function issueGoogleCredential(
     ctx.log.warn("google.account.token_rejected", {
       "app.google.account": config.accountEmail,
     });
-    return unavailable(
-      `Google revoked Junior's access. ${NOT_CONNECTED_MESSAGE}`,
-    );
+    return unavailable(`Google revoked access. ${NOT_CONNECTED_MESSAGE}`);
   }
   return {
     type: "lease",

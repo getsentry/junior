@@ -30,7 +30,12 @@ describe("GitHub deployment events", () => {
         occurredAtMs: Date.parse("2026-07-28T05:15:00.000Z"),
         identifier,
         trustedSummary: createdSummary,
-        data: { environment: "production" },
+        data: {
+          repo: "getsentry/junior-prod",
+          commitSha: "c610b5d6a88c9da5d65627a1cdb3829b05c14f75",
+          deploymentId: 5_634_510_476,
+          environment: "production",
+        },
       })),
     );
 
@@ -42,6 +47,9 @@ describe("GitHub deployment events", () => {
       occurredAtMs: Date.parse("2026-07-28T05:17:14.000Z"),
       trustedSummary: failedSummary,
       data: {
+        repo: "getsentry/junior-prod",
+        commitSha: "c610b5d6a88c9da5d65627a1cdb3829b05c14f75",
+        deploymentId: 5_634_510_476,
         environment: "production",
         workflowId: 161_335,
         workflowPath: ".github/workflows/deploy.yml",

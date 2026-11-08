@@ -29,6 +29,8 @@ function localContext() {
 
 function testEmbedder() {
   return {
+    model: "test-model",
+    provider: "test-provider",
     async embedTexts(input: { texts: string[] }) {
       return {
         dimensions: 1536,
@@ -153,7 +155,7 @@ describe("memory operational report", () => {
       });
       await store.createMemory({
         content: "Use compact pull request summaries.",
-        idempotencyKey: "report-private",
+        idempotencyKey: "report-user",
         kind: "preference",
       });
       await store.createConversationMemory({
@@ -192,16 +194,16 @@ describe("memory operational report", () => {
         { label: "active memories", tone: "good", value: "2" },
         { label: "extraction cost · 30d", value: "$0.0042" },
         { label: "created · 30d", value: "3" },
-        { label: "private", value: "2" },
-        { label: "public", value: "0" },
+        { label: "private", value: "0" },
+        { label: "public", value: "2" },
         { label: "embedding coverage", tone: "good", value: "100%" },
       ]);
       expect(report.widgets?.[1]?.categories.at(-1)).toEqual({
         id: "2026-07-28",
         label: "2026-07-28",
         values: {
-          private: 3,
-          public: 0,
+          private: 1,
+          public: 2,
         },
       });
       expect(report.widgets?.[0]?.categories.at(-1)).toEqual({

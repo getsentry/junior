@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
@@ -104,9 +104,7 @@ export function createWebSearchTool(
       // createGatewayProvider() alone prefers AI_GATEWAY_API_KEY and would keep
       // project attribution as unknown while the key remains set.
       const credential = await resolveGatewayCredential();
-      const provider = createGatewayProvider(
-        credential ? { apiKey: credential.token } : {},
-      );
+      const provider = createGatewayProvider({ apiKey: credential.token });
       const response = await withSpan(
         `chat ${modelId}`,
         "gen_ai.chat",
@@ -141,7 +139,7 @@ export function createWebSearchTool(
           "gen_ai.request.model": modelId,
           "server.address": GEN_AI_SERVER_ADDRESS,
           "server.port": GEN_AI_SERVER_PORT,
-          "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
+          "gen_ai.provider.auth_mode": credential.mode,
         },
       );
 

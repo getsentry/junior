@@ -1,12 +1,20 @@
-import { index, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+} from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { juniorUsers } from "./users";
 import { timestamptz } from "./timestamps";
 
 /**
  * Materialized personal-feed membership for one linked user on one root
- * conversation. Rows come from the root actor and from durable human user
- * message authors.
+ * conversation. Rows come from the root actor and from the authors of Turn
+ * input messages. Thread context authors do not get a row.
  */
 export const juniorConversationParticipants = pgTable(
   "junior_conversation_participants",
@@ -18,7 +26,21 @@ export const juniorConversationParticipants = pgTable(
       .notNull()
       .references(() => juniorConversations.conversationId),
     lastMessageAt: timestamptz("last_message_at").notNull(),
-    archivedAt: timestamptz("archived_at"),
+    // Archive moved to `junior_conversations.archived_at`. Runtime code must
+    // not read or write this column. A later migration drops it.
+    legacyArchivedAt: timestamptz("archived_at"),
+    pinnedAt: timestamptz("pinned_at"),
+    /**
+     * The viewer's place for this pin in the Pinned section, from a drag
+     * reorder. Null until the first reorder, and cleared on unpin and
+     * re-pin. Null pins sort first, by activity.
+     */
+    pinPosition: integer("pin_position"),
+    /**
+     * Per-conversation auto-archive choice for this user. Null uses the
+     * user's `autoArchiveDefault`.
+     */
+    autoArchive: boolean("auto_archive"),
   },
   (table) => [
     primaryKey({
@@ -32,5 +54,10 @@ export const juniorConversationParticipants = pgTable(
     index("junior_conversation_participants_root_idx").on(
       table.rootConversationId,
     ),
+    // The auto-archive sweep finds users who turned it on for one
+    // conversation without reading every participant row.
+    index("junior_conversation_participants_auto_archive_idx")
+      .on(table.userId)
+      .where(sql`${table.autoArchive}`),
   ],
 );

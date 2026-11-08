@@ -1,0 +1,21 @@
+id: no-slack-thread-from-conversation-id
+language: TypeScript
+severity: error
+message: Do not parse a Conversation id to find a Slack channel or thread. A Conversation that owns a Slack thread, such as an Automation run, has an id that is not a Slack thread id. Get the place to post from resolveSlackReplyTarget in packages/junior/src/chat/slack/reply.ts. Only the read-only modules in this rule's ignores may call parseSlackThreadId.
+files:
+  - packages/junior/src/**/*.ts
+ignores:
+  # Owner of the Slack thread id format.
+  - packages/junior/src/chat/slack/context.ts
+  # Read the Slack-native Thread.id of an inbound message, not a Conversation id.
+  - packages/junior/src/chat/runtime/thread-context.ts
+  - packages/junior/src/chat/ingress/slack-webhook.ts
+  - packages/junior/src/chat/slack/conversation-context.ts
+  - packages/junior/src/chat/task-execution/slack-work.ts
+  # Read-only labels and links; they do not post.
+  - packages/junior/src/api/conversations/projection.ts
+  - packages/junior/src/chat/slack/tools/channel-list-messages.ts
+  - packages/junior/src/chat/slack/tools/conversation-brief-search.ts
+  - packages/junior/src/chat/slack/tools/conversation-message-search.ts
+rule:
+  pattern: parseSlackThreadId($$$)

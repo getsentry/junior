@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export const codeChangeStateSchema = z.enum(["closed", "merged", "open"]);
 export type CodeChangeState = z.output<typeof codeChangeStateSchema>;

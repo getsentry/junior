@@ -1,6 +1,7 @@
 import { slackEventsApiEnvelope } from "./slack/factories/events";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Lock, StateAdapter } from "chat";
+import { vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createFauxCore,
@@ -9,8 +10,12 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { createConversationWork } from "@/chat/app/conversation-work";
+import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
+import type { AgentRun } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -21,8 +26,10 @@ import type {
 } from "@/chat/task-execution/queue";
 import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
+  CONVERSATION_WORK_LEASE_TTL_MS,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
@@ -152,6 +159,19 @@ export class ConversationWorkQueueTestAdapter implements ConversationWorkQueue {
       throw new Error("Expected queued conversation work payload");
     }
     return entry.message;
+  }
+
+  /** Deliver the next payload for one Conversation and keep the others queued. */
+  takeMessageFor(conversationId: string): ConversationQueueMessage {
+    const index = this.#queuedMessages.findIndex(
+      (entry) => entry.message.conversationId === conversationId,
+    );
+    if (index === -1) {
+      throw new Error(
+        `Expected queued conversation work for ${conversationId}`,
+      );
+    }
+    return this.#queuedMessages.splice(index, 1)[0]!.message;
   }
 
   /** Honor queue delays when running evals against the real clock. */
@@ -436,6 +456,130 @@ export type ConversationWorkSlackHarness = {
 };
 
 /**
+ * Compose production conversation work once for one test. `process` runs one
+ * queue wake through the production worker, as the Vercel queue callback does.
+ * Pass `services` only to fake a model boundary that the work does not own.
+ */
+export async function createConversationWorkHarness(
+  agentRunner: AgentRunner,
+  options: { services?: JuniorRuntimeServiceOverrides } = {},
+) {
+  const state = getStateAdapter();
+  await state.connect();
+  const queue = createConversationWorkQueueTestAdapter();
+  const adapter = createSlackAdapterFixture();
+  const conversationStore = getConversationStore();
+  let killNextRun: ((run: AgentRun) => Promise<void>) | undefined;
+  const work = createConversationWork({
+    agentRunner: {
+      run: async (run) => {
+        const kill = killNextRun;
+        if (!kill) return await agentRunner.run(run);
+        killNextRun = undefined;
+        await kill(run);
+        // A dead process never returns.
+        return await new Promise<never>(() => {});
+      },
+    },
+    conversationStore,
+    getSlackAdapter: () => adapter,
+    queue,
+    ...(options.services ? { services: options.services } : undefined),
+    state,
+  });
+  const process = async (
+    message: ConversationQueueMessage,
+    processOptions: { softYieldAfterMs?: number } = {},
+  ) =>
+    await processConversationQueueMessage(message, {
+      conversationStore,
+      queue,
+      run: work.run,
+      state,
+      ...processOptions,
+    });
+  return {
+    adapter,
+    process,
+    /**
+     * Injected fault: kill the worker process while the agent runs, as a
+     * function timeout, OOM, or deploy does. The worker keeps its lease, runs
+     * no failure path, and never checks in again. Fake `setInterval` first,
+     * so no timer of the dead worker fires. With `afterInputSaved`, the run
+     * first saves its input as its last boundary, as the agent does before
+     * its first model call.
+     */
+    killWorker: async (
+      message: ConversationQueueMessage,
+      killOptions: { afterInputSaved?: boolean } = {},
+    ) => {
+      if (!vi.isFakeTimers()) {
+        throw new Error("killWorker needs fake setInterval");
+      }
+      const killed = new Promise<void>((resolve) => {
+        killNextRun = async (run) => {
+          if (killOptions.afterInputSaved) {
+            await saveTurnCheckpoint({
+              conversationId: run.conversationId,
+              messages: [
+                {
+                  role: "user",
+                  content: [{ type: "text", text: run.instruction.text }],
+                  timestamp: Date.now(),
+                },
+              ],
+              mode: "running",
+              sliceId: 1,
+              turnId: run.turnId,
+            });
+          }
+          resolve();
+        };
+      });
+      const processed = process(message);
+      await Promise.race([
+        killed,
+        processed.then((result) => {
+          throw new Error(
+            `Worker ended before the agent ran: ${JSON.stringify(result)}`,
+          );
+        }),
+      ]);
+    },
+    queue,
+    run: work.run,
+    runtime: work.runtime,
+    state,
+  };
+}
+
+/**
+ * Let every held lease expire, then run the production heartbeat. Use it after
+ * `killWorker` to recover the dead worker's work.
+ */
+export async function runHeartbeatAfterLeasesExpire(
+  queue: ConversationWorkQueue,
+): Promise<void> {
+  vi.setSystemTime(Date.now() + CONVERSATION_WORK_LEASE_TTL_MS + 1);
+  await runTestHeartbeat(queue, Date.now());
+}
+
+/** Run the production heartbeat with every allowed domain and one queue. */
+export async function runTestHeartbeat(
+  queue: ConversationWorkQueue,
+  nowMs: number,
+): Promise<void> {
+  await runHeartbeat({
+    conversationWorkQueue: queue,
+    dispatchForIdentity: createIdentityDispatcher({
+      allowedDomains: [],
+      conversationWorkQueue: () => queue,
+    }),
+    nowMs,
+  });
+}
+
+/**
  * Compose the production Slack ingress → durable queue → worker → agent path.
  * Fake only model generation at the executeAgentRun stream boundary and Slack
  * HTTP at the adapter boundary.
@@ -446,19 +590,11 @@ export async function createConversationWorkSlackHarness(
     modelStream?: StreamFn;
   } = {},
 ): Promise<ConversationWorkSlackHarness> {
-  const state = getStateAdapter();
-  await state.connect();
-  const wakes = createConversationWorkQueueTestAdapter();
-  const adapter = createSlackAdapterFixture();
   const modelStream = options.modelStream ?? streamReplies("Deploy checked.");
   const agentRunner: AgentRunner = options.agentRunner ?? {
     run: async (request) => await executeAgentRun(request, modelStream),
   };
-  const work = createConversationWork({
-    agentRunner,
-    conversationStore: getConversationStore(),
-    getSlackAdapter: () => adapter,
-    queue: wakes,
+  const work = await createConversationWorkHarness(agentRunner, {
     services: {
       agentRunner,
       subscribedReplyPolicy: {
@@ -470,8 +606,9 @@ export async function createConversationWorkSlackHarness(
         listThreadReplies: async () => [],
       },
     },
-    state,
   });
+  const { adapter, state } = work;
+  const wakes = work.queue;
 
   const services = {
     getSlackAdapter: () => adapter,
@@ -490,23 +627,14 @@ export async function createConversationWorkSlackHarness(
         .map((call) => call.params.text)
         .filter((text): text is string => typeof text === "string"),
     next: async (requestStartedAtMs?: number) => {
-      const process = async () =>
-        await processConversationQueueMessage(wakes.takeMessage(), {
-          queue: wakes,
-          run: work.run,
-          state,
-        });
+      const process = async () => await work.process(wakes.takeMessage());
       return requestStartedAtMs === undefined
         ? await process()
         : await runWithTurnRequestDeadline(process, requestStartedAtMs);
     },
     drain: async () => {
       for (let i = 0; i < 12 && wakes.hasQueuedMessages(); i += 1) {
-        await processConversationQueueMessage(wakes.takeMessage(), {
-          queue: wakes,
-          run: work.run,
-          state,
-        });
+        await work.process(wakes.takeMessage());
       }
       if (wakes.hasQueuedMessages()) {
         throw new Error("queue still has work after drain");

@@ -7,7 +7,8 @@
  * `mockWebSearchResults()`.
  *
  * The pages that the `webFetch` tool reads go to Roach, which
- * replays them. See `src/recording-rules.ts`.
+ * replays them. See the `web` rule in `roach.json`. A test can answer some
+ * pages itself with `mockWebPages()`.
  */
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
@@ -15,12 +16,39 @@ import { onTestFinished } from "vitest";
 import { USER_AGENT } from "@/chat/tools/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
 
+let mockedPages: Record<string, string> = {};
+
+/** The URL without `www.`, so both forms match. */
+function pageKey(url: URL): string {
+  return `${url.protocol}//${url.host.replace(/^www\./, "")}${url.pathname}${url.search}`;
+}
+
+/**
+ * Answer the `webFetch` reads of these exact URLs with their HTML in this
+ * test, with or without `www.`. Other URLs, also on the same hosts, still go
+ * to Roach.
+ */
+export function mockWebPages(pages: Record<string, string>): void {
+  mockedPages = Object.fromEntries(
+    Object.entries(pages).map(([url, html]) => [pageKey(new URL(url)), html]),
+  );
+  onTestFinished(() => {
+    mockedPages = {};
+  });
+}
+
 /** Send the pages that `webFetch` reads to Roach. */
 export function installWebReplay(): void {
   mswServer.use(
     http.get("*", ({ request }) => {
       // Only `webFetch` sends this user agent.
       if (request.headers.get("user-agent") !== USER_AGENT) return undefined;
+      const page = mockedPages[pageKey(new URL(request.url))];
+      if (page !== undefined) {
+        return new Response(page, {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
       // `webFetch` uses `node:https`, which does not use the proxy. `fetch`
       // uses the proxy dispatcher of the test. `webFetch` follows redirects
       // itself, so each redirect is its own request.
@@ -39,16 +67,19 @@ export interface WebSearchResult {
 const SEARCH_REQUEST_URL = "https://ai-gateway.vercel.sh/v4/ai/language-model";
 const SEARCH_TOOL_ID = "gateway.parallel_search";
 
-let searchResults: WebSearchResult[] = [];
+type SearchResults = WebSearchResult[] | ((query: string) => WebSearchResult[]);
+
+let searchResults: SearchResults = [];
 
 /**
- * Set the results that the mocked search provider returns in this test, for
- * every query.
+ * Set the results that the mocked search provider returns in this test. A
+ * list answers every query. A function gets the query and returns its
+ * results, so each search can find the pages that it asks for.
  *
  * The fixture always mocks the search provider. This function does not turn
  * the mock on. Without it, `webSearch` finds nothing.
  */
-export function mockWebSearchResults(results: WebSearchResult[]): void {
+export function mockWebSearchResults(results: SearchResults): void {
   searchResults = results;
   onTestFinished(() => {
     searchResults = [];
@@ -66,6 +97,7 @@ export async function answerWebSearch(
     return undefined;
   }
   const payload = (await request.clone().json()) as {
+    prompt?: Array<{ content?: unknown }>;
     tools?: Array<{
       args?: { maxResults?: number };
       id?: string;
@@ -74,6 +106,17 @@ export async function answerWebSearch(
   };
   const tool = payload.tools?.find((entry) => entry.id === SEARCH_TOOL_ID);
   if (!tool) return undefined;
+  // `webSearch` sends the query as the text of the prompt.
+  const query = (payload.prompt ?? [])
+    .flatMap((message) =>
+      Array.isArray(message.content) ? message.content : [],
+    )
+    .flatMap((part: { text?: unknown }) =>
+      typeof part.text === "string" ? [part.text] : [],
+    )
+    .join("\n");
+  const results =
+    typeof searchResults === "function" ? searchResults(query) : searchResults;
   const toolCallId = `call_${randomUUID()}`;
   const tokens = { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 };
   return HttpResponse.json({
@@ -90,7 +133,7 @@ export async function answerWebSearch(
         toolCallId,
         toolName: tool.name,
         result: {
-          results: searchResults
+          results: results
             .slice(0, tool.args?.maxResults)
             .map(({ excerpt, title, url }) => ({
               excerpts: [excerpt],

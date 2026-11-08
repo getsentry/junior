@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isNearScrollBottom,
-  prependViewportIntent,
   programmaticSettleScrollAction,
-  scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
   shouldShowJumpToLatest,
   terminalReplyPinState,
@@ -18,6 +16,7 @@ function activeTurn(
   overrides: Partial<ConversationTranscript> = {},
 ): ConversationTranscript {
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     lastProgressAt: "2026-01-01T00:00:10.000Z",
@@ -283,42 +282,6 @@ describe("transcript bottom pinning", () => {
     },
   );
 
-  it("offsets the viewport by the height added above it", () => {
-    expect(
-      scrollTopAfterPrepend(
-        {
-          scrollHeight: 2_000,
-          scrollTop: 480,
-        },
-        2_750,
-      ),
-    ).toBe(1_230);
-  });
-
-  it("waits for history data instead of treating a detail poll as a prepend", () => {
-    expect(
-      prependViewportIntent({
-        currentHistoryVersion: "10",
-        loadingPreviousPage: true,
-        snapshotHistoryVersion: "10",
-      }),
-    ).toBe("wait");
-    expect(
-      prependViewportIntent({
-        currentHistoryVersion: "5",
-        loadingPreviousPage: true,
-        snapshotHistoryVersion: "10",
-      }),
-    ).toBe("wait");
-    expect(
-      prependViewportIntent({
-        currentHistoryVersion: "5",
-        loadingPreviousPage: false,
-        snapshotHistoryVersion: "10",
-      }),
-    ).toBe("restore");
-  });
-
   it("changes the tail version when the live turn completes", () => {
     const before = transcriptBottomVersion(activeTurn());
     const after = transcriptBottomVersion(
@@ -477,6 +440,15 @@ describe("transcript bottom pinning", () => {
         hasPendingUpdate: true,
       }),
     ).toBe(false);
+    // Newer pages are not loaded, so the end is not the latest event.
+    expect(
+      shouldShowJumpToLatest({
+        enabled: false,
+        endsAtLatest: false,
+        following: false,
+        hasPendingUpdate: false,
+      }),
+    ).toBe(true);
   });
 
   it("lets a real leave-bottom scroll pause follow during a pin settle window", () => {

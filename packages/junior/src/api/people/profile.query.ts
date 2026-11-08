@@ -34,6 +34,7 @@ import {
   peopleTreeConversation,
   peopleTreeMetricsJoin,
   recentActorRows,
+  slackActorColumns,
   statsItems,
   verifiedActorWhere,
 } from "./shared";
@@ -93,6 +94,8 @@ function surfaceExpression() {
   return sql<string>`CASE
     WHEN ${juniorConversations.source} IN ('api', 'scheduler', 'slack')
       THEN ${juniorConversations.source}
+    -- Dashboard web conversations share the product api surface label.
+    WHEN ${juniorConversations.source} = 'web' THEN 'api'
     WHEN ${juniorConversations.conversationId} LIKE 'slack:%' THEN 'slack'
     WHEN ${juniorConversations.conversationId} LIKE 'scheduler:%' THEN 'scheduler'
     WHEN ${juniorConversations.conversationId} LIKE 'api:%' THEN 'api'
@@ -150,10 +153,7 @@ export async function readPeopleProfileFromSql(
         .select({
           email: juniorUsers.primaryEmailNormalized,
           fullName: juniorUsers.displayName,
-          slackUserId: sql<
-            string | null
-          >`MAX(${juniorIdentities.providerSubjectId})`,
-          slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
+          ...slackActorColumns(),
           activeDays: conversationActiveDaysColumn(),
           ...peopleTreeAggregateColumns,
         })

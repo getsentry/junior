@@ -1,47 +1,57 @@
-import {
-  cloneElement,
-  isValidElement,
-  useEffect,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
-import { Ellipsis, Menu } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Menu, PanelRight } from "lucide-react";
 
-import { SearchInput } from "../components/SearchInput";
+import { Button } from "../components/ui/button";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
-  MobileHeaderLivePortal,
+  MobileHeaderTagsPortal,
   useOpenMobileNavigation,
 } from "../components/layout/DashboardChrome";
 import {
   ConversationHeaderActions,
   HeaderIconButton,
-  TranscriptViewToggle,
+  TranscriptSearchToggle,
   type ConversationArchiveAction,
+  type ConversationContinueInSlackAction,
+  type ConversationPinAction,
+  type ConversationReadAction,
 } from "./ConversationHeaderActions";
+import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
+import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
+import type { TranscriptSearchMatch } from "./transcriptSearch";
 
-/** Show the conversation title, search, and details. */
+/**
+ * Keep the conversation title and frequently used controls in the header.
+ * Run facts and the Brief live in Conversation details.
+ */
 export function ConversationHeader(props: {
   /** Parent chain of a child Conversation. Root Conversations omit it. */
   agentTree?: ReactNode;
+  contextTags?: ReactNode;
+  /** A `menu` layout copy action for the `⋯` menu. */
   copyAction?: ReactNode;
   archive: ConversationArchiveAction;
   conversationId: string;
+  continueInSlack?: ConversationContinueInSlackAction;
+  /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
+  cost?: ReactNode;
   detailsOpen: boolean;
   onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
+  /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
-  live: boolean;
-  meta?: ReactNode;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
+  pin: ConversationPinAction;
   privacy: ReactNode;
+  read: ConversationReadAction;
   search: string;
+  searchMatch: TranscriptSearchMatch;
+  sentryConversationUrl?: string;
+  sidebarToggle?: ReactNode;
   title: string;
   view: TranscriptViewMode;
 }) {
@@ -50,9 +60,7 @@ export function ConversationHeader(props: {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const searchOpenVisible =
     props.view === "rich" && (searchOpen || props.search.length > 0);
   const openMobileNavigation = useOpenMobileNavigation();
@@ -76,192 +84,221 @@ export function ConversationHeader(props: {
     searchInputRef.current?.focus();
   }, [searchOpenVisible]);
 
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!mobileMenuRef.current?.contains(event.target as Node)) {
-        setMobileMenuOpen(false);
-      }
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileMenuOpen(false);
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [mobileMenuOpen]);
+  const closeSearch = () => {
+    setSearchOpen(false);
+    if (props.search.length > 0) props.onSearchChange("");
+  };
 
   const toggleSearch = () => {
     if (searchOpenVisible) {
-      setSearchOpen(false);
-      if (props.search.length > 0) props.onSearchChange("");
+      closeSearch();
       return;
     }
     setSearchOpen(true);
   };
 
-  const menuCopyAction =
-    isValidElement(props.copyAction) &&
-    typeof props.copyAction.type !== "string"
-      ? cloneElement(
-          props.copyAction as ReactElement<{ layout?: "icon" | "menu" }>,
-          { layout: "menu" },
-        )
-      : props.copyAction;
-
-  const mobileOverflow = (
-    <div className="relative" ref={mobileMenuRef}>
-      <HeaderIconButton
-        ref={menuButtonRef}
-        label={mobileMenuOpen ? "Close conversation menu" : "Conversation menu"}
-        onClick={() => setMobileMenuOpen((open) => !open)}
-        pressed={mobileMenuOpen}
-      >
-        <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
-      </HeaderIconButton>
-      {mobileMenuOpen ? (
-        <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">
-          <ConversationHeaderActions
-            archive={props.archive}
-            conversationId={props.conversationId}
-            copyAction={menuCopyAction}
-            detailsOpen={detailsOpen}
-            layout="menu"
-            onDetailsClick={() => {
-              setMobileMenuOpen(false);
-              props.onDetailsClick();
-            }}
-            onSearchClick={() => {
-              setMobileMenuOpen(false);
-              toggleSearch();
-            }}
-            onViewChange={(value) => {
-              setMobileMenuOpen(false);
-              props.onViewChange(value);
-            }}
-            searchOpen={searchOpenVisible}
-            view={props.view}
-          />
-          {openMobileNavigation ? (
-            <button
-              className="mt-0.5 flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                openMobileNavigation();
-              }}
-              type="button"
-            >
-              <Menu aria-hidden="true" size={16} strokeWidth={2} />
-              App menu
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+  const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
+    <ConversationHeaderActions
+      archive={{
+        ...props.archive,
+        // A child archive opens a confirm, and a restore keeps the page open,
+        // so close the menu here.
+        onClick: () => {
+          close();
+          props.archive.onClick();
+        },
+      }}
+      conversationId={props.conversationId}
+      continueInSlack={
+        props.continueInSlack && {
+          disabled: props.continueInSlack.disabled,
+          onClick: () => {
+            close();
+            props.continueInSlack?.onClick();
+          },
+        }
+      }
+      pin={props.pin}
+      read={props.read}
+      copyAction={props.copyAction}
+      detailsOpen={detailsOpen}
+      onDetailsClick={() => {
+        close();
+        props.onDetailsClick();
+      }}
+      onSearchClick={() => {
+        close();
+        toggleSearch();
+      }}
+      onViewChange={(value) => {
+        close();
+        props.onViewChange(value);
+      }}
+      placement={placement}
+      searchOpen={searchOpenVisible}
+      sentryConversationUrl={props.sentryConversationUrl}
+      view={props.view}
+    />
   );
 
   const showMobileHeader =
     searchOpenVisible ||
-    props.archive.error ||
-    Boolean(props.linkedWork) ||
+    Boolean(props.archive.error) ||
+    props.pin.error ||
+    props.read.error ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
-  const liveIndicator = props.live ? (
-    <span
-      aria-label="Conversation is live"
-      className="inline-flex size-2 shrink-0 rounded-full bg-emerald-300"
-      title="Live"
-    />
-  ) : null;
-
   return (
     <>
-      <MobileHeaderActionsPortal>{mobileOverflow}</MobileHeaderActionsPortal>
-      <MobileHeaderLivePortal>{liveIndicator}</MobileHeaderLivePortal>
+      <MobileHeaderActionsPortal>
+        <ConversationOverflowMenu buttonRef={menuButtonRef}>
+          {(close) => (
+            <>
+              {menuActions("mobile", close)}
+              {openMobileNavigation ? (
+                <Button
+                  className="mt-0.5"
+                  onClick={() => {
+                    close();
+                    openMobileNavigation();
+                  }}
+                  size="menu"
+                >
+                  <Menu aria-hidden="true" size={16} strokeWidth={2} />
+                  App menu
+                </Button>
+              ) : null}
+            </>
+          )}
+        </ConversationOverflowMenu>
+      </MobileHeaderActionsPortal>
+      {props.contextTags || props.linkedWork ? (
+        <MobileHeaderTagsPortal>
+          {/* One row. Tags keep their width; the slot scrolls. */}
+          <div className="flex w-max items-center gap-1.5 [&>*]:shrink-0">
+            {props.contextTags}
+            {props.linkedWork ? (
+              <div aria-label="Linked work">{props.linkedWork}</div>
+            ) : null}
+          </div>
+        </MobileHeaderTagsPortal>
+      ) : null}
+      {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu
+          covers it. Mobile: below the app header, which holds the menu. */}
       <header
         className={cn(
-          "relative z-10 border-b border-dashboard-border bg-dashboard-bg",
+          "relative z-10 border-b md:z-30 border-dashboard-border bg-dashboard-bg",
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden min-w-0 items-start justify-between gap-4 px-7 py-5 md:flex">
-          <div className="min-w-0">
-            {props.agentTree ? (
-              <div className="mb-1.5 min-w-0">{props.agentTree}</div>
+        <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {props.sidebarToggle ? (
+              <div className="shrink-0">{props.sidebarToggle}</div>
             ) : null}
-            <div className="flex min-w-0 items-center gap-2">
-              <h2 className="m-0 line-clamp-1 min-w-0 font-display text-xl font-medium leading-tight tracking-tight">
+            {props.view === "raw" ? (
+              // Event log is a debug view reached from the `⋯` menu. The
+              // title leads back to the Conversation.
+              <>
+                <h2 className="m-0 min-w-0 font-display text-base font-medium leading-6 tracking-tight">
+                  <button
+                    className="block max-w-full cursor-pointer truncate text-left text-dashboard-text-muted hover:text-dashboard-text hover:underline"
+                    onClick={() => props.onViewChange("rich")}
+                    title="Back to conversation"
+                    type="button"
+                  >
+                    {props.title}
+                  </button>
+                </h2>
+                <span aria-hidden="true" className="text-dashboard-text-faint">
+                  ›
+                </span>
+                <span
+                  aria-current="page"
+                  className="shrink-0 font-display text-base font-medium leading-6 tracking-tight"
+                >
+                  Event log
+                </span>
+              </>
+            ) : (
+              <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
                 {props.title}
               </h2>
-              {liveIndicator}
+            )}
+            {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
-            </div>
-            {props.meta ? (
-              <div className="mt-2 min-w-0 text-xs leading-snug text-dashboard-text-muted">
-                {props.meta}
+            ) : null}
+            {props.agentTree ? (
+              <div className="min-w-0 max-w-1/3 shrink-[2] border-l border-dashboard-border-subtle pl-2 text-xs text-dashboard-text-muted [&_a]:text-dashboard-text-muted [&_a:hover]:text-dashboard-text">
+                {props.agentTree}
+              </div>
+            ) : props.contextTags ? (
+              <div className="flex h-6 min-w-0 max-w-[min(19rem,60%)] shrink-[2] items-center">
+                {props.contextTags}
               </div>
             ) : null}
-            {props.forks ? (
-              <div className="mt-1.5 min-w-0">{props.forks}</div>
-            ) : null}
           </div>
-          <ConversationHeaderActions
-            archive={props.archive}
-            conversationId={props.conversationId}
-            copyAction={props.copyAction}
-            detailsOpen={detailsOpen}
-            detailsButtonRef={detailsButtonRef}
-            onDetailsClick={props.onDetailsClick}
-            onSearchClick={toggleSearch}
-            onViewChange={props.onViewChange}
-            searchOpen={searchOpenVisible}
-            view={props.view}
-          />
+          <div className="flex shrink-0 items-center gap-0.5">
+            {props.cost ? (
+              <span className="mr-2 text-xs tabular-nums text-dashboard-text-muted">
+                {props.cost}
+              </span>
+            ) : null}
+            {props.view === "raw" ? null : (
+              <TranscriptSearchToggle
+                inputRef={searchInputRef}
+                onClick={toggleSearch}
+                open={searchOpenVisible}
+              />
+            )}
+            <ConversationOverflowMenu>
+              {(close) => menuActions("desktop", close)}
+            </ConversationOverflowMenu>
+            {detailsOpen ? null : (
+              <HeaderIconButton
+                ref={detailsButtonRef}
+                expanded={false}
+                label="Conversation details"
+                onClick={props.onDetailsClick}
+              >
+                <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
+              </HeaderIconButton>
+            )}
+          </div>
         </div>
+        {props.forks ? (
+          <div className="hidden px-7 pb-2.5 md:block">{props.forks}</div>
+        ) : null}
         {props.agentTree ? (
           <div className="px-4 py-2 md:hidden">{props.agentTree}</div>
         ) : null}
         {props.forks ? (
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
         ) : null}
-        {props.linkedWork ? (
-          <div
-            aria-label="Linked work"
-            className="border-t border-dashboard-border-subtle px-4 py-2.5 md:px-7"
-          >
-            {props.linkedWork}
-          </div>
-        ) : null}
-        <div className="hidden border-t border-dashboard-border-subtle px-7 md:flex">
-          <TranscriptViewToggle
-            labelled
-            onChange={props.onViewChange}
-            value={props.view}
-          />
-        </div>
         {searchOpenVisible ? (
-          <div className="px-4 py-3 md:px-7">
-            <SearchInput
-              className="min-w-0"
-              inputRef={searchInputRef}
-              label="Search transcript"
-              onChange={props.onSearchChange}
-              placeholder="Search transcript…"
-              size="compact"
-              value={props.search}
-            />
-          </div>
+          <TranscriptSearchBar
+            className="inset-x-3 md:left-auto md:right-4 md:w-[max(20rem,25vw)]"
+            inputRef={searchInputRef}
+            match={props.searchMatch}
+            onChange={props.onSearchChange}
+            onClose={closeSearch}
+            value={props.search}
+          />
         ) : null}
         {props.archive.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not update archive state.
+            {props.archive.error}
+          </div>
+        ) : null}
+        {props.pin.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not update pin.
+          </div>
+        ) : null}
+        {props.read.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not update read state.
           </div>
         ) : null}
       </header>

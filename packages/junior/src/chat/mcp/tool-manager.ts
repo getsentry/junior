@@ -16,6 +16,7 @@ import {
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
 import {
+  logAudit,
   logWarn,
   serializeGenAiAttribute,
   setSpanAttributes,
@@ -218,20 +219,22 @@ function boundMcpContent(
   ];
 }
 
+// Keep the full text. The tool pipeline cuts long model-facing results and
+// saves the full text to a file, so the text is not lost here.
 function toModelVisibleMcpContent(
   result: PluginMcpToolCallResult,
 ): Array<TextContent | ImageContent> {
   const content = toAgentToolContent(result);
   if (content.some((part) => part.type === "image")) {
-    return boundMcpContent(content);
+    return content;
   }
 
   const structured = summarizeStructuredContent(result.structuredContent);
   if (structured) {
-    return boundMcpContent([{ type: "text", text: structured }]);
+    return [{ type: "text", text: structured }];
   }
 
-  return boundMcpContent(content);
+  return content;
 }
 
 function describeMcpTool(provider: string, tool: PluginMcpListedTool): string {
@@ -364,6 +367,8 @@ export class McpToolManager {
     Promise<PluginMcpClient>
   >();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
+  /** Clients of forgotten providers. `close()` still owns their transports. */
+  private readonly forgottenClients: PluginMcpClient[] = [];
 
   private readonly options: McpToolManagerOptions;
 
@@ -451,6 +456,7 @@ export class McpToolManager {
     for (const client of [
       ...this.clientsByProvider.values(),
       ...this.actorClientsByProvider.values(),
+      ...this.forgottenClients,
     ]) {
       try {
         await client.close();
@@ -461,6 +467,7 @@ export class McpToolManager {
 
     this.clientsByProvider.clear();
     this.actorClientsByProvider.clear();
+    this.forgottenClients.length = 0;
     this.serviceAccountProviders.clear();
     this.toolsByProvider.clear();
     this.activeProviders.clear();
@@ -612,7 +619,7 @@ export class McpToolManager {
     }
     if (serviceAccountOnly(plugin.manifest)) {
       throw new McpToolError(
-        `${plugin.manifest.displayName} tool ${toolName} is not available: Junior's shared ${plugin.manifest.displayName} account cannot use it`,
+        `${plugin.manifest.displayName} tool ${toolName} is not available: the shared ${plugin.manifest.displayName} account cannot use it`,
       );
     }
     const existing = this.actorClientsByProvider.get(provider);
@@ -622,6 +629,28 @@ export class McpToolManager {
     const actorClient = await this.newClient(plugin);
     this.actorClientsByProvider.set(provider, actorClient);
     return actorClient;
+  }
+
+  /**
+   * Record a completed call to an audit tool, with the account that made it.
+   * Arguments stay out: the conversation history keeps them.
+   */
+  private logToolCallAudit(
+    plugin: PluginDefinition,
+    toolName: string,
+    attributes: Record<string, string>,
+  ): void {
+    const usedServiceAccount =
+      this.serviceAccountProviders.has(plugin.manifest.name) &&
+      serviceAccountAllows(plugin.manifest, { tool: toolName });
+    logAudit("mcp.tool_call.completed", {
+      ...attributes,
+      "mcp.method.name": "tools/call",
+      "app.plugin.name": plugin.manifest.name,
+      "app.credential.account": usedServiceAccount
+        ? "service_account"
+        : "actor",
+    });
   }
 
   private toManagedTool(
@@ -696,6 +725,14 @@ export class McpToolManager {
               );
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
+              }
+              if (plugin.manifest.mcp?.auditTools?.includes(tool.name)) {
+                this.logToolCallAudit(plugin, tool.name, {
+                  "gen_ai.tool.name": managedToolName,
+                  ...(options?.toolCallId
+                    ? { "gen_ai.tool.call.id": options.toolCallId }
+                    : undefined),
+                });
               }
 
               const resultAttribute = serializeMcpPayload(
@@ -816,6 +853,15 @@ export class McpToolManager {
   }
 
   private forgetProvider(provider: string): void {
+    for (const clients of [
+      this.clientsByProvider,
+      this.actorClientsByProvider,
+    ]) {
+      const client = clients.get(provider);
+      if (client) {
+        this.forgottenClients.push(client);
+      }
+    }
     this.clientsByProvider.delete(provider);
     this.actorClientsByProvider.delete(provider);
     this.serviceAccountProviders.delete(provider);

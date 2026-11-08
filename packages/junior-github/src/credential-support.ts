@@ -121,7 +121,7 @@ export const GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES = 64 * 1024;
 export const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
 export const CREATE_TOOL_ROUTING_GUIDANCE =
-  "This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.";
+  "This is a tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required tool.";
 export const USER_WRITE_REQUIREMENTS = [
   "requesting GitHub user permission to perform this operation",
 ];

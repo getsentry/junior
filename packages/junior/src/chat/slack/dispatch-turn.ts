@@ -24,6 +24,7 @@ type ExecuteSlackTurn = (
     onTurnDeliveryAccepted?: (messageId?: string) => void;
     onTurnOutcome?: (result: DispatchTurnResult) => void;
     shouldYield?: () => boolean;
+    checkIn?: () => Promise<boolean>;
     skipBackfill?: boolean;
   },
 ) => Promise<void>;
@@ -41,6 +42,7 @@ export function createSlackDispatchTurnRunner(options: {
     hooks: {
       ack: () => Promise<void>;
       shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
     },
   ): Promise<DispatchTurnResult> {
     const state = getStateAdapter();
@@ -102,7 +104,6 @@ export function createSlackDispatchTurnRunner(options: {
           dispatch.destination,
         ),
         credentialContext: routing.credentialContext,
-        destinationVisibility: dispatch.destinationVisibility,
         dispatch: routing.dispatch,
         skipProviderDefaultConfig: true,
         source: dispatch.source,
@@ -117,6 +118,7 @@ export function createSlackDispatchTurnRunner(options: {
         errorMessage = result.errorMessage;
       },
       shouldYield: hooks.shouldYield,
+      checkIn: hooks.checkIn,
       skipBackfill: true,
     });
     return {

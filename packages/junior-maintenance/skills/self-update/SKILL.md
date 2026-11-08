@@ -81,7 +81,7 @@ If a new standalone `@sentry/junior-*` plugin package was added, add it to the a
 node scripts/check-plugin-packages.mjs
 ```
 
-Compare the consumer config with `apps/example` at `target_ref` to catch shape drift. Call `github_cloneRepository` with `repo: "getsentry/junior"`, `directory: "repos/junior-upstream"`, and `allowAdHoc: true`. Do not switch to a `junior` Workspace: the switch replaces the sandbox and removes this app checkout. Use the returned `path` as `<upstream>`. Choose `target_ref` from the version bump commit, then the publish timestamp, then `origin/main` as approximate:
+Compare the consumer config with `apps/example` at `target_ref` to catch shape drift. Call `github_cloneRepository` with `repo: "getsentry/junior"`, `directory: "repos/junior-upstream"`, and `allow_ad_hoc: true`. Do not switch to a `junior` Workspace: the switch replaces the sandbox and removes this app checkout. Use the returned `path` as `<upstream>`. Choose `target_ref` from the version bump commit, then the publish timestamp, then `origin/main` as approximate:
 
 ```bash
 git -C <upstream> fetch --deepen=200 origin main

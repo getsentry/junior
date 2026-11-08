@@ -1,5 +1,5 @@
 import type { UsersInfoResponse } from "@slack/web-api";
-import { z } from "zod";
+import * as z from "zod";
 import {
   getSlackClient,
   SlackActionError,

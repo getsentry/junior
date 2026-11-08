@@ -7,7 +7,7 @@ import {
   type PluginToolOutput,
   type PluginWorkspaceToolContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { isReservedSandboxDirectory } from "../sandbox-paths.js";
 
 const inputSchema = z
@@ -28,7 +28,7 @@ const inputSchema = z
         "Optional destination directory under the sandbox root. Defaults to repos/{name}.",
       )
       .optional(),
-    allowAdHoc: z
+    allow_ad_hoc: z
       .boolean()
       .optional()
       .describe(
@@ -71,11 +71,11 @@ function workspaceRequiredError(
   const names = quotedNames(workspaces);
   if (workspaces.length === 1) {
     return new PluginToolInputError(
-      `Repository ${repoId} is part of Workspace ${names}. Call switchWorkspace with that name; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.`,
+      `Repository ${repoId} is part of Workspace ${names}. Call switchWorkspace with that name; the checkout is already present after the switch. Pass allow_ad_hoc=true only for an intentional ad-hoc checkout.`,
     );
   }
   return new PluginToolInputError(
-    `Repository ${repoId} is part of Workspaces ${names}. Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.`,
+    `Repository ${repoId} is part of Workspaces ${names}. Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allow_ad_hoc=true only for an intentional ad-hoc checkout.`,
   );
 }
 
@@ -154,14 +154,14 @@ export function createGitHubCloneRepositoryTool(ctx: {
       readOnlyHint: true,
     },
     description:
-      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or pass allowAdHoc=true for an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
+      "Clone a GitHub repository into the sandbox as an ad-hoc checkout. The destination must not already exist. In the default Sandbox, a matching Workspace is a tool input error: call switchWorkspace instead, or pass allow_ad_hoc=true for an intentional ad-hoc checkout. Inside a Workspace, the clone proceeds and the result notes matching Workspaces.",
     describeProposal(input) {
       const directory =
         typeof input.directory === "string" && input.directory.length > 0
           ? input.directory
           : undefined;
       const adHoc =
-        input.allowAdHoc === true ? " as an intentional ad-hoc checkout" : "";
+        input.allow_ad_hoc === true ? " as an intentional ad-hoc checkout" : "";
       return directory
         ? `Shallow-clone ${input.repo} into the local sandbox at ${directory}${adHoc} for inspection (no GitHub mutation).`
         : `Shallow-clone ${input.repo} into the local sandbox${adHoc} for inspection (no GitHub mutation).`;
@@ -194,7 +194,7 @@ export function createGitHubCloneRepositoryTool(ctx: {
       // In the default Sandbox a switch loses nothing, so steer to the
       // Workspace. Inside another Workspace a switch would drop its files,
       // so keep the ad-hoc clone and report the matching Workspaces.
-      if (workspaces.length > 0 && !active && input.allowAdHoc !== true) {
+      if (workspaces.length > 0 && !active && input.allow_ad_hoc !== true) {
         throw workspaceRequiredError(repoId, workspaces);
       }
       const otherWorkspaces = workspaces.filter(

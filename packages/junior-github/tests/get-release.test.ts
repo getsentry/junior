@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createGitHubGetReleaseTool } from "../src/tools/get-release";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const RELEASE = {
@@ -23,12 +23,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
 }
 
 describe("getRelease", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("returns release metadata and a tag subscription hint", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([{ body: RELEASE }]);
 
     await expect(
@@ -41,16 +36,16 @@ describe("getRelease", () => {
       ),
     ).resolves.toMatchObject({
       release: {
-        htmlUrl: RELEASE.html_url,
+        html_url: RELEASE.html_url,
         id: RELEASE.id,
-        tagName: "0.129.0",
+        tag_name: "0.129.0",
       },
       repo: "GetSentry/Junior",
       tag: "0.129.0",
       subscribable: {
         identifier: "release-source:getsentry/junior:0.129.0",
-        suggestedEvents: ["release.published"],
-        supportedEvents: ["release.published"],
+        suggested_events: ["release.published"],
+        supported_events: ["release.published"],
         type: "release_source",
       },
     });
@@ -66,7 +61,6 @@ describe("getRelease", () => {
   });
 
   it("returns a repository-wide subscription when the tag is omitted", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { adapter, tool } = toolContext([{ body: RELEASE }]);
 
     await expect(
@@ -77,7 +71,7 @@ describe("getRelease", () => {
     ).resolves.toMatchObject({
       release: {
         id: RELEASE.id,
-        tagName: "0.129.0",
+        tag_name: "0.129.0",
       },
       tag: null,
       subscribable: {
@@ -95,7 +89,6 @@ describe("getRelease", () => {
   });
 
   it("skips drafts by using GitHub's latest non-draft release endpoint", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { tool } = toolContext([{ body: RELEASE }]);
 
     await expect(
@@ -107,14 +100,13 @@ describe("getRelease", () => {
       release: {
         draft: false,
         id: RELEASE.id,
-        tagName: "0.129.0",
+        tag_name: "0.129.0",
       },
       tag: null,
     });
   });
 
   it("returns a null release when GitHub has no published non-draft release yet", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { tool } = toolContext([
       { body: { message: "Not Found" }, status: 404 },
     ]);
@@ -134,7 +126,6 @@ describe("getRelease", () => {
   });
 
   it("returns a subscribable source before GitHub publishes the tag", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     const { tool } = toolContext([
       { body: { message: "Not Found" }, status: 404 },
     ]);
@@ -152,24 +143,9 @@ describe("getRelease", () => {
       tag: "0.129.0",
       subscribable: {
         identifier: "release-source:getsentry/junior:0.129.0",
+        match: { repo: "getsentry/junior", tag: "0.129.0" },
       },
     });
-  });
-
-  it("omits the hint when GitHub webhooks are not configured", async () => {
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "");
-    const { tool } = toolContext([{ body: RELEASE }]);
-
-    const result = await tool.execute?.(
-      {
-        repo: "getsentry/junior",
-        tag: "0.129.0",
-      },
-      { toolCallId: "no-webhook" },
-    );
-
-    expect(result).not.toHaveProperty("subscribable");
-    expect(result).not.toHaveProperty("data.subscribable");
   });
 
   it("reports non-404 latest lookup failures as runtime errors", async () => {

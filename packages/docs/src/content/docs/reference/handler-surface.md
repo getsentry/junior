@@ -20,7 +20,7 @@ Handled `GET` routes:
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
 
-When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth. The dashboard also authenticates the ACP browser confirmation route.
+When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/assets/*`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth. The dashboard also authenticates the ACP browser confirmation route.
 
 Handled `POST` routes:
 
@@ -38,6 +38,20 @@ access. ACP stores transport records in the configured `StateAdapter`.
 Production Redis state supports requests from different app instances. Live
 SSE requests still end at the deployment request limit. Clients must reconnect
 and call `session/load` after that limit.
+
+When the dashboard requires Google sign-in, Junior also exposes a
+remote MCP server. `POST /api/mcp` serves stateless MCP Streamable HTTP.
+`GET` and `DELETE /api/mcp` return `405` after authentication. Clients
+authenticate with OAuth 2.1 and Client ID Metadata Documents through these
+routes:
+
+- `GET /.well-known/oauth-protected-resource/api/mcp`
+- `GET /.well-known/oauth-authorization-server`
+- `GET /api/mcp/oauth/authorize`
+- `POST /api/mcp/oauth/token`
+- `GET` and `POST /_junior/mcp/authorize/:authorizationId` (dashboard consent page)
+
+Personal tokens do not grant MCP access. See [MCP Server](/operate/mcp-server/).
 
 ## Expected behavior
 

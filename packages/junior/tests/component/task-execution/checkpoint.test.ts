@@ -68,6 +68,8 @@ function failingConversationStore(): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    recordDestinationVisibility: vi.fn(),
+    getRunMetrics: vi.fn(async () => undefined),
     findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(async () => {
       throw new Error("conversation metadata unavailable");
@@ -455,6 +457,61 @@ describe("turn checkpoint", () => {
     });
   });
 
+  it("keeps an older turn's metrics and the newer turn's status after a newer turn writes metrics", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { abandonTurnRecord, getTurnRecordForResume, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const conversationStore = getConversationStore();
+    const conversationId = "local:metrics-older-turn";
+
+    await upsertTurnRecord({
+      conversationId,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7, cost: { total: 0.07 } },
+      piMessages: [userMessage("needs auth")],
+      resumeReason: "auth",
+      turnId: "turn-paused",
+      sliceId: 1,
+      state: "paused",
+    });
+    const paused = await getTurnRecordForResume(conversationId, "turn-paused");
+    await upsertTurnRecord({
+      conversationId,
+      cumulativeDurationMs: 500,
+      cumulativeUsage: { inputTokens: 3, cost: { total: 0.03 } },
+      piMessages: [...paused!.piMessages, userMessage("newer message")],
+      turnId: "turn-newer",
+      sliceId: 1,
+      state: "running",
+    });
+
+    // A resume of the older Turn continues from its own totals.
+    await expect(
+      getTurnRecordForResume(conversationId, "turn-paused"),
+    ).resolves.toMatchObject({
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: { inputTokens: 7, cost: { total: 0.07 } },
+    });
+
+    await abandonTurnRecord({ conversationId, turnId: "turn-paused" });
+
+    await expect(
+      conversationStore.get({ conversationId }),
+    ).resolves.toMatchObject({
+      execution: { runId: "turn-newer", status: "running" },
+      executionMetrics: { durationMs: 500, runId: "turn-newer" },
+    });
+    await expect(
+      conversationStore.getRunMetrics({
+        conversationId,
+        runId: "turn-paused",
+      }),
+    ).resolves.toEqual({
+      durationMs: 1_500,
+      usage: { inputTokens: 7, cost: { total: 0.07 } },
+    });
+  });
+
   it("records Slack turn activity without replacing confirmed visibility", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertTurnRecord } =
@@ -537,6 +594,8 @@ describe("turn checkpoint", () => {
       getConversationIdByProviderConversation: vi.fn(async () => undefined),
       bindProviderConversation: vi.fn(),
       getDestinationVisibility: vi.fn(async () => undefined),
+      recordDestinationVisibility: vi.fn(),
+      getRunMetrics: vi.fn(async () => undefined),
       findSlackDestinationByName: vi.fn(async () => undefined),
       recordActivity: vi.fn(async () => undefined),
       recordExecution: vi.fn(async () => undefined),
@@ -611,9 +670,10 @@ describe("turn checkpoint", () => {
     );
   });
 
-  it("requires v2 and ignores unknown fields in stored turn cursors", async () => {
+  it("requires v2, keeps the Actor Identity id, and ignores unknown fields in stored turn cursors", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
     const { turnCursorKey } =
       await import("@/chat/task-execution/turn-cursor-keys");
     const conversationId = "slack:C123:cursor-unknown-fields";
@@ -641,6 +701,7 @@ describe("turn checkpoint", () => {
           teamId: "T123",
           userId: "U123",
         },
+        actorIdentityId: "identity-1",
         deprecatedFlag: true,
         resumeReason: "timeout",
       },
@@ -669,9 +730,28 @@ describe("turn checkpoint", () => {
     expect(record).not.toHaveProperty("destination");
     expect(record).toMatchObject({
       actor: SLACK_ACTOR,
+      actorIdentityId: "identity-1",
       source: SLACK_SOURCE,
     });
     expect(record).not.toHaveProperty("deprecatedFlag");
+
+    // A resume slice rewrites the cursor and keeps the id that a newer worker
+    // saved, even though this caller does not pass it.
+    await upsertTurnRecord({
+      conversationId,
+      destination: SLACK_DESTINATION,
+      piMessages: [userMessage("resume")],
+      turnId,
+      sliceId: 2,
+      source: SLACK_SOURCE,
+      state: "running",
+    });
+    await expect(
+      stateAdapter.get(turnCursorKey(conversationId, turnId)),
+    ).resolves.toMatchObject({
+      actorIdentityId: "identity-1",
+      sliceId: 2,
+    });
   });
 
   it("fails before storing a turn-session record when SQL metadata fails", async () => {
@@ -819,7 +899,7 @@ describe("turn checkpoint", () => {
           content: [
             {
               type: "text",
-              text: 'Authorization completed for provider "sentry". Continue the request that waited for it and retry the provider operation. If the person dropped that request since, do not continue it; say only that sentry is connected.',
+              text: 'Authorization completed for provider "sentry". Continue the newest request that waited for it and retry the provider operation. If a later message from the person dropped that request, do not continue it; say only that sentry is connected.',
             },
           ],
         },
@@ -1646,6 +1726,51 @@ describe("turn checkpoint", () => {
     expect(logException).not.toHaveBeenCalled();
   });
 
+  it("keeps a completed turn completed when a late worker saves progress", async () => {
+    const logException = vi.fn();
+    vi.doMock("@/chat/logging", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/chat/logging")>();
+      return { ...actual, logException };
+    });
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    const committed = [userMessage("done")];
+    const late = [...committed, userMessage("late")];
+
+    await saveTurnCheckpoint({
+      mode: "completed",
+      conversationId: "conversation-late-worker",
+      turnId: "turn-late-worker",
+      sliceId: 1,
+      messages: committed,
+    });
+    await expect(
+      saveTurnCheckpoint({
+        mode: "running",
+        conversationId: "conversation-late-worker",
+        turnId: "turn-late-worker",
+        sliceId: 1,
+        messages: late,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      saveTurnCheckpoint({
+        mode: "paused",
+        reason: "timeout",
+        conversationId: "conversation-late-worker",
+        turnId: "turn-late-worker",
+        sliceId: 1,
+        messages: late,
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      getTurnRecord("conversation-late-worker", "turn-late-worker"),
+    ).resolves.toMatchObject({ piMessages: committed, state: "completed" });
+    expect(logException).not.toHaveBeenCalled();
+  });
+
   it("appends after in-place assistant envelope mutations on committed messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
@@ -1813,7 +1938,6 @@ describe("turn checkpoint", () => {
         createdAtMs: 2,
         data: {
           type: "compaction",
-          modelProfile: "standard",
           modelId: "test/model",
           replacementHistory: [
             {
@@ -1853,14 +1977,14 @@ describe("turn checkpoint", () => {
     ).resolves.toEqual([newRequest, newFollowup]);
   });
 
-  it("resumes an unfinished turn from a committed handoff replacement", async () => {
+  it("resumes an unfinished turn from a committed history replacement", async () => {
     const { loadTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { getConversationEventStore } = await import("@/chat/db");
-    const conversationId = "conversation-handoff-resume";
-    const turnId = "turn-handoff-resume";
+    const conversationId = "conversation-replacement-resume";
+    const turnId = "turn-replacement-resume";
     const staleRuntimeContext =
       "<runtime-turn-context>stale runtime context</runtime-turn-context>";
     const oldRequest: PiMessage = {
@@ -1871,9 +1995,9 @@ describe("turn checkpoint", () => {
       ],
       timestamp: 1,
     };
-    const handoffSummary: PiMessage = {
+    const replacementSummary: PiMessage = {
       role: "user",
-      content: [{ type: "text", text: "continue from the handoff summary" }],
+      content: [{ type: "text", text: "continue from the compaction summary" }],
       timestamp: 2,
     };
 
@@ -1888,13 +2012,11 @@ describe("turn checkpoint", () => {
     await getConversationEventStore().replaceHistory(conversationId, {
       createdAtMs: 2,
       data: {
-        type: "handoff",
-        modelProfile: "handoff",
+        type: "compaction",
         modelId: "openai/gpt-5.6-sol",
-        triggeringToolCallId: "handoff-call",
         replacementHistory: [
           {
-            item: historyItemFromPiMessage(handoffSummary, {
+            item: historyItemFromPiMessage(replacementSummary, {
               authority: "context",
             }),
           },
@@ -1907,7 +2029,7 @@ describe("turn checkpoint", () => {
     ).resolves.toMatchObject({
       resumed: true,
       record: {
-        piMessages: [handoffSummary],
+        piMessages: [replacementSummary],
         turnStartMessageIndex: 0,
       },
     });

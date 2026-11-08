@@ -7,27 +7,31 @@ import {
   type SlackInboundEvent,
 } from "./slack-payload";
 import { handleSlackForm } from "./slack-form";
+import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
+import type { SlackInteractionInputFacts } from "./slack-interaction-input";
+import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
+import {
+  joinCreatedSlackChannel,
+  slackChannelCreatedEnvelopeSchema,
+} from "./slack-channel-created";
 import { ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
-import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
 import {
   startProcessingReaction,
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { appendConversationMessages } from "@/chat/conversations/messages";
-import { stopConversationTurn } from "@/chat/conversations/stop";
-import { stopConversationSession } from "@/chat/agent-invocations/stop";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
+import type { InboundMessage } from "@/chat/task-execution/state";
 import { withLock } from "@/chat/state/locks";
 import {
   buildSlackInboundMessage,
-  clearSlackPendingReactions,
   type SlackConversationRoute,
 } from "@/chat/task-execution/slack-work";
 import {
@@ -43,17 +47,12 @@ import {
 } from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
-import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   getThreadStopDecision,
   SubscribedReplyReason,
 } from "@/chat/services/subscribed-decision";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
-import {
-  isSlackMessageStopped,
-  stopSlackThread,
-} from "@/chat/slack/thread-stop";
+import { stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
@@ -64,13 +63,18 @@ import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { parseActorUserId } from "@/chat/actor";
+import { readActorIdentity } from "@/chat/plugins/viewer";
+import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
+import { SlackEventPersistenceError } from "./slack-event-persistence-error";
+import { createSlackActor, parseActorUserId } from "@/chat/actor";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-identity";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
+import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
-import { createSlackWebApiStatusSender } from "@/chat/slack/assistant-thread/status-send";
 import {
   logException,
   setSpanAttributes,
@@ -96,40 +100,6 @@ function slackEventLogContext(
   };
 }
 
-const IGNORED_MESSAGE_SUBTYPES = new Set([
-  // Conversation Messages are immutable once accepted. An edit must not
-  // rewrite input or start another Turn. Send a new Slack Message instead.
-  "message_changed",
-  "message_deleted",
-  "message_replied",
-  "channel_join",
-  "channel_leave",
-  "channel_topic",
-  "channel_purpose",
-  "channel_name",
-  "channel_archive",
-  "channel_unarchive",
-  "group_join",
-  "group_leave",
-  "group_topic",
-  "group_purpose",
-  "group_name",
-  "group_archive",
-  "group_unarchive",
-  "ekm_access_denied",
-  "tombstone",
-]);
-
-class SlackEventPersistenceError extends Error {
-  override readonly cause: unknown;
-
-  constructor(cause: unknown) {
-    super("Slack event durable persistence failed");
-    this.name = "SlackEventPersistenceError";
-    this.cause = cause;
-  }
-}
-
 export interface SlackWebhookServices {
   getUserTokenStore?: () => UserTokenStore;
   getSlackAdapter: () => SlackAdapter;
@@ -139,6 +109,8 @@ export interface SlackWebhookServices {
   allowedDomains?: readonly string[];
   /** Slack user IDs of bots that may start a Turn without an email domain. */
   allowedBotUserIds?: readonly string[];
+  /** Join each public channel created after this is on. Defaults to off. */
+  autoJoinNewChannels?: boolean;
   runtime: Pick<
     SlackTurnRuntime<unknown>,
     | "handleAssistantContextChanged"
@@ -166,7 +138,10 @@ function parseJson(body: string): unknown {
 }
 
 function installationFromEnvelope(
-  body: SlackEventEnvelope,
+  body: Pick<
+    SlackEventEnvelope,
+    "enterprise_id" | "is_enterprise_install" | "team_id"
+  >,
 ): SlackInstallationContext {
   return {
     teamId: body.team_id,
@@ -177,10 +152,6 @@ function installationFromEnvelope(
 
 function isDmEvent(event: SlackInboundEvent): boolean {
   return event.channel_type === "im" || event.channel?.startsWith("D") === true;
-}
-
-function shouldIgnoreMessageSubtype(event: SlackInboundEvent): boolean {
-  return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
 
 function normalizeMessageThreadId(message: Message): {
@@ -220,6 +191,29 @@ function shouldIgnoreMessage(message: Message): boolean {
   );
 }
 
+/**
+ * Resolve the Slack author Identity at ingress and bind its id to the message.
+ * Ingress does no profile lookup. The worker adds the profile names later.
+ * Bot authors wait for their own bot Identity, so they get no id here.
+ */
+async function bindSlackAuthorIdentity(
+  message: Message,
+  installation: SlackInstallationContext,
+): Promise<void> {
+  const teamId = installation.teamId;
+  const userId = parseActorUserId(message.author.userId);
+  if (!teamId || !userId || message.author.isBot === true) {
+    return;
+  }
+  bindMessageAuthorIdentityId(
+    message,
+    await resolveActorIdentityId(
+      getSqlExecutor(),
+      createSlackActor(teamId, userId, null),
+    ),
+  );
+}
+
 function shouldPersistBeforeAck(body: SlackEventEnvelope): boolean {
   return body.event?.type === "app_mention" || body.event?.type === "message";
 }
@@ -244,8 +238,38 @@ async function resolveSlackConversationId(args: {
   );
 }
 
+/**
+ * Build the mailbox input for one Slack message. A message and a `stop` get
+ * the same `inboundMessageId`, so each Slack message is handled once.
+ */
+async function buildSlackInput(args: {
+  adapter: SlackAdapter;
+  conversationId: string;
+  facts?: SlackInteractionInputFacts;
+  installation: SlackInstallationContext;
+  message: Message;
+  receivedAtMs: number;
+  route: SlackConversationRoute;
+  state: StateAdapter;
+}): Promise<{ inbound: InboundMessage; thread: ThreadImpl }> {
+  const thread = await buildThread(args);
+  return {
+    inbound: buildSlackInboundMessage({
+      conversationId: args.conversationId,
+      installation: args.installation,
+      reviewItemChange: args.facts?.reviewItemChange,
+      message: args.message,
+      receivedAtMs: args.receivedAtMs,
+      route: args.route,
+      thread,
+    }),
+    thread,
+  };
+}
+
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
+  facts?: SlackInteractionInputFacts;
   installation: SlackInstallationContext;
   message: Message;
   conversationStore?: ConversationStore;
@@ -266,14 +290,9 @@ async function persistSlackMessage(args: {
       conversationStore: args.conversationStore,
       installation: args.installation,
     }));
-  const thread = await buildThread(args);
-  const inbound = buildSlackInboundMessage({
+  const { inbound, thread } = await buildSlackInput({
+    ...args,
     conversationId,
-    installation: args.installation,
-    message: args.message,
-    receivedAtMs: args.receivedAtMs,
-    route: args.route,
-    thread,
   });
   const work = await getConversationWorkState({
     conversationId,
@@ -282,12 +301,7 @@ async function persistSlackMessage(args: {
   let receipt: ProcessingReaction | undefined;
   if (
     args.route === "mention" &&
-    !work?.execution.inboundMessageIds.includes(inbound.inboundMessageId) &&
-    !(await isSlackMessageStopped({
-      messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
-      state: args.state,
-      threadId: canonicalThreadId,
-    }))
+    !work?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
   ) {
     // Ingress is serialized per thread. React before publishing new input so
     // neither a fast worker nor a duplicate delivery can leave a stale reaction.
@@ -309,137 +323,14 @@ async function persistSlackMessage(args: {
       conversationId,
       state: args.state,
     });
-    if (
-      !saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId)
-    ) {
+    const kept =
+      saved?.execution.inboundMessageIds.includes(inbound.inboundMessageId) ===
+      true;
+    if (!kept) {
       await receipt?.stop();
     }
-    throw new SlackEventPersistenceError(error);
+    throw new SlackEventPersistenceError(error, kept);
   });
-}
-
-/**
- * Interrupt the active Run, stop the session, unsubscribe, and record
- * the stop message in history. Stop input never enters the mailbox, so a
- * mention-route stop cannot resubscribe the thread by starting a new Turn.
- *
- * A late or stale stop that a newer mention already superseded is a no-op:
- * cancelling the Turn or posting the ack here would clobber that mention.
- */
-async function handleSlackThreadStop(args: {
-  adapter: SlackAdapter;
-  canonicalThreadId: string;
-  conversationStore?: ConversationStore;
-  installation: SlackInstallationContext;
-  message: Message;
-  queue: ConversationWorkQueue;
-  route: SlackConversationRoute;
-  state: StateAdapter;
-  stopReason: string;
-}): Promise<void> {
-  const thread = await buildThread(args);
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId: args.canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
-  // Capture receipts before the watermark lets a worker discard stale input.
-  // The ingress lock prevents another Slack message from arriving meanwhile.
-  const work = await getConversationWorkState({
-    conversationId,
-    state: args.state,
-  });
-  const { applied } = await stopSlackThread({
-    state: args.state,
-    stoppedAtMs: args.message.metadata.dateSent.getTime(),
-    thread,
-  });
-  if (!applied) {
-    return;
-  }
-
-  await stopConversationTurn({
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    state: args.state,
-  });
-  await clearSlackPendingReactions({
-    getSlackAdapter: () => args.adapter,
-    messages: work?.execution.pendingMessages ?? [],
-    state: args.state,
-  });
-  await stopConversationSession({ conversationId, state: args.state });
-
-  const content = parseContent(args.message);
-  const conversation = coerceThreadConversationState(undefined);
-  recordSkippedConversationMessage({
-    conversation,
-    message: args.message,
-    skippedReason: `${SubscribedReplyReason.ThreadOptOut}:${args.stopReason}`,
-    text: content.text,
-  });
-  await appendConversationMessages(getConversationEventStore(), {
-    conversation,
-    conversationId: args.canonicalThreadId,
-  });
-
-  await thread.post(THREAD_OPTOUT_ACK);
-}
-
-/** Acknowledge a native Slack stop that interrupted active work. */
-export const SLACK_SESSION_STOP_ACK = "Stopped.";
-
-/**
- * Stop the active Turn when a user clicks Slack's native agent stop button.
- *
- * Unlike the `stop` keyword, this only interrupts current work. The thread
- * stays subscribed and resource watches stay active. Slack does not leave the
- * `processing` status by itself, so clear the status even when no work runs.
- * https://docs.slack.dev/reference/events/agent_session_stopped
- */
-async function handleSlackSessionStop(args: {
-  adapter: SlackAdapter;
-  channelId: string;
-  conversationStore?: ConversationStore;
-  installation: SlackInstallationContext;
-  queue: ConversationWorkQueue;
-  state: StateAdapter;
-  threadTs: string;
-}): Promise<void> {
-  const canonicalThreadId = `slack:${args.channelId}:${args.threadTs}`;
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
-  const stopped = await stopConversationTurn({
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    state: args.state,
-  });
-  await createSlackWebApiStatusSender({
-    channelId: args.channelId,
-    threadTs: args.threadTs,
-  })("");
-  if (stopped.status !== "requested") {
-    return;
-  }
-
-  await clearSlackPendingReactions({
-    getSlackAdapter: () => args.adapter,
-    messages: stopped.pendingMessages,
-    state: args.state,
-  });
-  const thread = new ThreadImpl({
-    adapter: args.adapter,
-    stateAdapter: args.state,
-    id: canonicalThreadId,
-    channelId: args.adapter.channelIdFromThreadId(canonicalThreadId),
-    isDM: args.adapter.isDM(canonicalThreadId),
-  });
-  await thread.post(SLACK_SESSION_STOP_ACK);
 }
 
 async function routeParsedMessage(args: {
@@ -452,6 +343,8 @@ async function routeParsedMessage(args: {
   receivedAtMs: number;
   allowedBotUserIds: readonly string[];
   allowedDomains: readonly string[];
+  /** Run the task after the caller releases the thread's ingress lock. */
+  runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
 }): Promise<void> {
   if (shouldIgnoreMessage(args.message)) {
@@ -521,71 +414,122 @@ async function routeParsedMessage(args: {
     text: args.event.text ?? "",
     isExplicitMention: isMention,
   });
-  if (stopDecision) {
-    await handleSlackThreadStop({
-      adapter: args.adapter,
-      canonicalThreadId,
-      conversationStore: args.conversationStore,
-      installation: args.installation,
-      message,
-      queue: args.queue,
-      route,
-      state: args.state,
-      stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
-    });
-    return;
-  }
-
-  // Passive thread messages are not checked for the allowed domains yet.
-  if (
-    route === "mention" &&
-    !(await isSlackAuthorDomainAllowed({
+  const isAuthorDomainAllowed = () =>
+    isSlackAuthorDomainAllowed({
       allowedBotUserIds: args.allowedBotUserIds,
       allowedDomains: args.allowedDomains,
       state: args.state,
       teamId: args.installation.teamId,
       user: args.event.user,
-    }))
+    });
+  // Passive thread messages and stops are not checked for the allowed domains.
+  if (
+    !stopDecision &&
+    route === "mention" &&
+    !(await isAuthorDomainAllowed())
   ) {
     return;
   }
 
-  // Keep non-mention thread messages as Conversation history without waking a
-  // worker when passive routing is off. Later explicit mentions still need them.
-  // Write against the Slack thread id, not a bound mailbox Conversation id, so
-  // mention turns that hydrate from thread.id see the same history.
-  if (isSubscribed && !isExperimentalFeatureEnabled("passive-routing")) {
-    const content = parseContent(message);
-    const conversation = coerceThreadConversationState(undefined);
-    recordSkippedConversationMessage({
-      conversation,
-      message,
-      skippedReason: `${SubscribedReplyReason.PassiveDisabled}:passive-routing`,
-      text: content.text,
-    });
-    await appendConversationMessages(getConversationEventStore(), {
-      conversation,
-      conversationId: canonicalThreadId,
-    });
-    return;
-  }
-
+  await bindSlackAuthorIdentity(message, args.installation);
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
     conversationStore: args.conversationStore,
     installation: args.installation,
   });
-  await persistSlackMessage({
-    adapter: args.adapter,
-    installation: args.installation,
-    message,
-    conversationId,
-    conversationStore: args.conversationStore,
-    queue: args.queue,
-    receivedAtMs: args.receivedAtMs,
-    route,
-    state: args.state,
-  });
+
+  if (stopDecision) {
+    const { inbound } = await buildSlackInput({
+      adapter: args.adapter,
+      conversationId,
+      installation: args.installation,
+      message,
+      receivedAtMs: args.receivedAtMs,
+      route,
+      state: args.state,
+    });
+    await handleSlackStop({
+      adapter: args.adapter,
+      canonicalThreadId,
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      request: inbound,
+      slackThread: parseSlackThreadId(canonicalThreadId),
+      state: args.state,
+      stopMessage: {
+        message,
+        stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
+      },
+    });
+    return;
+  }
+
+  // Keep non-mention thread messages as Conversation history without waking a
+  // worker when passive routing is off. Later explicit mentions still need them.
+  // Write to the Conversation that owns the thread, which mention Turns read.
+  if (isSubscribed && !isExperimentalFeatureEnabled("passive-routing")) {
+    await saveSkippedSlackMessage({
+      conversationId,
+      message,
+      skippedReason: `${SubscribedReplyReason.PassiveDisabled}:passive-routing`,
+    });
+    return;
+  }
+
+  const persist = () =>
+    persistSlackMessage({
+      adapter: args.adapter,
+      installation: args.installation,
+      message,
+      conversationId,
+      conversationStore: args.conversationStore,
+      queue: args.queue,
+      receivedAtMs: args.receivedAtMs,
+      route,
+      state: args.state,
+    });
+  // A message from a person to Junior answers the open questions that the
+  // agent asked in this Conversation, like a click on their cards. A reply in
+  // a subscribed thread starts a Turn too, so it answers in the same way. It
+  // skips the allowed domain check above. The close checks the domain only
+  // when an open item can match, so most replies need no profile lookup.
+  const closeAnswered = async () => {
+    if (message.author.isBot === true) return;
+    await closeReviewItemsAnsweredByReply({
+      ...(route === "subscribed"
+        ? { canAnswer: isAuthorDomainAllowed }
+        : undefined),
+      conversationId,
+      delivery: {
+        queue: args.queue,
+        show: createSlackReviewItemShow(() => args.adapter),
+      },
+      resolveUser: async () => {
+        const teamId = args.installation.teamId;
+        const userId = parseActorUserId(message.author.userId);
+        if (!teamId || !userId) return undefined;
+        return (await readActorIdentity(createSlackActor(teamId, userId, null)))
+          ?.user;
+      },
+      text: stripLeadingBotMention(parseContent(message).topLevelText, {
+        botUserId: args.adapter.botUserId,
+        stripLeadingSlackMentionToken: true,
+      }),
+    });
+  };
+  // The close can call the decision model, so it runs after the ingress
+  // lock is released and does not block later messages in the thread.
+  try {
+    await persist();
+  } catch (error) {
+    // A failed queue wake can follow a saved reply. The reply still answers.
+    if (error instanceof SlackEventPersistenceError && error.saved) {
+      args.runAfterUnlock(closeAnswered);
+    }
+    throw error;
+  }
+  args.runAfterUnlock(closeAnswered);
 }
 
 async function handleSlackEvent(args: {
@@ -682,16 +626,31 @@ async function handleSlackEvent(args: {
           const routed = await withLock(
             state,
             `slack:ingress:slack:${channelId}:${threadTs}`,
-            () =>
-              handleSlackSessionStop({
-                adapter,
-                channelId,
+            async () => {
+              const canonicalThreadId = `slack:${channelId}:${threadTs}`;
+              const conversationId = await resolveSlackConversationId({
+                canonicalThreadId,
                 conversationStore: args.services.conversationStore,
                 installation,
+              });
+              await handleSlackStop({
+                adapter,
+                canonicalThreadId,
+                conversationId,
+                conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
+                request: event.event_ts
+                  ? slackStopButtonRequest({
+                      channelId,
+                      conversationId,
+                      eventTs: event.event_ts,
+                      installation,
+                    })
+                  : undefined,
+                slackThread: { channelId, threadTs },
                 state,
-                threadTs,
-              }),
+              });
+            },
             { keepAlive: true, waitMs: 10_000 },
           );
           if (!routed.acquired) {
@@ -712,6 +671,8 @@ async function handleSlackEvent(args: {
           });
           if (!member) return;
           const message = adapter.parseMessage(event);
+          let afterUnlock: (() => Promise<void>) | undefined;
+          // The task runs after the lock is released, also when routing throws.
           const routed = await withLock(
             state,
             `slack:ingress:${normalizeMessageThreadId(message).threadId}`,
@@ -726,10 +687,13 @@ async function handleSlackEvent(args: {
                 receivedAtMs,
                 allowedBotUserIds: args.services.allowedBotUserIds ?? [],
                 allowedDomains: args.services.allowedDomains ?? [],
+                runAfterUnlock: (task) => {
+                  afterUnlock = task;
+                },
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
-          );
+          ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
           }
@@ -737,6 +701,51 @@ async function handleSlackEvent(args: {
       },
     }),
   );
+}
+
+/**
+ * Persist one Slack input as a mention under the thread's ingress lock.
+ * Slack does not retry interactions. Saved input still runs through heartbeat
+ * recovery, so a failed queue send after the append does not reject it.
+ */
+async function persistSlackMentionWithLock(args: {
+  adapter: SlackAdapter;
+  facts?: SlackInteractionInputFacts;
+  installation: SlackInstallationContext;
+  message: Message;
+  services: SlackWebhookServices;
+  state: StateAdapter;
+}): Promise<void> {
+  const { message, threadId } = normalizeMessageThreadId(args.message);
+  await bindSlackAuthorIdentity(message, args.installation);
+  try {
+    const routed = await withLock(
+      args.state,
+      `slack:ingress:${threadId}`,
+      () =>
+        persistSlackMessage({
+          adapter: args.adapter,
+          facts: args.facts,
+          installation: args.installation,
+          message,
+          conversationStore: args.services.conversationStore,
+          queue: args.services.queue,
+          receivedAtMs: Date.now(),
+          route: "mention",
+          state: args.state,
+        }),
+      { keepAlive: true, waitMs: 10_000 },
+    );
+    if (!routed.acquired) {
+      throw new Error("Could not acquire Slack ingress lock");
+    }
+  } catch (error) {
+    if (error instanceof SlackEventPersistenceError && error.saved) {
+      logException(error.cause, "slack.event.wake.failed");
+      return;
+    }
+    throw error;
+  }
 }
 
 /** Handle Slack webhooks by enqueueing durable conversation work. */
@@ -754,16 +763,57 @@ export async function handleSlackWebhook(args: {
 
   const contentType = args.request.headers.get("content-type") || "";
   if (contentType.includes("application/x-www-form-urlencoded")) {
+    const state = args.services.state ?? getStateAdapter();
     return await handleSlackForm({
       adapter,
       body,
       getUserTokenStore: () => getUserTokenStore(args.services),
-      state: args.services.state ?? getStateAdapter(),
+      isAuthorAllowed: (userId, installation) =>
+        isSlackAuthorDomainAllowed({
+          allowedBotUserIds: args.services.allowedBotUserIds ?? [],
+          allowedDomains: args.services.allowedDomains ?? [],
+          state,
+          teamId: installation.teamId,
+          user: userId,
+        }),
+      persistMessage: (message, installation, facts) =>
+        persistSlackMentionWithLock({
+          adapter,
+          facts,
+          installation,
+          message,
+          services: args.services,
+          state,
+        }),
+      queue: args.services.queue,
+      state,
       waitUntil: args.waitUntil,
     });
   }
 
-  const result = slackEventEnvelopeSchema.safeParse(parseJson(body));
+  const json = parseJson(body);
+  const channelCreated = slackChannelCreatedEnvelopeSchema.safeParse(json);
+  if (channelCreated.success) {
+    if (args.services.autoJoinNewChannels) {
+      const channelId = channelCreated.data.event.channel.id;
+      enqueue(
+        args.waitUntil,
+        withLogContext({ platform: "slack", destinationName: channelId }, () =>
+          joinCreatedSlackChannel({
+            adapter,
+            channelId,
+            installation: installationFromEnvelope(channelCreated.data),
+            state: args.services.state ?? getStateAdapter(),
+          }).catch((error) => {
+            logException(error, "slack.channel.auto_join.failed");
+          }),
+        ),
+      );
+    }
+    return new Response("ok", { status: 200 });
+  }
+
+  const result = slackEventEnvelopeSchema.safeParse(json);
   if (!result.success) {
     return new Response("Invalid JSON", { status: 400 });
   }

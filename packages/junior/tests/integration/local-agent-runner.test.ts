@@ -648,10 +648,11 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[1]?.instruction.context).toContain("first question");
-    expect(agentRuns[1]?.instruction.context).toContain(
-      "reply to first question",
-    );
+    // Agent history carries the first exchange, so thread context omits it.
+    const secondHistory = JSON.stringify(agentRuns[1]?.history ?? []);
+    expect(secondHistory).toContain("first question");
+    expect(secondHistory).toContain("reply to first question");
+    expect(agentRuns[1]?.instruction.context).toBeUndefined();
 
     const state = await getPersistedThreadState(conversationId!);
     expect(state.conversation).not.toHaveProperty("stats");

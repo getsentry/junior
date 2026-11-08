@@ -155,6 +155,36 @@ describe("Slack public search", () => {
     expect(result).not.toHaveProperty("next_cursor");
   });
 
+  it("reads channel IDs from permalinks in documented channel hits", async () => {
+    queueSlackApiResponse("assistant.search.context", {
+      body: {
+        ok: true,
+        results: {
+          messages: [],
+          channels: [
+            {
+              team_id: "T0123456",
+              name: "feed-gcp-service-health",
+              permalink: "https://slack.com/archives/C0A70D61AA0",
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "feed-gcp-service-health",
+      content_types: ["channels"],
+    });
+
+    expect(result).toMatchObject({
+      count: 1,
+      channels: [
+        { channel_id: "C0A70D61AA0", channel_name: "feed-gcp-service-health" },
+      ],
+    });
+  });
+
   it("keeps file/channel/user hits when optional wire fields are blank", async () => {
     queueSlackApiResponse("assistant.search.context", {
       body: {

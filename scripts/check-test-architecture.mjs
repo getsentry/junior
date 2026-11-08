@@ -15,6 +15,7 @@ const EMPTY_DATABASE_TESTS = new Set([
   "packages/junior/tests/component/conversation-storage-sql.test.ts",
   "packages/junior/tests/component/memory-plugin-storage.test.ts",
   "packages/junior/tests/component/scheduled-automations-sql.test.ts",
+  "packages/junior/tests/integration/concurrent-index-migrations.test.ts",
   "packages/junior/tests/integration/conversation-sql.test.ts",
   "packages/junior/tests/integration/workspace-snapshot-migration.test.ts",
 ]);
@@ -24,10 +25,11 @@ const AGENT_FIXTURE_ROOT = "packages/junior-evals/src/fixture/";
 const AGENT_FIXTURE_ALIAS = "@junior-evals/fixture/";
 const JUNIOR_TESTS_ROOT = "packages/junior/tests/";
 const AGENT_EVALS_ROOT = "packages/junior-evals/evals/";
-// Guardian and router evals call one model boundary and do not run the agent.
+// Guardian and classifier evals call one model boundary and do not run the
+// agent.
 const ISOLATED_EVAL_ROOTS = [
+  "packages/junior-evals/evals/classifiers/",
   "packages/junior-evals/evals/guardian/",
-  "packages/junior-evals/evals/router/",
 ];
 const AGENT_TEST_BASELINE_PATH = "scripts/test-architecture-baseline.json";
 
@@ -340,7 +342,7 @@ function main() {
     [
       "Test architecture check failed:",
       ...errors,
-      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md, packages/junior/tests/README.md, and packages/junior-evals/README.md.`,
+      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
     ].join("\n"),
   );
   process.exitCode = 1;

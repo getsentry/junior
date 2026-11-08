@@ -71,6 +71,7 @@ describe("Conversation Brief search", () => {
         visibility: "private",
       });
       await conversations.createChild({
+        kind: "task",
         childConversationId: childId,
         parentConversationId: targetConversationId,
         nowMs: Date.parse("2026-07-01T12:01:00.000Z"),

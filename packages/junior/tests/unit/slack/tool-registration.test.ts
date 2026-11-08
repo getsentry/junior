@@ -31,6 +31,7 @@ function eventPlugin() {
     },
     events: {
       resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
+      events: { "issue.closed": { reach: "resource" } },
     },
   });
 }
@@ -273,15 +274,23 @@ describe("Slack tool registration", () => {
         slackActionToken: undefined,
       } as ToolRuntimeContext);
       expect(modelView(tools)).toBe(modelView(messageTurn));
-      expect(tools.createEventAutomation?.disabledReason).toBeDefined();
+      expect(tools.createAutomation?.disabledReason).toBeDefined();
       expect(tools.addReaction?.disabledReason).toBeDefined();
+      expect(tools.addReviewItem?.disabledReason).toBeUndefined();
     }
-    expect(messageTurn.createEventAutomation?.disabledReason).toBeUndefined();
+    expect(messageTurn.createAutomation?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
     expect(messageTurn).toHaveProperty("slackPublicSearch");
     expect(messageTurn).toHaveProperty("addReaction");
-    expect(messageTurn).toHaveProperty("createEventAutomation");
-    expect(messageTurn).toHaveProperty("slackScheduleCreateAutomation");
+    expect(
+      Object.keys(messageTurn).filter((name) => /Automation/.test(name)),
+    ).toEqual([
+      "createAutomation",
+      "searchAutomations",
+      "updateAutomation",
+      "deleteAutomation",
+      "runAutomationNow",
+    ]);
   });
 
   it("registers delivery tools from assistant context channel in DM turns", () => {
@@ -314,6 +323,20 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("addReaction");
   });
 
+  it("loads the tool that asks a person in every root Turn", () => {
+    const tools = createTools([], {}, ctx());
+    expect(tools.addReviewItem?.exposure).not.toBe("deferred");
+    expect(tools.addReviewItem?.disabledReason).toBeUndefined();
+
+    // An Agent invocation reports the need to its parent.
+    const childTools = createTools([], {}, {
+      ...ctx("C12345"),
+      agentInvocationId: "invocation-1",
+      parentConversationId: "slack:C12345:1700000000.000",
+    } as ToolRuntimeContext);
+    expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
+  });
+
   it("does not register Slack tools for local destinations", () => {
     const tools = createTools(
       [],
@@ -333,7 +356,10 @@ describe("Slack tool registration", () => {
     expect(
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
-    expect(tools).not.toHaveProperty("createEventAutomation");
+    // Automation tools are not Slack tools. This Turn has no person, so they
+    // are disabled.
+    expect(tools.createAutomation?.disabledReason).toBeDefined();
+    expect(tools.runAutomationNow?.disabledReason).toBeDefined();
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");

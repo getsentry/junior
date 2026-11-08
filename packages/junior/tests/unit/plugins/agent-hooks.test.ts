@@ -12,7 +12,7 @@ import {
   type ToolExposure,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { logWarnMock, resolveViewerUserMock } = vi.hoisted(() => ({
@@ -343,6 +343,7 @@ describe("agent plugin hooks", () => {
             expect(ctx.text).toBe("remember this");
             expect(ctx).toHaveProperty("embedder");
             expect(ctx).toHaveProperty("model");
+            expect(ctx).toHaveProperty("reranker");
             return [{ text: "remembered context" }];
           },
         },
@@ -623,6 +624,7 @@ describe("agent plugin hooks", () => {
           resourceTypes: [
             { type: "demo", supportedEvents: ["demo.completed"] },
           ],
+          events: { "demo.completed": { reach: "resource" } },
         },
         hooks: {
           tools(ctx) {
@@ -668,7 +670,16 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("allows watch hints for conversations", () => {
+  it.each([
+    {
+      name: "allows watch hints while plugin events are enabled",
+      enabled: true,
+    },
+    {
+      name: "withholds watch hints while plugin events are disabled",
+      enabled: false,
+    },
+  ])("$name", ({ enabled }) => {
     const webActor = {
       platform: "web" as const,
       userId: "dashboard:alice",
@@ -686,10 +697,12 @@ describe("agent plugin hooks", () => {
           resourceTypes: [
             { type: "demo", supportedEvents: ["demo.completed"] },
           ],
+          events: { "demo.completed": { reach: "resource" } },
+          isEnabled: () => enabled,
         },
         hooks: {
           tools(ctx) {
-            expect(ctx.events.canSubscribe).toBe(true);
+            expect(ctx.events.canSubscribe).toBe(enabled);
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };
@@ -1090,6 +1103,7 @@ describe("agent plugin hooks", () => {
       defineJuniorPlugin({
         events: {
           resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+          events: { "demo.created": { reach: "resource" } },
           normalizeIdentifier: (identifier) => identifier.toLowerCase(),
         },
         manifest: {
@@ -1204,6 +1218,7 @@ describe("agent plugin hooks", () => {
       label: "while its registration is disabled",
       events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+        events: { "demo.created": { reach: "resource" as const } },
         isEnabled: () => false,
       },
       error: "without an active registration",
@@ -1212,6 +1227,7 @@ describe("agent plugin hooks", () => {
       label: "when the event type is undeclared",
       events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
+        events: { "demo.created": { reach: "resource" as const } },
       },
       error: 'did not register event "demo.deleted"',
     },

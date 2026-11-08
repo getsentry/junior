@@ -23,6 +23,7 @@ function conversation(
   events: ConversationReportEvent[],
 ): ConversationTranscript {
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -54,6 +55,7 @@ describe("transcript render grouping", () => {
         key: "42:failure",
         kind: "failure",
         failureCode: "model_execution_failed",
+        seq: 42,
         timestamp: 1_000,
       },
     ]);

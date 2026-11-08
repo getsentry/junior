@@ -11,8 +11,14 @@ related:
   - /cli/snapshot-create/
 ---
 
-Use `junior upgrade` after installing a new Junior release. The command applies
-pending Drizzle migrations to the database configured by `DATABASE_URL`.
+`junior upgrade` applies pending Drizzle migrations to the database configured
+by `DATABASE_URL`. The scaffolded `vercel.json` runs it before `pnpm build` on
+every Vercel deploy, so production migrates itself. Run it by hand for a local
+database, for a host whose build command does not run it, or for the bridge
+procedure below.
+For Neon, it connects to the direct endpoint: the `DATABASE_URL` host without
+`-pooler`. It does not read `DATABASE_URL_UNPOOLED`. The migration lock does not
+work through a pooler.
 
 ## Usage
 
@@ -77,6 +83,5 @@ database was already current or how many migrations were applied.
 
 ## Next step
 
-Run [junior check](/cli/check/) before deploying, then continue with
-[junior snapshot create](/cli/snapshot-create/) if your plugins need sandbox
-dependencies.
+Run [junior check](/cli/check/) before deploying. The deploy build then runs
+[junior snapshot create](/cli/snapshot-create/).

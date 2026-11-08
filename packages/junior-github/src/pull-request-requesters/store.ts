@@ -16,6 +16,7 @@ const table = juniorGitHubPullRequestRequesters;
 export async function recordGitHubPullRequestOpener(
   db: GitHubDb,
   input: {
+    conversationId: string;
     createdAt: Date;
     identityId: string;
     number: number;
@@ -26,6 +27,7 @@ export async function recordGitHubPullRequestOpener(
   await db
     .insert(table)
     .values({
+      conversationId: input.conversationId,
       createdAt: input.createdAt,
       identityId: input.identityId,
       number: input.number,
@@ -34,7 +36,7 @@ export async function recordGitHubPullRequestOpener(
     })
     .onConflictDoUpdate({
       target: [table.repositoryFullName, table.number, table.identityId],
-      set: { createdAt: input.createdAt },
+      set: { conversationId: input.conversationId, createdAt: input.createdAt },
     });
   await db
     .delete(table)
@@ -75,16 +77,23 @@ export async function recordGitHubPullRequestRequester(
     });
 }
 
+/** The first person who asked Junior for a pull request. */
+export interface GitHubPullRequestOpener {
+  /** Set only for the person who asked Junior to open it. */
+  conversationId?: string;
+  identityId: string;
+}
+
 /**
- * Load the Junior identity id of the first requester of each pull request.
- * This is the person who asked Junior to open it, or, when the create had no
- * identity, the first person who asked Junior to update it.
+ * Load the first requester of each pull request. This is the person who
+ * asked Junior to open it, or, when the create had no identity, the first
+ * person who asked Junior to update it.
  */
 export async function listGitHubPullRequestOpeners(
   db: GitHubDb,
   input: { numbers: number[]; repositoryFullName: string },
-): Promise<Map<number, string>> {
-  const openers = new Map<number, string>();
+): Promise<Map<number, GitHubPullRequestOpener>> {
+  const openers = new Map<number, GitHubPullRequestOpener>();
   if (input.numbers.length === 0) return openers;
   const rows = await db
     .select()
@@ -97,7 +106,14 @@ export async function listGitHubPullRequestOpeners(
     )
     .orderBy(asc(table.createdAt));
   for (const row of rows) {
-    if (!openers.has(row.number)) openers.set(row.number, row.identityId);
+    if (!openers.has(row.number)) {
+      openers.set(row.number, {
+        identityId: row.identityId,
+        ...(row.conversationId
+          ? { conversationId: row.conversationId }
+          : undefined),
+      });
+    }
   }
   return openers;
 }

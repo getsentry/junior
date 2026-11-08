@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   destinationVisibilitySchema,
   dispatchOptionsSchema,
@@ -25,9 +25,11 @@ export interface DispatchResult {
 
 /**
  * Result of an Identity dispatch. `not_linked` means core found no current
- * Slack member linked to the Identity, so it started no work.
+ * Slack member for that person, so it started no work.
  */
-export type IdentityDispatchResult = DispatchResult | { status: "not_linked" };
+export type IdentityDispatchResult =
+  | { conversationId: string; status: "created" | "already_exists" }
+  | { status: "not_linked" };
 
 export interface Dispatch {
   errorMessage?: string;

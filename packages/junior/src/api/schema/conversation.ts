@@ -5,7 +5,9 @@ import {
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
-import { z } from "zod";
+import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import * as z from "zod";
+import { conversationReadPositionSchema } from "./conversation-read-position";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -29,7 +31,11 @@ export const conversationReportStatusSchema = z.enum([
   "active",
   "completed",
   "failed",
+  "stopped",
 ]);
+
+/** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
+const conversationKindSchema = z.enum(["root", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",
@@ -53,18 +59,65 @@ export const conversationAttachmentParamsSchema = z
   })
   .strict();
 
+/**
+ * Events in a default dashboard page. A read costs a fixed ~15 ms plus about
+ * 0.1 ms and 600 bytes per event, so this cap keeps a page within about twice
+ * the fixed cost. Smaller pages save little and need more requests.
+ */
+export const CONVERSATION_EVENT_PAGE_LIMIT = 150;
+
 export const conversationDetailQuerySchema = z
   .object({
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
+    /** Omit to get the latest three Turns, up to the default page limit. */
+    limit: z.coerce.number().int().min(1).max(1_000).optional(),
+    /** Also return `unreadPage` when the detail has an `unreadCursor`. */
+    unreadPage: z.stringbool().optional(),
+    /**
+     * Also return `mailbox`, read before history. A sent version that still
+     * matches gets `{ unchanged: true, mailbox }` instead of 304, so a poll
+     * needs one request.
+     */
+    mailbox: z.stringbool().optional(),
+    /**
+     * An `appendCursor` from an earlier detail. Events then hold only newer
+     * events, with `appended: true`, while the cursor still applies.
+     */
+    after: z.string().min(1).optional(),
   })
   .strict();
 
-export const conversationEventsQuerySchema = z
-  .object({
-    before: z.string().min(1),
-    limit: z.coerce.number().int().min(1).max(1_000).default(500),
-  })
-  .strict();
+const conversationEventsLimitSchema = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(1_000)
+  .default(CONVERSATION_EVENT_PAGE_LIMIT);
+
+/**
+ * Page toward the start with `before`, toward the latest with `after`, or
+ * both ways from one event with `around`. A link target asks for the page
+ * around one event by its `event` seq, or around the start of a `turn`.
+ */
+export const conversationEventsQuerySchema = z.union([
+  z
+    .object({ before: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({ after: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({ around: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+  z
+    .object({
+      event: z.coerce.number().int().min(0),
+      limit: conversationEventsLimitSchema,
+    })
+    .strict(),
+  z
+    .object({ turn: z.string().min(1), limit: conversationEventsLimitSchema })
+    .strict(),
+]);
 
 export const conversationFeedQuerySchema = z
   .object({
@@ -78,14 +131,6 @@ export const conversationFeedQuerySchema = z
     q: z.string().trim().max(200).optional(),
     status: z.enum(["active", "archived"]).default("active"),
   })
-  .strict();
-
-export const archiveConversationBodySchema = z
-  .object({ archived: z.boolean(), lastSeenAt: z.string().datetime() })
-  .strict();
-
-export const archiveConversationResponseSchema = z
-  .object({ archivedAt: z.string().datetime().nullable() })
   .strict();
 
 export const createConversationMessageBodySchema = z
@@ -122,84 +167,15 @@ export const acceptedConversationMessageSchema = z
 
 export const actorIdentitySchema = z
   .object({
+    /**
+     * Junior API path of the profile photo: the person's Slack photo, then
+     * their Google photo.
+     */
+    avatarUrl: z.string().optional(),
     email: z.string().optional(),
     fullName: z.string().optional(),
     slackUserId: z.string().optional(),
     slackUserName: z.string().optional(),
-  })
-  .strict();
-
-/** Mailbox delivery mode for one accepted inbound message. */
-export const conversationPendingMessageDeliverySchema = z.enum([
-  "defer",
-  "interrupt",
-]);
-
-/** One accepted mailbox message that has not reached durable history yet. */
-export const conversationPendingMessageSchema = z
-  .object({
-    actorIdentity: actorIdentitySchema.optional(),
-    createdAt: z.string().datetime(),
-    delivery: conversationPendingMessageDeliverySchema,
-    inboundMessageId: z.string().min(1),
-    messageId: z.string().min(1),
-    receivedAt: z.string().datetime(),
-    role: z.literal("user"),
-    source: z.enum(["slack", "web"]),
-    text: z.string().optional(),
-    attachments: z.array(messageAttachmentSchema).optional(),
-    redacted: z.literal(true).optional(),
-  })
-  .strict()
-  .superRefine((data, context) => {
-    if ((data.text === undefined) === (data.redacted !== true)) {
-      context.addIssue({
-        code: "custom",
-        message: "pending message content must be text or explicitly redacted",
-      });
-    }
-    if (data.redacted && (data.actorIdentity || data.attachments)) {
-      context.addIssue({
-        code: "custom",
-        message:
-          "redacted pending messages must not expose actor identity or attachments",
-      });
-    }
-  });
-
-/** Participant-only authorization prompt for a parked web turn. */
-export const conversationPendingAuthorizationSchema = z
-  .object({
-    authorizationUrl: z.string().url(),
-    completionText: z.string().min(1),
-    label: z.string().min(1),
-  })
-  .strict();
-
-/** Bounded mailbox snapshot for one conversation transcript. */
-export const conversationPendingMessagesReportSchema = z
-  .object({
-    authorization: conversationPendingAuthorizationSchema.optional(),
-    conversationId: z.string().min(1),
-    generatedAt: z.string().datetime(),
-    messages: z.array(conversationPendingMessageSchema),
-  })
-  .strict();
-
-/** Optional filters for cancelling accepted mailbox rows. */
-export const cancelConversationPendingMessagesBodySchema = z
-  .object({
-    inboundMessageIds: z.array(z.string().min(1)).min(1).optional(),
-    receivedBefore: z.string().datetime().optional(),
-  })
-  .strict();
-
-/** Result of cancelling accepted human-facing mailbox rows. */
-export const cancelConversationPendingMessagesResponseSchema = z
-  .object({
-    cancelledCount: z.number().int().nonnegative(),
-    cancelledInboundMessageIds: z.array(z.string().min(1)),
-    conversationId: z.string().min(1),
   })
   .strict();
 
@@ -274,6 +250,9 @@ export const conversationSummaryReportSchema = z
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
     childAgentTotals: conversationChildAgentTotalsSchema.optional(),
     conversationId: z.string(),
+    kind: conversationKindSchema,
+    /** Present on Threads and Tasks. */
+    parentConversationId: z.string().min(1).optional(),
     isParticipant: z.boolean(),
     visibility: z.enum(["private", "public"]).optional(),
     status: conversationReportStatusSchema,
@@ -283,7 +262,21 @@ export const conversationSummaryReportSchema = z
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),
+    /**
+     * When this Conversation was archived for everyone, or null. It shows
+     * only while it and every ancestor are unarchived.
+     */
     archivedAt: z.string().datetime().nullable().optional(),
+    pinnedAt: z.string().datetime().nullable().optional(),
+    /** The viewer's place in Pinned. Unset until they reorder their pins. */
+    pinPosition: z.number().int().optional(),
+    /**
+     * True when the conversation is idle and Junior's latest reply that the
+     * transcript shows is after the viewer's read position. Quiet replies do
+     * not count. Opening the conversation does not move the position; reading
+     * in it, replying, archiving, or Mark as read does.
+     */
+    unread: z.boolean().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
@@ -332,15 +325,26 @@ const conversationReportMessageEventDataSchema = z
     role: z.enum(["assistant", "system", "user"]),
     source: z.enum(["slack", "web"]).optional(),
     actorIdentity: actorIdentitySchema.optional(),
+    /** Identity id of the author. Detail `authors` maps it to the person. */
+    actorIdentityId: z.string().min(1).optional(),
     /** Agent invocation whose input this is. An agent wrote it, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
+    /** Namespace of the first Event, such as `github`. */
+    eventNamespace: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
+    quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),
-    /** Every Event when several arrived together in one message. */
+    /**
+     * The Watch Events when several arrived together. A message that also
+     * records Review item changes lists its own Event here even when it has
+     * one.
+     */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
+    /** Person changes to Review items that this message records. */
+    reviewItemChanges: z.array(reviewItemChangeRecordSchema).min(1).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -355,12 +359,16 @@ const conversationReportMessageEventDataSchema = z
     }
     if (
       data.redacted &&
-      (data.actorIdentity || data.cards || data.attachments || data.events)
+      (data.actorIdentity ||
+        data.cards ||
+        data.attachments ||
+        data.events ||
+        data.reviewItemChanges)
     ) {
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, or events",
+          "redacted messages must not expose actor identity, cards, attachments, events, or review item changes",
       });
     }
   });
@@ -480,7 +488,7 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
       .object({
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
-        state: z.enum(["succeeded", "no_reply"]),
+        state: z.enum(["succeeded", "no_reply", "blocked"]),
       })
       .strict(),
     z
@@ -507,19 +515,6 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
       .strict(),
   ],
 );
-
-const conversationReportTurnRoutedEventDataSchema = z
-  .object({
-    type: z.literal("turn_routed"),
-    turnId: z.string().min(1),
-    modelProfile: z.string().min(1),
-    modelId: z.string().min(1),
-    costUsd: z.number().finite().nonnegative().optional(),
-    reasoningLevel: z.string().min(1),
-    confidence: z.number().min(0).max(1).optional(),
-    source: z.enum(["configured", "inherited", "router"]),
-  })
-  .strict();
 
 const conversationReportGuardianActionReviewedEventDataSchema = z
   .object({
@@ -562,10 +557,19 @@ const conversationReportAttachmentsDeliveredEventDataSchema = z
   })
   .strict();
 
+/** Junior text that a plugin tool posted to its provider. */
+const conversationReportReplyPostedEventDataSchema = z
+  .object({
+    type: z.literal("reply_posted"),
+    plugin: z.string().min(1),
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+  })
+  .strict();
+
 const conversationReportCompactionEventDataSchema = z
   .object({
     type: z.literal("compaction"),
-    modelProfile: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     summary: z.string().min(1).optional(),
     details: z
@@ -581,17 +585,6 @@ const conversationReportCompactionEventDataSchema = z
       })
       .strict()
       .optional(),
-  })
-  .strict();
-
-const conversationReportHandoffEventDataSchema = z
-  .object({
-    type: z.literal("handoff"),
-    modelProfile: z.string().min(1),
-    modelId: z.string().min(1),
-    reasoningLevel: z.string().min(1).optional(),
-    triggeringToolCallId: z.string().min(1).optional(),
-    summary: z.string().min(1).optional(),
   })
   .strict();
 
@@ -620,10 +613,9 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnContextEventDataSchema,
   conversationReportStructuredEventDataSchema,
   conversationReportAttachmentsDeliveredEventDataSchema,
-  conversationReportTurnRoutedEventDataSchema,
+  conversationReportReplyPostedEventDataSchema,
   conversationReportGuardianActionReviewedEventDataSchema,
   conversationReportCompactionEventDataSchema,
-  conversationReportHandoffEventDataSchema,
   conversationReportSubagentEventDataSchema,
 ]);
 
@@ -638,8 +630,6 @@ export const conversationReportEventSchema = z
     model: z
       .object({
         modelId: z.string().min(1),
-        modelProfile: z.string().min(1).optional(),
-        reasoningLevel: z.string().min(1).optional(),
       })
       .strict()
       .optional(),
@@ -786,6 +776,11 @@ export const forkConversationBodySchema = z
     /** Assistant reply that ends the copied history. */
     messageId: z.string().min(1).max(500),
     idempotencyKey: z.string().trim().min(1).max(200),
+    /** Start a hidden, read-only Quick question about this reply text. */
+    quickQuestion: z
+      .object({ quote: z.string().trim().min(1).max(4_000) })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -797,6 +792,7 @@ export const forkConversationResponseSchema = z
 export const conversationAgentTreeNodeSchema = z
   .object({
     conversationId: z.string().min(1),
+    kind: conversationKindSchema,
     label: z.string().min(1),
   })
   .strict();
@@ -805,6 +801,32 @@ export type ConversationAgentTreeNode = z.infer<
   typeof conversationAgentTreeNodeSchema
 >;
 
+export const conversationEventPageSchema = z
+  .object({
+    events: z.array(conversationReportEventSchema),
+    eventHistory: conversationEventHistorySchema,
+    previousCursor: z.string().min(1).optional(),
+    /** Present on `after` and `around` pages when newer events follow. */
+    nextCursor: z.string().min(1).optional(),
+    generatedAt: z.string(),
+  })
+  .strict()
+  .superRefine(validateConversationEvents);
+
+/**
+ * Carries the detail version token in both directions. A custom header, not
+ * `ETag` / `If-None-Match`: in production the Vercel CDN answered standard
+ * validators itself, after the function had already built the full report.
+ */
+export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
+
+/**
+ * Carries the change token of the Conversation tree that a detail report was
+ * built from. The dashboard compares it with the token of `GET /api/versions`
+ * and asks for the report only when they differ.
+ */
+export const CONVERSATION_VERSION_HEADER = "x-junior-conversation-version";
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     /**
@@ -812,8 +834,24 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      * Conversation last. Root Conversations omit it.
      */
     agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
+    /** The viewer's effective auto-archive choice. Participants only. */
+    autoArchive: z.boolean().optional(),
     /** The viewer can fork this conversation from an assistant reply. */
     canFork: z.boolean().optional(),
+    /** The viewer can move this dashboard conversation to a Slack thread. */
+    canContinueInSlack: z.literal(true).optional(),
+    /** How far the signed-in viewer has read. Absent until they read. */
+    readPosition: conversationReadPositionSchema.optional(),
+    /**
+     * Pass as `after` to the events API to read from the read position.
+     * Present only when unread events start before `events`.
+     */
+    unreadCursor: z.string().min(1).optional(),
+    /**
+     * The `around` page of `unreadCursor`, when the request asks for it. A
+     * reader who opens at the read position needs no second request.
+     */
+    unreadPage: conversationEventPageSchema.optional(),
     forkedFromConversationId: z.string().optional(),
     /** Title of the fork source, when the viewer can open it. */
     forkedFromTitle: z.string().optional(),
@@ -829,7 +867,24 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
       .strict()
       .optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
+    /**
+     * Each person who wrote in the Conversation, by each of their Identity
+     * ids. Messages and pending messages name their author with
+     * `actorIdentityId`.
+     */
+    authors: z.record(z.string(), actorIdentitySchema).optional(),
     events: z.array(conversationReportEventSchema),
+    /**
+     * Events hold only the events after the request's `after` cursor. The
+     * report omits `previousCursor` and `unreadCursor`: the reader keeps its
+     * own.
+     */
+    appended: z.literal(true).optional(),
+    /**
+     * Pass as `after` on the next detail read to get only newer events.
+     * Absent after a purge.
+     */
+    appendCursor: z.string().min(1).optional(),
     eventHistory: conversationEventHistorySchema,
     previousCursor: z.string().min(1).optional(),
     generatedAt: z.string(),
@@ -839,19 +894,23 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
   .strict()
   .superRefine(validateConversationEvents);
 
-export const conversationEventPageSchema = z
-  .object({
-    events: z.array(conversationReportEventSchema),
-    eventHistory: conversationEventHistorySchema,
-    previousCursor: z.string().min(1).optional(),
-    generatedAt: z.string(),
-  })
-  .strict()
-  .superRefine(validateConversationEvents);
+/** A feed row, with its visible Threads nested under their parents. */
+export type ConversationFeedItem = ConversationSummaryReport & {
+  threads?: ConversationFeedItem[];
+};
+
+/**
+ * A root in the feed, or one of its visible Threads. A Thread nests under
+ * its nearest visible Thread ancestor, or under the root. Tasks never show.
+ */
+const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
+  conversationSummaryReportSchema.extend({
+    threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
+  });
 
 export const conversationFeedSchema = z
   .object({
-    conversations: z.array(conversationSummaryReportSchema),
+    conversations: z.array(conversationFeedItemSchema),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
   })
@@ -903,12 +962,6 @@ export type ConversationDetailReport = z.infer<
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
 export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
-export type ArchiveConversationBody = z.infer<
-  typeof archiveConversationBodySchema
->;
-export type ArchiveConversationResponse = z.infer<
-  typeof archiveConversationResponseSchema
->;
 export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema
@@ -918,19 +971,4 @@ export type CreateConversationMessageBody = z.infer<
 >;
 export type AcceptedConversationMessage = z.infer<
   typeof acceptedConversationMessageSchema
->;
-export type ConversationPendingMessageDelivery = z.infer<
-  typeof conversationPendingMessageDeliverySchema
->;
-export type ConversationPendingMessage = z.infer<
-  typeof conversationPendingMessageSchema
->;
-export type ConversationPendingMessagesReport = z.infer<
-  typeof conversationPendingMessagesReportSchema
->;
-export type CancelConversationPendingMessagesBody = z.infer<
-  typeof cancelConversationPendingMessagesBodySchema
->;
-export type CancelConversationPendingMessagesResponse = z.infer<
-  typeof cancelConversationPendingMessagesResponseSchema
 >;

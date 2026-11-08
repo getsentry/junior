@@ -1,4 +1,7 @@
-import { messageCardText } from "@sentry/junior/api/schema";
+import {
+  isAgentInvocationResultEventType,
+  messageCardText,
+} from "@sentry/junior/api/schema";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -14,6 +17,29 @@ import type {
   TranscriptViewTextPart,
   TranscriptViewToolCallPart,
 } from "../types";
+import { memoryRecallContent } from "./turnContext";
+
+/**
+ * True for the parent Event message that delivers agent invocation results.
+ * Core writes `subagent_ended` before it sends the result, so the child agent
+ * card always shows the outcome. The transcript keeps this message only for
+ * the memories its Turn recalled, folded into activity.
+ */
+export function isAgentInvocationResultMessage(
+  message: Pick<TranscriptViewMessage, "eventType" | "role">,
+): boolean {
+  return (
+    message.role === "user" &&
+    message.eventType !== undefined &&
+    isAgentInvocationResultEventType(message.eventType)
+  );
+}
+
+function hasRecalledMemories(message: TranscriptViewMessage): boolean {
+  return (
+    message.contexts?.some((context) => memoryRecallContent(context)) === true
+  );
+}
 
 export type RenderedFailureEntry = {
   key: string;
@@ -75,7 +101,7 @@ export type RenderedMessageEntry = {
   };
 };
 
-export type RenderedTranscriptEntry =
+export type RenderedTranscriptEntry = (
   | RenderedAttachmentsDeliveredEntry
   | RenderedContextEventEntry
   | RenderedFailureEntry
@@ -83,7 +109,11 @@ export type RenderedTranscriptEntry =
   | RenderedStructuredEventEntry
   | RenderedReasoningEntry
   | RenderedSubagentEntry
-  | RenderedToolEntry;
+  | RenderedToolEntry
+) & {
+  /** Event sequence of the source message. Pending sends have none. */
+  seq?: number;
+};
 
 export type TranscriptViewMode = "raw" | "rich";
 
@@ -94,6 +124,14 @@ export function groupTranscriptMessages(
   const entries: RenderedTranscriptEntry[] = [];
 
   for (const message of messages) {
+    if (
+      isAgentInvocationResultMessage(message) &&
+      !hasRecalledMemories(message)
+    ) {
+      continue;
+    }
+    const seq = message.pending ? undefined : message.sourceSeq;
+    const source = seq === undefined ? {} : { seq };
     let textParts: TranscriptViewTextPart[] = [];
     let textGroup = 0;
     const flushMessage = () => {
@@ -108,6 +146,7 @@ export function groupTranscriptMessages(
         key: `${message.sourceSeq}:message:${textGroup}`,
         kind: "message",
         message: nextMessage as RenderedMessageEntry["message"],
+        ...source,
       });
       textParts = [];
       textGroup += 1;
@@ -124,6 +163,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `tool:${part.id}`,
           kind: "tool",
+          ...source,
           part,
           timestamp: part.startedTimestamp ?? message.timestamp,
         });
@@ -131,6 +171,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:reasoning:${partIndex}`,
           kind: "reasoning",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -138,6 +179,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `subagent:${part.id}`,
           kind: "subagent",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -145,6 +187,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:structured-event:${part.namespace}:${part.name}`,
           kind: "structured_event",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -152,6 +195,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:attachments-delivered`,
           kind: "attachments_delivered",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -159,6 +203,7 @@ export function groupTranscriptMessages(
         entries.push({
           key: `${message.sourceSeq}:context:${partIndex}`,
           kind: "context",
+          ...source,
           part,
           timestamp: message.timestamp,
         });
@@ -170,6 +215,7 @@ export function groupTranscriptMessages(
       entries.push({
         key: `${message.sourceSeq}:failure`,
         kind: "failure",
+        ...source,
         failureCode: message.failureCode,
         ...(message.failureReason
           ? { failureReason: message.failureReason }
@@ -220,20 +266,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
           .map((attachment) => attachment.filename)
           .join("\n");
       }
-      if (part.event.type !== "handoff") {
-        return ["context compacted", part.event.summary]
-          .filter((line): line is string => line !== undefined)
-          .join("\n");
-      }
-      return [
-        "model handoff",
-        `model ${part.event.modelId}`,
-        `profile ${part.event.modelProfile}`,
-        part.event.summary,
-        part.event.reasoningLevel
-          ? `reasoning ${part.event.reasoningLevel}`
-          : undefined,
-      ]
+      return ["context compacted", part.event.summary]
         .filter((line): line is string => line !== undefined)
         .join("\n");
     })

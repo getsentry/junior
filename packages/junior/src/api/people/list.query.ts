@@ -21,6 +21,7 @@ import {
   peopleTreeAggregateColumns,
   peopleTreeConversation,
   peopleTreeMetricsJoin,
+  slackActorColumns,
   verifiedActorWhere,
 } from "./shared";
 import {
@@ -222,10 +223,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
       .select({
         email: juniorUsers.primaryEmailNormalized,
         fullName: juniorUsers.displayName,
-        slackUserId: sql<
-          string | null
-        >`MAX(${juniorIdentities.providerSubjectId})`,
-        slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
+        ...slackActorColumns(),
         activeDays: conversationActiveDaysColumn(),
         ...peopleTreeAggregateColumns,
         ...conversationRangeColumns(),
@@ -317,10 +315,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
           gte(juniorConversations.lastActivityAt, dayMetricStart),
         ),
       )
-      .groupBy(
-        juniorUsers.primaryEmailNormalized,
-        activityDate,
-      ),
+      .groupBy(juniorUsers.primaryEmailNormalized, activityDate),
     getDb()
       .select({
         email: juniorUsers.primaryEmailNormalized,
@@ -342,10 +337,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
           gte(juniorConversations.lastActivityAt, hourMetricStart),
         ),
       )
-      .groupBy(
-        juniorUsers.primaryEmailNormalized,
-        activityHour,
-      ),
+      .groupBy(juniorUsers.primaryEmailNormalized, activityHour),
   ]);
 
   const dayBucketsByEmail = new Map<string, Map<string, MetricBucket>>();

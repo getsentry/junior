@@ -5,7 +5,6 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { getConversationEventStore } from "@/chat/db";
 import { scheduleConversationTitle } from "@/chat/services/conversation-title";
-import { projectConversationMessageSummaries } from "./message-summaries";
 import { projectConversationMessages } from "./message-projection";
 import type {
   ConversationMessage,
@@ -39,6 +38,9 @@ export function toStoredConversationMessage(
     messageId: message.id,
     role: message.role,
     text: message.text,
+    ...(message.authorIdentityId
+      ? { authorIdentityId: message.authorIdentityId }
+      : undefined),
     ...(Object.keys(meta).length > 0 ? { meta } : undefined),
     createdAtMs: message.createdAtMs,
   };
@@ -74,10 +76,28 @@ export async function hydrateConversationMessages(args: {
   const history = await getConversationEventStore().loadMessageHistory(
     args.conversationId,
   );
-  args.conversation.compactions = history.compaction
-    ? projectConversationMessageSummaries([history.compaction])
-    : [];
+  args.conversation.historyFromSeq =
+    history.historyFromSeq > 0 ? history.historyFromSeq : undefined;
   args.conversation.messages = projectConversationMessages(history);
+}
+
+/** Save where the trimmed Message window starts, so later loads skip older Messages. */
+export async function persistConversationMessageWindow(args: {
+  conversationId: string;
+  historyFromSeq: number;
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      data: {
+        type: "messages_summarized",
+        historyFromSeq: args.historyFromSeq,
+        // Older deploys require this array. Keep it so a rollback or a
+        // mixed-version deploy can still decode the row.
+        compactions: [],
+      },
+      createdAtMs: Date.now(),
+    },
+  ]);
 }
 
 /** Append new messages and handled markers idempotently. */

@@ -3,6 +3,7 @@ import type {
   Identity,
   InvocationContext,
   PluginContext,
+  PluginDecider,
   PluginEmbedder,
   PluginModel,
   User,
@@ -13,7 +14,8 @@ import { objectAnnotationSchema } from "./object-annotations";
 import type { SlackConversationLink } from "./operations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
-import { z, type ZodTypeAny } from "zod";
+import * as z from "zod";
+import type { ZodTypeAny } from "zod";
 
 export interface PluginEnv {
   get(key: string): string | undefined;
@@ -38,6 +40,25 @@ export interface PluginDecision {
    */
   redirect(message: string): void;
   replaceInput(input: Record<string, unknown>): void;
+}
+
+/**
+ * Decide what the agent reads after one tool call in `afterToolExecute`.
+ *
+ * The tool already ran, so neither choice undoes its effects.
+ */
+export interface PluginToolResultDecision {
+  /**
+   * Reject the result as a policy refusal. The agent gets the reason instead
+   * of the result, and is told not to retry. Undo the tool's effects first
+   * when they must not stay.
+   */
+  deny(reason: string): void;
+  /**
+   * Add guidance after the result, such as a problem to fix in the change
+   * that the tool made. The agent reads the result and the guidance.
+   */
+  nudge(message: string): void;
 }
 
 /** Thrown when a plugin tool rejects invalid model or user input. */
@@ -179,6 +200,8 @@ export interface SandboxPrepareHookContext extends PluginContext {
 export interface BeforeToolExecuteHookContext extends PluginContext {
   decision: PluginDecision;
   env: PluginEnv;
+  /** Same directory as `PluginSandbox.juniorRoot` from `sandboxPrepare`. */
+  juniorRoot: string;
   actor?: Actor;
   /** All actors who contributed instructions to the run so far; see `multi-actor-runs.md`. */
   actors?: Actor[];
@@ -192,6 +215,39 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
    */
   users: {
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
+}
+
+/**
+ * Context for checks after a tool call finishes without an error.
+ *
+ * Runs for every tool, including sandbox tools and Code Mode script calls.
+ * Return early for tools that the check does not cover: each check adds time
+ * to every tool call.
+ */
+export interface AfterToolExecuteHookContext extends PluginContext {
+  decision: PluginToolResultDecision;
+  /** Decision model for one narrow choice, such as a classifier for a diff. */
+  decider: PluginDecider;
+  /** Structured model calls for judgments that need reasoning. */
+  model: PluginModel;
+  /** The Run's sandbox. A call acquires it when no tool has used it yet. */
+  sandbox: PluginSandbox;
+  signal?: AbortSignal;
+  /** Tool input after `beforeToolExecute` changes, without hook env. */
+  tool: {
+    input: Record<string, unknown>;
+    name: string;
+  };
+  /** Active Workspace, with each repository's checkout path in the sandbox. */
+  workspace?: {
+    name: string;
+    repos: Array<{
+      /** Checkout path relative to `sandbox.root`. */
+      path: string;
+      provider: string;
+      repo: string;
+    }>;
   };
 }
 
@@ -240,11 +296,25 @@ export const pluginToolContinuationSchema = z
   })
   .strict();
 
+/** Junior text that a plugin tool posted to its provider. */
+export const pluginToolReplySchema = z
+  .object({
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+  })
+  .strict();
+
 /** Shared optional fields for canonical plugin tool outputs. */
 export const pluginToolOutputSchema = z
   .object({
     /** Object results to save and show with the next reply. Omit for silent updates. */
     objectAnnotations: z.array(objectAnnotationSchema).optional(),
+    /**
+     * Reply the tool posted for Junior, such as a pull request comment. Core
+     * shows it in the transcript as a Junior reply with the plugin's mark,
+     * and removes it from the model-facing result.
+     */
+    reply: pluginToolReplySchema.optional(),
     target: z.string().min(1).optional(),
     truncated: z.boolean().optional(),
     continuation: pluginToolContinuationSchema.optional(),
@@ -325,8 +395,26 @@ export interface ToolApprovalMetadata<TInput = unknown> {
   describeProposal?(input: TInput): string;
 }
 
-/** Control whether a tool is visible to the model and available in the tool catalog. */
-export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+/**
+ * Control who may call a tool.
+ *
+ * | Exposure    | Model tool list | Tool catalog | Code Mode script |
+ * | ----------- | --------------- | ------------ | ---------------- |
+ * | `direct`    | yes             | yes          | yes              |
+ * | `deferred`  | no              | yes          | yes              |
+ * | `modelOnly` | yes             | no           | no               |
+ * | `codemode`  | no              | no           | yes              |
+ * | `hidden`    | no              | no           | no               |
+ *
+ * The tool catalog is `searchTools` and `executeTool`. Use `modelOnly` for
+ * tools that control the agent loop or dispatch other tools.
+ */
+export type ToolExposure =
+  | "direct"
+  | "deferred"
+  | "modelOnly"
+  | "codemode"
+  | "hidden";
 
 export interface PluginToolDefinition<
   TInput = unknown,

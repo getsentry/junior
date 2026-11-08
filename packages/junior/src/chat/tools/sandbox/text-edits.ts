@@ -1,14 +1,10 @@
 import { structuredPatch } from "diff";
-import {
-  MAX_TEXT_CHARS,
-  normalizeToLf,
-  truncateText,
-} from "@/chat/tools/sandbox/file-utils";
+import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export interface TextReplacement {
-  oldText: string;
-  newText: string;
+  old_text: string;
+  new_text: string;
 }
 
 export interface TextReplacementInput {
@@ -69,7 +65,10 @@ function firstChangedLine(
   return undefined;
 }
 
-/** Accept common exact-edit argument variants before schema validation. */
+/**
+ * Accept common exact-edit argument variants, such as the camelCase keys that
+ * models often send, before schema validation.
+ */
 export function prepareTextReplacementArguments<T extends TextReplacementInput>(
   input: unknown,
 ): T {
@@ -88,10 +87,10 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
   }
 
   const edits = Array.isArray(raw.edits) ? [...raw.edits] : [];
-  const oldText = raw.oldText ?? raw.old_text;
-  const newText = raw.newText ?? raw.new_text;
+  const oldText = raw.old_text ?? raw.oldText;
+  const newText = raw.new_text ?? raw.newText;
   if (typeof oldText === "string" && typeof newText === "string") {
-    edits.push({ oldText, newText });
+    edits.push({ old_text: oldText, new_text: newText });
   }
 
   if (edits.length > 0) {
@@ -100,11 +99,11 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
         return edit;
       }
       const record = edit as Record<string, unknown>;
-      const { old_text, new_text, ...rest } = record;
+      const { oldText, newText, ...rest } = record;
       return {
         ...rest,
-        oldText: record.oldText ?? old_text,
-        newText: record.newText ?? new_text,
+        old_text: record.old_text ?? oldText,
+        new_text: record.new_text ?? newText,
       };
     });
   }
@@ -178,11 +177,10 @@ export function buildCompactDiff(
     pushLine(` ${"".padStart(width)} ...`);
   }
 
-  const bounded = truncateText(output.join("\n"), MAX_TEXT_CHARS);
   return {
-    diff: bounded.content,
+    diff: output.join("\n"),
     firstChangedLine: firstChangedLine(oldLines, newLines),
-    truncated: lineTruncated || bounded.truncated,
+    truncated: lineTruncated,
   };
 }
 
@@ -197,19 +195,19 @@ export function validateAndApplyTextEdits(
   }
 
   const normalizedEdits = edits.map((edit, index) => {
-    if (typeof edit.oldText !== "string" || edit.oldText.length === 0) {
+    if (typeof edit.old_text !== "string" || edit.old_text.length === 0) {
       throw new ToolInputError(
-        `edits[${index}].oldText must not be empty in ${targetName}.`,
+        `edits[${index}].old_text must not be empty in ${targetName}.`,
       );
     }
-    if (typeof edit.newText !== "string") {
+    if (typeof edit.new_text !== "string") {
       throw new ToolInputError(
-        `edits[${index}].newText must be a string in ${targetName}.`,
+        `edits[${index}].new_text must be a string in ${targetName}.`,
       );
     }
     return {
-      oldText: normalizeToLf(edit.oldText),
-      newText: normalizeToLf(edit.newText),
+      oldText: normalizeToLf(edit.old_text),
+      newText: normalizeToLf(edit.new_text),
     };
   });
 
@@ -218,13 +216,13 @@ export function validateAndApplyTextEdits(
     const matchIndex = content.indexOf(edit.oldText);
     if (matchIndex === -1) {
       throw new ToolInputError(
-        `Could not find edits[${index}] in ${targetName}. oldText must match exactly including whitespace and newlines.`,
+        `Could not find edits[${index}] in ${targetName}. old_text must match exactly including whitespace and newlines.`,
       );
     }
     const occurrences = countOccurrences(content, edit.oldText);
     if (occurrences > 1) {
       throw new ToolInputError(
-        `Found ${occurrences} occurrences of edits[${index}] in ${targetName}. Each oldText must be unique.`,
+        `Found ${occurrences} occurrences of edits[${index}] in ${targetName}. Each old_text must be unique.`,
       );
     }
     matchedEdits.push({

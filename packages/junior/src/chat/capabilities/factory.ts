@@ -5,6 +5,7 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import type { CredentialContext } from "@/chat/credentials/context";
+import { withLegacyWebTokens } from "@/chat/credentials/legacy-web-tokens";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -17,7 +18,7 @@ const sandboxEgressRouters = new WeakMap<
 
 /** Create the user token store used by OAuth-backed credential brokers. */
 export function createUserTokenStore(): UserTokenStore {
-  return new StateAdapterTokenStore(getStateAdapter());
+  return withLegacyWebTokens(new StateAdapterTokenStore(getStateAdapter()));
 }
 
 function createProviderCredentialRouter(
@@ -43,7 +44,7 @@ function getSandboxEgressRouter(): ProviderCredentialRouter {
   let router = sandboxEgressRouters.get(stateAdapter);
   if (!router) {
     router = createProviderCredentialRouter(
-      new StateAdapterTokenStore(stateAdapter),
+      withLegacyWebTokens(new StateAdapterTokenStore(stateAdapter)),
     );
     sandboxEgressRouters.set(stateAdapter, router);
   }

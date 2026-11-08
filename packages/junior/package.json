@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.264.0",
+  "version": "0.285.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -64,6 +64,7 @@
     "typecheck": "tsc --noEmit",
     "skills:check": "node --test scripts/check-skills.test.mjs && node scripts/check-skills.mjs",
     "tool-annotations:check": "node --test scripts/check-tool-annotations.test.mjs && node scripts/check-tool-annotations.mjs",
+    "tool-key-casing:check": "node --test scripts/check-tool-key-casing.test.mjs && node scripts/check-tool-key-casing.mjs",
     "tool-error-classification:check": "node --test scripts/check-tool-error-classification.test.mjs && node scripts/check-tool-error-classification.mjs",
     "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
   },
@@ -75,6 +76,7 @@
     "@chat-adapter/state-redis": "4.29.0",
     "@earendil-works/pi-agent-core": "catalog:",
     "@earendil-works/pi-ai": "catalog:",
+    "@earendil-works/pi-codemode": "1.4.0",
     "@hono/zod-validator": "^0.9.0",
     "@logtape/logtape": "^2.1.1",
     "@modelcontextprotocol/sdk": "1.32.0",
@@ -93,7 +95,7 @@
     "@vercel/sandbox": "2.8.0",
     "ai": "^7.0.153",
     "aws4fetch": "^1.0.20",
-    "better-auth": "^1.7.7",
+    "better-auth": "^1.7.14",
     "chat": "4.29.0",
     "commander": "^14.0.3",
     "diff": "^8.0.4",
@@ -103,10 +105,25 @@
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
     "node-html-markdown": "^2.0.0",
+    "p-limit": "^7.3.1",
     "pg": "^8.16.3",
     "sharp": "^0.35.3",
+    "web-push": "^3.6.7",
     "yaml": "^2.9.0",
     "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "bullmq": "^6.5.0",
+    "nitro": "3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta",
+    "redis": "^5.12.1"
+  },
+  "peerDependenciesMeta": {
+    "bullmq": {
+      "optional": true
+    },
+    "redis": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@emnapi/core": "^1.10.0",
@@ -118,13 +135,16 @@
     "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "@types/pg": "^8.15.6",
+    "@types/web-push": "^3.6.4",
     "@typescript/typescript6": "6.0.2",
     "@vitest/coverage-v8": "4.1.12",
+    "bullmq": "6.5.0",
     "dependency-cruiser": "^17.4.0",
     "drizzle-kit": "catalog:",
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
     "oxlint": "^1.79.0",
+    "redis": "5.12.1",
     "tsdown": "0.23.1",
     "typescript": "^7.0.2",
     "vercel": "^54.4.0",

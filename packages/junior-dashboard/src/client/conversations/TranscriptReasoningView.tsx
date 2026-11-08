@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Lightbulb } from "lucide-react";
 
 import {
@@ -6,21 +5,25 @@ import {
   TraceCollapsibleContent,
   TraceCollapsibleTrigger,
 } from "../components/ui/trace";
+import { DisplayText } from "../display-text/DisplayText";
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewReasoningPart } from "../types";
 import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
-import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { useTranscriptRowOpen } from "./TranscriptRows";
+import { useTranscriptSearch } from "./transcriptSearch";
 
 /** Render reasoning collapsed with a short preview until expanded or searched. */
 export function TranscriptReasoningView(props: {
+  /** Keeps the entry open while it unmounts outside the viewport. */
+  openKey?: string;
   part: TranscriptViewReasoningPart;
   timestamp?: number;
 }) {
   const { active: searchActive } = useTranscriptSearch();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useTranscriptRowOpen(props.openKey);
   const expanded = searchActive || open;
   const rendered = props.part.redacted ? "Reasoning redacted" : props.part.text;
   const timestamp = formatMessageTimestamp(props.timestamp);
@@ -50,7 +53,7 @@ export function TranscriptReasoningView(props: {
                 </span>
               ) : (
                 <span className="block min-w-0 truncate italic text-dashboard-text-muted">
-                  {rendered}
+                  <DisplayText inline links={false} text={rendered} />
                 </span>
               )
             }
@@ -67,9 +70,7 @@ export function TranscriptReasoningView(props: {
       </TraceCollapsibleTrigger>
       {/* Keep closed reasoning in the page, so browser find can reach it. */}
       <TraceCollapsibleContent className="px-3 py-2.5" hiddenUntilFound>
-        <div className="min-w-0 whitespace-pre-wrap break-words text-sm leading-relaxed text-dashboard-text-subtle">
-          <HighlightText text={rendered} />
-        </div>
+        <DisplayText text={rendered} />
       </TraceCollapsibleContent>
     </TraceCollapsible>
   );

@@ -1,14 +1,24 @@
+import type { QueryClient } from "@tanstack/react-query";
 import type {
   ActorIdentity,
   ConversationPendingMessage,
+  ConversationReportEvent,
   InputImage,
 } from "@sentry/junior/api/schema";
+import type { DashboardCoreData } from "../types";
 
 /** Client-owned mailbox row waiting on accept, server visibility, or retry. */
 export type ConversationOutboxMessage = {
   actorIdentity?: ActorIdentity;
   createdAt: string;
   idempotencyKey: string;
+  /**
+   * Sent while Junior was idle and the queue was empty. The transcript shows
+   * the row in place, so it does not pass through the queue first.
+   */
+  inline?: boolean;
+  /** Client time when the accept response arrived. */
+  acceptedAtMs?: number;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -22,6 +32,22 @@ export type ConversationMailboxMessage = ConversationPendingMessage & {
   idempotencyKey?: string;
 };
 
+/** Identity of the viewer, for the outbox rows that they send. */
+export function outboxActorIdentity(
+  queryClient: QueryClient,
+): ActorIdentity | undefined {
+  const user = queryClient.getQueryData<DashboardCoreData>([
+    "dashboard",
+    "core",
+  ])?.me.user;
+  if (!user?.email) return undefined;
+  return {
+    ...(user.avatarUrl ? { avatarUrl: user.avatarUrl } : undefined),
+    email: user.email,
+    fullName: user.name || undefined,
+  };
+}
+
 /** Stable React Query key for one conversation's local send outbox. */
 export function conversationOutboxQueryKey(conversationId: string | undefined) {
   return ["conversation", conversationId, "outbox"] as const;
@@ -31,6 +57,7 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 export function conversationOutboxMessageForSubmit(input: {
   actorIdentity?: ActorIdentity;
   idempotencyKey: string;
+  inline?: boolean;
   message: string;
   images?: InputImage[];
   messageId: string;
@@ -41,6 +68,7 @@ export function conversationOutboxMessageForSubmit(input: {
     actorIdentity: input.actorIdentity,
     createdAt,
     idempotencyKey: input.idempotencyKey,
+    ...(input.inline ? { inline: true } : undefined),
     message: input.message,
     ...(input.images?.length ? { images: input.images } : undefined),
     messageId: input.messageId,
@@ -133,10 +161,20 @@ function sameMailboxMessage(
     left.createdAt === right.createdAt &&
     left.receivedAt === right.receivedAt &&
     left.idempotencyKey === right.idempotencyKey &&
-    // Pending rows render actorLabel(actorIdentity). Live polls may enrich
-    // identity after the first accept; keep that change visible.
-    sameActorIdentity(left.actorIdentity, right.actorIdentity)
+    // Pending rows render actorLabel(actorIdentity) and mention names. Live
+    // polls may enrich them after the first accept; keep that change visible.
+    sameActorIdentity(left.actorIdentity, right.actorIdentity) &&
+    sameMentions(left.mentions, right.mentions)
   );
+}
+
+function sameMentions(
+  left: ConversationMailboxMessage["mentions"],
+  right: ConversationMailboxMessage["mentions"],
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((person, index) => sameActorIdentity(person, right[index]));
 }
 
 function sameActorIdentity(
@@ -146,11 +184,115 @@ function sameActorIdentity(
   if (left === right) return true;
   if (!left || !right) return false;
   return (
+    left.avatarUrl === right.avatarUrl &&
     left.email === right.email &&
     left.fullName === right.fullName &&
     left.slackUserId === right.slackUserId &&
     left.slackUserName === right.slackUserName
   );
+}
+
+/** True while an outbox row belongs in the transcript instead of the queue. */
+export function isInlineOutboxMessage(
+  message: ConversationOutboxMessage,
+): boolean {
+  // A failed send moves to the queue, which owns the retry action.
+  return Boolean(message.inline) && message.status !== "failed";
+}
+
+/** Ids of history Messages and of the input that started each Turn. */
+function historyMessageIds(events: readonly ConversationReportEvent[]): {
+  messageIds: Set<string>;
+  turnInputIds: Set<string>;
+} {
+  const messageIds = new Set<string>();
+  const turnInputIds = new Set<string>();
+  for (const event of events) {
+    if (event.data.type === "message") messageIds.add(event.data.messageId);
+    if (event.data.type === "turn_lifecycle" && event.data.state === "started")
+      for (const id of event.data.inputMessageIds ?? []) turnInputIds.add(id);
+  }
+  return { messageIds, turnInputIds };
+}
+
+/**
+ * Drop local sends that one server snapshot already shows.
+ *
+ * A queued row leaves when the mailbox or history has it. An inline row stays
+ * while the mailbox lists it. The server writes the mailbox before it accepts
+ * a send, and the snapshot reads the mailbox before history. So when a mailbox
+ * read that started after the accept has neither copy, the send was removed,
+ * or it is in history before the loaded events. Events hold only the latest
+ * window, which can move past a send while the app is in the background.
+ */
+export function settleConversationOutboxMessages(
+  current: ConversationOutboxMessage[],
+  snapshot: {
+    events: readonly ConversationReportEvent[];
+    /** Client time when the snapshot started its mailbox read. */
+    mailboxReadAtMs?: number;
+    queued: readonly ConversationPendingMessage[];
+  },
+): ConversationOutboxMessage[] {
+  const queuedIds = new Set(
+    snapshot.queued.map((message) => message.messageId),
+  );
+  const { messageIds, turnInputIds } = historyMessageIds(snapshot.events);
+  const settle = (
+    message: ConversationOutboxMessage,
+  ): ConversationOutboxMessage | undefined => {
+    const queued = queuedIds.has(message.messageId);
+    // A Turn joins several sends into the Message of the first one, so a
+    // joined send has only its Turn input id. The Turn starts before the
+    // mailbox drops the send. Until then, keep the row, or the mailbox copy
+    // would show in the queue.
+    const read =
+      messageIds.has(message.messageId) ||
+      (!queued && turnInputIds.has(message.messageId));
+    if (read) return undefined;
+    if (queued) return isInlineOutboxMessage(message) ? message : undefined;
+    const settled =
+      message.acceptedAtMs !== undefined &&
+      snapshot.mailboxReadAtMs !== undefined &&
+      snapshot.mailboxReadAtMs > message.acceptedAtMs;
+    return settled ? undefined : message;
+  };
+  const next = current.flatMap((message) => settle(message) ?? []);
+  const unchanged =
+    next.length === current.length &&
+    next.every((message, index) => message === current[index]);
+  return unchanged ? current : next;
+}
+
+/**
+ * Split pending rows between the queue and the transcript.
+ *
+ * Inline rows prefer the server copy once the mailbox has it, so attachments
+ * and identity match what the queue would show.
+ */
+export function splitInlineMailboxMessages(
+  merged: readonly ConversationMailboxMessage[],
+  server: readonly ConversationPendingMessage[] | undefined,
+  outbox: readonly ConversationOutboxMessage[],
+): {
+  inline: ConversationMailboxMessage[];
+  queued: ConversationMailboxMessage[];
+} {
+  const inlineRows = outbox.filter(isInlineOutboxMessage);
+  if (inlineRows.length === 0) {
+    return { inline: [], queued: merged as ConversationMailboxMessage[] };
+  }
+  const inlineIds = new Set(inlineRows.map((message) => message.messageId));
+  const serverById = new Map(
+    (server ?? []).map((message) => [message.messageId, message]),
+  );
+  return {
+    inline: inlineRows.map(
+      (message) =>
+        serverById.get(message.messageId) ?? mailboxMessageFromOutbox(message),
+    ),
+    queued: merged.filter((message) => !inlineIds.has(message.messageId)),
+  };
 }
 
 /** Append or replace one outbox row by idempotency key. */
@@ -176,7 +318,7 @@ export function acceptConversationOutboxMessage(
 ): ConversationOutboxMessage[] {
   return (current ?? []).map((message) =>
     message.idempotencyKey === idempotencyKey
-      ? { ...message, messageId, status: "accepted" }
+      ? { ...message, acceptedAtMs: Date.now(), messageId, status: "accepted" }
       : message,
   );
 }
@@ -191,4 +333,18 @@ export function failConversationOutboxMessage(
       ? { ...message, status: "failed" }
       : message,
   );
+}
+
+const EMPTY_MESSAGE_IDS: readonly string[] = [];
+
+/** Ids of the messages in history, for de-dupe against the mailbox. */
+export function committedMessageIds(
+  events: readonly ConversationReportEvent[] | undefined,
+): readonly string[] {
+  if (!events) return EMPTY_MESSAGE_IDS;
+  const ids: string[] = [];
+  for (const event of events) {
+    if (event.data.type === "message") ids.push(event.data.messageId);
+  }
+  return ids;
 }

@@ -42,6 +42,7 @@ import {
   type ConversationWorkState,
   type InboundMessage,
 } from "./store";
+import { isAttemptInterrupt, selectAttemptMessages } from "./attempt-selection";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
 const CONVERSATION_STOP_CHECK_INTERVAL_MS = 500;
@@ -70,6 +71,11 @@ export interface InboxAttempt {
     handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
     options?: { deferred?: boolean },
   ): Promise<InboundMessage[]>;
+  /**
+   * True when a failure of this attempt can end the work: the worker gives up
+   * and drops the mailbox. The adapter must record its own failure first.
+   * Resume attempts, which have no messages, can also be final.
+   */
   isFinalAttempt: boolean;
   messages: InboundMessage[];
 }
@@ -104,42 +110,6 @@ export interface ProcessConversationWorkOptions {
 
 function now(options: ProcessConversationWorkOptions): number {
   return options.nowMs?.() ?? Date.now();
-}
-
-function selectContiguousTurnBatch(
-  messages: readonly InboundMessage[],
-): InboundMessage[] {
-  const first = messages[0];
-  if (!first) {
-    return [];
-  }
-  const nextTurnIndex = messages.findIndex(
-    (message) =>
-      message.input.authorId !== first.input.authorId ||
-      message.source !== first.source,
-  );
-  return messages.slice(
-    0,
-    nextTurnIndex === -1 ? messages.length : nextTurnIndex,
-  );
-}
-
-/** Prioritize interrupts while keeping each attempt to one Actor and Source. */
-function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
-  const messages = work.messages;
-  const interrupts = messages.filter(
-    (message) => message.delivery === "interrupt",
-  );
-  if (interrupts.length > 0) {
-    return selectContiguousTurnBatch(interrupts);
-  }
-  if (work.execution.status === "paused") return [];
-  const nonEventMessages = messages.filter(
-    (message) => message.source !== "event",
-  );
-  return selectContiguousTurnBatch(
-    nonEventMessages.length > 0 ? nonEventMessages : messages,
-  );
 }
 
 function nudgeIdempotencyKey(
@@ -258,6 +228,21 @@ function isTerminalFailure(failure: AttemptFailure): boolean {
     failure.status === "recorded" &&
     failure.deadLetteredMessages.length > 0 &&
     failure.pendingCount === 0
+  );
+}
+
+/**
+ * Return whether a failure of this attempt can end the conversation work. The
+ * retry limit applies to every attempt, also one with no messages, such as a
+ * resume. A message also ends it at its own delivery limit.
+ */
+function isLastConversationAttempt(
+  work: ConversationWorkState,
+  messages: readonly InboundMessage[],
+): boolean {
+  return (
+    (work.execution.retryCount ?? 0) + 1 >= CONVERSATION_WORK_MAX_RETRIES ||
+    messages.some((message) => isFinalAttempt(message))
   );
 }
 
@@ -419,9 +404,9 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  // Mailbox wakes may omit Destination. Read it from this root Conversation
-  // only. Conversations with a parent keep no Destination, so invocation and
-  // dispatch workers stay free of provider Destinations.
+  // Mailbox wakes may omit Destination. Read it from a root Conversation
+  // only. A child stores its root's Destination, but its work keeps none, so
+  // invocation and dispatch workers stay free of provider Destinations.
   let destination = initial.destination;
   if (!destination && options.conversationStore) {
     const stored = await options.conversationStore.get({ conversationId });
@@ -470,7 +455,7 @@ async function processConversationWorkInContext(
       getChatConfig().conversationWorkSoftYieldAfterMs);
   let attemptMessageIds: string[] = [];
   let attemptSelectedMessageIds = new Set<string>();
-  let attemptStartMessageIds = new Set<string>();
+  let attemptStartInterruptIds = new Set<string>();
   let failedWithoutProgress = false;
   let leaseLost = false;
   const markLeaseLost = (): void => {
@@ -496,17 +481,17 @@ async function processConversationWorkInContext(
       leaseToken: lease.leaseToken,
       conversationStore: options.conversationStore,
       handle: async (messages) => {
-        // Pending work that was not selected when the attempt started belongs
-        // to a later actor-scoped attempt. Selected or newly arrived
-        // interrupts remain eligible for this attempt's drain. A `deferred`
-        // drain scopes the messages itself.
+        // Interrupts that were pending but not selected when the attempt
+        // started belong to a later actor-scoped attempt. Selected, newly
+        // arrived, and newly steered interrupts remain eligible for this
+        // attempt's drain. A `deferred` drain scopes the messages itself.
         const candidates = drainOptions?.deferred
           ? messages
           : messages.filter(
               (message) =>
                 message.delivery === "interrupt" &&
                 (attemptSelectedMessageIds.has(message.inboundMessageId) ||
-                  !attemptStartMessageIds.has(message.inboundMessageId)),
+                  !attemptStartInterruptIds.has(message.inboundMessageId)),
             );
         if (candidates.length === 0) {
           return [];
@@ -601,8 +586,10 @@ async function processConversationWorkInContext(
       if (!runId) {
         throw new Error(`Conversation run is missing for ${conversationId}`);
       }
-      attemptStartMessageIds = new Set(
-        leasedWork.messages.map((message) => message.inboundMessageId),
+      attemptStartInterruptIds = new Set(
+        leasedWork.messages
+          .filter((message) => isAttemptInterrupt(message, leasedWork))
+          .map((message) => message.inboundMessageId),
       );
 
       if (hasRun && shouldYield()) {
@@ -669,8 +656,9 @@ async function processConversationWorkInContext(
           conversationId,
           destination,
           drain,
-          isFinalAttempt: attemptMessages.some((message) =>
-            isFinalAttempt(message),
+          isFinalAttempt: isLastConversationAttempt(
+            leasedWork,
+            attemptMessages,
           ),
           messages: attemptMessages,
         },

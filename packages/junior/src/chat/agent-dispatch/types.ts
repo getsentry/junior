@@ -93,7 +93,6 @@ export interface DispatchTurnContext {
   disabledFeatures: readonly ["interactive-auth"];
   locationConfiguration: LocationConfigurationService;
   credentialContext: CredentialContext;
-  destinationVisibility: DestinationVisibility;
   dispatch: AgentDispatch;
   skipProviderDefaultConfig: true;
   source: Source;

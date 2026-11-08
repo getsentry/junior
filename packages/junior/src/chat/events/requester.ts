@@ -8,7 +8,7 @@ import {
   type Event,
   type SlackActor,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import { findLinkedSlackMember } from "@/chat/identities/linked-slack-member";
 import { logInfo } from "@/chat/logging";
 import type { Watch } from "@/chat/events/store";

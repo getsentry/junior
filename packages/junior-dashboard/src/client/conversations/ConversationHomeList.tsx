@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { Link } from "react-router";
 
@@ -17,51 +17,44 @@ import {
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
-import { formatConversationActivityPreview } from "./conversationActivityPreview";
-import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
+import { useConversationActionToasts } from "./conversationActionToasts";
 import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
-import { useArchiveConversation } from "./queries";
-import { MentionText } from "./transcriptMentions";
+import { useArchiveConversation } from "./conversationArchive";
+import { DisplayText } from "../display-text/DisplayText";
 import {
+  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
+import { ConversationSectionHeading } from "./ConversationSectionHeading";
+import { usePrefetchConversation } from "./conversationPrefetch";
+import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
+import {
+  PinnedConversationOrder,
+  usePinnedRowDrag,
+  type PinnedRowDrag,
+} from "./PinnedConversationOrder";
+import type { ReorderPins } from "./useReorderPinnedConversations";
 
 /** Render grouped conversation cards on the dashboard home page. */
 export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string;
-  finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
+  /** Leave unset when the list shows only some pins. */
+  onReorderPins?: ReorderPins;
   timeZone: string;
+  waitingConversationIds: ReadonlySet<string>;
 }) {
-  const [archivedConversation, setArchivedConversation] =
-    useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<{
-    conversation: Conversation;
-    wasArchiving: boolean;
-  }>();
-  const handleArchiveError = useCallback(
-    (conversation: Conversation, wasArchiving: boolean) => {
-      setArchiveError({ conversation, wasArchiving });
-    },
-    [],
-  );
-  const handleArchived = useCallback((conversation: Conversation) => {
-    setArchiveError((current) =>
-      current?.conversation.id === conversation.id ? undefined : current,
-    );
-    setArchivedConversation(conversation);
-  }, []);
-  const notices = (
-    <ConversationArchiveNotices
-      archivedConversation={archivedConversation}
-      archiveError={archiveError}
-      className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 sm:left-auto sm:w-96"
-      onDismissError={() => setArchiveError(undefined)}
-      onRestored={() => setArchivedConversation(undefined)}
-    />
+  const { collapsedKeys, toggle: toggleSection } =
+    useCollapsedConversationSections();
+  const { showActionError, showArchiveError, showArchived } =
+    useConversationActionToasts();
+  const handleReorderError = useCallback(
+    (conversation: Conversation) =>
+      showActionError(conversation, "Could not reorder"),
+    [showActionError],
   );
 
   if (props.loading && props.conversations.length === 0) {
@@ -70,36 +63,43 @@ export function ConversationHomeList(props: {
 
   if (props.conversations.length === 0) {
     return (
-      <>
-        <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
-          <EmptyTelemetry>
-            {props.emptyLabel ?? "No conversations match this view."}
-          </EmptyTelemetry>
-        </div>
-        {notices}
-      </>
+      <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
+        <EmptyTelemetry>
+          {props.emptyLabel ?? "No conversations match this view."}
+        </EmptyTelemetry>
+      </div>
     );
   }
 
   const sections = buildConversationSections(props.conversations, {
+    attentionIds: attentionConversationIds(
+      props.conversations,
+      props.waitingConversationIds,
+    ),
     nowMs: Date.now(),
     timeZone: props.timeZone,
   });
+  const pinnedSection = sections.find((section) => section.key === "pinned");
   return (
-    <>
+    <PinnedConversationOrder
+      conversations={pinnedSection?.conversations ?? []}
+      onError={handleReorderError}
+      reorder={props.onReorderPins}
+    >
       <div aria-label="Your conversations" className="grid gap-5" role="list">
         {sections.map((section) => (
           <ConversationCardSection
-            finishedConversationIds={props.finishedConversationIds}
+            collapsed={collapsedKeys.has(section.key)}
             key={section.key}
-            onArchiveError={handleArchiveError}
-            onArchived={handleArchived}
+            onArchiveError={showArchiveError}
+            onArchived={showArchived}
+            onToggle={() => toggleSection(section.key)}
+            waitingConversationIds={props.waitingConversationIds}
             section={section}
           />
         ))}
       </div>
-      {notices}
-    </>
+    </PinnedConversationOrder>
   );
 }
 
@@ -165,43 +165,63 @@ function ConversationCardLoading(props: { index: number }) {
 }
 
 function ConversationCardSection(props: {
-  finishedConversationIds: ReadonlySet<string>;
+  collapsed: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onToggle(): void;
   section: ConversationSection;
+  waitingConversationIds: ReadonlySet<string>;
 }) {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
-      <h3
-        className="mb-2 mt-0 px-1 font-sans text-xs font-medium text-dashboard-text-muted"
+      <ConversationSectionHeading
+        className={cn("px-1", !props.collapsed && "mb-2")}
+        collapsed={props.collapsed}
+        count={props.section.conversations.length}
         id={`conversation-section-${props.section.key}`}
-      >
-        {props.section.label}
-      </h3>
-      <div className="grid gap-2">
-        {props.section.conversations.map((conversation) => (
-          <ConversationCard
-            conversation={conversation}
-            finishedSinceSeen={props.finishedConversationIds.has(
-              conversation.id,
-            )}
-            key={conversation.id}
-            onArchiveError={props.onArchiveError}
-            onArchived={props.onArchived}
-          />
-        ))}
-      </div>
+        label={props.section.label}
+        onToggle={props.onToggle}
+      />
+      {props.collapsed ? null : (
+        <div className="grid gap-2">
+          {props.section.conversations.map((conversation) => {
+            const card = {
+              conversation,
+              onArchiveError: props.onArchiveError,
+              onArchived: props.onArchived,
+              waitingOnViewer: props.waitingConversationIds.has(
+                conversation.id,
+              ),
+            };
+            return conversation.pinnedAt ? (
+              <PinnedConversationCard {...card} key={conversation.id} />
+            ) : (
+              <ConversationCard {...card} key={conversation.id} />
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
 
-function ConversationCard(props: {
+type ConversationCardProps = {
   conversation: Conversation;
-  finishedSinceSeen: boolean;
+  /** Set on pinned cards, which drag to reorder. */
+  drag?: PinnedRowDrag;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
-}) {
+  waitingOnViewer: boolean;
+};
+
+function PinnedConversationCard(props: Omit<ConversationCardProps, "drag">) {
+  const drag = usePinnedRowDrag(props.conversation.id);
+  return <ConversationCard {...props} drag={drag} />;
+}
+
+function ConversationCard(props: ConversationCardProps) {
   const conversation = props.conversation;
+  const drag = props.drag;
   const archive = useArchiveConversation(conversation.id, {
     onError: () =>
       props.onArchiveError(conversation, archive.variables?.archived ?? true),
@@ -214,23 +234,39 @@ function ConversationCard(props: {
   const location = slackLocationLabel(conversation, { includeId: false });
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
+  const prefetch = usePrefetchConversation(conversation.id);
   return (
     <article
-      className="group relative grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:px-5"
+      {...prefetch}
+      {...drag?.listeners}
+      className={cn(
+        "group relative grid min-w-0 gap-2 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:px-5",
+        drag?.dragging && "opacity-40",
+      )}
+      onKeyDown={drag?.onKeyDown}
+      ref={drag?.setNodeRef}
       role="listitem"
     >
       <Link
+        aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         aria-label={`Open ${title}`}
-        className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus"
+        className={cn(
+          "absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus",
+          // A long press drags the card instead of opening the link menu.
+          drag && "[-webkit-touch-callout:none]",
+        )}
+        // The browser's own link drag would take the pointer from the reorder.
+        draggable={drag ? false : undefined}
         to={conversationPath(conversation.id)}
       />
       <div className="relative z-[1] grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 pointer-events-none">
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
             <ConversationListStatusIcon
-              finishedSinceSeen={props.finishedSinceSeen}
               isPrivate={isPrivate}
               status={status}
+              unread={Boolean(conversation.unread)}
+              waitingOnViewer={props.waitingOnViewer}
             />
           </span>
           <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
@@ -240,6 +276,7 @@ function ConversationCard(props: {
         <div className="flex items-start gap-3">
           <Link
             className="pointer-events-auto whitespace-nowrap font-sans text-xs tabular-nums text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
+            draggable={drag ? false : undefined}
             to={conversationPath(conversation.id)}
           >
             {formatRelativeTime(conversation.lastSeenAt)}
@@ -266,11 +303,10 @@ function ConversationCard(props: {
       </div>
       {conversation.activityPreview ? (
         <p className="relative z-[1] m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle pointer-events-none">
-          <MentionText
-            mentions={conversation.activityPreview.mentions ?? []}
-            text={formatConversationActivityPreview(
-              conversation.activityPreview.text,
-            )}
+          <DisplayText
+            inline
+            mentions={conversation.activityPreview.mentions}
+            text={conversation.activityPreview.text}
           />
         </p>
       ) : (

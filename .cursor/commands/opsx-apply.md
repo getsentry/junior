@@ -116,8 +116,8 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! Move any durable explanation into code, tests, policies, or
-the owning README, then delete the completed change directory.
+All tasks complete! Move any durable explanation into code, code comments,
+tests, or policies, then delete the completed change directory.
 ```
 
 **Output On Pause (Issue Encountered)**

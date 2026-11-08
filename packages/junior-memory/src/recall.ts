@@ -5,11 +5,11 @@ import {
   type Identity,
   type PluginConversationEvents,
   type PluginLogger,
+  type PluginReranker,
   type Source,
   type User,
 } from "@sentry/junior-plugin-api";
-import { z } from "zod";
-import type { MemoryAgent, MemoryRecallResult } from "./agent";
+import * as z from "zod";
 import { memoriesRecalledEvent } from "./events";
 import {
   createMemoryStore,
@@ -22,9 +22,17 @@ import { memoryRuntimeContextSchema } from "./types";
 const RECALL_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
+// Lowest reranker score that admits a candidate. Tuned for the default
+// `voyage/rerank-2.5-lite`; retune it if the reranking model changes.
+// Measured 2026-11-03 on 28 queries against 20 memories (memory test and eval
+// fixtures, plus 11 small-talk queries):
+// - 0.55 kept 12 of 19 relevant pairs, admitted 3 off-topic pairs (max 0.626),
+//   and kept every small-talk query empty (max 0.547).
+// - 0.50 kept 13, admitted 4, and gave 1 of 11 small-talk queries a memory.
+// - Clear matches scored 0.63-0.93. Indirect matches scored 0.37-0.60.
+const RECALL_MIN_RERANK_SCORE = 0.55;
 
 export interface MemoryRecallContext {
-  agent: Pick<MemoryAgent, "selectRelevantMemories">;
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
@@ -32,6 +40,8 @@ export interface MemoryRecallContext {
   log: PluginLogger;
   locationId?: string;
   actor?: Actor;
+  reranker: PluginReranker;
+  setSpanAttributes(attributes: Record<string, number>): void;
   source: Source;
   text: string;
   users: {
@@ -89,7 +99,7 @@ function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
       id: memory.id,
       content,
       observedAtMs: memory.observedAtMs,
-      scope: memory.scope === "private" ? "personal" : "conversation",
+      scope: "conversation",
       kind: memory.kind,
     });
     totalChars += line.length + 1;
@@ -109,26 +119,11 @@ function renderMemoryPrompt(memories: RecalledMemory[]): string {
   ].join("\n");
 }
 
-function addUsd(
-  left: number | undefined,
-  right: number | undefined,
-): number | undefined {
-  if (left === undefined) return right;
-  if (right === undefined) return left;
-  return Math.round((left + right) * 1e12) / 1e12;
-}
-
 async function emitRecallOutcome(args: {
-  costUsd?: number;
   events?: PluginConversationEvents;
   memories: string[];
 }): Promise<void> {
-  await args.events?.emit(
-    memoriesRecalledEvent({
-      memories: args.memories,
-      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
-    }),
-  );
+  await args.events?.emit(memoriesRecalledEvent({ memories: args.memories }));
 }
 
 const memoryRecallContext = definePromptContext({
@@ -155,53 +150,49 @@ export async function createMemoryPromptContributions(
     source: context.source,
     ...(actorUser ? { userId: actorUser.id } : undefined),
   });
-  let embeddingCostUsd: number | undefined;
-  const sourceEmbedder = context.embedder;
-  const embedder = sourceEmbedder
-    ? {
-        async embedTexts(input: { texts: string[] }) {
-          const result = await sourceEmbedder.embedTexts(input);
-          embeddingCostUsd = addUsd(embeddingCostUsd, result.costUsd);
-          return result;
-        },
-      }
-    : undefined;
   const candidates = await createMemoryStore(context.db, runtimeContext, {
-    embedder,
+    embedder: context.embedder,
   }).recallMemories({
     query: context.text,
     limit: RECALL_CANDIDATE_LIMIT,
   });
   if (candidates.length === 0) {
-    await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : undefined),
-      events: context.events,
-      memories: [],
-    });
+    await emitRecallOutcome({ events: context.events, memories: [] });
     return undefined;
   }
-  let recall: MemoryRecallResult;
+  // Counts and scores only: recall diagnostics never carry query or memory
+  // text. They sit on the `plugin.hook userPrompt` span next to its latency.
+  context.setSpanAttributes({
+    "app.memory.recall.candidate.count": candidates.length,
+  });
+  let scores: number[];
   try {
-    recall = await context.agent.selectRelevantMemories({
-      candidates: candidates.map(({ content, id }) => ({ content, id })),
-      userRequest: context.text,
-    });
-  } catch {
-    // Automatic recall is optional context; a relevance-model failure must not
+    ({ scores } = await context.reranker.rerank({
+      documents: candidates.map(({ content }) => content),
+      query: context.text,
+    }));
+  } catch (error) {
+    // Automatic recall is optional context; a reranker failure must not
     // prevent the user's turn from continuing without recalled memory.
-    context.log.warn("memory_recall_selection_failed");
+    // Log only the error class; provider messages can echo request text.
+    context.log.warn("memory_recall_rerank_failed", {
+      "error.type": error instanceof Error ? error.name : typeof error,
+    });
     return undefined;
   }
-  const candidatesById = new Map(
-    candidates.map((memory) => [memory.id, memory]),
-  );
-  const relevant = recall.relevantIds
-    .map((id) => candidatesById.get(id))
-    .filter((memory): memory is MemoryRecord => memory !== undefined);
+  // Sort is stable, so equal scores keep retrieval rank order.
+  const relevant = candidates
+    .map((memory, index) => ({ memory, score: scores[index]! }))
+    .filter(({ score }) => score >= RECALL_MIN_RERANK_SCORE)
+    .sort((left, right) => right.score - left.score)
+    .map(({ memory }) => memory);
   const selected = selectPromptMemories(relevant);
-  const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
+  context.setSpanAttributes({
+    "app.memory.recall.admitted.count": relevant.length,
+    "app.memory.recall.injected.count": selected.length,
+    "app.memory.recall.score.max": Math.max(...scores),
+  });
   await emitRecallOutcome({
-    ...(costUsd !== undefined ? { costUsd } : undefined),
     events: context.events,
     memories: selected.map(({ id }) => id),
   });

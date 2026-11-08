@@ -7,9 +7,7 @@
  * consistent.
  */
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
-import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { defaultModelId } from "@/chat/model-profile";
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigValue,
@@ -25,6 +23,7 @@ import {
   finishedRunReply,
   runDispatchOutcome,
   deliversFinalText,
+  postsRunNotices,
 } from "@/chat/automation-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -34,9 +33,10 @@ import {
   logException,
   setSpanAttributes,
   setTags,
-  withLogContext,
   type LogContext,
 } from "@/chat/logging";
+import { withTurnSpan } from "@/chat/task-execution/turn-telemetry";
+import type { TraceContext } from "@/chat/task-execution/state";
 import {
   finalizeFailedTurnReplyWithEvent,
   getAgentTurnDiagnosticsAttributes,
@@ -56,7 +56,6 @@ import {
 import { sendSlackReply } from "@/chat/slack/reply";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { actorLogContext } from "@/chat/credentials/context";
-import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import {
   startProcessingReactionForMessage,
   type ProcessingReaction,
@@ -67,6 +66,7 @@ import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   CooperativeTurnYieldError,
   isCooperativeTurnYieldError,
+  isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -84,28 +84,30 @@ import {
 } from "@/chat/services/conversation-memory";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
-import { getConversationStore } from "@/chat/db";
 
-async function postSlackMessageBestEffort(
-  channelId: string,
-  threadTs: string | undefined,
+/** Post a failure reply or status notice when the run's dispatch allows it. */
+async function postRunNotice(
+  resume: ResumeSlackTurnArgs,
   text: string,
-  conversationId?: string,
-  replyAttribution?: ReplyAttribution,
+): Promise<void> {
+  if (!postsRunNotices(resume.run?.dispatch)) {
+    return;
+  }
+  await sendSlackReply({
+    channelId: resume.channelId,
+    conversationId: resume.conversationId,
+    replyAttribution: resume.run?.dispatch?.replyAttribution,
+    text,
+    threadTs: resume.threadTs,
+  });
+}
+
+async function postRunNoticeBestEffort(
+  resume: ResumeSlackTurnArgs,
+  text: string,
 ): Promise<void> {
   try {
-    if (conversationId) {
-      await sendSlackReply({
-        channelId,
-        conversationId,
-        replyAttribution,
-        text,
-        threadTs,
-      });
-      return;
-    }
-
-    await postSlackApiMessage({ channelId, threadTs, text });
+    await postRunNotice(resume, text);
   } catch {
     // Status notices do not decide whether the Turn succeeds.
   }
@@ -153,6 +155,8 @@ interface ResumeSlackTurnArgs {
   messageText: string;
   conversationId: string;
   turnId: string;
+  /** Trace of the first slice of the Turn. */
+  traceContext?: TraceContext;
   /** Active durable execution slice being resumed. */
   sliceId?: number;
   channelId: string;
@@ -169,6 +173,8 @@ interface ResumeSlackTurnArgs {
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
+  /** Close durable Turn state after `run.signal` stops the Run. */
+  onStop?: () => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<ResumePreparedTurn | false | void>;
 }
@@ -193,6 +199,8 @@ interface ResumePreparedTurn {
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
+  /** Close durable Turn state after `run.signal` stops the Run. */
+  onStop?: () => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
 }
 
@@ -203,21 +211,8 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
     ...actorLogContext(args.run?.actor, args.run?.credentialContext),
     destinationName: args.channelId,
     assistantUserName: botConfig.userName,
-    modelId: defaultModelId(botConfig),
+    modelId: botConfig.modelId,
   };
-}
-
-async function postResumeFailureReply(args: {
-  channelId: string;
-  threadTs?: string;
-  eventId: string;
-  error: unknown;
-}): Promise<void> {
-  await postSlackApiMessage({
-    channelId: args.channelId,
-    threadTs: args.threadTs,
-    text: buildTurnErrorResponse(args.error, args.eventId),
-  });
 }
 
 async function handleResumeFailure(args: {
@@ -256,12 +251,10 @@ async function handleResumeFailure(args: {
     failureStatePersistError = persistError;
   }
   try {
-    await postResumeFailureReply({
-      channelId: args.resume.channelId,
-      threadTs: args.resume.threadTs,
-      eventId,
-      error: args.error,
-    });
+    await postRunNotice(
+      args.resume,
+      buildTurnErrorResponse(args.error, eventId),
+    );
   } catch (deliveryError) {
     const deliveryEventId = logException(
       deliveryError,
@@ -294,6 +287,19 @@ async function handleResumeFailure(args: {
     createdAtMs: Date.now(),
     failureCode: args.failureCode,
     eventId,
+  });
+}
+
+/** Record a stopped resume as a cancelled Turn without a visible reply. */
+async function completeStoppedResume(
+  resume: ResumeSlackTurnArgs,
+): Promise<void> {
+  await resume.onStop?.();
+  await getTurnLifecycle().complete({
+    conversationId: resume.conversationId,
+    createdAtMs: Date.now(),
+    outcome: "cancelled",
+    turnId: resume.turnId,
   });
 }
 
@@ -373,8 +379,10 @@ function buildResumedRun(
 export async function resumeSlackTurn(
   args: ResumeSlackTurnArgs,
 ): Promise<boolean> {
-  return withLogContext(getResumeLogContext(args), () =>
-    resumeSlackTurnInContext(args),
+  return await withTurnSpan(
+    getResumeLogContext(args),
+    args.traceContext && { traceContexts: [args.traceContext] },
+    () => resumeSlackTurnInContext(args),
   );
 }
 
@@ -395,6 +403,7 @@ async function resumeSlackTurnInContext(
     | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
+  let stopped = false;
   let runResultHandled = false;
   let assistantMessageDelivered = false;
   let shouldScheduleCompletedPluginTasks = false;
@@ -450,17 +459,11 @@ async function resumeSlackTurnInContext(
       });
     }
     if (runArgs.initialText) {
-      await postSlackMessageBestEffort(
-        runArgs.channelId,
-        runArgs.threadTs,
-        runArgs.initialText,
-      );
+      await postRunNoticeBestEffort(runArgs, runArgs.initialText);
     }
     status.update(runArgs.initialStatus);
 
     const conversationId = runArgs.conversationId;
-    const visibility = (await getConversationStore().get({ conversationId }))
-      ?.visibility;
     const visibleConversationId = args.conversationId;
     const sessionId = runArgs.turnId;
     let deliveryConversation:
@@ -597,7 +600,6 @@ async function resumeSlackTurnInContext(
             recordTurnSummary({
               conversationId: runArgs.conversationId,
               destination: savedRun.destination,
-              destinationVisibility: visibility,
               dispatchId,
               resultMessageId: messageTs,
               turnId: runArgs.turnId,
@@ -629,6 +631,7 @@ async function resumeSlackTurnInContext(
       });
     }
     const outcome = await runArgs.executeTurn(run, async (result) => {
+      run.signal?.throwIfAborted();
       const finalized = finalizeFailedTurnReplyWithEvent({
         reply: result,
         logException,
@@ -658,7 +661,6 @@ async function resumeSlackTurnInContext(
           durationMs: reply.diagnostics.durationMs,
           usage: reply.diagnostics.usage,
           destination: run.destination,
-          destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
           ...(dispatchErrorMessage
@@ -676,7 +678,6 @@ async function resumeSlackTurnInContext(
         await recordTurnSummary({
           conversationId: runArgs.conversationId,
           destination: run.destination,
-          destinationVisibility: visibility,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
           ...(acceptedDeliveryId
@@ -712,7 +713,9 @@ async function resumeSlackTurnInContext(
       await status.clear();
       const onAuthPause = runArgs.onAuthPause;
       const onSuspend = runArgs.onSuspend;
-      if (outcome.status === "awaiting_auth" && onAuthPause) {
+      if (run.signal?.aborted) {
+        stopped = true;
+      } else if (outcome.status === "awaiting_auth" && onAuthPause) {
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
           actorId: isUserActor(resumeActor) ? resumeActor.userId : undefined,
@@ -788,8 +791,15 @@ async function resumeSlackTurnInContext(
     if (isCooperativeTurnYieldError(runError)) {
       throw runError;
     }
+    // Another worker holds the Lease and owns this Turn's outcome.
+    if (isTurnInputCommitLostError(runError)) {
+      throw runError;
+    }
 
-    if (runResultHandled) {
+    if (!runResultHandled && runArgs.run?.signal?.aborted) {
+      // A stop is not a failure. Close the Turn without a visible notice.
+      stopped = true;
+    } else if (runResultHandled) {
       postDeliveryCommitError = error;
       try {
         await runArgs.onPostDeliveryCommitFailure?.(error);
@@ -832,20 +842,22 @@ async function resumeSlackTurnInContext(
     throw postDeliveryCommitError;
   }
 
+  if (stopped) {
+    await completeStoppedResume(runArgs);
+    return true;
+  }
+
   if (deferredPauseHandler) {
     try {
       await deferredPauseHandler();
       if (deferredAuthInfo) {
-        await postSlackMessageBestEffort(
-          runArgs.channelId,
-          runArgs.threadTs,
+        await postRunNoticeBestEffort(
+          runArgs,
           buildAuthPauseResponse(
             deferredAuthInfo.actorId,
             deferredAuthInfo.providerDisplayName,
             deferredAuthInfo.requestText,
           ),
-          runArgs.conversationId,
-          runArgs.run?.dispatch?.replyAttribution,
         );
       }
       return true;

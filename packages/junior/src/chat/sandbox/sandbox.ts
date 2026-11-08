@@ -1,7 +1,9 @@
+import type { TextReplacement } from "@/chat/tools/sandbox/text-edits";
 import fs from "node:fs/promises";
 import {
   getTracePropagationHeaders,
   logInfo,
+  logWarn,
   setSpanAttributes,
   setSpanStatus,
   withSpan,
@@ -31,8 +33,7 @@ import {
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
-  listRepositoryDirectories,
-  resolveRepositoryInstructionsForDirectories,
+  readRepositoryInstructions,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
@@ -51,16 +52,11 @@ import {
 import type { SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
-import { findFiles } from "@/chat/tools/sandbox/find-files";
 import {
   isMissingPathError,
   positiveInteger,
   resolveWorkspacePath,
-  type SandboxCommandRunner,
-  type SandboxSearchTelemetry,
 } from "@/chat/tools/sandbox/file-utils";
-import { grepFiles } from "@/chat/tools/sandbox/grep";
-import { listDir } from "@/chat/tools/sandbox/list-dir";
 import {
   missingFileResult,
   sliceFileContent,
@@ -73,8 +69,6 @@ export interface SandboxToolCall {
   toolName: string;
   input: unknown;
   signal?: AbortSignal;
-  /** Add safe sandbox measurements to the caller-owned tool span. */
-  setToolCallSpanAttributes?: SetSpanAttributes;
 }
 
 export interface SandboxTools {
@@ -115,9 +109,7 @@ export interface SandboxOptions {
 
 interface SandboxToolCallContext {
   readonly signal?: AbortSignal;
-  readonly setToolCallSpanAttributes?: SetSpanAttributes;
   fileSystem(): Promise<SandboxFileSystem>;
-  commandRunner(): Promise<SandboxCommandRunner>;
 }
 
 /** Create the safe expected tool error for an unavailable sandbox operation. */
@@ -144,13 +136,12 @@ function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
   });
 }
 
+const VERCEL_FIREWALL_CHALLENGE_MARKER = "Vercel Security Checkpoint";
+
 const SANDBOX_TOOL_NAMES = new Set([
   "bash",
   "readFile",
   "editFile",
-  "grep",
-  "findFiles",
-  "listDir",
   "writeFile",
 ]);
 
@@ -226,6 +217,34 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       ...(permissionDenied ? { permissionDenied } : undefined),
     };
   };
+  // Egress auth and permission signals belong to the egress session, not to
+  // one command, and the proxy cannot tell which command made a request. So
+  // the bash commands of one Run run one at a time, also when a Code Mode
+  // script starts them together. Each command then reads only its own signals.
+  let bashTail: Promise<void> = Promise.resolve();
+  let bashTurns = 0;
+  /**
+   * Wait for the earlier bash commands of this Run. `waited` is true when an
+   * earlier command held the turn, so the Sandbox may have changed since.
+   */
+  const takeBashTurn = async () => {
+    const waited = bashTurns > 0;
+    bashTurns += 1;
+    const earlier = bashTail;
+    let done!: () => void;
+    const turn = new Promise<void>((resolve) => {
+      done = resolve;
+    });
+    bashTail = earlier.then(() => turn);
+    await earlier;
+    return {
+      waited,
+      release() {
+        bashTurns -= 1;
+        done();
+      },
+    };
+  };
   let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
@@ -254,33 +273,17 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   });
   const createToolCallContext = (
     signal?: AbortSignal,
-    setToolCallSpanAttributes?: SetSpanAttributes,
   ): SandboxToolCallContext => {
     let fileSystemPromise: Promise<SandboxFileSystem> | undefined;
-    let commandRunnerPromise: Promise<SandboxCommandRunner> | undefined;
 
     return {
       signal,
-      setToolCallSpanAttributes,
       fileSystem() {
         signal?.throwIfAborted();
         return (fileSystemPromise ??= runtime.tools(signal).then(({ fs }) => {
           signal?.throwIfAborted();
           return bindSandboxFileSystem(fs, signal);
         }));
-      },
-      commandRunner() {
-        signal?.throwIfAborted();
-        return (commandRunnerPromise ??= runtime
-          .tools(signal)
-          .then(({ runCommand }) => {
-            signal?.throwIfAborted();
-            return async (input) =>
-              await runCommand({
-                ...input,
-                ...(signal ? { signal } : undefined),
-              });
-          }));
       },
     };
   };
@@ -303,36 +306,6 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       await runtime.refreshNetworkPolicy(getTracePropagationHeaders());
       return await callback(setSpanAttributes);
     });
-
-  const searchTelemetryAttributes = (
-    telemetry: SandboxSearchTelemetry,
-  ): Record<string, number | boolean> => ({
-    "app.sandbox.search.raw_output_bytes": telemetry.rawOutputBytes,
-    "app.sandbox.search.parsed_records": telemetry.parsedRecordCount,
-    "app.sandbox.search.result_count": telemetry.resultCount,
-    "app.sandbox.search.emitted_lines": telemetry.emittedLineCount,
-    "app.sandbox.search.result_bytes": telemetry.resultBytes,
-    "app.sandbox.search.limit": telemetry.limit,
-    "app.sandbox.search.limit_reached": telemetry.limitReached,
-  });
-
-  const recordSearchTelemetry = (
-    telemetry: SandboxSearchTelemetry,
-    setSearchSpanAttributes: SetSpanAttributes,
-    setToolCallSpanAttributes?: SetSpanAttributes,
-  ): void => {
-    const attributes = searchTelemetryAttributes(telemetry);
-    for (const setAttributes of [
-      setSearchSpanAttributes,
-      setToolCallSpanAttributes,
-    ]) {
-      try {
-        setAttributes?.(attributes);
-      } catch {
-        // Search telemetry is a best-effort observer.
-      }
-    }
-  };
 
   const logSandboxBootRequest = (
     trigger: string,
@@ -362,70 +335,94 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
     });
-    const { bash: executeBash, sessionId: activeSessionId } =
-      await runtime.tools(context.signal);
-    await clearEgressSignals(activeSessionId);
-    const result = await withSandboxToolSpan(
-      "bash",
-      "process.exec",
-      {
-        "process.executable.name": "bash",
-      },
-      async () => {
-        const response = await executeBash({
-          command,
-          cwd,
-          ...(env ? { env } : undefined),
-          ...(timeoutMs ? { timeoutMs } : undefined),
-          ...(context.signal ? { signal: context.signal } : undefined),
-        });
-        setSpanAttributes({
-          "process.exit.code": response.exitCode,
-          "app.sandbox.stdout_bytes": Buffer.byteLength(
-            response.stdout ?? "",
-            "utf8",
-          ),
-          "app.sandbox.stderr_bytes": Buffer.byteLength(
-            response.stderr ?? "",
-            "utf8",
-          ),
-          ...(response.aborted
-            ? { "error.type": "outcome_unknown" }
-            : response.exitCode !== 0
-              ? { "error.type": "nonzero_exit" }
-              : {}),
-        });
-        setSpanStatus(response.exitCode === 0 ? "ok" : "error");
-        return response;
-      },
-    );
-    // Always consume egress auth/permission signals regardless of exit code.
-    // The exit-code guard was incorrect: piped bash commands (e.g. `cmd | head`)
-    // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
-    // preventing the signal from ever being read. The egress signal is a
-    // side-channel from the network layer — not a property of shell exit status —
-    // and the signal store is cleared before each execution to prevent
-    // cross-command leakage.
-    const { authRequired, permissionDenied } =
-      await consumeEgressSignals(activeSessionId);
+    // Resolve before the turn so concurrent calls share one acquisition.
+    let tools = await runtime.tools(context.signal);
+    const bashTurn = await takeBashTurn();
+    try {
+      context.signal?.throwIfAborted();
+      // A switch or reacquire can replace the Sandbox while this command
+      // waits. Run it on the current one and use that session's signals.
+      if (bashTurn.waited) {
+        tools = await runtime.tools(context.signal);
+      }
+      const { bash: executeBash, sessionId: activeSessionId } = tools;
+      await clearEgressSignals(activeSessionId);
+      const result = await withSandboxToolSpan(
+        "bash",
+        "process.exec",
+        {
+          "process.executable.name": "bash",
+        },
+        async () => {
+          const response = await executeBash({
+            command,
+            cwd,
+            ...(env ? { env } : undefined),
+            ...(timeoutMs ? { timeoutMs } : undefined),
+            ...(context.signal ? { signal: context.signal } : undefined),
+          });
+          setSpanAttributes({
+            "process.exit.code": response.exitCode,
+            "app.sandbox.stdout_bytes": Buffer.byteLength(
+              response.stdout ?? "",
+              "utf8",
+            ),
+            "app.sandbox.stderr_bytes": Buffer.byteLength(
+              response.stderr ?? "",
+              "utf8",
+            ),
+            ...(response.aborted
+              ? { "error.type": "outcome_unknown" }
+              : response.exitCode !== 0
+                ? { "error.type": "nonzero_exit" }
+                : {}),
+          });
+          // Vercel's platform firewall can challenge the hop that forwards
+          // credentialed traffic to the egress route. That request never
+          // reaches Junior, so the checkpoint page is the only signal.
+          if (
+            `${response.stdout ?? ""}${response.stderr ?? ""}`.includes(
+              VERCEL_FIREWALL_CHALLENGE_MARKER,
+            )
+          ) {
+            logWarn("sandbox.egress.challenged", {
+              "app.sandbox.egress_id": activeSessionId,
+            });
+          }
+          setSpanStatus(response.exitCode === 0 ? "ok" : "error");
+          return response;
+        },
+      );
+      // Always consume egress auth/permission signals regardless of exit code.
+      // The exit-code guard was incorrect: piped bash commands (e.g. `cmd | head`)
+      // mask the underlying CLI's non-zero exit with the pipe tail's exit code (0),
+      // preventing the signal from ever being read. The egress signal is a
+      // side-channel from the network layer — not a property of shell exit status —
+      // and the signal store is cleared before each execution to prevent
+      // cross-command leakage.
+      const { authRequired, permissionDenied } =
+        await consumeEgressSignals(activeSessionId);
 
-    return formatSandboxCommandResult({
-      ok: result.exitCode === 0,
-      command,
-      cwd,
-      exit_code: result.exitCode,
-      signal: null,
-      timed_out: Boolean(result.timedOut),
-      aborted: Boolean(result.aborted),
-      stdout: result.stdout,
-      stderr: result.stderr,
-      stdout_truncated: result.stdoutTruncated,
-      stderr_truncated: result.stderrTruncated,
-      ...(authRequired ? { auth_required: authRequired } : undefined),
-      ...(permissionDenied
-        ? { permission_denied: permissionDenied }
-        : undefined),
-    }) as T;
+      return formatSandboxCommandResult({
+        ok: result.exitCode === 0,
+        command,
+        cwd,
+        exit_code: result.exitCode,
+        signal: null,
+        timed_out: Boolean(result.timedOut),
+        aborted: Boolean(result.aborted),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        stdout_truncated: result.stdoutTruncated,
+        stderr_truncated: result.stderrTruncated,
+        ...(authRequired ? { auth_required: authRequired } : undefined),
+        ...(permissionDenied
+          ? { permission_denied: permissionDenied }
+          : undefined),
+      }) as T;
+    } finally {
+      bashTurn.release();
+    }
   };
 
   const executeReadFileTool = async <T>(
@@ -586,129 +583,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         const response = await editFile({
           fs: fileSystem,
           path: filePath,
-          edits: rawInput.edits as Array<{ oldText: string; newText: string }>,
-        });
-        setSpanStatus("ok");
-        return response;
-      },
-    );
-
-    return result as T;
-  };
-
-  const executeGrepTool = async <T>(
-    rawInput: Record<string, unknown>,
-    context: SandboxToolCallContext,
-  ): Promise<T> => {
-    const pattern = String(rawInput.pattern ?? "");
-    if (!pattern) {
-      throw new ToolInputError("pattern is required");
-    }
-
-    logSandboxBootRequest("tool.grep");
-    const contextLines = positiveInteger(rawInput.context);
-    const limit = positiveInteger(rawInput.limit);
-    const fileSystem = await context.fileSystem();
-    const result = await withSandboxToolSpan(
-      "sandbox.grep",
-      "sandbox.fs.search",
-      {
-        "app.sandbox.pattern.length": pattern.length,
-      },
-      async (setSearchSpanAttributes) => {
-        const response = await grepFiles({
-          fs: fileSystem,
-          runCommand: await context.commandRunner(),
-          onTelemetry: (telemetry) =>
-            recordSearchTelemetry(
-              telemetry,
-              setSearchSpanAttributes,
-              context.setToolCallSpanAttributes,
-            ),
-          pattern,
-          ...(typeof rawInput.path === "string"
-            ? { path: rawInput.path }
-            : undefined),
-          ...(typeof rawInput.glob === "string"
-            ? { glob: rawInput.glob }
-            : undefined),
-          ...(typeof rawInput.ignoreCase === "boolean"
-            ? { ignoreCase: rawInput.ignoreCase }
-            : undefined),
-          ...(typeof rawInput.literal === "boolean"
-            ? { literal: rawInput.literal }
-            : undefined),
-          ...(contextLines ? { context: contextLines } : undefined),
-          ...(limit ? { limit } : undefined),
-        });
-        setSpanStatus("ok");
-        return response;
-      },
-    );
-
-    return result as T;
-  };
-
-  const executeFindFilesTool = async <T>(
-    rawInput: Record<string, unknown>,
-    context: SandboxToolCallContext,
-  ): Promise<T> => {
-    const pattern = String(rawInput.pattern ?? "");
-    if (!pattern) {
-      throw new ToolInputError("pattern is required");
-    }
-
-    logSandboxBootRequest("tool.findFiles");
-    const limit = positiveInteger(rawInput.limit);
-    const fileSystem = await context.fileSystem();
-    const result = await withSandboxToolSpan(
-      "sandbox.findFiles",
-      "sandbox.fs.find",
-      {
-        "app.sandbox.pattern.length": pattern.length,
-      },
-      async (setSearchSpanAttributes) => {
-        const response = await findFiles({
-          fs: fileSystem,
-          runCommand: await context.commandRunner(),
-          onTelemetry: (telemetry) =>
-            recordSearchTelemetry(
-              telemetry,
-              setSearchSpanAttributes,
-              context.setToolCallSpanAttributes,
-            ),
-          pattern,
-          ...(typeof rawInput.path === "string"
-            ? { path: rawInput.path }
-            : undefined),
-          ...(limit ? { limit } : undefined),
-        });
-        setSpanStatus("ok");
-        return response;
-      },
-    );
-
-    return result as T;
-  };
-
-  const executeListDirTool = async <T>(
-    rawInput: Record<string, unknown>,
-    context: SandboxToolCallContext,
-  ): Promise<T> => {
-    logSandboxBootRequest("tool.listDir");
-    const limit = positiveInteger(rawInput.limit);
-    const fileSystem = await context.fileSystem();
-    const result = await withSandboxToolSpan(
-      "sandbox.listDir",
-      "sandbox.fs.list",
-      {},
-      async () => {
-        const response = await listDir({
-          fs: fileSystem,
-          ...(typeof rawInput.path === "string"
-            ? { path: rawInput.path }
-            : undefined),
-          ...(limit ? { limit } : undefined),
+          edits: rawInput.edits as TextReplacement[],
         });
         setSpanStatus("ok");
         return response;
@@ -720,10 +595,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
   const execute = async <T>(params: SandboxToolCall): Promise<T> => {
     const rawInput = (params.input ?? {}) as Record<string, unknown>;
-    const context = createToolCallContext(
-      params.signal,
-      params.setToolCallSpanAttributes,
-    );
+    const context = createToolCallContext(params.signal);
     const bashCommand =
       params.toolName === "bash"
         ? String(rawInput.command ?? "").trim()
@@ -746,18 +618,6 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
       if (params.toolName === "editFile") {
         return await executeEditFileTool(rawInput, context);
-      }
-
-      if (params.toolName === "grep") {
-        return await executeGrepTool(rawInput, context);
-      }
-
-      if (params.toolName === "findFiles") {
-        return await executeFindFilesTool(rawInput, context);
-      }
-
-      if (params.toolName === "listDir") {
-        return await executeListDirTool(rawInput, context);
       }
 
       if (params.toolName === "writeFile") {
@@ -807,6 +667,18 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     }
   };
   const workspace: SandboxWorkspace = {
+    createPreview: async (port) =>
+      await runWorkspaceOperation(
+        "workspace.createPreview",
+        async (sandbox) => {
+          if (!sandbox.createPreview) {
+            throw new ToolInputError(
+              "This sandbox provider cannot create previews.",
+            );
+          }
+          return await sandbox.createPreview(port);
+        },
+      ),
     readFileToBuffer: async (input) =>
       await runWorkspaceOperation(
         "workspace.readFileToBuffer",
@@ -828,7 +700,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       if (!runtime.sandboxRef()) {
         return undefined;
       }
-      const { fs } = await runtime.tools();
+      const { runCommand } = await runtime.tools();
       const workspaceDirectories =
         activeWorkspace?.repos
           .map((repo) => tryWorkspaceRepoCheckoutPath(repo.repo))
@@ -837,14 +709,25 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           )
           .map((checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`) ??
         [];
-      const directories =
-        workspaceDirectories.length > 0
-          ? workspaceDirectories
-          : await listRepositoryDirectories(fs);
-      return await resolveRepositoryInstructionsForDirectories({
-        directories,
-        fs,
-      });
+      return await withSandboxSpan(
+        "sandbox.repository_instructions.read",
+        "sandbox.repository_instructions.read",
+        {},
+        async (setSpanAttributes) => {
+          const { directories, instructions } =
+            await readRepositoryInstructions({
+              ...(workspaceDirectories.length > 0
+                ? { directories: workspaceDirectories }
+                : undefined),
+              runCommand,
+            });
+          setSpanAttributes({
+            "app.repository_instructions.repo_count": directories.length,
+            "app.repository_instructions.found": Boolean(instructions),
+          });
+          return instructions;
+        },
+      );
     },
     workspace,
     async switchWorkspace(recipe, signal) {

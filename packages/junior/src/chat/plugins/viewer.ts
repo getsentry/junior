@@ -8,6 +8,8 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { findActorIdentityId } from "@/chat/identities/actor";
+import { readUserAvatarUrls } from "@/chat/identities/avatar";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
@@ -46,6 +48,10 @@ async function readUserById(
       asc(juniorIdentities.providerTenantId),
       asc(juniorIdentities.providerSubjectId),
     );
+  return userFromRows(userRow, identityRows);
+}
+
+function userFromRows(userRow: UserRow, identityRows: IdentityRow[]): User {
   return userSchema.parse({
     email: userRow.primaryEmail,
     id: userRow.id,
@@ -55,6 +61,34 @@ async function readUserById(
   });
 }
 
+async function readUserByNormalizedEmail(
+  db: JuniorDatabase,
+  normalizedEmail: string,
+): Promise<User | undefined> {
+  const rows = await db
+    .select({ user: juniorUsers, identity: juniorIdentities })
+    .from(juniorUsers)
+    .leftJoin(
+      juniorIdentities,
+      and(
+        eq(juniorIdentities.userId, juniorUsers.id),
+        eq(juniorIdentities.kind, "user"),
+      ),
+    )
+    .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
+    .orderBy(
+      asc(juniorIdentities.provider),
+      asc(juniorIdentities.providerTenantId),
+      asc(juniorIdentities.providerSubjectId),
+    );
+  const userRow = rows[0]?.user;
+  if (!userRow) return undefined;
+  return userFromRows(
+    userRow,
+    rows.flatMap((row) => (row.identity ? [row.identity] : [])),
+  );
+}
+
 /** Resolve or create the canonical user for one verified viewer email. */
 export async function resolveViewerUserFromSql(
   db: JuniorDatabase,
@@ -62,6 +96,10 @@ export async function resolveViewerUserFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
+  // Every authenticated request resolves its viewer. Read first, so a known
+  // user costs one read instead of an insert attempt and two reads.
+  const existing = await readUserByNormalizedEmail(db, normalizedEmail);
+  if (existing) return existing;
   const now = new Date();
   const rows = await db
     .insert(juniorUsers)
@@ -101,14 +139,7 @@ export async function findUserByEmailFromSql(
 ): Promise<User | undefined> {
   const normalizedEmail = normalizeIdentityEmail(email);
   if (!normalizedEmail) return undefined;
-  const userRow = (
-    await db
-      .select()
-      .from(juniorUsers)
-      .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
-      .limit(1)
-  )[0];
-  return userRow ? await readUserById(db, userRow) : undefined;
+  return await readUserByNormalizedEmail(db, normalizedEmail);
 }
 
 /** Read one existing canonical user by verified email without creating a row. */
@@ -131,6 +162,13 @@ export async function updateViewerDisplayNameFromSql(
     .returning();
   const userRow = rows[0];
   return userRow ? await readUserById(db, userRow) : undefined;
+}
+
+/** Read the photo path of one canonical user: Slack, then Google. */
+export async function readViewerAvatarUrl(
+  userId: string,
+): Promise<string | undefined> {
+  return (await readUserAvatarUrls(getDb(), [userId])).get(userId);
 }
 
 /** Update one canonical user's display name. */
@@ -182,30 +220,9 @@ export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
-  if (actor.platform === "system") return undefined;
-  const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
-  const rows = await db
-    .select({
-      identity: juniorIdentities,
-      user: juniorUsers,
-    })
-    .from(juniorIdentities)
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .where(
-      and(
-        eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, actor.platform),
-        eq(juniorIdentities.providerTenantId, providerTenantId),
-        eq(juniorIdentities.providerSubjectId, actor.userId),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return undefined;
-  return {
-    identity: identityFromRow(row.identity),
-    ...(row.user ? { user: await readUserById(db, row.user) } : undefined),
-  };
+  const identityId = await findActorIdentityId(db, actor);
+  // The read by id returns only user Identities, so system work has no viewer.
+  return identityId ? await readIdentityByIdFromSql(db, identityId) : undefined;
 }
 
 /** Resolve the stored identity and linked user for one runtime actor. */

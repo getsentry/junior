@@ -1,5 +1,5 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import * as z from "zod";
 import type { GoogleOperation } from "../credentials";
 import {
   googleApiError,
@@ -113,7 +113,7 @@ export async function googleFileRequest(
   // Google returns 404 for a file that Junior's account cannot open.
   if (response.status === 404) {
     throw new PluginToolInputError(
-      `Junior's Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
+      `Your Google account (${ctx.accountEmail}) cannot open this file. Ask the owner to share it with that account, or to share it with anyone who has the link.`,
     );
   }
   if (response.status !== 200) {
@@ -166,7 +166,7 @@ export function fileOutputFields(file: {
   webViewLink?: string;
 }) {
   return {
-    ...(file.modifiedTime ? { modifiedTime: file.modifiedTime } : undefined),
+    ...(file.modifiedTime ? { modified_at: file.modifiedTime } : undefined),
     ...(file.webViewLink ? { url: file.webViewLink } : undefined),
   };
 }

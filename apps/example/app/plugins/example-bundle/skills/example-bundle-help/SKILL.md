@@ -1,6 +1,6 @@
 ---
 name: example-bundle-help
-description: Explain plugin-bundled skills in this example app. Use when users invoke /example-bundle-help.
+description: Explain plugin-bundled skills in this example app. Use when users invoke $example-bundle-help.
 ---
 
 # Plugin-Bundled Skill Example

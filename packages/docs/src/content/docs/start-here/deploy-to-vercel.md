@@ -12,7 +12,7 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-The scaffolded app is already shaped for Vercel. Deployment mainly means linking the project, keeping `juniorNitro()` in Nitro config, setting env vars, enabling snapshot warmup support, and pointing Slack at the production URL.
+The scaffolded app is already shaped for Vercel. You link the project, add storage, set env vars, enable OIDC, and point Slack at the production URL. The build does the rest.
 
 ## Link the project
 
@@ -40,62 +40,44 @@ Vercel Marketplace storage providers inject database credentials into the
 project environment. For Neon and other Postgres providers, confirm the project
 has a `DATABASE_URL` value before the first production deploy.
 
-## Configure build command
+## Add Redis storage
 
-The scaffolded `package.json` includes the production build script:
+Junior keeps runtime state, locks, and the sandbox snapshot registry in Redis.
+In the same **Storage** tab, create or connect a Redis database. Confirm that
+the project has a `REDIS_URL` value for each environment that builds or runs
+Junior.
 
-```json title="package.json"
+## What each deploy does
+
+You do not run migrations or build snapshots by hand. The scaffolded
+`vercel.json` sets the build command, and `pnpm build` runs snapshot warmup:
+
+```json title="vercel.json"
 {
-  "scripts": {
-    "check": "junior check",
-    "dev": "nitro dev",
-    "build": "junior snapshot create && nitro build"
-  }
+  "framework": "nitro",
+  "buildCommand": "pnpm exec junior upgrade && pnpm build"
 }
 ```
 
-Run database migrations before the app build:
+Each Vercel deploy then:
 
-```bash
-pnpm exec junior upgrade && pnpm build
-```
+1. Applies pending core and plugin SQL migrations with
+   [junior upgrade](/cli/upgrade/). Applied migrations do not run again.
+2. Builds or reuses the sandbox snapshot with
+   [junior snapshot create](/cli/snapshot-create/).
+3. Builds the app. `juniorNitro()` adds the queue triggers and the heartbeat,
+   retention, and auto-archive crons to the build output.
 
-`junior upgrade` applies each core and plugin SQL migration only once. The
-`junior snapshot create` command inside `pnpm build` prepares the sandbox
-dependencies declared by enabled plugins. Existing pre-Drizzle deployments
-must complete the bridge-release procedure below before this build command can
-succeed.
+A failed migration or snapshot fails the deploy, so production keeps the last
+good release.
 
-For an existing pre-Drizzle deployment, follow the bridge-release drain,
-upgrade, verification, and restart procedure in
-[junior upgrade](/cli/upgrade/) before promoting the new release.
+Keep `juniorNitro()` in `nitro.config.ts`. `junior check` fails when it is
+missing. Do not add `functions["api/internal/agent/continue.ts"]` or Junior
+crons to root `vercel.json`; `juniorNitro()` owns them.
 
-## Enable Junior's Nitro deployment module
-
-Junior uses a one-minute internal heartbeat to run plugin heartbeats and recover stale agent dispatches. Durable agent work and plugin background tasks are also resumed by Vercel Queue consumers. These pieces are emitted by `juniorNitro()` into Nitro's Vercel Build Output config, which is the config Vercel deploys for Nitro apps.
-
-Keep `juniorNitro()` installed in `nitro.config.ts`:
-
-```ts title="nitro.config.ts"
-import { defineConfig } from "nitro";
-import { juniorNitro } from "@sentry/junior/nitro";
-
-export default defineConfig({
-  preset: "vercel",
-  modules: [
-    juniorNitro({
-      plugins: "./plugins",
-    }),
-  ],
-  routes: {
-    "/**": { handler: "./server.ts" },
-  },
-});
-```
-
-Do not configure `functions["api/internal/agent/continue.ts"]` in root `vercel.json`; Nitro does not deploy that source file as a Vercel function. `juniorNitro()` attaches queue triggers to `/api/internal/agent/continue` and `/api/internal/plugin/tasks` with Nitro `vercel.functionRules`, and emits the `/api/internal/heartbeat` cron into `.vercel/output/config.json`.
-
-The heartbeat endpoint returns `401` unless the incoming Vercel Cron request has a bearer token that matches `CRON_SECRET`.
+One upgrade needs manual steps: a database from before Junior used Drizzle
+migrations. Follow the bridge procedure in [junior upgrade](/cli/upgrade/)
+before you deploy the new release.
 
 ## Configure production environment
 
@@ -179,11 +161,12 @@ Plugin pages list provider-specific env vars such as GitHub App settings or Data
 
 Generate `CRON_SECRET` the same way and store it in Vercel for the production environment. Vercel Cron automatically sends it to cron targets as the `Authorization: Bearer <CRON_SECRET>` header.
 
-## Enable snapshot warmup credentials
+## Enable OIDC for builds
 
-If enabled plugins need sandbox runtime dependencies, `junior snapshot create` runs during build. In Vercel, enable OIDC so build-time `VERCEL_OIDC_TOKEN` and runtime request OIDC are available. OIDC is also the preferred AI Gateway auth path for project attribution.
-
-Snapshot warmup also needs `REDIS_URL` during build because the snapshot registry is Redis-backed.
+Every build runs `junior snapshot create`, because the base sandbox profile
+always has core tools. Enable Vercel OIDC so builds get `VERCEL_OIDC_TOKEN` and
+runtime requests get OIDC. OIDC is also the preferred AI Gateway auth path.
+Snapshot warmup also reads `REDIS_URL` during the build.
 
 ## Point Slack at production
 
@@ -197,7 +180,6 @@ Apply the URL to:
 
 - Event Subscriptions
 - Interactivity
-- Slash command configured by `JUNIOR_SLASH_COMMAND` (defaults to `/jr`)
 
 Reinstall the Slack app if scopes changed.
 
@@ -206,14 +188,14 @@ Reinstall the Slack app if scopes changed.
 Run these checks after deployment:
 
 1. `GET https://<your-domain>/health` returns `status: "ok"`.
-2. `junior check` passes without deployment config errors.
-3. The Vercel deployment has a cron entry for `/api/internal/heartbeat`.
-4. The Vercel deployment has Queue triggers for `/api/internal/agent/continue` and `/api/internal/plugin/tasks`.
-5. A Slack mention produces a thread reply in the expected workspace.
-6. `sendFiles` can attach a small test file in Slack.
-7. App Home opens without an error.
-8. Queue callback and agent-run logs show successful processing.
-9. One enabled plugin workflow succeeds end to end.
+2. A Slack mention produces a thread reply in the expected workspace.
+3. `sendFiles` can attach a small test file in Slack.
+4. App Home opens without an error.
+5. One enabled plugin workflow succeeds end to end.
+
+If a mention gets no reply, check the deployment for the
+`/api/internal/heartbeat` cron and the Queue triggers for
+`/api/internal/agent/continue` and `/api/internal/plugin/tasks`.
 
 ## Next step
 

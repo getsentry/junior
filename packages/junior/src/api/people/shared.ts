@@ -178,17 +178,40 @@ export function statsItems(map: Map<string, ConversationStatsItem>) {
   );
 }
 
-/** Build the verified Slack actor predicate shared by People aggregate and recent-row queries. */
+/**
+ * Build the verified person actor predicate shared by People aggregate and
+ * recent-row queries.
+ *
+ * Any provider counts, so Slack and dashboard (web) Conversations roll up to
+ * the same person. System identities never count.
+ */
 export function verifiedActorWhere(email?: string) {
   const normalizedEmail = normalizeEmail(email);
   return and(
-    eq(juniorIdentities.provider, "slack"),
+    eq(juniorIdentities.kind, "user"),
     eq(juniorIdentities.emailVerified, true),
     sql`${juniorUsers.primaryEmailNormalized} IS NOT NULL`,
     normalizedEmail
       ? eq(juniorUsers.primaryEmailNormalized, normalizedEmail)
       : undefined,
   );
+}
+
+/**
+ * Read the Slack user fields for a grouped person row.
+ *
+ * Web identities use the email as the provider subject, so only Slack
+ * identities can supply these fields.
+ */
+export function slackActorColumns() {
+  return {
+    slackUserId: sql<
+      string | null
+    >`MAX(CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END)`,
+    slackUserName: sql<
+      string | null
+    >`MAX(CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.handle} END)`,
+  };
 }
 
 /** Read only the recent conversation rows required by a People profile. */
@@ -202,11 +225,20 @@ export async function recentActorRows(email: string) {
       durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,
       executionStatus: juniorConversations.executionStatus,
+      stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
-      handle: juniorIdentities.handle,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+      archivedAt: juniorConversations.archivedAt,
+      // Web identities use the email as the subject. Only Slack fills these.
+      handle: sql<
+        string | null
+      >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.handle} END`,
       lastActivityAt: juniorConversations.lastActivityAt,
-      providerSubjectId: juniorIdentities.providerSubjectId,
+      providerSubjectId: sql<
+        string | null
+      >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END`,
       source: juniorConversations.source,
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,

@@ -17,7 +17,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { z } from "zod";
+import * as z from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import {
   gitHubPullRequestCreateWatch,
@@ -32,6 +32,18 @@ import {
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
 import { recordGitHubPullRequestOpener } from "../pull-request-requesters/store.js";
+import {
+  stackGitHubPullRequest,
+  stackTargetSchema,
+  type GitHubPullRequestStack,
+  type GitHubStackTarget,
+} from "./stack-pull-request.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -133,6 +145,7 @@ interface GitHubPullRequestResult {
 }
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
+  stack?: GitHubPullRequestStack;
   subscribable?: SubscribableResource;
   subscription?: WatchResult;
 }
@@ -145,6 +158,9 @@ interface GitHubPullRequestStructuredResult
 const gitHubPullRequestDataSchema = z.object({
   number: z.number(),
   url: z.string(),
+  stack: z
+    .object({ number: z.number(), pull_requests: z.array(z.number()) })
+    .optional(),
   subscribable: subscribableResourceSchema.optional(),
   subscription: watchResultSchema.optional(),
 });
@@ -172,71 +188,6 @@ function nonEmptyString(value: string | undefined, name: string): string {
     throw new PluginToolInputError(`${name} is required`);
   }
   return value.trim();
-}
-
-function parseRepo(value: string): { name: string; owner: string } {
-  const repo = nonEmptyString(value, "repo");
-  const parts = repo.split("/");
-  if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) {
-    throw new PluginToolInputError('repo must use "owner/name" format');
-  }
-  return {
-    owner: parts[0].trim(),
-    name: parts[1].trim(),
-  };
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) {
-    return undefined;
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
-function githubApiErrorMessage(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const record = payload as Record<string, unknown>;
-    const message = record.message;
-    if (typeof message === "string") {
-      const details = githubApiErrorDetails(record);
-      return details ? `${message}: ${details}` : message;
-    }
-  }
-  if (typeof payload === "string" && payload.trim()) {
-    return payload.trim();
-  }
-  return "GitHub request failed";
-}
-
-function githubApiErrorDetails(
-  payload: Record<string, unknown>,
-): string | undefined {
-  const errors = payload.errors;
-  if (!Array.isArray(errors)) {
-    return undefined;
-  }
-  const details = errors
-    .map((error) => {
-      if (!error || typeof error !== "object" || Array.isArray(error)) {
-        return undefined;
-      }
-      const fields = ["resource", "field", "code", "message"]
-        .map((name) => {
-          const value = (error as Record<string, unknown>)[name];
-          return typeof value === "string" && value.trim()
-            ? `${name}=${value.trim()}`
-            : undefined;
-        })
-        .filter((value): value is string => value !== undefined);
-      return fields.length ? fields.join(" ") : undefined;
-    })
-    .filter((value): value is string => value !== undefined);
-  return details.length ? details.join("; ") : undefined;
 }
 
 function createPullRequestState(
@@ -277,7 +228,7 @@ function createGitHubPullRequestRequest(
   ctx: ToolRegistrationHookContext,
   requester: GitHubRequester | undefined,
   dashboardUrl?: string,
-): Request {
+): { body: unknown; path: string } {
   const repo = parseRepo(input.repo);
   const payload = {
     title: nonEmptyString(input.title, "title"),
@@ -290,35 +241,25 @@ function createGitHubPullRequestRequest(
     ),
     ...(input.draft !== undefined ? { draft: input.draft } : undefined),
   };
-  return new Request(
-    `https://api.github.com/repos/${encodeURIComponent(
-      repo.owner,
-    )}/${encodeURIComponent(repo.name)}/pulls`,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify(payload),
-    },
-  );
+  return { path: `${repoPath(repo)}/pulls`, body: payload };
 }
 
 async function createGitHubPullRequest(
   ctx: ToolRegistrationHookContext,
-  request: Request,
-): Promise<GitHubPullRequestResult> {
-  const response = await ctx.egress.fetch({
-    provider: "github",
+  request: { body: unknown; path: string },
+): Promise<{
+  result: GitHubPullRequestResult;
+  stackTarget?: GitHubStackTarget;
+}> {
+  const response = await githubApi(ctx.egress, {
     operation: "github.pull.create",
-    request,
+    method: "POST",
+    ...request,
   });
-  const parsed = await readJsonResponse(response);
+  const parsed = response.body;
   if (!response.ok) {
     throw new GitHubPullRequestCreateRejectedError(
-      `GitHub pull request creation failed with HTTP ${response.status}: ${githubApiErrorMessage(
+      `GitHub pull request creation failed with HTTP ${response.status}: ${githubErrorMessage(
         parsed,
       )}`,
       response.status,
@@ -338,10 +279,14 @@ async function createGitHubPullRequest(
       "GitHub pull request creation returned an invalid response.",
     );
   }
+  const stackTarget = stackTargetSchema.safeParse(parsed);
   return {
-    ...githubObjectFacts("code_change", parsed),
-    number: pullRequest.number,
-    url: pullRequest.html_url,
+    result: {
+      ...githubObjectFacts("code_change", parsed),
+      number: pullRequest.number,
+      url: pullRequest.html_url,
+    },
+    ...(stackTarget.success ? { stackTarget: stackTarget.data } : undefined),
   };
 }
 
@@ -353,15 +298,17 @@ async function recordOpener(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   state: { createdAtMs: number; number: number },
-  identityId: string | undefined,
+  requester: { conversationId: string; identityId: string | undefined },
 ): Promise<void> {
+  const { conversationId, identityId } = requester;
   if (!identityId) return;
   const repo = parseRepo(input.repo);
   await recordGitHubPullRequestOpener(ctx.db as GitHubDb, {
+    conversationId,
     createdAt: new Date(state.createdAtMs),
     identityId,
     number: state.number,
-    repositoryFullName: `${repo.owner}/${repo.name}`,
+    repositoryFullName: repo.ref,
   });
 }
 
@@ -376,21 +323,11 @@ async function assignPullRequestRequester(
   if (!assignee) return;
   try {
     const repo = parseRepo(input.repo);
-    const response = await ctx.egress.fetch({
-      provider: "github",
+    const response = await githubApi(ctx.egress, {
       operation: "github.pull.assign",
-      request: new Request(
-        `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/issues/${result.number}/assignees`,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-          body: JSON.stringify({ assignees: [assignee] }),
-        },
-      ),
+      method: "POST",
+      path: `${repoPath(repo)}/issues/${result.number}/assignees`,
+      body: { assignees: [assignee] },
     });
     if (!response.ok) {
       ctx.log.warn("github.pull_request.assign_after_create.rejected", {
@@ -416,13 +353,12 @@ function gitHubPullRequestToolResult(
   omitSuggestedEvents?: readonly string[],
 ): GitHubPullRequestToolResult {
   const repo = parseRepo(input.repo);
-  const subscribable = canSubscribe
-    ? gitHubPullRequestSubscribable({
-        number: result.number,
-        repo: `${repo.owner}/${repo.name}`,
-        ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
-      })
-    : undefined;
+  const subscribable = gitHubPullRequestSubscribable({
+    canSubscribe,
+    number: result.number,
+    repo: `${repo.owner}/${repo.name}`,
+    ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
+  });
   return {
     number: result.number,
     url: result.url,
@@ -435,6 +371,7 @@ async function gitHubPullRequestStructuredResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
   subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+  stack?: GitHubPullRequestStack,
 ): Promise<GitHubPullRequestStructuredResult> {
   // Subscribe first. Only prune suggested events after a successful forced
   // subscription so a failed side effect still leaves the created PR usable.
@@ -461,6 +398,7 @@ async function gitHubPullRequestStructuredResult(
       objectAnnotations,
       target: "createPullRequest",
       ...base,
+      ...(stack ? { stack } : undefined),
     };
   }
   const watch = gitHubPullRequestCreateWatch(subscriptionConfig);
@@ -479,6 +417,7 @@ async function gitHubPullRequestStructuredResult(
       objectAnnotations,
       target: "createPullRequest",
       ...data,
+      ...(stack ? { stack } : undefined),
       subscription,
     };
   } catch (error) {
@@ -491,6 +430,7 @@ async function gitHubPullRequestStructuredResult(
       objectAnnotations,
       target: "createPullRequest",
       ...base,
+      ...(stack ? { stack } : undefined),
     };
   }
 }
@@ -532,12 +472,10 @@ export function createGitHubPullRequestTool(
             const completedInput = state.input ?? parsedInput;
             // The call can stop after it saves this state but before it saves
             // the opener, so a retry saves the opener again.
-            await recordOpener(
-              ctx,
-              completedInput,
-              state,
-              (await resolveGitHubRequester(ctx))?.identity?.id,
-            );
+            await recordOpener(ctx, completedInput, state, {
+              conversationId,
+              identityId: (await resolveGitHubRequester(ctx))?.identity?.id,
+            });
             const completedResult = {
               facts:
                 state.facts === undefined
@@ -580,8 +518,12 @@ export function createGitHubPullRequestTool(
             GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS,
           );
           let result: GitHubPullRequestResult;
+          let stackTarget: GitHubStackTarget | undefined;
           try {
-            result = await createGitHubPullRequest(ctx, request);
+            ({ result, stackTarget } = await createGitHubPullRequest(
+              ctx,
+              request,
+            ));
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -611,13 +553,20 @@ export function createGitHubPullRequestTool(
               { cause: error },
             );
           }
-          await recordOpener(ctx, parsedInput, completedState, identityId);
+          await recordOpener(ctx, parsedInput, completedState, {
+            conversationId,
+            identityId,
+          });
           await assignPullRequestRequester(ctx, parsedInput, result, requester);
+          const stack = stackTarget
+            ? await stackGitHubPullRequest(ctx, stackTarget)
+            : undefined;
           return await gitHubPullRequestStructuredResult(
             ctx,
             parsedInput,
             result,
             subscriptionConfig,
+            stack,
           );
         },
       );

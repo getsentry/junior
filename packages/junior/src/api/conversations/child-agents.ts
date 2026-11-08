@@ -1,9 +1,14 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { inArray } from "drizzle-orm";
 import { listChildAgents } from "@/chat/agent-invocations/list";
+import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { getConversationStore, getDb } from "@/chat/db";
+import type { JuniorDatabase } from "@/db/db";
+import { juniorConversations } from "@/db/schema";
 import { throwApiError } from "../http";
 import {
   conversationChildAgentsReportSchema,
+  type ConversationChildAgent,
   type ConversationChildAgentsReport,
 } from "../schema/child-agent";
 import { readConversationAccessFromSql } from "./access";
@@ -13,10 +18,37 @@ import {
   readConversationTreeMetricsFromSql,
 } from "./usage";
 
+/** Read the kind and archive of each child Conversation. */
+async function readChildKinds(
+  db: JuniorDatabase,
+  childIds: readonly string[],
+): Promise<Map<string, Pick<ConversationChildAgent, "archivedAt" | "kind">>> {
+  if (childIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      conversationId: juniorConversations.conversationId,
+      kind: juniorConversations.kind,
+      archivedAt: juniorConversations.archivedAt,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(inArray(juniorConversations.conversationId, [...childIds]));
+  return new Map(
+    rows.map((row) => [
+      row.conversationId,
+      {
+        archivedAt: row.archivedAt?.toISOString() ?? null,
+        kind: conversationKindFromRow(row) === "thread" ? "thread" : "task",
+      },
+    ]),
+  );
+}
+
 /**
  * Load the direct child agents of one Conversation, or throw a standard API
  * not-found error. Viewers who cannot see private content get only the status,
- * time, and usage of each child agent.
+ * time, and usage of each child agent. Archived children stay in the report,
+ * so the dashboard can show and restore them.
  */
 export async function requireConversationChildAgents(
   conversationId: string,
@@ -35,10 +67,12 @@ export async function requireConversationChildAgents(
   // Match the child Conversation detail: count the child and its own child
   // agents at any depth.
   const childIds = children.map((agent) => agent.childConversationId);
-  const [metricsByChild, auxiliaryCostsByChild] = await Promise.all([
-    readConversationTreeMetricsFromSql(db, childIds),
-    readConversationAuxiliaryCostsFromSql(db, childIds),
-  ]);
+  const [metricsByChild, auxiliaryCostsByChild, kindByChild] =
+    await Promise.all([
+      readConversationTreeMetricsFromSql(db, childIds),
+      readConversationAuxiliaryCostsFromSql(db, childIds),
+      readChildKinds(db, childIds),
+    ]);
 
   const agents = children.map((agent) => {
     const metrics = metricsByChild.get(agent.childConversationId);
@@ -52,6 +86,11 @@ export async function requireConversationChildAgents(
         ? { auxiliaryCosts: auxiliaryCosts.total }
         : undefined),
       ...(childAgentTotals ? { childAgentTotals } : undefined),
+      // A child row from before the kind column reads as a Task.
+      ...(kindByChild.get(agent.childConversationId) ?? {
+        archivedAt: null,
+        kind: "task",
+      }),
       status: agent.status,
       updatedAt: new Date(agent.updatedAtMs).toISOString(),
       ...(canExposePayload

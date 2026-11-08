@@ -1,10 +1,11 @@
-import type {
-  PluginConversationEventCostDay,
-  PluginConversationEventStats,
-  PluginRegistration,
+import {
+  isPluginModelCostEventName,
+  type PluginConversationEventCostDay,
+  type PluginConversationEventStats,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
-import { z } from "zod";
+import * as z from "zod";
 import { getDb } from "@/chat/db";
 import { juniorConversationEvents } from "@/db/schema";
 
@@ -24,11 +25,14 @@ function startOfUtcDay(value: number): Date {
   return date;
 }
 
+// A plugin reads its registered events and the host-written cost events of
+// its model calls.
 function registeredEventName(
   plugin: PluginRegistration,
   eventName: string,
 ): string {
   if (
+    !isPluginModelCostEventName(eventName) &&
     !plugin.conversationEvents?.some(
       (definition) => definition.eventName === eventName,
     )

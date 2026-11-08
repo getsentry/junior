@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import {
   actorIdentitySchema,
   conversationSummaryReportSchema,
@@ -7,6 +7,11 @@ import { conversationStatsItemSchema } from "./conversation-stats";
 
 export const personParamsSchema = z
   .object({ email: z.string().trim().min(1) })
+  .strict();
+
+/** Route parameters for the photo of one Identity. */
+export const avatarParamsSchema = z
+  .object({ identityId: z.string().min(1).max(200) })
   .strict();
 
 export const peopleConversationStatsItemSchema =

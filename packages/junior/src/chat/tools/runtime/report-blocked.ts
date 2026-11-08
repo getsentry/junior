@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -13,6 +13,7 @@ export function createReportBlockedTool() {
     },
     description:
       "End this delegated task as blocked. Call this when missing access, credentials, input, or a decision stops the task, also when a search for the missing part found nothing. Do not guess, mock, or fake results to work around it.",
+    exposure: "modelOnly",
     inputSchema: z
       .object({
         missing: z

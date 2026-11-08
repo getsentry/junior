@@ -5,6 +5,7 @@ import type {
   ConversationEventQuery,
   ConversationEventStore,
   HistoryReplacement,
+  HistoryReplacementResult,
   MessageHistory,
   NewConversationEvent,
 } from "@/chat/conversations/history";
@@ -48,7 +49,7 @@ class MemoryConversationEventStore implements ConversationEventStore {
   async replaceHistory(
     _conversationId: string,
     _replacement: HistoryReplacement,
-  ): Promise<void> {
+  ): Promise<HistoryReplacementResult> {
     throw new Error("not implemented");
   }
 
@@ -82,7 +83,7 @@ class MemoryConversationEventStore implements ConversationEventStore {
   }
 
   async loadMessageHistory(): Promise<MessageHistory> {
-    return { events: this.history, compaction: undefined, historyFromSeq: 0 };
+    return { events: this.history, historyFromSeq: 0 };
   }
 
   async loadHistory(): Promise<ConversationEvent[]> {

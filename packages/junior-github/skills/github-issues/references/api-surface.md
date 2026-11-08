@@ -1,6 +1,6 @@
 # GitHub Issue API Surface
 
-Issue creation uses `github_createIssue`. Issue title, body, and state updates use `github_updateIssue` so the runtime keeps requester attribution and the conversation footer. Comments, labels, assignees, and reads use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh issue` mutations are not supported.
+Issue creation uses `github_createIssue`, one-issue reads use `github_getIssue`, title, body, and state updates use `github_updateIssue`, and new comments use `github_commentOnIssue`. Comment reads, labels, assignees, and issue lists use `gh`; generic GraphQL-backed `gh issue` mutations are not supported.
 
 ## Repo scoping
 
@@ -10,27 +10,27 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 ## GitHub App permission guidance
 
-| Permission capability | Operations                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------ |
-| `github.issues.read`  | `gh issue view`, `gh api /repos/.../comments`                                        |
-| `github.issues.write` | Typed issue create/update tools and allowlisted comment, label, or assignee endpoints through `gh api` |
+| Permission capability | Operations                                                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `github.issues.read`  | `github_getIssue`, `gh api /repos/.../comments`                                                             |
+| `github.issues.write` | Typed issue create, update, and comment tools, and allowlisted label or assignee endpoints through `gh api` |
 
 ## Command matrix
 
-| Operation           | Command                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Create issue        | `github_createIssue({ repo: "owner/repo", title: "...", body: "...", labels: ["..."] })`                      |
+| Operation           | Command                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Create issue        | `github_createIssue({ repo: "owner/repo", title: "...", body: "...", labels: ["..."] })`                              |
 | Update issue fields | `github_updateIssue({ repo: "owner/repo", number: NUMBER, title?: "...", body?: "...", state?: "open" \| "closed" })` |
-| Close issue         | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "closed" })`                              |
-| Reopen issue        | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "open" })`                                |
-| Add labels          | `gh api repos/owner/repo/issues/NUMBER/labels --method POST --input labels.json`                              |
-| Remove label        | `gh api repos/owner/repo/issues/NUMBER/labels/LABEL --method DELETE`                                          |
-| Add assignees       | `gh api repos/owner/repo/issues/NUMBER/assignees --method POST --input assignees.json`                        |
-| Remove assignees    | `gh api repos/owner/repo/issues/NUMBER/assignees --method DELETE --input assignees.json`                      |
-| Add comment         | `gh api repos/owner/repo/issues/NUMBER/comments --method POST --input comment.json`                           |
-| List issues         | `gh issue list --repo owner/repo --json number,title,state,url --limit 20`                                    |
-| Read issue          | `gh issue view NUMBER --repo owner/repo --json number,title,state,labels,assignees,author,url,body`           |
-| Read comments       | `gh api /repos/owner/repo/issues/NUMBER/comments --method GET --header "Accept: application/vnd.github+json"` |
+| Close issue         | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "closed" })`                                         |
+| Reopen issue        | `github_updateIssue({ repo: "owner/repo", number: NUMBER, state: "open" })`                                           |
+| Add labels          | `gh api repos/owner/repo/issues/NUMBER/labels --method POST --input labels.json`                                      |
+| Remove label        | `gh api repos/owner/repo/issues/NUMBER/labels/LABEL --method DELETE`                                                  |
+| Add assignees       | `gh api repos/owner/repo/issues/NUMBER/assignees --method POST --input assignees.json`                                |
+| Remove assignees    | `gh api repos/owner/repo/issues/NUMBER/assignees --method DELETE --input assignees.json`                              |
+| Add comment         | `github_commentOnIssue({ repo: "owner/repo", number: NUMBER, body: "..." })`                                          |
+| List issues         | `gh issue list --repo owner/repo --json number,title,state,url --limit 20`                                            |
+| Read issue          | `github_getIssue({ repo: "owner/repo", number: NUMBER })`                                                             |
+| Read comments       | `gh api /repos/owner/repo/issues/NUMBER/comments --method GET --header "Accept: application/vnd.github+json"`         |
 
 ## Config helpers
 

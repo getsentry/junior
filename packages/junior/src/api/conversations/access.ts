@@ -18,7 +18,17 @@ const rootIdentity = alias(juniorIdentities, "access_root_identity");
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
   isParticipant: boolean;
+  /** Root of the Conversation tree. Missing when the stored tree is invalid. */
+  rootConversationId?: string;
+  /** Provider tenant of the root Location, such as a Slack workspace. */
+  tenant?: ProviderTenant;
   visibility: JuniorDestinationVisibility | null;
+}
+
+/** A provider tenant, such as one Slack workspace. */
+export interface ProviderTenant {
+  provider: string;
+  providerTenantId: string;
 }
 
 /** Resolve viewer access for a bounded set of persisted conversations. */
@@ -39,6 +49,8 @@ export async function readConversationAccessFromSql(
       rootParentConversationId: rootConversation.parentConversationId,
       rootRootConversationId: rootConversation.rootConversationId,
       visibility: rootDestination.visibility,
+      provider: rootDestination.provider,
+      providerTenantId: rootDestination.providerTenantId,
       rootEmailNormalized: rootIdentity.emailNormalized,
       rootEmailVerified: rootIdentity.emailVerified,
       rootUserId: rootIdentity.userId,
@@ -114,9 +126,91 @@ export async function readConversationAccessFromSql(
         {
           canViewPrivateContent,
           isParticipant,
+          ...(validRootConversationId !== undefined
+            ? { rootConversationId: validRootConversationId }
+            : undefined),
           visibility,
+          ...(validRootConversationId !== undefined &&
+          row.provider !== null &&
+          row.providerTenantId
+            ? {
+                tenant: {
+                  provider: row.provider,
+                  providerTenantId: row.providerTenantId,
+                },
+              }
+            : undefined),
         },
       ];
     }),
   );
+}
+
+/** Read viewer access for a bounded set of Conversations. */
+export type ConversationAccessReader = (
+  conversationIds: readonly string[],
+) => Promise<Map<string, ConversationAccess>>;
+
+/**
+ * Read access for one request. Each id is read at most once, so the parts of
+ * one response that need the same Conversation share a query.
+ */
+export function createConversationAccessReader(
+  db: JuniorDatabase,
+  viewer?: User,
+): ConversationAccessReader {
+  const byId = new Map<string, Promise<ConversationAccess | undefined>>();
+  return async (conversationIds) => {
+    const missing = [...new Set(conversationIds)].filter((id) => !byId.has(id));
+    if (missing.length > 0) {
+      const read = readConversationAccessFromSql(db, missing, viewer);
+      for (const id of missing) {
+        byId.set(
+          id,
+          read.then((access) => access.get(id)),
+        );
+      }
+    }
+    const entries = await Promise.all(
+      conversationIds.map(async (id) => [id, await byId.get(id)] as const),
+    );
+    return new Map(
+      entries.flatMap(([id, access]) => (access ? [[id, access]] : [])),
+    );
+  };
+}
+
+/** The fields of a Conversation that decide access from another one. */
+export type ConversationReach = Pick<
+  ConversationAccess,
+  "rootConversationId" | "tenant" | "visibility"
+>;
+
+/**
+ * Apply `policies/conversation-access.md`: whether work in the `requester`
+ * Conversation may read or find the data of the `target` Conversation. The
+ * person of the Turn does not change the result. A private Conversation is
+ * reachable only from its own tree.
+ */
+export function canAccessConversation(args: {
+  requester: ConversationReach;
+  target: ConversationReach;
+}): boolean {
+  const { requester, target } = args;
+  if (
+    requester.rootConversationId !== undefined &&
+    requester.rootConversationId === target.rootConversationId
+  ) {
+    return true;
+  }
+  if (
+    !requester.tenant ||
+    !target.tenant ||
+    requester.tenant.provider !== target.tenant.provider ||
+    requester.tenant.providerTenantId !== target.tenant.providerTenantId
+  ) {
+    return false;
+  }
+  // Missing or unknown visibility is private.
+  return target.visibility === "public";
 }

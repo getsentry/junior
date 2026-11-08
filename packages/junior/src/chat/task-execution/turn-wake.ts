@@ -10,6 +10,7 @@ import {
 } from "./authorized-turn";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { getConversationStore } from "@/chat/db";
 import {
   resolveTurnSessionRouting,
   type RequiredTurnSessionRouting,
@@ -19,6 +20,7 @@ import {
   loadTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import type { TraceContext } from "@/chat/task-execution/state";
 import {
   ensureConversationWake,
   requestConversationWork,
@@ -29,10 +31,12 @@ export interface PausedTurnRequest {
   conversationId: string;
   destination: Destination;
   expectedVersion: number;
+  traceContext?: TraceContext;
   turnId: string;
 }
 
 interface TurnWakeOptions {
+  conversationStore?: ConversationStore;
   nowMs?: number;
   queue?: ConversationWorkQueue;
   state?: StateAdapter;
@@ -90,6 +94,7 @@ export async function getPausedTurnRequest(args: {
     destination: routing.destination,
     turnId: args.turnId,
     expectedVersion: turn.version,
+    traceContext: turn.traceContext,
   };
 }
 
@@ -99,9 +104,16 @@ export async function wakePausedTurn(
   options: TurnWakeOptions = {},
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
+  const conversation = await (
+    options.conversationStore ?? getConversationStore()
+  ).get({ conversationId: request.conversationId });
   await requestConversationWork({
     conversationId: request.conversationId,
-    destination: request.destination,
+    // A child's work keeps no Destination. Its workers read the Conversation.
+    destination:
+      conversation && conversation.kind !== "root"
+        ? undefined
+        : request.destination,
     nowMs,
     state: options.state,
   });
@@ -122,9 +134,7 @@ export async function wakePausedTurn(
 }
 
 /** Create paused Turn operations for one app. */
-export function createPausedTurns(
-  options: TurnWakeOptions & { conversationStore?: ConversationStore } = {},
-): PausedTurns {
+export function createPausedTurns(options: TurnWakeOptions = {}): PausedTurns {
   return {
     get: (args) =>
       getPausedTurnRequest({
