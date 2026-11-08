@@ -11,7 +11,7 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
@@ -218,6 +218,28 @@ describe("versions API", () => {
       "spend",
     ]);
 
+    // A Task runs as the person whose Turn started it, so the cost of the
+    // viewer's own Task moves spend without moving the feed row.
+    const [root] = await getDb()
+      .select({ actorIdentityId: juniorConversations.actorIdentityId })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, OWN));
+    await getDb()
+      .update(juniorConversations)
+      .set({ actorIdentityId: root!.actorIdentityId })
+      .where(eq(juniorConversations.conversationId, `${OWN}:child`));
+    await getConversationStore().recordExecution({
+      conversationId: `${OWN}:child`,
+      createdAtMs: nowMs,
+      execution: { runId: "task-turn", status: "idle", updatedAtMs: nowMs },
+      lastActivityAtMs: nowMs,
+      metrics: { durationMs: 100, usage: { cost: { total: 0.25 } } },
+      source: "slack",
+      updatedAtMs: nowMs,
+    });
+    const withTaskCost = await read();
+    expect(changed(withTurn, withTaskCost)).toEqual(["conversation", "spend"]);
+
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
     await getConversationEventStore().append(OWN, [
@@ -231,7 +253,7 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(withTurn, withReply)).toEqual([
+    expect(changed(withTaskCost, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);
