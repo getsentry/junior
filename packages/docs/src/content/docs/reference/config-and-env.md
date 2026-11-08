@@ -348,7 +348,8 @@ likely to cost less than that write.
   gaps for a group, it sends no warmups for that group.
 - On the first heartbeat with warming on, Junior fills each empty group once
   from the stored Turns of the last 30 days. It uses the same rules as the
-  gaps that it records after a turn.
+  gaps that it records after a turn. It reads the newest Conversations first
+  for up to 60 seconds, and keeps the gaps that it found in that time.
 - While a tool runs, the running agent warms the cache with the same cost
   model. The chance comes from recorded tool waits: the time from a model
   request that ended with tool calls to the next request. Junior records only

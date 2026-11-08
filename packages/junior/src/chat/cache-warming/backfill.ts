@@ -8,9 +8,10 @@
  * as live recording, so warming can start soon after the first deploy.
  *
  * The heartbeat runs it. Only one run claims it, and a completed run marks
- * the install as done. It fills only segment lists that are empty, so it
+ * the install as done, also when it stopped on its time budget. It fills only segment lists that are empty, so it
  * does not add history to gaps that live recording already has.
  */
+import { performance } from "node:perf_hooks";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getChatConfig } from "@/chat/config";
@@ -32,10 +33,13 @@ import {
 } from "./warmup";
 
 const BACKFILL_KEY = "junior:cache_warming:backfill";
-// A run that stops before it marks the install as done holds the claim for
-// this long. Then a later heartbeat tries again.
+// A run that fails or is stopped before it marks the install as done holds
+// the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
 const CONVERSATION_BATCH_SIZE = 100;
+// The heartbeat gives no deadline. This leaves most of its function time for
+// the gap writes and the other heartbeat work.
+const BACKFILL_BUDGET_MS = 60_000;
 
 interface ConversationRow {
   conversationId: string;
@@ -67,7 +71,8 @@ interface RecordedGap {
   gapMs: number;
 }
 
-// Each Conversation that had activity in the window. A Conversation that
+// Each Conversation that had activity in the window, newest first, so a run
+// that stops on its budget has the most recent gaps. A Conversation that
 // started earlier still needs its earlier Turns to get its Turn count.
 async function loadConversations(
   windowStartMs: number,
@@ -77,7 +82,7 @@ async function loadConversations(
        parent_conversation_id AS "parentConversationId"
      FROM junior_conversations
      WHERE last_activity_at >= $1 AND transcript_purged_at IS NULL
-     ORDER BY conversation_id`,
+     ORDER BY last_activity_at DESC, conversation_id`,
     [new Date(windowStartMs).toISOString()],
   );
 }
@@ -197,11 +202,23 @@ function replayConversation(
   return gaps;
 }
 
-async function collectGaps(nowMs: number): Promise<Map<string, number[]>> {
+// Stop before the next batch when the budget is used. The budget uses the
+// monotonic clock, not `nowMs`.
+async function collectGaps(
+  nowMs: number,
+  budgetMs: number,
+): Promise<{
+  bySegment: Map<string, number[]>;
+  scanned: number;
+  budgetExceeded: boolean;
+}> {
+  const startedAt = performance.now();
   const windowStartMs = nowMs - GLOBAL_GAPS_TTL_MS;
   const conversations = await loadConversations(windowStartMs);
   const recorded: RecordedGap[] = [];
+  let scanned = 0;
   for (let i = 0; i < conversations.length; i += CONVERSATION_BATCH_SIZE) {
+    if (i > 0 && performance.now() - startedAt >= budgetMs) break;
     const batch = conversations.slice(i, i + CONVERSATION_BATCH_SIZE);
     const events = new Map<string, EventRow[]>();
     for (const event of await loadEvents(
@@ -219,6 +236,7 @@ async function collectGaps(nowMs: number): Promise<Map<string, number[]>> {
       );
       recorded.push(...gaps.filter((gap) => gap.sinceMs >= windowStartMs));
     }
+    scanned += batch.length;
   }
   recorded.sort((a, b) => a.sinceMs - b.sinceMs);
   const bySegment = new Map<string, number[]>();
@@ -227,16 +245,25 @@ async function collectGaps(nowMs: number): Promise<Map<string, number[]>> {
     list.push(gap.gapMs);
     bySegment.set(gap.segment, list);
   }
-  return bySegment;
+  return {
+    bySegment,
+    scanned,
+    budgetExceeded: scanned < conversations.length,
+  };
 }
 
 /**
  * Fill each empty cache warming gap list once per install from the stored
  * Conversation history. The heartbeat calls it each minute. After one run
  * completes, a call makes one state request and returns.
+ *
+ * A run that uses its scan budget writes the gaps that it has and also
+ * completes. Some gaps are better than none, and a run that cannot finish
+ * would otherwise try again each hour.
  */
 export async function backfillCacheWarmingGaps(args: {
   nowMs: number;
+  budgetMs?: number;
 }): Promise<void> {
   if (!getChatConfig().cacheWarmingEnabled) return;
   const state = getStateAdapter();
@@ -250,7 +277,10 @@ export async function backfillCacheWarmingGaps(args: {
   ) {
     return;
   }
-  const bySegment = await collectGaps(args.nowMs);
+  const { bySegment, scanned, budgetExceeded } = await collectGaps(
+    args.nowMs,
+    args.budgetMs ?? BACKFILL_BUDGET_MS,
+  );
   let gapCount = 0;
   let segmentCount = 0;
   for (const [segment, gaps] of bySegment) {
@@ -271,5 +301,7 @@ export async function backfillCacheWarmingGaps(args: {
   logInfo("cache_warming.backfill.completed", {
     "app.cache_warming.backfill.gap_count": gapCount,
     "app.cache_warming.backfill.segment_count": segmentCount,
+    "app.cache_warming.backfill.conversation_count": scanned,
+    "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
   });
 }

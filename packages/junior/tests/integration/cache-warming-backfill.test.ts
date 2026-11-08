@@ -5,6 +5,7 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import {
   agentInstructionProvenance,
@@ -155,5 +156,49 @@ describe("cache warming gap backfill", () => {
     await getStateAdapter().delete("junior:cache_warming:gaps:user:1");
     await heartbeat(T0 + 131 * MINUTE);
     expect(await gaps("user:1")).toEqual([]);
+  });
+
+  it("completes with the gaps it has when its scan budget is used", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    mockTitleModel("Conversation title");
+    const conversationId = await runTurns([
+      { atMs: T0 + 30 * MINUTE, prefixTokens: 60_000 },
+      { atMs: T0 + 37 * MINUTE, prefixTokens: 60_000 },
+    ]);
+    // A Task that ended long ago. Newest first, it is in the second batch.
+    const taskId = `${conversationId}:task`;
+    await getConversationStore().createChild({
+      childConversationId: taskId,
+      kind: "task",
+      parentConversationId: conversationId,
+      nowMs: T0,
+    });
+    await getConversationEventStore().append(taskId, [
+      {
+        createdAtMs: T0 + MINUTE,
+        data: historyItemFromPiMessage(
+          reply(60_000, T0 + MINUTE),
+          contextProvenance,
+        ),
+      },
+    ]);
+    // With the person Conversation, these fill the first batch.
+    for (let i = 0; i < 100; i++) {
+      await getConversationStore().recordActivity({
+        conversationId: `local:test:backfill-budget:${i}`,
+        destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        activityAtMs: T0 + 20 * MINUTE,
+        nowMs: T0 + 20 * MINUTE,
+      });
+    }
+
+    vi.setSystemTime(T0 + 130 * MINUTE);
+    await backfillCacheWarmingGaps({ nowMs: T0 + 130 * MINUTE, budgetMs: 0 });
+    expect(await gaps("user:1")).toEqual([7 * MINUTE]);
+    expect(await gaps("system:1")).toEqual([]);
+
+    // The run completed, so a heartbeat does not scan the rest.
+    await heartbeat(T0 + 131 * MINUTE);
+    expect(await gaps("system:1")).toEqual([]);
   });
 });
