@@ -2,13 +2,12 @@
  * Read access to a Conversation's durable event log for model-facing tools,
  * under `policies/conversation-access.md`. The current Conversation tree is
  * always readable. Other Conversations are readable only when they are
- * public and in the same provider tenant.
+ * public.
  */
 import {
   canAccessConversation,
   type ConversationReach,
 } from "@/api/conversations/access";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
@@ -35,7 +34,6 @@ export async function assertCanReadConversationEvents(
 
   const requester = await resolveRequesterReach(
     conversationStore,
-    context,
     context.conversationId,
   );
   // A Conversation with a parent uses the root privacy boundary.
@@ -53,11 +51,10 @@ export async function assertCanReadConversationEvents(
   if (
     !canAccessConversation({
       requester,
-      target: targetReach({
+      target: {
         rootConversationId: targetRootConversationId,
-        visibility: targetRoot?.visibility ?? target.visibility,
-        destination: targetRoot?.destination ?? target.destination,
-      }),
+        visibility: targetRoot?.visibility ?? target.visibility ?? null,
+      },
     })
   ) {
     throw notAccessible;
@@ -71,7 +68,6 @@ export async function assertCanReadConversationEvents(
 
 async function resolveRequesterReach(
   conversationStore: ConversationStore,
-  context: ToolRuntimeContext,
   currentConversationId: string,
 ): Promise<ConversationReach> {
   const current = await conversationStore.get({
@@ -85,40 +81,6 @@ async function resolveRequesterReach(
         current.parentConversationId,
       )
     : currentConversationId;
-
-  if (context.location?.provider === "slack") {
-    return {
-      rootConversationId,
-      tenant: { provider: "slack", providerTenantId: context.location.teamId },
-      visibility: null,
-    };
-  }
-
-  // TODO(dcramer): Remove the Source and Destination fallbacks after every
-  // deployed Slack Conversation has a stored Location and AgentRun no longer
-  // has Destination.
-  if (context.source.kind === "slack") {
-    return {
-      rootConversationId,
-      tenant: { provider: "slack", providerTenantId: context.source.teamId },
-      visibility: null,
-    };
-  }
-
-  if (
-    context.destination.platform === "slack" &&
-    "teamId" in context.destination
-  ) {
-    return {
-      rootConversationId,
-      tenant: {
-        provider: "slack",
-        providerTenantId: context.destination.teamId,
-      },
-      visibility: null,
-    };
-  }
-
   return { rootConversationId, visibility: null };
 }
 
@@ -149,21 +111,6 @@ async function resolveRootConversationId(
     cursor = parent.parentConversationId;
   }
   return conversationId;
-}
-
-function targetReach(args: {
-  rootConversationId: string;
-  visibility?: ConversationPrivacy;
-  destination?: { platform: string; teamId?: string };
-}): ConversationReach {
-  const { destination } = args;
-  return {
-    rootConversationId: args.rootConversationId,
-    ...(destination?.platform === "slack" && destination.teamId
-      ? { tenant: { provider: "slack", providerTenantId: destination.teamId } }
-      : undefined),
-    visibility: args.visibility ?? null,
-  };
 }
 
 /** Replace replacement history with its item count; the original events stay readable by seq. */

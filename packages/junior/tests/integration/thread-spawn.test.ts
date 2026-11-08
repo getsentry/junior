@@ -104,6 +104,7 @@ describe("Thread spawn and archive", () => {
           queue: harness.queue,
           state: harness.state,
         })!,
+        { owner: "none" },
       );
       const thread = await tool.execute!(
         tool.prepareArguments!({

@@ -34,7 +34,7 @@ import type { EventAutomation } from "@/chat/event-automations/types";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { logInfo } from "@/chat/logging";
-import { completeText } from "@/chat/pi/client";
+import { completeText } from "@/chat/core-model";
 import {
   compileScheduleIntent,
   scheduleIntentFromTool,
@@ -322,6 +322,7 @@ export function createAutomationTool(
         title: await resolveTaskTitle({
           signal: options.signal,
           completeText,
+          cost: { conversationId: context.conversationId },
           instruction: input.instruction,
           title: input.title,
         }),

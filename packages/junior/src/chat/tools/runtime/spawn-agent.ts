@@ -14,7 +14,7 @@ import {
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { completeText } from "@/chat/pi/client";
+import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
   resolveTaskTitle,
@@ -46,6 +46,7 @@ const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
 /** Create the asynchronous child-agent tool for one parent run. */
 export function createSpawnAgentTool(
   spawnAgent: NonNullable<ToolRuntimeContext["spawnAgent"]>,
+  titleCost: ConversationModelCost,
 ) {
   return zodTool({
     description: [
@@ -123,6 +124,7 @@ export function createSpawnAgentTool(
       }
       const title = await resolveTaskTitle({
         completeText,
+        cost: titleCost,
         instruction: input.task,
         signal: options.signal,
         title: input.title,

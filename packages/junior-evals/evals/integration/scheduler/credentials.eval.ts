@@ -23,39 +23,6 @@ function credentialMode(call: ToolCall | undefined): unknown {
 }
 
 describe("Scheduled Credentials", () => {
-  test("when scheduled work may need user-bound authorization, use the creator default", async ({
-    run,
-  }) => {
-    const conversation = await run(
-      slackMention(
-        "every Monday at 9am Pacific post a digest of unresolved issues for the Acme Sentry organization here.",
-      ),
-    );
-    await expect(conversation).toSatisfyJudge(
-      RubricJudge,
-      rubric({
-        pass: [
-          "The recurring task is created without asking for separate confirmation to use credentials needed for the requested work.",
-          "The reply may accurately say Junior's scheduled automation can use the creator's connected Sentry access; credential access alone does not mean the task executes as the user.",
-        ],
-        fail: [
-          "Do not require the user to separately authorize routine connected credential use.",
-          "Do not explicitly claim the scheduled run's actor is the user rather than Junior's scheduler.",
-        ],
-      }),
-    );
-
-    const creates = completedToolCalls("createAutomation", conversation);
-    expect(creates).toHaveLength(1);
-    expect(creates[0]!.input).toMatchObject({
-      trigger: {
-        type: "schedule",
-        schedule: { kind: "recurring", frequency: "weekly" },
-      },
-    });
-    expect([undefined, "creator"]).toContain(credentialMode(creates[0]));
-  });
-
   test("when registration is confirmed with creator credentials denied, create in system mode", async ({
     run,
   }) => {

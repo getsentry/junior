@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createWebSource } from "@sentry/junior-plugin-api";
+import {
+  recordWebConversationActivity,
+  webActorFromUser,
+} from "@/chat/conversations/web-input";
 import {
   closeDb,
   getConversationEventStore,
@@ -36,8 +41,22 @@ function context(): ToolRuntimeContext {
   };
 }
 
-async function executeTool(input: Record<string, unknown>) {
-  const tool = createSearchConversationEventsTool(context());
+/** Tool context of a Turn in a web Conversation. */
+function webContext(conversationId: string): ToolRuntimeContext {
+  return {
+    conversationId,
+    destination: { platform: "local", conversationId },
+    source: createWebSource(conversationId),
+    egress: context().egress,
+    workspace: {} as ToolRuntimeContext["workspace"],
+  };
+}
+
+async function executeTool(
+  input: Record<string, unknown>,
+  toolContext: ToolRuntimeContext = context(),
+) {
+  const tool = createSearchConversationEventsTool(toolContext);
   if (!tool.execute) throw new Error("tool execute function missing");
   return await tool.execute(input, {});
 }
@@ -268,7 +287,7 @@ describe("searchConversationEvents", () => {
     ]);
   });
 
-  it("only exposes other public conversations in the same Slack workspace", async () => {
+  it("exposes public conversations of every surface and isolates private ones", async () => {
     await recordSlackConversation({
       channelId: "C123",
       conversationId: CURRENT_CONVERSATION_ID,
@@ -280,23 +299,74 @@ describe("searchConversationEvents", () => {
       conversationId: publicConversationId,
       visibility: "public",
     });
-    await getConversationEventStore().append(publicConversationId, [
+    const otherWorkspaceConversationId = "slack:C888:1700000000.250000";
+    await recordSlackConversation({
+      channelId: "C888",
+      conversationId: otherWorkspaceConversationId,
+      teamId: "T999",
+      visibility: "public",
+    });
+    const webActor = webActorFromUser({
+      displayName: "Ana",
+      email: "ana@example.com",
+      id: "user-ana",
+    });
+    const publicWebConversationId = "local:web:public-events";
+    const privateWebConversationId = "local:web:private-events";
+    await recordWebConversationActivity({
+      actor: webActor,
+      conversationId: publicWebConversationId,
+      nowMs: 1,
+      rootVisibility: "public",
+    });
+    await recordWebConversationActivity({
+      actor: webActor,
+      conversationId: privateWebConversationId,
+      nowMs: 1,
+      rootVisibility: "private",
+    });
+    const turnStarted = [
       {
         createdAtMs: 1,
         data: {
-          type: "turn_started",
+          type: "turn_started" as const,
           turnId: "turn-1",
           inputMessageIds: ["m-1"],
-          surface: "slack",
+          surface: "slack" as const,
         },
       },
-    ]);
+    ];
+    for (const conversationId of [
+      CURRENT_CONVERSATION_ID,
+      publicConversationId,
+      otherWorkspaceConversationId,
+      publicWebConversationId,
+    ]) {
+      await getConversationEventStore().append(conversationId, turnStarted);
+    }
 
+    // Public is public: a Slack requester reads public Slack Conversations
+    // of any workspace and public web Conversations.
+    for (const conversationId of [
+      publicConversationId,
+      otherWorkspaceConversationId,
+      publicWebConversationId,
+    ]) {
+      await expect(
+        executeTool({
+          conversation_id: conversationId,
+          types: ["turn_started"],
+        }),
+      ).resolves.toMatchObject({
+        events: [{ data: { type: "turn_started" } }],
+      });
+    }
+    // A web requester reads public Slack Conversations.
     await expect(
-      executeTool({
-        conversation_id: publicConversationId,
-        types: ["turn_started"],
-      }),
+      executeTool(
+        { conversation_id: CURRENT_CONVERSATION_ID, types: ["turn_started"] },
+        webContext(publicWebConversationId),
+      ),
     ).resolves.toMatchObject({
       events: [{ data: { type: "turn_started" } }],
     });
@@ -307,8 +377,22 @@ describe("searchConversationEvents", () => {
       conversationId: privateConversationId,
       visibility: "private",
     });
+    // A private Conversation stays isolated from every other surface.
     await expect(
       executeTool({ conversation_id: privateConversationId }),
+    ).rejects.toThrow(
+      `Conversation events are not accessible: ${privateConversationId}`,
+    );
+    await expect(
+      executeTool({ conversation_id: privateWebConversationId }),
+    ).rejects.toThrow(
+      `Conversation events are not accessible: ${privateWebConversationId}`,
+    );
+    await expect(
+      executeTool(
+        { conversation_id: privateConversationId },
+        webContext(publicWebConversationId),
+      ),
     ).rejects.toThrow(
       `Conversation events are not accessible: ${privateConversationId}`,
     );
