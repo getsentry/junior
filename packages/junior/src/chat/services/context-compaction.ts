@@ -8,19 +8,17 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import {
-  estimateContextTokens,
-  estimateTokens,
-} from "@earendil-works/pi-agent-core";
+import { estimateContextTokens } from "@earendil-works/pi-agent-core";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
+  estimateMessagesTokens,
   estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
-  getTokenEstimateProfile,
+  textCharsForTokens,
 } from "@/chat/services/context-budget";
 import {
   contextProvenance,
@@ -164,7 +162,7 @@ function sanitizeText(text: string): string {
 }
 
 function truncateToTokenBudget(text: string, maxTokens: number): string {
-  const maxChars = Math.max(0, maxTokens * 4);
+  const maxChars = Math.max(0, textCharsForTokens(maxTokens));
   if (text.length <= maxChars) {
     return text;
   }
@@ -618,25 +616,6 @@ export function estimateReplacementTokens(
   requestOverheadTokens = 0,
 ): number {
   return requestOverheadTokens + estimateMessagesTokens(messages, modelId);
-}
-
-/** Estimate messages from their size at the model's characters per token. */
-function estimateMessagesTokens(
-  messages: PiMessage[],
-  modelId: string,
-): number {
-  const profile = getTokenEstimateProfile(modelId);
-  return messages.reduce((total, message) => {
-    // Pi counts characters / 4. Scale that to the model's characters per token.
-    const tokens = Math.ceil(
-      (estimateTokens(message) * 4) / profile.charsPerToken,
-    );
-    const overhead =
-      (message as { role?: unknown }).role === "toolResult"
-        ? profile.toolResultOverheadTokens
-        : 0;
-    return total + tokens + overhead;
-  }, 0);
 }
 
 async function loadLastInstruction(conversationId: string) {

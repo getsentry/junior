@@ -30,6 +30,10 @@ import {
 } from "@/chat/credentials/service-account";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/context-budget";
+import {
   McpAuthorizationRequiredError,
   PluginMcpClient,
   type PluginMcpListedTool,
@@ -45,7 +49,6 @@ import {
 
 const MAX_TOOL_RESULT_TOKENS = 10_000;
 const MAX_TOOL_RESULT_BYTES = 32 * 1024;
-const CHARS_PER_ESTIMATED_TOKEN = 4;
 
 function normalizeMcpToolName(provider: string, toolName: string): string {
   // Raw MCP tool names are only provider-scoped. Prefix the provider for the
@@ -190,7 +193,7 @@ function boundMcpContent(
     .map((part) => part.text)
     .join("\n\n");
   const originalBytes = utf8Bytes(text);
-  const originalTokens = Math.ceil(text.length / CHARS_PER_ESTIMATED_TOKEN);
+  const originalTokens = estimateTextTokens(text);
   if (
     originalTokens <= MAX_TOOL_RESULT_TOKENS &&
     originalBytes <= MAX_TOOL_RESULT_BYTES
@@ -200,7 +203,7 @@ function boundMcpContent(
 
   const warning = `\n\nWarning: truncated output (original token count: ${originalTokens}; original bytes: ${originalBytes})\n\n`;
   const remainingChars =
-    MAX_TOOL_RESULT_TOKENS * CHARS_PER_ESTIMATED_TOKEN - warning.length;
+    textCharsForTokens(MAX_TOOL_RESULT_TOKENS) - warning.length;
   const remainingBytes = MAX_TOOL_RESULT_BYTES - utf8Bytes(warning);
   const head = prefixWithin(
     text,
