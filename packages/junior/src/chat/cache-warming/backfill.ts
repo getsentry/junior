@@ -169,16 +169,26 @@ function replayConversation(
     });
   };
   let userActor = false;
+  // Live recording takes the Actor when the Turn starts. A later instruction
+  // in the same Turn is steering and does not change it.
+  let inTurn = false;
   let endedTurns = 0;
   let lastCallMs: number | undefined;
   let idle: IdlePeriod | undefined;
   for (const event of events) {
     if (event.type === "user_message") {
-      // `agent/index.ts` counts a Task as not started by a person.
-      userActor = event.personInstruction === true && kind !== "task";
+      if (!inTurn) {
+        // `agent/index.ts` counts a Task as not started by a person.
+        userActor = event.personInstruction === true && kind !== "task";
+        inTurn = true;
+      }
       continue;
     }
-    const startedAtMs = Number(event.startedAtMs);
+    // Pi continues the Turn only after a tool call.
+    if (event.stopReason !== "toolUse") inTurn = false;
+    // `Number(null)` is 0, so check for a missing time first.
+    const startedAtMs =
+      event.startedAtMs === null ? Number.NaN : Number(event.startedAtMs);
     // The recorder skips failed and stopped requests.
     if (
       !Number.isFinite(startedAtMs) ||

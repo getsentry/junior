@@ -10,6 +10,7 @@ import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import {
   agentInstructionProvenance,
   contextProvenance,
+  instructionProvenanceFor,
 } from "@/chat/conversations/provenance";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
@@ -155,6 +156,57 @@ describe("cache warming gap backfill", () => {
 
     await getStateAdapter().delete("junior:cache_warming:gaps:user:1");
     await heartbeat(T0 + 131 * MINUTE);
+    expect(await gaps("user:1")).toEqual([]);
+  });
+
+  it("keeps the Actor that started a Turn when a person steers it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const conversationId = "local:test:backfill-steer";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+      activityAtMs: T0,
+      nowMs: T0,
+    });
+    const person = instructionProvenanceFor({
+      platform: "slack",
+      teamId: "T123",
+      userId: "U123",
+    });
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: T0,
+        data: historyItemFromPiMessage(
+          { role: "user", content: "Run the check.", timestamp: T0 },
+          instructionProvenanceFor({ platform: "system", name: "scheduler" }),
+        ),
+      },
+      {
+        createdAtMs: T0 + MINUTE / 2,
+        data: historyItemFromPiMessage(
+          { ...reply(60_000, T0), stopReason: "toolUse" },
+          contextProvenance,
+        ),
+      },
+      {
+        createdAtMs: T0 + MINUTE / 2,
+        data: historyItemFromPiMessage(
+          { role: "user", content: "Also check staging.", timestamp: T0 },
+          person,
+        ),
+      },
+      {
+        createdAtMs: T0 + 2 * MINUTE,
+        data: historyItemFromPiMessage(
+          reply(60_000, T0 + MINUTE),
+          contextProvenance,
+        ),
+      },
+    ]);
+
+    vi.setSystemTime(T0 + 130 * MINUTE);
+    await backfillCacheWarmingGaps({ nowMs: T0 + 130 * MINUTE });
+    expect(await gaps("system:1")).toEqual([NO_REPLY_GAP_MS]);
     expect(await gaps("user:1")).toEqual([]);
   });
 
