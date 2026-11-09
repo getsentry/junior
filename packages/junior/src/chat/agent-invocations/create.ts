@@ -202,6 +202,8 @@ export async function createAgentInvocation(
       parentConversationId: input.parentConversationId,
       nowMs,
       source: "internal",
+      // The spawn title names the child, so title generation skips it.
+      ...(input.title ? { title: input.title } : undefined),
     });
 
     // The name check above runs under the parent lock, in the same
