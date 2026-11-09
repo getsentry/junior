@@ -17,6 +17,7 @@ import {
   conversationsListPage,
   conversationsOpenOk,
   conversationsRepliesPage,
+  dndInfoOk,
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
   filesInfoOk,
@@ -58,6 +59,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "conversations.list",
   "conversations.open",
   "conversations.replies",
+  "dnd.info",
   "canvases.access.set",
   "canvases.create",
   "conversations.canvases.create",
@@ -250,6 +252,8 @@ function defaultSlackApiResponse(
       return { body: conversationsOpenOk() };
     case "conversations.replies":
       return { body: conversationsRepliesPage() };
+    case "dnd.info":
+      return { body: dndInfoOk() };
     case "canvases.access.set":
       return { body: canvasesAccessSetOk() };
     case "canvases.create":
