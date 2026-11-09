@@ -20,6 +20,8 @@ export function anchorTitleId(anchor: string): string {
 export function AnchorHeading(props: {
   anchor: string;
   className?: string;
+  /** Name the link when the title is a changing value, such as a total. */
+  label?: string;
   title: string;
 }) {
   const { hash, key, search } = useLocation();
@@ -45,7 +47,7 @@ export function AnchorHeading(props: {
     >
       <span id={titleId}>{props.title}</span>
       <Link
-        aria-label={`Link to ${props.title}`}
+        aria-label={`Link to ${props.label ?? props.title}`}
         className="ml-2 inline-flex rounded-sm align-middle text-dashboard-text-muted opacity-0 transition-opacity group-hover/anchor:opacity-100 hover:text-dashboard-text focus-visible:opacity-100 pointer-coarse:opacity-100 motion-reduce:transition-none"
         to={{ hash: props.anchor, search }}
       >

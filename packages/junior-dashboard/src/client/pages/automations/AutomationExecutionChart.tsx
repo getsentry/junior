@@ -46,6 +46,7 @@ export function AutomationExecutionChart(props: {
       <div>
         <AnchorHeading
           anchor="runs"
+          label="runs"
           className="m-0 font-display text-xl font-medium text-dashboard-text"
           title={`${totals.reduce((sum, value) => sum + value, 0).toLocaleString()} runs`}
         />

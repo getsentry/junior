@@ -75,6 +75,7 @@ export function MemoryCostChart(props: {
       <div>
         <AnchorHeading
           anchor="cost"
+          label="cost"
           className="m-0 font-display text-xl font-medium text-dashboard-text"
           title={formatCostSummary({ total })}
         />
