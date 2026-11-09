@@ -98,12 +98,13 @@ describe("merge conflict check on webhook events", () => {
       db: fixture.db(),
       events: {
         // The Watch made after Junior creates a pull request.
-        async hasMatch(event) {
-          return (
-            event.identifier === "getsentry/junior#946" &&
-            (event.eventType === "pull_request.merge_conflict"
-              ? watchesConflicts
-              : watchesComments)
+        async hasMatch(events) {
+          return events.some(
+            (event) =>
+              event.identifier === "getsentry/junior#946" &&
+              (event.eventType === "pull_request.merge_conflict"
+                ? watchesConflicts
+                : watchesComments),
           );
         },
         async publish(event) {
