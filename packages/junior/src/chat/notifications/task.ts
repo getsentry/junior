@@ -111,9 +111,10 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
 
   const nowMs = Date.now();
   const schedule = await readNotificationSchedule(db, userId);
-  const pausedBySlack = schedule.followSlack
-    ? await isPausedBySlack(db, userId, nowMs)
-    : undefined;
+  const pausedBySlack =
+    schedule.followSlack !== false
+      ? await isPausedBySlack(db, userId, nowMs)
+      : undefined;
   if (pausedBySlack) return skip("slack_paused");
   if (pausedBySlack === undefined) {
     const { timezone } = await resolveNotificationTimezone({

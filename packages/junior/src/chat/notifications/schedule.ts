@@ -14,9 +14,9 @@ export const notificationScheduleSchema = z
   .object({
     /**
      * Follow the linked Slack user's notification schedule. The fields below
-     * apply only when Junior cannot read it. Absent means off.
+     * apply only when Junior cannot read it. Absent means on.
      */
-    followSlack: z.literal(true).optional(),
+    followSlack: z.boolean().optional(),
     /** When false, Junior sends push notifications at any time. */
     workingHoursOnly: z.boolean(),
     days: z
@@ -45,8 +45,12 @@ export const notificationScheduleSchema = z
 
 export type NotificationSchedule = z.output<typeof notificationScheduleSchema>;
 
-/** Default hours when a user has not saved a schedule: 09:00–18:00, Mon–Fri. */
+/**
+ * Default when a user has not saved a schedule: follow Slack, else
+ * 09:00–18:00, Mon–Fri.
+ */
 export const DEFAULT_NOTIFICATION_SCHEDULE: NotificationSchedule = {
+  followSlack: true,
   workingHoursOnly: true,
   days: [1, 2, 3, 4, 5],
   start: "09:00",

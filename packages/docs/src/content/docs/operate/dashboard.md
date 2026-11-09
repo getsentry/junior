@@ -209,11 +209,14 @@ dashboard. The automatic timezone comes from the person's linked Slack profile,
 then the saved user timezone, then `JUNIOR_TIMEZONE`. Calendar working hours
 are not used, because Google Calendar does not make them available.
 
-A person with a linked Slack account can select **Follow my Slack notification
-schedule**. Junior then asks Slack before each notification and pauses when
-Slack pauses. Slack does not show Junior a manual pause, only the schedule.
-When Slack cannot answer, Junior uses the working hours. This needs the
-`dnd:read` bot scope. After you add the scope, reinstall the Slack app.
+For a person with a linked Slack account, push notifications follow their
+Slack notification schedule by default. Junior asks Slack before each
+notification and pauses when Slack pauses. A person with no Slack schedule
+gets notifications at any time. Slack does not show Junior a manual pause,
+only the schedule. To use only the working hours, clear **Follow my Slack
+notification schedule**. Junior uses the working hours when the person has no
+linked Slack account or Slack cannot answer. This needs the `dnd:read` bot
+scope. After you add the scope, reinstall the Slack app.
 
 If you change the key pair, every device must turn notifications on again.
 

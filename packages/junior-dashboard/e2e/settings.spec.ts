@@ -45,10 +45,12 @@ test("saves notification working hours and the Slack schedule choice", async ({
   await expect(saturday).toHaveAttribute("aria-pressed", "false");
   await saturday.click();
   await page.getByLabel("Start").fill("08:30");
-  await page
-    .getByRole("checkbox", { name: "Follow my Slack notification schedule" })
-    .click();
-  // The e2e user has no linked Slack account.
+  // Following Slack is on by default. The e2e user has no linked Slack
+  // account, so the hours apply.
+  const followSlack = page.getByRole("checkbox", {
+    name: "Follow my Slack notification schedule",
+  });
+  await expect(followSlack).toBeChecked();
   await expect(
     page.getByText(
       "Junior cannot read your Slack notification schedule, so it uses the hours below.",
@@ -57,6 +59,8 @@ test("saves notification working hours and the Slack schedule choice", async ({
   await screenshot(page, "settings-notifications-slack", {
     target: page.locator("#push-notifications"),
   });
+  await followSlack.click();
+  await expect(followSlack).not.toBeChecked();
   const saved = page.waitForRequest(
     (request) =>
       request.method() === "PUT" &&
@@ -64,7 +68,7 @@ test("saves notification working hours and the Slack schedule choice", async ({
   );
   await page.getByRole("button", { name: "Save hours" }).click();
   expect((await saved).postDataJSON()).toEqual({
-    followSlack: true,
+    followSlack: false,
     workingHoursOnly: true,
     days: [1, 2, 3, 4, 5, 6],
     start: "08:30",
