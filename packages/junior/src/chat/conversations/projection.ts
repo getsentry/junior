@@ -15,6 +15,7 @@ import type {
   AuthorizationKind,
   ConversationEvent,
   ConversationEventData,
+  ConversationEventStore,
 } from "@/chat/conversations/history";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
@@ -216,6 +217,24 @@ interface ScopedConversation {
   conversationId: string;
 }
 
+/**
+ * Pi projection of one history version through `throughSeq`, as read from
+ * the event store. A checkpoint commit can reuse it as its committed base.
+ */
+export interface StoredProjection extends PiConversationEventProjection {
+  historyVersion: number;
+  throughSeq: number;
+}
+
+function storedProjection(events: ConversationEvent[]): StoredProjection {
+  const last = events.at(-1);
+  return {
+    ...projectConversationEvents(events),
+    historyVersion: last?.historyVersion ?? 0,
+    throughSeq: last?.seq ?? -1,
+  };
+}
+
 /** Load the current Pi agent history for a conversation. */
 export async function loadProjection(
   args: ScopedConversation,
@@ -261,12 +280,12 @@ export async function loadTurnProjection(args: {
   conversationId: string;
   committedSeq: number;
   includeTail: boolean;
-}): Promise<PiConversationEventProjection | undefined> {
+}): Promise<StoredProjection | undefined> {
   const eventStore = getConversationEventStore();
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
   if (args.committedSeq < 0) {
-    return projectConversationEvents(
+    return storedProjection(
       await eventStore.loadCurrentHistory(args.conversationId),
     );
   }
@@ -278,7 +297,7 @@ export async function loadTurnProjection(args: {
   if (!historyEvents) {
     return undefined;
   }
-  return projectConversationEvents(historyEvents);
+  return storedProjection(historyEvents);
 }
 
 /** Load MCP providers the credential subject connected in this conversation. */
@@ -325,6 +344,8 @@ export async function commitMessages(args: {
   };
   /** SQL authority for the atomic commit; defaults to the process executor. */
   executor?: JuniorSqlDatabase;
+  /** Projection read before the commit; the commit then reads only later events. */
+  storedProjection?: StoredProjection;
 }): Promise<{
   committedSeq: number;
   historyVersion: number;
@@ -395,15 +416,49 @@ export async function commitAcceptedReply(args: {
   );
 }
 
+/**
+ * Load the current projection under the commit lock.
+ *
+ * Within one history version, projection only appends. So an earlier stored
+ * projection plus the projection of every later event is the current one
+ * while all later events belong to its version. A later event in a newer
+ * version means a history replacement, so read the current history again.
+ */
+async function loadCurrentProjection(
+  eventStore: ConversationEventStore,
+  conversationId: string,
+  base: StoredProjection | undefined,
+): Promise<StoredProjection> {
+  if (base) {
+    const later = await eventStore.loadEventsAfter(
+      conversationId,
+      base.throughSeq,
+    );
+    if (later.every((event) => event.historyVersion === base.historyVersion)) {
+      const tail = projectConversationEvents(later);
+      return {
+        messages: [...base.messages, ...tail.messages],
+        provenance: [...base.provenance, ...tail.provenance],
+        seqs: [...base.seqs, ...tail.seqs],
+        replacementSeq: tail.replacementSeq ?? base.replacementSeq,
+        historyVersion: base.historyVersion,
+        throughSeq: later.at(-1)?.seq ?? base.throughSeq,
+      };
+    }
+  }
+  return storedProjection(await eventStore.loadCurrentHistory(conversationId));
+}
+
 async function commitMessagesLocked(
   args: Parameters<typeof commitMessages>[0],
   executor: JuniorSqlDatabase,
 ): ReturnType<typeof commitMessages> {
   const eventStore = createSqlConversationEventStore(executor);
-  const currentEvents = await eventStore.loadCurrentHistory(
+  const current = await loadCurrentProjection(
+    eventStore,
     args.conversationId,
+    args.storedProjection,
   );
-  const current = projectConversationEvents(currentEvents);
   const nextLocalMessages = args.messages.map(normalizeDurableMessage);
   const matchingPrefix = countDurablePrefix(
     current.messages,
@@ -449,10 +504,13 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-    const cursor = appendedEvents.at(-1) ?? currentEvents.at(-1);
+    const cursor = appendedEvents.at(-1) ?? {
+      seq: current.throughSeq,
+      historyVersion: current.historyVersion,
+    };
     return {
-      committedSeq: cursor?.seq ?? -1,
-      historyVersion: cursor?.historyVersion ?? 0,
+      committedSeq: cursor.seq,
+      historyVersion: cursor.historyVersion,
       messageSeqs: [
         ...current.seqs,
         ...appendedEvents

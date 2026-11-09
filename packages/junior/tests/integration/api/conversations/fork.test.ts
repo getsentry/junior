@@ -266,6 +266,26 @@ describe("conversation forks", () => {
     expect(
       (await readDetail(nested.conversationId)).modelUsage,
     ).toBeUndefined();
+
+    // A fork after the compaction also copies the transcript before it.
+    const laterReply = await storeAnsweredTurn(source, {
+      question: "Now compare the red option.",
+      answer: "Second answer.",
+      turn: "later",
+    });
+    const later = forkConversationResponseSchema.parse(
+      await (await app.request(url, forkRequest(laterReply, "fork-3"))).json(),
+    );
+    expect(visibleEvents(await readDetail(later.conversationId))).toEqual([
+      "user: Remember the blue option.",
+      "turn",
+      "assistant: First answer.",
+      "turn",
+      "user: Now compare the red option.",
+      "turn",
+      "assistant: Second answer.",
+      "turn",
+    ]);
   });
 
   it("keeps private forks private and rejects inaccessible or unfinished cutoffs without creating roots", async () => {

@@ -1,7 +1,7 @@
 import { readMessageAttachments } from "@/chat/attachments/input";
 import type { User } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
 import { loadConversationSlackTenantIds } from "@/chat/conversations/sql/event-actor";
 import { parseContent } from "@/chat/slack/message/content";
 import { lookupSlackUser } from "@/chat/slack/user";
@@ -237,15 +237,12 @@ export async function readConversationPendingMessages(
   const readAccess =
     options.readAccess ??
     createConversationAccessReader(getDb(), options.viewer);
-  const [conversation, accessById] = await Promise.all([
-    getConversationStore().get({ conversationId }),
-    readAccess([conversationId]),
-  ]);
-  if (!conversation) return undefined;
+  // Access has an entry only for a stored Conversation.
+  const access = (await readAccess([conversationId])).get(conversationId);
+  if (!access) return undefined;
 
-  const access = accessById.get(conversationId);
-  const canExposePayload = access?.canViewPrivateContent ?? false;
-  const isParticipant = access?.isParticipant ?? false;
+  const canExposePayload = access.canViewPrivateContent;
+  const isParticipant = access.isParticipant;
   const authorization =
     isParticipant && options.viewer
       ? await findViewerWebAuthorization(conversationId, options.viewer)
