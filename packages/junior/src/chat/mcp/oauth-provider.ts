@@ -159,16 +159,6 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     return provider;
   }
 
-  /** The scope that the person's last finished sign-in asked for. */
-  async lastSignInScope(): Promise<string | undefined> {
-    const session = await this.getCredentialContext();
-    const credentials = await getMcpStoredOAuthCredentials(
-      session.userId,
-      session.provider,
-    );
-    return credentials?.signInScope;
-  }
-
   async tokens(): Promise<OAuthTokens | undefined> {
     if (this.ignoresStoredTokens) {
       return undefined;
@@ -189,16 +179,8 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
           session.userId,
           session.provider,
         )) ?? {};
-      // A sign-in replaces the scope it asked for. A refresh keeps it.
-      const authorizationUrl = (await getMcpAuthSession(this.authSessionId))
-        ?.authorizationUrl;
-      const { signInScope: previousScope, ...rest } = credentials;
-      const signInScope = authorizationUrl
-        ? (new URL(authorizationUrl).searchParams.get("scope") ?? undefined)
-        : previousScope;
       await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-        ...rest,
-        ...(signInScope ? { signInScope } : undefined),
+        ...credentials,
         tokens,
       });
     });
@@ -282,10 +264,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
         ...(scope === "tokens" || scope === "all"
           ? undefined
           : credentials.tokens
-            ? {
-                tokens: credentials.tokens,
-                signInScope: credentials.signInScope,
-              }
+            ? { tokens: credentials.tokens }
             : {}),
         ...(scope === "client" || scope === "all"
           ? undefined

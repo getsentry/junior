@@ -113,6 +113,11 @@ export function denyEvalMcpWriteScope(): void {
   deniesWriteScope = true;
 }
 
+/** An admin gives the person's account `mcp:write`. */
+export function allowEvalMcpWriteScope(): void {
+  deniesWriteScope = false;
+}
+
 /** The scope a sign-in grants for the scope its link asks for. */
 function grantScope(requested: string): string {
   return requested

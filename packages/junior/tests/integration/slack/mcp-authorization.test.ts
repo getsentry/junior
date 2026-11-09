@@ -15,6 +15,7 @@ import {
 } from "../../fixtures/plugin-app";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import {
+  allowEvalMcpWriteScope,
   denyEvalMcpWriteScope,
   EVAL_MCP_AUTH_PROVIDER,
   requireEvalMcpWriteScope,
@@ -104,6 +105,28 @@ async function expectNewLinkThenAnswer(
   return links[1]!;
 }
 
+/**
+ * The person's account cannot get the scope the MCP server needs. Junior asks
+ * once for that scope, and the Turn ends with a reply instead of a third link.
+ */
+async function askWithoutScopeAccess(thread: {
+  user: string;
+  ts: string;
+}): Promise<ConversationWorkSlackHarness> {
+  // Injected fault: the MCP server needs a scope the first sign-in lacks.
+  requireEvalMcpWriteScope();
+  // Injected fault: the person's account cannot get that scope.
+  denyEvalMcpWriteScope();
+  const harness = await askForBudget(thread);
+  const [firstLink] = slackApiOutbox.authorizationLinks(thread.user);
+
+  await approve(harness, firstLink!);
+  await harness.drain();
+
+  await expectNewLinkThenAnswer(harness, thread.user);
+  return harness;
+}
+
 // Each case runs the Turn up to three times with two sign-ins in between. The
 // first case in the file also pays the cold start.
 describe("Slack MCP authorization", { timeout: 20_000 }, () => {
@@ -138,17 +161,30 @@ describe("Slack MCP authorization", { timeout: 20_000 }, () => {
   });
 
   it("stops sending links when the person cannot get the required scope", async () => {
-    const user = "UDENIED";
-    // Injected fault: the MCP server needs a scope the first sign-in lacks.
-    requireEvalMcpWriteScope();
-    // Injected fault: the person's account cannot get that scope.
-    denyEvalMcpWriteScope();
-    const harness = await askForBudget({ user, ts: "1712345.4001" });
-    const [firstLink] = slackApiOutbox.authorizationLinks(user);
+    await askWithoutScopeAccess({ user: "UDENIED", ts: "1712345.4001" });
+  });
 
-    await approve(harness, firstLink!);
+  it("offers a link again on the next message once access is granted", async () => {
+    const user = "UGRANTED";
+    const thread = { user, ts: "1712345.5001" };
+    const harness = await askWithoutScopeAccess(thread);
+    // An admin gives the person's account the scope.
+    allowEvalMcpWriteScope();
+
+    await harness.send({
+      user,
+      threadTs: thread.ts,
+      ts: "1712345.5002",
+      text: `<@${SLACK_BOT_USER_ID}> try again`,
+    });
     await harness.drain();
+    const links = slackApiOutbox.authorizationLinks(user);
+    expect(links).toHaveLength(3);
+    expect(harness.replies().at(-1)).not.toBe(ANSWER);
 
-    await expectNewLinkThenAnswer(harness, user);
+    await approve(harness, links[2]!);
+    await harness.drain();
+    expect(slackApiOutbox.authorizationLinks(user)).toHaveLength(3);
+    expect(harness.replies().at(-1)).toBe(ANSWER);
   });
 });

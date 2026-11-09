@@ -10,6 +10,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { serviceAccountOnly } from "@/chat/credentials/service-account";
 import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
+import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
@@ -83,9 +84,14 @@ export interface McpAuthOrchestration {
   serviceAccountProviderFactory: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
+  /**
+   * Pause the Turn for a sign-in. `insufficientScope` is the scope a
+   * `403 insufficient_scope` challenge asked for.
+   */
   onAuthorizationRequired: (
     provider: string,
     context?: McpAuthorizationContext,
+    insufficientScope?: string,
   ) => Promise<boolean>;
   getPendingPause: () => McpAuthorizationPauseError | undefined;
 }
@@ -164,6 +170,7 @@ export function createMcpAuthOrchestration(
   const onAuthorizationRequired = async (
     provider: string,
     context?: McpAuthorizationContext,
+    insufficientScope?: string,
   ): Promise<boolean> => {
     // Bot auth has no user OAuth session or authorization link. If the SDK
     // ever reports an unauthorized response from that non-interactive flow,
@@ -195,6 +202,22 @@ export function createMcpAuthOrchestration(
       );
     }
 
+    // This Turn's own link already asked for the missing scope, so the
+    // provider did not grant it and another link would loop. The next
+    // message starts a new Turn, which can ask again.
+    if (
+      insufficientScope !== undefined &&
+      input.pendingAuth?.kind === "mcp" &&
+      input.pendingAuth.provider === provider &&
+      input.pendingAuth.actorId === actorId &&
+      input.pendingAuth.sessionId === sessionId &&
+      input.pendingAuth.requestedScope !== undefined &&
+      hasRequiredOAuthScope(input.pendingAuth.requestedScope, insufficientScope)
+    ) {
+      await deleteMcpAuthSession(authSessionId);
+      return false;
+    }
+
     // The callback deletes an authorization attempt when it finishes or expires,
     // so reuse a recent link only while its attempt still exists.
     const reusedAuthSessionId =
@@ -218,7 +241,10 @@ export function createMcpAuthOrchestration(
 
     const providerLabel = formatProviderLabel(provider);
 
-    const nextPendingAuth: ConversationPendingAuthState = {
+    const nextPendingAuth: Extract<
+      ConversationPendingAuthState,
+      { kind: "mcp" }
+    > = {
       authSessionId: activeAuthSessionId,
       kind: "mcp",
       provider,
@@ -227,6 +253,11 @@ export function createMcpAuthOrchestration(
       linkSentAtMs: reusingPendingLink
         ? input.pendingAuth!.linkSentAtMs
         : Date.now(),
+      ...(reusingPendingLink &&
+      input.pendingAuth?.kind === "mcp" &&
+      input.pendingAuth.requestedScope
+        ? { requestedScope: input.pendingAuth.requestedScope }
+        : undefined),
     };
 
     if (!reusingPendingLink) {
@@ -235,6 +266,12 @@ export function createMcpAuthOrchestration(
         throw new Error(
           `Missing MCP authorization URL for plugin "${provider}"`,
         );
+      }
+      const requestedScope = new URL(
+        authSession.authorizationUrl,
+      ).searchParams.get("scope");
+      if (requestedScope) {
+        nextPendingAuth.requestedScope = requestedScope;
       }
       await recordPendingAuth(nextPendingAuth);
       const authorizationRequest = {

@@ -45,8 +45,6 @@ export interface McpAuthSessionState {
 export interface McpStoredOAuthCredentials {
   clientInformation?: OAuthClientInformationMixed;
   discoveryState?: OAuthDiscoveryState;
-  /** The scope that the sign-in which issued `tokens` asked for. */
-  signInScope?: string;
   tokens?: OAuthTokens;
 }
 
@@ -214,9 +212,6 @@ function parseStoredCredentials(
             // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
             discoveryState: parsed.discoveryState as OAuthDiscoveryState,
           }
-        : undefined),
-      ...(typeof parsed.signInScope === "string"
-        ? { signInScope: parsed.signInScope }
         : undefined),
       ...(isRecord(parsed.tokens)
         ? { tokens: parsed.tokens as OAuthTokens }

@@ -10,7 +10,6 @@ import {
   StreamableHTTPClientTransport,
   StreamableHTTPError,
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { setSpanAttributes } from "@/chat/logging";
 import { fetchWithBoundedOAuthErrorBodies } from "@/chat/oauth-response";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -56,11 +55,16 @@ function getMcpNetworkAttributes(url: URL): Record<string, string | number> {
 
 export class McpAuthorizationRequiredError extends Error {
   readonly provider: string;
+  /** The scope that a `403 insufficient_scope` challenge asked for. */
+  readonly insufficientScope?: string;
 
-  constructor(provider: string, message: string) {
+  constructor(provider: string, message: string, insufficientScope?: string) {
     super(message);
     this.name = "McpAuthorizationRequiredError";
     this.provider = provider;
+    if (insufficientScope !== undefined) {
+      this.insufficientScope = insufficientScope;
+    }
   }
 }
 
@@ -72,10 +76,20 @@ export interface PluginMcpClientOptions {
 type HostManagedSessionProvider = OAuthClientProvider & {
   getMcpServerSessionId?: () => Promise<string | undefined>;
   saveMcpServerSessionId?: (sessionId: string | undefined) => Promise<void>;
-  /** Only a provider that can send the person a link implements these. */
+  /** Only a provider that can send the person a link implements this. */
   forNewSignIn?: () => OAuthClientProvider;
-  lastSignInScope?: () => Promise<string | undefined>;
 };
+
+/** The scope that a `403 insufficient_scope` challenge asks for. */
+function insufficientScope(
+  challenge: Response | undefined,
+): string | undefined {
+  if (challenge?.status !== 403) {
+    return undefined;
+  }
+  const { error, scope } = extractWWWAuthenticateParams(challenge);
+  return error === "insufficient_scope" ? (scope ?? "") : undefined;
+}
 
 function isMissingSessionError(error: unknown): boolean {
   return (
@@ -282,16 +296,19 @@ export class PluginMcpClient {
           throw error;
         }
         if (
-          !(await this.isScopeDeniedAfterSignIn(store.errorResponse)) &&
-          (error instanceof UnauthorizedError ||
-            (await this.startSignInAfterRejectedRefresh(
-              error,
-              store.errorResponse,
-            )))
+          error instanceof UnauthorizedError ||
+          (await this.startSignInAfterRejectedRefresh(
+            error,
+            store.errorResponse,
+          ))
         ) {
+          const scope = insufficientScope(store.errorResponse);
           throw new McpAuthorizationRequiredError(
             this.plugin.manifest.name,
-            `MCP authorization required for plugin "${this.plugin.manifest.name}"`,
+            scope === undefined
+              ? `MCP authorization required for plugin "${this.plugin.manifest.name}"`
+              : `MCP plugin "${this.plugin.manifest.name}" requires scope "${scope}"`,
+            scope,
           );
         }
         throw toMcpProviderError(error, {
@@ -303,27 +320,6 @@ export class PluginMcpClient {
         });
       }
     });
-  }
-
-  /**
-   * The provider asks for a scope that the person's last sign-in already
-   * asked for, so it did not grant it. Another link would only loop.
-   */
-  private async isScopeDeniedAfterSignIn(
-    challenge: Response | undefined,
-  ): Promise<boolean> {
-    if (challenge?.status !== 403) {
-      return false;
-    }
-    const { error, scope } = extractWWWAuthenticateParams(challenge);
-    const authProvider = this.options.authProvider as
-      | HostManagedSessionProvider
-      | undefined;
-    return (
-      error === "insufficient_scope" &&
-      authProvider?.lastSignInScope !== undefined &&
-      hasRequiredOAuthScope(await authProvider.lastSignInScope(), scope)
-    );
   }
 
   /**

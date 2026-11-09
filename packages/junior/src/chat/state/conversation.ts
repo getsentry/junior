@@ -88,6 +88,8 @@ export type ConversationPendingAuthState =
   | (ConversationPendingAuthBase & {
       authSessionId: string;
       kind: "mcp";
+      /** The scope the sent link asked for. Older records have none. */
+      requestedScope?: string;
     })
   | (ConversationPendingAuthBase & {
       kind: "plugin";
@@ -134,6 +136,7 @@ function coercePendingAuthState(
   const provider = toOptionalString(value.provider);
   const actorId = toOptionalString(value.actorId);
   const authSessionId = toOptionalString(value.authSessionId);
+  const requestedScope = toOptionalString(value.requestedScope);
   const scope = toOptionalString(value.scope);
   const sessionId = toOptionalString(value.sessionId);
   const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
@@ -156,7 +159,12 @@ function coercePendingAuthState(
     linkSentAtMs,
   };
   return kind === "mcp"
-    ? { ...base, authSessionId: authSessionId!, kind }
+    ? {
+        ...base,
+        authSessionId: authSessionId!,
+        kind,
+        ...(requestedScope ? { requestedScope } : undefined),
+      }
     : { ...base, kind };
 }
 
