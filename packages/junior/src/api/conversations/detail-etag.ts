@@ -11,6 +11,7 @@ import {
 import { slackAttachmentsVersionQuery } from "@/chat/slack/attachments";
 import {
   juniorConversationParticipants,
+  juniorConversationReadPositions,
   juniorConversations,
   juniorUsers,
 } from "@/db/schema";
@@ -23,10 +24,15 @@ import {
   type ConversationViewerMarks,
 } from "./membership";
 import { conversationReadPositionQuery } from "./read-position";
-import { readUnreadConversationIds } from "./unread";
+import {
+  conversationRecordFromRow,
+  selectConversationRecords,
+  type ConversationRecord,
+} from "./record";
+import { unreadReplySql } from "./unread";
 import type { ConversationReadPosition } from "../schema/conversation-read-position";
 
-const detailConversation = alias(juniorConversations, "detail_conversation");
+const detailViewer = alias(juniorUsers, "detail_viewer");
 const forkSource = alias(juniorConversations, "detail_fork_source");
 const fork = alias(juniorConversations, "detail_fork");
 
@@ -141,14 +147,16 @@ export function conversationVersionQuery(
 }
 
 /**
- * Read the stored rows that the detail state needs in one query. A detail
- * request reads this beside access on every poll, so separate reads would
- * each hold a pool connection and add rounds. Returns undefined for a
- * missing Conversation.
+ * Read the record and the stored rows that the detail state needs in one
+ * query. A detail request reads this beside access on every poll, so
+ * separate reads would each hold a pool connection and add rounds. One
+ * statement also reads one snapshot, so the record is never older than the
+ * version token that the ETag hashes. Returns undefined for a missing
+ * Conversation.
  */
 async function readDetailStateRow(conversationId: string, viewer?: User) {
   const db = getDb();
-  const rootConversationId = sql`coalesce(${detailConversation.rootConversationId}, ${detailConversation.conversationId})`;
+  const rootConversationId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`;
   const forkIds = db
     .select({ conversationId: fork.conversationId })
     .from(fork)
@@ -160,7 +168,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
     )
     .orderBy(asc(fork.createdAt))
     .limit(50);
-  // Marks and the auto-archive choice live on the root.
+  // Marks, the auto-archive choice, and unread live on the root.
   const viewerParticipant = viewer
     ? and(
         eq(juniorConversationParticipants.userId, viewer.id),
@@ -170,39 +178,58 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
         ),
       )
     : sql`false`;
-  const [row] = await db
-    .select({
-      attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
-      autoArchive: juniorConversationParticipants.autoArchive,
-      autoArchiveDefault: juniorUsers.autoArchiveDefault,
-      forkIds: sql<string[]>`array${forkIds}`,
-      forkSourceId: forkSource.conversationId,
-      forkSourceTitle: forkSource.title,
-      lastReadSeq: viewer
-        ? sql<
-            number | null
-          >`(${conversationReadPositionQuery(viewer, conversationId)})`
-        : sql<null>`null`,
-      parentConversationId: detailConversation.parentConversationId,
-      pinnedAt: juniorConversationParticipants.pinnedAt,
-      pinPosition: juniorConversationParticipants.pinPosition,
-      rootConversationId: sql<string>`${rootConversationId}`,
-      unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
-      version: sql<
-        string | null
-      >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
-    })
-    .from(detailConversation)
+  const [row] = await selectConversationRecords(db, {
+    attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
+    autoArchive: juniorConversationParticipants.autoArchive,
+    autoArchiveDefault: detailViewer.autoArchiveDefault,
+    forkIds: sql<string[]>`array${forkIds}`,
+    forkSourceId: forkSource.conversationId,
+    forkSourceTitle: forkSource.title,
+    lastReadSeq: viewer
+      ? sql<
+          number | null
+        >`(${conversationReadPositionQuery(viewer, conversationId)})`
+      : sql<null>`null`,
+    pinnedAt: juniorConversationParticipants.pinnedAt,
+    pinPosition: juniorConversationParticipants.pinPosition,
+    rootConversationId,
+    unreadReply: viewer
+      ? unreadReplySql(
+          db,
+          viewer.id,
+          rootConversationId,
+          sql`(${db
+            .select({ seq: juniorConversationReadPositions.lastReadSeq })
+            .from(juniorConversationReadPositions)
+            .where(
+              and(
+                eq(juniorConversationReadPositions.userId, viewer.id),
+                eq(
+                  juniorConversationReadPositions.conversationId,
+                  rootConversationId,
+                ),
+              ),
+            )})`,
+        )
+      : sql<boolean>`false`,
+    unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
+    version: sql<
+      string | null
+    >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
+  })
     .leftJoin(
       forkSource,
       eq(
         forkSource.conversationId,
-        detailConversation.forkedFromConversationId,
+        juniorConversations.forkedFromConversationId,
       ),
     )
     .leftJoin(juniorConversationParticipants, viewerParticipant)
-    .leftJoin(juniorUsers, viewer ? eq(juniorUsers.id, viewer.id) : sql`false`)
-    .where(eq(detailConversation.conversationId, conversationId));
+    .leftJoin(
+      detailViewer,
+      viewer ? eq(detailViewer.id, viewer.id) : sql`false`,
+    )
+    .where(eq(juniorConversations.conversationId, conversationId));
   return row;
 }
 
@@ -232,13 +259,14 @@ async function readDetailState(
   conversationId: string,
   viewer: User | undefined,
   readAccess: ConversationAccessReader,
-): Promise<{
-  state: ConversationDetailState;
-  /** `conversationVersionQuery` token, or undefined when missing. */
-  version: string | undefined;
-}> {
+): Promise<
+  DetailStateRead & {
+    /** `conversationVersionQuery` token, or undefined when missing. */
+    version: string | undefined;
+  }
+> {
   const rowRead = readDetailStateRow(conversationId, viewer);
-  const [accessById, row, forks, agentTree, unreadIds] = await Promise.all([
+  const [accessById, row, forks, agentTree] = await Promise.all([
     readAccess([conversationId]),
     rowRead,
     rowRead.then((stored) =>
@@ -254,7 +282,7 @@ async function readDetailState(
                 },
               }
             : undefined),
-          isChild: Boolean(stored?.parentConversationId),
+          isChild: Boolean(stored?.conversation.parentConversationId),
         },
         readAccess,
       ),
@@ -263,22 +291,12 @@ async function readDetailState(
       readConversationAgentTree(
         {
           conversationId,
-          ...(stored?.parentConversationId
-            ? { parentConversationId: stored.parentConversationId }
+          ...(stored?.conversation.parentConversationId
+            ? { parentConversationId: stored.conversation.parentConversationId }
             : undefined),
         },
         readAccess,
       ),
-    ),
-    // Unread belongs to the root, like the marks.
-    rowRead.then((stored) =>
-      viewer && stored
-        ? readUnreadConversationIds(
-            getDb(),
-            [stored.rootConversationId],
-            viewer.id,
-          )
-        : new Set<string>(),
     ),
   ]);
   const access = accessById.get(conversationId);
@@ -296,6 +314,7 @@ async function readDetailState(
     .digest("base64url");
   const viewerMarks = row ? viewerMarksFromParticipant(row) : undefined;
   return {
+    record: row ? conversationRecordFromRow(row) : undefined,
     state: {
       access,
       agentTree,
@@ -309,28 +328,41 @@ async function readDetailState(
         : undefined),
       ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
       transcriptVersion,
-      ...(viewer && row
-        ? { unreadReply: unreadIds.has(row.rootConversationId) }
-        : undefined),
+      ...(viewer && row ? { unreadReply: row.unreadReply } : undefined),
       ...(viewerMarks ? { viewerMarks } : undefined),
     },
     version: row?.version ?? undefined,
   };
 }
 
-/** Read the detail state that the ETag hashes and the report shows. */
+/** The detail state and the record from the same read. */
+export type DetailStateRead = {
+  /** Undefined for a missing Conversation. */
+  record: ConversationRecord | undefined;
+  state: ConversationDetailState;
+};
+
+/**
+ * Read the detail state that the ETag hashes and the report shows, with the
+ * Conversation record.
+ */
 export async function readConversationDetailState(
   conversationId: string,
   viewer: User | undefined,
   readAccess: ConversationAccessReader,
-): Promise<ConversationDetailState> {
-  return (await readDetailState(conversationId, viewer, readAccess)).state;
+): Promise<DetailStateRead> {
+  const { record, state } = await readDetailState(
+    conversationId,
+    viewer,
+    readAccess,
+  );
+  return { record, state };
 }
 
 /**
  * Return the detail ETag without building the report, or undefined for a
- * missing Conversation. The state comes back too, so the report reuses it
- * and matches the ETag.
+ * missing Conversation. The state and record come back too, so the report
+ * reuses them and matches the ETag.
  *
  * Shared content is covered by `detail_version`. The detail state is cheap,
  * so it is read on each request. Names, avatars, Automation titles, and
@@ -350,15 +382,14 @@ export async function readConversationDetailEtag(
     viewer?: User;
   },
 ): Promise<
-  | {
+  | (DetailStateRead & {
       etag: string;
-      state: ConversationDetailState;
       /** `conversationVersionQuery` token of the same read. */
       version: string;
-    }
+    })
   | undefined
 > {
-  const { state, version } = await readDetailState(
+  const { record, state, version } = await readDetailState(
     conversationId,
     options.viewer,
     options.readAccess,
@@ -380,6 +411,7 @@ export async function readConversationDetailEtag(
   });
   return {
     etag: createHash("sha256").update(basis).digest("hex"),
+    record,
     state,
     version,
   };

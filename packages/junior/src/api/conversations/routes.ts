@@ -708,7 +708,9 @@ export function createConversationRoutes(
       }
       const report = await readConversationDetail(conversationId, {
         ...query,
-        ...(version ? { state: version.state } : undefined),
+        ...(version
+          ? { stored: { record: version.record, state: version.state } }
+          : undefined),
         ...viewerOptions,
       });
       if (!report) throwApiError(404, "Conversation not found.");

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type { SelectedFields } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -13,10 +14,12 @@ import {
 } from "@/db/schema";
 
 /**
- * Select Conversation rows with their Location and Actor names. Callers add
- * the filter, order, and limit.
+ * Select Conversation rows with their Location and Actor names, plus any
+ * `extra` columns. Callers add the filter, order, and limit.
  */
-export function selectConversationRecords(db: JuniorDatabase) {
+export function selectConversationRecords<
+  Extra extends SelectedFields = Record<never, never>,
+>(db: JuniorDatabase, extra?: Extra) {
   return db
     .select({
       conversation: juniorConversations,
@@ -28,6 +31,7 @@ export function selectConversationRecords(db: JuniorDatabase) {
       identitySubjectId: juniorIdentities.providerSubjectId,
       identityTenantId: juniorIdentities.providerTenantId,
       userDisplayName: juniorUsers.displayName,
+      ...(extra as Extra),
     })
     .from(juniorConversations)
     .leftJoin(
@@ -119,32 +123,37 @@ export function conversationFromRecordRow(
   };
 }
 
+/** One Conversation with the stored totals that its detail shows. */
+export type ConversationRecord = {
+  conversation: Conversation;
+  durationMs: number;
+  locationId?: string;
+  usage: ConversationRecordRow["conversation"]["usage"];
+  rootConversationId: string | null;
+};
+
+/** Decode one `selectConversationRecords` row into a Conversation record. */
+export function conversationRecordFromRow(
+  row: ConversationRecordRow,
+): ConversationRecord {
+  return {
+    conversation: conversationFromRecordRow(row),
+    durationMs: row.conversation.durationMs,
+    ...(row.location?.visibility === "public"
+      ? { locationId: row.location.id }
+      : undefined),
+    usage: row.conversation.usage,
+    rootConversationId: row.conversation.rootConversationId,
+  };
+}
+
 /** Read one normalized conversation record directly from its SQL row. */
 export async function readConversationRecordFromSql(
   conversationId: string,
-): Promise<
-  | {
-      conversation: Conversation;
-      durationMs: number;
-      locationId?: string;
-      usage: ConversationRecordRow["conversation"]["usage"];
-      rootConversationId: string | null;
-    }
-  | undefined
-> {
+): Promise<ConversationRecord | undefined> {
   const rows = await selectConversationRecords(getDb())
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1);
   const row = rows[0];
-  return row
-    ? {
-        conversation: conversationFromRecordRow(row),
-        durationMs: row.conversation.durationMs,
-        ...(row.location?.visibility === "public"
-          ? { locationId: row.location.id }
-          : undefined),
-        usage: row.conversation.usage,
-        rootConversationId: row.conversation.rootConversationId,
-      }
-    : undefined;
+  return row ? conversationRecordFromRow(row) : undefined;
 }
