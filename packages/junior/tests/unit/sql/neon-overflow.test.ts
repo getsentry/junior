@@ -10,6 +10,8 @@ const CONNECTION_STRING =
 
 const wire = vi.hoisted(() => ({
   clientsOpened: 0,
+  clientsReady: 0,
+  failNextConnect: false,
   websocketQueries: [] as string[],
   httpQueries: [] as string[],
 }));
@@ -24,7 +26,16 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
     _ending = false;
     connect(callback: (error?: Error) => void) {
       wire.clientsOpened++;
-      setImmediate(() => callback());
+      const failed = wire.failNextConnect;
+      wire.failNextConnect = false;
+      setImmediate(() => {
+        if (failed) {
+          callback(new Error("connection refused"));
+          return;
+        }
+        wire.clientsReady++;
+        callback();
+      });
     }
     async query(input: string | { text: string; rowMode?: string }) {
       const config = typeof input === "string" ? { text: input } : input;
@@ -61,6 +72,8 @@ describe("Neon pool overflow", () => {
 
   beforeEach(() => {
     wire.clientsOpened = 0;
+    wire.clientsReady = 0;
+    wire.failNextConnect = false;
     wire.websocketQueries.length = 0;
     wire.httpQueries.length = 0;
     // The driver sends HTTP queries to the regional API host.
@@ -88,36 +101,82 @@ describe("Neon pool overflow", () => {
     await executor.close();
   });
 
-  it("sends a burst wider than the idle clients over HTTP", async () => {
+  it("sends a burst wider than the idle clients over HTTP, then grows the pool", async () => {
     // The first query opens the pool's only client, as before.
     await executor.query("select 'warm'");
     expect(wire.clientsOpened).toBe(1);
 
-    const results = await Promise.all([
-      executor.query<{ transport: string }>("select $1::text", ["a"]),
-      executor.query<{ transport: string }>("select $1::text", ["b"]),
-      executor
-        .db()
-        .select({ transport: juniorConversations.conversationId })
-        .from(juniorConversations),
-    ]);
+    const burst = () =>
+      Promise.all([
+        executor.query<{ transport: string }>("select $1::text", ["a"]),
+        executor.query<{ transport: string }>("select $1::text", ["b"]),
+        executor
+          .db()
+          .select({ transport: juniorConversations.conversationId })
+          .from(juniorConversations),
+      ]);
+    const results = await burst();
 
     expect(results.map((rows) => rows[0]?.transport)).toEqual([
       "websocket",
       "http",
       "http",
     ]);
-    // The overflow opened no WebSocket. Both row modes map over HTTP.
-    expect(wire.clientsOpened).toBe(1);
+    // Both row modes map over HTTP.
     expect(wire.httpQueries).toEqual([
       "select $1::text",
       'select "conversation_id" from "junior_conversations"',
     ]);
 
-    // Once the client is idle again, the next query reuses it.
-    await expect(executor.query("select 'warm again'")).resolves.toEqual([
-      { transport: "websocket" },
+    // Each overflowed query opened a client in the background, so the next
+    // batch of the same width runs on WebSocket.
+    await vi.waitFor(() => expect(wire.clientsReady).toBe(3));
+    expect((await burst()).map((rows) => rows[0]?.transport)).toEqual([
+      "websocket",
+      "websocket",
+      "websocket",
     ]);
+    expect(wire.clientsOpened).toBe(3);
+    expect(wire.httpQueries).toHaveLength(2);
+  });
+
+  it("never grows the pool past max", async () => {
+    await executor.query("select 'warm'");
+    const burst = () =>
+      Promise.all(
+        Array.from({ length: 25 }, (_, index) =>
+          executor.query<{ transport: string }>("select $1::int", [index]),
+        ),
+      );
+
+    await burst();
+    await vi.waitFor(() => expect(wire.clientsReady).toBe(10));
+    const transports = (await burst()).map((rows) => rows[0]?.transport);
+
+    expect(
+      transports.filter((transport) => transport === "websocket"),
+    ).toHaveLength(10);
+    expect(wire.clientsOpened).toBe(10);
+  });
+
+  it("keeps a failed background connect from failing queries", async () => {
+    await executor.query("select 'warm'");
+    wire.failNextConnect = true;
+
+    const [first, second] = await Promise.all([
+      executor.query<{ transport: string }>("select 1"),
+      executor.query<{ transport: string }>("select 2"),
+    ]);
+    expect([first[0]?.transport, second[0]?.transport]).toEqual([
+      "websocket",
+      "http",
+    ]);
+    await vi.waitFor(() => expect(wire.clientsOpened).toBe(2));
+
+    // The pool still serves queries, and the next overflow grows it again.
+    await Promise.all([executor.query("select 3"), executor.query("select 4")]);
+    await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
+    expect(wire.clientsOpened).toBe(3);
   });
 
   it("uses a free client while pg-pool hands another one over", async () => {
