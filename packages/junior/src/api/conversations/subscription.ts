@@ -46,9 +46,8 @@ import { readConversationAccessFromSql } from "./access";
  * - Given a Turn, when the agent changes the subscription with its tool,
  *   then only the person who started the Turn changes, in the current
  *   Conversation. Nobody can subscribe or unsubscribe another person. The
- *   dashboard (the menu and Conversation details), the agent tool, and the
- *   MCP tool act only on the signed-in person or the Turn actor. No
- *   argument names a person.
+ *   dashboard conversation menu, the agent tool, and the MCP tool act only
+ *   on the signed-in person or the Turn actor. No argument names a person.
  *
  * Rules that follow:
  * - A subscription belongs to the root, like a pin. A child id resolves to
