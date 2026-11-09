@@ -128,6 +128,18 @@ export async function readConversationAccessFromSql(
   );
 }
 
+/**
+ * Whether the viewer may add a Message to a Conversation. A signed-in person
+ * joins a public Conversation by posting in it, the same as a public Slack
+ * thread: their first Turn adds their Participant row. A private one takes
+ * Messages only from its Participants.
+ */
+export function canAddConversationMessages(
+  access: ConversationAccess | undefined,
+): boolean {
+  return Boolean(access?.isParticipant || access?.visibility === "public");
+}
+
 /** Read viewer access for a bounded set of Conversations. */
 export type ConversationAccessReader = (
   conversationIds: readonly string[],
