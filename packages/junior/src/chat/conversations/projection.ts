@@ -14,6 +14,7 @@ import {
 import type {
   AuthorizationKind,
   ConversationEvent,
+  ConversationEventData,
 } from "@/chat/conversations/history";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
@@ -465,24 +466,63 @@ async function commitMessagesLocked(
   throw new AgentHistoryBranchError(args.conversationId);
 }
 
+/**
+ * Append one host fact once. The idempotency key dedupes across every history
+ * version, as the readers do. Rows written before these keys existed have
+ * none, so a matching keyless row also counts.
+ */
+async function appendHostFactOnce(args: {
+  conversationId: string;
+  data: ConversationEventData & {
+    type:
+      | "mcp_provider_connected"
+      | "authorization_requested"
+      | "authorization_completed";
+  };
+  idempotencyKey: string;
+  isSameFact: (data: ConversationEvent["data"]) => boolean;
+}): Promise<void> {
+  const eventStore = getConversationEventStore();
+  const events = await eventStore.loadEventsOfType(
+    args.conversationId,
+    args.data.type,
+  );
+  if (
+    events.some(
+      (event) =>
+        event.idempotencyKey === undefined && args.isSameFact(event.data),
+    )
+  ) {
+    return;
+  }
+  await eventStore.append(args.conversationId, [
+    {
+      idempotencyKey: args.idempotencyKey,
+      data: args.data,
+      createdAtMs: Date.now(),
+    },
+  ]);
+}
+
 /** Record a successful MCP provider connection for one credential subject without duplicating it. */
 export async function recordMcpProviderConnected(args: {
   conversationId: string;
   provider: string;
   credentialSubjectId: string;
 }): Promise<void> {
-  // Idempotency keys span every history version, as the reader does.
-  await getConversationEventStore().append(args.conversationId, [
-    {
-      idempotencyKey: `mcp_provider_connected:${args.provider}:${args.credentialSubjectId}`,
-      data: {
-        type: "mcp_provider_connected",
-        provider: args.provider,
-        credentialSubjectId: args.credentialSubjectId,
-      },
-      createdAtMs: Date.now(),
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `mcp_provider_connected:${args.provider}:${args.credentialSubjectId}`,
+    data: {
+      type: "mcp_provider_connected",
+      provider: args.provider,
+      credentialSubjectId: args.credentialSubjectId,
     },
-  ]);
+    isSameFact: (data) =>
+      data.type === "mcp_provider_connected" &&
+      data.provider === args.provider &&
+      data.credentialSubjectId === args.credentialSubjectId,
+  });
 }
 
 /** Record that an OAuth/MCP authorization link was delivered or reused. */
@@ -494,20 +534,21 @@ export async function recordAuthorizationRequested(args: {
   authorizationId: string;
   delivery: "private_link_sent" | "private_link_reused";
 }): Promise<void> {
-  await getConversationEventStore().append(args.conversationId, [
-    {
-      idempotencyKey: `authorization_requested:${args.authorizationId}`,
-      data: {
-        type: "authorization_requested",
-        kind: args.kind,
-        provider: args.provider,
-        actorId: args.actorId,
-        authorizationId: args.authorizationId,
-        delivery: args.delivery,
-      },
-      createdAtMs: Date.now(),
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `authorization_requested:${args.authorizationId}`,
+    data: {
+      type: "authorization_requested",
+      kind: args.kind,
+      provider: args.provider,
+      actorId: args.actorId,
+      authorizationId: args.authorizationId,
+      delivery: args.delivery,
     },
-  ]);
+    isSameFact: (data) =>
+      data.type === "authorization_requested" &&
+      data.authorizationId === args.authorizationId,
+  });
 }
 
 /** Record completed authorization as a chronological host observation for Pi. */
@@ -518,19 +559,20 @@ export async function recordAuthorizationCompleted(args: {
   actorId: string;
   authorizationId: string;
 }): Promise<void> {
-  await getConversationEventStore().append(args.conversationId, [
-    {
-      idempotencyKey: `authorization_completed:${args.authorizationId}`,
-      data: {
-        type: "authorization_completed",
-        kind: args.kind,
-        provider: args.provider,
-        actorId: args.actorId,
-        authorizationId: args.authorizationId,
-      },
-      createdAtMs: Date.now(),
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `authorization_completed:${args.authorizationId}`,
+    data: {
+      type: "authorization_completed",
+      kind: args.kind,
+      provider: args.provider,
+      actorId: args.actorId,
+      authorizationId: args.authorizationId,
     },
-  ]);
+    isSameFact: (data) =>
+      data.type === "authorization_completed" &&
+      data.authorizationId === args.authorizationId,
+  });
 }
 
 type AuthenticationAccountChangeArgs = {
