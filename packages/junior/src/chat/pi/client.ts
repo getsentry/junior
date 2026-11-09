@@ -9,6 +9,7 @@ import {
   type Message,
   type Model,
   type ThinkingLevel,
+  type Tool,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
@@ -25,6 +26,7 @@ import {
   generateObject,
   NoObjectGeneratedError,
   rerank,
+  transcribe,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
@@ -62,6 +64,7 @@ import {
 } from "@/chat/conversation-privacy";
 import {
   createProviderError,
+  getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
@@ -188,6 +191,7 @@ const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
 const GEN_AI_OPERATION_RERANK = "rerank" as const;
 const GEN_AI_OPERATION_DECIDE = "decide" as const;
+const GEN_AI_OPERATION_TRANSCRIPTION = "transcription" as const;
 // AI Gateway input rates in USD per million tokens. Keep estimates
 // model-specific so unlisted configured models remain explicitly unknown.
 const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -269,6 +273,8 @@ export async function completeText(params: {
   modelId: string;
   system?: string;
   messages: Message[];
+  /** Tool definitions to send. They are part of the cached prompt prefix. */
+  tools?: Tool[];
   messageAttributeMode?: "content" | "metadata";
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
@@ -277,6 +283,8 @@ export async function completeText(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
   promptName?: string;
+  /** AI Gateway session ID. Pass the Conversation ID to share its session. */
+  sessionId?: string;
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
@@ -344,6 +352,7 @@ export async function completeText(params: {
           {
             systemPrompt: params.system,
             messages: params.messages,
+            ...(params.tools ? { tools: params.tools } : undefined),
           },
           {
             apiKey,
@@ -353,6 +362,7 @@ export async function completeText(params: {
             cacheRetention: params.cacheRetention,
             signal: params.signal,
             metadata: params.metadata,
+            sessionId: params.sessionId,
             onPayload: (payload) => {
               setSpanAttributes(requestPrefixAttributes(payload));
               return undefined;
@@ -846,6 +856,58 @@ export async function rerankTexts(params: {
     logException(providerError, "ai.rerank.failed", {
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
+      "gen_ai.request.model": params.modelId,
+    });
+    throw providerError;
+  }
+}
+
+/** Transcribe one recorded audio clip through AI Gateway. */
+export async function transcribeAudio(params: {
+  audio: Uint8Array;
+  modelId: string;
+  signal?: AbortSignal;
+}): Promise<{ text: string }> {
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  try {
+    return await withSpan(
+      `${GEN_AI_OPERATION_TRANSCRIPTION} ${params.modelId}`,
+      "gen_ai.transcription",
+      { modelId: params.modelId },
+      async (setSpanAttributes) => {
+        const result = await transcribe({
+          model: provider.transcriptionModel(params.modelId),
+          audio: params.audio,
+          ...(params.signal !== undefined
+            ? { abortSignal: params.signal }
+            : undefined),
+        });
+        if (result.durationInSeconds !== undefined) {
+          setSpanAttributes({
+            "app.transcription.audio_seconds": result.durationInSeconds,
+          });
+        }
+        return { text: result.text };
+      },
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_TRANSCRIPTION,
+        "gen_ai.request.model": params.modelId,
+        "server.address": GEN_AI_SERVER_ADDRESS,
+        "server.port": GEN_AI_SERVER_PORT,
+        "gen_ai.provider.auth_mode": credential.mode,
+        "app.transcription.audio_bytes": params.audio.byteLength,
+      },
+    );
+  } catch (error) {
+    const providerError = createProviderError(error, {
+      modelId: params.modelId,
+    });
+    logException(providerError, "ai.transcription.failed", {
+      ...getProviderErrorAttributes(providerError),
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_TRANSCRIPTION,
       "gen_ai.request.model": params.modelId,
     });
     throw providerError;
