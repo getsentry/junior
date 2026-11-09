@@ -8,10 +8,8 @@
  * messages, the summary, then the new instruction. Checkpoints can append
  * fresh runtime context; the next replacement removes it again.
  */
-import {
-  estimateContextTokens,
-  estimateTokens,
-} from "@earendil-works/pi-agent-core";
+import { estimateContextTokens } from "@earendil-works/pi-agent-core";
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ContextSummary } from "@/chat/agent/context-summary";
@@ -627,16 +625,45 @@ function estimateMessagesTokens(
 ): number {
   const profile = getTokenEstimateProfile(modelId);
   return messages.reduce((total, message) => {
-    // Pi counts characters / 4. Scale that to the model's characters per token.
-    const tokens = Math.ceil(
-      (estimateTokens(message) * 4) / profile.charsPerToken,
-    );
+    const tokens = Math.ceil(messageChars(message) / profile.charsPerToken);
     const overhead =
-      (message as { role?: unknown }).role === "toolResult"
-        ? profile.toolResultOverheadTokens
-        : 0;
+      message.role === "toolResult" ? profile.toolResultOverheadTokens : 0;
     return total + tokens + overhead;
   }, 0);
+}
+
+// Pi's own size estimate counts each image as this many characters. Keep the
+// same basis; the model profile owns characters per token.
+const IMAGE_CHARS = 4_800;
+
+// Junior stores only user, assistant, and tool result messages.
+function messageChars(message: PiMessage): number {
+  switch (message.role) {
+    case "user":
+    case "toolResult":
+      return contentChars(message.content);
+    case "assistant": {
+      let chars = 0;
+      for (const block of message.content) {
+        if (block.type === "text") chars += block.text.length;
+        else if (block.type === "thinking") chars += block.thinking.length;
+        else
+          chars += block.name.length + JSON.stringify(block.arguments).length;
+      }
+      return chars;
+    }
+    default:
+      return 0;
+  }
+}
+
+function contentChars(content: string | (TextContent | ImageContent)[]) {
+  if (typeof content === "string") return content.length;
+  return content.reduce(
+    (chars, block) =>
+      chars + (block.type === "text" ? block.text.length : IMAGE_CHARS),
+    0,
+  );
 }
 
 async function loadLastInstruction(conversationId: string) {
