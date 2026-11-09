@@ -76,8 +76,10 @@ type AuxiliaryCostCache = z.infer<typeof auxiliaryCostCacheSchema>;
 // costs one full recompute, which is cheap for a Conversation that is idle.
 const AUXILIARY_COST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Change the version when the set of counted events changes. An entry that an
+// older reader wrote can cover events that it did not count.
 function auxiliaryCostCacheKey(conversationId: string): string {
-  return `conversation-auxiliary-costs:${conversationId}`;
+  return `conversation-auxiliary-costs:v2:${conversationId}`;
 }
 
 function operationKey(operation: OperationSums): string {
