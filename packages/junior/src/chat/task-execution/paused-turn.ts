@@ -90,10 +90,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { executeTurn } from "@/chat/runtime/turn-execution";
 import type { AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import {
-  clearPendingAuth,
-  wasPendingAuthStopped,
-} from "@/chat/services/pending-auth";
+import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import {
   credentialContextForActor,
@@ -522,8 +519,7 @@ async function runPausedTurnInContext(
               pendingAuth.kind !== authorization.kind ||
               pendingAuth.scope !== authorization.scope ||
               (pendingAuth.kind === "mcp" &&
-                pendingAuth.authSessionId !== authorization.authSessionId) ||
-              wasPendingAuthStopped(conversation, pendingAuth))
+                pendingAuth.authSessionId !== authorization.authSessionId))
           ) {
             await abandonTurnRecord({
               conversationId: payload.conversationId,

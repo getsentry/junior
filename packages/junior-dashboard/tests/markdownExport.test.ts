@@ -239,6 +239,7 @@ describe("dashboard canonical-event Markdown export", () => {
           startedSeq: 3,
           startedAt: "2026-01-01T00:00:00.000Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "advisor",
           status: "running",
         }),
@@ -275,7 +276,7 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown.match(/### Tool: search/g)).toHaveLength(1);
     expect(markdown).toContain("release regression");
     expect(markdown).toContain('"matches": 3');
-    expect(markdown).toContain("### Subagent: advisor");
+    expect(markdown).toContain("### Task: advisor");
     expect(markdown).toContain("### Context compacted");
     expect(markdown).toContain("- Estimated input tokens: 361000");
     expect(markdown).toContain("- Compaction trigger: 360000");

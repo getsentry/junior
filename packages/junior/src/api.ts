@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { getAttachmentStorage } from "./chat/attachments/storage";
 import { createConversationRoutes } from "./api/conversations/routes";
+import { createBoardRoutes } from "./api/board/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
 import { createNotificationRoutes } from "./api/notifications/routes";
@@ -122,6 +123,7 @@ export function createJuniorApi(
       },
     }),
   );
+  app.route("/api/board", createBoardRoutes());
   app.route("/api/code", createCodeRoutes());
   app.route("/api/connections", createConnectionRoutes());
   app.route("/api/notifications", createNotificationRoutes());

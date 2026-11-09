@@ -212,6 +212,7 @@ attributes. Nested logs and spans inherit them.
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
+| Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                      |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
 | Phone notification missing or late   | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
@@ -298,6 +299,86 @@ compare the phases:
 - The same `service.instance.id` on more than one slow call: they shared one
   process.
 
+### Cache Prefix
+
+The provider caches a request prefix in the order tools, system prompt,
+messages. A change to the tool list or the system prompt between two calls
+writes the full history to the cache again. Per Anthropic's docs, a change to
+the thinking settings or the effort also drops the cached prefix.
+`chat/pi/request-prefix-attributes.ts` hashes the provider request body that
+Pi builds, through Pi's `onPayload` hook. The values are hashes, never the
+text.
+
+| Attribute                                        | Type   | Meaning                                    |
+| ------------------------------------------------ | ------ | ------------------------------------------ |
+| `app.ai.request.system_instructions.hash`        | string | hash of the `system` blocks                |
+| `app.ai.request.tools.hash`                      | string | hash of the `tools` list, in order         |
+| `app.ai.request.tools.count`                     | int    | tools in the request                       |
+| `app.ai.request.messages.hash`                   | string | hash of all `messages`                     |
+| `app.ai.request.messages.before_last_reply.hash` | string | hash of the messages before the last reply |
+| `app.ai.request.messages.count`                  | int    | messages in the request                    |
+| `app.ai.request.prefix.hash`                     | string | hash of model, settings, and all parts     |
+| `app.ai.request.prefix.before_last_reply.hash`   | string | the same, with messages before last reply  |
+| `app.ai.request.thinking.type`                   | string | `thinking.type`, such as `adaptive`        |
+| `app.ai.request.effort`                          | string | `output_config.effort`, such as `high`     |
+| `app.ai.request.images.count`                    | int    | image blocks in the request                |
+| `app.ai.request.images.estimate`                 | int    | sum of the context estimate of each image  |
+| `app.ai.request.images.unsized`                  | int    | images that used the flat per-image value  |
+
+- Each hash is the first 16 hex chars of a SHA-256. The hashes leave out
+  `cache_control`, because Pi moves the last breakpoint on each request. In
+  messages, string `content` hashes as one text block, because Pi changes the
+  last user message to that form.
+- The hashes cover the body that Junior sends to AI Gateway, not the request
+  that the gateway sends to the upstream provider.
+- `prefix.hash` hashes, in this order: `model`, a hash of the `thinking` and
+  `output_config` settings, and the tools, system, and messages hashes.
+  `prefix.before_last_reply.hash` uses `messages.before_last_reply.hash` for
+  the messages, and is absent when that hash is absent.
+- `thinking.type` and `effort` are absent when the body does not set them.
+- The `images.*` attributes are absent when the request has no image. They
+  count image blocks in message content and in `tool_result` content. The
+  estimate uses the rule of `estimateMessagesTokens` in
+  `chat/services/token-estimate.ts`. Anthropic usage has no per-image split,
+  so the estimate is the only per-image number. To check it, compare it with
+  the change in `gen_ai.usage.input_tokens` from the previous call in the
+  same `gen_ai.conversation.id`.
+- `messages.before_last_reply.hash` stops before the last `assistant`
+  message. It is absent when the request has no `assistant` message. When the
+  history was only appended, it is equal to `messages.hash` of the previous
+  call.
+- The `codemode` tool description lists the script tools, so a script tool
+  change also changes the tool hash.
+- `completeText` calls have the same attributes. `completeObject` uses the AI
+  SDK, which has no payload hook, so it has none.
+- On calls through the Pi stream wrapper, `app.ai.usage.cache_write_1h` is the
+  part of `gen_ai.usage.cache_creation.input_tokens` written with 1h
+  retention. The rest used 5m retention.
+
+To classify a cache miss, compare a call with the previous call in the same
+`gen_ai.conversation.id`:
+
+1. Compare `prefix.before_last_reply.hash` with the previous `prefix.hash`.
+   When they are not equal, find the part that changed:
+   - System or tools hash changed: Junior changed the prefix.
+   - `thinking.type` or `effort` changed: the settings changed the prefix.
+     When all part hashes match, the model or another thinking setting, such
+     as a budget, changed.
+   - `messages.before_last_reply.hash` is not equal to the previous
+     `messages.hash`: Junior rewrote the history. This is expected when the
+     call has `gen_ai.conversation.compacted`.
+2. When they are equal and the gap is 5 minutes or more: the cache expired.
+3. When they are equal and the gap is less than 5 minutes: the provider or the
+   gateway did not use the cache.
+
+Prefix hashes of each model call in a Conversation. Compare consecutive rows.
+
+```text
+dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,trace,gen_ai.request.model,app.ai.request.prefix.hash,app.ai.request.prefix.before_last_reply.hash,app.ai.request.system_instructions.hash,app.ai.request.tools.hash,app.ai.request.messages.hash,app.ai.request.messages.before_last_reply.hash,app.ai.request.thinking.type,app.ai.request.effort,gen_ai.conversation.compacted,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
+sort=timestamp
+```
+
 ## Context Compaction
 
 A compaction replaces the history when its estimate is above the threshold.
@@ -345,9 +426,11 @@ Attributes on the `agent.context_compaction` span:
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
 - `app.compaction.skip_reason`: `over_target` (the context that a
-  replacement keeps is above the target without a summary) or
+  replacement keeps is above the target without a summary),
   `last_over_threshold` (the first model call after the latest full
-  compaction was above the threshold). A skipped compaction runs at the input limit.
+  compaction was above the threshold), or `over_input_limit` (the context
+  that a replacement keeps is at the input limit, so no summary can fit). A
+  compaction skipped for one of the first two reasons runs at the input limit.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.

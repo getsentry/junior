@@ -43,6 +43,8 @@ export type TranscriptViewToolCallPart = {
 export type TranscriptViewSubagentPart = {
   agentName?: string;
   childConversationId: string;
+  /** A Thread renders as a link to its page; Tasks collapse to one line. */
+  childKind: "thread" | "task";
   /** When the child reached its current terminal status. */
   finishedTimestamp?: number;
   id: string;

@@ -18,6 +18,7 @@ import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
@@ -54,6 +55,7 @@ import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createOperatorTools } from "@/chat/tools/operator-sql";
 import { createUserCustomizationTools } from "@/chat/tools/user-customization";
+import { createConversationSubscriptionTools } from "@/chat/tools/conversation-subscription";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
@@ -141,6 +143,7 @@ export function createTools(
     ...createWorkspaceTools(context),
     ...createOperatorTools(context),
     ...createUserCustomizationTools(context),
+    ...createConversationSubscriptionTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
   tools.readConversationEvent = createReadConversationEventTool(context);
@@ -213,6 +216,7 @@ export function createTools(
   if (context.spawnAgent) {
     tools.spawnAgent = createSpawnAgentTool(context.spawnAgent, modelCost);
     tools.stopAgent = createStopAgentTool(context.conversationId);
+    tools.archiveAgent = createArchiveAgentTool(context.conversationId);
   }
 
   // A child agent that is too deep to start child agents can still find its

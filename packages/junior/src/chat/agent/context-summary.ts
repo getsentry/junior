@@ -17,9 +17,10 @@ import type {
   Model,
   SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import { logWarn } from "@/chat/logging";
+import { extractGenAiUsageSummary, logWarn } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
+import { agentTurnCostUsd } from "@/chat/usage";
 
 /** Prompt name of the summary request on its `gen_ai.chat` span. */
 export const CONTEXT_COMPACTION_PROMPT_NAME = "junior.context_compaction";
@@ -61,16 +62,36 @@ export interface AgentModelRequest {
   options: SimpleStreamOptions;
 }
 
-type SummaryFailure = "empty" | "max_tokens" | "missing_summary" | "tool_call";
+// `request_failed`: the nudge request failed after the first request was
+// billed. The request error is the cause.
+type SummaryFailure =
+  | "empty"
+  | "max_tokens"
+  | "missing_summary"
+  | "request_failed"
+  | "tool_call";
+
+/** A context summary and the estimated cost of the requests that made it. */
+export interface ContextSummary {
+  summary: string;
+  costUsd?: number;
+}
 
 /** Raised when the model returns no usable summary after one nudge. */
 export class ContextSummaryError extends Error {
   readonly failure: SummaryFailure;
+  /** Estimated cost of the summary requests that did not succeed. */
+  readonly costUsd?: number;
 
-  constructor(failure: SummaryFailure) {
-    super(`Context summary failed: ${failure}`);
+  constructor(
+    failure: SummaryFailure,
+    costUsd?: number,
+    options?: { cause: unknown },
+  ) {
+    super(`Context summary failed: ${failure}`, options);
     this.failure = failure;
     this.name = "ContextSummaryError";
+    if (costUsd !== undefined) this.costUsd = costUsd;
   }
 }
 
@@ -171,25 +192,54 @@ function readSummary(
  *
  * A tool call, a stop at the output limit, empty output, or output without
  * `<summary>` tags gets one nudge. A second failure throws
- * `ContextSummaryError`, so the caller keeps the full history.
+ * `ContextSummaryError`, so the caller keeps the full history. The cost
+ * covers each summary request, including a nudged one.
  */
 export async function requestContextSummary(
   request: AgentModelRequest,
   streamFn: StreamFn,
-): Promise<string> {
+): Promise<ContextSummary> {
   const instruction = userText(SUMMARY_INSTRUCTION);
-  const first = readSummary(await complete(request, streamFn, [instruction]));
+  const firstMessage = await complete(request, streamFn, [instruction]);
+  const first = readSummary(firstMessage);
   if ("summary" in first) {
-    return first.summary;
+    return withCost(first.summary, firstMessage);
   }
   logWarn("context_compaction.summary.nudged", {
     "app.compaction.summary_failure": first.failure,
   });
-  const second = readSummary(
-    await complete(request, streamFn, [instruction, userText(SUMMARY_NUDGE)]),
-  );
-  if ("summary" in second) {
-    return second.summary;
+  let secondMessage: AssistantMessage;
+  try {
+    secondMessage = await complete(request, streamFn, [
+      instruction,
+      userText(SUMMARY_NUDGE),
+    ]);
+  } catch (error) {
+    // Keep the cost of the first request, which the provider billed.
+    throw new ContextSummaryError(
+      "request_failed",
+      summaryCostUsd(firstMessage),
+      { cause: error },
+    );
   }
-  throw new ContextSummaryError(second.failure);
+  const second = readSummary(secondMessage);
+  if ("summary" in second) {
+    return withCost(second.summary, firstMessage, secondMessage);
+  }
+  throw new ContextSummaryError(
+    second.failure,
+    summaryCostUsd(firstMessage, secondMessage),
+  );
+}
+
+function summaryCostUsd(...messages: AssistantMessage[]): number | undefined {
+  return agentTurnCostUsd(extractGenAiUsageSummary(...messages));
+}
+
+function withCost(
+  summary: string,
+  ...messages: AssistantMessage[]
+): ContextSummary {
+  const costUsd = summaryCostUsd(...messages);
+  return costUsd === undefined ? { summary } : { summary, costUsd };
 }

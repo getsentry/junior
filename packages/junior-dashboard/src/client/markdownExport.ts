@@ -388,7 +388,7 @@ function appendSubagent(
 ): void {
   lines.push(
     "",
-    `### Subagent: ${headingText(part.agentName ?? part.subagentKind)}`,
+    `### ${part.childKind === "thread" ? "Thread" : "Task"}: ${headingText(part.agentName ?? part.subagentKind)}`,
   );
   addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Status", part.status);

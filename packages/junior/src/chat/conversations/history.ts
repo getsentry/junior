@@ -85,6 +85,9 @@ const historyReplacementEventDataSchema = z
     modelProfile: legacyModelProfileSchema,
     modelId: z.string().min(1),
     details: compactionDetailsSchema.optional(),
+    // Estimated cost of the summary requests. A swap of a prepared summary
+    // makes no model call, so it has none.
+    costUsd: z.number().finite().nonnegative().optional(),
     summary: z.string().min(1).optional(),
     replacementHistory: replacementHistorySchema,
   })
@@ -442,6 +445,8 @@ const compactionRequestedEventDataSchema = z
 
 const compactionPreparedFields = compactionRequestedEventDataSchema.extend({
   type: z.literal("compaction_prepared"),
+  // Estimated cost of the summary requests, also when they failed.
+  costUsd: z.number().finite().nonnegative().optional(),
 });
 
 const compactionPreparedEventDataSchema = z.discriminatedUnion("outcome", [
@@ -712,6 +717,11 @@ export interface ConversationEventStore {
   loadMessageHistory(conversationId: string): Promise<MessageHistory>;
   /** All events across every history version in `seq` order. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
+  /** Events of one type across every history version in `seq` order. */
+  loadEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]>;
   /**
    * Bounded raw event page for observational/debug reads.
    * Defaults to the newest matching events when neither bound is set.
