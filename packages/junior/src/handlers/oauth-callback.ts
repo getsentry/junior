@@ -402,9 +402,12 @@ export async function GET(
       500,
     );
   }
-  await userTokenStore.set(stored.userId, provider, {
-    ...parsedTokenResponse,
-    ...(account ? { account } : undefined),
+  await userTokenStore.transition(stored.userId, provider, {
+    type: "connect",
+    tokens: {
+      ...parsedTokenResponse,
+      ...(account ? { account } : undefined),
+    },
   });
   const linkActor = stored.actor;
   if (

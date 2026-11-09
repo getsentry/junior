@@ -203,7 +203,13 @@ export interface PluginResolvedCredentialUser {
 export type PluginStoredTokens = z.output<typeof pluginStoredTokensSchema>;
 
 export interface PluginUserTokenSlot {
+  /** Return the user's connected tokens, or undefined when they must connect. */
   get(): Promise<PluginStoredTokens | undefined>;
+  /**
+   * Replace the tokens that the last `get` returned, such as after a refresh.
+   * The host drops the write when the user disconnected or reconnected since
+   * that `get`.
+   */
   set(tokens: PluginStoredTokens): Promise<void>;
   /** Run token refresh work after the host has serialized this user/provider slot, or throw after a bounded wait. */
   withRefresh<T>(callback: () => Promise<T>): Promise<T>;

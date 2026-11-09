@@ -97,8 +97,11 @@ function createMockTokenStore(
 ): UserTokenStore {
   return {
     get: vi.fn(async (_userId: string, provider: string) => tokens[provider]),
-    set: vi.fn(async () => {}),
-    delete: vi.fn(async () => {}),
+    read: vi.fn(async (_userId: string, provider: string) => {
+      const stored = tokens[provider];
+      return stored && { status: "connected" as const, tokens: stored };
+    }),
+    transition: vi.fn(async () => true),
     withRefresh: vi.fn(async (_userId, _provider, callback) => callback()),
   };
 }

@@ -9,6 +9,7 @@ import {
   type PluginCredentialResult,
   type PluginGrant,
   type PluginProviderAccount,
+  type PluginUserTokenSlot,
 } from "@sentry/junior-plugin-api";
 import type {
   StoredTokens,
@@ -236,6 +237,38 @@ export async function resolvePluginOAuthAccount(input: {
       );
 }
 
+// A plugin writes refreshed or enriched tokens for the grant that its last
+// `get` returned. The store drops the write when the user disconnected or
+// reconnected since then, so a late refresh cannot undo either one.
+function userTokenSlot(
+  store: UserTokenStore,
+  userId: string,
+  provider: string,
+): PluginUserTokenSlot {
+  let observed: StoredTokens | undefined;
+  return {
+    userId,
+    get: async () => {
+      observed = await store.get(userId, provider);
+      return observed;
+    },
+    set: async (tokens) => {
+      if (
+        observed &&
+        (await store.transition(userId, provider, {
+          type: "update",
+          from: observed,
+          tokens,
+        }))
+      ) {
+        observed = tokens;
+      }
+    },
+    withRefresh: async (callback) =>
+      await store.withRefresh(userId, provider, callback),
+  };
+}
+
 /** Ask a plugin to issue headers or describe why the selected grant is unavailable. */
 export async function issuePluginCredential(
   input: IssueCredentialInput,
@@ -257,52 +290,20 @@ export async function issuePluginCredential(
     tokens: {
       ...(currentUserId
         ? {
-            currentUser: {
-              userId: currentUserId,
-              get: async () =>
-                await input.userTokenStore.get(
-                  currentUserId,
-                  plugin.manifest.name,
-                ),
-              set: async (tokens) => {
-                await input.userTokenStore.set(
-                  currentUserId,
-                  plugin.manifest.name,
-                  tokens,
-                );
-              },
-              withRefresh: async (callback) =>
-                await input.userTokenStore.withRefresh(
-                  currentUserId,
-                  plugin.manifest.name,
-                  callback,
-                ),
-            },
+            currentUser: userTokenSlot(
+              input.userTokenStore,
+              currentUserId,
+              plugin.manifest.name,
+            ),
           }
         : undefined),
       ...(credentialSubjectUserId
         ? {
-            credentialSubject: {
-              userId: credentialSubjectUserId,
-              get: async () =>
-                await input.userTokenStore.get(
-                  credentialSubjectUserId,
-                  plugin.manifest.name,
-                ),
-              set: async (tokens) => {
-                await input.userTokenStore.set(
-                  credentialSubjectUserId,
-                  plugin.manifest.name,
-                  tokens,
-                );
-              },
-              withRefresh: async (callback) =>
-                await input.userTokenStore.withRefresh(
-                  credentialSubjectUserId,
-                  plugin.manifest.name,
-                  callback,
-                ),
-            },
+            credentialSubject: userTokenSlot(
+              input.userTokenStore,
+              credentialSubjectUserId,
+              plugin.manifest.name,
+            ),
           }
         : undefined),
     },

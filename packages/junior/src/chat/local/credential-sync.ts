@@ -106,10 +106,9 @@ export async function receiveLocalOAuthCredential(
   ) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
-  await createUserTokenStore().set(
-    "local-cli",
-    payload.data.provider,
-    payload.data.tokens,
-  );
+  await createUserTokenStore().transition("local-cli", payload.data.provider, {
+    type: "connect",
+    tokens: payload.data.tokens,
+  });
   return new Response(null, { status: 204 });
 }

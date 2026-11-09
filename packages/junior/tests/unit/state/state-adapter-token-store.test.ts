@@ -27,9 +27,12 @@ describe("StateAdapterTokenStore", () => {
     const adapter = createAdapter();
     const store = new StateAdapterTokenStore(adapter);
 
-    await store.set("U123", "notion", {
-      accessToken: "access-token",
-      refreshToken: "refresh-token",
+    await store.transition("U123", "notion", {
+      type: "connect",
+      tokens: {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      },
     });
 
     expect(adapter.set).toHaveBeenCalledWith(
@@ -49,11 +52,14 @@ describe("StateAdapterTokenStore", () => {
     const store = new StateAdapterTokenStore(adapter);
 
     try {
-      await store.set("U123", "github", {
-        accessToken: "access-token",
-        refreshToken: "refresh-token",
-        expiresAt: Date.now() + 8 * 60 * 60 * 1000,
-        refreshTokenExpiresAt: Date.now() + 180 * 24 * 60 * 60 * 1000,
+      await store.transition("U123", "github", {
+        type: "connect",
+        tokens: {
+          accessToken: "access-token",
+          refreshToken: "refresh-token",
+          expiresAt: Date.now() + 8 * 60 * 60 * 1000,
+          refreshTokenExpiresAt: Date.now() + 180 * 24 * 60 * 60 * 1000,
+        },
       });
     } finally {
       vi.useRealTimers();

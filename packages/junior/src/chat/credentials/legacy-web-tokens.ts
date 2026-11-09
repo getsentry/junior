@@ -13,23 +13,35 @@ import type { UserTokenStore } from "./user-token-store";
 
 /** Read through to legacy web tokens when a User id has none. */
 export function withLegacyWebTokens(store: UserTokenStore): UserTokenStore {
+  async function read(userId: string, provider: string) {
+    const connection = await store.read(userId, provider);
+    if (connection) return connection;
+    const legacyUserId = await findLegacyWebActorUserId(userId);
+    if (!legacyUserId) return undefined;
+    const legacy = await store.get(legacyUserId, provider);
+    if (!legacy) return undefined;
+    await store.transition(userId, provider, {
+      type: "connect",
+      tokens: legacy,
+    });
+    await store.transition(legacyUserId, provider, { type: "disconnect" });
+    return { status: "connected" as const, tokens: legacy };
+  }
   return {
+    read,
     async get(userId, provider) {
-      const tokens = await store.get(userId, provider);
-      if (tokens) return tokens;
-      const legacyUserId = await findLegacyWebActorUserId(userId);
-      if (!legacyUserId) return undefined;
-      const legacy = await store.get(legacyUserId, provider);
-      if (!legacy) return undefined;
-      await store.set(userId, provider, legacy);
-      await store.delete(legacyUserId, provider);
-      return legacy;
+      const connection = await read(userId, provider);
+      return connection?.status === "connected" ? connection.tokens : undefined;
     },
-    set: (userId, provider, tokens) => store.set(userId, provider, tokens),
-    async delete(userId, provider) {
-      await store.delete(userId, provider);
-      const legacyUserId = await findLegacyWebActorUserId(userId);
-      if (legacyUserId) await store.delete(legacyUserId, provider);
+    async transition(userId, provider, change) {
+      const applied = await store.transition(userId, provider, change);
+      if (change.type === "disconnect") {
+        const legacyUserId = await findLegacyWebActorUserId(userId);
+        if (legacyUserId) {
+          await store.transition(legacyUserId, provider, change);
+        }
+      }
+      return applied;
     },
     withRefresh: (userId, provider, callback) =>
       store.withRefresh(userId, provider, callback),

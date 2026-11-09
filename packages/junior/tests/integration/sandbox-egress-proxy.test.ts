@@ -1035,16 +1035,19 @@ describe("sandbox egress proxy integration", () => {
     const tokenStore = new StateAdapterTokenStore(
       modules.state.getStateAdapter(),
     );
-    await tokenStore.set(ACTOR_ID, "github", {
-      account: {
-        id: "12345",
-        label: "actor",
-        url: "https://github.com/actor",
+    await tokenStore.transition(ACTOR_ID, "github", {
+      type: "connect",
+      tokens: {
+        account: {
+          id: "12345",
+          label: "actor",
+          url: "https://github.com/actor",
+        },
+        accessToken: "ghu_user-token",
+        expiresAt: Date.now() + 60 * 60_000,
+        refreshToken: "github-refresh-token",
+        scope: "repo",
       },
-      accessToken: "ghu_user-token",
-      expiresAt: Date.now() + 60 * 60_000,
-      refreshToken: "github-refresh-token",
-      scope: "repo",
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },

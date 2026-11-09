@@ -58,7 +58,7 @@ export async function forgetAuthorizations(userIds: string[]): Promise<void> {
   const tokens = createUserTokenStore();
   for (const { manifest } of pluginCatalogRuntime.getProviders()) {
     for (const userId of userIds) {
-      await tokens.delete(userId, manifest.name);
+      await tokens.transition(userId, manifest.name, { type: "disconnect" });
       await deleteMcpAuthSessionsForUserProvider(userId, manifest.name);
       await deleteMcpStoredOAuthCredentials(userId, manifest.name);
       await deleteMcpServerSessionId(userId, manifest.name);
