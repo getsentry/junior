@@ -9,17 +9,6 @@ const NESTED_THREAD_ID = "junior:internal:dashboard-qa:thread:nested";
 const TASK_ID = "junior:internal:dashboard-qa:advisor-plan";
 const ARCHIVED_THREAD_ID = "junior:internal:dashboard-qa:archived-thread";
 
-/** Make one Conversation wait on the viewer, as an open Review item does. */
-async function mockWaiting(page: Page, conversationId: string) {
-  await page.route("**/api/review-items/waiting-conversations", (route) =>
-    route.fulfill({
-      json: {
-        conversations: [{ conversationId, count: 1, title: "Pick a fix" }],
-      },
-    }),
-  );
-}
-
 test("shows Threads under their parent and in details", async ({
   page,
   dashboard,
@@ -276,7 +265,6 @@ test("links Threads and collapses Tasks in the parent transcript", async ({
   page,
   dashboard,
 }) => {
-  await mockWaiting(page, THREAD_ID);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
@@ -291,7 +279,7 @@ test("links Threads and collapses Tasks in the parent transcript", async ({
     "href",
     `/conversations/${encodeURIComponent(THREAD_ID)}`,
   );
-  await expect(threadCard).toContainText("Waiting on you");
+  await expect(threadCard).toContainText("Idle");
   // The feed leaves out an archived Thread, so its card has no status.
   const archivedCard = transcript.getByRole("link", {
     name: /Compare sidebar badges/,
@@ -300,7 +288,7 @@ test("links Threads and collapses Tasks in the parent transcript", async ({
     "href",
     `/conversations/${encodeURIComponent(ARCHIVED_THREAD_ID)}`,
   );
-  await expect(archivedCard).not.toContainText(/Idle|Running|Waiting/);
+  await expect(archivedCard).not.toContainText(/Idle|Running|Needs input/);
 
   // A run of Tasks is one line. It expands to rows that open the drawer.
   const tasksLine = transcript.getByRole("button", { name: /^2 Tasks/ });
@@ -331,7 +319,6 @@ test("shows the breadcrumb, status, and Turn authors of a Thread", async ({
   page,
   dashboard,
 }) => {
-  await mockWaiting(page, THREAD_ID);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
@@ -344,11 +331,10 @@ test("shows the breadcrumb, status, and Turn authors of a Thread", async ({
   await expect(
     breadcrumb.getByRole("link", { name: "Dashboard QA edge cases" }),
   ).toHaveAttribute("href", `/conversations/${encodeURIComponent(ROOT_ID)}`);
-  // The pill comes from runtime state: an open Review item waits on the
-  // viewer.
+  // The pill shows the status that the API derives from runtime state.
   const header = page.locator("header").filter({ has: breadcrumb });
   await expect(
-    header.getByText("Waiting on you").filter({ visible: true }),
+    header.getByText("Idle").filter({ visible: true }),
   ).toBeVisible();
 
   // The parent agent started the first Turn; a person started the next.
@@ -363,6 +349,10 @@ test("shows the breadcrumb, status, and Turn authors of a Thread", async ({
   );
   await expect(
     breadcrumb.getByRole("heading", { name: "Recheck pin order in Safari" }),
+  ).toBeVisible();
+  // Its own Review item waits on a person.
+  await expect(
+    header.getByText("Needs input").filter({ visible: true }),
   ).toBeVisible();
   await breadcrumb
     .getByRole("link", { name: "Check pinned row order" })
