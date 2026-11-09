@@ -350,7 +350,8 @@ likely to cost less than that write.
   model. The chance comes from recorded tool waits: the time from a model
   request that ended with tool calls to the next request. Junior records only
   waits of 2 minutes or more, because shorter waits do not change a decision.
-  Until it has recorded 20 waits, it sends no tool wait warmups. Warmups stop when
+  When the run ends while a tool runs, the wait counts as no return. Until it
+  has recorded 20 waits, it sends no tool wait warmups. Warmups stop when
   the next request starts or the run ends.
 - A warmup that misses the cache ends warming for its idle period and sends a
   Sentry warning. When 10 of the last 20 warmups of a provider miss or fail,

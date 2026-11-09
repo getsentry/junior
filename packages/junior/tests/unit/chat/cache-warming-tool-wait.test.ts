@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
+import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import type { ModelRequest } from "@/chat/cache-warming/request";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -164,10 +165,25 @@ describe("tool wait cache warming", () => {
     await warmer.record(request(), message("toolUse"));
     vi.advanceTimersByTime(3 * MINUTE);
     await warmer.record(request(), message("stop"));
-    warmer.stop();
+    await warmer.end();
 
     expect(await getStateAdapter().getList<number>(GAPS_KEY)).toEqual([
       3 * MINUTE,
+    ]);
+  });
+
+  it("records a tool wait that the run end cut off as no return", async () => {
+    const short = createToolWaitWarmer("local:test:tool-wait");
+    await short.record(request(), message("toolUse"));
+    vi.advanceTimersByTime(30_000);
+    await short.end();
+    const long = createToolWaitWarmer("local:test:tool-wait");
+    await long.record(request(), message("toolUse"));
+    vi.advanceTimersByTime(3 * MINUTE);
+    await long.end();
+
+    expect(await getStateAdapter().getList<number>(GAPS_KEY)).toEqual([
+      NO_REPLY_GAP_MS,
     ]);
   });
 });

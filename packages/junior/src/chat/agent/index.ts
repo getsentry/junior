@@ -1573,7 +1573,7 @@ async function executeAgentRunInPrivacyContext(
       }
     } finally {
       unsubscribe();
-      cacheWarming.stop();
+      await cacheWarming.stop();
     }
 
     // The caller saves the completed Turn after this returns.

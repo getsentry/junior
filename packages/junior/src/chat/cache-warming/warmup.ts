@@ -334,7 +334,7 @@ export interface CacheWarmingRecorder {
   /** Record the finished assistant message of the last model request. */
   record(message: AssistantMessage): Promise<void>;
   /** Stop the warmups of this run. Call it when the run ends. */
-  stop(): void;
+  stop(): Promise<void>;
 }
 
 /**
@@ -413,7 +413,16 @@ export function createCacheWarmingRecorder(
         });
       }
     },
-    stop: toolWait.stop,
+    stop: async () => {
+      try {
+        await toolWait.end();
+      } catch (error) {
+        logWarn("cache_warming.tool_wait.record_failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
   };
 }
 

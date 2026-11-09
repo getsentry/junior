@@ -14,7 +14,12 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { runWithLogContext } from "@/chat/log-context";
 import { logInfo, logWarn } from "@/chat/logging";
-import { decideWarmup, MIN_WARMUP_PREFIX_TOKENS, MINUTE_MS } from "./model";
+import {
+  decideWarmup,
+  MIN_WARMUP_PREFIX_TOKENS,
+  MINUTE_MS,
+  NO_REPLY_GAP_MS,
+} from "./model";
 import {
   breakerOpen,
   cachedPrefixTokens,
@@ -44,8 +49,14 @@ export interface ToolWaitWarmer {
    * start warmups when it ended with tool calls.
    */
   record(request: ModelRequest, message: AssistantMessage): Promise<void>;
-  /** Stop warmups, because the run ended. */
+  /** Stop warmups, because the next request starts. */
   stop(): void;
+  /**
+   * Stop warmups, because the run ended. A tool wait that is still open never
+   * returns to this run, so record it as `NO_REPLY_GAP_MS`. Without these
+   * waits, the return chance counts only the tools that returned.
+   */
+  end(): Promise<void>;
 }
 
 // The cache that tool wait warmups keep warm.
@@ -175,6 +186,15 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     timer = undefined;
   };
 
+  const recordWait = async (waitMs: number) => {
+    if (waitMs < MIN_RECORDED_TOOL_WAIT_MS) return;
+    const state = await connectedState();
+    await state.appendToList(TOOL_WAIT_GAPS_KEY, waitMs, {
+      maxLength: TOOL_WAIT_GAPS_MAX,
+      ttlMs: TOOL_WAIT_GAPS_TTL_MS,
+    });
+  };
+
   return {
     async record(request, message) {
       stop();
@@ -189,15 +209,20 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       ) {
         schedule({ request, prefixTokens, ttlMs }, request.startedAtMs, 1);
       }
-      const waitMs = previous ? request.startedAtMs - previous.startedAtMs : 0;
-      if (waitMs >= MIN_RECORDED_TOOL_WAIT_MS) {
-        const state = await connectedState();
-        await state.appendToList(TOOL_WAIT_GAPS_KEY, waitMs, {
-          maxLength: TOOL_WAIT_GAPS_MAX,
-          ttlMs: TOOL_WAIT_GAPS_TTL_MS,
-        });
+      if (previous) {
+        await recordWait(request.startedAtMs - previous.startedAtMs);
       }
     },
     stop,
+    async end() {
+      stop();
+      const open = waiting;
+      waiting = undefined;
+      // Shorter waits are not recorded, so an open wait counts only when it
+      // already ran as long as a recorded one.
+      if (open && Date.now() - open.startedAtMs >= MIN_RECORDED_TOOL_WAIT_MS) {
+        await recordWait(NO_REPLY_GAP_MS);
+      }
+    },
   };
 }
