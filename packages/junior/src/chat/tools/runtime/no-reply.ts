@@ -23,7 +23,7 @@ export function createNoReplyTool() {
           .nullable()
           .optional()
           .describe(
-            "Outcome to keep in the conversation without notifying anyone, such as a routine fix that worked. Null is the same as omitted.",
+            "Outcome to keep in the conversation without notifying anyone, such as a routine fix that worked. Omit it when a person asked for no reply. Null is the same as omitted.",
           ),
       })
       .strict(),
