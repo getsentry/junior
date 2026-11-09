@@ -43,7 +43,7 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
-import { canContinueInSlack } from "./continue-in-slack";
+import { canContinueInSlack } from "@/chat/slack/continue-in-slack";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {

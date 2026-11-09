@@ -46,6 +46,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "chat.update",
   "chat.postEphemeral",
   "chat.getPermalink",
+  "chat.unfurl",
   "views.publish",
   "views.open",
   "entity.presentDetails",
@@ -223,6 +224,7 @@ function defaultSlackApiResponse(
       return { body: chatPostMessageOk() };
     case "chat.delete":
     case "chat.update":
+    case "chat.unfurl":
       return { body: slackOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };
