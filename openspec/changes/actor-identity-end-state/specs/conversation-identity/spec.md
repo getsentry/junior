@@ -5,57 +5,59 @@ build them.
 
 ## ADDED Requirements
 
-### Requirement: One Owner Per Conversation
+### Requirement: One Root Actor Per Conversation
 
-Each root Conversation SHALL have one Owner. The Owner SHALL be the Identity
-that started the Conversation. Junior SHALL set it one time, at create. Junior
-SHALL NOT change it later.
+Each root Conversation SHALL have one root Actor. The root Actor SHALL be the
+Identity that started the Conversation. Junior SHALL set it one time, at create.
+Junior SHALL NOT change it later.
 
-The Owner SHALL be the existing `junior_conversations.actor_identity_id`
-column. Code and docs SHALL call it the Owner. Junior SHALL NOT add another
-Owner column.
+The root Actor SHALL be the existing `junior_conversations.actor_identity_id`
+column. Code and docs SHALL call it the root Actor. Junior SHALL NOT add another
+root Actor column.
+
+The root Actor SHALL NOT grant access, feed membership, or defaults. A
+Conversation has no owner. Junior SHALL use Participants for those.
 
 #### Scenario: Human starts a Conversation
 
 - **WHEN** a human starts a Conversation from Slack, the dashboard, or a fork
-- **THEN** the Owner is that human's Identity.
+- **THEN** the root Actor is that human's Identity.
 
 #### Scenario: System starts a Conversation
 
 - **WHEN** a scheduled automation, an event automation, a plugin dispatch, or
   the local CLI starts a Conversation
-- **THEN** the Owner is the one system Identity
+- **THEN** the root Actor is the one system Identity
 - **AND** the Conversation Source and the Automation or dispatch record tell
   which system started it.
 
 #### Scenario: Human replies to a system Conversation
 
 - **WHEN** a human replies in a Conversation that the system Identity owns
-- **THEN** the Owner stays the system Identity
+- **THEN** the root Actor stays the system Identity
 - **AND** the human becomes a participant
 - **AND** the human gets access and feed membership as a participant.
 
-### Requirement: Child Conversations Use The Root Owner
+### Requirement: Child Conversations Use The Root Actor
 
-A child Conversation SHALL NOT store an Owner. Junior SHALL read the Owner of
-its root Conversation.
+A child Conversation SHALL NOT store a root Actor. Junior SHALL read the root
+Actor of its root Conversation.
 
 #### Scenario: Child access
 
 - **WHEN** a viewer reads a child Conversation
-- **THEN** Junior checks access against the root Owner and the root
-  participants
+- **THEN** Junior checks access against the Participants of the root
 - **AND** `onBehalfOf` provenance does not give access.
 
 #### Scenario: Child Conversation write
 
 - **WHEN** Junior writes a child Conversation
-- **THEN** the child row stores no Owner.
+- **THEN** the child row stores no root Actor.
 
 #### Scenario: Child spend
 
 - **WHEN** a child Conversation uses tokens
-- **THEN** People and spend count them for the root Owner
+- **THEN** People and spend count them for the root Actor
 - **AND** not for the child's own Actor.
 
 ### Requirement: One System Identity
@@ -139,10 +141,10 @@ participant access.
 An inbound event SHALL be a user Message. Its author SHALL be the Identity of
 the person or bot who wrote the content. A system event SHALL use the system
 Identity. The author Identity SHALL be the same Identity that the OAuth link
-writes for that account. An event write SHALL NOT change the `kind` or the
-User of an existing Identity. An event SHALL name an author only on its own
-provider. An event SHALL NOT change the Owner or the Turn Actor. An event
-Message author SHALL NOT become a participant.
+writes for that account. An event write SHALL NOT change the `kind` or the User
+of an existing Identity. An event SHALL name an author only on its own provider.
+An event SHALL NOT change the root Actor or the Turn Actor. An event Message
+author SHALL NOT become a participant.
 
 The event author SHALL NOT be the Turn Actor. Event Turns SHALL run as the
 system Actor. A Turn's credentials SHALL come only from the grant of the
@@ -369,21 +371,21 @@ NOT run without explicit approval.
 - **THEN** Junior does not apply that rule
 - **AND** those rows stay as they are.
 
-### Requirement: Owner Repair Uses Proven Rules
+### Requirement: Root Actor Repair Uses Proven Rules
 
-Junior SHALL repair old Owner damage only for the rules that the dry run
-proves. Owner repair SHALL be separate from the data migration. Each human
+Junior SHALL repair old root Actor damage only for the rules that the dry run
+proves. Root Actor repair SHALL be separate from the data migration. Each human
 who loses the root SHALL keep access as a participant.
 
 #### Scenario: System root that a human took over
 
-- **WHEN** a root has a `scheduler`, `event`, or `local` Source and a human
-  Owner
-- **THEN** the repair sets its Owner to the `system` Identity
+- **WHEN** a root has a `scheduler`, `event`, or `local` Source and a human root
+  Actor
+- **THEN** the repair sets its root Actor to the `system` Identity
 - **AND** the human keeps access as a participant.
 
-#### Scenario: Slack or web root with a system Owner
+#### Scenario: Slack or web root with a system root Actor
 
-- **WHEN** a `slack` or `web` root has a system Owner
+- **WHEN** a `slack` or `web` root has a system root Actor
 - **THEN** Junior repairs it only when the dry run proves the rule
-- **AND** otherwise the root keeps its current Owner.
+- **AND** otherwise the root keeps its current root Actor.

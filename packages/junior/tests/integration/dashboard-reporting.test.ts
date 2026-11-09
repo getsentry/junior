@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { testViewer } from "../fixtures/user";
+import { signedInViewer } from "../fixtures/user";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -270,7 +270,7 @@ describe("dashboard canonical event reporting", () => {
     });
     expect(
       await readConversationDetail(rootConversationId, {
-        viewer: testViewer("other@example.com"),
+        viewer: await signedInViewer("other@example.com"),
       }),
     ).toMatchObject({
       eventHistory: { status: "redacted" },
@@ -278,7 +278,7 @@ describe("dashboard canonical event reporting", () => {
     });
     const rootParticipantDetail = await readConversationDetail(
       rootConversationId,
-      { viewer: testViewer(" owner@example.COM ") },
+      { viewer: await signedInViewer(" owner@example.COM ") },
     );
     expect(rootParticipantDetail).toMatchObject({
       displayTitle: "Canonical event report",
@@ -410,7 +410,7 @@ describe("dashboard canonical event reporting", () => {
 
     await expect(
       readConversationDetail(cyclicRoot, {
-        viewer: testViewer("cyclic-owner@example.com"),
+        viewer: await signedInViewer("cyclic-owner@example.com"),
       }),
     ).resolves.toMatchObject({
       eventHistory: { status: "redacted" },

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { testViewer } from "../../../fixtures/user";
+import { signedInViewer } from "../../../fixtures/user";
 import { eq } from "drizzle-orm";
 import { createJuniorApi } from "@/api";
 import { readPeopleListFromSql } from "@/api/people/list.query";
@@ -142,7 +142,7 @@ describe("people profile API", () => {
         );
 
       const rootReport = await readPeopleProfileFromSql("owner@example.com", {
-        viewer: testViewer("owner@example.com"),
+        viewer: await signedInViewer("owner@example.com"),
       });
       expect(rootReport.recentConversations).toHaveLength(2);
       expect(rootReport.recentConversations).toEqual(
@@ -195,7 +195,7 @@ describe("people profile API", () => {
       });
 
       const report = await readPeopleProfileFromSql("child@example.com", {
-        viewer: testViewer("OWNER@example.com"),
+        viewer: await signedInViewer("OWNER@example.com"),
       });
 
       expect(report.recentConversations).toEqual([
@@ -212,7 +212,7 @@ describe("people profile API", () => {
       });
       expect(report.recentConversations[0]).not.toHaveProperty("locationId");
       const detail = await readConversationDetail(childConversationId, {
-        viewer: testViewer("owner@example.com"),
+        viewer: await signedInViewer("owner@example.com"),
       });
       expect(detail).toMatchObject(report.recentConversations[0] ?? {});
 
@@ -241,7 +241,7 @@ describe("people profile API", () => {
 
       const malformed = await readPeopleProfileFromSql(
         "malformed@example.com",
-        { viewer: testViewer("owner@example.com") },
+        { viewer: await signedInViewer("owner@example.com") },
       );
       expect(malformed.recentConversations).toEqual([
         expect.objectContaining({

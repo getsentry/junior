@@ -23,7 +23,6 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
-  juniorIdentities,
 } from "@/db/schema";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
@@ -35,7 +34,6 @@ import {
   conversationHasParticipantUser,
   conversationIsMemberRoot,
   conversationIsNotUnsubscribedRoot,
-  viewerConversationMembership,
   type ConversationMember,
 } from "./membership";
 import {
@@ -120,12 +118,7 @@ function conversationCodeRepositoryFilter(
     )`,
     or(
       eq(juniorDestinations.visibility, "public"),
-      viewerUserId
-        ? viewerConversationMembership({
-            actorMatch: eq(juniorIdentities.userId, viewerUserId),
-            participantMatch: conversationHasParticipantUser(viewerUserId),
-          })
-        : undefined,
+      viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
     ),
   );
 }

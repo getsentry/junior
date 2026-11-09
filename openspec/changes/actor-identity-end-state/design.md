@@ -7,31 +7,35 @@ To Use This Plan). A detail marked "current proposal" is not decided.
 
 ## Model
 
-### Owner
+### Root Actor
 
-- The Owner is the Identity that started a root Conversation.
-- Slack, web, and fork Conversations: the human who started it. A fork
-  already makes the requester the Owner of the new root.
+- The root Actor is the Identity that started a root Conversation.
+- Slack, web, and fork Conversations: the human who started it. A fork already
+  makes the requester the root Actor of the new root.
 - Scheduled automations, event automations, plugin dispatch, and the local
   CLI: the system Identity.
-- The Owner is the existing `junior_conversations.actor_identity_id` column.
-  Code and docs call it the Owner. There is no new column and no rename.
-- Junior sets the Owner at insert. No later write changes it. On `main`, the
-  Conversation write still lets the newest value win. #2482 makes it keep
+- The root Actor is the existing `junior_conversations.actor_identity_id`
+  column. Code and docs call it the root Actor. There is no new column and no
+  rename.
+- Junior sets the root Actor at insert. No later write changes it. On `main`,
+  the Conversation write still lets the newest value win. #2482 makes it keep
   the first value.
-- An Automation has a creator (`TERMINOLOGY.md`). The creator is not the
-  Owner of the Conversations that its runs create.
+- An Automation has a creator (`TERMINOLOGY.md`). The creator is not the root
+  Actor of the Conversations that its runs create.
+- The root Actor is attribution only. A Conversation has no owner. Access,
+  feeds, and default assignees use Participants (`TERMINOLOGY.md`). A human root
+  Actor is a Participant like any other.
 
-### Owner Repair
+### Root Actor Repair
 
-Owner repair (#2431) fixes wrong data. It is not a migration, because no
-special code exists for the damaged rows. It is separate from the data
-migration in Legacy Data.
+Root Actor repair (#2431) fixes wrong data. It is not a migration, because no
+special code exists for the damaged rows. It is separate from the data migration
+in Legacy Data.
 
 Before #2436, the Conversation write could replace the human Identity of a
-`slack` or `web` root with a system Identity. The same write can also replace
-a system Identity, or one human Identity, with a later human Identity. So the
-Owner of a root is not always its starter. Until #2482 runs on every worker,
+`slack` or `web` root with a system Identity. The same write can also replace a
+system Identity, or one human Identity, with a later human Identity. So the root
+Actor of a root is not always its starter. Until #2482 runs on every worker,
 this damage can keep happening.
 
 Rules:
@@ -39,40 +43,40 @@ Rules:
 - Leave old rows as they are, unless a dry run proves the repair rule.
 - Run a dry run first, and post its counts on #2439.
 - Do not run a production backfill without explicit approval.
-- When the dry run shows that a rule disagrees with rows that were not
-  damaged, drop that rule. Then those rows keep their current Owner.
+- When the dry run shows that a rule disagrees with rows that were not damaged,
+  drop that rule. Then those rows keep their current root Actor.
 - Each human who loses the root keeps access as a participant.
-- Roots with any other Source keep their current Owner until the dry run is
+- Roots with any other Source keep their current root Actor until the dry run is
   reviewed.
 
 The rules to prove:
 
 - **System Source taken over by a human.** A root with a system Source
-  (`scheduler`, `event`, or `local`) and a human Owner today goes back to the
-  `system` Identity. This is provable, because the Source is set-once.
-- **Slack or web root with a system Owner.** Current proposal. Junior repairs
-  it only when the dry run proves the rule:
+  (`scheduler`, `event`, or `local`) and a human root Actor today goes back to
+  the `system` Identity. This is provable, because the Source is set-once.
+- **Slack or web root with a system root Actor.** Current proposal. Junior
+  repairs it only when the dry run proves the rule:
   - Repair only a root that is not a fork, has a `slack` or `web` Source, and
-    has a system Owner today.
-  - The repaired Owner is the author of the first human user Message. That
+    has a system root Actor today.
+  - The repaired root Actor is the author of the first human user Message. That
     author must be a person with a User that fits the Source.
   - Repair only roots with one author User across their human user Messages.
     Junior cannot pick the starter of a root with more than one human author.
   - Event Messages and bot Messages do not count as human user Messages.
     An event Turn is how many damaged roots got their system Identity, so
     these roots have event Messages.
-  - Agreement check: on roots that have a `user` Owner today and one author
-    User, count the rows where that author is a different User. One
-    disagreement drops this rule.
+  - Agreement check: on roots that have a `user` root Actor today and one author
+    User, count the rows where that author is a different User. One disagreement
+    drops this rule.
 
 ### Child Conversations
 
-- A child stores no Owner. It reads its root Owner.
-- Today the Conversation write also copies an Owner onto child rows. Step 3
+- A child stores no root Actor. It reads its root Actor.
+- Today the Conversation write also copies a root Actor onto child rows. Step 3
   stops this. The data migration clears the old copies.
-- Access already reads the root Owner, not the child's own copy. #2382 uses
-  the same rule for visibility.
-- Child spend goes to the root Owner. Today spend reads the child's own copy.
+- Access reads the Participants of the root, not the child's own copy. #2382
+  uses the same rule for visibility.
+- Child spend goes to the root Actor. Today spend reads the child's own copy.
 - `onBehalfOf` (#2181) is Message provenance. It gives no access, spend, or
   feed rights.
 
@@ -101,7 +105,7 @@ The rules to prove:
   OAuth link.
 - Spend, People, participants, and Locations roll up by User. The Identity
   is the fallback only for an Identity with no User, such as a bot.
-- A Message author and an Owner are Identities. A reader joins the Identity
+- A Message author and a root Actor are Identities. A reader joins the Identity
   to its User to group.
 - Legacy `junior/<email>` web Identities need no migration. Each one is a
   valid Identity that links to the right User, so readers that group by User
@@ -135,8 +139,8 @@ The rules to prove:
 - An event is a Message with role `user`. Its author is the Identity of the
   person or bot who wrote the content. An event with no author uses the
   system Identity. It is a system event, and it runs as today.
-- An event never changes the Owner or the Turn Actor. Event Turns run as the
-  system Actor, as on `main` today (`EVENT_SYSTEM_ACTOR` in
+- An event never changes the root Actor or the Turn Actor. Event Turns run as
+  the system Actor, as on `main` today (`EVENT_SYSTEM_ACTOR` in
   `chat/events/actor.ts`).
 - Junior still resolves the author to its Identity and, when there is one,
   its linked User. The author labels the Message and feeds the trust check.
@@ -255,14 +259,14 @@ with the Watch or Automation grant.
 - The Inbound message and the Message carry the author Identity id as
   `authorIdentityId`. The Turn carries the Identity id of its Actor as
   `actorIdentityId` (`tasks.md`, step 2).
-- The Conversation carries the Owner.
+- The Conversation carries the root Actor.
 
 ## Storage Rules
 
-- Each root Conversation stores its Owner in the existing Conversation
+- Each root Conversation stores its root Actor in the existing Conversation
   Identity column. A child stores none.
-- Enforcement that a new root has an Owner ships only after every writer sets
-  it. It does not apply to legacy rows.
+- Enforcement that a new root has a root Actor ships only after every writer
+  sets it. It does not apply to legacy rows.
 - Enforcement that a new user Message has an author ships only after every
   writer sets it. It does not apply to legacy rows.
 - The two unused Conversation Identity columns and the stored Actor JSON go
@@ -288,7 +292,7 @@ These shapes need the migration:
 - The per-name `scheduler`, `local-cli`, and `event` system rows. They merge
   into the one `system` Identity. The dashboard labels must come from the
   Conversation Source first.
-- Owner copies on child Conversations.
+- Root Actor copies on child Conversations.
 - The two unused Conversation Identity columns (`creator_identity_id` and
   `credential_subject_identity_id`). Code writes them only as empty. The dry
   run confirms that they are empty, and a later release drops them.
@@ -303,8 +307,8 @@ The migration runs in a later release than the code change, when no worker
 writes the old shapes. It reads the foreign keys from the database, not from
 this plan. It deletes no row that still has a reference.
 
-Owner repair is not in this list. It fixes wrong data, not a code path
-(Owner Repair).
+Root Actor repair is not in this list. It fixes wrong data, not a code path
+(Root Actor Repair).
 
 ## Known Gaps
 
@@ -329,7 +333,7 @@ review) closes gap 10 for new writes and fixes part of gap 7.
 | 7   | The participant list shows system Identities.                                                             | `api/conversations/participants.ts`                                   | 2, 4                          | Confirmed |
 | 8   | Locations show a person with two Identities two times.                                                    | `api/locations/query.ts`                                              | 3                             | Confirmed |
 | 9   | Connections are keyed per platform. A Slack connection does not show on the web.                          | `api/connections/routes.ts`                                           | Non-Goal                      | Confirmed |
-| 10  | A later human Turn can replace the Owner of a system root. #2436 fixed only the Source case.              | `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`            | 2; old damage: 7              | Confirmed |
+| 10  | A later human Turn can replace the root Actor of a system root. #2436 fixed only the Source case.         | `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`            | 2; old damage: 7              | Confirmed |
 | 11  | Legacy system Identity names do not match `SystemActor.name` values.                                      | `sql/actor-identity.ts`                                               | 3, 6                          | Confirmed |
 | 12  | The local CLI uses one user id for every person and for its tokens.                                       | `chat/local/runner.ts`, `chat/local/credential-sync.ts`               | 4; naming the human: Non-Goal | Confirmed |
 | 13  | The `Actor` schema is closed. A TODO questions the system platform value.                                 | `junior-plugin-api/src/schemas.ts`                                    | Non-Goal                      | Confirmed |
@@ -338,5 +342,5 @@ review) closes gap 10 for new writes and fixes part of gap 7.
 | 16  | Two Conversation Identity columns are always empty.                                                       | `chat/conversations/sql/store.ts`                                     | 3, 9                          | Confirmed |
 | 17  | Web uses the synthetic `junior/<email>` Identity. The mock viewer and the local bypass have none.         | `sql/actor-identity.ts`, `junior-dashboard/src/app.ts`                | 4; old rows: no migration     | Confirmed |
 | 18  | No rule checks if an event author is a verified person before Junior follows their text.                  | `agent-invocations/root-conversation.ts`, `guardian/policy.ts`        | 4                             | Traced    |
-| 19  | Old rows: roots whose Owner is not their starter, and wrong visibility from before #2440.                 | `junior_conversations`, `junior_destinations`                         | 7 (repair); visibility: #2382 | Traced    |
-| 20  | Child rows store their own Owner copy, and spend reads it. Child spend can miss the root Owner.           | `chat/conversations/sql/store.ts`, `api/people/spend.query.ts`        | 3, 6                          | Confirmed |
+| 19  | Old rows: roots whose root Actor is not their starter, and wrong visibility from before #2440.            | `junior_conversations`, `junior_destinations`                         | 7 (repair); visibility: #2382 | Traced    |
+| 20  | Child rows store their own root Actor copy, and spend reads it. Child spend can miss the root Actor.      | `chat/conversations/sql/store.ts`, `api/people/spend.query.ts`        | 3, 6                          | Confirmed |

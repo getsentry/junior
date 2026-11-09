@@ -32,9 +32,9 @@
 
 ## Dependencies
 
-- #2260 (stacked on #2217) before step 4. Step 4 builds event authors and
-  the trust rule on #2260's event author. #2260's Watch requester is
-  provenance, not an Owner.
+- #2260 (stacked on #2217) before step 4. Step 4 builds event authors and the
+  trust rule on #2260's event author. #2260's Watch requester is provenance, not
+  a root Actor.
 - #2181 before step 8. Both change root Conversation Message authors and
   Guardian.
 - #2211 owns the record of which Automation or dispatch did the work.
@@ -67,8 +67,8 @@ Finish #2482.
 - **Done when:**
   - every ingress path sets the author Identity id on the Turn, the mailbox
     entry, and each new user Message. Assistant output sets none.
-  - the Conversation write uses the stored id and keeps the first value. A
-    human reply cannot replace the Owner of a system root.
+  - the Conversation write uses the stored id and keeps the first value. A human
+    reply cannot replace the root Actor of a system root.
   - the system Identity has the fixed id `system`.
   - fallbacks stay for rows and entries with no id, and each fallback logs.
 - **Constraints:**
@@ -101,16 +101,16 @@ Finish #2482.
       checkpoint. The Message event field is already on `main`.
 - **Plan choices for the writers. David has not confirmed these.**
   - Each fallback logs only when an id is missing: a new user Message, a new
-    root Conversation with no Owner id, or a Turn checkpoint that resumes
+    root Conversation with no root Actor id, or a Turn checkpoint that resumes
     with no `actorIdentityId`.
   - The system Identity is the author of the task Message that a parent
     agent writes in a child Conversation, and of the result Message that a
     child sends back. An agent wrote the text, and its provenance has no
     Actor, so it never counts as user intent.
 
-## 3. System Labels, Owner Name, And Root Owner Readers
+## 3. System Labels, Root Actor Name, And Root Actor Readers
 
-- **Goal:** the Owner has one name, one place, and one rule for every
+- **Goal:** the root Actor has one name, one place, and one rule for every
   reader.
 - **Done when:**
   - the dashboard takes system root labels from the Conversation Source, or
@@ -118,21 +118,21 @@ Finish #2482.
     "System".
   - new system Conversations use the `system` Identity. Junior writes no new
     per-name system rows.
-  - code and docs call `junior_conversations.actor_identity_id` the Owner.
-    The Conversation exposes its Owner. The column keeps its name.
-  - every reader of the Owner uses the root Owner: access, the feed, People,
-    spend, and Locations. Child spend rolls up to the root Owner.
+  - code and docs call `junior_conversations.actor_identity_id` the root Actor.
+    The Conversation exposes its root Actor. The column keeps its name.
+  - People, spend, and Locations read the root Actor of the root. Access and the
+    feed read only Participants. Child spend rolls up to the root Actor.
   - Locations group by User, with the Identity as fallback.
-  - children stop storing an Owner.
+  - children stop storing a root Actor.
   - nothing writes or reads the two unused Conversation Identity columns.
   - the PR states the behavior changes (`proposal.md`).
 - **Constraints:**
-  - the root Owner readers ship in a release before children stop storing
-    an Owner.
+  - the root Actor readers ship in a release before children stop storing a root
+    Actor.
   - the labels ship before or with the change that stops the per-name
     system rows.
   - no backfill. Old child copies and old system rows stay until step 6.
-- **Decide in this step:** the name of the Owner field in code, and the
+- **Decide in this step:** the name of the root Actor field in code, and the
   label source for each system Source.
 
 ## 4. Real Identities And Trust
@@ -191,8 +191,8 @@ Finish #2482.
 - **Goal:** prove each migration and repair rule on production data before
   any write.
 - **Done when:**
-  - a read-only dry run counts each old data shape in `design.md`, Legacy
-    Data, and each Owner repair rule in `design.md`, Owner Repair.
+  - a read-only dry run counts each old data shape in `design.md`, Legacy Data,
+    and each Root Actor repair rule in `design.md`, Root Actor Repair.
   - it counts the old user Messages whose author it cannot prove, to
     confirm that they are uncommon.
   - it counts the rows that each rule would change, and the rows where a
@@ -219,7 +219,7 @@ Finish #2482.
     the rule.
   - the per-name system rows are merged into the `system` Identity. No row
     that still has a reference is deleted.
-  - child Conversations have no Owner copy.
+  - child Conversations have no root Actor copy.
 - **Constraints:**
   - only the rules that the dry run proved, and only after David's OK.
   - safe under a rolling deploy. No worker still writes the old shapes.
@@ -227,20 +227,20 @@ Finish #2482.
     plan.
 - **Decide in this step:** the migration SQL and its batches.
 
-## 7. Owner Repair
+## 7. Root Actor Repair
 
-- **Goal:** fix old Owner damage (#2431) where the dry run proved the rule.
+- **Goal:** fix old root Actor damage (#2431) where the dry run proved the rule.
 - **Done when:**
-  - roots with a system Source that a human took over have the `system`
-    Owner again.
-  - Slack and web roots with a system Owner are repaired only if the dry run
-    proved that rule.
+  - roots with a system Source that a human took over have the `system` root
+    Actor again.
+  - Slack and web roots with a system root Actor are repaired only if the dry
+    run proved that rule.
   - each human who loses the root keeps access as a participant.
   - the PR states the behavior changes (`proposal.md`).
 - **Constraints:**
   - needs #2482 on every worker, so the damage has stopped.
   - only the rules that the dry run proved, and only after David's OK.
-  - roots with a Source that the rules do not cover keep their Owner.
+  - roots with a Source that the rules do not cover keep their root Actor.
 - **Decide in this step:** the repair SQL.
 
 ## 8. Delete Fallbacks And Retire Stored Actors
@@ -250,8 +250,8 @@ Finish #2482.
 - **Done when:**
   - the legacy fallbacks and the special code for each migrated shape are
     gone.
-  - enforcement for new user Message rows and new root Owners is live.
-    Assistant Messages need no author.
+  - enforcement for new user Message rows and new root Actors is live. Assistant
+    Messages need no author.
   - Conversations and Redis work state store the Identity id, not a stored
     Slack-shaped Actor.
   - Guardian sees web Actors as web and uses the stored author for human and
@@ -277,8 +277,8 @@ Finish #2482.
 - **Done when:**
   - the two unused Conversation Identity columns and the stored Actor JSON
     are gone.
-  - the durable rules live beside the owning code: the Owner and child rules
-    in the Conversations README, and the system Identity and author rule in
-    the Identities README.
+  - the durable rules live beside the owning code: the root Actor and child
+    rules in the Conversations README, and the system Identity and author rule
+    in the Identities README.
   - this plan is deleted.
 - **Constraints:** ships one release after step 8 runs on every worker.

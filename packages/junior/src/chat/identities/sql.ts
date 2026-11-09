@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
+import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
 import {
   GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
@@ -183,6 +184,12 @@ async function upsertIdentityRecord(
       throw new Error("Identity conflicts with linked user");
     }
     throw new Error("Identity upsert returned no row");
+  }
+  if (existing && !existing.userId && row.userId && identity.kind === "user") {
+    await recordStartedConversationParticipants(executor, {
+      identityId: row.id,
+      userId: row.userId,
+    });
   }
   return {
     id: row.id,

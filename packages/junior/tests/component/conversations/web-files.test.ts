@@ -12,7 +12,7 @@ import {
   closeConversationFixture,
 } from "../../fixtures/conversation";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
-import { testViewer } from "../../fixtures/user";
+import { signedInViewer } from "../../fixtures/user";
 
 async function webFiles() {
   const fixture = await createConversationFixture();
@@ -72,7 +72,7 @@ describe("web file delivery", () => {
     const app = new Hono<JuniorApiEnv>();
     app.use("*", async (ctx, next) => {
       const email = ctx.req.header("x-test-viewer");
-      if (email) ctx.set("viewer", testViewer(email));
+      if (email) ctx.set("viewer", await signedInViewer(email));
       await next();
     });
     app.route(
