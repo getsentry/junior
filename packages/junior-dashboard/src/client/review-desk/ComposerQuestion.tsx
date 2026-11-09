@@ -78,12 +78,15 @@ export function ComposerQuestion(props: {
   const count = props.questions.length;
   const step = (offset: number) =>
     setSelectedId(props.questions[(index + offset + count) % count]!.id);
-  // Keep the keys working after an answer: the next question takes focus, or
-  // the message box when none is left.
-  const afterAction = () => {
-    if (count > 1) sectionRef.current?.focus();
-    else props.focusMessageBox();
+  // Keep the keys working after an action: the question keeps focus while one
+  // is open, and the message box takes it when none is left. Take keeps the
+  // question open.
+  const afterAction = (closed: boolean) => {
+    if (closed && count === 1) props.focusMessageBox();
+    else sectionRef.current?.focus();
   };
+  const current = () =>
+    sectionRef.current?.querySelector("[data-current-question]");
 
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (
@@ -97,12 +100,12 @@ export function ComposerQuestion(props: {
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      sectionRef.current
+      current()
         ?.querySelector<HTMLButtonElement>("[data-dismiss-question]")
         ?.click();
       return;
     }
-    const choice = sectionRef.current?.querySelector<HTMLButtonElement>(
+    const choice = current()?.querySelector<HTMLButtonElement>(
       `button[aria-keyshortcuts="${CSS.escape(event.key)}"]:not(:disabled)`,
     );
     if (choice) {
@@ -127,45 +130,53 @@ export function ComposerQuestion(props: {
       }}
       tabIndex={-1}
     >
-      <DockedQuestion
-        afterAction={afterAction}
-        // A new question gets a fresh form, so picks do not carry over.
-        key={item.id}
-        item={item}
-        stepper={
-          count > 1 ? (
-            <div className="flex shrink-0 items-center gap-0.5 text-xs text-dashboard-text-muted">
-              <Button
-                aria-label="Previous question"
-                className="size-7"
-                onClick={() => step(-1)}
-                size="icon"
-                variant="quiet"
-              >
-                <ChevronLeft aria-hidden="true" size={15} />
-              </Button>
-              <span className="tabular-nums">
-                {index + 1} of {count}
-              </span>
-              <Button
-                aria-label="Next question"
-                className="size-7"
-                onClick={() => step(1)}
-                size="icon"
-                variant="quiet"
-              >
-                <ChevronRight aria-hidden="true" size={15} />
-              </Button>
-            </div>
-          ) : null
-        }
-      />
+      {/* Every open question stays mounted, so picks and notes survive a
+          step to another question, and each one reports its unsent answer. */}
+      {props.questions.map((question, position) => (
+        <div
+          className={position === index ? "grid min-w-0 gap-2" : "hidden"}
+          data-current-question={position === index ? "" : undefined}
+          key={question.id}
+        >
+          <DockedQuestion
+            afterAction={afterAction}
+            item={question}
+            stepper={
+              count > 1 ? (
+                <div className="flex shrink-0 items-center gap-0.5 text-xs text-dashboard-text-muted">
+                  <Button
+                    aria-label="Previous question"
+                    className="size-7"
+                    onClick={() => step(-1)}
+                    size="icon"
+                    variant="quiet"
+                  >
+                    <ChevronLeft aria-hidden="true" size={15} />
+                  </Button>
+                  <span className="tabular-nums">
+                    {position + 1} of {count}
+                  </span>
+                  <Button
+                    aria-label="Next question"
+                    className="size-7"
+                    onClick={() => step(1)}
+                    size="icon"
+                    variant="quiet"
+                  >
+                    <ChevronRight aria-hidden="true" size={15} />
+                  </Button>
+                </div>
+              ) : null
+            }
+          />
+        </div>
+      ))}
     </section>
   );
 }
 
 function DockedQuestion(props: {
-  afterAction(): void;
+  afterAction(closed: boolean): void;
   item: ReviewItemPayload;
   stepper: ReactNode;
 }) {
@@ -183,7 +194,7 @@ function DockedQuestion(props: {
       setError(actionError(failure));
       throw failure;
     }
-    props.afterAction();
+    props.afterAction(body.action !== "take");
   }
 
   return (
