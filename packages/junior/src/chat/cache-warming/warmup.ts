@@ -35,13 +35,13 @@ import { getChatConfig } from "@/chat/config";
 import { runWithLogContext } from "@/chat/log-context";
 import { logInfo, logWarn } from "@/chat/logging";
 import { completeText } from "@/chat/core-model";
-import { isProviderRetryError } from "@/chat/services/provider-error";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
 import { captureMessage } from "@/chat/sentry";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   decideWarmup,
+  warmupFailureCountsAsMiss,
   gapSegment,
   IDLE_HORIZON_MS,
   MINUTE_MS,
@@ -641,11 +641,7 @@ export async function runCacheWarmup(
         // Use the agent's gateway session, so the warmup reaches the same cache.
         sessionId: conversationId,
       }).catch(async (error: unknown) => {
-        // A request that the provider rejects fails the same way for each
-        // Conversation. Count it, so the breaker stops these requests. A
-        // retryable error, such as an overload, says nothing about the cache,
-        // so it must not open the breaker for every Conversation.
-        if (!isProviderRetryError(error)) {
+        if (warmupFailureCountsAsMiss(error)) {
           await countOutcome(state, warm.modelId, true);
         }
         await stop();

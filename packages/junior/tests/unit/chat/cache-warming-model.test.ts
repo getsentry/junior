@@ -3,7 +3,9 @@ import {
   decideWarmup as decideWarmupAt,
   NO_REPLY_GAP_MS,
   type WarmupDecisionInput,
+  warmupFailureCountsAsMiss,
 } from "@/chat/cache-warming/model";
+import { createProviderError } from "@/chat/services/provider-error";
 
 const MINUTE = 60_000;
 // Anthropic Opus prices in $/MTok and its 5-minute cache.
@@ -220,5 +222,24 @@ describe("decideWarmup", () => {
         prefixTokens: 200_000,
       }),
     ).toMatchObject({ warm: false, reason: "few_gaps" });
+  });
+});
+
+describe("warmupFailureCountsAsMiss", () => {
+  it("counts provider rejections but not retryable failures", () => {
+    // The messages that Pi reports for Anthropic errors.
+    const overloaded = createProviderError(
+      '529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+    );
+    const rateLimited = createProviderError(
+      '429 {"type":"error","error":{"type":"rate_limit_error","message":"Rate limited"}}',
+    );
+    const rejected = createProviderError(
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"Bad cache_control"}}',
+    );
+
+    expect(warmupFailureCountsAsMiss(overloaded)).toBe(false);
+    expect(warmupFailureCountsAsMiss(rateLimited)).toBe(false);
+    expect(warmupFailureCountsAsMiss(rejected)).toBe(true);
   });
 });

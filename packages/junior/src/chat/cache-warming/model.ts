@@ -7,6 +7,8 @@
  * compares that chance with the cost of one more warmup.
  */
 
+import { isProviderRetryError } from "@/chat/services/provider-error";
+
 /** One minute in milliseconds. */
 export const MINUTE_MS = 60_000;
 
@@ -60,6 +62,17 @@ export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
  * 5 minutes let a late horizon still record its no-reply gap.
  */
 export const IDLE_HORIZON_MS = 55 * MINUTE_MS;
+
+/**
+ * Whether a failed warmup request counts as a miss for the provider breaker.
+ * A request that the provider rejects fails the same way for each
+ * Conversation, so it counts. A retryable failure, such as an overload or a
+ * timeout, says nothing about the cache, so it must not stop warming for
+ * every Conversation.
+ */
+export function warmupFailureCountsAsMiss(error: unknown): boolean {
+  return !isProviderRetryError(error);
+}
 
 /** Gap that Junior records for an idle period with no reply in the horizon. */
 export const NO_REPLY_GAP_MS = 24 * 60 * MINUTE_MS;
