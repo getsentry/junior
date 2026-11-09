@@ -65,6 +65,7 @@ import {
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
@@ -323,6 +324,7 @@ export async function completeText(params: {
     ...(params.system
       ? { "gen_ai.system_instructions.content_chars": params.system.length }
       : undefined),
+    ...requestPrefixAttributes(params.system),
     ...(systemInstructionsAttribute
       ? { "gen_ai.system_instructions": systemInstructionsAttribute }
       : undefined),
@@ -538,6 +540,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
         "gen_ai.output.type": "json",
+        ...requestPrefixAttributes(params.system),
         ...(params.promptName
           ? { "gen_ai.prompt.name": params.promptName }
           : undefined),

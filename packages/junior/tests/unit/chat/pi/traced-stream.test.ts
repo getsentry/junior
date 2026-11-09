@@ -5,6 +5,7 @@ import {
   type AssistantMessage,
   type AssistantMessageEvent,
   type Model,
+  type Tool,
 } from "@earendil-works/pi-ai";
 import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 
@@ -137,6 +138,49 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.system_instructions"]).toBeUndefined();
     expect(opts.attributes["gen_ai.operation.name"]).toBe("chat");
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
+  });
+
+  it("hashes the system prompt and model-facing tool list", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const base = vi.fn(() => createAssistantMessageEventStream());
+    const traced = createTracedStreamFn(base as StreamFn);
+    const tool = (description: string): Tool => ({
+      name: "search",
+      description,
+      parameters: { type: "object", properties: {} } as Tool["parameters"],
+    });
+    const call = async (description: string) => {
+      await traced(
+        fakeModel("openai/gpt-5.4"),
+        {
+          systemPrompt: "you are junior",
+          messages: [{ role: "user", content: "hi", timestamp: 0 }],
+          tools: [tool(description)],
+        },
+        undefined,
+      );
+      return spanStartOptions(startInactiveSpan.mock.calls.at(-1)?.[0])
+        .attributes;
+    };
+
+    const first = await call("Search the web.");
+    const same = await call("Search the web.");
+    const changed = await call("Search the internet.");
+
+    expect(first["app.ai.request.tools.count"]).toBe(1);
+    expect(first["app.ai.request.tools.hash"]).toMatch(/^[0-9a-f]{16}$/);
+    expect(first["app.ai.request.system_instructions.hash"]).toMatch(
+      /^[0-9a-f]{16}$/,
+    );
+    expect(same["app.ai.request.tools.hash"]).toBe(
+      first["app.ai.request.tools.hash"],
+    );
+    expect(changed["app.ai.request.tools.hash"]).not.toBe(
+      first["app.ai.request.tools.hash"],
+    );
+    expect(changed["app.ai.request.system_instructions.hash"]).toBe(
+      first["app.ai.request.system_instructions.hash"],
+    );
   });
 
   it("keeps private conversation content out of semantic attributes", async () => {

@@ -24,6 +24,7 @@ import {
   GEN_AI_SERVER_ADDRESS,
   GEN_AI_SERVER_PORT,
 } from "@/chat/pi/client";
+import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 import {
   type ConversationPrivacy,
   toCanonicalInputMessage,
@@ -81,6 +82,7 @@ function buildChatStartAttributes(
       ? { "app.conversation.privacy": conversationPrivacy }
       : undefined),
     ...toGenAiMessagesTraceAttributes("gen_ai.input", context.messages),
+    ...requestPrefixAttributes(context.systemPrompt, context.tools ?? []),
   };
 
   if (mode === "content") {
