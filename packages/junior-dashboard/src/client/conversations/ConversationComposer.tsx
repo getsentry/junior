@@ -119,10 +119,13 @@ type ConversationComposerProps = {
   submitLabel: string;
   /**
    * Return a promise to run before a send, such as a question to the reader
-   * or answers that go with the message. The draft stays when it resolves
-   * false. Return undefined to send at once.
+   * or answers that go with the message. `sendsMessage` is false when the
+   * draft is empty, so only those answers go. The draft stays when it
+   * resolves false. Return undefined to send at once.
    */
-  beforeSubmit?: () => Promise<boolean> | undefined;
+  beforeSubmit?: (send: {
+    sendsMessage: boolean;
+  }) => Promise<boolean> | undefined;
   /**
    * Enable Send with an empty draft, because `beforeSubmit` has input of its
    * own to send. An empty draft then sends no message.
@@ -321,7 +324,11 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
     if (!canSubmit()) return;
-    const confirmation = props.beforeSubmit?.();
+    const confirmation = props.beforeSubmit?.({
+      sendsMessage: Boolean(
+        draftRef.current.text.trim() || imagesRef.current.length,
+      ),
+    });
     if (confirmation) {
       confirmingRef.current = true;
       let confirmed: boolean;

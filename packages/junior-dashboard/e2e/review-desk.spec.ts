@@ -112,7 +112,10 @@ const migration = {
   title: "Pick the billing migration window",
 };
 
-async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
+async function mockReviewItems(
+  page: Page,
+  options: { open?: unknown[]; pageSize?: number } = {},
+) {
   const actions: { body: unknown; id: string }[] = [];
   const open = (options.open ?? [
     rollout,
@@ -131,14 +134,18 @@ async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       const linked = url.searchParams.get("conversationId");
       // A search also finds archived items, after the open ones.
-      const list = q ? [...open, ...archived] : open;
+      const list = (q ? [...open, ...archived] : open).filter(
+        (i) =>
+          i.title.toLowerCase().includes(q) &&
+          (!linked || i.conversationIds.includes(linked)),
+      );
+      // The cursor is the index of the first item of the page.
+      const start = Number(url.searchParams.get("cursor") ?? 0);
+      const end = start + (options.pageSize ?? list.length);
       return route.fulfill({
         json: {
-          items: list.filter(
-            (i) =>
-              i.title.toLowerCase().includes(q) &&
-              (!linked || i.conversationIds.includes(linked)),
-          ),
+          items: list.slice(start, end),
+          ...(end < list.length ? { nextCursor: String(end) } : undefined),
         },
       });
     }
@@ -468,11 +475,15 @@ test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await screenshot(page, "review-desk-empty", { view: "desktop" });
 });
 
-test("a message sends docked picks and asks before it drops others", async ({
+test("Send sends docked picks and asks before a message drops others", async ({
   dashboard,
   page,
 }) => {
-  const actions = await mockReviewItems(page);
+  // A notice fills the first page, so the question docks from the second.
+  const actions = await mockReviewItems(page, {
+    open: [{ ...prReady, conversationIds: [conversationId] }, migration],
+    pageSize: 1,
+  });
   // Each message records how many answers were sent before it.
   const messages: { answersBefore: number; message: string }[] = [];
   const path = `**/api/conversations/${encodeURIComponent(conversationId)}`;
@@ -530,37 +541,42 @@ test("a message sends docked picks and asks before it drops others", async ({
   });
   const composer = page.getByLabel("Continue this conversation");
 
-  // The message box sends the docked picks first, then the typed words.
-  await expect(
-    question.getByRole("textbox", { name: /Anything else/ }),
-  ).toHaveCount(0);
-  await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
-  await question.getByRole("radio", { name: "Approve" }).click();
-  await composer.fill("Thursday works.");
-  await composer.press("Enter");
-  await expect
-    .poll(() => messages)
-    .toEqual([{ answersBefore: 1, message: "Thursday works." }]);
-  expect(actions).toEqual([
-    {
-      body: { action: "submit", answer: { values: { decision: ["Approve"] } } },
-      id: migration.id,
-    },
-  ]);
-  await expect(composer).toHaveValue("");
-
-  // Picks in the details panel do not go with a message, so it asks first.
+  // Picks in the details panel do not go with a message.
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
     .click();
   const details = page.getByRole("region", { name: "Needs you" });
   await details.getByRole("button", { name: migration.title }).click();
   await details.getByRole("radio", { name: "Reject" }).click();
-  await composer.fill("Friday works.");
+
+  // The message box sends the docked picks. With an empty draft no message
+  // goes, so nothing asks about the details-panel picks.
+  await expect(
+    question.getByRole("textbox", { name: /Anything else/ }),
+  ).toHaveCount(0);
+  await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
+  await question.getByRole("radio", { name: "Approve" }).click();
   await composer.press("Enter");
+  await expect
+    .poll(() => actions)
+    .toEqual([
+      {
+        body: {
+          action: "submit",
+          answer: { values: { decision: ["Approve"] } },
+        },
+        id: migration.id,
+      },
+    ]);
   const confirm = page.getByRole("alertdialog", {
     name: "Send without your answers?",
   });
+  await expect(confirm).toHaveCount(0);
+  expect(messages).toEqual([]);
+
+  // A message drops the details-panel picks, so it asks first.
+  await composer.fill("Friday works.");
+  await composer.press("Enter");
   await expect(confirm).toContainText(migration.title);
   // A mobile view would close the details panel and its picks.
   await screenshot(page, "conversation-unsent-answers", { view: "desktop" });
@@ -569,13 +585,13 @@ test("a message sends docked picks and asks before it drops others", async ({
   await expect(confirm).toBeHidden();
   await expect(composer).toHaveValue("Friday works.");
   await expect(details.getByRole("radio", { name: "Reject" })).toBeChecked();
-  expect(messages).toHaveLength(1);
+  expect(messages).toEqual([]);
 
   // The reader can send the message anyway.
   await composer.press("ControlOrMeta+Enter");
   await confirm.getByRole("button", { name: "Send message" }).click();
   await expect
-    .poll(() => messages.map((m) => m.message))
-    .toEqual(["Thursday works.", "Friday works."]);
+    .poll(() => messages)
+    .toEqual([{ answersBefore: 1, message: "Friday works." }]);
   expect(actions).toHaveLength(1);
 });
