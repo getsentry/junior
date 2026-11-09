@@ -53,10 +53,11 @@ import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 // Compress off the event loop, so a large snapshot does not delay other work.
 const zstdCompress = promisify(zstdCompressCallback);
 const zstdDecompress = promisify(zstdDecompressCallback);
-// On a sample context, zstd level 4 is about 5% larger than gzip and almost
-// twice as fast.
+// Compute matters more than size here. On sample contexts, level 1 is the
+// fastest level that keeps the snapshot within about 10% of level 3's size.
+// Negative levels are no faster and much larger.
 const SNAPSHOT_ZSTD_PARAMS = {
-  params: { [zlibConstants.ZSTD_c_compressionLevel]: 4 },
+  params: { [zlibConstants.ZSTD_c_compressionLevel]: 1 },
 };
 
 const KEY_PREFIX = "junior:cache_warming";
