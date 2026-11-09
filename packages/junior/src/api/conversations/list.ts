@@ -193,7 +193,7 @@ async function conversationRows(
 
 /**
  * Read the viewer's active conversations that wait on them but fall outside
- * the newest page. Needs attention shows every conversation that waits on the
+ * the newest page. Needs you shows every conversation that waits on the
  * viewer, so an old one must come back to the feed.
  */
 async function waitingRowsOutsidePage(

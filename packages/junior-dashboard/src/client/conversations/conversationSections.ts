@@ -7,29 +7,30 @@ export type ConversationSection = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Pinned sorts first, then Needs attention, then every time section.
+// Pinned sorts first, then Needs you, then every time section.
 const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -2 };
-const ATTENTION_SECTION = {
-  key: "attention",
-  label: "Needs attention",
-  order: -1,
-};
+const NEEDS_YOU_SECTION = { key: "needs-you", label: "Needs you", order: -1 };
+
+/** Conversations that wait on the viewer, by id. */
+type WaitingIds = Pick<ReadonlySet<string>, "has">;
 
 /**
- * Group conversations into Pinned, then Needs attention, then by last
- * activity: Today, Yesterday, Previous 7 days, Previous 30 days, then one
- * section per month.
+ * Group conversations into Pinned, then Needs you, then by last activity:
+ * Today, Yesterday, Previous 7 days, Previous 30 days, then one section per
+ * month.
  *
- * A pinned conversation shows only in Pinned, even when it needs attention.
- * Pinned follows the viewer's order; every other section, Needs attention
- * too, lists the newest first.
+ * Needs you holds only the conversations in `waitingIds`, which wait on the
+ * viewer. Unread and open work do not move a row. A pinned conversation
+ * shows only in Pinned, even when it waits on the viewer. Pinned follows the
+ * viewer's order; every other section, Needs you too, lists the newest
+ * first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
   options: {
-    attentionIds: ReadonlySet<string>;
     nowMs: number;
     timeZone: string;
+    waitingIds: WaitingIds;
   },
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
@@ -41,8 +42,8 @@ export function buildConversationSections(
   for (const conversation of sorted) {
     const section = conversation.pinnedAt
       ? PINNED_SECTION
-      : needsAttention(conversation, options.attentionIds)
-        ? ATTENTION_SECTION
+      : options.waitingIds.has(conversation.id)
+        ? NEEDS_YOU_SECTION
         : conversationSection(
             activityTime(conversation),
             nowDay,
@@ -64,49 +65,17 @@ export function buildConversationSections(
 }
 
 /**
- * True when the conversation waits on a person: its id is in `attentionIds`,
- * or it has unfinished work, such as an open pull request, while Junior is
- * not running in it.
- */
-function needsAttention(
-  conversation: Conversation,
-  attentionIds: ReadonlySet<string>,
-): boolean {
-  return (
-    attentionIds.has(conversation.id) ||
-    (conversation.unfinishedWork === true && conversation.status !== "active")
-  );
-}
-
-/** Join the conversations that wait on the viewer or are unread. */
-export function attentionConversationIds(
-  conversations: readonly Conversation[],
-  waitingConversationIds: Iterable<string>,
-): ReadonlySet<string> {
-  return new Set([
-    ...waitingConversationIds,
-    ...conversations
-      .filter((conversation) => conversation.unread)
-      .map((conversation) => conversation.id),
-  ]);
-}
-
-/**
- * Sort pinned, then attention conversations to the front. Pinned follows the
+ * Sort pinned, then waiting conversations to the front. Pinned follows the
  * viewer's order. The sort is stable, so the other groups keep the feed order.
  * Paginated lists call this before paging, so page 1 holds every pinned and
- * attention conversation.
+ * waiting conversation.
  */
-export function pinnedAndAttentionFirst(
+export function pinnedAndWaitingFirst(
   conversations: Conversation[],
-  attentionIds: ReadonlySet<string>,
+  waitingIds: WaitingIds,
 ): Conversation[] {
   const rank = (conversation: Conversation) =>
-    conversation.pinnedAt
-      ? 0
-      : needsAttention(conversation, attentionIds)
-        ? 1
-        : 2;
+    conversation.pinnedAt ? 0 : waitingIds.has(conversation.id) ? 1 : 2;
   return [...conversations].sort(
     (left, right) =>
       rank(left) - rank(right) ||

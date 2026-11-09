@@ -198,7 +198,6 @@ export type Conversation = {
   parentConversationId?: string;
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[];
-  unfinishedWork?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };
 

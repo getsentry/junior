@@ -257,7 +257,6 @@ export async function readBoard(args: {
             .where(
               and(
                 eq(juniorReviewItems.status, "open"),
-                eq(juniorReviewItems.kind, "notice"),
                 like(
                   juniorReviewItems.dedupeKey,
                   `${PLUGIN_REVIEW_ITEM_KEY_PREFIX}%`,

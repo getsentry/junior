@@ -52,10 +52,7 @@ import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
-import {
-  attentionConversationIds,
-  pinnedAndAttentionFirst,
-} from "./conversationSections";
+import { pinnedAndWaitingFirst } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
@@ -152,10 +149,7 @@ export function ConversationWorkspace(props: {
   const pagedConversations = useMemo(
     () =>
       pageItems(
-        pinnedAndAttentionFirst(
-          conversations,
-          attentionConversationIds(conversations, waitingConversationIds),
-        ),
+        pinnedAndWaitingFirst(conversations, waitingConversationIds),
         page,
         CONVERSATION_PAGE_SIZE,
       ),

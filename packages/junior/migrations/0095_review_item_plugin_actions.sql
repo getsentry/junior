@@ -1,0 +1,2 @@
+ALTER TABLE "junior_review_items" DROP CONSTRAINT "junior_review_items_kind_check";--> statement-breakpoint
+ALTER TABLE "junior_review_items" ADD CONSTRAINT "junior_review_items_kind_check" CHECK (("junior_review_items"."kind" = 'notice' and "junior_review_items"."request" is null and "junior_review_items"."answer" is null) or ("junior_review_items"."kind" = 'action' and ("junior_review_items"."request" is not null or ("junior_review_items"."dedupe_key" like 'plugin:%' and "junior_review_items"."answer" is null))));

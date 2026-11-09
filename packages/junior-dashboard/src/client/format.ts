@@ -909,7 +909,6 @@ export function buildConversations(
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
-      unfinishedWork: summary.unfinishedWork,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
