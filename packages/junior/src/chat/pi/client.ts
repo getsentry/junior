@@ -9,6 +9,7 @@ import {
   type Message,
   type Model,
   type ThinkingLevel,
+  type Tool,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
@@ -269,6 +270,8 @@ export async function completeText(params: {
   modelId: string;
   system?: string;
   messages: Message[];
+  /** Tool definitions to send. They are part of the cached prompt prefix. */
+  tools?: Tool[];
   messageAttributeMode?: "content" | "metadata";
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
@@ -277,6 +280,8 @@ export async function completeText(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
   promptName?: string;
+  /** AI Gateway session ID. Pass the Conversation ID to share its session. */
+  sessionId?: string;
 }) {
   const model = resolveGatewayModel(params.modelId);
   const credential = await resolveGatewayCredential();
@@ -344,6 +349,7 @@ export async function completeText(params: {
           {
             systemPrompt: params.system,
             messages: params.messages,
+            ...(params.tools ? { tools: params.tools } : undefined),
           },
           {
             apiKey,
@@ -353,6 +359,7 @@ export async function completeText(params: {
             cacheRetention: params.cacheRetention,
             signal: params.signal,
             metadata: params.metadata,
+            sessionId: params.sessionId,
             onPayload: (payload) => {
               setSpanAttributes(requestPrefixAttributes(payload));
               return undefined;

@@ -22,7 +22,7 @@ export const juniorUsers = pgTable(
     timezone: text("timezone"),
     /** Text the user saved to change how Junior replies to them. */
     customization: text("customization"),
-    /** Phone notification hours. Null means the default schedule. */
+    /** Push notification hours. Null means the default schedule. */
     notificationSchedule: jsonb(
       "notification_schedule",
     ).$type<NotificationSchedule>(),
