@@ -8,8 +8,9 @@
  * as live recording, so warming can start soon after the first deploy.
  *
  * The heartbeat runs it. Only one run claims it, and a completed run marks
- * the install as done, also when it stopped on its time budget. It fills only segment lists that are empty, so it
- * does not add history to gaps that live recording already has.
+ * the install as done, also when it stopped on its time budget or on a
+ * canceled query. It fills only segment lists that are empty, so it does not
+ * add history to gaps that live recording already has.
  */
 import { performance } from "node:perf_hooks";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -36,7 +37,11 @@ const BACKFILL_KEY = "junior:cache_warming:backfill";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
-const CONVERSATION_BATCH_SIZE = 100;
+// Each batch is one query, and the SQL statement timeout applies to it. Small
+// batches keep each query short and let the budget check run often.
+const CONVERSATION_BATCH_SIZE = 10;
+// Postgres `query_canceled`: the statement timeout stopped the query.
+const QUERY_CANCELED = "57014";
 // The heartbeat gives no deadline. This leaves most of its function time for
 // the gap writes and the other heartbeat work.
 const BACKFILL_BUDGET_MS = 60_000;
@@ -209,6 +214,16 @@ function replayConversation(
   return gaps;
 }
 
+function isQueryCanceled(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current && depth < 6; depth += 1) {
+    if (typeof current !== "object") return false;
+    if ((current as { code?: unknown }).code === QUERY_CANCELED) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 // Stop before the next batch when the budget is used. The budget uses the
 // monotonic clock, not `nowMs`.
 async function collectGaps(
@@ -218,19 +233,29 @@ async function collectGaps(
   bySegment: Map<string, number[]>;
   scanned: number;
   budgetExceeded: boolean;
+  queryCanceled: boolean;
 }> {
   const startedAt = performance.now();
   const windowStartMs = nowMs - GLOBAL_GAPS_TTL_MS;
   const conversations = await loadConversations(windowStartMs);
   const recorded: RecordedGap[] = [];
   let scanned = 0;
+  let queryCanceled = false;
   for (let i = 0; i < conversations.length; i += CONVERSATION_BATCH_SIZE) {
     if (i > 0 && performance.now() - startedAt >= budgetMs) break;
     const batch = conversations.slice(i, i + CONVERSATION_BATCH_SIZE);
+    let rows: EventRow[];
+    try {
+      rows = await loadEvents(batch.map((row) => row.conversationId));
+    } catch (error) {
+      // A batch that is too large for one query stops the scan like the
+      // budget does. Later batches are not smaller on average.
+      if (!isQueryCanceled(error)) throw error;
+      queryCanceled = true;
+      break;
+    }
     const events = new Map<string, EventRow[]>();
-    for (const event of await loadEvents(
-      batch.map((row) => row.conversationId),
-    )) {
+    for (const event of rows) {
       const list = events.get(event.conversationId) ?? [];
       list.push(event);
       events.set(event.conversationId, list);
@@ -255,7 +280,8 @@ async function collectGaps(
   return {
     bySegment,
     scanned,
-    budgetExceeded: scanned < conversations.length,
+    budgetExceeded: !queryCanceled && scanned < conversations.length,
+    queryCanceled,
   };
 }
 
@@ -284,10 +310,8 @@ export async function backfillCacheWarmingGaps(args: {
   ) {
     return;
   }
-  const { bySegment, scanned, budgetExceeded } = await collectGaps(
-    args.nowMs,
-    args.budgetMs ?? BACKFILL_BUDGET_MS,
-  );
+  const { bySegment, scanned, budgetExceeded, queryCanceled } =
+    await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
   let gapCount = 0;
   let segmentCount = 0;
   for (const [segment, gaps] of bySegment) {
@@ -311,5 +335,6 @@ export async function backfillCacheWarmingGaps(args: {
     "app.cache_warming.backfill.segment_count": segmentCount,
     "app.cache_warming.backfill.conversation_count": scanned,
     "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
+    "app.cache_warming.backfill.query_canceled": queryCanceled,
   });
 }

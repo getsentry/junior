@@ -182,8 +182,8 @@ describe("cache warming gap backfill", () => {
         ),
       },
     ]);
-    // With the person Conversation, these fill the first batch.
-    for (let i = 0; i < 100; i++) {
+    // With the person Conversation, these fill the first batch and more.
+    for (let i = 0; i < 10; i++) {
       await getConversationStore().recordActivity({
         conversationId: `local:test:backfill-budget:${i}`,
         destination: { platform: "slack", teamId: "T123", channelId: "C123" },
