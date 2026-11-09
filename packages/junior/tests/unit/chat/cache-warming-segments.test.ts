@@ -133,6 +133,26 @@ describe("cache warming gap segments", () => {
     await state.delete("junior:cache_warming:gaps:user:1");
   });
 
+  it("schedules the horizon when the warmup send fails", async () => {
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
+    }
+    mocks.sendCacheWarmup.mockClear();
+    mocks.sendCacheWarmup.mockImplementation(async (message: unknown) => {
+      if ((message as CacheWarmupMessage).kind === "warmup") {
+        throw new Error("queue unavailable");
+      }
+    });
+    try {
+      await endTurn(true);
+      expect(scheduledHorizon().conversationId).toBe(conversationId);
+    } finally {
+      mocks.sendCacheWarmup.mockImplementation(async () => {});
+      await state.delete("junior:cache_warming:gaps:user:1");
+    }
+  });
+
   it("warms only short-retention requests of fixed-TTL caches whose write costs more than a read", async () => {
     const warmupsAfterTurn = async (
       modelId: string,
@@ -150,9 +170,9 @@ describe("cache warming gap segments", () => {
         cacheRetention ? { cacheRetention } : {},
       );
       await recorder.record({ ...finalReply, model: modelId });
-      const warmup = mocks.sendCacheWarmup.mock.calls[0]?.[0] as
-        | Extract<CacheWarmupMessage, { kind: "warmup" }>
-        | undefined;
+      const warmup = mocks.sendCacheWarmup.mock.calls
+        .map(([sent]) => sent as CacheWarmupMessage)
+        .find((sent) => sent.kind === "warmup");
       return {
         sentRetention: base.mock.calls[0]?.[2]?.cacheRetention,
         warmups: mocks.sendCacheWarmup.mock.calls.length,

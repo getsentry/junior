@@ -72,7 +72,7 @@ export async function sendCacheWarmup(
         message.kind === "warmup"
           ? Math.min(
               QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
-              Math.ceil(delayMs / 1000) + 120,
+              Math.ceil(Math.max(0, delayMs) / 1000) + 120,
             )
           : QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
       idempotencyKey: `cache-warmup_${message.generation}_${

@@ -1198,9 +1198,15 @@ async function executeAgentRunInPrivacyContext(
           message.stopReason === "error" || message.stopReason === "aborted"
             ? undefined
             : deliverAssistantMessage(message);
-        // Record after delivery, so the reply is not late.
-        return Promise.resolve(delivery).then(() =>
-          cacheWarming.record(message),
+        // Record after delivery, so the reply is not late. Record also when
+        // delivery fails: the model call wrote the cache and ended the idle
+        // period either way.
+        return Promise.resolve(delivery).then(
+          () => cacheWarming.record(message),
+          async (error: unknown) => {
+            await cacheWarming.record(message);
+            throw error;
+          },
         );
       }
       return undefined;

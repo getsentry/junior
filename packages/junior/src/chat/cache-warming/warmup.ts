@@ -367,14 +367,16 @@ async function recordModelCall(
   );
   if (next.idle?.warm) {
     const { generation } = next.idle;
+    // Send the horizon first: a failed warmup send must not leave the idle
+    // period without its no-reply gap.
+    await sendCacheWarmup(
+      { kind: "horizon", conversationId, generation },
+      request.startedAtMs + IDLE_HORIZON_MS - Date.now(),
+    );
     await scheduleWarmup(
       { kind: "warmup", conversationId, cycle: 1, generation },
       request.startedAtMs,
       next.idle.warm,
-    );
-    await sendCacheWarmup(
-      { kind: "horizon", conversationId, generation },
-      request.startedAtMs + IDLE_HORIZON_MS - Date.now(),
     );
   }
 }
