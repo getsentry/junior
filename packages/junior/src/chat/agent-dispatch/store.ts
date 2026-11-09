@@ -70,7 +70,8 @@ const dispatchRecordSchema = z
     source: sourceSchema,
     outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     status: dispatchStatusSchema,
-    title: nonEmptyExactStringSchema.optional(),
+    // Plugin titles may be any non-blank text, including "unknown".
+    title: z.string().min(1).optional(),
     updatedAtMs: z.number().finite(),
   })
   .strict()
