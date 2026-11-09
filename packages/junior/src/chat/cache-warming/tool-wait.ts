@@ -51,10 +51,14 @@ export interface ToolWaitWarmer {
   record(request: ModelRequest, message: AssistantMessage): Promise<void>;
   /** Stop warmups, because the next request starts. */
   stop(): void;
+  /** Stop warmups, because the tools returned. */
+  toolsReturned(): void;
   /**
-   * Stop warmups, because the run ended. A tool wait that is still open never
-   * returns to this run, so record it as `NO_REPLY_GAP_MS`. Without these
-   * waits, the return chance counts only the tools that returned.
+   * Stop warmups, because the run ended. Record a wait whose tools returned
+   * without a next request in this run, such as before a slice yield. A tool
+   * that is still running never returns to this run, so record its wait as
+   * `NO_REPLY_GAP_MS`. Without these waits, the return chance counts only
+   * the tools that returned.
    */
   end(): Promise<void>;
 }
@@ -71,6 +75,8 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
   let timer: ReturnType<typeof setTimeout> | undefined;
   // The request that ended with tool calls and waits for its tools.
   let waiting: ModelRequest | undefined;
+  // When the tools of `waiting` returned, before the next request starts.
+  let returnedAtMs: number | undefined;
   // A warmup that is in flight when warmups stop must not schedule another.
   let generation = 0;
 
@@ -200,6 +206,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       stop();
       const previous = waiting;
       waiting = message.stopReason === "toolUse" ? request : undefined;
+      returnedAtMs = undefined;
       const prefixTokens = cachedPrefixTokens(message);
       const ttlMs = cacheTtlMs(request);
       if (
@@ -214,13 +221,24 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
       }
     },
     stop,
+    toolsReturned() {
+      stop();
+      if (waiting) returnedAtMs ??= Date.now();
+    },
     async end() {
       stop();
       const open = waiting;
+      const returned = returnedAtMs;
       waiting = undefined;
+      returnedAtMs = undefined;
+      if (!open) return;
+      if (returned !== undefined) {
+        await recordWait(returned - open.startedAtMs);
+        return;
+      }
       // Shorter waits are not recorded, so an open wait counts only when it
       // already ran as long as a recorded one.
-      if (open && Date.now() - open.startedAtMs >= MIN_RECORDED_TOOL_WAIT_MS) {
+      if (Date.now() - open.startedAtMs >= MIN_RECORDED_TOOL_WAIT_MS) {
         await recordWait(NO_REPLY_GAP_MS);
       }
     },

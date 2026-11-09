@@ -172,7 +172,7 @@ describe("tool wait cache warming", () => {
     ]);
   });
 
-  it("records a tool wait that the run end cut off as no return", async () => {
+  it("records a wait that the run end cut off as no return, and one whose tools returned as its wait", async () => {
     const short = createToolWaitWarmer("local:test:tool-wait");
     await short.record(request(), message("toolUse"));
     vi.advanceTimersByTime(30_000);
@@ -182,8 +182,18 @@ describe("tool wait cache warming", () => {
     vi.advanceTimersByTime(3 * MINUTE);
     await long.end();
 
+    // The tools returned after 6 minutes, and the run yielded before the
+    // next request.
+    const yielded = createToolWaitWarmer("local:test:tool-wait");
+    await yielded.record(request(), message("toolUse"));
+    vi.advanceTimersByTime(6 * MINUTE);
+    yielded.toolsReturned();
+    vi.advanceTimersByTime(MINUTE);
+    await yielded.end();
+
     expect(await getStateAdapter().getList<number>(GAPS_KEY)).toEqual([
       NO_REPLY_GAP_MS,
+      6 * MINUTE,
     ]);
   });
 });

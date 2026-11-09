@@ -333,6 +333,8 @@ export interface CacheWarmingRecorder {
   wrap(base?: StreamFn): StreamFn;
   /** Record the finished assistant message of the last model request. */
   record(message: AssistantMessage): Promise<void>;
+  /** Mark that the tools of the last request returned. */
+  toolsReturned(): void;
   /** Stop the warmups of this run. Call it when the run ends. */
   stop(): Promise<void>;
 }
@@ -413,6 +415,7 @@ export function createCacheWarmingRecorder(
         });
       }
     },
+    toolsReturned: toolWait.toolsReturned,
     stop: async () => {
       try {
         await toolWait.end();
