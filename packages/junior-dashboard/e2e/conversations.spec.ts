@@ -97,10 +97,8 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await page.keyboard.press("ArrowRight");
   await expect.poll(transcriptSize).toBeGreaterThan(startTranscriptSize);
   const resizedTranscriptSize = await transcriptSize();
+  // Details stay open after a reload because the reader opened them.
   await page.reload();
-  await page
-    .getByRole("button", { name: "Conversation details", exact: true })
-    .click();
   await expect(details).toBeVisible();
   // The saved width rounds to whole pixels.
   await expect.poll(transcriptSize).toBeCloseTo(resizedTranscriptSize, 0);

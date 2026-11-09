@@ -46,6 +46,8 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
+import { readDetailsOpen, saveDetailsOpen } from "./conversationSidebarLayout";
+import { useDetailsPanel } from "../components/DetailsPanel";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -185,9 +187,18 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (reviewOpen) setDetailsChoice(true);
   }, [reviewOpen]);
-  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefaultOpen);
+  const panelFits = useDetailsPanel();
+  const [savedDetailsOpen] = useState(readDetailsOpen);
+  // A saved open choice applies only beside the transcript, so a narrow
+  // screen does not load into a bottom sheet.
+  const detailsDefault =
+    savedDetailsOpen === undefined
+      ? detailsDefaultOpen
+      : savedDetailsOpen && panelFits;
+  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefault);
   const closeDetails = useCallback(() => {
     setDetailsChoice(false);
+    saveDetailsOpen(false);
     setSearchParams(
       (current) => {
         if (!current.has(CONVERSATION_REVIEW_PARAM)) return current;
@@ -667,6 +678,7 @@ export function ConversationPage(props: {
                 } else {
                   focusDetailsOnOpen.current = true;
                   setDetailsChoice(true);
+                  saveDetailsOpen(true);
                 }
               }}
               forks={

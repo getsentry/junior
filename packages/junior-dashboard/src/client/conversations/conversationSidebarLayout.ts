@@ -1,6 +1,9 @@
 import { useState, useSyncExternalStore } from "react";
 
+import { hasPanelSpace } from "../components/DetailsPanel";
+
 const OPEN_KEY = "junior:conversation:sidebar-open";
+const DETAILS_OPEN_KEY = "junior:conversation:details-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width";
 const WIDE_QUERY = "(min-width: 768px)";
@@ -23,6 +26,20 @@ export function useConversationSidebarOpen() {
   }
 
   return [open, updateOpen] as const;
+}
+
+/** Read whether the reader left details open in this browser, if they chose. */
+export function readDetailsOpen(): boolean | undefined {
+  const value = readStorage(DETAILS_OPEN_KEY);
+  return value === null ? undefined : value === "true";
+}
+
+/**
+ * Save whether the reader keeps details open. A bottom sheet on a narrow
+ * screen is a one-off, so only a panel beside the transcript saves.
+ */
+export function saveDetailsOpen(open: boolean) {
+  if (hasPanelSpace()) writeStorage(DETAILS_OPEN_KEY, String(open));
 }
 
 /** Read the conversation list width saved in this browser. */

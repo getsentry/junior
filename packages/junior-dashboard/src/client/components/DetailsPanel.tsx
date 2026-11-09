@@ -13,7 +13,8 @@ function subscribeToPanelLayout(onChange: () => void) {
   return () => media.removeEventListener("change", onChange);
 }
 
-function hasPanelSpace() {
+/** Report whether details fit beside their source right now. */
+export function hasPanelSpace() {
   return window.matchMedia(panelMediaQuery).matches;
 }
 
