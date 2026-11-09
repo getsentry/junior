@@ -27,6 +27,44 @@ export type EventAppPublisher = {
   publish(event: Event): Promise<void>;
 };
 
+/**
+ * Check event automations for the `hasMatch` calls that start in one
+ * synchronous run, such as a webhook checking each copy of its Event with
+ * `Promise.all`, with one read per namespace. A batch takes calls until its
+ * read starts and keeps nothing after it, so each answer is the same as from
+ * a read for that Event alone.
+ */
+function createEventAutomationMatcher(
+  resolveTeamId: () => Promise<string | undefined>,
+): (event: Event) => Promise<boolean> {
+  const batches = new Map<
+    string,
+    { events: Event[]; matches: Promise<boolean[]> }
+  >();
+  return async (event) => {
+    let batch = batches.get(event.namespace);
+    if (!batch) {
+      const events: Event[] = [];
+      const matches = Promise.resolve().then(async () => {
+        batches.delete(event.namespace);
+        const teamId = await resolveTeamId();
+        if (!teamId) return events.map(() => false);
+        const tasks = await findMatchingEventAutomations(
+          getDb(),
+          events,
+          teamId,
+          getEventCatalog(),
+        );
+        return tasks.map((matched) => matched.length > 0);
+      });
+      batch = { events, matches };
+      batches.set(event.namespace, batch);
+    }
+    const index = batch.events.push(event) - 1;
+    return (await batch.matches)[index] === true;
+  };
+}
+
 /** Build the core event publisher used by plugin routes. */
 export function createEventAppPublisher(args: {
   conversationWork: () => {
@@ -36,12 +74,14 @@ export function createEventAppPublisher(args: {
 }): EventAppPublisher {
   // Event automations still key by destination team until that store is conversation-owned.
   const resolveEventAutomationTeamId = createEventTeamIdResolver();
+  const hasEventAutomationMatch = createEventAutomationMatcher(
+    resolveEventAutomationTeamId,
+  );
 
   return {
     async hasMatch(event) {
       const work = args.conversationWork();
-      const eventAutomationTeamId = await resolveEventAutomationTeamId();
-      const [subscriptions, tasks] = await Promise.all([
+      const [subscriptions, taskMatch] = await Promise.all([
         findMatchingWatches({
           data: event.data,
           eventType: event.eventType,
@@ -49,16 +89,9 @@ export function createEventAppPublisher(args: {
           identifier: event.identifier,
           state: work.state,
         }),
-        eventAutomationTeamId
-          ? findMatchingEventAutomations(
-              getDb(),
-              event,
-              eventAutomationTeamId,
-              getEventCatalog(),
-            )
-          : Promise.resolve([]),
+        hasEventAutomationMatch(event),
       ]);
-      return subscriptions.length > 0 || tasks.length > 0;
+      return subscriptions.length > 0 || taskMatch;
     },
     async neededMatchKeys(input) {
       const work = args.conversationWork();
