@@ -156,8 +156,9 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
   const [dictationError, setDictationError] = useState<string>();
-  // The mic button takes focus, so remember where dictated text goes.
-  const dictationCursorRef = useRef<{ end: number; start: number }>(undefined);
+  // A textarea that was never focused reports its cursor at 0, so dictated
+  // text goes at the end until the reader places the cursor.
+  const cursorPlacedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -298,7 +299,6 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   const replaceMessage = (draft: ConversationDraft) => {
     draftRef.current = draft;
-    dictationCursorRef.current = undefined;
     const textarea = textareaRef.current;
     if (textarea) textarea.value = draft.text;
     updateCanSend(draft.text);
@@ -395,9 +395,11 @@ export const ConversationComposer = memo(function ConversationComposer(
     const textarea = textareaRef.current;
     if (!textarea || textarea.disabled) return;
     const { value } = textarea;
-    const cursor = dictationCursorRef.current;
-    const start = Math.min(cursor?.start ?? value.length, value.length);
-    const end = Math.min(cursor?.end ?? value.length, value.length);
+    // The textarea keeps its selection after blur, so this is where the
+    // reader left the cursor, even after editing during the recording.
+    const placed = cursorPlacedRef.current;
+    const start = placed ? textarea.selectionStart : value.length;
+    const end = placed ? textarea.selectionEnd : value.length;
     const before = value.slice(0, start);
     const after = value.slice(end);
     const spaceBefore = before && !/\s$/.test(before) ? " " : "";
@@ -607,13 +609,10 @@ export const ConversationComposer = memo(function ConversationComposer(
             setMessage(event.target.value);
             syncTextareaHeight();
           }}
-          onBlur={(event) => {
-            dictationCursorRef.current = {
-              end: event.currentTarget.selectionEnd,
-              start: event.currentTarget.selectionStart,
-            };
+          onFocus={() => {
+            cursorPlacedRef.current = true;
+            props.onFocus?.();
           }}
-          onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
           placeholder={props.placeholder ?? "Message Junior…"}
           ref={textareaRef}
