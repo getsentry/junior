@@ -371,7 +371,7 @@ describe("scheduled automation heartbeat", () => {
     });
   }, 30_000);
 
-  it("fails scheduled runs when their dispatch record disappeared", async () => {
+  it("fails scheduled runs when their dispatch record disappeared and keeps the one-off listed", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
@@ -399,10 +399,13 @@ describe("scheduled automation heartbeat", () => {
       status: "failed",
       errorMessage: "Scheduled automation dispatch record is missing.",
     });
+    // A failed one-off has no next run. It stays listed as completed, so its
+    // creator can see the failed run.
     await expect(
       readScheduledAutomation(db, "sched_plugin_1"),
     ).resolves.toMatchObject({
-      status: "deleted",
+      lastRunAtMs: TEST_RUN_AT_MS,
+      status: "completed",
     });
   }, 30_000);
 

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { claimDueScheduledRun } from "@/chat/scheduled-automations/runs";
+import {
+  claimDueScheduledRun,
+  transitionScheduledRun,
+} from "@/chat/scheduled-automations/runs";
 import {
   readScheduledAutomation as readTask,
   saveScheduledAutomation,
@@ -129,9 +132,75 @@ describe("scheduled-automation SQL storage", () => {
         errorMessage: `Scheduled automation ${task.id} was deleted before the run started.`,
         status: "skipped",
       });
+      // A dispatch that started before the delete cannot reopen the run.
+      await expect(
+        transitionScheduledRun(db, {
+          nowMs: TEST_NOW_MS + 1,
+          run: claimed!,
+          transition: {
+            claimedAtMs: claimed!.claimedAtMs,
+            dispatchId: "dispatch_late",
+            task,
+            to: "running",
+          },
+        }),
+      ).resolves.toBeUndefined();
       await expect(
         claimDueScheduledRun(db, { nowMs: TEST_NOW_MS + 60_000 }),
       ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
+
+  it("finishes a run once and advances its task in the same step", async () => {
+    const fixture = await createEmptyJuniorSqlFixture();
+
+    try {
+      const creatorIdentityId = await prepareDatabase(fixture.sql);
+      const db = fixture.sql.db();
+      const task = createTask(creatorIdentityId, { id: "sched_finish_once" });
+      await saveScheduledAutomation(db, task);
+      const claimed = (await claimDueScheduledRun(db, { nowMs: TEST_NOW_MS }))!;
+      const started = (await transitionScheduledRun(db, {
+        nowMs: TEST_NOW_MS,
+        run: claimed,
+        transition: {
+          claimedAtMs: claimed.claimedAtMs,
+          dispatchId: "dispatch_1",
+          task,
+          to: "running",
+        },
+      }))!.run;
+
+      const finishes = await Promise.all([
+        transitionScheduledRun(db, {
+          nowMs: TEST_NOW_MS + 1,
+          run: started,
+          transition: { startedAtMs: started.startedAtMs!, to: "completed" },
+        }),
+        transitionScheduledRun(db, {
+          nowMs: TEST_NOW_MS + 1,
+          run: started,
+          transition: {
+            errorMessage: "Dispatch failed.",
+            startedAtMs: started.startedAtMs,
+            to: "failed",
+          },
+        }),
+      ]);
+
+      expect(finishes.filter(Boolean)).toHaveLength(1);
+      const [row] = await fixture.sql.query<{ status: string }>(
+        `SELECT status FROM junior_automation_runs WHERE id = $1`,
+        [started.id],
+      );
+      expect(row?.status).toBe(finishes.find(Boolean)!.run.status);
+      // Either outcome ends the one-off, and the task stays listed.
+      await expect(readTask(db, task.id)).resolves.toMatchObject({
+        lastRunAtMs: TEST_RUN_AT_MS,
+        status: "completed",
+      });
     } finally {
       await fixture.close();
     }

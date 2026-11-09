@@ -5,16 +5,14 @@ import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
 import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
 import { createRunAutomationNowTool } from "@/chat/automations/tools/run-now";
 import { getConversationStore } from "@/chat/db";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   automationToolContext,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import {
-  claimDueScheduledRun,
-  markScheduledRunFailed,
-} from "@/chat/scheduled-automations/runs";
+import { claimDueScheduledRun } from "@/chat/scheduled-automations/runs";
 import {
   listScheduledAutomations as listStoredTasks,
   listScheduledAutomationsForTeam as listStoredTasksForTeam,
@@ -29,7 +27,11 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorIdentities, juniorUsers } from "@/db/schema";
+import {
+  juniorAutomationRuns,
+  juniorIdentities,
+  juniorUsers,
+} from "@/db/schema";
 import { readUserTimezone } from "@/chat/identities/sql";
 import {
   createJuniorSqlFixture,
@@ -1892,12 +1894,16 @@ describe("Scheduled automation tools", () => {
     });
     expect(second).toBeUndefined();
 
-    // A finished run whose advance was not saved must not stop the task.
-    await markScheduledRunFailed(schedulerDb(), {
-      completedAtMs: 2000,
-      errorMessage: "Dispatch failed.",
-      runId: first!.id,
-    });
+    // A worker from before `transitionScheduledRun` could finish a run and
+    // crash before it advanced the task. That row must not stop the task.
+    await schedulerDb()
+      .update(juniorAutomationRuns)
+      .set({
+        completedAtMs: 2000,
+        errorMessage: "Dispatch failed.",
+        status: "failed",
+      })
+      .where(eq(juniorAutomationRuns.id, first!.id));
     await claimDueScheduledRun(schedulerDb(), { nowMs: 3000 });
     await expect(
       readScheduledAutomation(created.automation.id),

@@ -14,14 +14,9 @@ import { settleEventAutomationRuns } from "@/chat/event-automations/runs";
 import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import type { JuniorDatabase } from "@/db/db";
 import {
-  advanceScheduledAutomationAfterRun,
   claimDueScheduledRun,
   listIncompleteScheduledRuns,
-  markScheduledRunBlocked,
-  markScheduledRunCompleted,
-  markScheduledRunDispatched,
-  markScheduledRunFailed,
-  markScheduledRunSkipped,
+  transitionScheduledRun,
 } from "./runs";
 import { readScheduledAutomation } from "./tasks";
 import {
@@ -137,116 +132,65 @@ async function applyDispatchResult(args: {
   nowMs: number;
   run: ScheduledRun;
 }): Promise<boolean> {
-  if (args.dispatch.status === "completed") {
-    const completed = await markScheduledRunCompleted(args.db, {
-      completedAtMs: args.nowMs,
-      resultMessageTs: args.dispatch.resultMessageTs,
-      runId: args.run.id,
-      startedAtMs: args.run.startedAtMs!,
-    });
-    if (!completed) return false;
-    await advanceScheduledAutomationAfterRun(args.db, {
+  const { dispatch, run } = args;
+  if (dispatch.status === "completed") {
+    const finished = await transitionScheduledRun(args.db, {
       nowMs: args.nowMs,
-      run: args.run,
-      status: "completed",
+      run,
+      transition: {
+        resultMessageTs: dispatch.resultMessageTs,
+        startedAtMs: run.startedAtMs!,
+        to: "completed",
+      },
     });
+    if (!finished) return false;
     await logRunOutcome({
       eventName: "scheduled_automation.run.completed",
-      run: completed,
+      run: finished.run,
       db: args.db,
     });
     return true;
   }
-  if (args.dispatch.status === "blocked") {
-    const blocked = await markScheduledRunBlocked(args.db, {
-      completedAtMs: args.nowMs,
-      errorMessage: args.dispatch.errorMessage ?? "Dispatch blocked.",
-      runId: args.run.id,
-      startedAtMs: args.run.startedAtMs!,
-    });
-    if (!blocked) return false;
-    const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
-      errorMessage: blocked.errorMessage,
-      nowMs: args.nowMs,
-      run: args.run,
-      status: "blocked",
-    });
-    // Notify only when the block is stored, so the dashboard matches.
-    if (storedBlock) {
-      await notifyAutomationBlocked({
-        automationId: args.run.taskId,
-        dispatchId: args.dispatch.id,
-        kind: "scheduled",
-        reason: blocked.errorMessage ?? "Dispatch blocked.",
-      });
-    }
-    await logRunOutcome({
-      eventName: "scheduled_automation.run.blocked",
-      run: blocked,
+  if (dispatch.status === "blocked" || dispatch.status === "failed") {
+    return await finishRun({
       db: args.db,
-      extras: blocked.errorMessage
-        ? { "app.task.run.error": blocked.errorMessage }
-        : undefined,
-    });
-    return true;
-  }
-  if (args.dispatch.status === "failed") {
-    const failed = await markScheduledRunFailed(args.db, {
-      completedAtMs: args.nowMs,
-      errorMessage: args.dispatch.errorMessage ?? "Dispatch failed.",
-      runId: args.run.id,
-      startedAtMs: args.run.startedAtMs,
-    });
-    if (!failed) return false;
-    await advanceScheduledAutomationAfterRun(args.db, {
-      errorMessage: failed.errorMessage,
+      dispatchId: dispatch.id,
+      errorMessage:
+        dispatch.errorMessage ??
+        (dispatch.status === "blocked"
+          ? "Dispatch blocked."
+          : "Dispatch failed."),
       nowMs: args.nowMs,
-      run: args.run,
-      status: "failed",
+      run,
+      status: dispatch.status,
     });
-    await logRunOutcome({
-      eventName: "scheduled_automation.run.failed",
-      run: failed,
-      db: args.db,
-      extras: failed.errorMessage
-        ? { "app.task.run.error": failed.errorMessage }
-        : undefined,
-    });
-    return true;
   }
   return false;
 }
 
-async function finishClaimedRun(args: {
+async function finishRun(args: {
   db: JuniorDatabase;
+  dispatchId?: string;
   errorMessage: string;
   nowMs: number;
   run: ScheduledRun;
   status: "blocked" | "failed";
-}): Promise<void> {
-  const finished =
-    args.status === "blocked"
-      ? await markScheduledRunBlocked(args.db, {
-          completedAtMs: args.nowMs,
-          errorMessage: args.errorMessage,
-          runId: args.run.id,
-        })
-      : await markScheduledRunFailed(args.db, {
-          completedAtMs: args.nowMs,
-          errorMessage: args.errorMessage,
-          runId: args.run.id,
-          startedAtMs: args.run.startedAtMs,
-        });
-  if (!finished) return;
-  const storedBlock = await advanceScheduledAutomationAfterRun(args.db, {
-    errorMessage: args.errorMessage,
+}): Promise<boolean> {
+  const finished = await transitionScheduledRun(args.db, {
     nowMs: args.nowMs,
     run: args.run,
-    status: args.status,
+    transition: {
+      errorMessage: args.errorMessage,
+      startedAtMs: args.run.startedAtMs,
+      to: args.status,
+    },
   });
-  if (storedBlock) {
+  if (!finished) return false;
+  // Notify only when the block is stored, so the dashboard matches.
+  if (finished.automationBlocked) {
     await notifyAutomationBlocked({
       automationId: args.run.taskId,
+      dispatchId: args.dispatchId,
       kind: "scheduled",
       reason: args.errorMessage,
     });
@@ -256,10 +200,11 @@ async function finishClaimedRun(args: {
       args.status === "blocked"
         ? "scheduled_automation.run.blocked"
         : "scheduled_automation.run.failed",
-    run: finished,
+    run: finished.run,
     db: args.db,
     extras: { "app.task.run.error": args.errorMessage },
   });
+  return true;
 }
 
 /**
@@ -278,7 +223,7 @@ export async function runScheduledAutomationHeartbeat(args: {
     if (!run.dispatchId) continue;
     const dispatch = await getScheduledAutomationDispatch(run.dispatchId);
     if (!dispatch) {
-      await finishClaimedRun({
+      await finishRun({
         db,
         errorMessage: "Scheduled automation dispatch record is missing.",
         nowMs: args.nowMs,
@@ -308,21 +253,13 @@ export async function runScheduledAutomationHeartbeat(args: {
     if (!run) break;
     const task = await readScheduledAutomation(db, run.taskId);
     if (!task) {
-      const failed = await markScheduledRunFailed(db, {
-        completedAtMs: args.nowMs,
+      await finishRun({
+        db,
         errorMessage: `Scheduled automation ${run.taskId} was not found`,
-        runId: run.id,
+        nowMs: args.nowMs,
+        run,
+        status: "failed",
       });
-      if (failed) {
-        await logRunOutcome({
-          eventName: "scheduled_automation.run.failed",
-          run: failed,
-          db,
-          extras: {
-            "app.task.run.error": `Scheduled automation ${run.taskId} was not found`,
-          },
-        });
-      }
       continue;
     }
     logInfo(
@@ -331,13 +268,13 @@ export async function runScheduledAutomationHeartbeat(args: {
     );
     const skippedReason = shouldSkipRun(task, run);
     if (skippedReason) {
-      const skipped = await markScheduledRunSkipped(db, {
-        completedAtMs: args.nowMs,
-        errorMessage: skippedReason,
-        runId: run.id,
+      const skipped = await transitionScheduledRun(db, {
+        nowMs: args.nowMs,
+        run,
+        transition: { errorMessage: skippedReason, to: "skipped" },
       });
       if (skipped) {
-        logScheduledAutomationRunSkipped(task, skipped, {
+        logScheduledAutomationRunSkipped(task, skipped.run, {
           "app.task.run.error": skippedReason,
         });
       }
@@ -348,7 +285,7 @@ export async function runScheduledAutomationHeartbeat(args: {
     try {
       metadata = buildDispatchMetadata({ nowMs: args.nowMs, run, task });
     } catch (error) {
-      await finishClaimedRun({
+      await finishRun({
         db,
         errorMessage:
           error instanceof Error
@@ -388,7 +325,7 @@ export async function runScheduledAutomationHeartbeat(args: {
         },
       });
     } catch (error) {
-      await finishClaimedRun({
+      await finishRun({
         db,
         errorMessage:
           error instanceof Error
@@ -400,18 +337,21 @@ export async function runScheduledAutomationHeartbeat(args: {
       });
       continue;
     }
-    const dispatched = await markScheduledRunDispatched(db, {
-      claimedAtMs: run.claimedAtMs,
-      dispatchId: dispatch.id,
+    const dispatched = await transitionScheduledRun(db, {
       nowMs: args.nowMs,
-      runId: run.id,
-      task,
+      run,
+      transition: {
+        claimedAtMs: run.claimedAtMs,
+        dispatchId: dispatch.id,
+        task,
+        to: "running",
+      },
     });
     logInfo(
       "scheduled_automation.run.dispatched",
       scheduledAutomationRunAttributes(
         task,
-        dispatched ?? { ...run, dispatchId: dispatch.id },
+        dispatched?.run ?? { ...run, dispatchId: dispatch.id },
         {
           "app.dispatch.id": dispatch.id,
         },
