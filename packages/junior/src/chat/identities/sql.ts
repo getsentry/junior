@@ -185,7 +185,10 @@ async function upsertIdentityRecord(
     }
     throw new Error("Identity upsert returned no row");
   }
-  if (existing && !existing.userId && row.userId && identity.kind === "user") {
+  // Check every write that may have set the User, not only a known existing
+  // row: a concurrent first write can create the Identity and its roots
+  // between the read above and this upsert.
+  if (!existing?.userId && row.userId && identity.kind === "user") {
     await recordStartedConversationParticipants(executor, {
       identityId: row.id,
       userId: row.userId,
