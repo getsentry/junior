@@ -112,10 +112,11 @@ describe("cache warming gap segments", () => {
 
   it("records each gap in the segment of the plugin work and archive state when the idle period started", async () => {
     vi.useFakeTimers();
-    let work: { assigned: boolean; open: boolean; finishedAt?: string } = {
-      assigned: true,
+    let work: { open: boolean; finishedAt: Record<string, string> } = {
       open: false,
-      finishedAt: new Date(Date.now() - MINUTE).toISOString(),
+      finishedAt: {
+        [workConversationId]: new Date(Date.now() - MINUTE).toISOString(),
+      },
     };
     await createApp({
       dashboard: { disabled: true },
@@ -128,13 +129,9 @@ describe("cache warming gap segments", () => {
           },
           hooks: {
             unfinishedWork: () => ({
-              assignedConversationIds: work.assigned
-                ? [workConversationId]
-                : [],
+              assignedConversationIds: [workConversationId],
               conversationIds: work.open ? [workConversationId] : [],
-              finishedWorkAtByConversationId: work.finishedAt
-                ? { [workConversationId]: work.finishedAt }
-                : {},
+              finishedWorkAtByConversationId: work.finishedAt,
             }),
           },
         }),
@@ -155,7 +152,7 @@ describe("cache warming gap segments", () => {
 
     // Junior opened another pull request, and the Conversation was archived.
     // Its CI result starts a Turn 3 minutes after the Turn ended.
-    work = { assigned: true, open: true };
+    work = { open: true, finishedAt: {} };
     const conversation = await store.get({
       conversationId: workConversationId,
     });
