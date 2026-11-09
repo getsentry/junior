@@ -303,7 +303,8 @@ compare the phases:
 
 The provider caches a request prefix in the order tools, system prompt,
 messages. A change to the tool list or the system prompt between two calls
-writes the full history to the cache again.
+writes the full history to the cache again. Per Anthropic's docs, a change to
+the thinking settings or the effort also drops the cached prefix.
 `chat/pi/request-prefix-attributes.ts` hashes the provider request body that
 Pi builds, through Pi's `onPayload` hook. The values are hashes, never the
 text.
@@ -316,6 +317,10 @@ text.
 | `app.ai.request.messages.hash`                   | string | hash of all `messages`                     |
 | `app.ai.request.messages.before_last_reply.hash` | string | hash of the messages before the last reply |
 | `app.ai.request.messages.count`                  | int    | messages in the request                    |
+| `app.ai.request.prefix.hash`                     | string | hash of model, settings, and all parts     |
+| `app.ai.request.prefix.before_last_reply.hash`   | string | the same, with messages before last reply  |
+| `app.ai.request.thinking.type`                   | string | `thinking.type`, such as `adaptive`        |
+| `app.ai.request.effort`                          | string | `output_config.effort`, such as `high`     |
 
 - Each hash is the first 16 hex chars of a SHA-256. The hashes leave out
   `cache_control`, because Pi moves the last breakpoint on each request. In
@@ -323,6 +328,11 @@ text.
   last user message to that form.
 - The hashes cover the body that Junior sends to AI Gateway, not the request
   that the gateway sends to the upstream provider.
+- `prefix.hash` hashes, in this order: `model`, a hash of the `thinking` and
+  `output_config` settings, and the tools, system, and messages hashes.
+  `prefix.before_last_reply.hash` uses `messages.before_last_reply.hash` for
+  the messages, and is absent when that hash is absent.
+- `thinking.type` and `effort` are absent when the body does not set them.
 - `messages.before_last_reply.hash` stops before the last `assistant`
   message. It is absent when the request has no `assistant` message. When the
   history was only appended, it is equal to `messages.hash` of the previous
@@ -338,19 +348,24 @@ text.
 To classify a cache miss, compare a call with the previous call in the same
 `gen_ai.conversation.id`:
 
-- System or tools hash changed: Junior changed the prefix.
-- `messages.before_last_reply.hash` is not equal to the previous
-  `messages.hash`: Junior rewrote the history. This is expected when the call
-  has `gen_ai.conversation.compacted`.
-- All hashes match and the gap is 5 minutes or more: the cache expired.
-- All hashes match and the gap is less than 5 minutes: the provider or the
-  gateway did not use the cache.
+1. Compare `prefix.before_last_reply.hash` with the previous `prefix.hash`.
+   When they are not equal, find the part that changed:
+   - System or tools hash changed: Junior changed the prefix.
+   - `thinking.type` or `effort` changed: the settings changed the prefix.
+     When all part hashes match, the model or another thinking setting, such
+     as a budget, changed.
+   - `messages.before_last_reply.hash` is not equal to the previous
+     `messages.hash`: Junior rewrote the history. This is expected when the
+     call has `gen_ai.conversation.compacted`.
+2. When they are equal and the gap is 5 minutes or more: the cache expired.
+3. When they are equal and the gap is less than 5 minutes: the provider or the
+   gateway did not use the cache.
 
 Prefix hashes of each model call in a Conversation. Compare consecutive rows.
 
 ```text
 dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,gen_ai.request.model,app.ai.request.system_instructions.hash,app.ai.request.tools.hash,app.ai.request.messages.hash,app.ai.request.messages.before_last_reply.hash,gen_ai.conversation.compacted,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
+fields=timestamp,trace,gen_ai.request.model,app.ai.request.prefix.hash,app.ai.request.prefix.before_last_reply.hash,app.ai.request.system_instructions.hash,app.ai.request.tools.hash,app.ai.request.messages.hash,app.ai.request.messages.before_last_reply.hash,app.ai.request.thinking.type,app.ai.request.effort,gen_ai.conversation.compacted,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
 sort=timestamp
 ```
 

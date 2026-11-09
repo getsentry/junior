@@ -31,10 +31,11 @@ function digest(hash: Hash): string {
   return hash.digest("hex").slice(0, HASH_HEX_CHARS);
 }
 
-function hashJson(value: unknown): string {
-  return digest(
-    createHash("sha256").update(JSON.stringify(value, withoutCacheControl)),
-  );
+function hashJson(
+  value: unknown,
+  replacer: (key: string, value: unknown) => unknown = withoutCacheControl,
+): string {
+  return digest(createHash("sha256").update(JSON.stringify(value, replacer)));
 }
 
 function lastAssistantIndex(messages: readonly unknown[]): number {
@@ -53,9 +54,10 @@ function lastAssistantIndex(messages: readonly unknown[]): number {
 
 // One pass over the messages. The hash before the last assistant message
 // equals the previous request's full hash when the history was only appended.
-function messagesAttributes(
-  messages: readonly unknown[],
-): Record<string, string | number> {
+function messagesHashes(messages: readonly unknown[]): {
+  full: string;
+  beforeLastReply?: string;
+} {
   const lastReply = lastAssistantIndex(messages);
   const hash = createHash("sha256");
   let beforeLastReply: string | undefined;
@@ -67,34 +69,95 @@ function messagesAttributes(
       .update(JSON.stringify(message, canonicalMessageValue))
       .update(MESSAGE_SEPARATOR);
   }
-  return {
-    "app.ai.request.messages.count": messages.length,
-    "app.ai.request.messages.hash": digest(hash),
-    ...(beforeLastReply
-      ? { "app.ai.request.messages.before_last_reply.hash": beforeLastReply }
-      : undefined),
-  };
+  return { full: digest(hash), beforeLastReply };
+}
+
+// Sorts object keys, so the settings hash does not depend on key order.
+function sortedKeys(_key: string, value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
+}
+
+// Hashes the short part hashes in a fixed order. The prefix covers the model,
+// the settings that change the cache, and the cached parts of the request.
+function prefixHash(parts: ReadonlyArray<string | undefined>): string {
+  return digest(
+    createHash("sha256").update(parts.map((part) => part ?? "").join("\n")),
+  );
+}
+
+function readableString(value: unknown, key: string): string | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "string" ? field : undefined;
 }
 
 function payloadAttributes(
   payload: Record<string, unknown>,
 ): Record<string, string | number> {
-  const { system, tools, messages } = payload;
+  const { model, system, tools, messages, thinking, output_config } = payload;
+  const systemHash = system !== undefined ? hashJson(system) : undefined;
+  const toolsHash = Array.isArray(tools) ? hashJson(tools) : undefined;
+  const messagesHash = Array.isArray(messages)
+    ? messagesHashes(messages)
+    : undefined;
+  // Anthropic drops the cached prefix when thinking or effort changes.
+  const settingsHash = hashJson({ thinking, output_config }, sortedKeys);
+  const prefixParts = [
+    typeof model === "string" ? model : undefined,
+    settingsHash,
+    toolsHash,
+    systemHash,
+  ];
+  const thinkingType = readableString(thinking, "type");
+  const effort = readableString(output_config, "effort");
   return {
-    ...(system !== undefined
-      ? { "app.ai.request.system_instructions.hash": hashJson(system) }
+    ...(systemHash
+      ? { "app.ai.request.system_instructions.hash": systemHash }
       : undefined),
     "app.ai.request.tools.count": Array.isArray(tools) ? tools.length : 0,
-    ...(Array.isArray(tools)
-      ? { "app.ai.request.tools.hash": hashJson(tools) }
+    ...(toolsHash ? { "app.ai.request.tools.hash": toolsHash } : undefined),
+    ...(Array.isArray(messages)
+      ? { "app.ai.request.messages.count": messages.length }
       : undefined),
-    ...(Array.isArray(messages) ? messagesAttributes(messages) : undefined),
+    ...(messagesHash
+      ? { "app.ai.request.messages.hash": messagesHash.full }
+      : undefined),
+    ...(messagesHash?.beforeLastReply
+      ? {
+          "app.ai.request.messages.before_last_reply.hash":
+            messagesHash.beforeLastReply,
+        }
+      : undefined),
+    "app.ai.request.prefix.hash": prefixHash([
+      ...prefixParts,
+      messagesHash?.full,
+    ]),
+    ...(messagesHash?.beforeLastReply
+      ? {
+          "app.ai.request.prefix.before_last_reply.hash": prefixHash([
+            ...prefixParts,
+            messagesHash.beforeLastReply,
+          ]),
+        }
+      : undefined),
+    ...(thinkingType
+      ? { "app.ai.request.thinking.type": thinkingType }
+      : undefined),
+    ...(effort ? { "app.ai.request.effort": effort } : undefined),
   };
 }
 
 /**
- * Hashes of the system prompt, tool list, and messages in one provider
- * request body, to tell a changed cache prefix apart from an expired cache.
+ * Hashes of the cache prefix parts of one provider request body, plus its
+ * thinking and effort settings, to tell a changed cache prefix apart from an
+ * expired cache.
  * Pass the payload that Pi gives to `onPayload`. Never throws: telemetry must
  * not fail the request.
  */

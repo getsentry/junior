@@ -141,16 +141,8 @@ describe("createTracedStreamFn", () => {
 
   it("hashes the provider request body and leaves it unchanged", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
-    const hashKeys = [
-      "app.ai.request.system_instructions.hash",
-      "app.ai.request.tools.hash",
-      "app.ai.request.tools.count",
-      "app.ai.request.messages.hash",
-      "app.ai.request.messages.before_last_reply.hash",
-      "app.ai.request.messages.count",
-    ];
-    // Runs one call whose provider builds `payload`, and returns the hash
-    // attributes that the span got.
+    // Runs one call whose provider builds `payload`, and returns the
+    // `app.ai.request.*` attributes that the span got.
     const hashesFor = async (payload: Record<string, unknown>) => {
       startInactiveSpan.mockClear();
       const span = {
@@ -176,8 +168,8 @@ describe("createTracedStreamFn", () => {
         ...span.setAttributes.mock.calls.map((c) => c[0]),
       ) as Record<string, unknown>;
       return Object.fromEntries(
-        hashKeys.flatMap((key) =>
-          key in attributes ? [[key, attributes[key]]] : [],
+        Object.entries(attributes).filter(([key]) =>
+          key.startsWith("app.ai.request."),
         ),
       );
     };
@@ -198,7 +190,11 @@ describe("createTracedStreamFn", () => {
       messages: unknown[],
       description = "Search the web.",
       cached = true,
+      effort = "high",
     ) => ({
+      model: "anthropic/claude-opus-5.5",
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort },
       system: [
         {
           type: "text",
@@ -230,6 +226,9 @@ describe("createTracedStreamFn", () => {
     const otherTool = await hashesFor(
       request([user("u1", true)], "Search the internet."),
     );
+    const otherEffort = await hashesFor(
+      request([user("u1", true)], "Search the web.", true, "medium"),
+    );
 
     expect(first["app.ai.request.tools.count"]).toBe(1);
     expect(first["app.ai.request.messages.count"]).toBe(1);
@@ -246,6 +245,28 @@ describe("createTracedStreamFn", () => {
     expect(edited["app.ai.request.messages.before_last_reply.hash"]).not.toBe(
       first["app.ai.request.messages.hash"],
     );
+    expect(appended["app.ai.request.prefix.before_last_reply.hash"]).toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    expect(edited["app.ai.request.prefix.before_last_reply.hash"]).not.toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    expect(first).not.toHaveProperty(
+      "app.ai.request.prefix.before_last_reply.hash",
+    );
+    expect(first["app.ai.request.thinking.type"]).toBe("adaptive");
+    expect(first["app.ai.request.effort"]).toBe("high");
+    expect(otherEffort["app.ai.request.effort"]).toBe("medium");
+    expect(otherEffort["app.ai.request.prefix.hash"]).not.toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    for (const key of [
+      "app.ai.request.tools.hash",
+      "app.ai.request.system_instructions.hash",
+      "app.ai.request.messages.hash",
+    ]) {
+      expect(otherEffort[key]).toBe(first[key]);
+    }
     expect(withoutBreakpoints).toEqual(appended);
     expect(otherTool["app.ai.request.tools.hash"]).not.toBe(
       first["app.ai.request.tools.hash"],
