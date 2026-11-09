@@ -298,6 +298,9 @@ importers:
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@25.9.1)
+      undici:
+        specifier: 7.30.1
+        version: 7.30.1
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
@@ -13767,6 +13770,7 @@ snapshots:
       just-bash: 3.0.1
       nitro: 3.0.260522-beta(jiti@2.7.0)
       node-html-markdown: 2.0.0
+      p-limit: 7.3.1
       pg: 8.21.0
       sharp: 0.35.3(@types/node@25.9.1)
       web-push: 3.6.7
@@ -13867,6 +13871,7 @@ snapshots:
       just-bash: 3.0.1
       nitro: 3.0.260522-beta
       node-html-markdown: 2.0.0
+      p-limit: 7.3.1
       pg: 8.21.0
       sharp: 0.35.3(@types/node@25.9.1)
       web-push: 3.6.7
@@ -13966,6 +13971,7 @@ snapshots:
       jose: 6.2.3
       just-bash: 3.0.1
       node-html-markdown: 2.0.0
+      p-limit: 7.3.1
       pg: 8.21.0
       sharp: 0.35.3
       web-push: 3.6.7
