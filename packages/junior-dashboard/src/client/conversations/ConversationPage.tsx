@@ -39,7 +39,7 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
-  requestsReplyFocus,
+  readReplyFocus,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
@@ -402,9 +402,10 @@ export function ConversationPage(props: {
   // coming back from the event log does not focus it again.
   const location = useLocation();
   const [replyFocusDoneKey, setReplyFocusDoneKey] = useState<string>();
+  const replyFocus = readReplyFocus(location.state);
   const replyFocusRequest =
-    requestsReplyFocus(location.state) && location.key !== replyFocusDoneKey
-      ? location.key
+    replyFocus && location.key !== replyFocusDoneKey
+      ? { draftFrom: replyFocus.draftFrom, key: location.key }
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
