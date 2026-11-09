@@ -119,54 +119,58 @@ export function DashboardHeader(props: {
       {/* Equal side tracks center the command palette trigger in the window,
           like an editor's title bar. When the nav needs more room, the
           trigger shrinks instead of covering it. Below lg the nav can be
-          wider than the window, so it scrolls and the trigger is an icon. */}
-      <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
-        <div className="flex items-center gap-5 max-lg:min-w-0">
-          <Link
-            aria-label={`${getDashboardAgentName()} home`}
-            className="flex items-center text-inherit no-underline"
-            to="/"
-          >
-            <JuniorLogo />
-          </Link>
-          <nav
-            aria-label="Primary"
-            className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
-          >
+          wider than the window, so it scrolls and the trigger is an icon.
+          Unmount, not hide, so a switch to the sidebar also closes the top
+          bar's popovers. */}
+      {props.desktopTopBar ? (
+        <div className="hidden w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-5 px-7 py-3 md:grid lg:grid-cols-[minmax(auto,1fr)_minmax(0,36rem)_minmax(auto,1fr)]">
+          <div className="flex items-center gap-5 max-lg:min-w-0">
             <Link
-              aria-current={props.workspaceActive ? "page" : undefined}
-              className={navLinkClass({ isActive: props.workspaceActive })}
+              aria-label={`${getDashboardAgentName()} home`}
+              className="flex items-center text-inherit no-underline"
               to="/"
             >
-              Conversations
+              <JuniorLogo />
             </Link>
-            {props.navItems.map((item) => (
-              <NavLink className={navLinkClass} key={item.key} to={item.to}>
-                {item.label}
-                <NavCount count={item.count} />
-              </NavLink>
-            ))}
-          </nav>
-        </div>
-        <Button
-          aria-keyshortcuts="Meta+K Control+K"
-          className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
-          onClick={props.onSearch}
-        >
-          <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
-            <Search aria-hidden="true" className="size-4 shrink-0" />
-            <span className="truncate max-lg:sr-only">
-              {COMMAND_PALETTE_LABEL}…
+            <nav
+              aria-label="Primary"
+              className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
+            >
+              <Link
+                aria-current={props.workspaceActive ? "page" : undefined}
+                className={navLinkClass({ isActive: props.workspaceActive })}
+                to="/"
+              >
+                Conversations
+              </Link>
+              {props.navItems.map((item) => (
+                <NavLink className={navLinkClass} key={item.key} to={item.to}>
+                  {item.label}
+                  <NavCount count={item.count} />
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+          <Button
+            aria-keyshortcuts="Meta+K Control+K"
+            className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
+            onClick={props.onSearch}
+          >
+            <span className="flex min-w-0 flex-1 items-center justify-center gap-2">
+              <Search aria-hidden="true" className="size-4 shrink-0" />
+              <span className="truncate max-lg:sr-only">
+                {COMMAND_PALETTE_LABEL}…
+              </span>
             </span>
-          </span>
-          <kbd className="font-sans text-xs max-xl:hidden">
-            {COMMAND_PALETTE_SHORTCUT}
-          </kbd>
-        </Button>
-        <div className="flex items-center gap-3 justify-self-end">
-          {props.profile}
+            <kbd className="font-sans text-xs max-xl:hidden">
+              {COMMAND_PALETTE_SHORTCUT}
+            </kbd>
+          </Button>
+          <div className="flex items-center gap-3 justify-self-end">
+            {props.profile}
+          </div>
         </div>
-      </div>
+      ) : null}
       <div className="grid w-full min-w-0 grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-x-2 px-3 py-2 md:hidden">
         {conversationMode && mobileBack ? (
           <button
