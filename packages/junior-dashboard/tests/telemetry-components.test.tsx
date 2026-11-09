@@ -1704,7 +1704,9 @@ describe("dashboard canonical-event components", () => {
     expect(pluginsHtml).not.toContain('aria-label="Reporting period"');
 
     const skillsHtml = renderToStaticMarkup(
-      <SkillInventory skills={data.skills} />,
+      <MemoryRouter>
+        <SkillInventory skills={data.skills} />
+      </MemoryRouter>,
     );
     expect(skillsHtml).toContain(">github<");
     expect(skillsHtml).toContain(">triage<");
@@ -1748,31 +1750,33 @@ describe("dashboard canonical-event components", () => {
 
   it("renders plugin chart widgets with a legend", () => {
     const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            pluginName: "github",
-            widgets: [
-              {
-                categories: [
-                  {
-                    id: "30d",
-                    label: "30d",
-                    values: { created: 4.5, merged: -1.25 },
-                  },
-                ],
-                id: "pull-request-outcomes",
-                series: [
-                  { key: "created", label: "Created" },
-                  { key: "merged", label: "Merged", tone: "good" },
-                ],
-                title: "Pull request outcomes",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
+      <MemoryRouter>
+        <PluginReports
+          reports={[
+            {
+              pluginName: "github",
+              widgets: [
+                {
+                  categories: [
+                    {
+                      id: "30d",
+                      label: "30d",
+                      values: { created: 4.5, merged: -1.25 },
+                    },
+                  ],
+                  id: "pull-request-outcomes",
+                  series: [
+                    { key: "created", label: "Created" },
+                    { key: "merged", label: "Merged", tone: "good" },
+                  ],
+                  title: "Pull request outcomes",
+                  type: "bar_chart",
+                },
+              ],
+            },
+          ]}
+        />
+      </MemoryRouter>,
     );
     expect(html).toContain("Pull request outcomes");
     expect(html).toContain('aria-label="Chart legend"');
@@ -1782,16 +1786,18 @@ describe("dashboard canonical-event components", () => {
 
   it("uses the plugin display name for a single metric", () => {
     const html = renderToStaticMarkup(
-      <PluginReports
-        fallbackTitle="GitHub"
-        reports={[
-          {
-            metrics: [{ label: "report", value: "failed" }],
-            pluginName: "github",
-            title: "github",
-          },
-        ]}
-      />,
+      <MemoryRouter>
+        <PluginReports
+          fallbackTitle="GitHub"
+          reports={[
+            {
+              metrics: [{ label: "report", value: "failed" }],
+              pluginName: "github",
+              title: "github",
+            },
+          ]}
+        />
+      </MemoryRouter>,
     );
 
     expect(html).toContain(">GitHub<");
@@ -1888,24 +1894,26 @@ describe("dashboard canonical-event components", () => {
 
   it("keeps chart chrome visible for empty widget data", () => {
     const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            pluginName: "github",
-            widgets: [
-              {
-                categories: [],
-                description: "Rolling outcomes",
-                emptyText: "No outcomes yet.",
-                id: "empty-outcomes",
-                series: [{ key: "created", label: "Created" }],
-                title: "Pull request outcomes",
-                type: "bar_chart",
-              },
-            ],
-          },
-        ]}
-      />,
+      <MemoryRouter>
+        <PluginReports
+          reports={[
+            {
+              pluginName: "github",
+              widgets: [
+                {
+                  categories: [],
+                  description: "Rolling outcomes",
+                  emptyText: "No outcomes yet.",
+                  id: "empty-outcomes",
+                  series: [{ key: "created", label: "Created" }],
+                  title: "Pull request outcomes",
+                  type: "bar_chart",
+                },
+              ],
+            },
+          ]}
+        />
+      </MemoryRouter>,
     );
     expect(html).toContain("Pull request outcomes");
     expect(html).toContain("Rolling outcomes");
@@ -1914,19 +1922,21 @@ describe("dashboard canonical-event components", () => {
 
   it("renders plugin records without declared fields safely", () => {
     const html = renderToStaticMarkup(
-      <PluginReports
-        reports={[
-          {
-            pluginName: "scheduler",
-            recordSets: [
-              {
-                title: "Malformed",
-                records: [{ id: "row-1", values: { task: "sched_1" } }],
-              },
-            ],
-          },
-        ]}
-      />,
+      <MemoryRouter>
+        <PluginReports
+          reports={[
+            {
+              pluginName: "scheduler",
+              recordSets: [
+                {
+                  title: "Malformed",
+                  records: [{ id: "row-1", values: { task: "sched_1" } }],
+                },
+              ],
+            },
+          ]}
+        />
+      </MemoryRouter>,
     );
     expect(html).toContain(
       "Report records are unavailable because no fields were declared.",

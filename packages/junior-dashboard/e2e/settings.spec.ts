@@ -57,7 +57,9 @@ test("saves notification working hours and the Slack schedule choice", async ({
     ),
   ).toBeVisible();
   await screenshot(page, "settings-notifications-slack", {
-    target: page.locator("#push-notifications"),
+    target: page
+      .getByRole("heading", { exact: true, name: "Push notifications" })
+      .locator(".."),
   });
   await followSlack.click();
   await expect(followSlack).not.toBeChecked();
@@ -295,7 +297,32 @@ test("saves the auto-archive default and wait time", async ({
   await page.getByRole("button", { name: "Archive done now" }).click();
   await expect(page.getByRole("status")).toHaveText("Archived 1 conversation.");
   await screenshot(page, "settings-auto-archive", {
-    target: page.getByRole("heading", { name: "Conversations" }).locator(".."),
+    target: page
+      .getByRole("heading", { exact: true, name: "Conversations" })
+      .locator(".."),
     view: "desktop",
   });
+});
+
+test("links to a settings section", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const heading = page.getByRole("heading", {
+    exact: true,
+    name: "Message box",
+  });
+  const link = page.getByRole("link", { name: "Link to Message box" });
+  // A screenshot resizes the page and drops hover, so show the link by focus.
+  await link.focus();
+  await screenshot(page, "settings-section-link", {
+    target: heading.locator(".."),
+    view: "desktop",
+  });
+  await link.click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#message-box`);
+  await expect(heading).toBeInViewport();
+
+  await page.goto(`${dashboard.baseURL}/settings#conversations`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Conversations" }),
+  ).toBeInViewport();
 });
