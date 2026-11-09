@@ -13,7 +13,6 @@ import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
-import { createTranscriptionRoutes } from "./api/transcriptions/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
 import { createReviewItemRoutes } from "./api/review-items/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
@@ -133,7 +132,6 @@ export function createJuniorApi(
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
-  app.route("/api/transcriptions", createTranscriptionRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());
   app.route("/api/workspaces", createWorkspaceRoutes());
