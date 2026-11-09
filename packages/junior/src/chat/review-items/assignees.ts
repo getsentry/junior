@@ -1,5 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -10,8 +9,6 @@ import {
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
-
-const ownerRoot = alias(juniorConversations, "review_item_owner_root");
 
 /** Text that the agent writes to assign Everyone. */
 export const EVERYONE_ASSIGNEE = "everyone";
@@ -86,54 +83,57 @@ export async function resolveAssignees(
   };
 }
 
-/** Return which of the Users take part in one root Conversation. */
-export async function conversationParticipantUserIds(
+// Participant rows belong to the root, so a child id reads its root's rows.
+async function participantUserIds(
   db: JuniorDatabase,
-  rootConversationId: string,
-  userIds: readonly string[],
-): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set();
+  conversationId: string,
+  condition: SQL,
+): Promise<string[]> {
   const rows = await db
     .select({ userId: juniorConversationParticipants.userId })
     .from(juniorConversationParticipants)
-    .where(
-      and(
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          rootConversationId,
-        ),
-        inArray(juniorConversationParticipants.userId, [...userIds]),
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorConversationParticipants.rootConversationId,
+        sql`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
       ),
+    )
+    .where(
+      and(eq(juniorConversations.conversationId, conversationId), condition),
     );
-  return new Set(rows.map((row) => row.userId));
+  return rows.map((row) => row.userId);
+}
+
+/** Return which of the Users are Participants of a Conversation. */
+export async function conversationParticipantUserIds(
+  db: JuniorDatabase,
+  conversationId: string,
+  userIds: readonly string[],
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  return new Set(
+    await participantUserIds(
+      db,
+      conversationId,
+      inArray(juniorConversationParticipants.userId, [...userIds]),
+    ),
+  );
 }
 
 /**
- * Return the User of the Owner of a Conversation's root, when the Owner is a
- * person with a Junior User. The system Identity of an Automation run or a
- * plugin dispatch is not a person, so it returns undefined.
+ * Return the active Participants of a Conversation: the people who have not
+ * unsubscribed from it.
  */
-export async function conversationOwnerUserId(
+export async function activeParticipantUserIds(
   db: JuniorDatabase,
   conversationId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ userId: juniorIdentities.userId })
-    .from(juniorConversations)
-    .innerJoin(
-      ownerRoot,
-      eq(ownerRoot.conversationId, juniorConversations.rootConversationId),
-    )
-    .innerJoin(
-      juniorIdentities,
-      and(
-        eq(juniorIdentities.id, ownerRoot.actorIdentityId),
-        eq(juniorIdentities.kind, "user"),
-      ),
-    )
-    .where(eq(juniorConversations.conversationId, conversationId))
-    .limit(1);
-  return row?.userId ?? undefined;
+): Promise<string[]> {
+  return await participantUserIds(
+    db,
+    conversationId,
+    isNull(juniorConversationParticipants.unsubscribedAt),
+  );
 }
 
 /** Return the User who created an Automation, if Junior knows them. */

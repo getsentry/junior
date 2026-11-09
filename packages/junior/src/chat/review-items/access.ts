@@ -14,7 +14,6 @@ import {
 } from "@/db/schema";
 import {
   automationCreatorUserId,
-  conversationOwnerUserId,
   conversationParticipantUserIds,
   type ResolvedAssignees,
 } from "./assignees";
@@ -328,11 +327,9 @@ export async function requireReviewItemLinks(args: {
 
 /**
  * Check who an agent assigns a private item to. It cannot go to Everyone.
- * Each User must be the current Actor, the Owner of or a person in one of
- * the given Conversations (the current one and, for an existing item, the
- * one that added it), or the creator of the Automation that added the item.
- * The Owner has no participant row when their Identity got its User later,
- * and a Turn without a person assigns the Owner by default. An
+ * Each User must be the current Actor, a Participant of one of the given
+ * Conversations (the current one and, for an existing item, the one that
+ * added it), or the creator of the Automation that added the item. An
  * Automation run often has no Actor and no people yet, and its creator wrote
  * the work. A public item can go to anyone.
  */
@@ -357,8 +354,6 @@ export async function requireReviewItemAssignees(args: {
   );
   const inConversation = new Set<string>();
   for (const conversationId of new Set(args.conversationIds)) {
-    const ownerId = await conversationOwnerUserId(getDb(), conversationId);
-    if (ownerId) inConversation.add(ownerId);
     for (const id of await conversationParticipantUserIds(
       getDb(),
       conversationId,

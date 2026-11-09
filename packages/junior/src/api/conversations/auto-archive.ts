@@ -493,8 +493,7 @@ export async function setConversationAutoArchive(
     .where(eq(juniorConversations.conversationId, rootConversationId))
     .limit(1);
   if (!root) throwApiError(404, "Conversation not found.");
-  // The root actor may not have a participant row yet. The detail ETag reads
-  // the auto-archive choice on each request.
+  // The detail ETag reads the auto-archive choice on each request.
   // oxlint-disable-next-line junior/touch-conversation-detail -- see above.
   await getDb()
     .insert(juniorConversationParticipants)

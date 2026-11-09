@@ -903,7 +903,7 @@ export class SqlStore implements ConversationStore {
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // Root actors stay in the personal feed even before they author a message.
+    // The root Actor is a Participant before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

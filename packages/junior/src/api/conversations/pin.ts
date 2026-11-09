@@ -21,12 +21,11 @@ import { readConversationAccessFromSql } from "./access";
  * Pin or unpin one conversation for the signed-in viewer.
  *
  * A pin lives on the viewer's participant row, and that row grants send and
- * control access. So only a participant can pin, the same as archive. The
- * root actor may have no row yet, so pinning adds it. A pin also restores an
- * archived conversation for everyone, because the Pinned section shows only
- * active conversations. A pin on a child would be a fact of the child, not
- * of the viewer's root, and no list shows child pins yet, so only a root can
- * be pinned.
+ * control access. So only a participant can pin, the same as archive. A pin
+ * also restores an archived conversation for everyone, because the Pinned
+ * section shows only active conversations. A pin on a child would be a fact
+ * of the child, not of the viewer's root, and no list shows child pins yet,
+ * so only a root can be pinned.
  */
 export async function pinConversation(
   viewer: User,

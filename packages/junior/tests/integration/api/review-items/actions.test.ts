@@ -204,7 +204,8 @@ describe("review item actions API", () => {
     const ana = await user("ana@example.com");
     const cal = await user("cal@example.com");
     await user("ben@example.com");
-    // A public dashboard Conversation that Ben started, and Ana joined.
+    // A public dashboard Conversation that Ben started. Ana joined and then
+    // unsubscribed, so she is an inactive Participant.
     await getConversationStore().recordActivity({
       actor: { email: "ben@example.com" },
       conversationId: "local:web:shared",
@@ -218,9 +219,11 @@ describe("review item actions API", () => {
       .values({
         lastMessageAt: new Date(1),
         rootConversationId: "local:web:shared",
+        unsubscribedAt: new Date(2),
         userId: ana.id,
       });
-    // An event Turn asks without naming anyone, so the item goes to Ben.
+    // An event Turn asks without naming anyone, so the item goes to the
+    // active Participants: only Ben.
     const tool = createAddReviewItemTool(
       {
         conversationId: "local:web:shared",
@@ -243,8 +246,8 @@ describe("review item actions API", () => {
         (listed: any) => listed.id,
       );
 
-    // Ana is not assigned, so the item is not on her review desk. She takes
-    // part in its Conversation, so the Conversation view shows it.
+    // Ana is not assigned, so the item is not on her review desk. She is
+    // still a Participant, so the Conversation view shows it.
     expect(await ids(ana, "")).toEqual([]);
     expect(await ids(ana, "?conversationId=local:web:shared")).toEqual([
       item.id,
