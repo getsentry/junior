@@ -28,7 +28,17 @@ vi.mock("@/chat/mcp/auth-store", () => ({
   patchMcpAuthSession: patchMcpAuthSessionMock,
   putMcpServerSessionId: putMcpServerSessionIdMock,
   putMcpAuthSession: putMcpAuthSessionMock,
-  putMcpStoredOAuthCredentials: putMcpStoredOAuthCredentialsMock,
+  // Apply the update to the stored value and record what it writes.
+  updateMcpStoredOAuthCredentials: async (
+    userId: string,
+    provider: string,
+    update: (current: unknown) => unknown,
+  ) => {
+    const next = await update(
+      await getMcpStoredOAuthCredentialsMock(userId, provider),
+    );
+    if (next) await putMcpStoredOAuthCredentialsMock(userId, provider, next);
+  },
 }));
 
 import { StateBackedMcpOAuthClientProvider } from "@/chat/mcp/oauth-provider";

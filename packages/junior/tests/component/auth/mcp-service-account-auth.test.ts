@@ -10,8 +10,8 @@ import { type EmittedLogRecord, registerLogRecordSink } from "@/chat/logging";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import { McpServiceAccountRequiredError } from "@/chat/mcp/errors";
 import {
-  deleteMcpStoredOAuthCredentials,
-  putMcpStoredOAuthCredentials,
+  deleteMcpConnection,
+  updateMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import {
   createMcpServiceAccountClientProvider,
@@ -125,7 +125,7 @@ function tool(manager: McpToolManager, rawName: string) {
 
 describe("MCP service account auth", () => {
   beforeEach(async () => {
-    await deleteMcpStoredOAuthCredentials(ACTOR_ID, PROVIDER);
+    await deleteMcpConnection(ACTOR_ID, PROVIDER);
     await deleteMcpServiceAccountCredentials(PROVIDER);
   });
 
@@ -181,9 +181,9 @@ describe("MCP service account auth", () => {
         { toolName: "create" },
       );
 
-      await putMcpStoredOAuthCredentials(ACTOR_ID, PROVIDER, {
+      await updateMcpStoredOAuthCredentials(ACTOR_ID, PROVIDER, () => ({
         tokens: { access_token: "actor-token", token_type: "Bearer" },
-      });
+      }));
       await expect(
         mcpAuth.serviceAccountProviderFactory(plugin),
       ).resolves.toBeUndefined();
@@ -197,9 +197,9 @@ describe("MCP service account auth", () => {
     useServiceAccountMcpServer();
     const onAuthorizationRequired = vi.fn(async () => false);
     const actorAuth = vi.fn(unconnectedActorAuth);
-    await putMcpStoredOAuthCredentials(ACTOR_ID, PROVIDER, {
+    await updateMcpStoredOAuthCredentials(ACTOR_ID, PROVIDER, () => ({
       tokens: { access_token: "actor-token", token_type: "Bearer" },
-    });
+    }));
 
     const unconnected = createManager(
       onAuthorizationRequired,

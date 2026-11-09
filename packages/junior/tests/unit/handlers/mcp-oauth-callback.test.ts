@@ -4,18 +4,14 @@ const {
   deleteMcpAuthSessionMock,
   finalizeMcpAuthorizationMock,
   getMcpAuthSessionMock,
-  getMcpStoredOAuthCredentialsMock,
   getPersistedThreadStateMock,
   logExceptionMock,
-  putMcpStoredOAuthCredentialsMock,
 } = vi.hoisted(() => ({
   deleteMcpAuthSessionMock: vi.fn(),
   finalizeMcpAuthorizationMock: vi.fn(),
   getMcpAuthSessionMock: vi.fn(),
-  getMcpStoredOAuthCredentialsMock: vi.fn(),
   getPersistedThreadStateMock: vi.fn(),
   logExceptionMock: vi.fn(),
-  putMcpStoredOAuthCredentialsMock: vi.fn(),
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -31,8 +27,6 @@ vi.mock("@/chat/mcp/auth-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/mcp/auth-store")>()),
   deleteMcpAuthSession: deleteMcpAuthSessionMock,
   getMcpAuthSession: getMcpAuthSessionMock,
-  getMcpStoredOAuthCredentials: getMcpStoredOAuthCredentialsMock,
-  putMcpStoredOAuthCredentials: putMcpStoredOAuthCredentialsMock,
 }));
 
 vi.mock("@/chat/runtime/thread-state", async (importOriginal) => ({
@@ -54,6 +48,11 @@ import { GET } from "@/handlers/mcp-oauth-callback";
 import { botConfig } from "@/chat/config";
 import { McpProviderError } from "@/chat/mcp/errors";
 import {
+  deleteMcpConnection,
+  getMcpStoredOAuthCredentials,
+  updateMcpStoredOAuthCredentials,
+} from "@/chat/mcp/auth-store";
+import {
   createWaitUntilCollector,
   type WaitUntilCollector,
 } from "../../fixtures/wait-until";
@@ -65,16 +64,13 @@ function makeRequest(url: string): Request {
 }
 
 describe("mcp oauth callback handler", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await deleteMcpConnection("U123", "demo");
     deleteMcpAuthSessionMock.mockReset();
     finalizeMcpAuthorizationMock.mockReset();
     getMcpAuthSessionMock.mockReset();
-    getMcpStoredOAuthCredentialsMock.mockReset();
     getPersistedThreadStateMock.mockReset();
     logExceptionMock.mockReset();
-    putMcpStoredOAuthCredentialsMock.mockReset();
-    getMcpStoredOAuthCredentialsMock.mockResolvedValue(undefined);
-    putMcpStoredOAuthCredentialsMock.mockResolvedValue(undefined);
     getMcpAuthSessionMock.mockResolvedValue({
       schemaVersion: 2,
       authSessionId: "state-123",
@@ -147,14 +143,14 @@ describe("mcp oauth callback handler", () => {
   });
 
   it("clears stale DCR client and discovery state on provider error callbacks", async () => {
-    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+    await updateMcpStoredOAuthCredentials("U123", "demo", () => ({
       clientInformation: { client_id: "stale-client" },
       discoveryState: { authorizationServerUrl: "https://old.example.com" },
       tokens: {
         access_token: "keep-me",
         token_type: "Bearer",
       },
-    });
+    }));
 
     const response = await GET(
       makeRequest(
@@ -166,9 +162,7 @@ describe("mcp oauth callback handler", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
-      "U123",
-      "demo",
+    await expect(getMcpStoredOAuthCredentials("U123", "demo")).resolves.toEqual(
       {
         tokens: {
           access_token: "keep-me",
@@ -182,14 +176,15 @@ describe("mcp oauth callback handler", () => {
   });
 
   it("does not clear durable MCP credentials for a superseded provider-error session", async () => {
-    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+    const live = {
       clientInformation: { client_id: "live-client" },
       discoveryState: { authorizationServerUrl: "https://live.example.com" },
       tokens: {
         access_token: "live-token",
         token_type: "Bearer",
       },
-    });
+    };
+    await updateMcpStoredOAuthCredentials("U123", "demo", () => live);
     getPersistedThreadStateMock.mockResolvedValue({
       conversation: {
         processing: {
@@ -215,7 +210,9 @@ describe("mcp oauth callback handler", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(putMcpStoredOAuthCredentialsMock).not.toHaveBeenCalled();
+    await expect(getMcpStoredOAuthCredentials("U123", "demo")).resolves.toEqual(
+      live,
+    );
     expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
     expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
     expect(waitUntil.pendingCount()).toBe(0);

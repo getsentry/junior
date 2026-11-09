@@ -34,6 +34,8 @@ function useOAuthClientMcpServer() {
   const tokenRequests: Request[] = [];
   let accessToken: string | undefined = ACCESS_TOKEN;
   let refreshToken = "refresh-token";
+  let refreshCount = 0;
+  let heldRefresh: { arrive: () => void; released: Promise<void> } | undefined;
   mswServer.use(
     http.get(MCP_URL, () => new HttpResponse(null, { status: 405 })),
     http.post(MCP_URL, async ({ request }) => {
@@ -91,17 +93,27 @@ function useOAuthClientMcpServer() {
       const params = new URLSearchParams(await request.text());
       const clientAuth = `Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}`;
       const refreshing = params.get("grant_type") === "refresh_token";
+      if (refreshing && heldRefresh) {
+        const held = heldRefresh;
+        heldRefresh = undefined;
+        held.arrive();
+        await held.released;
+      }
       if (
         request.headers.get("authorization") !== clientAuth ||
-        (refreshing
-          ? params.get("refresh_token") !== refreshToken
-          : params.get("code") !== AUTHORIZATION_CODE)
+        (!refreshing && params.get("code") !== AUTHORIZATION_CODE)
       ) {
         return HttpResponse.json({ error: "invalid_client" }, { status: 401 });
       }
+      // Refresh tokens rotate: each one works once.
+      if (refreshing && params.get("refresh_token") !== refreshToken) {
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      }
       if (refreshing) {
-        accessToken = "refreshed-access-token";
-        refreshToken = "rotated-refresh-token";
+        refreshCount += 1;
+        const suffix = refreshCount === 1 ? "" : `-${refreshCount}`;
+        accessToken = `refreshed-access-token${suffix}`;
+        refreshToken = `rotated-refresh-token${suffix}`;
       }
       return HttpResponse.json({
         access_token: accessToken,
@@ -116,7 +128,61 @@ function useOAuthClientMcpServer() {
     expireAccessToken: () => {
       accessToken = undefined;
     },
+    /** Hold the next refresh until `release`, and say when it arrives. */
+    holdNextRefresh: () => {
+      let arrive!: () => void;
+      let release!: () => void;
+      const arrived = new Promise<void>((resolve) => {
+        arrive = resolve;
+      });
+      heldRefresh = {
+        arrive,
+        released: new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      };
+      return { arrived, release };
+    },
   };
+}
+
+/** Turns of one person against the fixture plugin, and their first sign-in. */
+async function mcpTurns() {
+  const { PluginMcpClient } = await import("@/chat/mcp/client");
+  const { createMcpOAuthClientProvider, finalizeMcpAuthorization } =
+    await import("@/chat/mcp/oauth");
+  const { pluginCatalogRuntime } =
+    await import("@/chat/plugins/catalog-runtime");
+  const plugin = pluginCatalogRuntime.getDefinition(PROVIDER);
+  if (!plugin) throw new Error(`Missing ${PROVIDER} fixture plugin`);
+  const connect = async () =>
+    new PluginMcpClient(plugin, {
+      authProvider: await createMcpOAuthClientProvider({
+        provider: PROVIDER,
+        conversationId: "conversation-1",
+        sessionId: "turn-1",
+        userId: "U123",
+        userMessage: "read my doc",
+      }),
+    });
+  const signIn = async () => {
+    const authProvider = await createMcpOAuthClientProvider({
+      provider: PROVIDER,
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      userId: "U123",
+      userMessage: "read my doc",
+    });
+    const client = new PluginMcpClient(plugin, { authProvider });
+    await client.listTools().catch(() => undefined);
+    await client.close();
+    await finalizeMcpAuthorization(
+      PROVIDER,
+      authProvider.authSessionId,
+      AUTHORIZATION_CODE,
+    );
+  };
+  return { connect, signIn };
 }
 
 describe("pre-registered MCP OAuth client", () => {
@@ -227,5 +293,52 @@ describe("pre-registered MCP OAuth client", () => {
       refresh_token: "rotated-refresh-token",
       issuer: AUTH_ORIGIN,
     });
+  });
+
+  it("keeps a connection when two Turns refresh its tokens at once", async () => {
+    const server = useOAuthClientMcpServer();
+    const { connect, signIn } = await mcpTurns();
+    await signIn();
+    server.expireAccessToken();
+
+    // The slow Turn sends the refresh token first. The fast Turn uses it,
+    // so the provider rejects the slow refresh.
+    const held = server.holdNextRefresh();
+    const slow = await connect();
+    const fast = await connect();
+    try {
+      const slowTools = slow.listTools();
+      await held.arrived;
+      await expect(fast.listTools()).resolves.toHaveLength(1);
+      held.release();
+      await expect(slowTools).resolves.toHaveLength(1);
+    } finally {
+      await slow.close();
+      await fast.close();
+    }
+  });
+
+  it("stays unlinked when the person unlinks during a refresh", async () => {
+    const server = useOAuthClientMcpServer();
+    const { connect, signIn } = await mcpTurns();
+    const { deleteMcpConnection, getMcpStoredOAuthCredentials } =
+      await import("@/chat/mcp/auth-store");
+    await signIn();
+    server.expireAccessToken();
+
+    const held = server.holdNextRefresh();
+    const turn = await connect();
+    try {
+      const tools = turn.listTools();
+      await held.arrived;
+      await deleteMcpConnection("U123", PROVIDER);
+      held.release();
+      await expect(tools).rejects.toThrow("MCP provider connect failed");
+    } finally {
+      await turn.close();
+    }
+    expect(
+      (await getMcpStoredOAuthCredentials("U123", PROVIDER))?.tokens,
+    ).toBeUndefined();
   });
 });

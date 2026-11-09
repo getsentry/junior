@@ -4,7 +4,10 @@ import type { WebClient } from "@slack/web-api";
 import type { KnownBlock, SectionBlock } from "@slack/types";
 import { readConnectedOAuthTokens } from "@/chat/credentials/connections";
 import { homeDir } from "@/chat/discovery";
-import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import {
+  getMcpConnectionStatus,
+  type McpConnectionStatus,
+} from "@/chat/mcp/auth-store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { discoverSkills } from "@/chat/skills";
@@ -71,31 +74,16 @@ function accountLabel(account: StoredProviderAccount): string {
 function connectedAccountText(
   plugin: PluginDefinition,
   account?: StoredProviderAccount,
+  mcpStatus?: McpConnectionStatus,
 ): string {
-  return account
-    ? `*${plugin.manifest.name}*\nConnected as ${accountLabel(account)}`
-    : `*${plugin.manifest.name}*\n${plugin.manifest.description}`;
-}
-
-async function hasConnectedMcpAccount(
-  userId: string,
-  plugin: PluginDefinition,
-): Promise<boolean> {
-  if (!plugin.manifest.mcp) {
-    return false;
+  if (account) {
+    return `*${plugin.manifest.name}*\nConnected as ${accountLabel(account)}`;
   }
-
-  // Any stored MCP credential state counts, including DCR client/discovery
-  // left behind when authorization never finished.
-  const credentials = await getMcpStoredOAuthCredentials(
-    userId,
-    plugin.manifest.name,
-  );
-  return Boolean(
-    credentials?.tokens ||
-    credentials?.clientInformation ||
-    credentials?.discoveryState,
-  );
+  // A sign-in that never finished leaves a client registration. Unlink
+  // clears it, so the person can start over.
+  return mcpStatus === "started"
+    ? `*${plugin.manifest.name}*\nSign-in not finished`
+    : `*${plugin.manifest.name}*\n${plugin.manifest.description}`;
 }
 
 /** Build the Slack App Home tab view showing skills, connected accounts, and version. */
@@ -115,13 +103,16 @@ export async function buildHomeView(
       plugin,
       userTokenStore,
     );
-    if (!tokens && !(await hasConnectedMcpAccount(userId, plugin))) continue;
+    const mcpStatus = plugin.manifest.mcp
+      ? await getMcpConnectionStatus(userId, plugin.manifest.name)
+      : "none";
+    if (!tokens && mcpStatus === "none") continue;
 
     connectedSections.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: connectedAccountText(plugin, tokens?.account),
+        text: connectedAccountText(plugin, tokens?.account, mcpStatus),
       },
       accessory: {
         type: "button",

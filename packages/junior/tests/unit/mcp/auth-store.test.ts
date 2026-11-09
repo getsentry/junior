@@ -50,19 +50,16 @@ describe("MCP auth session store", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("deletes every pending auth session for one user/provider pair", async () => {
-    const {
-      deleteMcpAuthSessionsForUserProvider,
-      getMcpAuthSession,
-      putMcpAuthSession,
-    } = await import("@/chat/mcp/auth-store");
+  it("deletes every authorization attempt with the connection of one user/provider pair", async () => {
+    const { deleteMcpConnection, getMcpAuthSession, putMcpAuthSession } =
+      await import("@/chat/mcp/auth-store");
 
     await putMcpAuthSession(buildSession("auth-1"));
     await putMcpAuthSession(buildSession("auth-2"));
     await putMcpAuthSession(buildSession("auth-3", { provider: "github" }));
     await putMcpAuthSession(buildSession("auth-4", { userId: "U999" }));
 
-    await deleteMcpAuthSessionsForUserProvider("U123", "notion");
+    await deleteMcpConnection("U123", "notion");
 
     await expect(getMcpAuthSession("auth-1")).resolves.toBeUndefined();
     await expect(getMcpAuthSession("auth-2")).resolves.toBeUndefined();
@@ -93,7 +90,7 @@ describe("MCP auth session store", () => {
   it("keeps bulk deletion working after one sibling session is removed directly", async () => {
     const {
       deleteMcpAuthSession,
-      deleteMcpAuthSessionsForUserProvider,
+      deleteMcpConnection,
       getMcpAuthSession,
       putMcpAuthSession,
     } = await import("@/chat/mcp/auth-store");
@@ -103,7 +100,7 @@ describe("MCP auth session store", () => {
     await putMcpAuthSession(buildSession("auth-3", { provider: "github" }));
 
     await deleteMcpAuthSession("auth-1");
-    await deleteMcpAuthSessionsForUserProvider("U123", "notion");
+    await deleteMcpConnection("U123", "notion");
 
     await expect(getMcpAuthSession("auth-1")).resolves.toBeUndefined();
     await expect(getMcpAuthSession("auth-2")).resolves.toBeUndefined();
