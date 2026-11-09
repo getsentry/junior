@@ -42,7 +42,10 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
-import { listConversationWork } from "@/chat/plugins/unfinished-work";
+import {
+  isConversationWorkDone,
+  listConversationWork,
+} from "@/chat/plugins/unfinished-work";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
@@ -63,13 +66,6 @@ const HOUR_MS = 60 * 60 * 1000;
 /** Participant rows checked per page. A run reads pages until none remain. */
 const AUTO_ARCHIVE_PAGE_SIZE = 500;
 
-export type ConversationDoneInput = {
-  assignedWork?: boolean;
-  finishedWorkAt?: string;
-  lastUserMessageAt?: string;
-  unfinishedWork?: boolean;
-};
-
 /** A user's auto-archive settings. */
 export type AutoArchiveSettings = {
   autoArchiveDefault: boolean;
@@ -81,25 +77,6 @@ export const DEFAULT_AUTO_ARCHIVE_SETTINGS: AutoArchiveSettings = {
   autoArchiveDefault: false,
   autoArchiveGraceHours: AUTO_ARCHIVE_DEFAULT_GRACE_HOURS,
 };
-
-/**
- * Decide whether a conversation's work is done long enough to auto-archive.
- * A conversation without plugin-reported work has nothing to wait for, so
- * the quiet-tree checks alone decide it.
- */
-export function isConversationWorkDone(
-  conversation: ConversationDoneInput,
-  cutoffMs: number,
-): boolean {
-  if (conversation.unfinishedWork) return false;
-  if (!conversation.assignedWork) return true;
-  const finishedAt = Date.parse(conversation.finishedWorkAt ?? "");
-  if (!Number.isFinite(finishedAt) || finishedAt > cutoffMs) return false;
-  const lastUserMessageAt = Date.parse(conversation.lastUserMessageAt ?? "");
-  return !(
-    Number.isFinite(lastUserMessageAt) && lastUserMessageAt > finishedAt
-  );
-}
 
 /**
  * One archive run for one user. A scheduled run needs the user's effective
