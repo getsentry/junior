@@ -14,10 +14,13 @@ export {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  countPendingConversationMessages,
   hasConversationStop,
+  hasRunnableConversationWork,
   isFinalAttempt,
   isInvalidConversationRecordError,
   moveIdleConversationDestination,
+  pruneActiveConversation,
   releaseInboundMessage,
   type AgentInput,
   type AttemptFailure,
@@ -48,7 +51,10 @@ import type {
   Conversation,
   InboundMessage,
 } from "@/chat/task-execution/state";
-import { CONVERSATION_WORK_STALE_ENQUEUE_MS } from "@/chat/task-execution/state";
+import {
+  CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  hasRunnableConversationWork,
+} from "@/chat/task-execution/state";
 
 interface MetadataOptions {
   conversationStore?: ConversationStore;
@@ -150,23 +156,6 @@ export async function recordConversationRetry(args: {
   const result = await workState.recordConversationRetry(args);
   await recordExecutionMetadata(args);
   return result;
-}
-
-/** Count mailbox messages that have not yet reached the conversation event log. */
-export function countPendingConversationMessages(
-  conversation: Conversation,
-): number {
-  return conversation.execution.pendingMessages.length;
-}
-
-/** Return whether a conversation has pending or resumable execution work. */
-export function hasRunnableConversationWork(
-  conversation: Conversation,
-): boolean {
-  return (
-    conversation.execution.status !== "idle" ||
-    countPendingConversationMessages(conversation) > 0
-  );
 }
 
 /**
@@ -669,14 +658,6 @@ export async function clearExpiredConversationLease(args: {
   const result = await workState.clearExpiredConversationLease(args);
   await recordExecutionMetadata(args);
   return result;
-}
-
-/** Remove one conversation from the active index after it is missing or idle. */
-export async function removeActiveConversation(args: {
-  conversationId: string;
-  state?: StateAdapter;
-}) {
-  return await workState.removeActiveConversation(args);
 }
 
 /** List active conversation ids by oldest execution update first. */

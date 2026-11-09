@@ -179,8 +179,8 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove awaiting_resume mapping after every SQL row uses paused
-// and no supported worker writes the legacy status.
+// TODO(dcramer): Remove the awaiting_resume name after the release that stops
+// writing it is the oldest deployed worker. Migration 0089 renamed older rows.
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
@@ -192,11 +192,6 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
-}
-function executionStatusToSql(status: ConversationStatus): ConversationStatus {
-  return (
-    status === "paused" ? "awaiting_resume" : status
-  ) as ConversationStatus;
 }
 
 function destinationFromRow(
@@ -844,7 +839,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.updatedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.updatedAtMs),
-        executionStatus: executionStatusToSql(conversation.execution.status),
+        executionStatus: conversation.execution.status,
         runId: conversation.execution.runId ?? null,
         lastCheckpointAt:
           conversation.execution.lastCheckpointAtMs === undefined
