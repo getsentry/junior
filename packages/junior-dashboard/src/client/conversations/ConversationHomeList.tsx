@@ -249,7 +249,8 @@ function ConversationCard(props: ConversationCardProps) {
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
   const unread = Boolean(conversation.unread);
-  // Idle conversations get no badge, so the badges that show stand out.
+  // Idle and stopped conversations get no badge, so the badges that show
+  // stand out.
   const showStatus =
     props.waitingOnViewer ||
     unread ||
@@ -290,6 +291,7 @@ function ConversationCard(props: ConversationCardProps) {
         {showStatus ? (
           <span className="absolute -bottom-1 -right-1 grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
             <ConversationListStatusIcon
+              // The tile already shows the lock.
               isPrivate={false}
               status={status}
               unread={unread}

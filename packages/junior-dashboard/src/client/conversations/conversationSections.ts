@@ -151,10 +151,7 @@ function conversationSection(
     return { key: "older", label: "Older", order: Number.POSITIVE_INFINITY };
   }
 
-  const ageInDays = Math.max(
-    0,
-    Math.round((nowDay - calendarDay(time, timeZone)) / DAY_MS),
-  );
+  const ageInDays = Math.max(0, calendarDaysAgo(time, nowDay, timeZone));
   if (ageInDays === 0) return { key: "today", label: "Today", order: 0 };
   if (ageInDays === 1) {
     return { key: "yesterday", label: "Yesterday", order: 1 };
@@ -192,6 +189,15 @@ function yearMonth(
   }).formatToParts(time);
   const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
   return { month: values.get("month") ?? 1, year: values.get("year") ?? 0 };
+}
+
+/** Count the calendar days from `time` to `nowDay` (a `calendarDay` value). */
+export function calendarDaysAgo(
+  time: number,
+  nowDay: number,
+  timeZone: string,
+): number {
+  return Math.round((nowDay - calendarDay(time, timeZone)) / DAY_MS);
 }
 
 /** Return the UTC midnight of the calendar day that holds `time` in `timeZone`. */

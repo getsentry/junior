@@ -379,7 +379,7 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
-test("shows the repo name for one annotation scope on mobile", async ({
+test("shows the repo name on linked work tags on mobile", async ({
   page,
   dashboard,
 }) => {
@@ -390,7 +390,7 @@ test("shows the repo name for one annotation scope on mobile", async ({
     has: page.getByRole("heading", { name: "Checkout latency triage" }),
   });
   await expect(conversation).toBeVisible();
-  // Each linked work tag names the repository. Mobile shows the first tag.
+  // Mobile shows the first linked work tag.
   await expect(
     conversation.getByText("payments", { exact: true }).first(),
   ).toBeVisible();

@@ -21,6 +21,7 @@ import {
 } from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
+import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
@@ -333,8 +334,11 @@ export function ConversationWorkspace(props: {
               // sits in the middle of the pane.
               "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
             : // Narrow screens dock the composer at the bottom, in thumb
-              // reach. The shell owns the keyboard and safe-area pad.
-              "max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] overflow-y-auto border-t border-dashboard-border-subtle bg-dashboard-bg px-2 pb-[var(--dashboard-composer-dock-padding,0.375rem)] pt-2 sm:px-6"
+              // reach.
+              cn(
+                composerDockClass,
+                "overflow-y-auto border-t border-dashboard-border-subtle sm:px-6",
+              )
         }
       >
         {createView}

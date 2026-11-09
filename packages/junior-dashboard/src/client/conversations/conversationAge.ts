@@ -1,7 +1,5 @@
 import { getDashboardTimeZone } from "../format";
-import { calendarDay } from "./conversationSections";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { calendarDay, calendarDaysAgo } from "./conversationSections";
 
 /**
  * Format an activity time as a short age for dense lists: `now`, `12m`, `3h`,
@@ -39,9 +37,7 @@ export function formatActivityDay(
   const time = Date.parse(value);
   if (!Number.isFinite(time)) return "";
 
-  const days = Math.round(
-    (calendarDay(nowMs, timeZone) - calendarDay(time, timeZone)) / DAY_MS,
-  );
+  const days = calendarDaysAgo(time, calendarDay(nowMs, timeZone), timeZone);
   if (days <= 0) {
     return new Date(time).toLocaleTimeString("en-US", {
       hour: "numeric",

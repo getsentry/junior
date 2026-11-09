@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
+import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
 import { ConversationRowSkeletons } from "./ConversationSidebar";
 import {
@@ -72,7 +73,12 @@ function ConversationHomeLoading() {
         <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
         <ConversationHomeListLoading />
       </section>
-      <div className="border-t border-dashboard-border-subtle px-2 pb-[var(--dashboard-composer-dock-padding,0.375rem)] pt-2 sm:px-6 md:grid md:place-items-center md:border-t-0 md:px-6 md:pb-13 md:pt-13">
+      <div
+        className={cn(
+          composerDockClass,
+          "border-t border-dashboard-border-subtle sm:px-6 md:grid md:max-h-none md:place-items-center md:border-t-0 md:px-6 md:pb-13 md:pt-13",
+        )}
+      >
         <section className="mx-auto grid w-full max-w-3xl gap-3">
           <Skeleton className="mx-auto hidden h-8 w-56 md:block" />
           <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
