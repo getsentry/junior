@@ -448,8 +448,14 @@ function activeConversation(nowMs: number): ConversationDetailReport {
       },
     ],
     auxiliaryCosts: {
-      costUsd: 0.0021,
+      costUsd: 0.003,
       operations: [
+        {
+          costUsd: 0.0009,
+          events: 2,
+          name: "compaction",
+          namespace: "junior",
+        },
         {
           costUsd: 0.0001,
           events: 1,
