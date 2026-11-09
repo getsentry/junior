@@ -32,9 +32,9 @@ function ScrollArea({
       </ScrollAreaPrimitive.Viewport>
       <ScrollAreaPrimitive.Scrollbar
         data-slot="scroll-area-scrollbar"
-        className="flex h-full w-2 touch-none p-px opacity-0 transition-opacity delay-500 duration-300 select-none hover:opacity-100 hover:delay-0 data-scrolling:opacity-100 data-scrolling:delay-0 data-scrolling:duration-75 motion-reduce:transition-none"
+        className="flex h-full w-1.5 touch-none px-px opacity-0 transition-opacity delay-500 duration-300 select-none hover:opacity-100 hover:delay-0 data-scrolling:opacity-100 data-scrolling:delay-0 data-scrolling:duration-75 motion-reduce:transition-none"
       >
-        <ScrollAreaPrimitive.Thumb className="flex-1 rounded-full bg-dashboard-scrollbar-thumb hover:bg-dashboard-scrollbar-thumb-hover" />
+        <ScrollAreaPrimitive.Thumb className="flex-1 rounded-full bg-dashboard-scrollbar-thumb/80 hover:bg-dashboard-scrollbar-thumb-hover" />
       </ScrollAreaPrimitive.Scrollbar>
     </ScrollAreaPrimitive.Root>
   );
