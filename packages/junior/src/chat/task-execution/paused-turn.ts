@@ -88,7 +88,7 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { executeTurn } from "@/chat/runtime/turn-execution";
-import type { AgentRun } from "@/chat/agent/types";
+import type { AgentDurability, AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
@@ -116,6 +116,10 @@ export interface PausedTurnOptions {
 
 /** Per-worker controls for one paused turn. */
 export interface PausedTurnRunOptions {
+  /** Builds the steering drain of the resumed Run for its Turn. */
+  drainSteeringMessages?: (
+    turn: TurnRecord,
+  ) => AgentDurability["drainSteeringMessages"];
   shouldYield?: () => boolean;
   checkIn?: () => Promise<boolean>;
   /** Aborts the resumed Run when someone stops the Conversation. */
@@ -654,6 +658,8 @@ async function runPausedTurnInContext(
               sandboxRef,
             },
             durability: {
+              drainSteeringMessages:
+                runOptions.drainSteeringMessages?.(activeTurn),
               shouldYield: runOptions.shouldYield,
               checkIn: runOptions.checkIn,
               recordPendingAuth: async (nextPendingAuth) => {
