@@ -1382,6 +1382,7 @@ describe("Slack conversation work execution", () => {
       nowMs: 1_000,
       state,
     });
+    // A stored Turn without a Source still takes its Actor's input.
     const turn = await upsertTurnRecord({
       actor: createSlackActor("T123", "U123", undefined),
       conversationId: CONVERSATION_ID,
@@ -1390,12 +1391,6 @@ describe("Slack conversation work execution", () => {
       state: "running",
       destination: SLACK_DESTINATION,
       piMessages: [],
-      source: {
-        kind: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        visibility: "public",
-      },
     });
     const mention = async (ts: string, user: string) =>
       await handleSlackWebhookAndFlush({

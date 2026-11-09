@@ -27,12 +27,12 @@ function turnOwner(turn: TurnRecord): TurnOwner {
 
 /**
  * One Turn has one Actor and one Source: it runs with that Actor's
- * credentials, so input from anyone else must not join it. Every id that both
- * sides know must match, and they must share at least one. Input with no
- * known author matches nothing.
+ * credentials, so input from anyone else must not join it. Every value that
+ * both sides know must match, and they must share an Identity id or an author
+ * id. Input with no known author matches nothing.
  */
 function hasSameOwner(a: TurnOwner, b: TurnOwner): boolean {
-  if (a.source === undefined || a.source !== b.source) return false;
+  if (a.source && b.source && a.source !== b.source) return false;
   const sameIdentity =
     a.identityId && b.identityId ? a.identityId === b.identityId : undefined;
   const sameAuthor =
