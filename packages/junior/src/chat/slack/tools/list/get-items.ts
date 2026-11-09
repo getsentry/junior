@@ -3,9 +3,12 @@ import { slackListIdParam } from "@/chat/slack/tool-support/list/params";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 /** Create a tool that reads items from an explicit Slack list. */
 export function createSlackListGetItemsTool() {
   return zodTool({
+    exposure: "deferred",
+    source: SLACK_TOOL_SOURCE,
     description: "Read items from a Slack list.",
     annotations: {
       destructiveHint: false,

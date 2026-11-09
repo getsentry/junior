@@ -21,8 +21,13 @@ import {
   enqueueAgentInvocationResult,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
+import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { botConfig } from "@/chat/config";
-import { skipInputBeforeConversationStop } from "@/chat/conversations/session-stop";
+import { logException } from "@/chat/logging";
+import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
+import { resolveThreadTurnWork } from "@/chat/agent-invocations/thread-turn";
+import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { endActiveAgentInvocations } from "@/chat/agent-invocations/work";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
@@ -134,17 +139,20 @@ export function createConversationWork(
               }
             : undefined),
         },
-        { shouldYield: hooks.shouldYield },
+        { checkIn: hooks.checkIn, shouldYield: hooks.shouldYield },
       );
     },
     runTurn: runtime.runDispatchTurn,
   });
+  const enqueueResult = async (
+    invocation: TerminalAgentInvocation,
+  ): Promise<void> =>
+    await enqueueAgentInvocationResult(invocation, {
+      queue: options.queue,
+      state: options.state,
+    });
   const childWorker = createChildConversationWorker(options.agentRunner, {
-    enqueueResult: async (invocation) =>
-      await enqueueAgentInvocationResult(invocation, {
-        queue: options.queue,
-        state: options.state,
-      }),
+    enqueueResult,
     maxAgentDepth: botConfig.maxAgentDepth,
     queue: options.queue,
     state: options.state,
@@ -174,34 +182,90 @@ export function createConversationWork(
       `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
     );
   };
-  const run = async (
+  const runRoot = async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    // Drop automated input that a session stop ended, on a root or a child.
-    const skipped = await skipInputBeforeConversationStop(context);
-    if (skipped) {
-      return skipped;
-    }
-    // The stored parent decides the kind of Conversation, so child work never
-    // reaches a root worker. A child Turn can have any Source.
-    const conversation = await options.conversationStore.get({
-      conversationId: context.conversationId,
-    });
-    if (conversation?.parentConversationId) {
-      return await childWorker(context);
-    }
     const mailboxTurn = await resolveMailboxTurnWork(context);
     if (mailboxTurn) {
-      return await conversationTurnWorker(
-        context,
-        await withAgentInvocationResultActors(mailboxTurn),
-      );
+      const work = await withAgentInvocationResultActors(mailboxTurn);
+      if (!work) {
+        // A stop skipped every child result in this input.
+        await context.attempt.ack();
+        return { status: "completed" };
+      }
+      return await conversationTurnWorker(context, work);
     }
     const dispatchId = await resolveAgentDispatchId(context);
     if (dispatchId) {
       return await dispatchWorker(context, dispatchId);
     }
     return await destinationWorker(context);
+  };
+  const run = async (
+    attemptContext: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    // Apply a session stop to automated input, on a root or a child.
+    const stopped = await skipInputAfterConversationStop(attemptContext);
+    if ("skipped" in stopped) {
+      return stopped.skipped;
+    }
+    const { context } = stopped;
+    // The stored kind decides the worker, so child work never reaches a root
+    // worker. A child Turn can have any Source. A person's Turn in a Thread
+    // runs like a web Turn on a root. Agent invocations, their input, and
+    // watch Events keep the child worker.
+    const conversation = await options.conversationStore.get({
+      conversationId: context.conversationId,
+    });
+    if (conversation?.kind === "thread") {
+      const threadTurn = await resolveThreadTurnWork(context);
+      if (!threadTurn) {
+        return await childWorker(context);
+      }
+      // A person's new input supersedes an open Agent invocation, as new
+      // input does on a root. It waits behind a running or yielded one.
+      if (threadTurn.kind === "mailbox") {
+        await endActiveAgentInvocations(context.conversationId, {
+          enqueueResult,
+          errorMessage:
+            "A person sent a Message in this Thread, so this task ended without a result. Send messageAgent again if you still need this work.",
+        });
+      }
+      return await conversationTurnWorker(context, threadTurn);
+    }
+    if (conversation?.parentConversationId) {
+      return await childWorker(context);
+    }
+    // A root's run can see its stop late. Then it stops the child agents that
+    // it spawned or gave new work to after the stop, as a child's worker does.
+    const readStopSignal = context.stopSignal;
+    let stopSignal: AbortSignal | undefined;
+    const stopLateChildAgents = async () => {
+      if (stopSignal?.aborted) {
+        await stopChildAgentsOf(context.conversationId, options.state);
+      }
+    };
+    let result: ConversationWorkerResult;
+    try {
+      result = await runRoot({
+        ...context,
+        stopSignal: readStopSignal
+          ? () => (stopSignal = readStopSignal())
+          : undefined,
+      });
+    } catch (error) {
+      // After a seen stop, the run throws only when saving the cancelled Turn
+      // fails. With retries left, `recordConversationRetry` keeps the `runId`,
+      // so the retried run sees the stop and cascades. On the final attempt,
+      // only this cascade stops the late child agents. The run's own error
+      // wins over a failed cascade.
+      await stopLateChildAgents().catch((cascadeError: unknown) => {
+        logException(cascadeError, "conversation.stop.cascade.failed");
+      });
+      throw error;
+    }
+    await stopLateChildAgents();
+    return result;
   };
   return {
     conversationStore: options.conversationStore,

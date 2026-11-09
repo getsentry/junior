@@ -82,8 +82,7 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
       readOnlyHint: false,
     },
     description:
-      "Post a comment on a GitHub pull request, or reply in an inline review thread with in_reply_to. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL.",
-    exposure: "direct",
+      "Post a conversation comment on a GitHub pull request, or reply in an inline review thread with in_reply_to. For issues, use github_commentOnIssue. Use it to answer a question asked in a pull request review or comment. Returns the comment id and URL.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -114,6 +113,7 @@ export function createGitHubCommentOnPullRequestTool(egress: PluginEgress) {
         repo: repo.ref,
         number: input.number,
         comment_id: comment.id,
+        reply: { text: input.body, url: comment.html_url },
         url: comment.html_url,
       };
     },

@@ -54,6 +54,73 @@ describe("context compaction retained messages", () => {
     ).toBe(945_000);
   });
 
+  it("estimates Claude requests at the measured characters per token", async () => {
+    const { estimateHistoryTokens, estimateReplacementTokens } =
+      await import("@/chat/services/context-compaction");
+    const toolResult = {
+      role: "toolResult",
+      toolCallId: "call-1",
+      toolName: "bash",
+      content: [{ type: "text", text: "x".repeat(1_000) }],
+      isError: false,
+      timestamp: 3,
+    } as PiMessage;
+    const messages = [user("u".repeat(1_000)), toolResult];
+
+    expect(estimateReplacementTokens(messages, "openai/gpt-5.4", 10)).toBe(510);
+    expect(
+      estimateReplacementTokens(messages, "anthropic/claude-opus-4.6", 10),
+    ).toBe(960);
+
+    const toolCall = {
+      ...assistant("", 2),
+      content: [
+        { type: "text", text: "a".repeat(100) },
+        { type: "thinking", thinking: "t".repeat(200) },
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "bash",
+          arguments: { command: "ls" },
+        },
+      ],
+    } as PiMessage;
+    // 100 + 200 + "bash" + '{"command":"ls"}' = 320 characters.
+    expect(estimateReplacementTokens([toolCall], "openai/gpt-5.4")).toBe(80);
+    expect(
+      estimateReplacementTokens([toolCall], "anthropic/claude-opus-4.6"),
+    ).toBe(128);
+    const image = {
+      ...user(""),
+      content: [
+        { type: "text", text: "u".repeat(200) },
+        { type: "image", data: "", mimeType: "image/png" },
+      ],
+    } as PiMessage;
+    // 200 + 4,800 per image = 5,000 characters.
+    expect(estimateReplacementTokens([image], "openai/gpt-5.4")).toBe(1_250);
+    expect(
+      estimateReplacementTokens([image], "anthropic/claude-opus-4.6"),
+    ).toBe(2_000);
+
+    const measured = {
+      ...assistant("done", 2),
+      usage: {
+        input: 5_000,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 5_000,
+      },
+    } as PiMessage;
+    expect(
+      estimateHistoryTokens(
+        [user("u".repeat(1_000)), measured, toolResult],
+        "anthropic/claude-opus-4.6",
+      ),
+    ).toBe(5_550);
+  });
+
   it("uses configured model context windows for runtime thresholds", async () => {
     process.env = {
       ...ORIGINAL_ENV,

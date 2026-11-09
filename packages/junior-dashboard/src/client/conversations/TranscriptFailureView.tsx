@@ -10,6 +10,7 @@ import {
   transcriptFailureDescription,
   transcriptFailureTitle,
 } from "./transcriptFailure";
+import { OutboundLink } from "../components/OutboundLink";
 
 /** Render a terminal transcript failure as a distinct alert surface. */
 export function TranscriptFailureView(props: {
@@ -22,14 +23,12 @@ export function TranscriptFailureView(props: {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const eventReference = props.eventId ? (
     props.sentryEventUrl ? (
-      <a
+      <OutboundLink
         className="font-mono text-rose-100/80 underline decoration-rose-100/30 underline-offset-2 transition-colors hover:text-rose-50 hover:decoration-rose-100/70"
         href={props.sentryEventUrl}
-        rel="noreferrer"
-        target="_blank"
       >
         {`event_id=${props.eventId}`}
-      </a>
+      </OutboundLink>
     ) : (
       <span className="font-mono text-rose-100/80">{`event_id=${props.eventId}`}</span>
     )

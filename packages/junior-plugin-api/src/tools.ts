@@ -296,11 +296,25 @@ export const pluginToolContinuationSchema = z
   })
   .strict();
 
+/** Junior text that a plugin tool posted to its provider. */
+export const pluginToolReplySchema = z
+  .object({
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+  })
+  .strict();
+
 /** Shared optional fields for canonical plugin tool outputs. */
 export const pluginToolOutputSchema = z
   .object({
     /** Object results to save and show with the next reply. Omit for silent updates. */
     objectAnnotations: z.array(objectAnnotationSchema).optional(),
+    /**
+     * Reply the tool posted for Junior, such as a pull request comment. Core
+     * shows it in the transcript as a Junior reply with the plugin's mark,
+     * and removes it from the model-facing result.
+     */
+    reply: pluginToolReplySchema.optional(),
     target: z.string().min(1).optional(),
     truncated: z.boolean().optional(),
     continuation: pluginToolContinuationSchema.optional(),
@@ -408,6 +422,11 @@ export interface PluginToolDefinition<
   TExecuteOutput = TOutput,
 > extends ToolApprovalMetadata<TInput> {
   description: string;
+  /**
+   * Why the current Turn cannot run this tool. The host keeps the tool in the
+   * tool list, so the cached prompt stays the same, and rejects its calls.
+   */
+  disabledReason?: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure;

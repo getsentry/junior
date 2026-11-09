@@ -45,12 +45,12 @@ export function createAgentRunner(
         !isAgentRunFeatureDisabled(run.disabledFeatures, "subagents")
           ? bindSpawnAgent(run)
           : undefined;
-      // A child agent can always message its parent, even when it is too deep
-      // to start child agents of its own.
+      // An Agent invocation can always message its parent, even when it is
+      // too deep to start child agents of its own.
       const messageAgent =
         bindMessageAgent &&
         bindSpawnAgent &&
-        (spawnAgent || run.parentConversationId)
+        (spawnAgent || run.agentInvocationId)
           ? bindMessageAgent(run)
           : undefined;
       const nextRun: AgentRun = {

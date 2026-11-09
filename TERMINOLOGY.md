@@ -14,7 +14,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location.
+  from Location. Its `kind` is `root`, `thread`, or `task`, and never changes.
+- **Thread**: a child Conversation that people can message like a root. Say
+  "Slack thread" for the Location. A bare "Thread" is the Conversation.
+- **Task**: a child Conversation that only its parent messages. People can
+  view it. Existing code names with `task` (`task-execution`, the Ticket
+  `task` type, the `spawnAgent` `task` field) keep their meaning.
+- **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
+  bindings, Agent invocations). Not a UI word.
 - **Brief**: the versioned record of a Conversation's intent, outcome,
   decisions, facts, and evidence. Public Briefs outlive the transcript.
 - **Catch-up**: a short summary of the rows after a reader's read position,
@@ -24,10 +31,12 @@ Canonical words for Junior code and docs. One concept, one word.
   has one; a Turn stores the one that started it.
 - **Destination**: an explicit target for output or a side effect. Not a
   synonym for Location; a new Conversation stores it as its Location.
-- **Location**: the one outside place (Slack channel or thread) a Conversation
-  is delivered to. The Run carries it. It grants no delivery or visibility.
+- **Location**: the one outside place (a Slack channel or a Slack thread) a
+  Conversation is delivered to. The Run carries it. It grants no delivery or
+  visibility.
 - **Delivery**: sends Run output to the Location. Without it, only completed
-  assistant Messages are stored.
+  assistant Messages are stored. Only a root Conversation delivers to its
+  Location. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
@@ -59,6 +68,13 @@ Canonical words for Junior code and docs. One concept, one word.
   key) from core or a plugin. It can wake a Conversation.
 - **Watch**: a temporary link that delivers matching Events to a Conversation.
   Not an Automation.
+- **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
+  Events are saved as skipped Messages and start no Turn. A stop marks the
+  Conversation and its child agents. A run that sees its stop late also stops
+  the child agents it tasked after the stop. A person's input sent after the
+  stop, or new work from a child's parent, ends the stop. A person's
+  stop keeps the Watches; an agent's `stopAgent` also cancels them. Reports
+  show it as `stopped` while no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.
@@ -89,9 +105,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
   its terminal result. Never shorten to "invocation".
 - **Agent message**: `messageAgent` text to a parent, a child, or another
-  top-level agent (the agent of a root Conversation). To a child it starts an
-  Agent invocation or steers a running one. To a parent or a top-level agent
-  it is an Event Inbound message. It gives no user approval.
+  top-level agent (the agent of a root Conversation). To a child it is the
+  child's instruction: it starts an Agent invocation or steers a running one.
+  To a parent or a top-level agent it is an Event Inbound message, and it
+  gives no user approval.
 - **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks
   history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog

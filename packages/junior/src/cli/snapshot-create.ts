@@ -4,9 +4,9 @@ import {
   type ProgressPhase,
 } from "@/chat/sandbox/snapshot/resolve";
 import * as profile from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
-const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 function progressMessage(phase: ProgressPhase): string {
@@ -111,7 +111,7 @@ export async function runSnapshotCreate(
     return;
   }
 
-  const runtime = DEFAULT_RUNTIME;
+  const runtime = SANDBOX_RUNTIME;
   const timeoutMs = DEFAULT_TIMEOUT_MS;
 
   try {

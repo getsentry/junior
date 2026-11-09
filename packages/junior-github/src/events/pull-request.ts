@@ -92,12 +92,13 @@ const MERGE_STATE_CHECK =
  * Watch guidance for outcomes that the people involved need to hear about.
  * The Watch made after Junior creates a pull request always receives these
  * events. The webhook adds the people involved in the pull request to them.
- * A merge also restacks the open pull requests above it, because Junior owns
- * that stack and GitHub sends them no event when its own rebase stops.
+ * A merge does not ask the agent to check for a stack: GitHub rebases the
+ * next pull request in a stack itself, and most merges are not stacked.
  */
 const GITHUB_PULL_REQUEST_OUTCOME_GUIDANCE = {
   "pull_request.review.approved": `Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say who approved it and link it. Do not merge it unless asked. ${MERGE_STATE_CHECK}`,
-  "pull_request.merged": `${STACK_CHECK} If open pull requests in the stack remain above it and Junior pushed their branches, restack them before you reply. Do not ask first. Run \`gh stack checkout NUMBER\` with the lowest open pull request, then \`gh stack sync\`. If sync reports a conflict, ${STACK_CONFLICT_STEPS} Then mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it. When you restacked, say so in the same reply.`,
+  "pull_request.merged":
+    "Mention each person in People involved, or the person who asked for the pull request if that line is missing. Say that it merged and link it.",
 } as const satisfies Partial<Record<GitHubPullRequestEvent, string>>;
 
 /** Build the Watch created after Junior creates a pull request. */

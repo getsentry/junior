@@ -11,9 +11,9 @@ import {
 import { getConversationEventStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import {
-  persistConversationMessageSummaries,
-  projectConversationMessageSummaries,
-} from "@/chat/conversations/message-summaries";
+  hydrateConversationMessages,
+  persistConversationMessageWindow,
+} from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -29,7 +29,7 @@ import {
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { createConversationMemoryService } from "@/chat/services/conversation-memory";
+import { trimConversationMessages } from "@/chat/services/conversation-memory";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
@@ -352,34 +352,6 @@ function userMessageEvent(
 }
 
 describe("SQL conversation storage", () => {
-  it("persists visible-context compaction snapshots in conversation history", async () => {
-    const events = getConversationEventStore();
-    const conversation = coerceThreadConversationState({});
-    conversation.compactions = [
-      {
-        id: "compaction-1",
-        summary: "Earlier visible context",
-        coveredMessageCount: 2,
-        createdAtMs: 2_000,
-      },
-    ];
-
-    await persistConversationMessageSummaries({
-      conversation,
-      conversationId: CONVERSATION_ID,
-    });
-    await persistConversationMessageSummaries({
-      conversation,
-      conversationId: CONVERSATION_ID,
-    });
-
-    const history = await events.loadHistory(CONVERSATION_ID);
-    expect(projectConversationMessageSummaries(history)).toEqual(
-      conversation.compactions,
-    );
-    expect(history).toHaveLength(1);
-  });
-
   it("applies Drizzle migrations idempotently", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
 
@@ -905,7 +877,18 @@ INSERT INTO junior_conversation_events (
           CONVERSATION_ID,
           new Date(1_000).toISOString(),
           JSON.stringify({ messageId: "m1", role: "user", text: "hello" }),
-          JSON.stringify({ historyFromSeq: 2, compactions: [] }),
+          // Rows from thread compaction also have summaries.
+          JSON.stringify({
+            historyFromSeq: 2,
+            compactions: [
+              {
+                coveredMessageCount: 1,
+                createdAtMs: 1_000,
+                id: "compaction-1",
+                summary: "Earlier context",
+              },
+            ],
+          }),
         ],
       );
 
@@ -919,14 +902,6 @@ INSERT INTO junior_conversation_events (
             }),
           }),
         ],
-        compaction: expect.objectContaining({
-          seq: 3,
-          data: {
-            type: "messages_summarized",
-            historyFromSeq: 2,
-            compactions: [],
-          },
-        }),
         historyFromSeq: 2,
       });
     } finally {
@@ -934,76 +909,51 @@ INSERT INTO junior_conversation_events (
     }
   });
 
-  it("keeps a bounded visible suffix after compacting more than 864 messages", async () => {
-    const fixture = await createEmptyJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlConversationEventStore(fixture.sql);
-      const conversation = coerceThreadConversationState({});
-      conversation.messages = Array.from({ length: 2_000 }, (_, index) => ({
-        id: `message-${index}`,
-        role: "user" as const,
-        text: "x".repeat(3_200),
-        createdAtMs: index + 1,
-      }));
-      await store.append(
-        CONVERSATION_ID,
-        conversation.messages.map((message) => ({
-          data: {
-            type: "message" as const,
-            messageId: message.id,
-            role: message.role,
-            text: message.text,
-          },
-          createdAtMs: message.createdAtMs,
-        })),
-      );
-
-      const memory = createConversationMemoryService({
-        completeText: async () => ({ text: "summary" }) as never,
-      });
-      await memory.compactConversationIfNeeded(conversation, {});
-      const coveredMessageCount = conversation.compactions.reduce(
-        (count, compaction) => count + compaction.coveredMessageCount,
-        0,
-      );
-      expect(coveredMessageCount).toBe(2_000 - conversation.messages.length);
-      expect(coveredMessageCount).toBeGreaterThan(864);
-      expect(conversation.compactions.length).toBeLessThanOrEqual(16);
-
-      const historyFromSeq = Number(
-        conversation.messages[0]?.id.replace("message-", ""),
-      );
-      await store.append(CONVERSATION_ID, [
-        {
-          data: {
-            type: "messages_summarized",
-            historyFromSeq,
-            compactions: conversation.compactions,
-          },
-          createdAtMs: 3_000,
+  it("trims the oldest Messages without a model call and later loads start at the window", async () => {
+    const events = getConversationEventStore();
+    await events.append(
+      CONVERSATION_ID,
+      Array.from({ length: 2_000 }, (_, index) => ({
+        data: {
+          type: "message" as const,
+          messageId: `message-${index}`,
+          role: "user" as const,
+          text: "x".repeat(3_200),
         },
-      ]);
-      await fixture.sql.execute(
-        `
-UPDATE junior_conversation_events
-SET payload = '{}'::jsonb
-WHERE conversation_id = $1 AND seq = 0
-`,
-        [CONVERSATION_ID],
-      );
+        createdAtMs: index + 1,
+      })),
+    );
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: CONVERSATION_ID,
+    });
 
-      const visible = await store.loadMessageHistory(CONVERSATION_ID);
-      expect(visible.events[0]?.seq).toBe(historyFromSeq);
-      expect(visible.events).toHaveLength(conversation.messages.length);
-      expect(
-        projectConversationMessages(visible).map((message) => message.id),
-      ).toEqual(conversation.messages.map((message) => message.id));
-    } finally {
-      await fixture.close();
-    }
+    // The next thread context delta needs Messages after the cursor.
+    const cursor = conversation.messages[99]!.seq;
+    expect(
+      await trimConversationMessages(conversation, async () => cursor),
+    ).toBe(true);
+    expect(conversation.messages[0]?.id).toBe("message-100");
+
+    expect(
+      await trimConversationMessages(conversation, async () => undefined),
+    ).toBe(true);
+    const kept = conversation.messages.map((message) => message.id);
+    expect(kept.length).toBeLessThan(2_000 - 864);
+    expect(conversation.historyFromSeq).toBe(conversation.messages[0]?.seq);
+
+    await persistConversationMessageWindow({
+      conversationId: CONVERSATION_ID,
+      historyFromSeq: conversation.historyFromSeq!,
+    });
+    const reloaded = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation: reloaded,
+      conversationId: CONVERSATION_ID,
+    });
+    expect(reloaded.messages.map((message) => message.id)).toEqual(kept);
+    expect(reloaded.historyFromSeq).toBe(conversation.historyFromSeq);
   }, 30_000);
 
   it("round trips provider-neutral isolated subagent history", async () => {
@@ -1267,12 +1217,14 @@ INSERT INTO junior_conversation_events (
           text: "first",
           createdAtMs: 1_000,
           meta: { replied: true },
+          seq: 0,
         },
         {
           id: "m2",
           role: "assistant",
           text: "reply",
           createdAtMs: 2_000,
+          seq: 1,
         },
       ]);
       expect(await store.loadHistory(CONVERSATION_ID)).toHaveLength(3);

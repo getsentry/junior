@@ -173,6 +173,9 @@ export async function listActiveMailboxTurns(
     (record): record is TurnRecord =>
       record !== undefined &&
       !record.dispatchId &&
+      // An Agent invocation Turn is never a mailbox Turn, even with a web or
+      // Event Source.
+      record.surface !== "internal" &&
       (record.source?.kind === "web" ||
         record.source?.kind === "event" ||
         (!record.source &&
@@ -206,7 +209,8 @@ export async function getAuthPausedConversationTurnId(
     : undefined;
 }
 
-function parseWebMessages(
+/** Read one web input batch as Turn input. A batch with no web input gives []. */
+export function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
   if (messages.length === 0) {

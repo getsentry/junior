@@ -1,12 +1,15 @@
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
-  completeAgentInvocation,
-  createAgentInvocation,
-  getAgentInvocation,
   getAgentInvocationId,
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
+} from "@/chat/agent-invocations/ids";
+import {
+  completeAgentInvocation,
+  getAgentInvocation,
 } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
@@ -30,6 +33,7 @@ import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import { juniorConversations } from "@/db/schema";
 import {
   destination,
   invocationInput,
@@ -129,7 +133,8 @@ describe("agent invocation spawn and result delivery", () => {
         parentConversationId,
         source: "internal",
       });
-      expect(child).not.toHaveProperty("destination");
+      // A child stores its parent's Destination row, like every Conversation.
+      expect(child?.destination).toEqual(invocationInput.destination);
       await expect(
         createAgentInvocation({
           ...invocationInput,
@@ -163,7 +168,7 @@ describe("agent invocation spawn and result delivery", () => {
         queue,
       });
       expect(spawnAgent).toBeDefined();
-      const tool = createSpawnAgentTool(spawnAgent!);
+      const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
       const input = tool.prepareArguments!({
         task: "Inspect the failing checks.",
         title: "Failing checks",
@@ -224,6 +229,75 @@ describe("agent invocation spawn and result delivery", () => {
         message:
           'A child agent named "reviewer" already exists. Use messageAgent to give it more work, or choose a different name.',
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("refuses a spawn past maxAgentDepth or from a chain with no root", async () => {
+    const { conversationStore, fixture } = await prepareParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    try {
+      const child = await createAgentInvocation({
+        ...invocationInput,
+        idempotencyKey: "depth-child",
+      });
+      const grandchild = await createAgentInvocation({
+        ...invocationInput,
+        idempotencyKey: "depth-grandchild",
+        parentConversationId: child.childConversationId,
+      });
+      const spawnFrom = (conversationId: string, toolCallId: string) => {
+        const spawnAgent = bindSpawnAgent(
+          {
+            conversationId,
+            turnId: "parent-turn",
+            instruction: { text: "Delegate the investigation." },
+            actor: { platform: "local", userId: "local-user" },
+            credentialContext: {
+              actor: { type: "user", userId: "local-user" },
+            },
+            destination,
+            source: createLocalSource(parentConversationId),
+          },
+          { conversationStore, maxAgentDepth: 1, queue },
+        );
+        const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
+        return tool.execute!(
+          tool.prepareArguments!({
+            task: "Inspect the failing checks.",
+            title: "Failing checks",
+          }),
+          { toolCallId },
+        );
+      };
+      const refusal = {
+        name: "ToolInputError",
+        message:
+          "This agent cannot start child agents: only 1 level(s) of child agents can start their own. Do the work in this agent instead.",
+      };
+
+      // With maxAgentDepth 1, a child of the root can spawn and its own
+      // child cannot.
+      await expect(
+        spawnFrom(child.childConversationId, "call-child"),
+      ).resolves.toMatchObject({ conversation_id: expect.any(String) });
+      await expect(
+        spawnFrom(grandchild.childConversationId, "call-grandchild"),
+      ).rejects.toMatchObject(refusal);
+
+      // Bad data: no writer can link a root to its own descendant. The chain
+      // then has no root, so no Conversation in it can spawn.
+      await getDb()
+        .update(juniorConversations)
+        .set({
+          kind: "task",
+          parentConversationId: grandchild.childConversationId,
+        })
+        .where(eq(juniorConversations.conversationId, parentConversationId));
+      await expect(
+        spawnFrom(child.childConversationId, "call-cycle"),
+      ).rejects.toMatchObject(refusal);
     } finally {
       await fixture.close();
     }

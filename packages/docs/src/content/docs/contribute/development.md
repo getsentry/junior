@@ -59,7 +59,7 @@ For dashboard visual QA without generating real Slack traffic, replace conversat
 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
 ```
 
-The fixtures are read-only dashboard data; mock mode does not query or merge real conversation records.
+Mock mode does not query or merge real conversation records. Messages that you send get a fixed reply after 2 seconds, and no agent runs. They stay until the dev server restarts.
 
 ## Run sandboxes in local Docker
 

@@ -30,6 +30,10 @@ import {
 } from "@/chat/credentials/service-account";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/context-budget";
+import {
   McpAuthorizationRequiredError,
   PluginMcpClient,
   type PluginMcpListedTool,
@@ -45,7 +49,6 @@ import {
 
 const MAX_TOOL_RESULT_TOKENS = 10_000;
 const MAX_TOOL_RESULT_BYTES = 32 * 1024;
-const CHARS_PER_ESTIMATED_TOKEN = 4;
 
 function normalizeMcpToolName(provider: string, toolName: string): string {
   // Raw MCP tool names are only provider-scoped. Prefix the provider for the
@@ -190,7 +193,7 @@ function boundMcpContent(
     .map((part) => part.text)
     .join("\n\n");
   const originalBytes = utf8Bytes(text);
-  const originalTokens = Math.ceil(text.length / CHARS_PER_ESTIMATED_TOKEN);
+  const originalTokens = estimateTextTokens(text);
   if (
     originalTokens <= MAX_TOOL_RESULT_TOKENS &&
     originalBytes <= MAX_TOOL_RESULT_BYTES
@@ -200,7 +203,7 @@ function boundMcpContent(
 
   const warning = `\n\nWarning: truncated output (original token count: ${originalTokens}; original bytes: ${originalBytes})\n\n`;
   const remainingChars =
-    MAX_TOOL_RESULT_TOKENS * CHARS_PER_ESTIMATED_TOKEN - warning.length;
+    textCharsForTokens(MAX_TOOL_RESULT_TOKENS) - warning.length;
   const remainingBytes = MAX_TOOL_RESULT_BYTES - utf8Bytes(warning);
   const head = prefixWithin(
     text,
@@ -219,20 +222,22 @@ function boundMcpContent(
   ];
 }
 
+// Keep the full text. The tool pipeline cuts long model-facing results and
+// saves the full text to a file, so the text is not lost here.
 function toModelVisibleMcpContent(
   result: PluginMcpToolCallResult,
 ): Array<TextContent | ImageContent> {
   const content = toAgentToolContent(result);
   if (content.some((part) => part.type === "image")) {
-    return boundMcpContent(content);
+    return content;
   }
 
   const structured = summarizeStructuredContent(result.structuredContent);
   if (structured) {
-    return boundMcpContent([{ type: "text", text: structured }]);
+    return [{ type: "text", text: structured }];
   }
 
-  return boundMcpContent(content);
+  return content;
 }
 
 function describeMcpTool(provider: string, tool: PluginMcpListedTool): string {
@@ -365,6 +370,8 @@ export class McpToolManager {
     Promise<PluginMcpClient>
   >();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
+  /** Clients of forgotten providers. `close()` still owns their transports. */
+  private readonly forgottenClients: PluginMcpClient[] = [];
 
   private readonly options: McpToolManagerOptions;
 
@@ -452,6 +459,7 @@ export class McpToolManager {
     for (const client of [
       ...this.clientsByProvider.values(),
       ...this.actorClientsByProvider.values(),
+      ...this.forgottenClients,
     ]) {
       try {
         await client.close();
@@ -462,6 +470,7 @@ export class McpToolManager {
 
     this.clientsByProvider.clear();
     this.actorClientsByProvider.clear();
+    this.forgottenClients.length = 0;
     this.serviceAccountProviders.clear();
     this.toolsByProvider.clear();
     this.activeProviders.clear();
@@ -847,6 +856,15 @@ export class McpToolManager {
   }
 
   private forgetProvider(provider: string): void {
+    for (const clients of [
+      this.clientsByProvider,
+      this.actorClientsByProvider,
+    ]) {
+      const client = clients.get(provider);
+      if (client) {
+        this.forgottenClients.push(client);
+      }
+    }
     this.clientsByProvider.delete(provider);
     this.actorClientsByProvider.delete(provider);
     this.serviceAccountProviders.delete(provider);

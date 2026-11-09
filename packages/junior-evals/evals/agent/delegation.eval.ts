@@ -22,6 +22,12 @@ describe("Implicit Delegation", () => {
 
     const spawned = completedToolCalls("spawnAgent", conversation);
     expect(spawned.length).toBeGreaterThanOrEqual(2);
+    // Research that only the parent reads is background work: a Task.
+    expect(
+      spawned.map(
+        (call) => (call.input as { kind?: string } | undefined)?.kind,
+      ),
+    ).not.toContain("thread");
   });
 
   test("when a request needs only a few direct tool calls, do the work without a child agent", async ({

@@ -14,6 +14,7 @@ import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
+import type { AgentRun } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -27,6 +28,7 @@ import {
   CONVERSATION_WORK_LEASE_TTL_MS,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
@@ -450,6 +452,12 @@ export type ConversationWorkSlackHarness = {
     ts?: string;
     user?: string;
   }) => Promise<Response>;
+  /** Press Slack's native stop button in a thread. */
+  sendSessionStop: (input: {
+    eventTs: string;
+    threadTs: string;
+    user?: string;
+  }) => Promise<Response>;
 };
 
 /**
@@ -466,14 +474,14 @@ export async function createConversationWorkHarness(
   const queue = createConversationWorkQueueTestAdapter();
   const adapter = createSlackAdapterFixture();
   const conversationStore = getConversationStore();
-  let killNextRun: (() => void) | undefined;
+  let killNextRun: ((run: AgentRun) => Promise<void>) | undefined;
   const work = createConversationWork({
     agentRunner: {
       run: async (run) => {
         const kill = killNextRun;
         if (!kill) return await agentRunner.run(run);
         killNextRun = undefined;
-        kill();
+        await kill(run);
         // A dead process never returns.
         return await new Promise<never>(() => {});
       },
@@ -502,14 +510,36 @@ export async function createConversationWorkHarness(
      * Injected fault: kill the worker process while the agent runs, as a
      * function timeout, OOM, or deploy does. The worker keeps its lease, runs
      * no failure path, and never checks in again. Fake `setInterval` first,
-     * so no timer of the dead worker fires.
+     * so no timer of the dead worker fires. With `afterInputSaved`, the run
+     * first saves its input as its last boundary, as the agent does before
+     * its first model call.
      */
-    killWorker: async (message: ConversationQueueMessage) => {
+    killWorker: async (
+      message: ConversationQueueMessage,
+      killOptions: { afterInputSaved?: boolean } = {},
+    ) => {
       if (!vi.isFakeTimers()) {
         throw new Error("killWorker needs fake setInterval");
       }
       const killed = new Promise<void>((resolve) => {
-        killNextRun = resolve;
+        killNextRun = async (run) => {
+          if (killOptions.afterInputSaved) {
+            await saveTurnCheckpoint({
+              conversationId: run.conversationId,
+              messages: [
+                {
+                  role: "user",
+                  content: [{ type: "text", text: run.instruction.text }],
+                  timestamp: Date.now(),
+                },
+              ],
+              mode: "running",
+              sliceId: 1,
+              turnId: run.turnId,
+            });
+          }
+          resolve();
+        };
       });
       const processed = process(message);
       await Promise.race([
@@ -608,6 +638,23 @@ export async function createConversationWorkSlackHarness(
             ...input,
           }),
         ),
+        services,
+      }),
+    sendSessionStop: async (input) =>
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({
+          type: "event_callback",
+          team_id: "T123",
+          event_id: `Ev_SESSION_STOP_${input.eventTs}`,
+          event: {
+            type: "agent_session_stopped",
+            channel: "C123",
+            event_ts: input.eventTs,
+            streaming_message_ts: [],
+            thread_ts: input.threadTs,
+            user: input.user ?? "U123",
+          },
+        }),
         services,
       }),
   };

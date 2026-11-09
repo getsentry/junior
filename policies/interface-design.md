@@ -24,6 +24,21 @@ function names are part of the interface.
 - Keep exported interfaces small and role-shaped.
 - Add an interface only when it removes real coupling or marks a stable edge.
 
+### Lifecycle state
+
+- Store each lifecycle, such as a Turn, an agent invocation, or an
+  Automation run, as one status value. Use a discriminated union when a field
+  is valid only in some states.
+- One function owns the transitions of each lifecycle and rejects an illegal
+  one. Other code calls it. It does not write the status directly.
+- A terminal state stays terminal. A late writer must not move it back.
+- Do not derive a state from a mix of optional fields, booleans, timestamps,
+  or index membership.
+- Keep one source for each lifecycle. Write each copy, such as a SQL mirror,
+  an index, a count, or a summary, in the same transition, or rebuild it from
+  the source. Do not pick a winner between two copies.
+- Do not repair an illegal state when you read it. Fix the writer.
+
 ### Services
 
 - Passing services as parameters or in an options object is dependency
@@ -62,6 +77,8 @@ function names are part of the interface.
 - Test fixtures may expose narrow construction seams when the production
   interface stays small.
 - Low-level infrastructure may expose mechanism APIs inside its own edge.
+- A Lease or lock may end when its TTL expires. The recovery path then makes
+  the resulting transition through the owning function.
 - Generic names are fine in a tight module when the import path gives context.
 - Compatibility names may stay at external edges or legacy storage keys. New
   internal names use the current domain term.

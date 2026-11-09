@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import type {
   ConversationDetailReport,
   ConversationPendingMessagesReport,
@@ -14,6 +22,7 @@ import { ComposerDock } from "./ComposerDock";
 import {
   ConversationComposer,
   restoreStoredDraftText,
+  touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
@@ -39,10 +48,15 @@ function ReplyFooter(props: {
   authors?: ConversationDetailReport["authors"];
   committedMessageIds: readonly string[];
   conversationId: string;
+  /** Key of a request to focus the message box. */
+  focusRequest?: string;
+  onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
+  /** Lets the page add a quote of selected text to the draft. */
+  ref?: Ref<Pick<ConversationComposerHandle, "appendText">>;
   /** The last Review item that Junior added in the transcript. */
   reviewItemId?: string;
   /**
@@ -72,7 +86,8 @@ function ReplyFooter(props: {
   // Dismiss on the question closes the item and shows the message box again.
   // The message box stays mounted, so its text and images stay, and it does
   // not hide while it has focus.
-  const reviewItem = useReviewItemData(props.reviewItemId).data;
+  const reviewItemQuery = useReviewItemData(props.reviewItemId);
+  const reviewItem = reviewItemQuery.data;
   const [composerShownForItemId, setComposerShownForItemId] =
     useState<string>();
   const [composerFocused, setComposerFocused] = useState(false);
@@ -184,6 +199,20 @@ function ReplyFooter(props: {
   editCancelRef.current = editCancel;
   const editingRef = useRef(false);
   const composerRef = useRef<ConversationComposerHandle>(null);
+  useImperativeHandle(props.ref, () => ({
+    appendText: (text) => composerRef.current?.appendText(text),
+  }));
+  // Focus keeps the message box shown, so wait until the question is known.
+  // On a touch screen, focus would open the keyboard over the transcript.
+  const reviewItemPending =
+    Boolean(props.reviewItemId) && reviewItemQuery.isPending;
+  const { focusRequest, onFocusRequestDone } = props;
+  const questionShown = Boolean(question);
+  useEffect(() => {
+    if (!focusRequest || reviewItemPending) return;
+    onFocusRequestDone(focusRequest);
+    if (!questionShown && !touchKeyboardMatches()) composerRef.current?.focus();
+  }, [focusRequest, onFocusRequestDone, questionShown, reviewItemPending]);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
@@ -212,10 +241,10 @@ function ReplyFooter(props: {
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
         });
-        // Junior can read the message before the cancel lands. Then it is
-        // already in the Conversation and there is nothing to edit.
+        // Junior can read the message before the cancel lands, or someone
+        // else can remove it. Then there is nothing to edit.
         if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
-          setQueueActionError("Junior already read that message.");
+          setQueueActionError("That message was already read or removed.");
           return;
         }
         const restored = { images, text: message.text ?? "" };
@@ -244,13 +273,24 @@ function ReplyFooter(props: {
   const onSteerMessage = useCallback((message: ConversationMailboxMessage) => {
     if (steerPendingMessagesRef.current.isPending) return;
     setQueueActionError(undefined);
+    const inboundMessageId = message.inboundMessageId;
     steerPendingMessagesRef.current.mutate(
-      { inboundMessageIds: [message.inboundMessageId] },
+      { inboundMessageIds: [inboundMessageId] },
       {
         onError: () =>
           setQueueActionError(
             "Could not send the queued message now. Try again.",
           ),
+        // No id comes back when the message is not a queued `defer` message
+        // anymore. Junior read it, someone removed it, or another tab
+        // steered it. The message names all three.
+        onSuccess: (result) => {
+          if (!result.steeredInboundMessageIds.includes(inboundMessageId)) {
+            setQueueActionError(
+              "That message was already read, steered, or removed.",
+            );
+          }
+        },
       },
     );
   }, []);

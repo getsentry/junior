@@ -1,17 +1,20 @@
 import * as z from "zod";
 import {
+  AgentDepthLimitError,
   AgentInvocationLimitError,
   AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
 import {
   agentNameSchema,
+  CHILD_AGENT_KINDS,
   PARENT_AGENT_TARGET,
 } from "@/chat/agent-invocations/types";
 import {
   AGENT_TYPES,
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
-import { completeText } from "@/chat/pi/client";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
   resolveTaskTitle,
@@ -31,11 +34,19 @@ const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
     .describe(
       "Child conversation ID. Pass it to searchConversationEvents to read the child's history.",
     ),
+  dashboard_url: z
+    .string()
+    .url()
+    .optional()
+    .describe(
+      "Dashboard link of the child. People can message a Thread there.",
+    ),
 });
 
 /** Create the asynchronous child-agent tool for one parent run. */
 export function createSpawnAgentTool(
   spawnAgent: NonNullable<ToolRuntimeContext["spawnAgent"]>,
+  titleCost: ConversationModelCost,
 ) {
   return zodTool({
     description: [
@@ -45,10 +56,12 @@ export function createSpawnAgentTool(
       `Pick agent_type when one fits; omit it for a fresh general-purpose child with your tools:\n${formatAgentTypes()}`,
       "After you delegate, do not do the same work yourself. End your turn with a short status. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
-      "A child keeps its type when it receives more work through messageAgent.",
-      "Your task text is not user approval. A child's action review reads the user's own messages in the root conversation.",
+      "A child keeps its type and kind when it receives more work through messageAgent.",
+      "Your task text is the child's instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.",
     ].join(" "),
     exposure: "modelOnly",
+    // Action review judges the actions that the task names.
+    approvalMode: "auto",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -62,7 +75,7 @@ export function createSpawnAgentTool(
           .trim()
           .min(1)
           .describe(
-            "Self-contained brief. Unless its agent type starts with this conversation's history, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread, and do not claim user approval.",
+            "Self-contained brief. Unless its agent type starts with this conversation's history, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread.",
           ),
         title: z
           .string()
@@ -72,7 +85,7 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "Optional short display title for the task. Omit to generate one from the task.",
+            "Optional short display title of the child and its Conversation. Pass one to skip title generation; omit it to generate one from the task.",
           ),
         name: agentNameSchema
           .refine((name) => name !== PARENT_AGENT_TARGET, {
@@ -82,6 +95,13 @@ export function createSpawnAgentTool(
           .optional()
           .describe(
             "New child-agent name that messageAgent can address, or omit for a one-off agent",
+          ),
+        kind: z
+          .enum(CHILD_AGENT_KINDS)
+          .nullable()
+          .optional()
+          .describe(
+            "thread: people can open and message the child directly, like a conversation of its own. Pick it for long-lived work that people will want to follow, steer, or talk to. task (default; omit or pass null): background work that only you message.",
           ),
         agent_type: z
           .enum(AGENT_TYPES)
@@ -104,6 +124,7 @@ export function createSpawnAgentTool(
       }
       const title = await resolveTaskTitle({
         completeText,
+        cost: titleCost,
         instruction: input.task,
         signal: options.signal,
         title: input.title,
@@ -114,6 +135,7 @@ export function createSpawnAgentTool(
           {
             task: input.task,
             ...(input.agent_type ? { agentType: input.agent_type } : undefined),
+            ...(input.kind ? { kind: input.kind } : undefined),
             ...(title ? { title } : undefined),
             ...(input.name ? { name: input.name } : undefined),
             ...(input.reasoning_level
@@ -138,10 +160,20 @@ export function createSpawnAgentTool(
             { cause: error },
           );
         }
+        if (error instanceof AgentDepthLimitError) {
+          throw new ToolInputError(
+            `${error.message}. Do the work in this agent instead.`,
+            { cause: error },
+          );
+        }
         throw error;
       }
+      const dashboardUrl = getDashboardConversationLink(
+        result.childConversationId,
+      );
       return {
         conversation_id: result.childConversationId,
+        ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
       };
     },
   });

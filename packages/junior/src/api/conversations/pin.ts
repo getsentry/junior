@@ -1,7 +1,9 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -21,8 +23,10 @@ import { readConversationAccessFromSql } from "./access";
  * A pin lives on the viewer's participant row, and that row grants send and
  * control access. So only a participant can pin, the same as archive. The
  * root actor may have no row yet, so pinning adds it. A pin also restores an
- * archived conversation, because the Pinned section shows only active
- * conversations.
+ * archived conversation for everyone, because the Pinned section shows only
+ * active conversations. A pin on a child would be a fact of the child, not
+ * of the viewer's root, and no list shows child pins yet, so only a root can
+ * be pinned.
  */
 export async function pinConversation(
   viewer: User,
@@ -38,14 +42,43 @@ export async function pinConversation(
     throwApiError(404, "Conversation not found.");
   }
   const executor = getSqlExecutor();
-  const rootConversationId = await resolveRootConversationId(
-    executor,
-    conversationId,
+  return await executor.transaction(() =>
+    setPin(executor.db(), viewer, conversationId, body.pinned),
   );
-  const db = executor.db();
+}
+
+async function setPin(
+  db: JuniorDatabase,
+  viewer: User,
+  conversationId: string,
+  pinned: boolean,
+): Promise<PinConversationResponse> {
+  // The lock orders a pin with a last-subscriber unsubscribe, so the pin
+  // sees and restores that archive (contract: `subscription.ts`).
+  const [conversation] = await db
+    .select({
+      archivedAt: juniorConversations.archivedAt,
+      kind: juniorConversations.kind,
+      lastActivityAt: juniorConversations.lastActivityAt,
+      parentConversationId: juniorConversations.parentConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
+    })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1)
+    .for("no key update");
+  if (!conversation) throwApiError(404, "Conversation not found.");
+  // The viewer passed the access check above, so the root id is safe to name.
+  // MCP output has no root field, and the caller needs it to act.
+  if (conversationKindFromRow(conversation) !== "root") {
+    throwApiError(
+      409,
+      `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${conversation.rootConversationId ?? conversation.parentConversationId}.`,
+    );
+  }
   // Pins are viewer marks, which the detail ETag reads on each request, so
   // they need no detail version bump.
-  if (!body.pinned) {
+  if (!pinned) {
     // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
     await db
       .update(juniorConversationParticipants)
@@ -53,29 +86,23 @@ export async function pinConversation(
       .where(
         and(
           eq(juniorConversationParticipants.userId, viewer.id),
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            rootConversationId,
-          ),
+          eq(juniorConversationParticipants.rootConversationId, conversationId),
         ),
       );
     return { pinnedAt: null };
   }
 
-  const [root] = await db
-    .select({ lastActivityAt: juniorConversations.lastActivityAt })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, rootConversationId))
-    .limit(1);
-  if (!root) throwApiError(404, "Conversation not found.");
+  if (conversation.archivedAt) {
+    await setArchivedAt(db, [conversationId], null);
+  }
   const pinnedAt = new Date();
   // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
   await db
     .insert(juniorConversationParticipants)
     .values({
-      lastMessageAt: root.lastActivityAt,
+      lastMessageAt: conversation.lastActivityAt,
       pinnedAt,
-      rootConversationId,
+      rootConversationId: conversationId,
       userId: viewer.id,
     })
     .onConflictDoUpdate({
@@ -83,8 +110,9 @@ export async function pinConversation(
         juniorConversationParticipants.userId,
         juniorConversationParticipants.rootConversationId,
       ],
-      // A new pin has no place yet, so it sorts first in Pinned.
-      set: { archivedAt: null, pinnedAt, pinPosition: null },
+      // A new pin has no place yet, so it sorts first in Pinned. A pin also
+      // subscribes the viewer again, because Pinned is part of the feed.
+      set: { pinnedAt, pinPosition: null, unsubscribedAt: null },
     });
   return { pinnedAt: pinnedAt.toISOString() };
 }

@@ -285,7 +285,7 @@ describe("event wake delay", () => {
       [
         `<watch about="${prWatch.label}">`,
         '<people><@U123> (did Event 1; called "dcramer" in the Event data)</people>',
-        'If you mention <@U123>, write to them as "you", and do not also call them "dcramer".',
+        'If your reply is to <@U123>, write to them as "you". Otherwise call them <@U123>, not "dcramer".',
         `<instructions>${prWatch.intent}</instructions>`,
       ].join("\n"),
     );

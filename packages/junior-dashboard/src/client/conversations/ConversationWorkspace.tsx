@@ -2,7 +2,12 @@ import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import {
+  NavigationType,
+  useNavigate,
+  useNavigationType,
+  useParams,
+} from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { useConversationsData } from "../api";
@@ -20,11 +25,13 @@ import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
   ConversationComposer,
+  touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
 import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
   usePendingArchiveConversationUpdates,
+  withoutThreads,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
@@ -39,12 +46,12 @@ import { useDebouncedValue } from "../debouncedValue";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
+import { FeedThreads, feedThreadsById } from "./feedThreads";
 import {
   useWaitingConversationIds,
   useWaitingConversations,
 } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
-import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import {
   readSidebarWidth,
@@ -83,6 +90,7 @@ export function ConversationWorkspace(props: {
   const search = sidebarFits ? "" : debouncedQuery;
   const params = useParams();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
   const feed = useConversationsData(search);
@@ -91,6 +99,7 @@ export function ConversationWorkspace(props: {
   const createConversation = useCreateConversation();
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
+  const createRequested = useRef(false);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -102,19 +111,21 @@ export function ConversationWorkspace(props: {
   );
   const openCreate = () => {
     createConversation.reset();
-    if (selectedId) navigate(NEW_CONVERSATION_PATH);
-    else createComposer.current?.focus();
+    if (selectedId) {
+      // The reader asked to type, so home takes focus even on a touch screen.
+      createRequested.current = true;
+      navigate(NEW_CONVERSATION_PATH);
+    } else createComposer.current?.focus();
   };
 
+  // Thread cards, breadcrumbs, and details show each Thread's own title and
+  // status from its feed row.
+  const feedThreads = useMemo(
+    () => feedThreadsById(conversations),
+    [conversations],
+  );
   const waitingConversations = useWaitingConversations();
   const waitingConversationIds = useWaitingConversationIds();
-  const { finishedConversationIds, heldConversationId, markRead, setUnread } =
-    useConversationFinishedIndicators(
-      conversations,
-      selectedId,
-      Boolean(feed.data),
-      !search,
-    );
 
   const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
   const pagedConversations = useMemo(
@@ -122,15 +133,12 @@ export function ConversationWorkspace(props: {
       pageItems(
         pinnedAndAttentionFirst(
           conversations,
-          attentionConversationIds(
-            waitingConversationIds,
-            finishedConversationIds,
-          ),
+          attentionConversationIds(conversations, waitingConversationIds),
         ),
         page,
         CONVERSATION_PAGE_SIZE,
       ),
-    [conversations, finishedConversationIds, page, waitingConversationIds],
+    [conversations, page, waitingConversationIds],
   );
   useEffect(() => {
     setPage(1);
@@ -149,10 +157,21 @@ export function ConversationWorkspace(props: {
     return () => visit.abort();
   }, [home]);
 
-  // Home exists to start a conversation, so the reader can type at once.
+  // Home exists to start a conversation, so the reader can type at once. On a
+  // touch screen, focus opens the keyboard over the conversation list. There,
+  // focus only when the dashboard opens on home or the reader asks to create,
+  // not when they come back from a conversation or follow a link.
+  const homeShown = useRef(false);
   useEffect(() => {
-    if (home) createComposer.current?.focus();
-  }, [home]);
+    if (!home) return;
+    const returned =
+      (homeShown.current || navigationType === NavigationType.Push) &&
+      !createRequested.current;
+    homeShown.current = true;
+    createRequested.current = false;
+    if (returned && touchKeyboardMatches()) return;
+    createComposer.current?.focus();
+  }, [home, navigationType]);
 
   const createView = (
     <NewConversationView
@@ -235,7 +254,6 @@ export function ConversationWorkspace(props: {
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
-              finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
               // Search, or more pins than one page holds, shows only some
               // pins, so a drop could not place the rest.
@@ -302,10 +320,7 @@ export function ConversationWorkspace(props: {
               <ConversationSidebar
                 conversations={conversations}
                 error={feed.error?.message}
-                finishedConversationIds={finishedConversationIds}
-                heldConversationId={heldConversationId}
                 loading={feed.isPending}
-                onUnreadChange={setUnread}
                 onNewConversation={openCreate}
                 onReorderPins={reorderPins}
                 selectedId={selectedId}
@@ -329,22 +344,23 @@ export function ConversationWorkspace(props: {
             className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
           >
             <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-              <ConversationPage
-                conversationId={selectedId}
-                detail={props.detail}
-                data={
-                  feed.data
-                    ? {
-                        conversations: feed.data,
-                      }
-                    : undefined
-                }
-                onRead={markRead}
-                pendingArchiveUpdate={pendingArchiveUpdates.find(
-                  (update) => update.conversationId === selectedId,
-                )}
-                sidebarToggle={sidebarToggle}
-              />
+              <FeedThreads value={feedThreads}>
+                <ConversationPage
+                  conversationId={selectedId}
+                  detail={props.detail}
+                  data={
+                    feed.data
+                      ? {
+                          conversations: feed.data,
+                        }
+                      : undefined
+                  }
+                  pendingArchiveUpdate={pendingArchiveUpdates.find(
+                    (update) => update.conversationId === selectedId,
+                  )}
+                  sidebarToggle={sidebarToggle}
+                />
+              </FeedThreads>
             </UnsentAnswersProvider>
           </section>
         )}
@@ -440,7 +456,17 @@ function applyPendingArchiveUpdates(
         : null,
     });
   }
-  return [...byId.values()].sort((a, b) =>
+  const rows = [...byId.values()].sort((a, b) =>
     b.lastSeenAt.localeCompare(a.lastSeenAt),
   );
+  // A refetch can bring back a Thread whose archive is still pending.
+  const archivedIds = new Set(
+    updates
+      .filter((update) => update.archived)
+      .map((update) => update.conversationId),
+  );
+  // Keep row identity when nothing is pending, so memoized rows skip renders.
+  return includeArchived || archivedIds.size === 0
+    ? rows
+    : withoutThreads(rows, (thread) => archivedIds.has(thread.id));
 }

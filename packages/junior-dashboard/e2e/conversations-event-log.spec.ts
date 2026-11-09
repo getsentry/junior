@@ -1,7 +1,12 @@
+import { CONVERSATION_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
-import { mockDashboardApis, withRequestedMailbox } from "./harness";
+import {
+  mockDashboardApis,
+  routeConversationVersion,
+  withRequestedMailbox,
+} from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
@@ -576,9 +581,15 @@ for (const width of [1440, 390]) {
       createdAt: report.lastSeenAt,
       data: { type: "message_handled", messageId: "message-39" },
     });
+    // The tree token moves with each event, as `detail_version` does.
+    const conversationVersion = () => String(report.events.length);
     await page.route(`**${api}*`, (route) =>
-      route.fulfill({ json: withRequestedMailbox(route, report) }),
+      route.fulfill({
+        headers: { [CONVERSATION_VERSION_HEADER]: conversationVersion() },
+        json: withRequestedMailbox(route, report),
+      }),
     );
+    await routeConversationVersion(page, conversationVersion);
     await page.goto(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );

@@ -145,6 +145,7 @@ describe("dashboard canonical event reporting", () => {
         startedSeq: 7,
         startedAt: "1970-01-01T00:00:00.017Z",
         childConversationId: `${conversationId}:child`,
+        childKind: "task",
         subagentKind: "review",
         status: "running",
       },
@@ -153,6 +154,7 @@ describe("dashboard canonical event reporting", () => {
         startedSeq: 7,
         startedAt: "1970-01-01T00:00:00.017Z",
         childConversationId: `${conversationId}:child`,
+        childKind: "task",
         subagentKind: "review",
         status: "completed",
       },
@@ -749,7 +751,7 @@ describe("dashboard canonical event reporting", () => {
     });
     await getDb()
       .update(juniorConversations)
-      .set({ parentConversationId: cyclicChild })
+      .set({ kind: "task", parentConversationId: cyclicChild })
       .where(eq(juniorConversations.conversationId, cyclicRoot));
 
     await expect(

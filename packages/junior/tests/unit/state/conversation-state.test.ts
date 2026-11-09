@@ -162,15 +162,10 @@ describe("conversation state", () => {
       text: "hello",
       createdAtMs: 1,
     });
-    conversation.compactions.push({
-      id: "compaction-1",
-      summary: "older context",
-      coveredMessageCount: 1,
-      createdAtMs: 2,
-    });
+    conversation.historyFromSeq = 1;
     const patch = buildConversationStatePatch(conversation);
     expect(patch.conversation).not.toHaveProperty("messages");
-    expect(patch.conversation).not.toHaveProperty("compactions");
+    expect(patch.conversation).not.toHaveProperty("historyFromSeq");
     // Model history lives in the SQL ConversationEventStore; thread-state carries no mirror.
     expect(patch.conversation).not.toHaveProperty("piMessages");
     // Rebuildable working data does not belong in Redis scratch.

@@ -28,7 +28,10 @@ export interface HeartbeatResult {
 }
 
 export interface UnfinishedWorkHookContext extends PluginContext {
-  /** Bounded conversation candidates selected by the host. */
+  /**
+   * Bounded conversation candidates selected by the host, with the child
+   * conversations of candidate roots. Work in a child counts for its root.
+   */
   conversationIds: string[];
 }
 

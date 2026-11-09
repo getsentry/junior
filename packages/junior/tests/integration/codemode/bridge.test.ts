@@ -165,7 +165,7 @@ describe("Code Mode bridge", () => {
       },
     }) as AnyToolDefinition;
 
-    const { result } = await runCodeModeScript({
+    const result = await runCodeModeScript({
       countToolCall: resume.countToolCall,
       pipeline: pipelineFor(review),
       source: `
@@ -182,7 +182,6 @@ describe("Code Mode bridge", () => {
       ok: true,
       value: ["a", "b", "c"],
       output: "",
-      truncated: false,
       calls: [1, 2, 3].map((n) => ({
         id: `${CODEMODE_CALL_ID}/c${n}`,
         toolName: "lookup",
@@ -214,7 +213,7 @@ describe("Code Mode bridge", () => {
       },
     }) as AnyToolDefinition;
 
-    const { result } = await runCodeModeScript({
+    const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(fakeGuardian()),
       source: `
@@ -243,7 +242,7 @@ describe("Code Mode bridge", () => {
     } as never);
     const { scriptTools } = planToolExposure(registry);
 
-    const { result } = await runCodeModeScript({
+    const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(fakeGuardian()),
       source: `
@@ -320,7 +319,7 @@ describe("Code Mode bridge", () => {
       } as never);
       const { scriptTools } = planToolExposure(registry);
 
-      const { result } = await runCodeModeScript({
+      const result = await runCodeModeScript({
         countToolCall: turnCount().countToolCall,
         pipeline: pipelineFor(fakeGuardian()),
         source: `
@@ -348,7 +347,7 @@ describe("Code Mode bridge", () => {
     const review = fakeGuardian();
     const posts: Array<{ channel: string; text: string }> = [];
 
-    const { result } = await runCodeModeScript({
+    const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(review),
       source: `
@@ -417,7 +416,7 @@ describe("Code Mode bridge", () => {
     }));
     const posts: Array<{ channel: string; text: string }> = [];
 
-    const { result } = await runCodeModeScript({
+    const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(review),
       source,
@@ -442,7 +441,7 @@ describe("Code Mode bridge", () => {
     const onToolCall = vi.fn();
     const posts: Array<{ channel: string; text: string }> = [];
 
-    const { result } = await runCodeModeScript({
+    const result = await runCodeModeScript({
       countToolCall: turnCount().countToolCall,
       pipeline: pipelineFor(review, { onToolCall }),
       source: `
@@ -483,7 +482,7 @@ describe("Code Mode bridge", () => {
       },
     }) as AnyToolDefinition;
 
-    const { result } = await runCodeModeScript({
+    const result = await runCodeModeScript({
       countToolCall: resume.countToolCall,
       pipeline: pipelineFor(fakeGuardian()),
       source: `
@@ -522,7 +521,7 @@ describe("Code Mode bridge", () => {
     });
     await entered.promise;
     await vi.advanceTimersByTimeAsync(CODE_MODE_SCRIPT_TIMEOUT_MS);
-    const { result } = await run;
+    const result = await run;
 
     expect(result).toMatchObject({
       ok: false,
@@ -549,7 +548,7 @@ describe("Code Mode bridge", () => {
     });
     await Promise.all([firstEntered.promise, secondEntered.promise]);
     controller.abort(new Error("Run yielded"));
-    const { result } = await run;
+    const result = await run;
 
     expect(result).toMatchObject({
       ok: false,
@@ -590,7 +589,7 @@ describe("Code Mode bridge", () => {
     controller.abort(new Error("Run yielded"));
     // Past the bridge's short settle grace, far below the script deadline.
     await vi.advanceTimersByTimeAsync(5_000);
-    const { result } = await run;
+    const result = await run;
 
     expect(result).toMatchObject({
       ok: false,

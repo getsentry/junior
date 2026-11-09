@@ -15,9 +15,9 @@ Junior plugins can declare sandbox runtime dependencies such as npm CLIs, system
 
 ## When snapshots are used
 
-Snapshots are used when loaded plugins declare runtime dependencies or runtime postinstall commands, or when a Workspace prepares repository contents. If the dependency profile is empty and no Workspace is selected, Junior creates a base sandbox without snapshot warmup.
+On Vercel, every sandbox starts from a snapshot. The profile always includes Junior's core tools, plus the runtime dependencies and postinstall commands of loaded plugins. A Workspace adds its repository contents.
 
-The common deploy path runs snapshot warmup during build:
+The scaffolded build runs snapshot warmup on every deploy. You do not run it by hand:
 
 ```json title="package.json"
 {
@@ -33,7 +33,7 @@ Junior computes the snapshot profile from its global baseline and loaded plugin 
 
 | Input                | Source                                                                |
 | -------------------- | --------------------------------------------------------------------- |
-| Runtime              | Junior sandbox runtime, currently `node22`.                           |
+| Runtime              | Junior sandbox runtime, currently `node24`.                           |
 | npm dependencies     | Global and plugin `runtime-dependencies` entries with `type: npm`.    |
 | system dependencies  | Global and plugin `runtime-dependencies` entries with `type: system`. |
 | postinstall commands | Global and plugin `runtime-postinstall` entries.                      |
@@ -90,13 +90,7 @@ Check these first:
 
 ## Verify
 
-Run snapshot warmup directly:
-
-```bash
-pnpm exec junior snapshot create
-```
-
-Confirm the final line includes `Sandbox snapshot create complete` and that dependency counts match the enabled plugins.
+Open the build log of the latest deploy. Confirm the snapshot line includes `Sandbox snapshot create complete` and that dependency counts match the enabled plugins.
 
 ## Next step
 

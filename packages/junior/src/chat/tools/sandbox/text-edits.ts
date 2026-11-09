@@ -1,9 +1,5 @@
 import { structuredPatch } from "diff";
-import {
-  MAX_TEXT_CHARS,
-  normalizeToLf,
-  truncateText,
-} from "@/chat/tools/sandbox/file-utils";
+import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export interface TextReplacement {
@@ -181,11 +177,10 @@ export function buildCompactDiff(
     pushLine(` ${"".padStart(width)} ...`);
   }
 
-  const bounded = truncateText(output.join("\n"), MAX_TEXT_CHARS);
   return {
-    diff: bounded.content,
+    diff: output.join("\n"),
     firstChangedLine: firstChangedLine(oldLines, newLines),
-    truncated: lineTruncated || bounded.truncated,
+    truncated: lineTruncated,
   };
 }
 

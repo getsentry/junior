@@ -6,6 +6,8 @@ import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 
+type SubagentEntry = Extract<RenderedTranscriptEntry, { kind: "subagent" }>;
+
 /** One row of the rich transcript list, in seq order. */
 export type TranscriptListRow =
   | { kind: "unread_marker"; key: string }
@@ -21,6 +23,13 @@ export type TranscriptListRow =
       key: string;
       /** Last event sequence in the group. */
       seq?: number;
+    }
+  | {
+      kind: "tasks";
+      entries: SubagentEntry[];
+      key: string;
+      /** Last event sequence in the group. */
+      seq?: number;
     };
 
 /** The key of the "New" marker row. */
@@ -28,8 +37,9 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, search drops rows that do not match, and the
- * "New" marker becomes its own row before the first unread row.
+ * become one group row, each run of Tasks becomes one Tasks row, a Thread
+ * keeps its own row, search drops rows that do not match, and the "New"
+ * marker becomes its own row before the first unread row.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -91,6 +101,24 @@ export function transcriptListRows(input: {
       }
       continue;
     }
+    if (isTaskEntry(entry)) {
+      const group: SubagentEntry[] = [];
+      while (index < entries.length && isTaskEntry(entries[index]!)) {
+        group.push(entries[index] as SubagentEntry);
+        index += 1;
+      }
+      const visible = group.filter(matches);
+      if (visible.length > 0) {
+        pushRow({
+          kind: "tasks",
+          entries: visible,
+          // New Tasks join at the end, so the first one keeps the key.
+          key: `${input.keyPrefix}:tasks:${group[0]!.key}`,
+          seq: lastEntrySeq(group),
+        });
+      }
+      continue;
+    }
     if (matches(entry)) {
       pushRow({
         kind: "entry",
@@ -102,6 +130,10 @@ export function transcriptListRows(input: {
     index += 1;
   }
   return rows;
+}
+
+function isTaskEntry(entry: RenderedTranscriptEntry): boolean {
+  return entry.kind === "subagent" && entry.part.childKind === "task";
 }
 
 /**
@@ -154,6 +186,7 @@ export function transcriptRowSizeClass(row: TranscriptListRow): string {
 export function defaultTranscriptRowSize(sizeClass: string): number {
   if (sizeClass === "unread_marker") return 32;
   if (sizeClass === "activity") return 36;
+  if (sizeClass === "tasks") return 36;
   if (sizeClass === "attachments_delivered") return 240;
   if (sizeClass === "message:assistant") return 120;
   if (sizeClass.startsWith("message:")) return 80;

@@ -10,7 +10,11 @@ import {
 } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { sendReviewItemMessages } from "@/chat/review-items/messages";
-import { getReviewItem, takeReviewItem } from "@/chat/review-items/store";
+import {
+  getReviewItem,
+  insertReviewItem,
+  takeReviewItem,
+} from "@/chat/review-items/store";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import { createAddReviewItemTool } from "@/chat/tools/review-items";
@@ -143,6 +147,39 @@ describe("review item actions API", () => {
       request: REQUEST,
     });
 
+    // A child agent links its items to its own conversation. The root waits
+    // on Ana.
+    await slackConversation("slack:CPUB:1.000004");
+    await getConversationStore().createChild({
+      childConversationId: "agent:child-of-4",
+      kind: "task",
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      parentConversationId: "slack:CPUB:1.000004",
+    });
+    await insertReviewItem(getDb(), {
+      addedByConversationId: "agent:child-of-4",
+      assignedToEveryone: false,
+      assigneeUserIds: [ana.id],
+      body: "The initech entry changed its license.",
+      conversationIds: ["agent:child-of-4"],
+      dedupeKey: "fair-source:entry:initech",
+      kind: "action",
+      nowMs: Date.now(),
+      request: {
+        fields: [
+          {
+            id: "decision",
+            kind: "choice",
+            label: "Decision",
+            options: [{ label: "Approve" }, { label: "Reject" }],
+          },
+        ],
+        question: "Approve or reject this entry?",
+      },
+      title: "Review initech entry",
+      visibility: "private",
+    });
+
     expect(
       await (await api(fixture, ana).get("/waiting-conversations")).json(),
     ).toEqual({
@@ -151,6 +188,11 @@ describe("review item actions API", () => {
           conversationId: "slack:CPUB:1.000001",
           title: "Review globex entry",
           count: 2,
+        },
+        {
+          conversationId: "slack:CPUB:1.000004",
+          title: "Review initech entry",
+          count: 1,
         },
       ],
     });

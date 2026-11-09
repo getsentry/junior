@@ -16,7 +16,10 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
-import { pinnedAndAttentionFirst } from "../../conversations/conversationSections";
+import {
+  attentionConversationIds,
+  pinnedAndAttentionFirst,
+} from "../../conversations/conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../../format";
 import { useDebouncedValue } from "../../debouncedValue";
 import { useWaitingConversationIds } from "../../review-desk/queries";
@@ -25,7 +28,6 @@ import { CodeChangeRow } from "./CodeChangeRow";
 import { repositoryActivity } from "./RepositorySections";
 
 const PAGE_SIZE = 25;
-const noFinishedConversations = new Set<string>();
 
 /** Conversations linked to the repository, in the home list layout. */
 export function RepositoryConversationsTab(props: { repositoryId: string }) {
@@ -54,7 +56,10 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
       ) : (
         <ConversationHomeList
           conversations={pageItems(
-            pinnedAndAttentionFirst(conversations, waitingConversationIds),
+            pinnedAndAttentionFirst(
+              conversations,
+              attentionConversationIds(conversations, waitingConversationIds),
+            ),
             page,
             PAGE_SIZE,
           )}
@@ -63,7 +68,6 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
               ? "No conversations match this search."
               : "No conversations are linked to this repository yet."
           }
-          finishedConversationIds={noFinishedConversations}
           loading={!feed.data}
           timeZone={getDashboardTimeZone()}
           waitingConversationIds={waitingConversationIds}

@@ -582,6 +582,55 @@
       "when": 1793958604674,
       "tag": "0082_push_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1793982460508,
+      "tag": "0083_conversation_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1794010801338,
+      "tag": "0084_read_position_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1794019929847,
+      "tag": "0085_child_archived_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1794023855568,
+      "tag": "0086_shared_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1794088255456,
+      "tag": "0087_child_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1794165567814,
+      "tag": "0088_conversation_unsubscribe",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1794190578909,
+      "tag": "0089_conversation_paused_status",
+      "breakpoints": true
     }
   ]
 }

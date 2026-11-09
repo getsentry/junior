@@ -156,6 +156,7 @@ describe("event batch message meta", () => {
 
   it("keeps the record of one Review item change, with no own Event", () => {
     expect(eventBatchMessageMeta([reviewItemChange(taken)])).toEqual({
+      eventNamespace: "junior",
       eventType: "review_item.taken",
       reviewItemChanges: [taken],
       trustedSummary: 'Review item "Ship it" changed: taken.',
@@ -188,6 +189,7 @@ describe("event batch message meta", () => {
       watchEvent(2),
     ]);
     expect(meta).toMatchObject({
+      eventNamespace: "github",
       eventType: "pull_request.checks.failed",
       reviewItemChanges: [taken],
       trustedSummary: "CI failed on run 1.",

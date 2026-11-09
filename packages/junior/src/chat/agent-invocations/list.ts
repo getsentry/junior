@@ -3,6 +3,7 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
+import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import {
@@ -10,8 +11,8 @@ import {
   juniorAgentInvocations,
   juniorConversations,
 } from "@/db/schema";
+import { getAgentInvocationIdForResult } from "./ids";
 import {
-  getAgentInvocationIdForResult,
   invocationFromRow,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
@@ -41,12 +42,18 @@ export function isChildAgentSessionStopped(
   return stoppedAtMs !== undefined && stoppedAtMs >= latest.createdAtMs;
 }
 
+/** Stored facts of a child Conversation that its listing shows. */
+type ChildConversationFacts = Pick<ChildAgent, "archivedAtMs" | "kind"> & {
+  stoppedAtMs?: number;
+};
+
 /** Return the child state that one child's agent invocations show. */
 function childAgentFromInvocations(
   invocations: readonly AgentInvocation[],
   resultInvocationIds: ReadonlySet<string>,
-  stoppedAtMs: number | undefined,
+  facts: ChildConversationFacts,
 ): ChildAgent {
+  const { stoppedAtMs } = facts;
   // `invocations` is newest first. The oldest open agent invocation is the
   // one that runs, so it owns the status. A `steered` agent invocation never
   // ran: the agent invocation that read its input owns its status.
@@ -89,10 +96,14 @@ function childAgentFromInvocations(
     .find(isChildAgentResult);
   return {
     ...(latest.agentName ? { agentName: latest.agentName } : undefined),
+    ...(facts.archivedAtMs !== undefined
+      ? { archivedAtMs: facts.archivedAtMs }
+      : undefined),
     childConversationId: latest.childConversationId,
     ...(terminal && terminal.status !== "completed"
       ? { errorMessage: terminal.errorMessage }
       : undefined),
+    kind: facts.kind,
     ...(lastResult ? { lastResult } : undefined),
     // A `replaced` result means open child work starts a later agent
     // invocation on this child, so the child has not finished. Only a stop
@@ -147,22 +158,37 @@ export async function listChildAgents(
   const resultInvocationIds = new Set(
     grandchildren.map((row) => getAgentInvocationIdForResult(row.invocationId)),
   );
-  const stops = await db
+  const conversations = await db
     .select({
+      archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
       stoppedAt: juniorConversations.stoppedAt,
     })
     .from(juniorConversations)
     .where(inArray(juniorConversations.conversationId, [...byChild.keys()]));
-  const stoppedAtMs = new Map(
-    stops.map((row) => [row.conversationId, row.stoppedAt?.getTime()]),
+  const factsByChild = new Map(
+    conversations.map((row): [string, ChildConversationFacts] => [
+      row.conversationId,
+      {
+        ...(row.archivedAt
+          ? { archivedAtMs: row.archivedAt.getTime() }
+          : undefined),
+        kind: conversationKindFromRow(row) === "thread" ? "thread" : "task",
+        ...(row.stoppedAt
+          ? { stoppedAtMs: row.stoppedAt.getTime() }
+          : undefined),
+      },
+    ]),
   );
   return [...byChild.entries()]
     .map(([childConversationId, invocations]) =>
       childAgentFromInvocations(
         invocations,
         resultInvocationIds,
-        stoppedAtMs.get(childConversationId),
+        // A child row from before the kind column reads as a Task.
+        factsByChild.get(childConversationId) ?? { kind: "task" },
       ),
     )
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);

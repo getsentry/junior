@@ -9,7 +9,6 @@
  * the full evidence, which keeps the order of messages and tool calls.
  */
 import {
-  CHILD_AGENT_USER_INTENT,
   type RootConversationMessage,
   type ToolActionDecision,
   type ToolActionEvidence,
@@ -149,13 +148,14 @@ export async function proposal(input: {
   script?: ToolActionScript;
   tool: SnapshotTool;
 }): Promise<ToolActionProposal> {
-  // Core reads the root section for a child and for a person's root Run. A
-  // system Actor's root Run, such as an Event Turn, keeps plain evidence.
-  const childAgent = input.context.userIntent === CHILD_AGENT_USER_INTENT;
-  const personRun = !childAgent && input.context.actor.platform !== "system";
-  const root = personRun
-    ? (input.root ?? personRoot(input.evidence, input.context.userIntent))
-    : input.root;
+  // A person's Run reads its section from the evidence when a snapshot does
+  // not give it. A system Actor's root Run, such as an Event Turn, keeps plain
+  // evidence.
+  const root =
+    input.root ??
+    (input.context.actor.platform !== "system"
+      ? personRoot(input.evidence, input.context.userIntent)
+      : undefined);
   const priorRejectedActions = await Promise.all(
     (input.priorRejectedActions ?? []).map(async (rejection) => ({
       ...rejection,

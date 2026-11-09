@@ -64,6 +64,7 @@ export async function createConversationForViewer(
         idempotencyKey: body.idempotencyKey,
         message: body.message,
         images,
+        ...(body.title ? { title: body.title } : undefined),
         ...(body.visibility ? { visibility: body.visibility } : undefined),
       },
       {
@@ -90,7 +91,7 @@ export async function appendConversationMessageForViewer(
   if (!conversation) {
     throwApiError(404, "Conversation not found.");
   }
-  if (!acceptsWebMessages(conversationId, conversation.destination)) {
+  if (!acceptsWebMessages(conversation)) {
     throwApiError(409, "Conversation does not accept web messages.");
   }
 
