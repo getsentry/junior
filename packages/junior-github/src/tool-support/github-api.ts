@@ -4,6 +4,8 @@ import {
 } from "@sentry/junior-plugin-api";
 
 const GITHUB_API_BASE = "https://api.github.com";
+const MAX_REDIRECTS = 3;
+const REDIRECT_STATUSES = new Set([301, 302, 307, 308]);
 
 /** A GitHub API reply with its body parsed as JSON, or as text when it is not JSON. */
 export interface GitHubApiResponse {
@@ -35,23 +37,44 @@ export async function githubApi(
     "X-GitHub-Api-Version": input.apiVersion ?? "2022-11-28",
   };
   if (input.body !== undefined) headers["Content-Type"] = "application/json";
-  const response = await egress.fetch({
-    provider: "github",
-    operation: input.operation,
-    request: new Request(`${GITHUB_API_BASE}${input.path}`, {
-      method: input.method ?? "GET",
-      headers,
-      signal: input.signal,
-      ...(input.body !== undefined
-        ? { body: JSON.stringify(input.body) }
-        : undefined),
-    }),
-  });
+  const method = input.method ?? "GET";
+  let url = `${GITHUB_API_BASE}${input.path}`;
+  let response: Response;
+  // Egress does not follow redirects, so credentials never reach a new host.
+  // GitHub redirects reads of transferred issues and renamed repos to a
+  // `/repositories/{id}` path. Follow those hops here, back through egress.
+  // Writes are not followed: write policy needs a `/repos/{owner}/{repo}` URL.
+  for (let hop = 0; ; hop++) {
+    response = await egress.fetch({
+      provider: "github",
+      operation: input.operation,
+      request: new Request(url, {
+        method,
+        headers,
+        signal: input.signal,
+        ...(input.body !== undefined
+          ? { body: JSON.stringify(input.body) }
+          : undefined),
+      }),
+    });
+    const next = method === "GET" ? redirectTarget(response, url) : undefined;
+    if (!next || hop >= MAX_REDIRECTS) break;
+    await response.body?.cancel();
+    url = next;
+  }
   return {
     body: await readBody(response),
     ok: response.ok,
     status: response.status,
   };
+}
+
+function redirectTarget(response: Response, from: string): string | undefined {
+  if (!REDIRECT_STATUSES.has(response.status)) return undefined;
+  const location = response.headers.get("location");
+  if (!location) return undefined;
+  const target = new URL(location, from);
+  return target.origin === GITHUB_API_BASE ? target.href : undefined;
 }
 
 async function readBody(response: Response): Promise<unknown> {

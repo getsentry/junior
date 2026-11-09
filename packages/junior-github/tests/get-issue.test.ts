@@ -32,11 +32,15 @@ function issue(input: { assignees?: string[]; state?: string } = {}) {
   };
 }
 
+type QueuedResponse = Parameters<typeof createGitHubApiTestAdapter>[0][number];
+
 function toolContext(
-  response: { body?: unknown; status?: number } = issue(),
+  response: QueuedResponse | QueuedResponse[] = issue(),
   user: typeof linkedUser | null = linkedUser,
 ) {
-  const adapter = createGitHubApiTestAdapter([response]);
+  const adapter = createGitHubApiTestAdapter(
+    Array.isArray(response) ? response : [response],
+  );
   const tool = createGitHubGetIssueTool({
     actor: {
       platform: "slack",
@@ -92,6 +96,48 @@ describe("getIssue", () => {
     const { tool } = toolContext(response, user);
 
     expect(await getIssue(tool)).not.toHaveProperty("note");
+  });
+
+  it("follows the redirect of a transferred issue to its new repository", async () => {
+    const moved = issue();
+    const { adapter, tool } = toolContext([
+      {
+        headers: {
+          location: "https://api.github.com/repositories/873328/issues/88085",
+        },
+        status: 301,
+      },
+      {
+        body: {
+          ...moved.body,
+          html_url: "https://github.com/getsentry/sentry/issues/88085",
+          number: 88085,
+          repository_url: "https://api.github.com/repos/getsentry/sentry",
+        },
+      },
+    ]);
+
+    await expect(getIssue(tool)).resolves.toMatchObject({
+      number: 88085,
+      subscribable: { identifier: "getsentry/sentry#88085" },
+      url: "https://github.com/getsentry/sentry/issues/88085",
+    });
+    expect(adapter.requests().map(({ request }) => request.url)).toEqual([
+      "https://api.github.com/repos/getsentry/junior/issues/2768",
+      "https://api.github.com/repositories/873328/issues/88085",
+    ]);
+  });
+
+  it("does not follow a redirect off the GitHub API host", async () => {
+    const { adapter, tool } = toolContext({
+      headers: { location: "https://example.com/issues/1" },
+      status: 301,
+    });
+
+    await expect(getIssue(tool)).rejects.toThrow(
+      "GitHub issue lookup failed with HTTP 301",
+    );
+    expect(adapter.requests()).toHaveLength(1);
   });
 
   it("reports a missing issue as a repairable tool error", async () => {

@@ -67,6 +67,7 @@ const providerIssueSchema = z.object({
     .default([])
     .transform((labels) => labels.map(({ name }) => name)),
   number: z.number(),
+  repository_url: z.string().optional(),
   state: z.string(),
   title: z.string(),
   user: z.object({ login: z.string() }).nullish(),
@@ -114,6 +115,8 @@ export function createGitHubGetIssueTool(ctx: {
         throw new Error(message);
       }
       const issue = providerIssueSchema.parse(response.body);
+      // A transferred issue redirects to its new repository.
+      const repoRef = issueRepoRef(issue.repository_url) ?? repo.ref;
       const login = linkedGitHubLogin(requester?.user)?.toLowerCase();
       const needsClaim =
         login !== undefined &&
@@ -122,13 +125,13 @@ export function createGitHubGetIssueTool(ctx: {
       const subscribable = gitHubIssueSubscribable({
         canSubscribe: ctx.events.canSubscribe,
         number: issue.number,
-        repo: repo.ref,
+        repo: repoRef,
       });
       return {
         objectAnnotations: [
           githubObjectAnnotation({
             ...githubObjectFacts("task", response.body),
-            repo: repo.ref,
+            repo: repoRef,
             number: issue.number,
             title: issue.title,
             url: issue.html_url,
@@ -151,4 +154,11 @@ export function createGitHubGetIssueTool(ctx: {
       };
     },
   });
+}
+
+function issueRepoRef(repositoryUrl: string | undefined): string | undefined {
+  const match = repositoryUrl?.match(
+    /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)$/,
+  );
+  return match?.[1];
 }
