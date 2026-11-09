@@ -146,10 +146,8 @@ import {
 } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
-import {
-  estimateRequestOverheadTokens,
-  getAgentContextCompactionTriggerTokens,
-} from "@/chat/services/context-budget";
+import { getAgentContextCompactionTriggerTokens } from "@/chat/services/context-budget";
+import { estimateRequestOverheadTokens } from "@/chat/services/token-estimate";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import {
   lastRequestInputSize,

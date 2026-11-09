@@ -32,7 +32,7 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   estimateTextTokens,
   textCharsForTokens,
-} from "@/chat/services/context-budget";
+} from "@/chat/services/token-estimate";
 import {
   McpAuthorizationRequiredError,
   PluginMcpClient,

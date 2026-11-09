@@ -14,12 +14,14 @@ import type { PiMessage } from "@/chat/pi/messages";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
-  estimateMessagesTokens,
-  estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
-  textCharsForTokens,
 } from "@/chat/services/context-budget";
+import {
+  estimateMessagesTokens,
+  estimateTextTokens,
+  textCharsForTokens,
+} from "@/chat/services/token-estimate";
 import {
   contextProvenance,
   type ConversationMessageProvenance,

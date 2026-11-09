@@ -321,6 +321,9 @@ text.
 | `app.ai.request.prefix.before_last_reply.hash`   | string | the same, with messages before last reply  |
 | `app.ai.request.thinking.type`                   | string | `thinking.type`, such as `adaptive`        |
 | `app.ai.request.effort`                          | string | `output_config.effort`, such as `high`     |
+| `app.ai.request.images.count`                    | int    | image blocks in the request                |
+| `app.ai.request.images.estimate`                 | int    | sum of the context estimate of each image  |
+| `app.ai.request.images.unsized`                  | int    | images that used the flat per-image value  |
 
 - Each hash is the first 16 hex chars of a SHA-256. The hashes leave out
   `cache_control`, because Pi moves the last breakpoint on each request. In
@@ -333,6 +336,13 @@ text.
   `prefix.before_last_reply.hash` uses `messages.before_last_reply.hash` for
   the messages, and is absent when that hash is absent.
 - `thinking.type` and `effort` are absent when the body does not set them.
+- The `images.*` attributes are absent when the request has no image. They
+  count image blocks in message content and in `tool_result` content. The
+  estimate uses the rule of `estimateMessagesTokens` in
+  `chat/services/token-estimate.ts`. Anthropic usage has no per-image split,
+  so the estimate is the only per-image number. To check it, compare it with
+  the change in `gen_ai.usage.input_tokens` from the previous call in the
+  same `gen_ai.conversation.id`.
 - `messages.before_last_reply.hash` stops before the last `assistant`
   message. It is absent when the request has no `assistant` message. When the
   history was only appended, it is equal to `messages.hash` of the previous

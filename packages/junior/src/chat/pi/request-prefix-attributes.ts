@@ -1,4 +1,6 @@
 import { createHash, type Hash } from "node:crypto";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import { estimateImageTokens } from "@/chat/services/token-estimate";
 
 // The provider caches a request prefix in the order tools, system prompt,
 // messages. These hashes show on a `gen_ai.chat` span whether that prefix
@@ -98,6 +100,59 @@ function readableString(value: unknown, key: string): string | undefined {
   return typeof field === "string" ? field : undefined;
 }
 
+// Anthropic image blocks are `{ type: "image", source: { media_type, data } }`
+// in message content and in `tool_result` content.
+function requestImages(messages: readonly unknown[]): ImageContent[] {
+  const images: ImageContent[] = [];
+  const visit = (content: unknown) => {
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
+      if (typeof block !== "object" || block === null) continue;
+      const {
+        type,
+        source,
+        content: nested,
+      } = block as Record<string, unknown>;
+      if (type === "image") {
+        images.push({
+          type: "image",
+          data: readableString(source, "data") ?? "",
+          mimeType: readableString(source, "media_type") ?? "",
+        });
+      } else if (type === "tool_result") {
+        visit(nested);
+      }
+    }
+  };
+  for (const message of messages) {
+    visit((message as { content?: unknown } | null)?.content);
+  }
+  return images;
+}
+
+// Anthropic usage has no per-image split, so the context estimate of each
+// image is the only per-image number.
+function imageAttributes(
+  messages: unknown,
+  model: unknown,
+): Record<string, number> {
+  const images = Array.isArray(messages) ? requestImages(messages) : [];
+  if (images.length === 0) return {};
+  const modelId = typeof model === "string" ? model : "";
+  let estimate = 0;
+  let unsized = 0;
+  for (const image of images) {
+    const { tokens, sized } = estimateImageTokens(image, modelId);
+    estimate += tokens;
+    if (!sized) unsized += 1;
+  }
+  return {
+    "app.ai.request.images.count": images.length,
+    "app.ai.request.images.estimate": estimate,
+    "app.ai.request.images.unsized": unsized,
+  };
+}
+
 function payloadAttributes(
   payload: Record<string, unknown>,
 ): Record<string, string | number> {
@@ -151,13 +206,14 @@ function payloadAttributes(
       ? { "app.ai.request.thinking.type": thinkingType }
       : undefined),
     ...(effort ? { "app.ai.request.effort": effort } : undefined),
+    ...imageAttributes(messages, model),
   };
 }
 
 /**
  * Hashes of the cache prefix parts of one provider request body, plus its
  * thinking and effort settings, to tell a changed cache prefix apart from an
- * expired cache.
+ * expired cache. Also counts and estimates the request's images.
  * Pass the payload that Pi gives to `onPayload`. Never throws: telemetry must
  * not fail the request.
  */

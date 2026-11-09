@@ -2,7 +2,7 @@ import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   estimateTextTokens,
   textCharsForTokens,
-} from "@/chat/services/context-budget";
+} from "@/chat/services/token-estimate";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import {
   buildSubscribedReplyRouterQuestions,

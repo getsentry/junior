@@ -9,7 +9,7 @@ import {
 import {
   estimateTextTokens,
   textCharsForTokens,
-} from "@/chat/services/context-budget";
+} from "@/chat/services/token-estimate";
 import type { ToolActionEvidence } from "@/chat/guardian/proposal";
 
 const MAX_MESSAGE_TRANSCRIPT_TOKENS = 10_000;
