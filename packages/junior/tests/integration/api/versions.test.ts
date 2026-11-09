@@ -111,16 +111,14 @@ describe("versions API", () => {
     await appendVisibleHistory(OTHER);
     expect(await read()).toEqual(first);
 
-    // Starting a child agent writes Events to the root, so the feed moves.
+    // Starting a child agent writes Events to the root. The feed row shows
+    // none of them, so only the open Conversation's tree token moves.
     await createChild({
       childConversationId: `${OWN}:child`,
       parentConversationId: OWN,
     });
     const withChild = await read();
-    expect(changed(first, withChild)).toEqual([
-      "conversation",
-      "conversations",
-    ]);
+    expect(changed(first, withChild)).toEqual(["conversation"]);
     expect(await detailVersion()).toBe(withChild.conversation);
 
     // A child agent's Turn writes only its own row. The feed row shows none
@@ -200,8 +198,10 @@ describe("versions API", () => {
     const closed = await read();
     expect(changed(withItem, closed)).toEqual(["reviewItems"]);
 
-    // A recorded Turn changes the viewer's spend.
-    const nowMs = Date.now();
+    // A recorded Turn changes the viewer's spend. It starts on a whole
+    // minute in the past, so the Events below stay in the spend window and
+    // in a known minute.
+    const nowMs = Math.floor(Date.now() / 60_000) * 60_000 - 120_000;
     await getConversationStore().recordExecution({
       conversationId: OWN,
       createdAtMs: nowMs,
@@ -240,6 +240,30 @@ describe("versions API", () => {
     const withTaskCost = await read();
     expect(changed(withTurn, withTaskCost)).toEqual(["conversation", "spend"]);
 
+    // Each Event of a live Turn moves the root's last activity. The row
+    // shows that as an age in whole minutes, so the feed moves only when
+    // the minute changes.
+    const rootToolEvent = async (atMs: number) => {
+      await getConversationEventStore().append(OWN, [
+        {
+          data: {
+            type: "tool_execution_started",
+            toolCallId: `${OWN}:tool-${atMs}`,
+            toolName: "search",
+          },
+          createdAtMs: atMs,
+        },
+      ]);
+      return await read();
+    };
+    const withRootTool = await rootToolEvent(nowMs + 30_000);
+    expect(changed(withTaskCost, withRootTool)).toEqual(["conversation"]);
+    const nextMinute = await rootToolEvent(nowMs + 60_000);
+    expect(changed(withRootTool, nextMinute)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
     await getConversationEventStore().append(OWN, [
@@ -253,7 +277,7 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(withTaskCost, withReply)).toEqual([
+    expect(changed(nextMinute, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);

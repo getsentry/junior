@@ -649,6 +649,10 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
 - A browser request after the `pageload` or `navigation` span ends, such as
   a poll, is its own `http.client` segment. Add `!span.op:http.client` to
   segment queries to leave them out.
+- A versions poll that moves a change token adds a `function` span named
+  `Refresh changed reads`. `app.dashboard.versions.moved` lists the tokens
+  that moved, such as `conversations,reviewItems`. A poll that moves none
+  adds no span, so compare the count with the `/api/versions` polls.
 - `http.server` spans have the route pattern of the app that served the
   request, also when the core app passes the request to the dashboard or a
   plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
@@ -666,6 +670,14 @@ Dashboard API response read time by path.
 ```text
 dataset=spans query='span.op:deserialize span.name:"Read API response"'
 fields=url.path,count(),p50(span.duration),p95(span.duration)
+sort=-count()
+```
+
+Versions polls that refresh a read, by the tokens that moved.
+
+```text
+dataset=spans query='span.name:"Refresh changed reads"'
+fields=app.dashboard.versions.moved,count()
 sort=-count()
 ```
 
