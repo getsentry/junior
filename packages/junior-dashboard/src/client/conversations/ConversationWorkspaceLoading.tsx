@@ -1,20 +1,15 @@
-import type { CSSProperties } from "react";
-
 import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
-import { ConversationRowSkeletons } from "./ConversationSidebar";
-import {
-  readSidebarWidth,
-  useConversationSidebarOpen,
-} from "./conversationSidebarLayout";
 import { TranscriptLoading } from "./TranscriptLoading";
 
-/** Keep the conversation workspace geometry stable while its first data loads. */
+/**
+ * Keep the conversation workspace geometry stable while its first data loads.
+ * The app sidebar shows its own loading rows.
+ */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
-  const [sidebarOpen] = useConversationSidebarOpen();
   return (
     <div
       aria-busy="true"
@@ -22,45 +17,18 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
       className={cn(
         dashboardContainerClass,
         "grid h-full min-h-0 grid-cols-[minmax(0,1fr)] overflow-hidden",
-        sidebarOpen &&
-          "md:grid-cols-[var(--conversation-sidebar-width)_minmax(0,1fr)]",
       )}
       role="status"
-      style={
-        {
-          "--conversation-sidebar-width": `${readSidebarWidth()}px`,
-        } as CSSProperties
-      }
     >
       <span className="sr-only">
         {props.detail ? "Loading conversation" : "Loading conversations"}
       </span>
-      {sidebarOpen ? <ConversationSidebarLoading /> : null}
       {props.detail ? (
         <ConversationDetailLoading />
       ) : (
         <ConversationHomeLoading />
       )}
     </div>
-  );
-}
-
-// Mirror the live sidebar chrome so the first paint does not jump.
-function ConversationSidebarLoading() {
-  return (
-    <aside className="hidden h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel md:grid">
-      <div className="px-3 pb-1.5 pt-2.5">
-        <div className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-sm leading-snug">
-          <Skeleton className="size-[1.125rem] justify-self-center rounded-md" />
-          <span className="flex h-[1lh] items-center">
-            <Skeleton className="h-3 w-28" />
-          </span>
-        </div>
-      </div>
-      <div className="min-h-0 overflow-hidden px-3">
-        <ConversationRowSkeletons />
-      </div>
-    </aside>
   );
 }
 
@@ -76,7 +44,7 @@ function ConversationHomeLoading() {
       <div
         className={cn(
           composerDockClass,
-          "border-t border-dashboard-border-subtle sm:px-6 md:grid md:max-h-none md:place-items-center md:border-t-0 md:px-6 md:pb-13 md:pt-13",
+          "border-t border-dashboard-border-subtle sm:px-6 md:grid md:max-h-none md:place-items-center md:border-t-0 md:px-6",
         )}
       >
         <section className="mx-auto grid w-full max-w-3xl gap-3">

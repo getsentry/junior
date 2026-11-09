@@ -8,15 +8,15 @@ const DETAILS_OPEN_KEY = "junior:conversation:details-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width";
 
-/** Pixel limits for the conversation list beside a selected conversation. */
-export const SIDEBAR_WIDTH = { default: 320, max: 480, min: 240 } as const;
+/** Pixel limits for the expanded app sidebar. */
+export const SIDEBAR_WIDTH = { default: 288, max: 480, min: 240 } as const;
 
 /** Pixel limits for the details panel beside the transcript. */
 export const DETAILS_WIDTH = { default: 400, max: 720, min: 320 } as const;
 
 type WidthLimits = { default: number; max: number; min: number };
 
-/** Remember whether the conversation list is open in this browser. */
+/** Remember whether the app sidebar is expanded in this browser. */
 export function useConversationSidebarOpen() {
   const [open, setOpen] = useState(() => readStorage(OPEN_KEY) !== "false");
 
@@ -42,12 +42,12 @@ export function saveDetailsOpen(open: boolean) {
   if (hasPanelSpace()) writeStorage(DETAILS_OPEN_KEY, String(open));
 }
 
-/** Read the conversation list width saved in this browser. */
+/** Read the app sidebar width saved in this browser. */
 export function readSidebarWidth(): number {
   return readWidth(WIDTH_KEY, SIDEBAR_WIDTH);
 }
 
-/** Save the conversation list width without a React render per drag step. */
+/** Save the app sidebar width for this browser. */
 export function saveSidebarWidth(width: number) {
   writeStorage(WIDTH_KEY, String(Math.round(width)));
 }
@@ -68,7 +68,7 @@ function readWidth(key: string, limits: WidthLimits): number {
   return Math.min(limits.max, Math.max(limits.min, saved));
 }
 
-/** Report whether the viewport has room for the list beside the transcript. */
+/** Report whether the viewport shows the app sidebar beside the page. */
 export function useSidebarFits(): boolean {
   return useSyncExternalStore(
     (onChange) => {

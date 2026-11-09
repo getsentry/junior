@@ -42,12 +42,12 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   const conversationList = page.getByRole("navigation", {
     name: "Your conversations",
   });
-  const hideList = page.getByRole("button", { name: "Hide conversation list" });
+  const hideList = page.getByRole("button", { name: "Collapse sidebar" });
   await expect(conversationList).toBeVisible();
   await expect(hideList).toHaveAttribute("aria-expanded", "true");
   await hideList.click();
   await expect(conversationList).toBeHidden();
-  const showList = page.getByRole("button", { name: "Show conversation list" });
+  const showList = page.getByRole("button", { name: "Expand sidebar" });
   await expect(showList).toHaveAttribute("aria-expanded", "false");
   await expect(showList).toBeFocused();
 
@@ -62,9 +62,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(hideList).toBeVisible();
   await expect(conversationList).toBeVisible();
 
-  const resizeList = page.getByRole("separator", {
-    name: "Resize conversation list",
-  });
+  const resizeList = page.getByRole("separator", { name: "Resize sidebar" });
   const listSize = async () =>
     Number(await resizeList.getAttribute("aria-valuenow"));
   const startSize = await listSize();
@@ -569,19 +567,9 @@ test("shows personal spend and groups profile and session actions", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1150 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(dashboard.baseURL);
 
-  const topBarTrigger = page.getByRole("button", {
-    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
-  });
-  await expect(topBarTrigger).toBeVisible();
-  await expect(topBarTrigger).toHaveAttribute("aria-expanded", "false");
-  await expect(topBarTrigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
-    useInnerText: true,
-  });
-
-  await page.setViewportSize({ width: 1440, height: 900 });
   const rail = page.locator('[data-slot="sidebar"]').filter({
     has: page.getByRole("navigation", { name: "Primary" }),
   });

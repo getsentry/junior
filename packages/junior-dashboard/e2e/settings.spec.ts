@@ -295,7 +295,9 @@ test("saves the auto-archive default and wait time", async ({
   await expect(waitTime).toHaveValue("72");
 
   await page.getByRole("button", { name: "Archive done now" }).click();
-  await expect(page.getByRole("status")).toHaveText("Archived 1 conversation.");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Archived" }),
+  ).toHaveText("Archived 1 conversation.");
   await screenshot(page, "settings-auto-archive", {
     target: page
       .getByRole("heading", { exact: true, name: "Conversations" })

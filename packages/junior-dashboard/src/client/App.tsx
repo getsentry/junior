@@ -22,7 +22,7 @@ import {
 } from "./components/layout/DashboardChrome";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { NavRail, NavRailProvider } from "./components/layout/NavRail";
+import { AppSidebar, AppSidebarProvider } from "./components/layout/AppSidebar";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   automationPath,
@@ -30,9 +30,9 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
-import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
+import { ConversationSidebar } from "./conversations/ConversationSidebar";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
@@ -235,7 +235,6 @@ export function DashboardShell() {
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
-  const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -303,30 +302,28 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <NavRailProvider>
+      <AppSidebarProvider>
         <CommandPalette
           currentConversationId={conversationId}
           navItems={[...primaryNavItems, ...profileNavItems]}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        {desktopTopBar ? null : (
-          <NavRail
-            navItems={primaryNavItems}
-            onSearch={openCommandPalette}
-            profile={
-              loggedIn ? (
-                <ProfileMenu
-                  identity={data!.me}
-                  onSignOut={signOut}
-                  spend={personalSpendQuery.data}
-                  pages={profileNavItems}
-                />
-              ) : undefined
-            }
-            workspaceActive={workspace}
-          />
-        )}
+        <AppSidebar
+          conversations={<ConversationSidebar selectedId={conversationId} />}
+          navItems={primaryNavItems}
+          onSearch={openCommandPalette}
+          profile={
+            loggedIn ? (
+              <ProfileMenu
+                identity={data!.me}
+                onSignOut={signOut}
+                spend={personalSpendQuery.data}
+                pages={profileNavItems}
+              />
+            ) : undefined
+          }
+        />
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
@@ -338,7 +335,6 @@ export function DashboardShell() {
           }
         >
           <DashboardChrome
-            desktopTopBar={desktopTopBar}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -347,24 +343,12 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
-                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
                 onSearch={openCommandPalette}
-                profile={
-                  loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
-                      spend={personalSpendQuery.data}
-                      pages={profileNavItems}
-                      variant="top-bar"
-                    />
-                  ) : undefined
-                }
                 mobileIdentity={
                   loggedIn ? (
                     <ProfileMenu
@@ -794,7 +778,7 @@ export function DashboardShell() {
             style={dashboardNoise}
           />
         </VisualViewportShell>
-      </NavRailProvider>
+      </AppSidebarProvider>
     </DashboardChromeProvider>
   );
 }

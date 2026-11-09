@@ -466,3 +466,52 @@ export function withoutThreads<T extends { threads?: T[] }>(
     return (kept.length ? { ...rest, threads: kept } : rest) as T;
   });
 }
+
+/** Show archives and restores that are still pending in the feed rows. */
+export function applyPendingArchiveUpdates(
+  conversations: Conversation[],
+  updates: PendingArchiveConversationUpdate[],
+  includeArchived: boolean,
+): Conversation[] {
+  // The optimistic cache write in useArchiveConversation sets archivedAt on
+  // success too, ahead of the feed invalidation settling. Drop already-
+  // archived rows here so they cannot reappear until the mutation leaves
+  // "pending" but the stale cache has not refetched yet.
+  const byId = new Map(
+    conversations
+      .filter((conversation) => includeArchived || !conversation.archivedAt)
+      .map((conversation) => [conversation.id, conversation]),
+  );
+  for (const update of updates) {
+    if (update.archived && !includeArchived) {
+      byId.delete(update.conversationId);
+      continue;
+    }
+    const existing = byId.get(update.conversationId);
+    const conversation =
+      existing ??
+      (update.conversation
+        ? buildConversations([update.conversation])[0]
+        : undefined);
+    if (!conversation) continue;
+    byId.set(update.conversationId, {
+      ...conversation,
+      archivedAt: update.archived
+        ? (conversation.archivedAt ?? conversation.lastSeenAt)
+        : null,
+    });
+  }
+  const rows = [...byId.values()].sort((a, b) =>
+    b.lastSeenAt.localeCompare(a.lastSeenAt),
+  );
+  // A refetch can bring back a Thread whose archive is still pending.
+  const archivedIds = new Set(
+    updates
+      .filter((update) => update.archived)
+      .map((update) => update.conversationId),
+  );
+  // Keep row identity when nothing is pending, so memoized rows skip renders.
+  return includeArchived || archivedIds.size === 0
+    ? rows
+    : withoutThreads(rows, (thread) => archivedIds.has(thread.id));
+}

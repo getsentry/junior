@@ -184,9 +184,6 @@ test("opens conversation details beside the chat", async ({
     page.getByText("PAYMENTS-42 contained 418 events."),
   ).toBeVisible();
 
-  await expect(
-    page.getByRole("link", { name: "Conversations" }),
-  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 
   await detailsButton.click();

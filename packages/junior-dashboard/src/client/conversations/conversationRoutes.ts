@@ -51,6 +51,19 @@ export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
 export const NEW_CONVERSATION_PATH = "/";
 
+/** Navigation state that asks home to focus its create composer. */
+export const FOCUS_CREATE_STATE = { focusCreate: true } as const;
+
+/** True when navigation state asks home to focus its create composer. */
+export function readCreateFocus(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "focusCreate" in state &&
+    state.focusCreate === true
+  );
+}
+
 /** True when the path shows the dashboard home page. */
 export function isNewConversationPath(pathname: string): boolean {
   return pathname === "/" || pathname === "/conversations/new";

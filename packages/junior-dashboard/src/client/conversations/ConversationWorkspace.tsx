@@ -1,24 +1,17 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
-import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { Globe2, LockKeyhole } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
   NavigationType,
+  useLocation,
   useNavigate,
   useNavigationType,
   useParams,
 } from "react-router";
-import type { PanelImperativeHandle } from "react-resizable-panels";
 
-import { useConversationsData } from "../api";
-import { ConversationSidebar } from "./ConversationSidebar";
 import { SearchInput } from "../components/SearchInput";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { composerDockClass } from "./ComposerDock";
@@ -30,12 +23,6 @@ import {
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
-import { HeaderIconButton } from "./ConversationHeaderActions";
-import {
-  usePendingArchiveConversationUpdates,
-  withoutThreads,
-  type PendingArchiveConversationUpdate,
-} from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
 import { prefetchConversationDetail } from "./conversationPrefetch";
 import {
@@ -50,39 +37,30 @@ import {
 import {
   conversationPath,
   FOCUS_REPLY_STATE,
-  NEW_CONVERSATION_PATH,
+  readCreateFocus,
 } from "./conversationRoutes";
 import {
   attentionConversationIds,
   pinnedAndAttentionFirst,
 } from "./conversationSections";
-import { buildConversations, getDashboardTimeZone } from "../format";
+import { getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
-import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
-import {
-  useWaitingConversationIds,
-  useWaitingConversations,
-} from "../review-desk/queries";
+import { useWaitingConversationIds } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
-import {
-  readSidebarWidth,
-  saveSidebarWidth,
-  SIDEBAR_WIDTH,
-  useConversationSidebarOpen,
-  useSidebarFits,
-} from "./conversationSidebarLayout";
+import { useSidebarFits } from "./conversationSidebarLayout";
+import { useConversationList } from "./useConversationList";
 
 const CONVERSATION_PAGE_SIZE = 20;
-const SIDEBAR_PANEL_ID = "conversation-list";
 
 /**
- * Render the conversation list beside the create view or one selected
- * conversation. Narrow screens without room for the list get a stacked home.
+ * Render the create view or one selected conversation. The app sidebar lists
+ * conversations beside it; narrow screens without the sidebar get a stacked
+ * home list.
  */
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
@@ -90,15 +68,11 @@ export function ConversationWorkspace(props: {
 }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
   const { showArchiveError, showArchived } = useConversationActionToasts();
   useConversationPageArchiveResult(showArchived, showArchiveError);
   const sidebarFits = useSidebarFits();
-  const sidebarPanel = useRef<PanelImperativeHandle>(null);
-  const sidebarGroup = useRef<HTMLDivElement>(null);
-  const sidebarId = useId();
   // Only the stacked home has a search box. The sidebar lists every
   // conversation; the command palette searches them. Debounce only the typed
   // text, so the sidebar drops a stale search at once.
@@ -106,11 +80,12 @@ export function ConversationWorkspace(props: {
   const search = sidebarFits ? "" : debouncedQuery;
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
-  const feed = useConversationsData(search);
-  const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
+  const { conversations, feed, pendingArchiveUpdates } =
+    useConversationList(search);
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
   const offerPushNotifications = usePushNotificationsTip();
@@ -120,24 +95,9 @@ export function ConversationWorkspace(props: {
   if (!home && pendingCreate) setPendingCreate(undefined);
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
-  const createRequested = useRef(false);
-  const conversations = useMemo(
-    () =>
-      applyPendingArchiveUpdates(
-        buildConversations(feed.data?.conversations ?? []),
-        pendingArchiveUpdates,
-        Boolean(search),
-      ),
-    [feed.data?.conversations, pendingArchiveUpdates, search],
-  );
-  const openCreate = () => {
-    createConversation.reset();
-    if (selectedId) {
-      // The reader asked to type, so home takes focus even on a touch screen.
-      createRequested.current = true;
-      navigate(NEW_CONVERSATION_PATH);
-    } else createComposer.current?.focus();
-  };
+  // The sidebar's New conversation link asks home to focus the composer.
+  const createRequested = readCreateFocus(location.state);
+  const resetCreate = createConversation.reset;
 
   // Thread cards, breadcrumbs, and details show each Thread's own title and
   // status from its feed row.
@@ -145,7 +105,6 @@ export function ConversationWorkspace(props: {
     () => feedThreadsById(conversations),
     [conversations],
   );
-  const waitingConversations = useWaitingConversations();
   const waitingConversationIds = useWaitingConversationIds();
 
   const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
@@ -183,18 +142,19 @@ export function ConversationWorkspace(props: {
   // Home exists to start a conversation, so the reader can type at once. On a
   // touch screen, focus opens the keyboard over the conversation list. There,
   // focus only when the dashboard opens on home or the reader asks to create,
-  // not when they come back from a conversation or follow a link.
+  // not when they come back from a conversation or follow a link. Each ask
+  // is a new location, so asking again on home focuses again.
   const homeShown = useRef(false);
   useEffect(() => {
     if (!home) return;
     const returned =
       (homeShown.current || navigationType === NavigationType.Push) &&
-      !createRequested.current;
+      !createRequested;
     homeShown.current = true;
-    createRequested.current = false;
+    if (createRequested) resetCreate();
     if (returned && touchKeyboardMatches()) return;
     createComposer.current?.focus();
-  }, [home, navigationType]);
+  }, [createRequested, home, location.key, navigationType, resetCreate]);
 
   const createView = (
     <NewConversationView
@@ -258,23 +218,6 @@ export function ConversationWorkspace(props: {
     />
   );
 
-  const toggleSidebar = () => {
-    const panel = sidebarPanel.current;
-    if (!panel) return;
-    if (panel.isCollapsed()) panel.resize(readSidebarWidth());
-    else panel.collapse();
-  };
-  const sidebarToggle = (
-    <HeaderIconButton
-      controls={sidebarId}
-      expanded={sidebarOpen}
-      label={sidebarOpen ? "Hide conversation list" : "Show conversation list"}
-      onClick={toggleSidebar}
-    >
-      <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
-    </HeaderIconButton>
-  );
-
   // One tree for every width, so the create draft and its images survive a
   // resize across the breakpoint: the create view is always the child of the
   // second div.
@@ -284,13 +227,11 @@ export function ConversationWorkspace(props: {
         "h-full min-h-0 w-full overflow-hidden",
         pendingCreate ? "hidden" : "grid",
         sidebarFits
-          ? "grid-rows-[auto_minmax(0,1fr)]"
+          ? "grid-rows-[minmax(0,1fr)]"
           : "grid-rows-[minmax(0,1fr)_auto]",
       )}
     >
-      {sidebarFits ? (
-        <div className="flex h-13 items-center px-1">{sidebarToggle}</div>
-      ) : (
+      {sidebarFits ? null : (
         <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 pt-4 sm:px-6">
           <section aria-label="Conversations" className="grid gap-3">
             <SearchInput
@@ -330,9 +271,7 @@ export function ConversationWorkspace(props: {
       <div
         className={
           sidebarFits
-            ? // The bottom pad matches the toggle row, so the create view
-              // sits in the middle of the pane.
-              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
+            ? "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6"
             : // Narrow screens dock the composer at the bottom, in thumb
               // reach.
               cn(
@@ -347,102 +286,41 @@ export function ConversationWorkspace(props: {
   );
 
   return (
-    <ResizablePanelGroup
-      className="min-h-0 overflow-hidden bg-dashboard-bg"
-      elementRef={sidebarGroup}
-      onLayoutChanged={(layout) => {
-        // Save after the drag ends. A drag that collapses the list passes
-        // the minimum width first, and that width is not the reader's pick.
-        const percent = layout[SIDEBAR_PANEL_ID] ?? 0;
-        const groupWidth = sidebarGroup.current?.offsetWidth ?? 0;
-        if (percent > 0) saveSidebarWidth((percent / 100) * groupWidth);
-      }}
-    >
-      {sidebarFits ? (
-        <>
-          <ResizablePanel
-            collapsible
-            defaultSize={sidebarOpen ? readSidebarWidth() : 0}
-            groupResizeBehavior="preserve-pixel-size"
-            id={SIDEBAR_PANEL_ID}
-            maxSize={SIDEBAR_WIDTH.max}
-            minSize={SIDEBAR_WIDTH.min}
-            onResize={(size) => {
-              // Dragging past the minimum width collapses the list too, so the
-              // panel size is the one source for the open state.
-              const open = size.inPixels > 0;
-              if (open !== sidebarOpen) setSidebarOpen(open);
-            }}
-            panelRef={sidebarPanel}
-          >
-            <div
-              className={cn(
-                "h-full min-h-0 overflow-hidden",
-                !sidebarOpen && "hidden",
-              )}
-              id={sidebarId}
-            >
-              <ConversationSidebar
-                conversations={conversations}
-                error={feed.error?.message}
-                loading={feed.isPending}
-                onNewConversation={openCreate}
-                onReorderPins={reorderPins}
-                selectedId={selectedId}
-                timeZone={getDashboardTimeZone()}
-                waitingConversations={waitingConversations}
-              />
-            </div>
-          </ResizablePanel>
-          <ResizableHandle
-            aria-label="Resize conversation list"
-            className="w-px bg-transparent transition-colors after:w-2 focus-visible:ring-dashboard-border-interactive data-[separator=active]:bg-dashboard-border-interactive data-[separator=hover]:bg-dashboard-border-interactive"
-          />
-        </>
-      ) : null}
-      <ResizablePanel id="selected-conversation">
-        {home ? homePane : null}
-        {/* A pending create shows in the same section as the page that
+    <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg">
+      {home ? homePane : null}
+      {/* A pending create shows in the same section as the page that
             replaces it, so the swap keeps this element. */}
-        {selectedId || pendingCreate ? (
-          <section
-            aria-busy={home || undefined}
-            aria-label="Selected conversation"
-            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
-          >
-            {selectedId ? (
-              <UnsentAnswersProvider
-                conversationId={selectedId}
-                key={selectedId}
-              >
-                <FeedThreads value={feedThreads}>
-                  <ConversationPage
-                    conversationId={selectedId}
-                    detail={props.detail}
-                    data={
-                      feed.data
-                        ? {
-                            conversations: feed.data,
-                          }
-                        : undefined
-                    }
-                    pendingArchiveUpdate={pendingArchiveUpdates.find(
-                      (update) => update.conversationId === selectedId,
-                    )}
-                    sidebarToggle={sidebarToggle}
-                  />
-                </FeedThreads>
-              </UnsentAnswersProvider>
-            ) : pendingCreate ? (
-              <NewConversationPending
-                pending={pendingCreate}
-                sidebarToggle={sidebarToggle}
-              />
-            ) : null}
-          </section>
-        ) : null}
-      </ResizablePanel>
-    </ResizablePanelGroup>
+      {selectedId || pendingCreate ? (
+        <section
+          aria-busy={home || undefined}
+          aria-label="Selected conversation"
+          className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+        >
+          {selectedId ? (
+            <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
+              <FeedThreads value={feedThreads}>
+                <ConversationPage
+                  conversationId={selectedId}
+                  detail={props.detail}
+                  data={
+                    feed.data
+                      ? {
+                          conversations: feed.data,
+                        }
+                      : undefined
+                  }
+                  pendingArchiveUpdate={pendingArchiveUpdates.find(
+                    (update) => update.conversationId === selectedId,
+                  )}
+                />
+              </FeedThreads>
+            </UnsentAnswersProvider>
+          ) : pendingCreate ? (
+            <NewConversationPending pending={pendingCreate} />
+          ) : null}
+        </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -505,52 +383,4 @@ function NewConversationView(props: {
       />
     </section>
   );
-}
-
-function applyPendingArchiveUpdates(
-  conversations: Conversation[],
-  updates: PendingArchiveConversationUpdate[],
-  includeArchived: boolean,
-): Conversation[] {
-  // The optimistic cache write in useArchiveConversation sets archivedAt on
-  // success too, ahead of the feed invalidation settling. Drop already-
-  // archived rows here so they cannot reappear until the mutation leaves
-  // "pending" but the stale cache has not refetched yet.
-  const byId = new Map(
-    conversations
-      .filter((conversation) => includeArchived || !conversation.archivedAt)
-      .map((conversation) => [conversation.id, conversation]),
-  );
-  for (const update of updates) {
-    if (update.archived && !includeArchived) {
-      byId.delete(update.conversationId);
-      continue;
-    }
-    const existing = byId.get(update.conversationId);
-    const conversation =
-      existing ??
-      (update.conversation
-        ? buildConversations([update.conversation])[0]
-        : undefined);
-    if (!conversation) continue;
-    byId.set(update.conversationId, {
-      ...conversation,
-      archivedAt: update.archived
-        ? (conversation.archivedAt ?? conversation.lastSeenAt)
-        : null,
-    });
-  }
-  const rows = [...byId.values()].sort((a, b) =>
-    b.lastSeenAt.localeCompare(a.lastSeenAt),
-  );
-  // A refetch can bring back a Thread whose archive is still pending.
-  const archivedIds = new Set(
-    updates
-      .filter((update) => update.archived)
-      .map((update) => update.conversationId),
-  );
-  // Keep row identity when nothing is pending, so memoized rows skip renders.
-  return includeArchived || archivedIds.size === 0
-    ? rows
-    : withoutThreads(rows, (thread) => archivedIds.has(thread.id));
 }

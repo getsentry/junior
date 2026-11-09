@@ -125,7 +125,10 @@ test("opens scheduled and event automations in the native Automations view", asy
   const weeklySummary = page.getByText("Weekly project summary", {
     exact: true,
   });
-  const issueSummary = page.getByText("Closed issue summary", { exact: true });
+  // The sidebar lists a Conversation with the same title.
+  const issueSummary = page.getByRole("link", {
+    name: "Open automation: Closed issue summary",
+  });
   await expect(weeklySummary).not.toBeVisible();
   await page
     .getByLabel("Automations navigation")
@@ -779,7 +782,9 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   });
   await page.goto(`${dashboard.baseURL}/automations/list?scope=attention`);
   await expect(
-    page.getByRole("button", { name: "Needs attention" }),
+    page
+      .getByRole("group", { name: "Scope" })
+      .getByRole("button", { name: "Needs attention" }),
   ).toHaveAttribute("aria-pressed", "true");
   await screenshot(page, "automation-attention");
   await page

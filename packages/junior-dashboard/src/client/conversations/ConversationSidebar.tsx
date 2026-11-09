@@ -9,7 +9,6 @@ import {
   MailOpen,
   Pencil,
   Pin,
-  SquarePen,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -24,10 +23,12 @@ import {
   usePinnedRowDrag,
   type PinnedRowDrag,
 } from "./PinnedConversationOrder";
-import type { ReorderPins } from "./useReorderPinnedConversations";
+import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
+import { useConversationList } from "./useConversationList";
 import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
+  getDashboardTimeZone,
   isIdleConversation,
   visualStatusForConversation,
 } from "../format";
@@ -56,7 +57,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
-import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Skeleton } from "../components/ui/skeleton";
 import {
@@ -65,7 +65,10 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { Spinner } from "../components/ui/spinner";
-import type { WaitingConversation } from "../review-desk/queries";
+import {
+  useWaitingConversations,
+  type WaitingConversation,
+} from "../review-desk/queries";
 
 type ConversationSidebarEntry =
   | {
@@ -93,21 +96,17 @@ const ROW_ACTION_BUTTON_CLASS =
 // While the row actions show, the row content fades out under them, so the
 // title does not end in a hard cut. --row-actions-width is set per row.
 const ROW_ACTIONS_FADE_CLASS =
-  "sm:group-hover:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))] sm:group-focus-within:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]";
+  "sm:group-hover/row:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))] sm:group-focus-within/row:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]";
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
-/** Render the compact personal conversation picker beside the workspace. */
-export function ConversationSidebar(props: {
-  conversations: Conversation[];
-  error?: string;
-  loading: boolean;
-  selectedId?: string;
-  timeZone: string;
-  waitingConversations: ReadonlyMap<string, WaitingConversation>;
-  onNewConversation(): void;
-  onReorderPins: ReorderPins;
-}) {
+/** Render the viewer's conversation list in the app sidebar. */
+export function ConversationSidebar(props: { selectedId?: string }) {
+  const { conversations, feed } = useConversationList();
+  const waitingConversations = useWaitingConversations();
+  const reorderPins = useReorderPinnedConversations();
+  const timeZone = getDashboardTimeZone();
+  const loading = feed.isPending;
   const { clearActionError, showActionError, showArchiveError, showArchived } =
     useConversationActionToasts();
   const handlePinError = useCallback(
@@ -152,13 +151,13 @@ export function ConversationSidebar(props: {
   const entries = useMemo(
     () =>
       conversationSidebarEntries(
-        buildConversationSections(props.conversations, {
+        buildConversationSections(conversations, {
           attentionIds: attentionConversationIds(
-            props.conversations,
-            props.waitingConversations.keys(),
+            conversations,
+            waitingConversations.keys(),
           ),
           nowMs: Date.now(),
-          timeZone: props.timeZone,
+          timeZone: timeZone,
         }),
         collapsedKeys,
         { expandedThreadRoots, selectedId: props.selectedId },
@@ -167,9 +166,9 @@ export function ConversationSidebar(props: {
       collapsedKeys,
       expandedThreadRoots,
       props.selectedId,
-      props.conversations,
-      props.timeZone,
-      props.waitingConversations,
+      conversations,
+      timeZone,
+      waitingConversations,
     ],
   );
   const pinnedConversations = useMemo(
@@ -187,42 +186,25 @@ export function ConversationSidebar(props: {
     [showActionError],
   );
   return (
-    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
-      <div className="px-3 pb-1.5 pt-2.5">
-        {/* The chip centers on the rows' icon column, so the label lines up
-          with the conversation titles below. */}
-        <Button
-          className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-2 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-accent-text hover:[&_svg]:text-dashboard-accent-text focus-visible:[&_svg]:text-dashboard-accent-text"
-          onClick={props.onNewConversation}
-          size="menu"
-        >
-          <span
-            aria-hidden="true"
-            className="grid size-[1.125rem] place-items-center justify-self-center rounded-md bg-dashboard-accent/[0.14] dark:bg-dashboard-accent/[0.22]"
-          >
-            <SquarePen className="size-3" strokeWidth={2.25} />
-          </span>
-          New conversation
-        </Button>
-      </div>
+    <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] overflow-hidden">
       <ScrollArea viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {props.error ? (
+        {feed.error ? (
           <div className="p-2">
-            <EmptyTelemetry>{props.error}</EmptyTelemetry>
+            <EmptyTelemetry>{feed.error.message}</EmptyTelemetry>
           </div>
-        ) : props.loading && entries.length === 0 ? (
+        ) : loading && entries.length === 0 ? (
           <ConversationRowsLoading />
         ) : (
           <PinnedConversationOrder
             conversations={pinnedConversations}
             onError={handleReorderError}
-            reorder={props.onReorderPins}
+            reorder={reorderPins}
           >
             <AnimatedList
               ariaLabel="Your conversations"
               className="grid gap-0.5"
               empty={
-                !props.loading ? (
+                !loading ? (
                   <div className="p-2">
                     <EmptyTelemetry>
                       No conversations match this view.
@@ -252,9 +234,7 @@ export function ConversationSidebar(props: {
                     conversation={entry.conversation}
                     depth={entry.depth}
                     selected={entry.conversation.id === props.selectedId}
-                    waiting={props.waitingConversations.has(
-                      entry.conversation.id,
-                    )}
+                    waiting={waitingConversations.has(entry.conversation.id)}
                   />
                 ) : (
                   <ConversationSidebarEntryRow
@@ -266,9 +246,7 @@ export function ConversationSidebar(props: {
                     onUnreadError={handleUnreadError}
                     onRenameError={handleRenameError}
                     selected={entry.conversation.id === props.selectedId}
-                    waiting={props.waitingConversations.get(
-                      entry.conversation.id,
-                    )}
+                    waiting={waitingConversations.get(entry.conversation.id)}
                   />
                 )
               }
@@ -277,7 +255,7 @@ export function ConversationSidebar(props: {
           </PinnedConversationOrder>
         )}
       </ScrollArea>
-    </aside>
+    </div>
   );
 }
 
@@ -292,7 +270,7 @@ function ConversationRowsLoading() {
 }
 
 /** Draw placeholder rows in the sidebar row geometry. Callers own the status text. */
-export function ConversationRowSkeletons() {
+function ConversationRowSkeletons() {
   return (
     <div aria-hidden="true" className="grid gap-0.5">
       <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-12" />
@@ -454,7 +432,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         {...prefetch}
         {...drag?.listeners}
         className={cn(
-          "mobile-conversation-row group relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover data-popup-open:bg-dashboard-fill-hover",
+          "mobile-conversation-row group/row relative min-w-0 rounded-lg transition-colors hover:bg-dashboard-fill-hover data-popup-open:bg-dashboard-fill-hover",
           props.selected && "bg-dashboard-surface-active",
           drag?.dragging && "opacity-40",
           archived
@@ -565,7 +543,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         ) : null}
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
-        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within/row:pointer-events-auto sm:group-focus-within/row:opacity-100 sm:group-hover/row:pointer-events-auto sm:group-hover/row:opacity-100">
           {archived ? null : (
             <Tooltip>
               <TooltipTrigger

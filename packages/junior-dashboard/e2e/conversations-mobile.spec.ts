@@ -236,7 +236,7 @@ test.describe("on a touch screen", () => {
     await page.setViewportSize({ height: 800, width: 1024 });
     await conversation.first().click();
     await expect(heading).toBeVisible();
-    await page.getByRole("button", { name: "New conversation" }).click();
+    await page.getByRole("link", { name: "New conversation" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
     await expect(composer).toBeFocused();
   });

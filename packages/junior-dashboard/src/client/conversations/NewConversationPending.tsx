@@ -1,5 +1,5 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ConversationTranscript } from "../types";
@@ -61,7 +61,6 @@ export function newConversationDraftId(idempotencyKey: string): string {
  */
 export function NewConversationPending(props: {
   pending: PendingNewConversation;
-  sidebarToggle?: ReactNode;
 }) {
   const queryClient = useQueryClient();
   const { pending } = props;
@@ -160,7 +159,6 @@ export function NewConversationPending(props: {
               }}
               search=""
               searchMatch={searchMatch}
-              sidebarToggle={props.sidebarToggle}
               subscription={{
                 disabled: true,
                 error: false,

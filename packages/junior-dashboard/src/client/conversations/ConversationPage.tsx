@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
@@ -146,7 +145,6 @@ export function ConversationPage(props: {
    */
   detail: ConversationData;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
-  sidebarToggle?: ReactNode;
 }) {
   const detailsDefaultOpen = useDetailsDefaultOpen();
   const pageRef = useRef<HTMLDivElement>(null);
@@ -759,7 +757,6 @@ export function ConversationPage(props: {
               search={search}
               searchMatch={searchMatch}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
-              sidebarToggle={props.sidebarToggle}
               status={
                 isChildConversation(conversationDetail) && conversation ? (
                   <ChildConversationStatusPill

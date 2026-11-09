@@ -49,7 +49,7 @@ export function ConversationHeader(props: {
   linkedWork?: ReactNode;
   /**
    * The Conversation is not created yet. Its actions stay inert until it
-   * exists; the sidebar toggle still works.
+   * exists.
    */
   pending?: boolean;
   onSearchChange(value: string): void;
@@ -60,7 +60,6 @@ export function ConversationHeader(props: {
   search: string;
   searchMatch: TranscriptSearchMatch;
   sentryConversationUrl?: string;
-  sidebarToggle?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
   status?: ReactNode;
   subscription: ConversationSubscriptionAction;
@@ -240,11 +239,8 @@ export function ConversationHeader(props: {
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
+        <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 pl-4 pr-1 md:flex">
           <div className="flex min-w-0 items-center gap-1.5">
-            {props.sidebarToggle ? (
-              <div className="shrink-0">{props.sidebarToggle}</div>
-            ) : null}
             {props.agentTree ? (
               <ConversationBreadcrumb current={title} nodes={props.agentTree} />
             ) : (
