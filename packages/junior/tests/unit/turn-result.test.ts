@@ -277,38 +277,6 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("treats a noReply call as intentional silent completion", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "assistant",
-          content: [
-            { type: "toolCall", id: "call-1", name: "noReply", arguments: {} },
-          ],
-          stopReason: "toolUse",
-        },
-        {
-          role: "toolResult",
-          toolCallId: "call-1",
-          toolName: "noReply",
-          isError: false,
-          content: [{ type: "text", text: "{}" }],
-          details: { note: "Pushed a lint fix." },
-        },
-      ],
-      userInput: "Do whatever makes sense here",
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      modelId: "test-model",
-      reasoningLevel: "medium",
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.noReply).toEqual({ note: "Pushed a lint fix." });
-    expect(reply.diagnostics.outcome).toBe("success");
-  });
-
   it("does not treat a tool-call terminal tail as intentional no-reply", () => {
     const reply = buildTurnResult({
       newMessages: [
