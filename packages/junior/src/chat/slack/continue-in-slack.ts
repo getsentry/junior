@@ -10,10 +10,21 @@ import { setFirstConversationLocation } from "@/chat/conversations/sql/location"
 import { withConversationMutationLock } from "@/chat/conversations/sql/store";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
+import {
+  parseSlackChannelId,
+  type SlackChannelId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
-import { deleteSlackMessage, postSlackMessage } from "@/chat/slack/outbound";
-import type { SlackMessageTs } from "@/chat/slack/timestamp";
+import {
+  deleteSlackMessage,
+  getSlackMessagePermalink,
+  postSlackMessage,
+} from "@/chat/slack/outbound";
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 import {
   checkSlackChannelReadAccess,
   joinPublicChannelForRead,
@@ -23,6 +34,8 @@ import { moveIdleConversationDestination } from "@/chat/task-execution/store";
 import { juniorDestinations } from "@/db/schema";
 
 const BUSY = "Wait for Junior to finish, then try again.";
+const THREAD_TAKEN = "This thread already has a Junior conversation.";
+// Thrown in the move transaction to roll back the thread claim.
 const MOVED_ELSEWHERE = new Error("Conversation already has a Location");
 
 /** The Slack channel that a dashboard Conversation moves to. */
@@ -152,6 +165,30 @@ async function readChannelLocationId(
   return row.id;
 }
 
+/** Say which Slack thread a Conversation that already moved continues in. */
+export async function alreadyContinuesInSlackMessage(
+  conversation: Pick<Conversation, "channelName" | "location">,
+): Promise<string> {
+  const { location } = conversation;
+  const channelId =
+    location?.provider === "slack"
+      ? parseSlackChannelId(location.channelId)
+      : undefined;
+  const threadTs = parseSlackMessageTs(
+    location?.provider === "slack" ? location.threadTs : undefined,
+  );
+  const url =
+    channelId && threadTs
+      ? await getSlackMessagePermalink({ channelId, messageTs: threadTs })
+      : undefined;
+  const place = conversation.channelName
+    ? `#${conversation.channelName}`
+    : "Slack";
+  return url
+    ? `This conversation already continues in ${place}: ${url}`
+    : `This conversation already continues in ${place}.`;
+}
+
 /**
  * Move a qualifying dashboard Conversation to a public Slack channel thread.
  *
@@ -191,10 +228,7 @@ export async function continueConversationInSlack(args: {
       binding(args.threadTs),
     ))
   ) {
-    return {
-      message: "This thread already has a Junior conversation.",
-      status: "refused",
-    };
+    return { message: THREAD_TAKEN, status: "refused" };
   }
 
   const posted = await postMovedMessage(
@@ -219,6 +253,7 @@ export async function continueConversationInSlack(args: {
   });
   const locationId = await readChannelLocationId(channel);
 
+  let threadTaken = false;
   const moved = await moveIdleConversationDestination({
     conversationId,
     destination,
@@ -237,6 +272,7 @@ export async function continueConversationInSlack(args: {
                 ...binding(threadTs),
               }))
             ) {
+              threadTaken = true;
               return false;
             }
             const stored = await setFirstConversationLocation(executor, {
@@ -269,13 +305,14 @@ export async function continueConversationInSlack(args: {
       channelId: channel.channelId,
       timestamp: posted.ts,
     });
-    return {
-      message:
-        moved === "busy"
-          ? BUSY
-          : "This conversation or thread already continues in Slack.",
-      status: "refused",
-    };
+    let message = BUSY;
+    if (moved === "not_moved") {
+      const current = await getConversationStore().get({ conversationId });
+      message = threadTaken
+        ? THREAD_TAKEN
+        : await alreadyContinuesInSlackMessage(current ?? conversation);
+    }
+    return { message, status: "refused" };
   }
   // Thread replies without a mention join the Conversation history.
   await getStateAdapter().subscribe(`slack:${channel.channelId}:${threadTs}`);

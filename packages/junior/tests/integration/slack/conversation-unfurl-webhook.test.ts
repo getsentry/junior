@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { closeDb, getConversationStore } from "@/chat/db";
 import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
-import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { juniorIdentities } from "@/db/schema";
 import {
   SLACK_BOT_USER_ID,
   SLACK_SIGNING_SECRET,
@@ -15,6 +13,7 @@ import {
 } from "../../fixtures/conversation-work";
 import { webTestActor } from "../../fixtures/conversation";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { linkSlackUser } from "../../fixtures/slack-user";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import {
@@ -27,29 +26,6 @@ const ORIGINAL_ENV = { ...process.env };
 const DASHBOARD = "https://junior.example.com";
 // The message that shares the link. Its thread takes the Conversation.
 const SHARED_TS = "1712345.0001";
-
-/** A Junior User with a linked Slack identity, like a person who signed in. */
-async function linkSlackUser(email: string, slackUserId: string) {
-  const user = await resolveViewerUserFromSql(getDb(), email);
-  if (!user) throw new Error(`no user for ${email}`);
-  const now = new Date(1);
-  await getDb()
-    .insert(juniorIdentities)
-    .values({
-      createdAt: now,
-      displayName: email.split("@")[0]!,
-      email,
-      emailNormalized: email,
-      emailVerified: true,
-      id: `identity:${slackUserId}`,
-      kind: "user",
-      provider: "slack",
-      providerSubjectId: slackUserId,
-      providerTenantId: "T123",
-      updatedAt: now,
-      userId: user.id,
-    });
-}
 
 function unfurlsOf(call: { params: Record<string, unknown> } | undefined) {
   const unfurls = call?.params.unfurls;
@@ -251,6 +227,12 @@ describe("Slack webhook: dashboard conversation links", () => {
         .map((message) => message.conversationId),
     ).toEqual([conversationId]);
 
+    // A click on the old button says where the conversation went.
+    await slack.click("U123", value!);
+    expect(
+      slackApiOutbox.calls("chat.postEphemeral").at(-1)?.params.text,
+    ).toMatch(/^This conversation already continues in .+: https:\/\//);
+
     // A new share of a moved conversation has no button.
     await slack.shareLink(url);
     expect(continueHereValue(url)).toBeUndefined();
@@ -295,6 +277,9 @@ describe("Slack webhook: dashboard conversation links", () => {
         slackApiOutbox.calls("chat.delete").length,
     ).toBe(1);
     expect(slackApiOutbox.calls("chat.postEphemeral")).toHaveLength(1);
+    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params.text).toBe(
+      "This thread already has a Junior conversation.",
+    );
   });
 
   it("refuses a click from someone outside the conversation", async () => {

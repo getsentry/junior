@@ -2,15 +2,14 @@ import type { KnownBlock } from "@slack/types";
 import type { StateAdapter } from "chat";
 import * as z from "zod";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { getConversationIdByProviderConversation } from "@/chat/conversations/sql/bindings";
 import type { Conversation } from "@/chat/conversations/store";
 import { parseDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
-import { readActorIdentity } from "@/chat/plugins/viewer";
 import {
+  alreadyContinuesInSlackMessage,
   canContinueInSlack,
   continueConversationInSlack,
   isMovableToSlack,
@@ -28,6 +27,7 @@ import {
 } from "@/chat/slack/outbound";
 import { slackMessageTsSchema } from "@/chat/slack/timestamp";
 import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
+import { resolveSlackActingUser } from "./slack-acting-user";
 import type { SlackInteractivePayload } from "./slack-payload";
 
 /** Action id of the "Continue here" button on a dashboard link preview. */
@@ -237,14 +237,10 @@ export async function handleSlackContinueHereClick(args: {
 }): Promise<void> {
   const target = parseContinueHereValue(args.value);
   const channelId = parseSlackChannelId(args.payload.channel?.id);
-  const slackUserId = parseActorUserId(args.payload.user?.id);
-  const teamId = parseSlackTeamId(
-    args.payload.team?.id ?? args.payload.user?.team_id,
-  );
-  if (!target || !channelId || !slackUserId || !teamId) {
+  if (!target || !channelId) {
     throw new Error("Slack Continue here payload is incomplete");
   }
-  const tell = (text: string) =>
+  const tellPerson = (userId: string, text: string) =>
     postSlackEphemeralMessage({
       channelId,
       text,
@@ -252,26 +248,17 @@ export async function handleSlackContinueHereClick(args: {
       ...(target.threadTs !== target.messageTs
         ? { threadTs: target.threadTs }
         : undefined),
-      userId: slackUserId,
+      userId,
     });
-  if (
-    !(await isSlackWorkspaceMember(
-      { user: slackUserId, user_team: args.payload.user?.team_id },
-      args.state,
-    )) ||
-    !(await args.isAuthorAllowed(slackUserId))
-  ) {
-    return;
-  }
-  const user = (
-    await readActorIdentity(createSlackActor(teamId, slackUserId, undefined))
-  )?.user;
-  if (!user) {
-    await tell(
-      "Junior does not know your account yet. Sign in to the Junior dashboard, then try again.",
-    );
-    return;
-  }
+  const actor = await resolveSlackActingUser({
+    isAuthorAllowed: args.isAuthorAllowed,
+    payload: args.payload,
+    state: args.state,
+    tell: tellPerson,
+  });
+  if (!actor) return;
+  const { teamId, user } = actor;
+  const tell = (text: string) => tellPerson(actor.slackUserId, text);
   const conversation = await getConversationStore().get({
     conversationId: target.conversationId,
   });
@@ -289,7 +276,11 @@ export async function handleSlackContinueHereClick(args: {
     return;
   }
   if (!canContinueInSlack(conversation, access)) {
-    await tell("This conversation can no longer move to Slack.");
+    await tell(
+      conversation.location
+        ? await alreadyContinuesInSlackMessage(conversation)
+        : "This conversation can no longer move to Slack.",
+    );
     return;
   }
   const result = await continueConversationInSlack({
