@@ -158,7 +158,7 @@ export async function loadLatestBackgroundCompaction(conversationId: string) {
 
 /**
  * Return whether the newest fact is a pending request or a ready summary.
- * Then `mayRequest` is false too, so a Turn can skip the full history load.
+ * Then `mayRequest` is false too, so a Turn can skip the other reads.
  * Only one request is pending at a time, so the newest fact decides it.
  */
 function waitsForUse(event: ConversationEvent, nowMs: number): boolean {
@@ -215,13 +215,27 @@ async function requestAboveMark(args: {
   queue: BackgroundCompactionQueue;
 }): Promise<void> {
   const nowMs = Date.now();
-  // Each later model request of a large Turn checks again. Read only the
-  // newest fact while a request waits.
-  const latest = await loadLatestBackgroundCompaction(args.conversationId);
-  if (latest && waitsForUse(latest.event, nowMs)) {
-    return;
-  }
   const eventStore = getConversationEventStore();
+  // Each later model request of a large Turn checks again. Read only the
+  // newest fact while a request waits, and only background compaction facts
+  // to count failed attempts. Without a fact of this History version, no
+  // attempt exists yet.
+  const latest = await loadLatestBackgroundCompaction(args.conversationId);
+  if (latest) {
+    if (waitsForUse(latest.event, nowMs)) {
+      return;
+    }
+    const facts = await Promise.all([
+      eventStore.loadEventsOfType(args.conversationId, "compaction_requested"),
+      eventStore.loadEventsOfType(args.conversationId, "compaction_prepared"),
+    ]);
+    if (!mayRequest(facts.flat(), latest.historyVersion, nowMs)) {
+      return;
+    }
+  }
+  // Load the full history only to write a request: the mark comes from its
+  // projection. Check again on it, because another Turn or a replacement
+  // can write between the reads.
   const events = await eventStore.loadCurrentHistory(args.conversationId);
   const historyVersion = events[0]?.historyVersion;
   if (

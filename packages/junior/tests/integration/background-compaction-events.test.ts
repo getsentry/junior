@@ -5,7 +5,7 @@ import {
   type Context,
 } from "@earendil-works/pi-ai";
 import { Type } from "@sinclair/typebox";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAgentModelRequest } from "@/chat/agent/context-summary";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore } from "@/chat/db";
@@ -355,7 +355,11 @@ describe("background compaction job", () => {
       { createdAtMs: 3, data: userMessage("Third question.", 3) },
     ]);
 
+    // The attempt check reads only compaction facts, not the full history.
+    const loadCurrentHistory = vi.spyOn(events, "loadCurrentHistory");
     await expect(completeTurn(liveAgent(mark))).resolves.toEqual([]);
+    expect(loadCurrentHistory).not.toHaveBeenCalled();
+    loadCurrentHistory.mockRestore();
     const prepared = (await bookkeeping()).filter(
       (event) => event.type === "compaction_prepared",
     );
