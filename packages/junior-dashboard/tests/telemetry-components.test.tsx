@@ -908,6 +908,12 @@ describe("dashboard canonical-event components", () => {
               contentType: "text/plain",
               bytes: 42,
             },
+            {
+              id: "att-3",
+              filename: "report.pdf",
+              contentType: "application/pdf",
+              bytes: 2048,
+            },
           ],
         }),
       ]),
@@ -924,8 +930,13 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(
       "/api/conversations/conversation-1/attachments/att-1",
     );
-    expect(html).toContain(
+    // A text file opens a preview. Other files download.
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).not.toContain(
       "/api/conversations/conversation-1/attachments/att-2",
+    );
+    expect(html).toContain(
+      "/api/conversations/conversation-1/attachments/att-3",
     );
   });
 

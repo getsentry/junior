@@ -632,8 +632,8 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationAutoArchiveSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
-  // Fixed bodies so dashboard mock can exercise image, video, and file
-  // attachment cards.
+  // Fixed bodies so dashboard mock can exercise image, video, file, and text
+  // preview attachment cards.
   app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {
     const conversationId = c.req.param("conversationId");
     const attachmentId = c.req.param("attachmentId");
@@ -670,6 +670,18 @@ export function createMockReportingApi(): Hono<{
           "cache-control": "private, no-store",
           "content-disposition": 'attachment; filename="notes.txt"',
           "content-type": "text/plain",
+          "content-length": String(Buffer.byteLength(body)),
+        },
+      });
+    }
+    if (attachmentId === "qa-readme-md") {
+      const body =
+        "# Release notes\n\nThis line wraps\nin the source.\n\n- Preview text files\n- Keep downloads\n\n```ts\nconst ok = true;\n```\n\nRead the [docs][docs].\n\n[docs]: https://example.com/docs\n";
+      return new Response(body, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": 'attachment; filename="README.md"',
+          "content-type": "text/markdown",
           "content-length": String(Buffer.byteLength(body)),
         },
       });

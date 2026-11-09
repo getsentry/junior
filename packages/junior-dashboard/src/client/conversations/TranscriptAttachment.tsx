@@ -5,13 +5,21 @@ import {
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
 import { Download, FileText } from "lucide-react";
-import { type ReactNode, createContext, useContext, useMemo } from "react";
+import {
+  type ReactNode,
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 
 import {
   ImageAttachment,
   type PreviewImage,
 } from "../components/ImageAttachment";
 import type { TranscriptViewMessage } from "../types";
+import { TextAttachmentPreview } from "./TextAttachmentPreview";
+import { textPreviewLanguage } from "./textPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 /** Build a data URL that previews an image before the server stores it. */
@@ -275,26 +283,24 @@ function TranscriptMediaTile(props: {
   );
 }
 
-/** Render one stored file as a download row. */
+// Every file row shares this look, as a preview button or a download link.
+const FILE_ROW_CLASS =
+  "grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus";
+
+/** Render one stored file as a row that previews text or downloads the file. */
 function TranscriptFileRow(props: {
   attachment: MessageAttachment;
   conversationId: string;
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const href = conversationAttachmentUrl(
     props.conversationId,
     props.attachment.id,
   );
   const meta = attachmentMeta(props.attachment);
-  // `target="_blank"`: an installed iOS home screen app has no back button.
-  // Opening a file in the same window traps the user in the iOS file preview.
-  return (
-    <a
-      className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 no-underline transition-colors hover:border-dashboard-border-interactive hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      download={props.attachment.filename}
-      href={href}
-      rel="noreferrer"
-      target="_blank"
-    >
+  const language = textPreviewLanguage(props.attachment);
+  const label = (
+    <>
       <span
         aria-hidden="true"
         className="grid size-6 place-items-center text-dashboard-text-muted"
@@ -309,6 +315,44 @@ function TranscriptFileRow(props: {
           <HighlightText text={meta} />
         </div>
       </div>
-    </a>
+    </>
+  );
+
+  if (!language) {
+    // `target="_blank"`: an installed iOS home screen app has no back button.
+    // Opening a file in the same window traps the user in the iOS file preview.
+    return (
+      <a
+        className={FILE_ROW_CLASS}
+        download={props.attachment.filename}
+        href={href}
+        rel="noreferrer"
+        target="_blank"
+      >
+        {label}
+      </a>
+    );
+  }
+
+  return (
+    <>
+      <button
+        aria-haspopup="dialog"
+        className={FILE_ROW_CLASS}
+        onClick={() => setPreviewOpen(true)}
+        type="button"
+      >
+        {label}
+      </button>
+      {previewOpen ? (
+        <TextAttachmentPreview
+          attachment={props.attachment}
+          href={href}
+          language={language}
+          meta={meta}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

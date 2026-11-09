@@ -188,6 +188,26 @@ async function fetchDashboard(
   return response;
 }
 
+/**
+ * Read at most `maxBytes` from the start of an authenticated dashboard file.
+ * It asks for one byte range, so a large file does not download whole.
+ */
+export async function readDashboardBytes(
+  path: string,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
+  const response = await fetchDashboard(path, {
+    credentials: "same-origin",
+    headers: { range: `bytes=0-${maxBytes - 1}` },
+    ...(signal ? { signal } : undefined),
+  });
+  if (response.status === 401) restartDashboardSignIn();
+  if (!response.ok) await throwDashboardApiError(path, response);
+  // HTTP lets a server ignore the range and send the whole file.
+  return new Uint8Array(await response.arrayBuffer()).subarray(0, maxBytes);
+}
+
 /** Fetch one authenticated dashboard JSON resource and validate its response. */
 export async function fetchDashboardJson<T>(
   schema: ZodType<T>,
