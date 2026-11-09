@@ -6,7 +6,7 @@ import { juniorConversations } from "@/db/schema";
 import { mswServer } from "../../msw/server";
 
 const CONNECTION_STRING =
-  "postgresql://junior:secret@ep-overflow-test.us-east-1.aws.neon.tech/neondb";
+  "postgresql://junior:secret@ep-overflow-test.test.aws.neon.tech/neondb";
 
 const wire = vi.hoisted(() => ({
   clientsOpened: 0,
@@ -65,21 +65,18 @@ describe("Neon pool overflow", () => {
     wire.httpQueries.length = 0;
     // The driver sends HTTP queries to the regional API host.
     mswServer.use(
-      http.post(
-        "https://api.us-east-1.aws.neon.tech/sql",
-        async ({ request }) => {
-          const body = (await request.json()) as { query: string };
-          wire.httpQueries.push(body.query);
-          // The driver always asks for array rows and builds objects itself.
-          return HttpResponse.json({
-            command: "SELECT",
-            rowCount: 1,
-            fields: [{ name: "transport", dataTypeID: 25 }],
-            rows: [["http"]],
-            rowAsArray: true,
-          });
-        },
-      ),
+      http.post("https://api.test.aws.neon.tech/sql", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        wire.httpQueries.push(body.query);
+        // The driver always asks for array rows and builds objects itself.
+        return HttpResponse.json({
+          command: "SELECT",
+          rowCount: 1,
+          fields: [{ name: "transport", dataTypeID: 25 }],
+          rows: [["http"]],
+          rowAsArray: true,
+        });
+      }),
     );
     executor = createNeonJuniorSqlExecutor({
       connectionString: CONNECTION_STRING,
