@@ -1,6 +1,3 @@
--- The Turn whose failure is the latest Turn lifecycle end. Conversations
--- whose latest Turn failed before this release keep the status `idle`.
-ALTER TABLE "junior_conversations" ADD COLUMN "failed_turn_id" text;--> statement-breakpoint
 -- Before this migration runs, junior upgrade builds the marked index with
 -- CREATE INDEX CONCURRENTLY, so the build below does not block writes.
 DO $$
