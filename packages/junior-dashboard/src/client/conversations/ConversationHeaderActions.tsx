@@ -9,6 +9,7 @@ import {
   MailOpen,
   MessageSquareShare,
   MessagesSquare,
+  PictureInPicture2,
   Pin,
   PinOff,
   ScrollText,
@@ -29,6 +30,7 @@ import { cn } from "../styles";
 import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
+import { useOpenConversationPopOut } from "./ConversationPopOut";
 import { OutboundLink } from "../components/OutboundLink";
 
 export type ConversationArchiveAction = {
@@ -90,6 +92,7 @@ export function ConversationHeaderActions(props: {
 }) {
   const mobile = props.placement === "mobile";
   const eventLogOpen = props.view === "raw";
+  const openPopOut = useOpenConversationPopOut();
   return (
     <div className="grid gap-0.5">
       {mobile && !eventLogOpen ? (
@@ -128,6 +131,14 @@ export function ConversationHeaderActions(props: {
           onClick={props.continueInSlack.onClick}
         >
           <MessageSquareShare aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+      ) : null}
+      {openPopOut && !mobile ? (
+        <MenuActionButton
+          label="Pop out"
+          onClick={() => void openPopOut(props.conversationId)}
+        >
+          <PictureInPicture2 aria-hidden="true" size={16} strokeWidth={2} />
         </MenuActionButton>
       ) : null}
       <MenuActionButton
