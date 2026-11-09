@@ -248,9 +248,10 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
-  // These pages put their own list in the pane. Other pages get the pane
-  // with the primary destinations only.
-  const ownsPane = workspace || location.pathname === "/review";
+  // Conversation pages put their own list in the pane. Other pages get the
+  // pane with the primary destinations only. The inbox queue expands in
+  // place, so it fills the page, not the pane.
+  const ownsPane = workspace;
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
   // The shell owns the open Conversation's data, and the page reads it. On a
