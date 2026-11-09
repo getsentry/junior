@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stopConversation } from "@/chat/conversations/stop";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createModelAgentRunnerForRun } from "../../fixtures/agent-runner";
 import {
@@ -135,4 +136,48 @@ describe("Slack MCP authorization", () => {
       "mcp:write",
     );
   });
+
+  it.each([
+    {
+      name: "the `stop` keyword",
+      stop: async (harness: ConversationWorkSlackHarness, threadTs: string) =>
+        await harness.send({
+          threadTs,
+          ts: "1712345.4101",
+          text: `<@${SLACK_BOT_USER_ID}> stop`,
+        }),
+    },
+    {
+      name: "Slack's native stop button",
+      stop: async (harness: ConversationWorkSlackHarness, threadTs: string) =>
+        await harness.sendSessionStop({ eventTs: "1712345.4101", threadTs }),
+    },
+    {
+      name: "a dashboard stop",
+      stop: async (harness: ConversationWorkSlackHarness, threadTs: string) =>
+        await stopConversation({
+          conversationId: `slack:C123:${threadTs}`,
+          queue: harness.wakes,
+          state: harness.state,
+        }),
+    },
+  ])(
+    "drops a request that waits for sign-in when the person stops it with $name",
+    async ({ stop }) => {
+      const user = "USTOP";
+      const threadTs = "1712345.4001";
+      const harness = await askForBudget({ user, ts: threadTs });
+      const [link] = slackApiOutbox.authorizationLinks(user);
+
+      await stop(harness, threadTs);
+      await harness.drain();
+      // The stop ended the request, so its link shows "Authorization expired".
+      await expect(approve(harness, link!)).rejects.toThrow(
+        "The MCP OAuth callback returned 400",
+      );
+      await harness.drain();
+
+      expect(harness.replies()).not.toContain(ANSWER);
+    },
+  );
 });
