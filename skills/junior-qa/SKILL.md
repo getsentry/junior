@@ -65,7 +65,8 @@ and needs separate validation.
 
 Messages sent from the composer or a Quick question do not run the agent. The
 mock shows a working Turn for 2 seconds, then a fixed reply. Sent messages
-stay until the dev server restarts.
+stay until the dev server restarts. Dictation returns fixed text and calls no
+model.
 
 The root dev command owns local auth-disabled defaults and the production-like
 Nitro preset. If it fails to start, diagnose or report the dev runner failure;
@@ -89,11 +90,16 @@ When a person wants to open the UI that you changed, send a preview URL:
 
 Rules:
 
-- Anyone with the URL can open it. Serve mock data only. Do not give the
-  server provider credentials.
-- The URL stops working when the Sandbox stops. When the person asks to
-  refresh the preview, check out the branch, start the server again, and send
-  the new URL.
+- Serve mock data only. Do not give the server provider credentials.
+- After more edits, run the `curl` check first. If it returns `200`, do not
+  restart the server. It rebuilds `packages/junior` edits by itself. It does
+  not rebuild the dashboard browser bundle, so after edits in
+  `packages/junior-dashboard`, run
+  `pnpm --filter @sentry/junior-dashboard run build:css && pnpm --filter @sentry/junior-dashboard run build:client && pnpm --filter @sentry/junior-dashboard run build:server`.
+  The server restarts on the new build. Then tell the person to refresh the
+  same URL.
+- When the person asks to refresh the preview after the Sandbox stopped, check
+  out the branch, start the server again, and send the new URL.
 
 ## Docker Sandbox QA
 

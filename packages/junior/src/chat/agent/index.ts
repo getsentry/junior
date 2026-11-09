@@ -52,7 +52,7 @@ import {
   sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
-import type { Actor } from "@/chat/actor";
+import { isUserActor, type Actor } from "@/chat/actor";
 import {
   actorLogContext,
   credentialUserSubjectId,
@@ -71,6 +71,7 @@ import {
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   isTurnInputCommitLostError,
@@ -146,10 +147,8 @@ import {
 } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
-import {
-  estimateRequestOverheadTokens,
-  getAgentContextCompactionTriggerTokens,
-} from "@/chat/services/context-budget";
+import { getAgentContextCompactionTriggerTokens } from "@/chat/services/context-budget";
+import { estimateRequestOverheadTokens } from "@/chat/services/token-estimate";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
 import {
   lastRequestInputSize,
@@ -165,6 +164,7 @@ import {
   requestContextSummary,
 } from "@/chat/agent/context-summary";
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
+import { logToolBatch } from "@/chat/agent/tool-batch";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -842,6 +842,7 @@ async function executeAgentRunInPrivacyContext(
           requestOverheadTokens: estimateRequestOverheadTokens(
             agent!.state.systemPrompt,
             agent!.state.tools,
+            activeModelId,
           ),
           ...(pairPendingRuntimeContext && pendingMessages
             ? {
@@ -999,6 +1000,12 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
+    // A Task inherits the person's actor, but only its parent agent sends it
+    // Turns. Keep its gaps out of the histograms of people.
+    const cacheWarming = createCacheWarmingRecorder(
+      conversationId,
+      isUserActor(actor) && conversationKind !== "task",
+    );
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
@@ -1006,13 +1013,16 @@ async function executeAgentRunInPrivacyContext(
       sessionId: conversationId,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : undefined),
+        base: cacheWarming.wrap(streamFn),
       }),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage }) => {
+      beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
+        if (toolCalls.length > 1 && toolCall.id === toolCalls[0]!.id) {
+          logToolBatch(toolCalls, context.tools ?? []);
+        }
         const exclusiveTool = exclusiveToolName(toolCalls);
         if (exclusiveTool && toolCalls.length !== 1) {
           return {
@@ -1173,6 +1183,7 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
+        cacheWarming.toolsReturned();
         return requireConversationLease("save")
           .then(() => runResume.persistSafeBoundary([...agent!.state.messages]))
           .then(
@@ -1187,13 +1198,21 @@ async function executeAgentRunInPrivacyContext(
           );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
-        if (
-          event.message.stopReason === "error" ||
-          event.message.stopReason === "aborted"
-        ) {
-          return;
-        }
-        return deliverAssistantMessage(event.message);
+        const message = event.message;
+        const delivery =
+          message.stopReason === "error" || message.stopReason === "aborted"
+            ? undefined
+            : deliverAssistantMessage(message);
+        // Record after delivery, so the reply is not late. Record also when
+        // delivery fails: the model call wrote the cache and ended the idle
+        // period either way.
+        return Promise.resolve(delivery).then(
+          () => cacheWarming.record(message),
+          async (error: unknown) => {
+            await cacheWarming.record(message);
+            throw error;
+          },
+        );
       }
       return undefined;
     });
@@ -1559,6 +1578,7 @@ async function executeAgentRunInPrivacyContext(
       }
     } finally {
       unsubscribe();
+      await cacheWarming.stop();
     }
 
     // The caller saves the completed Turn after this returns.

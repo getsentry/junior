@@ -9,6 +9,7 @@ import {
   type SandboxEgressGrantSelection,
 } from "@/chat/sandbox/egress/credentials";
 import { redactSandboxEgressProxyPath } from "@/chat/sandbox/egress/proxy-path";
+import { SANDBOX_EGRESS_AUTH_REQUIRED_MARKER } from "@/chat/sandbox/egress/signals";
 import {
   clearSandboxEgressCredentialLease,
   setSandboxEgressAuthRequiredSignal,
@@ -123,7 +124,7 @@ function authRequiredResponse(input: {
   provider: string;
 }): Response {
   return new Response(
-    `junior-auth-required provider=${input.provider} grant=${input.grant.name} access=${input.grant.access} 401 unauthorized\n${input.message}`,
+    `${SANDBOX_EGRESS_AUTH_REQUIRED_MARKER} provider=${input.provider} grant=${input.grant.name} access=${input.grant.access} 401 unauthorized\n${input.message}`,
     {
       status: 401,
       headers: {

@@ -171,31 +171,35 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
-        const readTools = {
+        // Only a person's message in a public Conversation may write memory.
+        // Disable the write tools instead of omitting them, so the tool list
+        // and the prompt cache stay the same in every Turn.
+        const writeAccess =
+          "visibility" in ctx.source && ctx.source.visibility === "public"
+            ? {}
+            : {
+                disabledReason:
+                  "Only a person's message in a public Conversation can write memory.",
+              };
+        return {
+          createMemory: {
+            ...createMemoryCreateTool(
+              memoryCreateToolContext({
+                ...ctx,
+                agent,
+                db: ctx.db as MemoryDb,
+                embedder: ctx.embedder,
+                supersessionDecider: agent,
+              }),
+            ),
+            ...writeAccess,
+          },
+          archiveMemory: {
+            ...createMemoryArchiveTool(context),
+            ...writeAccess,
+          },
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
-        };
-        // All memory is public, so only a main agent in a public Conversation
-        // writes it. Child agents can suggest memories in their result. Other
-        // Sources, such as automations, carry no visibility, so they only read.
-        if (
-          !("visibility" in ctx.source) ||
-          ctx.source.visibility !== "public"
-        ) {
-          return readTools;
-        }
-        return {
-          createMemory: createMemoryCreateTool(
-            memoryCreateToolContext({
-              ...ctx,
-              agent,
-              db: ctx.db as MemoryDb,
-              embedder: ctx.embedder,
-              supersessionDecider: agent,
-            }),
-          ),
-          archiveMemory: createMemoryArchiveTool(context),
-          ...readTools,
         };
       },
       ...(!options.disableRecall

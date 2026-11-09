@@ -2,11 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   isWithinNotificationSchedule,
   notificationSettingsSchema,
-  testNotificationResponseSchema,
   type NotificationSchedule,
   type NotificationSettings,
 } from "@sentry/junior/api/schema";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useLocation } from "react-router";
 
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -17,18 +17,23 @@ import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 import { NativeSelect } from "../components/ui/native-select";
 import { Skeleton } from "../components/ui/skeleton";
-import { del, fetchDashboardJson, post, put } from "../http";
+import { del, put } from "../http";
 import {
   currentPushSubscription,
   pushSupport,
   registerDashboardServiceWorker,
-  subscribeThisDevice,
   unsubscribeThisDevice,
 } from "./push";
+import {
+  NOTIFICATIONS_PATH,
+  notificationSettingsQuery,
+  PUSH_NOTIFICATIONS_ANCHOR,
+  pushDeviceQueryKey,
+  sendTestNotification,
+  turnOnThisDevice,
+} from "./queries";
 
-const notificationSettingsQueryKey = ["dashboard", "notifications"] as const;
-const deviceQueryKey = ["dashboard", "notifications", "device"] as const;
-const NOTIFICATIONS_PATH = "/api/notifications";
+const notificationSettingsQueryKey = notificationSettingsQuery.queryKey;
 
 const WEEKDAYS = [
   [1, "Mon"],
@@ -59,36 +64,43 @@ function timezoneOptions(): string[] {
 
 /** Show the device control and notification hours on the Settings page. */
 export function NotificationSettingsCard() {
-  const settingsQuery = useQuery({
-    queryKey: notificationSettingsQueryKey,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        notificationSettingsSchema,
-        NOTIFICATIONS_PATH,
-        signal,
-      ),
-  });
+  const settingsQuery = useQuery(notificationSettingsQuery);
+  // The push notifications tip links here; the card is below the fold.
+  const anchor = useRef<HTMLDivElement>(null);
+  const { hash } = useLocation();
+  useEffect(() => {
+    const card = anchor.current;
+    if (!card || hash !== `#${PUSH_NOTIFICATIONS_ANCHOR}`) return;
+    // The sticky chrome covers the top of the page. Its height changes with
+    // the header, page links, and banner, so measure it.
+    const chrome = document.querySelector("[data-dashboard-chrome]");
+    const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
+    card.style.scrollMarginTop = `${chromeHeight + 24}px`;
+    card.scrollIntoView();
+  }, [hash]);
 
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <h2 className="m-0 text-lg font-bold">Phone notifications</h2>
-      <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
-        Get a notification when Junior replies to a conversation you started
-        here. Slack threads keep using Slack notifications.
-      </p>
-      {settingsQuery.isPending ? (
-        <NotificationSettingsSkeleton />
-      ) : settingsQuery.isError ? (
-        <InlineError className="mt-5">
-          Could not load notification settings. Reload the page to try again.
-        </InlineError>
-      ) : (
-        <>
-          <DeviceSection settings={settingsQuery.data} />
-          <ScheduleForm settings={settingsQuery.data} />
-        </>
-      )}
-    </Card>
+    <div className="mt-6" id={PUSH_NOTIFICATIONS_ANCHOR} ref={anchor}>
+      <Card className="mb-0" padding="md" variant="raised">
+        <h2 className="m-0 text-lg font-bold">Push notifications</h2>
+        <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
+          Get a notification when Junior replies to a conversation you started
+          here. Slack threads keep using Slack notifications.
+        </p>
+        {settingsQuery.isPending ? (
+          <NotificationSettingsSkeleton />
+        ) : settingsQuery.isError ? (
+          <InlineError className="mt-5">
+            Could not load notification settings. Reload the page to try again.
+          </InlineError>
+        ) : (
+          <>
+            <DeviceSection settings={settingsQuery.data} />
+            <ScheduleForm settings={settingsQuery.data} />
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -110,7 +122,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
   const support = useMemo(() => pushSupport(), []);
   const deviceQuery = useQuery({
     enabled: support === "supported",
-    queryKey: deviceQueryKey,
+    queryKey: pushDeviceQueryKey,
     queryFn: async () => (await currentPushSubscription())?.endpoint ?? null,
   });
   // Install the worker before the user taps "Turn on", so the subscribe call
@@ -124,18 +136,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
     queryClient.setQueryData(notificationSettingsQueryKey, next);
 
   const enable = useMutation({
-    mutationFn: async (publicKey: string) => {
-      const subscription = await subscribeThisDevice(publicKey);
-      return await post(
-        notificationSettingsSchema,
-        `${NOTIFICATIONS_PATH}/subscriptions`,
-        subscription,
-      );
-    },
-    onSuccess: (next) => {
-      saveSettings(next);
-      void queryClient.invalidateQueries({ queryKey: deviceQueryKey });
-    },
+    mutationFn: (publicKey: string) => turnOnThisDevice(queryClient, publicKey),
   });
   const disable = useMutation({
     mutationFn: async () => {
@@ -150,18 +151,15 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
     },
     onSuccess: (next) => {
       if (next) saveSettings(next);
-      void queryClient.invalidateQueries({ queryKey: deviceQueryKey });
+      void queryClient.invalidateQueries({ queryKey: pushDeviceQueryKey });
     },
   });
-  const test = useMutation({
-    mutationFn: () =>
-      post(testNotificationResponseSchema, `${NOTIFICATIONS_PATH}/test`, {}),
-  });
+  const test = useMutation({ mutationFn: sendTestNotification });
 
   if (!settings.publicKey) {
     return (
       <p className="mt-5 mb-0 text-sm text-dashboard-text-muted">
-        Phone notifications are not set up for this Junior install. Ask a Junior
+        Push notifications are not set up for this Junior install. Ask a Junior
         admin to add Web Push keys.
       </p>
     );

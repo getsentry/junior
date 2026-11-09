@@ -1,4 +1,13 @@
-import { and, eq, exists, inArray, isNotNull, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  notInArray,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import { union } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
@@ -92,6 +101,36 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
             .where(eq(juniorUsers.primaryEmailNormalized, member.email)),
         );
   return inArray(juniorConversations.conversationId, memberRoots);
+}
+
+/**
+ * True when the person has not unsubscribed from the conversation. The
+ * active feed uses it, so a conversation that someone else carries on
+ * leaves the feed of a person who left it.
+ */
+export function conversationIsNotUnsubscribedRoot(
+  member: ConversationMember,
+): SQL {
+  const rows = getDb()
+    .select({
+      conversationId: juniorConversationParticipants.rootConversationId,
+    })
+    .from(juniorConversationParticipants);
+  const left = isNotNull(juniorConversationParticipants.unsubscribedAt);
+  const unsubscribedRoots =
+    "userId" in member
+      ? rows.where(
+          and(eq(juniorConversationParticipants.userId, member.userId), left),
+        )
+      : rows
+          .innerJoin(
+            juniorUsers,
+            eq(juniorUsers.id, juniorConversationParticipants.userId),
+          )
+          .where(
+            and(eq(juniorUsers.primaryEmailNormalized, member.email), left),
+          );
+  return notInArray(juniorConversations.conversationId, unsubscribedRoots);
 }
 
 /** Root-actor ownership or a materialized participant row for the same person. */

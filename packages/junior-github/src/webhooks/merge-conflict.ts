@@ -95,18 +95,6 @@ function pullRequestRefs(events: EventInput[]): GitHubPullRequestRef[] {
   return [...refs.values()];
 }
 
-async function hasMatch(
-  hasMatchEvent: NonNullable<EventPublisher["hasMatch"]>,
-  ref: GitHubPullRequestRef,
-): Promise<boolean> {
-  // Merge conflict events match only `repo` and `pullRequest`, so this
-  // answer is the same as for the full event.
-  for (const event of gitHubMergeConflictEvents(ref)) {
-    if (await hasMatchEvent(event)) return true;
-  }
-  return false;
-}
-
 /**
  * Return the pull request from a `pull_request` webhook payload when it is
  * `ref` and GitHub already knows its mergeability. Other webhooks, such as
@@ -143,11 +131,13 @@ export async function loadGitHubMergeConflictEvents(args: {
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
 }): Promise<EventInput[]> {
-  const { hasMatch: hasMatchEvent, loadPullRequest } = args;
-  if (!hasMatchEvent || !loadPullRequest) return [];
+  const { hasMatch, loadPullRequest } = args;
+  if (!hasMatch || !loadPullRequest) return [];
   const conflicts: EventInput[] = [];
   for (const ref of pullRequestRefs(args.events)) {
-    if (!(await hasMatch(hasMatchEvent, ref))) continue;
+    // Merge conflict events match only `repo` and `pullRequest`, so this
+    // answer is the same as for the full events.
+    if (!(await hasMatch(gitHubMergeConflictEvents(ref)))) continue;
     try {
       const loaded =
         deliveredPullRequest(args.pullRequestPayload, ref) ??

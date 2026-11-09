@@ -17,7 +17,7 @@ import type { ConversationEvent } from "@/chat/conversations/history";
 import { eventFromRow } from "@/chat/conversations/sql/history";
 import { startSpan } from "@/chat/sentry";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import type { ConversationReportEvent } from "../schema/conversation";
 import {
   conversationReportToolResultIds,
@@ -133,6 +133,34 @@ function readLatestTurnsPageStart(
     );
 }
 
+/** Read which children that the page's subagent events name are Threads. */
+async function readThreadIds(
+  executor: JuniorSqlDatabase,
+  events: readonly ConversationEvent[],
+): Promise<Set<string>> {
+  const ids = [
+    ...new Set(
+      events.flatMap((event) =>
+        event.data.type === "subagent_started"
+          ? [event.data.childConversationId]
+          : [],
+      ),
+    ),
+  ];
+  if (ids.length === 0) return new Set();
+  const rows = await executor
+    .db()
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, ids),
+        eq(juniorConversations.kind, "thread"),
+      ),
+    );
+  return new Set(rows.map((row) => row.conversationId));
+}
+
 /** Read the first Turn start, which marks history inherited from a fork. */
 async function readFirstTurnStart(
   executor: JuniorSqlDatabase,
@@ -231,13 +259,20 @@ async function projectConversationEvents(
         : undefined,
     ]);
 
+  const subagentStartEvents = subagentStartRows.map(eventFromRow);
+  // Ended events name their child only through the start they resolve.
+  const threadIds = await readThreadIds(executor, [
+    ...events,
+    ...subagentStartEvents,
+  ]);
   return projectEventPage({
     canExposePayload: args.canExposePayload,
     events,
     ...(args.firstTurnStart
       ? { firstTurnStart: args.firstTurnStart }
       : undefined),
-    subagentStartEvents: subagentStartRows.map(eventFromRow),
+    subagentStartEvents,
+    threadIds,
     toolStartEvents: toolStartRows.map(eventFromRow),
     modelContextEvents: [...turnBoundaryRows, ...modelCallRows]
       .sort((left, right) => left.seq - right.seq)

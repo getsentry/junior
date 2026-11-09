@@ -8,6 +8,7 @@ import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
+import { conversationTitleSchema } from "./conversation-title";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -153,6 +154,8 @@ export const createConversationMessageBodySchema = z
 
 export const createConversationBodySchema =
   createConversationMessageBodySchema.safeExtend({
+    /** Saved title. Title generation runs only when it is omitted. */
+    title: conversationTitleSchema.optional(),
     /** New roots default public. Private roots stay participant-only. */
     visibility: z.enum(["private", "public"]).optional(),
   });
@@ -594,6 +597,8 @@ const conversationReportSubagentEventDataSchema = z
     startedSeq: z.number().int().nonnegative(),
     startedAt: z.string().datetime(),
     childConversationId: z.string().min(1),
+    /** The child's Conversation kind. Only a Thread has its own page link. */
+    childKind: z.enum(["thread", "task"]),
     subagentKind: z.string().min(1),
     agentName: z.string().min(1).optional(),
     task: z.string().min(1).optional(),
@@ -840,6 +845,11 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     canFork: z.boolean().optional(),
     /** The viewer can move this dashboard conversation to a Slack thread. */
     canContinueInSlack: z.literal(true).optional(),
+    /**
+     * The viewer gets this conversation in their active feed. Participants
+     * only. False after an unsubscribe, until they mention Junior again.
+     */
+    subscribed: z.boolean().optional(),
     /** How far the signed-in viewer has read. Absent until they read. */
     readPosition: conversationReadPositionSchema.optional(),
     /**

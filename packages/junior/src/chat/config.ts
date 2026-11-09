@@ -88,6 +88,8 @@ export interface BotModelConfig {
   guardianModelId?: string;
   /** Model used to generate images. */
   imageGenerationModelId?: string;
+  /** Model used to transcribe dictated audio. */
+  transcriptionModelId?: string;
   /** Model used to analyze images. */
   visionModelId?: string;
   /** Model used for web search. */
@@ -102,6 +104,7 @@ export interface BotConfig {
   guardianModelId: string;
   rerankingModelId: string;
   imageGenerationModelId: string;
+  transcriptionModelId: string;
   loadingMessages: string[];
   modelId: string;
   reasoningLevel: TurnReasoningLevel;
@@ -125,6 +128,8 @@ export interface ChatConfig {
   bot: BotConfig;
   queue: QueueConfig;
   functionMaxDurationSeconds: number;
+  /** Kill switch for prompt cache warming. Defaults to true. */
+  cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
   sql: {
@@ -228,7 +233,8 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
-function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
+// Operational kill switches default to on. Only "false" turns them off.
+function parseKillSwitch(name: string, rawValue: string | undefined): boolean {
   const value = toOptionalTrimmed(rawValue)?.toLowerCase();
   if (value === undefined || value === "true") {
     return true;
@@ -236,7 +242,7 @@ function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
   if (value === "false") {
     return false;
   }
-  throw new Error("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
+  throw new Error(`${name} must be true or false`);
 }
 
 const DEFAULT_MODEL_ID = resolveGatewayModel("anthropic/claude-opus-5.5").id;
@@ -248,6 +254,7 @@ const DEFAULT_DECISION_MODEL_ID = "typesafe-ai/jev";
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_RERANKING_MODEL_ID = "voyage/rerank-2.5-lite";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "openai/gpt-image-2";
+const DEFAULT_TRANSCRIPTION_MODEL_ID = "spacexai/grok-stt";
 const DEFAULT_VISION_MODEL_ID = resolveGatewayModel("openai/gpt-5.6-sol").id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
@@ -323,6 +330,9 @@ function readBotConfig(
     imageGenerationModelId:
       toOptionalTrimmed(env.AI_IMAGE_MODEL) ??
       DEFAULT_IMAGE_GENERATION_MODEL_ID,
+    transcriptionModelId:
+      toOptionalTrimmed(env.AI_TRANSCRIPTION_MODEL) ??
+      DEFAULT_TRANSCRIPTION_MODEL_ID,
     embeddingModelId:
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??
       DEFAULT_EMBEDDING_MODEL_ID,
@@ -413,7 +423,12 @@ export function readChatConfig(
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
     queue: readQueueConfig(env),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
-    conversationWorkEnabled: parseConversationWorkEnabled(
+    cacheWarmingEnabled: parseKillSwitch(
+      "JUNIOR_CACHE_WARMING_ENABLED",
+      env.JUNIOR_CACHE_WARMING_ENABLED,
+    ),
+    conversationWorkEnabled: parseKillSwitch(
+      "JUNIOR_CONVERSATION_WORK_ENABLED",
       env.JUNIOR_CONVERSATION_WORK_ENABLED,
     ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
@@ -704,6 +719,13 @@ export function setBotModelConfig(config: BotModelConfig): void {
       "imageGenerationModelId",
       config.imageGenerationModelId,
       validateEmbeddingModelId,
+    );
+  }
+  if (config.transcriptionModelId !== undefined) {
+    botConfig.transcriptionModelId = requireModelId(
+      "transcriptionModelId",
+      config.transcriptionModelId,
+      toOptionalTrimmed,
     );
   }
   if (config.visionModelId !== undefined) {

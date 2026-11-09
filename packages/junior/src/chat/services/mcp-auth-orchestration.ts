@@ -195,17 +195,21 @@ export function createMcpAuthOrchestration(
       );
     }
 
-    const reusingPendingLink = canReusePendingAuthLink({
-      pendingAuth: input.pendingAuth,
-      kind: "mcp",
-      provider,
-      actorId,
-      sessionId,
-    });
+    // The callback deletes an authorization attempt when it finishes or expires,
+    // so reuse a recent link only while its attempt still exists.
     const reusedAuthSessionId =
-      reusingPendingLink && input.pendingAuth?.kind === "mcp"
+      input.pendingAuth?.kind === "mcp" &&
+      canReusePendingAuthLink({
+        pendingAuth: input.pendingAuth,
+        kind: "mcp",
+        provider,
+        actorId,
+        sessionId,
+      }) &&
+      (await getMcpAuthSession(input.pendingAuth.authSessionId))
         ? input.pendingAuth.authSessionId
         : undefined;
+    const reusingPendingLink = reusedAuthSessionId !== undefined;
     const activeAuthSessionId = reusedAuthSessionId ?? authSessionId;
     await patchMcpAuthSession(activeAuthSessionId, {
       configuration: { ...input.getConfiguration() },

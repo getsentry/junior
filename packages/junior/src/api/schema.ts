@@ -27,6 +27,8 @@ export {
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
+export { boardReportSchema } from "./schema/board";
+export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -143,6 +145,14 @@ export type {
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
 export {
+  conversationSubscriptionBodySchema,
+  conversationSubscriptionResponseSchema,
+} from "./schema/conversation-subscription";
+export type {
+  ConversationSubscriptionBody,
+  ConversationSubscriptionResponse,
+} from "./schema/conversation-subscription";
+export {
   conversationUnreadSchema,
   markConversationUnreadBodySchema,
 } from "./schema/conversation-unread";
@@ -150,6 +160,11 @@ export type {
   ConversationUnread,
   MarkConversationUnreadBody,
 } from "./schema/conversation-unread";
+export {
+  CONVERSATION_OUTLINE_TEXT_LENGTH,
+  conversationOutlineSchema,
+} from "./schema/conversation-outline";
+export type { ConversationOutline } from "./schema/conversation-outline";
 export {
   CONVERSATION_TITLE_MAX_LENGTH,
   renameConversationBodySchema,
@@ -279,6 +294,7 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export { transcriptionSchema } from "./schema/transcription";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,

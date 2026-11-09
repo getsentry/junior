@@ -1,10 +1,7 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { User } from "@sentry/junior-plugin-api";
 import type { Message, StateAdapter } from "chat";
-import { createSlackActor, parseActorUserId } from "@/chat/actor";
-import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { logException } from "@/chat/logging";
-import { readActorIdentity } from "@/chat/plugins/viewer";
 import { canActOnReviewItem } from "@/chat/review-items/access";
 import {
   actOnReviewItem,
@@ -48,6 +45,7 @@ import {
   buttonUserInputField,
   type UserInputAnswer,
 } from "@/chat/tools/runtime/user-input-request";
+import { resolveSlackActingUser } from "./slack-acting-user";
 import {
   buildSlackInteractionInput,
   type SlackInteractionInputFacts,
@@ -85,42 +83,17 @@ async function tellPerson(
   });
 }
 
-/**
- * Resolve the Junior User of the person who acted. An action starts a Turn
- * as that person, so it needs the same workspace and allowed domain checks
- * as a Slack mention.
- */
-async function resolveActingUser(
+function resolveActingUser(
   services: SlackReviewItemServices,
   payload: SlackInteractivePayload,
   target: CardTarget,
-): Promise<{ slackUserId: string; user: User } | undefined> {
-  const slackUserId = parseActorUserId(payload.user?.id);
-  const teamId = payload.team?.id ?? payload.user?.team_id;
-  if (!slackUserId || !teamId) {
-    throw new Error("Slack review item payload is missing a user or team");
-  }
-  if (
-    !(await isSlackWorkspaceMember(
-      { user: slackUserId, user_team: payload.user?.team_id },
-      services.state,
-    )) ||
-    !(await services.isAuthorAllowed(slackUserId))
-  ) {
-    return undefined;
-  }
-  const user = (
-    await readActorIdentity(createSlackActor(teamId, slackUserId, undefined))
-  )?.user;
-  if (!user) {
-    await tellPerson(
-      target,
-      slackUserId,
-      "Junior does not know your account yet. Sign in to the Junior dashboard, then try again.",
-    );
-    return undefined;
-  }
-  return { slackUserId, user };
+) {
+  return resolveSlackActingUser({
+    isAuthorAllowed: services.isAuthorAllowed,
+    payload,
+    state: services.state,
+    tell: (userId, text) => tellPerson(target, userId, text),
+  });
 }
 
 /** Show the current state of an item, such as after a click on a stale card. */

@@ -168,6 +168,7 @@ export async function enqueueAgentDispatch(
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,
+    ...(claimedDispatch.title ? { title: claimedDispatch.title } : undefined),
   });
   await appendAndEnqueueInboundMessage({
     message: buildAgentDispatchInboundMessage(

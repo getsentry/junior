@@ -10,7 +10,7 @@ import {
   LockKeyhole,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useContext, useState } from "react";
 import {
   conversationChildAgentsReportSchema,
   type ConversationChildAgent,
@@ -25,9 +25,9 @@ import {
   formatUsageTotal,
 } from "../format";
 import { fetchDashboardJson } from "../http";
-import type { Conversation } from "../types";
 import { conversationSideReadQueryKey } from "./queries";
 import { conversationPath } from "./conversationRoutes";
+import { FeedThreads } from "./feedThreads";
 import { cn } from "../styles";
 import {
   DetailsCard,
@@ -76,13 +76,9 @@ export function useConversationChildAgents(conversationId: string) {
  * Archived Threads stay hidden until the reader asks for them.
  */
 export function ConversationThreads(props: {
-  feedConversations: readonly Conversation[];
   threads: readonly ConversationChildAgent[];
 }) {
-  const titles = useMemo(
-    () => feedThreadTitles(props.feedConversations),
-    [props.feedConversations],
-  );
+  const feedThreads = useContext(FeedThreads);
   const { action, items: threads } = useShowArchived(props.threads);
   return (
     <DetailsCard
@@ -99,7 +95,9 @@ export function ConversationThreads(props: {
           renderItem={(thread) => (
             <ChildAgentRow
               agent={thread}
-              title={titles.get(thread.conversationId)}
+              // The report title is the invocation title, so the Thread's
+              // own title wins. Archived Threads are not in the feed.
+              title={feedThreads.get(thread.conversationId)?.displayTitle}
               to={conversationPath(thread.conversationId)}
             />
           )}
@@ -109,25 +107,6 @@ export function ConversationThreads(props: {
       )}
     </DetailsCard>
   );
-}
-
-/**
- * Map each Thread in the feed, at any depth, to its own title. The report
- * title is the invocation title, so it is only the fallback. Archived Threads
- * are not in the feed and use that fallback.
- */
-function feedThreadTitles(
-  conversations: readonly Conversation[],
-  titles = new Map<string, string>(),
-): Map<string, string> {
-  for (const conversation of conversations) {
-    if (!conversation.threads) continue;
-    for (const thread of conversation.threads) {
-      titles.set(thread.id, thread.displayTitle);
-    }
-    feedThreadTitles(conversation.threads, titles);
-  }
-  return titles;
 }
 
 /**

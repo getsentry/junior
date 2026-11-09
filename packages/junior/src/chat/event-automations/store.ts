@@ -435,28 +435,41 @@ export async function collectEventAutomationMatchKeys(
 }
 
 /**
- * Find every live task matching one normalized event: tasks for its exact
- * identifier, and tasks with no identifier whose filters match. The gate
- * skips a row whose trigger and identifier column disagree, and a row with
- * no identifier whose trigger the enabled `catalog` rejects.
+ * Find every live task matching each normalized event, with one read for all
+ * of them: tasks for its exact identifier, and tasks with no identifier whose
+ * filters match. Returns one list per event, in order. The events must share
+ * one namespace. The gate skips a row whose trigger and identifier column
+ * disagree, and a row with no identifier whose trigger the enabled `catalog`
+ * rejects.
  */
 export async function findMatchingEventAutomations(
   db: JuniorDatabase,
-  event: Event,
+  events: readonly Event[],
   teamId: string,
   catalog: EventCatalog,
-): Promise<StoredEventAutomation[]> {
+): Promise<StoredEventAutomation[][]> {
+  const namespace = events[0]?.namespace;
+  if (namespace === undefined) return [];
+  if (events.some((event) => event.namespace !== namespace)) {
+    throw new Error("Events to match must share one namespace.");
+  }
   const tasks = await readGatedEventAutomations(db, {
     catalog,
-    eventTypes: [event.eventType],
-    identifiers: [event.identifier],
-    namespace: event.namespace,
+    eventTypes: [...new Set(events.map((event) => event.eventType))],
+    identifiers: [...new Set(events.map((event) => event.identifier))],
+    namespace,
     teamId,
   });
-  return tasks.filter(
-    (task) =>
-      task.trigger.events.includes(event.eventType) &&
-      eventMatches(task.trigger.match, event.data),
+  // The read holds rows for every identifier in `events`, so keep only the
+  // rows for this event's identifier.
+  return events.map((event) =>
+    tasks.filter(
+      (task) =>
+        (task.trigger.identifier === undefined ||
+          task.trigger.identifier === event.identifier) &&
+        task.trigger.events.includes(event.eventType) &&
+        eventMatches(task.trigger.match, event.data),
+    ),
   );
 }
 

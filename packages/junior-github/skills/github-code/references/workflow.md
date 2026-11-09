@@ -51,4 +51,4 @@ Open this when making repository edits, not for read-only inspection.
 
 ## Follow
 
-When PR creation returns a subscribable hint, subscribe to suggested review/CI events. Fix routine review feedback and failed checks without a thread update. When a PR in a stack merges, restack the open PRs above it with `gh stack sync` before you reply; GitHub sends them no event when its own rebase stops at a conflict. Reply only when the requester needs to act, or when the PR merges or closes.
+When PR creation returns a subscribable hint, subscribe to suggested review/CI events. Fix routine review feedback and failed checks without a thread update. Reply only when the requester needs to act, or when the PR merges or closes.

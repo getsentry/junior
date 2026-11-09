@@ -12,7 +12,7 @@ const clockTimePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 /** Saved notification hours. Weekdays use 0 for Sunday, like `Date#getDay`. */
 export const notificationScheduleSchema = z
   .object({
-    /** When false, Junior sends phone notifications at any time. */
+    /** When false, Junior sends push notifications at any time. */
     workingHoursOnly: z.boolean(),
     days: z
       .array(z.number().int().min(0).max(6))

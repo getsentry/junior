@@ -165,7 +165,7 @@ describe("background compaction swap", () => {
       "<current-instruction>What was the checksum?</current-instruction>",
       13,
     );
-    const summarize = vi.fn(async () => "Unused.");
+    const summarize = vi.fn(async () => ({ summary: "Unused." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -241,7 +241,7 @@ describe("background compaction swap", () => {
       toolResult("call-2", "ok", 7),
     ];
     await commitMessages({ conversationId, messages: [...firstTurn, ...turn] });
-    const summarize = vi.fn(async () => "Unused.");
+    const summarize = vi.fn(async () => ({ summary: "Unused." }));
     const args = {
       conversationId,
       mode: "active" as const,
@@ -292,7 +292,7 @@ describe("background compaction swap", () => {
       "<current-instruction>What was the checksum?</current-instruction>",
       5,
     );
-    const summarize = vi.fn(async () => "Unused.");
+    const summarize = vi.fn(async () => ({ summary: "Unused." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -326,7 +326,7 @@ describe("background compaction swap", () => {
       "<current-instruction>What was the checksum?</current-instruction>",
       5,
     );
-    const summarize = vi.fn(async () => "Unused.");
+    const summarize = vi.fn(async () => ({ summary: "Unused." }));
     const args = {
       conversationId,
       modelId: MODEL_ID,
@@ -378,7 +378,7 @@ describe("background compaction swap", () => {
         },
       ]),
     );
-    const summarize = vi.fn(async () => "Unused.");
+    const summarize = vi.fn(async () => ({ summary: "Unused." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -413,7 +413,7 @@ describe("background compaction swap", () => {
         },
       }),
     );
-    const summarize = vi.fn(async () => "Stale fallback.");
+    const summarize = vi.fn(async () => ({ summary: "Stale fallback." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -437,7 +437,7 @@ describe("background compaction swap", () => {
     const conversationId = "local:web:swap-wait-timeout";
     // The wait counts from the request, so less than a second is left.
     await requestSummary(conversationId, firstTurn, Date.now() - 44_500);
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -458,7 +458,7 @@ describe("background compaction swap", () => {
   it("runs the blocking summary at once for a stale request below the input limit", async () => {
     const conversationId = "local:web:swap-stale-request";
     await requestSummary(conversationId, nearLimitTurn, Date.now() - 46_000);
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -477,7 +477,7 @@ describe("background compaction swap", () => {
   it("discards a summary of an older History version and runs the blocking compaction", async () => {
     const conversationId = "local:web:swap-discard-99";
     await prepareSummary(conversationId, firstTurn, { historyVersion: 99 });
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -500,7 +500,7 @@ describe("background compaction swap", () => {
     const conversationId = "local:web:swap-over-target";
     await prepareSummary(conversationId, firstTurn.slice(0, 1));
     await commitMessages({ conversationId, messages: firstTurn });
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -522,7 +522,7 @@ describe("background compaction swap", () => {
   it("counts the system prompt and tools toward the target", async () => {
     const conversationId = "local:web:swap-request-overhead";
     await prepareSummary(conversationId, firstTurn);
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -553,7 +553,7 @@ describe("background compaction swap", () => {
       toolResult("call-1", "ok", 3),
     ];
     await commitMessages({ conversationId, messages: turn });
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       { conversationId, mode: "active", modelId: MODEL_ID, piMessages: turn },
@@ -565,6 +565,43 @@ describe("background compaction swap", () => {
     expect(
       (await loadConversationProjection({ conversationId })).messages,
     ).toEqual(turn);
+  });
+
+  it("skips a summary at Turn start when the system prompt and tools alone are at the input limit", async () => {
+    const conversationId = "local:web:compaction-kept-at-input-limit";
+    const context = [
+      user("<runtime-turn-context>Slack</runtime-turn-context>", 1),
+    ];
+    await commitMessages({ conversationId, messages: context });
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
+
+    const result = await compactWithPreparedSummary(
+      {
+        conversationId,
+        mode: "blocking",
+        modelId: MODEL_ID,
+        pendingMessages: [
+          {
+            message: user(
+              "<current-instruction>What is the capital of France?</current-instruction>",
+              2,
+            ),
+            provenance: { authority: "instruction" },
+          },
+        ],
+        piMessages: context,
+        // Above the 380k input limit of the default 400k token window.
+        requestOverheadTokens: 381_000,
+      },
+      summarize,
+    );
+
+    // The model request still runs. The provider decides if it fits.
+    expect(result).toEqual({ compacted: false, reason: "over_input_limit" });
+    expect(summarize).not.toHaveBeenCalled();
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual(context);
   });
 
   it("compacts again only at the input limit when the last compaction stayed above the threshold", async () => {
@@ -581,7 +618,7 @@ describe("background compaction swap", () => {
       toolResult("call-1", "ok", summaryAt + 2),
     ];
     await commitMessages({ conversationId, messages: history(370_000) });
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
     const args = { conversationId, mode: "active" as const, modelId: MODEL_ID };
 
     const skipped = await compactWithPreparedSummary(
@@ -616,7 +653,7 @@ describe("background compaction swap", () => {
       toolResult("call-2", "ok", summaryAt + 2),
     ];
     await commitMessages({ conversationId, messages: history });
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       {
@@ -654,7 +691,7 @@ describe("background compaction swap", () => {
       });
 
     // Oversized history, so a blocking fallback would summarize and write.
-    const summarize = vi.fn(async () => "Stale fallback.");
+    const summarize = vi.fn(async () => ({ summary: "Stale fallback." }));
 
     const result = await compactWithPreparedSummary(
       {

@@ -24,6 +24,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
+import { useConversationSubscription } from "./useConversationSubscription";
 import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
@@ -69,7 +70,11 @@ import {
 import { cn } from "../styles";
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
-import { ConversationAgentTree } from "./ConversationAgentTree";
+import {
+  ChildConversationStatusPill,
+  childConversationStatus,
+} from "./ChildConversationStatus";
+import { useWaitingConversations } from "../review-desk/queries";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -233,6 +238,7 @@ export function ConversationPage(props: {
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
+  const waiting = useWaitingConversations().has(conversationId);
   // The page keeps the start preference from when the Conversation opened.
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
@@ -292,6 +298,7 @@ export function ConversationPage(props: {
     }
   };
   const pin = usePinConversation(conversationId);
+  const subscription = useConversationSubscription(conversationId);
   const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   // Focus or a click in the composer counts as reading, like transcript input.
@@ -403,11 +410,15 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "available"
       ? transcript.events
       : undefined;
-  const selectOutlineItem = useCallback((seq: number) => {
+  const selectOutlineItem = (seq: number) => {
     // Search can hide the row.
     setSearch("");
     setRevealSeq(seq);
-  }, []);
+    // The outline lists messages that the loaded rows do not hold. Then the
+    // transcript opens at the page around the message.
+    const start = unheldLinkStart(history.data?.events, { event: seq });
+    if (start) setLinkStart(start);
+  };
   const selectedEvent =
     transcript?.eventHistory.status === "expired"
       ? undefined
@@ -560,7 +571,6 @@ export function ConversationPage(props: {
           conversation={conversation}
           conversationId={conversationId}
           detail={conversationDetail}
-          feedConversations={conversations}
           highlightReview={reviewOpen}
           links={links}
           memoryState={memoryState}
@@ -629,11 +639,7 @@ export function ConversationPage(props: {
         <ChatLayout
           header={
             <ConversationHeader
-              agentTree={
-                isChildConversation(conversationDetail) ? (
-                  <ConversationAgentTree nodes={conversationDetail.agentTree} />
-                ) : null
-              }
+              agentTree={conversationDetail?.agentTree}
               contextTags={conversationContextTags(conversation)}
               conversationId={conversationId}
               continueInSlack={
@@ -745,6 +751,23 @@ export function ConversationPage(props: {
               searchMatch={searchMatch}
               sentryConversationUrl={detail.data?.sentryConversationUrl}
               sidebarToggle={props.sidebarToggle}
+              status={
+                isChildConversation(conversationDetail) && conversation ? (
+                  <ChildConversationStatusPill
+                    status={childConversationStatus(conversation, waiting)}
+                  />
+                ) : null
+              }
+              subscription={{
+                // Only participants have a subscription. A child uses its
+                // root's.
+                disabled:
+                  detail.data?.subscribed === undefined ||
+                  subscription.isPending,
+                error: Boolean(subscription.error),
+                onClick: () => subscription.mutate(!detail.data?.subscribed),
+                subscribed: detail.data?.subscribed ?? false,
+              }}
               title={title}
               view={view}
             />
@@ -752,6 +775,7 @@ export function ConversationPage(props: {
           overlay={
             view === "rich" && !transcriptPending && outlineEvents ? (
               <ConversationOutline
+                conversationId={conversationId}
                 events={outlineEvents}
                 onSelect={selectOutlineItem}
                 scrollRef={scrollRef}

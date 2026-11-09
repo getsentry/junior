@@ -108,6 +108,7 @@ describe("nested agent invocations", () => {
       // has work.
       const listedChild = (childConversationId: string) => ({
         conversation_id: childConversationId,
+        kind: "task",
         relation: "child",
         status: "pending",
         task: slackInvocationInput.input,

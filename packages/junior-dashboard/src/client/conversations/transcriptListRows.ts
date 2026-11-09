@@ -25,7 +25,7 @@ export type TranscriptListRow =
       seq?: number;
     }
   | {
-      kind: "subagents";
+      kind: "tasks";
       entries: SubagentEntry[];
       key: string;
       /** Last event sequence in the group. */
@@ -37,10 +37,10 @@ export const UNREAD_MARKER_KEY = "unread-marker";
 
 /**
  * Turn transcript entries into list rows. Runs of collapsible activity
- * become one group row, runs of two or more child agents become one
- * child agent group row, and the "New" marker becomes its own row before
- * the first unread row. Search shows only the matching messages, one row
- * each, so every row is a match.
+ * become one group row, each run of Tasks becomes one Tasks row, a Thread
+ * keeps its own row, and the "New" marker becomes its own row before the
+ * first unread row. Search shows only the matching messages, one row each,
+ * so every row is a match.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -105,28 +105,19 @@ export function transcriptListRows(input: {
       });
       continue;
     }
-    if (entry.kind === "subagent") {
+    if (isTaskEntry(entry)) {
       const group: SubagentEntry[] = [];
-      while (index < entries.length && entries[index]!.kind === "subagent") {
+      while (index < entries.length && isTaskEntry(entries[index]!)) {
         group.push(entries[index] as SubagentEntry);
         index += 1;
       }
-      if (group.length > 1) {
-        pushRow({
-          kind: "subagents",
-          entries: group,
-          // New child agents join at the end, so the first one keeps the key.
-          key: `${input.keyPrefix}:subagents:${group[0]!.key}`,
-          seq: lastEntrySeq(group),
-        });
-      } else {
-        pushRow({
-          kind: "entry",
-          entry: group[0]!,
-          key: `${input.keyPrefix}:${group[0]!.key}`,
-          seq: group[0]!.seq,
-        });
-      }
+      pushRow({
+        kind: "tasks",
+        entries: group,
+        // New Tasks join at the end, so the first one keeps the key.
+        key: `${input.keyPrefix}:tasks:${group[0]!.key}`,
+        seq: lastEntrySeq(group),
+      });
       continue;
     }
     pushRow({
@@ -138,6 +129,10 @@ export function transcriptListRows(input: {
     index += 1;
   }
   return rows;
+}
+
+function isTaskEntry(entry: RenderedTranscriptEntry): boolean {
+  return entry.kind === "subagent" && entry.part.childKind === "task";
 }
 
 /**
@@ -190,7 +185,7 @@ export function transcriptRowSizeClass(row: TranscriptListRow): string {
 export function defaultTranscriptRowSize(sizeClass: string): number {
   if (sizeClass === "unread_marker") return 32;
   if (sizeClass === "activity") return 36;
-  if (sizeClass === "subagents") return 120;
+  if (sizeClass === "tasks") return 36;
   if (sizeClass === "attachments_delivered") return 240;
   if (sizeClass === "message:assistant") return 120;
   if (sizeClass.startsWith("message:")) return 80;

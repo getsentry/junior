@@ -170,7 +170,10 @@ export async function createAgentInvocation(
   return await getSqlExecutor().withLock(lockName, async () => {
     const existing = await getAgentInvocation(invocationId);
     if (existing) {
-      if (!sameCreateInput(existing, input)) {
+      const child = await getConversationStore().get({
+        conversationId: existing.childConversationId,
+      });
+      if (!sameCreateInput(existing, input) || child?.kind !== input.kind) {
         throw new Error(
           `Agent invocation idempotency key was reused with different input for ${invocationId}`,
         );
@@ -195,10 +198,12 @@ export async function createAgentInvocation(
 
     await getConversationStore().createChild({
       childConversationId,
-      kind: "task",
+      kind: input.kind,
       parentConversationId: input.parentConversationId,
       nowMs,
       source: "internal",
+      // The spawn title names the child, so title generation skips it.
+      ...(input.title ? { title: input.title } : undefined),
     });
 
     // The name check above runs under the parent lock, in the same

@@ -1,3 +1,4 @@
+import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
@@ -231,4 +232,10 @@ export async function runHeartbeat(args: {
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });
+  try {
+    // Last, so a long first run does not delay the work above.
+    await backfillCacheWarmingGaps({ nowMs: args.nowMs });
+  } catch (error) {
+    logException(error, "cache_warming.backfill.failed");
+  }
 }
