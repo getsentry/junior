@@ -18,6 +18,7 @@ import {
   allowEvalMcpWriteScope,
   denyEvalMcpWriteScope,
   EVAL_MCP_AUTH_PROVIDER,
+  publishNoEvalMcpResourceMetadata,
   requireEvalMcpWriteScope,
   revokeEvalMcpGrant,
 } from "../../msw/handlers/eval-mcp-auth";
@@ -162,6 +163,12 @@ describe("Slack MCP authorization", { timeout: 20_000 }, () => {
 
   it("stops sending links when the person cannot get the required scope", async () => {
     await askWithoutScopeAccess({ user: "UDENIED", ts: "1712345.4001" });
+  });
+
+  it("stops sending links when the MCP server publishes no resource metadata", async () => {
+    // Injected fault: each sign-in looks for the missing metadata and gets a 404.
+    publishNoEvalMcpResourceMetadata();
+    await askWithoutScopeAccess({ user: "UNOMETADATA", ts: "1712345.6001" });
   });
 
   it("offers a link again on the next message once access is granted", async () => {
