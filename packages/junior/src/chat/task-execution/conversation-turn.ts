@@ -51,7 +51,6 @@ import {
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { decideReply } from "@/chat/services/assistant-reply";
-import { isQuietReply } from "@/chat/services/quiet-reply";
 import { botConfig } from "@/chat/config";
 import {
   latestConversationMessageSeq,
@@ -302,8 +301,7 @@ export function createConversationTurnWorker(
     let attachments: MessageAttachment[] = [];
     let turnId = "";
     let userMessageId = "";
-    const runStartedAtMs = Date.now();
-    let startedAtMs = runStartedAtMs;
+    let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
     let authorIdentityId: string | undefined;
@@ -612,13 +610,13 @@ export function createConversationTurnWorker(
           }
           failureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(context.conversationId);
-          const quiet = await isQuietReply({
-            conversationId: context.conversationId,
-            eventTurn: isEventTurn,
-            hasCards: cards.length > 0,
-            marked: decision?.kind === "deliver" && decision.quiet === true,
-            runStartedAtMs,
-          });
+          // Only Event Turns may be quiet: a person who asked always gets the
+          // reply. A card means someone must look, so it always delivers.
+          const quiet =
+            decision?.kind === "deliver" &&
+            decision.quiet === true &&
+            isEventTurn &&
+            cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
           if (deliverToProvider && !quiet) {
             if (!conversationLocation || !deliverMessage) {

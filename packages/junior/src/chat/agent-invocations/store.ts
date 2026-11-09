@@ -1,15 +1,4 @@
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gte,
-  inArray,
-  isNotNull,
-  ne,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
 import { getAgentInvocationIdForResult } from "./ids";
@@ -108,33 +97,6 @@ export async function listAgentInvocationsForConversation(
     )
     .orderBy(asc(juniorAgentInvocations.createdAt));
   return rows.map(invocationFromRow);
-}
-
-/**
- * Return whether a parent's own spawnAgent or messageAgent call started an
- * agent invocation at or after `sinceMs` whose result still comes back to it.
- * The runtime also creates invocations for a parent, such as for nested
- * results, but those have no parent tool call. Only a stop ends an agent
- * invocation without a result.
- */
-export async function hasReportingAgentInvocationSince(
-  parentConversationId: string,
-  sinceMs: number,
-): Promise<boolean> {
-  const rows = await getSqlExecutor()
-    .db()
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        eq(juniorAgentInvocations.parentConversationId, parentConversationId),
-        gte(juniorAgentInvocations.createdAt, new Date(sinceMs)),
-        isNotNull(juniorAgentInvocations.parentToolCallId),
-        ne(juniorAgentInvocations.status, "stopped"),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
 }
 
 /** Resolve the single invocation that may resume for one child conversation. */

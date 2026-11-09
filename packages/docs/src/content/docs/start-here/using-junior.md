@@ -71,7 +71,7 @@ When Junior acknowledges a stop, it stops the current task and its child agents.
 
 Junior cannot undo side effects that have already landed — a pushed commit, a filed issue, a sent Slack message. Redirect before the action, not after.
 
-When Junior gives your request to a child agent and has nothing else to tell you, it does not post a message to say that the work started. The status stays in the conversation. Junior posts when the child agent reports its result, and also when the child agent fails or is blocked.
+When Junior gives your request to a child agent and has nothing else to tell you, it does not post a message to say that the work started. Junior posts when the child agent reports its result, and also when the child agent fails or is blocked.
 
 ## Verify important output
 

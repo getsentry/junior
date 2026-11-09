@@ -39,9 +39,8 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
   if (isNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
-  // Strip the marker on every path so it never reaches a person. Only Turn
-  // Delivery acts on `quiet` (see `isQuietReply`); other callers deliver the
-  // text as usual.
+  // Strip the marker on every path so it never reaches a person. Only Event
+  // Turn Delivery acts on `quiet`; other callers deliver the text as usual.
   const quietText = stripQuietMarker(text);
   if (quietText === undefined) return { kind: "deliver", text };
   return { kind: "deliver", text: quietText, quiet: true };

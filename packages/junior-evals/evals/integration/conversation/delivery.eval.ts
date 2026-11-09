@@ -11,8 +11,7 @@ describe("Slack Message Delivery", () => {
   test("when a reply to a person ends with the quiet marker, still post it without the marker", async ({
     run,
   }) => {
-    // A person who asks sees the reply, unless a child agent that the Turn
-    // started reports later.
+    // Only Event Turns can be quiet. A person who asks always sees the reply.
     const conversation = await run(
       slackMention("Reply with exactly this text: CI is green. [[QUIET]]"),
     );
@@ -21,23 +20,6 @@ describe("Slack Message Delivery", () => {
     expect(conversation.replies).toHaveLength(1);
     expect(conversation.replies[0]?.text).toMatch(/CI is green/);
     expect(conversation.replies[0]?.text).not.toContain("[[QUIET]]");
-  });
-
-  test("when a reply to a person ends with the quiet marker after it starts a child agent, store it without posting", async ({
-    agent,
-  }) => {
-    const { run } = await agent();
-    const conversation = await run(
-      slackMention(
-        'Use spawnAgent to start one child agent with the task "Reply with only the code word MAPLE-7." Then reply with exactly this text: Sent. [[QUIET]]',
-      ),
-    );
-
-    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
-    expect(conversation.turns[0]?.replies).toEqual([]);
-    expect(conversation.quietReplies.map((reply) => reply.text)).toEqual([
-      "Sent.",
-    ]);
   });
 
   test("when asked for a top-level channel post, explain the limitation instead", async ({
