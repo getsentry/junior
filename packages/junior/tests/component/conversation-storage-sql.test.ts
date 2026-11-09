@@ -26,6 +26,8 @@ import {
 import {
   loadConnectedMcpProviders,
   openConversationProjection,
+  recordAuthorizationCompleted,
+  recordAuthorizationRequested,
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -257,13 +259,43 @@ it("rejects new handoff writes through the replacement boundary", async () => {
   ).resolves.toEqual([]);
 });
 
-it("keeps actor-owned MCP connections across history replacement", async () => {
+it("keeps actor-owned MCP connections and authorizations once across history replacement", async () => {
   const conversationId = "local:test:host-fact-before-model";
-  await recordMcpProviderConnected({
+  const authorization = {
     conversationId,
+    kind: "mcp" as const,
     provider: "linear",
-    credentialSubjectId: "UALICE",
-  });
+    actorId: "UALICE",
+    authorizationId: "auth-1",
+  };
+  const legacyAuthorization = { ...authorization, authorizationId: "auth-0" };
+  const recordHostFacts = async () => {
+    await recordMcpProviderConnected({
+      conversationId,
+      provider: "linear",
+      credentialSubjectId: "UALICE",
+    });
+    await recordAuthorizationRequested({
+      ...authorization,
+      delivery: "private_link_sent",
+    });
+    await recordAuthorizationCompleted(authorization);
+    await recordAuthorizationCompleted(legacyAuthorization);
+  };
+  // A row written before host facts had idempotency keys.
+  await getConversationEventStore().append(conversationId, [
+    {
+      createdAtMs: 1,
+      data: {
+        type: "authorization_completed",
+        kind: legacyAuthorization.kind,
+        provider: legacyAuthorization.provider,
+        actorId: legacyAuthorization.actorId,
+        authorizationId: legacyAuthorization.authorizationId,
+      },
+    },
+  ]);
+  await recordHostFacts();
   await getConversationEventStore().replaceHistory(conversationId, {
     createdAtMs: 2,
     data: {
@@ -272,6 +304,8 @@ it("keeps actor-owned MCP connections across history replacement", async () => {
       replacementHistory: [],
     },
   });
+  // A retried callback or resumed Turn records the same facts again.
+  await recordHostFacts();
 
   await expect(
     openConversationProjection({
@@ -279,8 +313,11 @@ it("keeps actor-owned MCP connections across history replacement", async () => {
     }),
   ).resolves.toMatchObject({
     messages: [],
-    replacementSeq: 1,
+    replacementSeq: 4,
   });
+  await expect(
+    getConversationEventStore().loadHistory(conversationId),
+  ).resolves.toHaveLength(5);
   await expect(
     loadConnectedMcpProviders({
       conversationId,
