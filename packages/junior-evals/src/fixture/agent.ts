@@ -18,6 +18,8 @@ import type { JuniorApiEnv } from "@/api/route";
 import { forkConversationResponseSchema } from "@/api/schema";
 import { createConversationId } from "@/chat/conversations/web-input";
 import { findUserByEmail, resolveViewerUser } from "@/chat/plugins/viewer";
+import { slackAvatarSavedKey } from "@/chat/slack/avatar";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
@@ -81,6 +83,7 @@ import {
   SLACK_APP,
   SLACK_APP_BOT_ID,
   SLACK_BOT_USER_ID,
+  SLACK_TEAM_ID,
 } from "./slack";
 
 /**
@@ -274,6 +277,16 @@ export async function createFixtureAgent(
         ...authors.map((author) => author.userId),
         ...webUsers.flatMap((user) => (user ? [user.id] : [])),
       ]);
+      // Redis outlives the Postgres reset of each test. The saved-photo mark
+      // means the Identity is linked to a User, and the next test loses that
+      // link, so delete the mark too. Otherwise the next Turn skips the link
+      // and its author gets no participant row.
+      const state = getStateAdapter();
+      await Promise.all(
+        authors.map((author) =>
+          state.delete(slackAvatarSavedKey(SLACK_TEAM_ID, author.userId)),
+        ),
+      );
     }
   };
 
