@@ -21,6 +21,7 @@ const HOUR = 60 * 60 * 1_000;
 const ROOT = "slack:C1:1.000001";
 const THREAD = "agent:thread-1";
 const TASK = "agent:task-1";
+const NEWER_THREAD = "agent:thread-2";
 const ARCHIVED_THREAD = "agent:thread-archived";
 const OTHER_ROOT = "slack:C1:2.000001";
 
@@ -125,9 +126,15 @@ describe("board API", () => {
       .set({ title: "Retry logic" })
       .where(eq(juniorConversations.conversationId, THREAD));
     await getConversationStore().createChild({
+      childConversationId: NEWER_THREAD,
+      kind: "thread",
+      nowMs: NOW - HOUR / 2,
+      parentConversationId: ROOT,
+    });
+    await getConversationStore().createChild({
       childConversationId: TASK,
       kind: "task",
-      nowMs: NOW - HOUR,
+      nowMs: NOW - HOUR / 4,
       parentConversationId: THREAD,
     });
     await getDb()
@@ -147,8 +154,13 @@ describe("board API", () => {
     await rootConversation(OTHER_ROOT, "Someone else");
     await participant(OTHER_ROOT, other);
 
-    // A Task's change shows on its Thread, which is running.
-    await codeChange({ conversationIds: [TASK], number: 1, state: "open" });
+    // A Task's change shows on its Thread, which is running. The Thread is
+    // older than the other linked Thread, though the Task is newer.
+    await codeChange({
+      conversationIds: [TASK, NEWER_THREAD],
+      number: 1,
+      state: "open",
+    });
     // Linked to two Conversations, still one card, on the older one. The
     // stored links sort the Thread first.
     await codeChange({

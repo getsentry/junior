@@ -282,25 +282,26 @@ export async function readBoard(args: {
     if (home) needsViewerHomes.add(home);
   }
   // An object can link to several Conversations. Its home is the oldest
-  // visible one, so the card stays in one place when links change order or
-  // a linked Conversation is archived.
+  // visible home among them, so the card stays in one place when links
+  // change order or a linked Conversation is archived. Homes are ranked,
+  // not linked Conversations, because a Task is newer than its Thread.
   const homeFor = (conversationIds: Iterable<string>): CardHome | undefined => {
-    let oldest: TreeNode | undefined;
+    let node: TreeNode | undefined;
     for (const conversationId of conversationIds) {
-      const linked = nodes.get(conversationId);
-      if (!linked || !homeId(nodes, conversationId)) continue;
+      const candidateId = homeId(nodes, conversationId);
+      const candidate = candidateId ? nodes.get(candidateId) : undefined;
+      if (!candidate) continue;
       if (
-        !oldest ||
-        linked.createdAtMs < oldest.createdAtMs ||
-        (linked.createdAtMs === oldest.createdAtMs &&
-          linked.conversationId < oldest.conversationId)
+        !node ||
+        candidate.createdAtMs < node.createdAtMs ||
+        (candidate.createdAtMs === node.createdAtMs &&
+          candidate.conversationId < node.conversationId)
       ) {
-        oldest = linked;
+        node = candidate;
       }
     }
-    const id = oldest ? homeId(nodes, oldest.conversationId) : undefined;
-    const node = id ? nodes.get(id) : undefined;
-    if (!id || !node) return undefined;
+    if (!node) return undefined;
+    const id = node.conversationId;
     const cached = homes.get(id);
     if (cached) return cached;
     const root = rootOf(nodes, node);
