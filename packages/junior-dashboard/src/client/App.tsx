@@ -1,4 +1,11 @@
-import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { Navigate, Route, useLocation, useParams } from "react-router";
 
 import {
@@ -11,10 +18,6 @@ import {
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
 import { VersionDriftBanner } from "./components/VersionDriftBanner";
-import {
-  PageContentSkeleton,
-  type PageContentSkeletonVariant,
-} from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
   DashboardChrome,
@@ -38,12 +41,23 @@ import { ConversationWorkspaceLoading } from "./conversations/ConversationWorksp
 import { useConversationData } from "./conversations/queries";
 import { readConversationStartPosition } from "./conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
-import { SettingsPageLayout } from "./pages/settings/SettingsPageLayout";
+import {
+  SettingsRouteLoading,
+  type SettingsSectionId,
+} from "./pages/settings/SettingsPageLayout";
 import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
 import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
+import { systemPluginsPath } from "./pages/system/SystemPlugins";
+import {
+  locationsHeader,
+  PEOPLE_DEFAULT_RANGE,
+  peopleHeader,
+  systemRouteLoadingHeader,
+  workspacesHeader,
+} from "./pages/system/systemPageHeaders";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -172,52 +186,29 @@ const dashboardNoise = {
 };
 
 const settingsRoutes: {
-  loading: {
-    description: string;
-    label: string;
-    title: string;
-    variant?: PageContentSkeletonVariant;
-  };
   path: string;
   render(data: DashboardCoreData): ReactNode;
+  section: SettingsSectionId;
 }[] = [
   {
-    loading: {
-      description: "Manage your profile and preferences.",
-      label: "Loading settings",
-      title: "General",
-    },
     path: "/settings",
     render: (data) => <SettingsPage identity={data.me} />,
+    section: "general",
   },
   {
-    loading: {
-      description: "Create and revoke personal API tokens.",
-      label: "Loading API tokens",
-      title: "API Tokens",
-      variant: "list",
-    },
     path: "/settings/api-tokens",
     render: () => <PersonalTokensPage />,
+    section: "api-tokens",
   },
   {
-    loading: {
-      description: "Connect and disconnect your accounts.",
-      label: "Loading identities",
-      title: "Identities",
-      variant: "list",
-    },
     path: "/settings/connections",
     render: () => <ConnectionsPage />,
+    section: "identities",
   },
   {
-    loading: {
-      description: "Connect an MCP client to your conversations.",
-      label: "Loading MCP",
-      title: "MCP",
-    },
     path: "/settings/mcp",
     render: () => <McpSettingsPage />,
+    section: "mcp",
   },
 ];
 
@@ -442,18 +433,21 @@ export function DashboardShell() {
             />
             <Route
               element={
-                loading ? (
+                loading || loggedIn ? (
                   <AutomationsPageLayout>
-                    <AutomationsRouteLoading
-                      description="Newest runs across your automations and automations in public destinations."
-                      label="Loading automation runs"
-                      title="Runs"
-                      variant="list"
-                    />
-                  </AutomationsPageLayout>
-                ) : loggedIn ? (
-                  <AutomationsPageLayout>
-                    <AutomationRunsPage enabled={loggedIn} />
+                    <SectionRoute
+                      fallback={
+                        <AutomationsRouteLoading
+                          description="Newest runs across your automations and automations in public destinations."
+                          label="Loading automation runs"
+                          title="Runs"
+                          variant="list"
+                        />
+                      }
+                      loading={loading}
+                    >
+                      <AutomationRunsPage enabled={loggedIn} />
+                    </SectionRoute>
                   </AutomationsPageLayout>
                 ) : (
                   <Navigate replace to="/" />
@@ -463,18 +457,21 @@ export function DashboardShell() {
             />
             <Route
               element={
-                loading ? (
+                loading || loggedIn ? (
                   <AutomationsPageLayout>
-                    <AutomationsRouteLoading
-                      description="Find and manage automations across your linked workspaces."
-                      label="Loading automations"
-                      title="All automations"
-                      variant="list"
-                    />
-                  </AutomationsPageLayout>
-                ) : loggedIn ? (
-                  <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="list" />
+                    <SectionRoute
+                      fallback={
+                        <AutomationsRouteLoading
+                          description="Find and manage automations across your linked workspaces."
+                          label="Loading automations"
+                          title="All automations"
+                          variant="list"
+                        />
+                      }
+                      loading={loading}
+                    >
+                      <AutomationsPage enabled={loggedIn} view="list" />
+                    </SectionRoute>
                   </AutomationsPageLayout>
                 ) : (
                   <Navigate replace to="/" />
@@ -494,18 +491,21 @@ export function DashboardShell() {
             />
             <Route
               element={
-                loading ? (
+                loading || loggedIn ? (
                   <AutomationsPageLayout>
-                    <AutomationsRouteLoading
-                      description="Scheduled and event-driven work created by users."
-                      label="Loading automations"
-                      title="Automations"
-                      variant="stats"
-                    />
-                  </AutomationsPageLayout>
-                ) : loggedIn ? (
-                  <AutomationsPageLayout>
-                    <AutomationsPage enabled={loggedIn} view="overview" />
+                    <SectionRoute
+                      fallback={
+                        <AutomationsRouteLoading
+                          description="Scheduled and event-driven work created by users."
+                          label="Loading automations"
+                          title="Automations"
+                          variant="stats"
+                        />
+                      }
+                      loading={loading}
+                    >
+                      <AutomationsPage enabled={loggedIn} view="overview" />
+                    </SectionRoute>
                   </AutomationsPageLayout>
                 ) : (
                   <Navigate replace to="/" />
@@ -523,28 +523,33 @@ export function DashboardShell() {
             />
             <Route
               element={
-                loading ? (
-                  <SystemRouteLoading
-                    description="Public destinations and their conversation activity."
-                    label="Loading locations"
-                    title="Locations"
-                    variant="stats"
-                  />
-                ) : (
+                <SectionRoute
+                  fallback={
+                    <SystemRouteLoading
+                      {...locationsHeader()}
+                      label="Loading locations"
+                      variant="stats"
+                    />
+                  }
+                  loading={loading}
+                >
                   <LocationsPage />
-                )
+                </SectionRoute>
               }
               path="/system/locations"
             />
             <Route
               element={
-                loading ? (
-                  <SystemPageLayout>
-                    <LoadingView label="Loading location" />
-                  </SystemPageLayout>
-                ) : (
+                <SectionRoute
+                  fallback={
+                    <SystemPageLayout>
+                      <LoadingView label="Loading location" />
+                    </SystemPageLayout>
+                  }
+                  loading={loading}
+                >
                   <LocationDetailPage />
-                )
+                </SectionRoute>
               }
               path="/system/locations/:locationId"
             />
@@ -626,84 +631,93 @@ export function DashboardShell() {
             />
             <Route
               element={
-                loading ? (
-                  <SystemRouteLoading
-                    description="People, activity, and model spend."
-                    label="Loading people"
-                    title="People"
-                    variant="stats"
-                  />
-                ) : (
+                <SectionRoute
+                  fallback={
+                    <SystemRouteLoading
+                      {...peopleHeader(PEOPLE_DEFAULT_RANGE)}
+                      label="Loading people"
+                      variant="stats"
+                    />
+                  }
+                  loading={loading}
+                >
                   <PeoplePage />
-                )
+                </SectionRoute>
               }
               path="/system/people"
             />
             <Route
               element={
-                loading ? (
-                  <SystemRouteLoading
-                    description="Repository recipes Junior can switch into."
-                    label="Loading Workspaces"
-                    title="Workspaces"
-                    variant="list"
-                  />
-                ) : (
+                <SectionRoute
+                  fallback={
+                    <SystemRouteLoading
+                      {...workspacesHeader()}
+                      label="Loading Workspaces"
+                      variant="list"
+                    />
+                  }
+                  loading={loading}
+                >
                   <WorkspacesPage />
-                )
+                </SectionRoute>
               }
               path="/system/workspaces"
             />
             <Route
               element={
-                loading ? (
-                  <SystemPageLayout>
-                    <LoadingView label="Loading Workspace" />
-                  </SystemPageLayout>
-                ) : (
+                <SectionRoute
+                  fallback={
+                    <SystemPageLayout>
+                      <LoadingView label="Loading Workspace" />
+                    </SystemPageLayout>
+                  }
+                  loading={loading}
+                >
                   <WorkspaceFormPage />
-                )
+                </SectionRoute>
               }
               path="/system/workspaces/new"
             />
             <Route
               element={
-                loading ? (
-                  <SystemRouteLoading
-                    description="Repository recipes Junior can switch into."
-                    label="Loading Workspaces"
-                    title="Workspaces"
-                    variant="list"
-                  />
-                ) : (
+                <SectionRoute
+                  fallback={
+                    <SystemRouteLoading
+                      {...workspacesHeader()}
+                      label="Loading Workspaces"
+                      variant="list"
+                    />
+                  }
+                  loading={loading}
+                >
                   <WorkspacesPage />
-                )
+                </SectionRoute>
               }
               path="/system/workspaces/:workspaceId"
             />
             <Route
               element={
-                loading ? (
-                  <SystemPageLayout>
-                    <LoadingView label="Loading Workspace" />
-                  </SystemPageLayout>
-                ) : (
+                <SectionRoute
+                  fallback={
+                    <SystemPageLayout>
+                      <LoadingView label="Loading Workspace" />
+                    </SystemPageLayout>
+                  }
+                  loading={loading}
+                >
                   <WorkspaceFormPage />
-                )
+                </SectionRoute>
               }
               path="/system/workspaces/:workspaceId/edit"
             />
             <Route
               element={
                 loading ? (
-                  <SystemRouteLoading
-                    description="Runtime health, model usage, and loaded capabilities."
-                    label="Loading system"
-                    title="System"
-                    variant="overview"
-                  />
+                  <SystemRouteFallback />
                 ) : data ? (
-                  <SystemRoute coreData={data} />
+                  <Suspense fallback={<SystemRouteFallback />}>
+                    <SystemRoute coreData={data} />
+                  </Suspense>
                 ) : (
                   <SystemPageLayout>
                     <LoadingView
@@ -718,17 +732,15 @@ export function DashboardShell() {
               <Route
                 element={
                   loading ? (
-                    <SettingsPageLayout
-                      description={route.loading.description}
-                      title={route.loading.title}
-                    >
-                      <PageContentSkeleton
-                        label={route.loading.label}
-                        variant={route.loading.variant}
-                      />
-                    </SettingsPageLayout>
+                    <SettingsRouteLoading section={route.section} />
                   ) : loggedIn ? (
-                    route.render(data!)
+                    <Suspense
+                      fallback={
+                        <SettingsRouteLoading section={route.section} />
+                      }
+                    >
+                      {route.render(data!)}
+                    </Suspense>
                   ) : (
                     <Navigate replace to="/" />
                   )
@@ -848,21 +860,39 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
 
 function SystemRoute(props: { coreData: DashboardCoreData }) {
   const query = useSystemData(props.coreData);
-  if (!query.data && !query.error) {
-    return (
-      <SystemRouteLoading
-        description="Runtime health, model usage, and loaded capabilities."
-        label="Loading system"
-        title="System"
-        variant="overview"
-      />
-    );
-  }
+  if (!query.data && !query.error) return <SystemRouteFallback />;
   return query.data ? (
     <SystemPage data={query.data} />
   ) : (
     <SystemPageLayout>
       <LoadingView label={query.error?.message ?? "System unavailable"} />
     </SystemPageLayout>
+  );
+}
+
+/**
+ * Show a section's loading state, with its navigation and header, while the
+ * shell data or the page code loads. The shared fallback in `TracedRoutes`
+ * would replace the whole section with a centered loader.
+ */
+function SectionRoute(props: {
+  children: ReactNode;
+  fallback: ReactNode;
+  loading: boolean;
+}) {
+  if (props.loading) return props.fallback;
+  return <Suspense fallback={props.fallback}>{props.children}</Suspense>;
+}
+
+/** Load a `/system/*` page under the header text that page shows. */
+function SystemRouteFallback() {
+  const { pathname } = useLocation();
+  const plugins = pathname.startsWith(systemPluginsPath);
+  return (
+    <SystemRouteLoading
+      {...systemRouteLoadingHeader(pathname)}
+      label={plugins ? "Loading plugins" : "Loading system"}
+      variant={plugins ? "list" : "overview"}
+    />
   );
 }

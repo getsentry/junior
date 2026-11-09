@@ -15,7 +15,6 @@ import {
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import {
@@ -29,6 +28,7 @@ import {
 import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
+import { locationsHeader } from "../system/systemPageHeaders";
 
 const LOCATION_SORTS = [
   "conversations",
@@ -59,9 +59,8 @@ export function LocationsPageContent(props: {
   if (!props.data && !props.error) {
     return (
       <SystemRouteLoading
-        description="Public destinations and their conversation activity."
+        {...locationsHeader()}
         label="Loading locations"
-        title="Locations"
         variant="stats"
       />
     );
@@ -103,7 +102,7 @@ export function LocationsPageContent(props: {
         description={
           props.error && !props.data
             ? "Locations failed to load."
-            : `See the public channels where ${getDashboardAgentName()} has been working and how busy they've been.`
+            : locationsHeader().description
         }
         onRangeChange={setRange}
         range={range}

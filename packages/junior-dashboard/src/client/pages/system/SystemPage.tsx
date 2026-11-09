@@ -2,7 +2,7 @@ import { useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { Navigate, useLocation } from "react-router";
 
-import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
+import { getDashboardAgentName } from "../../agentName";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 
 import { Card } from "../../components/layout/Card";
@@ -14,6 +14,11 @@ import { PluginReports } from "./PluginReports";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
 import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
+import {
+  systemOverviewHeader,
+  systemPluginLoadingHeader,
+  systemPluginsHeader,
+} from "./systemPageHeaders";
 import {
   buildSystemPlugins,
   normalizeSystemPath,
@@ -45,9 +50,8 @@ export function SystemPage(props: { data: SystemData }) {
   if (pluginPath && !plugin && props.data.pluginReportsLoading) {
     return (
       <SystemRouteLoading
-        description="Loading plugin details and operational reports."
+        {...systemPluginLoadingHeader()}
         label="Loading plugin"
-        title="Plugin"
       />
     );
   }
@@ -88,10 +92,9 @@ function OverviewSystemPage(props: {
   return (
     <>
       <PageHeader
-        description={`A live read on ${agentNamePossessive()} runtime and model usage.`}
+        {...systemOverviewHeader()}
         onRangeChange={props.onRangeChange}
         range={props.range}
-        title="System"
       />
       <SystemActivity
         error={props.data.conversationStatsError}
@@ -109,10 +112,7 @@ function PluginsSystemPage(props: {
 }) {
   return (
     <>
-      <PageHeader
-        description={`Loaded capabilities and operational reports for ${getDashboardAgentName()}.`}
-        title="Plugins"
-      />
+      <PageHeader {...systemPluginsHeader()} />
       {props.data.pluginReportsError ? (
         <PluginReportError
           showingReports={props.plugins.some((plugin) => plugin.reports.length)}
@@ -151,7 +151,6 @@ function PluginSystemPage(props: {
       ) : null}
       <PluginDetails plugin={props.plugin} />
       <PluginReports
-        fallbackTitle={props.plugin.displayName}
         {...(!props.data.pluginReportsLoading && !props.data.pluginReportsError
           ? {
               emptyText:

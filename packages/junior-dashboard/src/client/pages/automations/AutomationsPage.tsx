@@ -20,7 +20,6 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { automationPath } from "../../format";
-import { useDocumentTitle } from "../../documentTitle";
 import {
   pathWithSearch,
   useDebouncedSearchParam,
@@ -108,7 +107,6 @@ export function AutomationsPage(props: {
   const totalPages = pageCount(visibleTaskCount, filters.pageSize);
   const page = query.data?.page ?? filters.page;
   // Overview names the tab through PageHeader; the list has a plain heading.
-  useDocumentTitle(props.view === "list" ? "All automations" : undefined);
   // A deletion or a shared URL can leave the requested page past the last page.
   useEffect(() => {
     if (
@@ -163,9 +161,10 @@ export function AutomationsPage(props: {
           title="Automations"
         />
       ) : (
-        <h2 className="m-0 font-display text-2xl font-light tracking-tight text-dashboard-text sm:text-3xl">
-          All automations
-        </h2>
+        <PageHeader
+          description="Find and manage automations across your linked workspaces."
+          title="All automations"
+        />
       )}
       {props.view === "list" ? (
         <AutomationFilters

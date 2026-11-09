@@ -317,6 +317,10 @@
     -webkit-tap-highlight-color: transparent;
     /* No font inflation in landscape on phones. */
     -webkit-text-size-adjust: 100%;
+    /* The styled scrollbar below always takes layout width. Keep its space
+       on short pages and under scroll locks, so content does not move
+       sideways between pages. */
+    scrollbar-gutter: stable;
   }
 
   /* Controls never double-tap zoom, so taps fire without the zoom wait. */

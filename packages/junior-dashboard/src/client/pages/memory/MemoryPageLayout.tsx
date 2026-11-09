@@ -66,7 +66,7 @@ export function MemoryRouteLoading(props: {
       <PageHeader
         description={
           props.description ??
-          "Personal and public memories Junior can use across conversations."
+          "Public memories Junior can use across conversations."
         }
         title={props.title ?? "Memories"}
       />

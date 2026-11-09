@@ -67,7 +67,7 @@ export function NotificationSettingsCard() {
   const settingsQuery = useQuery(notificationSettingsQuery);
 
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
+    <Card padding="md" variant="raised">
       <AnchorHeading
         anchor={PUSH_NOTIFICATIONS_ANCHOR}
         className="m-0 text-lg font-bold"

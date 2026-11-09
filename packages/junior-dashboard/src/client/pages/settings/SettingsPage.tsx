@@ -71,12 +71,9 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   }
 
   return (
-    <SettingsPageLayout
-      description="Manage your profile and preferences."
-      title="General"
-    >
+    <SettingsPageLayout section="general">
       <form onSubmit={submit}>
-        <Card className="mb-0" padding="md" variant="raised">
+        <Card padding="md" variant="raised">
           <AnchorHeading
             anchor="profile"
             className="m-0 text-lg font-bold"
@@ -129,7 +126,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
 function NavLayoutSetting() {
   const [choice, setChoice] = useNavLayoutChoice();
   return (
-    <Card className="mt-6 mb-0 hidden md:block" padding="md" variant="raised">
+    <Card className="hidden md:block" padding="md" variant="raised">
       <AnchorHeading
         anchor="navigation"
         className="m-0 text-lg font-bold"
@@ -184,7 +181,7 @@ const startPositionOptions: {
 function ConversationStartSetting() {
   const [startPosition, setStartPosition] = useConversationStartPosition();
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
+    <Card padding="md" variant="raised">
       <AnchorHeading
         anchor="open-conversations-at"
         className="m-0 text-lg font-bold"
@@ -223,7 +220,7 @@ function ConversationStartSetting() {
 function ComposerAutocorrectSetting() {
   const [autocorrect, setAutocorrect] = useComposerAutocorrect();
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
+    <Card padding="md" variant="raised">
       <AnchorHeading
         anchor="message-box"
         className="m-0 text-lg font-bold"
@@ -299,7 +296,7 @@ function CustomizationForm() {
 
   return (
     <form onSubmit={submit}>
-      <Card className="mb-0" padding="md" variant="raised">
+      <Card padding="md" variant="raised">
         <AnchorHeading
           anchor="customization"
           className="m-0 text-lg font-bold"

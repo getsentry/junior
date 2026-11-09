@@ -12,7 +12,6 @@ import { SectionIntro } from "../../components/layout/SectionIntro";
 /** Render plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {
   emptyText?: string;
-  fallbackTitle?: string;
   range?: TimeRangeDays;
   reports: PluginOperationalReport[];
 }) {
@@ -46,7 +45,6 @@ export function PluginReports(props: {
       />
       {props.reports.map((report) => (
         <PluginReportView
-          fallbackTitle={props.fallbackTitle}
           key={report.pluginName}
           range={props.range}
           report={report}
@@ -57,33 +55,32 @@ export function PluginReports(props: {
 }
 
 function PluginReportView(props: {
-  fallbackTitle?: string;
   range?: TimeRangeDays;
   report: PluginOperationalReport;
 }) {
-  const reportTitle =
+  // The page header already names the plugin and Details shows its
+  // identifier, so the card shows only a report title of its own.
+  const title =
     props.report.title === props.report.pluginName
       ? undefined
       : props.report.title;
-  const title = reportTitle ?? props.fallbackTitle ?? props.report.pluginName;
   const metrics = props.report.metrics ?? [];
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4 border-b border-dashboard-border-subtle px-5 py-4">
-        <div className="min-w-0">
-          <h3 className="m-0 truncate font-display text-lg font-medium text-dashboard-text">
-            {title}
-          </h3>
-          <div className="mt-1 hidden font-mono text-xs text-dashboard-text-muted sm:block">
-            {props.report.pluginName}
-          </div>
+      {title || props.report.generatedAt ? (
+        <div className="flex items-start justify-between gap-4 border-b border-dashboard-border-subtle px-5 py-4">
+          {title ? (
+            <h3 className="m-0 min-w-0 truncate font-display text-lg font-medium text-dashboard-text">
+              {title}
+            </h3>
+          ) : null}
+          {props.report.generatedAt ? (
+            <div className="ml-auto shrink-0 font-mono text-xs text-dashboard-text-muted">
+              updated {formatTime(props.report.generatedAt)}
+            </div>
+          ) : null}
         </div>
-        {props.report.generatedAt ? (
-          <div className="hidden shrink-0 font-mono text-xs text-dashboard-text-muted sm:block">
-            updated {formatTime(props.report.generatedAt)}
-          </div>
-        ) : null}
-      </div>
+      ) : null}
       {metrics.length ? (
         <div
           className={cn(

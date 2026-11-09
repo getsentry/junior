@@ -68,7 +68,7 @@ export function AutoArchiveSettings({
     : [...AUTO_ARCHIVE_GRACE_OPTIONS, graceHours].sort((a, b) => a - b);
 
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
+    <Card padding="md" variant="raised">
       <AnchorHeading
         anchor="conversations"
         className="m-0 text-lg font-bold"

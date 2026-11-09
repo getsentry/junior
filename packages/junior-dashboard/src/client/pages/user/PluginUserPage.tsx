@@ -13,14 +13,14 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { LoadingView } from "../../components/LoadingView";
+import { PageRouteLoading } from "../../components/PageRouteLoading";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MemoryPage } from "../memory/MemoryPage";
 import { pathWithSearch } from "../../searchParams";
-import { dashboardContainerClass } from "../../styles";
+import { PageLayout } from "../../components/layout/PageLayout";
 import {
   usePluginUserPageData,
   type PluginUserPageRecord,
@@ -84,12 +84,19 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (!query.data && !query.error) {
-    return <LoadingView label={`Loading ${props.page.label}`} />;
+    return (
+      <PageRouteLoading
+        description={props.page.description}
+        label={`Loading ${props.page.label}`}
+        title={props.page.label}
+        variant="list"
+      />
+    );
   }
 
   return (
-    <div className={`${dashboardContainerClass} px-4 py-8 md:px-8`}>
-      <section className="mx-auto grid w-full max-w-3xl gap-6">
+    <PageLayout>
+      <section className="grid w-full max-w-3xl min-w-0 gap-6">
         <PageHeader
           description={props.page.description}
           title={props.page.label}
@@ -248,6 +255,6 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageLayout>
   );
 }

@@ -251,7 +251,7 @@ function ExpiredTranscriptView(props: {
   return (
     <>
       {props.brief ? (
-        <Card as="section" padding="md" variant="section">
+        <Card as="section" className="mb-4" padding="md" variant="section">
           <h3 className="mt-0 mb-3 font-display text-lg font-medium text-dashboard-text">
             Brief
           </h3>

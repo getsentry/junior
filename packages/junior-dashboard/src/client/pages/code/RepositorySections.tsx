@@ -27,7 +27,7 @@ export function RepositorySection(props: {
   viewAllTo?: string;
 }) {
   return (
-    <Card as="section" className="mb-0" variant="section">
+    <Card as="section" variant="section">
       <SectionHeader
         actions={
           props.viewAllTo ? (

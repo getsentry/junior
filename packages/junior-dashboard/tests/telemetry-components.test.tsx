@@ -1784,11 +1784,10 @@ describe("dashboard canonical-event components", () => {
     expect(formatChartValue(-1.25, undefined)).toBe("-1.25");
   });
 
-  it("uses the plugin display name for a single metric", () => {
+  it("omits a report title that repeats the plugin identifier", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <PluginReports
-          fallbackTitle="GitHub"
           reports={[
             {
               metrics: [{ label: "report", value: "failed" }],
@@ -1800,7 +1799,8 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
 
-    expect(html).toContain(">GitHub<");
+    expect(html).toContain(">failed<");
+    expect(html).not.toContain(">github<");
   });
 
   it("formats fractional chart values without floating-point noise", () => {
