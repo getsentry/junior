@@ -22,10 +22,28 @@ export async function resolveRootConversationId(
   return row?.rootConversationId ?? conversationId;
 }
 
+/** True when the root of this conversation is archived. */
+export async function rootConversationIsArchived(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<boolean> {
+  const rootConversationId = await resolveRootConversationId(
+    executor,
+    conversationId,
+  );
+  const [row] = await executor
+    .db()
+    .select({ archivedAt: juniorConversations.archivedAt })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, rootConversationId))
+    .limit(1);
+  return Boolean(row?.archivedAt);
+}
+
 /**
  * Upsert one linked user as a participant on a root conversation.
  * No-ops and returns false when the identity is missing, unlinked, or not a
- * user.
+ * user. `resubscribe` ends an unsubscribe: the user addressed Junior again.
  */
 export async function recordConversationParticipant(
   executor: JuniorSqlDatabase,
@@ -33,6 +51,7 @@ export async function recordConversationParticipant(
     actorIdentityId: string;
     conversationId: string;
     atMs: number;
+    resubscribe?: boolean;
   },
 ): Promise<boolean> {
   const [identity] = await executor
@@ -72,6 +91,7 @@ export async function recordConversationParticipant(
       ],
       set: {
         lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
+        ...(args.resubscribe ? { unsubscribedAt: null } : undefined),
       },
     });
   return true;

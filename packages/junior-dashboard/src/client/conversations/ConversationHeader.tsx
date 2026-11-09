@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Menu, PanelRight } from "lucide-react";
+import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import { cn } from "../styles";
@@ -16,7 +17,9 @@ import {
   type ConversationContinueInSlackAction,
   type ConversationPinAction,
   type ConversationReadAction,
+  type ConversationSubscriptionAction,
 } from "./ConversationHeaderActions";
+import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -27,8 +30,8 @@ import type { TranscriptSearchMatch } from "./transcriptSearch";
  * Run facts and the Brief live in Conversation details.
  */
 export function ConversationHeader(props: {
-  /** Parent chain of a child Conversation. Root Conversations omit it. */
-  agentTree?: ReactNode;
+  /** Agent tree of a child Conversation. Root Conversations omit it. */
+  agentTree?: readonly ConversationAgentTreeNode[];
   contextTags?: ReactNode;
   /** A `menu` layout copy action for the `⋯` menu. */
   copyAction?: ReactNode;
@@ -52,6 +55,9 @@ export function ConversationHeader(props: {
   searchMatch: TranscriptSearchMatch;
   sentryConversationUrl?: string;
   sidebarToggle?: ReactNode;
+  /** Status pill of a child Conversation, after its title. */
+  status?: ReactNode;
+  subscription: ConversationSubscriptionAction;
   title: string;
   view: TranscriptViewMode;
 }) {
@@ -120,6 +126,7 @@ export function ConversationHeader(props: {
       }
       pin={props.pin}
       read={props.read}
+      subscription={props.subscription}
       copyAction={props.copyAction}
       detailsOpen={detailsOpen}
       onDetailsClick={() => {
@@ -141,11 +148,43 @@ export function ConversationHeader(props: {
     />
   );
 
+  const title =
+    props.view === "raw" ? (
+      // Event log is a debug view reached from the `⋯` menu. The title leads
+      // back to the Conversation.
+      <>
+        <h2 className="m-0 min-w-0 font-display text-base font-medium leading-6 tracking-tight">
+          <button
+            className="block max-w-full cursor-pointer truncate text-left text-dashboard-text-muted hover:text-dashboard-text hover:underline"
+            onClick={() => props.onViewChange("rich")}
+            title="Back to conversation"
+            type="button"
+          >
+            {props.title}
+          </button>
+        </h2>
+        <span aria-hidden="true" className="text-dashboard-text-faint">
+          ›
+        </span>
+        <span
+          aria-current="page"
+          className="shrink-0 font-display text-base font-medium leading-6 tracking-tight"
+        >
+          Event log
+        </span>
+      </>
+    ) : (
+      <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
+        {props.title}
+      </h2>
+    );
+
   const showMobileHeader =
     searchOpenVisible ||
     Boolean(props.archive.error) ||
     props.pin.error ||
     props.read.error ||
+    props.subscription.error ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -197,43 +236,17 @@ export function ConversationHeader(props: {
             {props.sidebarToggle ? (
               <div className="shrink-0">{props.sidebarToggle}</div>
             ) : null}
-            {props.view === "raw" ? (
-              // Event log is a debug view reached from the `⋯` menu. The
-              // title leads back to the Conversation.
-              <>
-                <h2 className="m-0 min-w-0 font-display text-base font-medium leading-6 tracking-tight">
-                  <button
-                    className="block max-w-full cursor-pointer truncate text-left text-dashboard-text-muted hover:text-dashboard-text hover:underline"
-                    onClick={() => props.onViewChange("rich")}
-                    title="Back to conversation"
-                    type="button"
-                  >
-                    {props.title}
-                  </button>
-                </h2>
-                <span aria-hidden="true" className="text-dashboard-text-faint">
-                  ›
-                </span>
-                <span
-                  aria-current="page"
-                  className="shrink-0 font-display text-base font-medium leading-6 tracking-tight"
-                >
-                  Event log
-                </span>
-              </>
+            {props.agentTree ? (
+              <ConversationBreadcrumb current={title} nodes={props.agentTree} />
             ) : (
-              <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
-                {props.title}
-              </h2>
+              title
             )}
+            {props.status}
             {props.privacy ? (
               <span className="shrink-0">{props.privacy}</span>
             ) : null}
-            {props.agentTree ? (
-              <div className="min-w-0 max-w-1/3 shrink-[2] border-l border-dashboard-border-subtle pl-2 text-xs text-dashboard-text-muted [&_a]:text-dashboard-text-muted [&_a:hover]:text-dashboard-text">
-                {props.agentTree}
-              </div>
-            ) : props.contextTags ? (
+            {/* A child has no Location of its own. */}
+            {!props.agentTree && props.contextTags ? (
               <div className="flex h-6 min-w-0 max-w-[min(19rem,60%)] shrink-[2] items-center">
                 {props.contextTags}
               </div>
@@ -271,7 +284,10 @@ export function ConversationHeader(props: {
           <div className="hidden px-7 pb-2.5 md:block">{props.forks}</div>
         ) : null}
         {props.agentTree ? (
-          <div className="px-4 py-2 md:hidden">{props.agentTree}</div>
+          <div className="flex min-w-0 items-center justify-between gap-2 px-4 py-2 md:hidden">
+            <ConversationBreadcrumb nodes={props.agentTree} />
+            {props.status}
+          </div>
         ) : null}
         {props.forks ? (
           <div className="px-4 py-2 md:hidden">{props.forks}</div>
@@ -299,6 +315,11 @@ export function ConversationHeader(props: {
         {props.read.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update read state.
+          </div>
+        ) : null}
+        {props.subscription.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not update subscription.
           </div>
         ) : null}
       </header>

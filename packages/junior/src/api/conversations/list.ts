@@ -10,6 +10,7 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
@@ -33,6 +34,7 @@ import {
   conversationViewerMarks,
   conversationHasParticipantUser,
   conversationIsMemberRoot,
+  conversationIsNotUnsubscribedRoot,
   viewerConversationMembership,
   type ConversationMember,
 } from "./membership";
@@ -56,7 +58,10 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { listWaitingConversations } from "@/chat/review-items/store";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
-import { readConversationActivityPreviews } from "./activity-preview";
+import {
+  latestMessageSeqQuery,
+  readConversationActivityPreviews,
+} from "./activity-preview";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -85,7 +90,12 @@ function conversationFeedMembershipFilter(
       ? isNotNull(juniorConversations.archivedAt)
       : status === "all"
         ? undefined
-        : isNull(juniorConversations.archivedAt),
+        : // An unsubscribed person still finds the conversation in archived
+          // and search results. Contract: `subscription.ts`.
+          and(
+            isNull(juniorConversations.archivedAt),
+            conversationIsNotUnsubscribedRoot(member),
+          ),
   );
 }
 
@@ -212,6 +222,11 @@ async function waitingRowsOutsidePage(
   });
 }
 
+/** Feed rows show last activity only as an age in whole minutes. */
+function shownActivityMinute(lastActivityAt: SQLWrapper) {
+  return sql`date_trunc('minute', ${lastActivityAt})`;
+}
+
 const feedTree = alias(juniorConversations, "feed_tree");
 const feedAnnotated = alias(juniorConversations, "feed_annotated");
 
@@ -221,10 +236,12 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * does not grow with the viewer's history.
  *
  * The token holds only what a feed row shows, so a Task's own writes do not
- * move it. Each content write moves its Conversation's `last_activity_at`,
- * so the root's value covers the preview and participants. The row shows
- * only whether a reply is unread, so a scroll that moves the read position
- * does not move the token.
+ * move it. Every Event of a live Turn moves `last_activity_at`, but rows
+ * show it only as an age in whole minutes, so the token holds its minute.
+ * The rows are in feed order, so a move that reorders them moves the token.
+ * The newest Message of each role stands for the preview and participants.
+ * The row shows only whether a reply is unread, so a scroll that moves the
+ * read position does not move the token.
  * Threads and annotations show from the whole tree. Waiting roots outside
  * the page move the Review items token.
  */
@@ -286,7 +303,7 @@ export function conversationFeedVersionQuery(
         string_agg(concat_ws('/',
           ${feedTree.conversationId}, ${feedTree.title},
           ${feedTree.executionStatus}, ${feedTree.stoppedAt},
-          ${feedTree.lastActivityAt}
+          ${shownActivityMinute(feedTree.lastActivityAt)}
         ), ',' order by ${feedTree.conversationId}) filter (
           where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
         )
@@ -312,10 +329,12 @@ export function conversationFeedVersionQuery(
       version: sql<string>`md5(coalesce(string_agg(
         concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition},
           ${page.title}, ${page.channelName}, ${page.executionStatus},
-          ${page.stoppedAt}, ${page.lastActivityAt},
+          ${page.stoppedAt}, ${shownActivityMinute(page.lastActivityAt)},
+          (${latestMessageSeqQuery(db, "assistant", page.conversationId)}),
+          (${latestMessageSeqQuery(db, "user", page.conversationId)}),
           ${unreadReplySql(db, userId, page.conversationId, page.lastReadSeq)},
           (${tree}), (${annotations})),
-        ',' order by ${page.conversationId}
+        ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId}
       ), ''))`,
     })
     .from(page);

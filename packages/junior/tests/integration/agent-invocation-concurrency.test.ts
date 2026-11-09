@@ -202,6 +202,7 @@ describe("agent invocation identity and concurrency", () => {
         agents: [
           {
             conversation_id: first.childConversationId,
+            kind: "task",
             last_result: "completed",
             name: "researcher",
             relation: "child",
@@ -505,6 +506,7 @@ describe("agent invocation identity and concurrency", () => {
       });
       const successfulChild = {
         conversation_id: successful.childConversationId,
+        kind: "task",
         last_result: "completed",
         status: "idle",
         task: "successful sibling",
@@ -513,6 +515,7 @@ describe("agent invocation identity and concurrency", () => {
       const failingChild = {
         conversation_id: failing.childConversationId,
         error: "sibling failed",
+        kind: "task",
         last_result: "failed",
         status: "idle",
         task: "failing sibling",

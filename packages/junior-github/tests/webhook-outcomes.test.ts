@@ -2562,8 +2562,9 @@ describe("GitHub-owned pull request outcomes", () => {
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
         events: {
-          hasMatch: async (event) =>
-            Boolean(watch) && eventMatches(watch!.match, event.data),
+          hasMatch: async (events) =>
+            Boolean(watch) &&
+            events.some((event) => eventMatches(watch!.match, event.data)),
           neededMatchKeys: async () => Object.keys(watch?.match ?? {}),
           async publish(event) {
             published.push(event);

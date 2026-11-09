@@ -679,22 +679,32 @@ describe("memory plugin storage", () => {
     expect(withoutEither.tasks?.processSession).toBeUndefined();
   });
 
-  it("registers only read memory tools outside a public main Conversation", () => {
+  it("disables memory write tools outside a public main Conversation", () => {
     const plugin = memoryPlugin();
-    const toolNames = (source: PluginTaskContext["source"]) =>
-      Object.keys(
-        plugin.hooks?.tools?.({
-          db: {},
-          model: {},
-          source,
-          users: {},
-        } as any) ?? {},
-      ).sort();
+    const toolStates = (source: PluginTaskContext["source"]) =>
+      Object.fromEntries(
+        Object.entries(
+          plugin.hooks?.tools?.({
+            db: {},
+            model: {},
+            source,
+            users: {},
+          } as any) ?? {},
+        ).map(([name, tool]) => [name, tool.disabledReason ?? "enabled"]),
+      );
 
-    const readOnly = ["listMemories", "searchMemories"];
-    expect(toolNames({ kind: "agent_invocation" })).toEqual(readOnly);
+    // Every Source gets the same tools, so the cached tool list stays the same.
+    const disabled =
+      "Only a person's message in a public Conversation can write memory.";
+    const readOnly = {
+      archiveMemory: disabled,
+      createMemory: disabled,
+      listMemories: "enabled",
+      searchMemories: "enabled",
+    };
+    expect(toolStates({ kind: "agent_invocation" })).toEqual(readOnly);
     expect(
-      toolNames(
+      toolStates(
         createSlackSource({
           channelId: "D123",
           teamId: "T123",
@@ -702,23 +712,23 @@ describe("memory plugin storage", () => {
         }),
       ),
     ).toEqual(readOnly);
-    expect(toolNames(createWebSource("web:memory-private", "private"))).toEqual(
-      readOnly,
-    );
     expect(
-      toolNames(
+      toolStates(createWebSource("web:memory-private", "private")),
+    ).toEqual(readOnly);
+    expect(
+      toolStates(
         createSlackSource({
           channelId: "C123",
           teamId: "T123",
           visibility: "public",
         }),
       ),
-    ).toEqual([
-      "archiveMemory",
-      "createMemory",
-      "listMemories",
-      "searchMemories",
-    ]);
+    ).toEqual({
+      archiveMemory: "enabled",
+      createMemory: "enabled",
+      listMemories: "enabled",
+      searchMemories: "enabled",
+    });
   });
 
   it("parses canonical actor extraction into stored memory text", async () => {

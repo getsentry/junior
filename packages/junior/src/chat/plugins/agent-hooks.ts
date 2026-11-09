@@ -981,7 +981,7 @@ export function getPluginRoutes(options: {
   /** Shows a Review item that a plugin route changed. App setup supplies it. */
   showReviewItem?: ShowReviewItem;
   events: {
-    hasMatch?(event: Event): Promise<boolean>;
+    hasMatch?(events: Event[]): Promise<boolean>;
     neededMatchKeys?(input: {
       data?: EventData;
       eventTypes: string[];
@@ -1022,18 +1022,22 @@ export function getPluginRoutes(options: {
       },
       users: { readIdentity: readIdentityById },
       events: {
-        async hasMatch(event) {
+        async hasMatch(events) {
           if (!options.events.hasMatch) return false;
-          const parsed = eventInputSchema.parse(event);
-          requirePublishedEvent(plugin, parsed.eventType);
-          return await options.events.hasMatch({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
-            namespace: pluginName,
-          });
+          return await options.events.hasMatch(
+            events.map((event) => {
+              const parsed = eventInputSchema.parse(event);
+              requirePublishedEvent(plugin, parsed.eventType);
+              return {
+                ...parsed,
+                identifier: normalizeEventIdentifier(
+                  plugin.events,
+                  parsed.identifier,
+                ),
+                namespace: pluginName,
+              };
+            }),
+          );
         },
         async neededMatchKeys(input) {
           if (!options.events.neededMatchKeys) return [];

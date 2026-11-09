@@ -2,6 +2,8 @@ import { useRef, type ReactNode, type Ref, type RefObject } from "react";
 import {
   Archive,
   ArchiveRestore,
+  Bell,
+  BellOff,
   Info,
   Mail,
   MailOpen,
@@ -50,6 +52,13 @@ export type ConversationPinAction = {
   pinned: boolean;
 };
 
+export type ConversationSubscriptionAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+  subscribed: boolean;
+};
+
 export type ConversationReadAction = {
   disabled: boolean;
   error: boolean;
@@ -65,6 +74,7 @@ export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
   pin: ConversationPinAction;
   read: ConversationReadAction;
+  subscription: ConversationSubscriptionAction;
   conversationId: string;
   /** Present only when the viewer can move this conversation to Slack. */
   continueInSlack?: ConversationContinueInSlackAction;
@@ -160,6 +170,17 @@ export function ConversationHeaderActions(props: {
           <PinOff aria-hidden="true" size={16} strokeWidth={2} />
         ) : (
           <Pin aria-hidden="true" size={16} strokeWidth={2} />
+        )}
+      </MenuActionButton>
+      <MenuActionButton
+        disabled={props.subscription.disabled}
+        label={props.subscription.subscribed ? "Unsubscribe" : "Subscribe"}
+        onClick={props.subscription.onClick}
+      >
+        {props.subscription.subscribed ? (
+          <BellOff aria-hidden="true" size={16} strokeWidth={2} />
+        ) : (
+          <Bell aria-hidden="true" size={16} strokeWidth={2} />
         )}
       </MenuActionButton>
       <ArchiveConversationButton {...props.archive} />

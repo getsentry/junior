@@ -28,6 +28,7 @@ import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { ContextSummary } from "@/chat/agent/context-summary";
 import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import {
   calculateContextCompactionTargetTokens,
@@ -117,7 +118,10 @@ function discard(reason: DiscardReason): CompactContextResult {
  */
 export async function compactWithPreparedSummary(
   args: ActiveContextCompactionArgs,
-  summarize: (messages: PiMessage[], signal?: AbortSignal) => Promise<string>,
+  summarize: (
+    messages: PiMessage[],
+    signal?: AbortSignal,
+  ) => Promise<ContextSummary>,
 ): Promise<CompactContextResult> {
   const swapped = await swapPreparedCompaction(args);
   // After a conflict the active messages are stale. A blocking summary

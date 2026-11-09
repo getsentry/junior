@@ -78,7 +78,9 @@ describe("active-turn context compaction", () => {
   it("includes provider output in measured context usage", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const summarize = vi.fn(async () => "Continue from the summary.");
+    const summarize = vi.fn(async () => ({
+      summary: "Continue from the summary.",
+    }));
 
     const result = await compactActiveContextIfNeeded(
       {
@@ -213,7 +215,7 @@ describe("active-turn context compaction", () => {
         ],
         piMessages: activeMessages,
       },
-      async () => "No outstanding asks.",
+      async () => ({ summary: "No outstanding asks." }),
     );
 
     expect(result.compacted).toBe(true);

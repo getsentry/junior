@@ -377,9 +377,10 @@ export function transcriptMessageActorLabel(
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return getDashboardAgentName();
   if (kind === "user") {
-    // The conversation actor started the child agent but did not write its
-    // input, so do not fall back to that actor here.
-    if (message.agentInvocationId) return "Agent invocation";
+    // The parent agent wrote this input, and the Turn it starts reports back
+    // to the parent. The conversation actor started the child but did not
+    // write it, so do not fall back to that actor here.
+    if (message.agentInvocationId) return "Parent agent";
     // Show the person's name, not their email. A web send carries both, and
     // its durable Message carries only the name.
     const actor = transcriptMessageActor(conversation, message);

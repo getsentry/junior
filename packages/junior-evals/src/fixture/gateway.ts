@@ -3,18 +3,19 @@
  *
  * Every model request goes to the real AI Gateway. This observer only watches
  * agent requests (the ones that offer tools) and holds them while a test
- * reacts. It never changes a model request or its response, and it never
- * writes a model answer. A test can make the provider reject one agent
- * request with `rejectNextModelRequest()` or
- * `rejectNextModelRequestAsTooLong()`. Two requests are not model requests.
- * Image generation is a third-party image API, so the observer answers it
- * with a 1x1 PNG, or with the image of `mockGeneratedImage()`. `webSearch` is
- * a third-party search provider, so `web.ts` answers it with the results of
- * the test.
+ * reacts. It never changes a model request or its response, and it writes
+ * a model answer only for a forced Guardian decision (`guardian.ts`). A test
+ * can make the provider reject one agent request with
+ * `rejectNextModelRequest()` or `rejectNextModelRequestAsTooLong()`. Two
+ * requests are not model requests. Image generation is a third-party image
+ * API, so the observer answers it with a 1x1 PNG, or with the image of
+ * `mockGeneratedImage()`. `webSearch` is a third-party search provider, so
+ * `web.ts` answers it with the results of the test.
  */
 import { bypass, http, HttpResponse, passthrough } from "msw";
 import { onTestFinished } from "vitest";
 import { mswServer } from "@junior-tests/msw/server";
+import { answerGuardianReview, resetGuardianReviews } from "./guardian";
 import { answerWebSearch } from "./web";
 
 const GATEWAY_MESSAGES_URL = "https://ai-gateway.vercel.sh/v1/messages";
@@ -138,6 +139,7 @@ function toolRequests(body: string): Array<{ name: string; args: unknown }> {
 export function installGatewayObserver(): GatewayObserver {
   const counts: Record<string, number> = {};
   let progressHook: ((progress: GatewayProgress) => Promise<void>) | undefined;
+  resetGuardianReviews();
 
   mswServer.use(
     http.all("https://ai-gateway.vercel.sh/*", async ({ request }) => {
@@ -145,6 +147,8 @@ export function installGatewayObserver(): GatewayObserver {
       counts[endpoint] = (counts[endpoint] ?? 0) + 1;
       const searchResponse = await answerWebSearch(request);
       if (searchResponse) return searchResponse;
+      const guardianResponse = await answerGuardianReview(request);
+      if (guardianResponse) return guardianResponse;
       if (request.url === GATEWAY_IMAGE_MODEL_URL) {
         return HttpResponse.json({ images: [generatedImageBase64] });
       }

@@ -64,6 +64,7 @@ export async function createConversationForViewer(
         idempotencyKey: body.idempotencyKey,
         message: body.message,
         images,
+        ...(body.title ? { title: body.title } : undefined),
         ...(body.visibility ? { visibility: body.visibility } : undefined),
       },
       {

@@ -524,6 +524,15 @@ function reportSubagentLabel(
   };
 }
 
+// A child with no row, or a page counted before its kinds are read, shows as
+// a Task: only a Thread links to a page of its own.
+function childKind(
+  threadIds: ReadonlySet<string> | undefined,
+  conversationId: string,
+): "thread" | "task" {
+  return threadIds?.has(conversationId) ? "thread" : "task";
+}
+
 /**
  * Project canonical events into the ordered reporting boundary.
  *
@@ -532,6 +541,8 @@ function reportSubagentLabel(
  */
 export function projectConversationReportEventPage(args: {
   canExposePayload: boolean;
+  /** Child Conversations that subagent events name and that are Threads. */
+  threadIds?: ReadonlySet<string>;
   events: ConversationEvent[];
   /** `turn_started` of the Conversation's first Turn. */
   firstTurnStart?: ConversationEvent;
@@ -642,6 +653,7 @@ export function projectConversationReportEventPage(args: {
         startedSeq: event.seq,
         startedAt: new Date(event.createdAtMs).toISOString(),
         childConversationId: event.data.childConversationId,
+        childKind: childKind(args.threadIds, event.data.childConversationId),
         subagentKind: event.data.subagentKind,
         ...reportSubagentLabel(event.data, args.canExposePayload),
         status: "running",
@@ -657,6 +669,10 @@ export function projectConversationReportEventPage(args: {
           startedSeq: started.seq,
           startedAt: new Date(started.createdAtMs).toISOString(),
           childConversationId: started.data.childConversationId,
+          childKind: childKind(
+            args.threadIds,
+            started.data.childConversationId,
+          ),
           subagentKind: started.data.subagentKind,
           ...reportSubagentLabel(started.data, args.canExposePayload),
           ...(started.data.parentToolCallId

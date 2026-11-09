@@ -388,12 +388,7 @@ async function processConversationWorkInContext(
   }
   const pendingCount = initial ? countPendingConversationMessages(initial) : 0;
   setSpanAttributes({ "app.worker.pending_count": pendingCount });
-  if (
-    !initial ||
-    (pendingCount === 0 &&
-      initial.execution.status === "idle" &&
-      !initial.execution.lease)
-  ) {
+  if (!initial?.needsRun) {
     if (initial) {
       await clearConsumedConversationWake({
         conversationId,
