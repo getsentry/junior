@@ -34,12 +34,13 @@ describe("Threads", () => {
   });
 
   // In Slack, "thread" can also mean a Slack thread, which Junior cannot start.
+  // The work item is small so that the Thread finishes within the idle budget.
   test("when someone in Slack asks for a thread for one work item, start it as a Thread", async ({
     run,
   }) => {
     const conversation = await run(
       slackMention(
-        "can you create a thread to fix the off-by-one in the audit log pagination cursor and get a PR up?",
+        "can you create a thread to write a short runbook entry for rotating our webhook signing secret?",
       ),
     );
 
