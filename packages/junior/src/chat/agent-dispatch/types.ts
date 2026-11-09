@@ -60,6 +60,8 @@ export interface DispatchRecord {
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
   status: DispatchStatus;
+  /** Title of the dispatch Conversation, saved when it is created. */
+  title?: string;
   updatedAtMs: number;
 }
 

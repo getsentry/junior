@@ -494,7 +494,9 @@ export function myProviderPlugin() {
 
 Heartbeat dispatches are durable, signed, bounded, and scoped to the plugin
 that created them. Plugins can dispatch only to validated Slack destinations
-and receive projection records, not raw runtime state.
+and receive projection records, not raw runtime state. Pass `title` to name
+the dispatch Conversation. When you omit it, Junior generates one from
+`input`.
 
 ## Validate
 

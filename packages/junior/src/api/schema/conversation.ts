@@ -8,6 +8,7 @@ import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
+import { conversationTitleSchema } from "./conversation-title";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import {
   conversationTurnFailureCodeSchema,
@@ -153,6 +154,8 @@ export const createConversationMessageBodySchema = z
 
 export const createConversationBodySchema =
   createConversationMessageBodySchema.safeExtend({
+    /** Saved title. Title generation runs only when it is omitted. */
+    title: conversationTitleSchema.optional(),
     /** New roots default public. Private roots stay participant-only. */
     visibility: z.enum(["private", "public"]).optional(),
   });
