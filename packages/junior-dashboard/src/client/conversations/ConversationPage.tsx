@@ -45,7 +45,8 @@ import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
-import { useSavedDetailsOpen } from "./conversationSidebarLayout";
+import { readDetailsOpen, saveDetailsOpen } from "./conversationSidebarLayout";
+import { useDetailsPanel } from "../components/DetailsPanel";
 import {
   ConversationMemoryContext,
   memoryAnchorKey,
@@ -181,9 +182,15 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (reviewOpen) setDetailsChoice(true);
   }, [reviewOpen]);
-  const [savedDetailsOpen, saveDetailsOpen] = useSavedDetailsOpen();
-  const detailsOpen =
-    detailsChoice ?? (reviewOpen || (savedDetailsOpen ?? detailsDefaultOpen));
+  const panelFits = useDetailsPanel();
+  const [savedDetailsOpen] = useState(readDetailsOpen);
+  // A saved open choice applies only beside the transcript, so a narrow
+  // screen does not load into a bottom sheet.
+  const detailsDefault =
+    savedDetailsOpen === undefined
+      ? detailsDefaultOpen
+      : savedDetailsOpen && panelFits;
+  const detailsOpen = detailsChoice ?? (reviewOpen || detailsDefault);
   const closeDetails = useCallback(() => {
     setDetailsChoice(false);
     saveDetailsOpen(false);
@@ -196,7 +203,7 @@ export function ConversationPage(props: {
       },
       { replace: true },
     );
-  }, [saveDetailsOpen, setSearchParams]);
+  }, [setSearchParams]);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
   const [memoryPopover, setMemoryPopover] = useState<OpenMemoryPopover>();
   // A memory chosen in details waits here until its transcript row renders.
