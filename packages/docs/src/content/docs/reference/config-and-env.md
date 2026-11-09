@@ -22,6 +22,7 @@ related:
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                             |
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
+| `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `AI_MODEL`                                  | No          | Model for every agent Turn. Also the fallback for `AI_FAST_MODEL`. Defaults to `anthropic/claude-opus-5.5`.                                                                 |
@@ -316,6 +317,50 @@ const app = await createApp({
 ```
 
 The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
+
+## Prompt cache warming
+
+A model's prompt cache expires a fixed time after the last read. When a person
+replies after that time, the next turn writes the full history to the cache
+again. Junior keeps the cache of an idle Conversation warm when a warmup is
+likely to cost less than that write.
+
+- Junior warms only models whose cache has a fixed TTL that a read refreshes:
+  `anthropic/` and `alibaba/` models (5 minutes) and `openai/` models (30
+  minutes). The model's cache write must cost more than a cache read, and the
+  cached prefix must be at least 50K tokens. It does not warm models that use a thinking budget, because the
+  budget adds output tokens to each warmup.
+- When a turn ends, Junior stores the last model request in the `StateAdapter`.
+  Junior deletes it when the first model request of the next turn starts, when
+  warmups stop, or after 55 minutes.
+- A delayed queue message sends the same request with a one-token output limit
+  before the cache expires. Junior sends the next warmup only while the chance
+  that the person replies soon is high enough to pay for it. Junior compares
+  plans of one or more warmups in a row, so it also warms when the person
+  usually replies a few TTLs later. The needed chance is the same for each
+  warmup. Only replies in the first 55 minutes count, so for a 30-minute cache
+  the chance is a low estimate.
+- Junior learns that chance from the reply gaps of idle periods. A period with
+  no reply in 55 minutes counts as no reply. Junior keeps separate gaps for
+  Turns that a person started and Turns that an event or automation started,
+  and for the first, second to third, and later Turns of a Conversation. This
+  applies to the gaps of each Conversation too. Until Junior has recorded 20
+  gaps for a group, it sends no warmups for that group.
+- A warmup that misses the cache ends warming for its idle period and sends a
+  Sentry warning. When 10 of the last 20 warmups of a provider miss or fail,
+  Junior stops warming for that provider for 24 hours and sends a Sentry error.
+  A failure that the provider says to retry, such as an overload, stops only
+  its own idle period and does not count.
+- `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
+  requests and drops warmups that are already in the queue. The default is
+  `true`.
+- While warming is on, Junior sends model requests with the short cache
+  retention, so `PI_CACHE_RETENTION` does not change it. With
+  `JUNIOR_CACHE_WARMING_ENABLED=false`, Pi's retention applies again.
+
+Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
+`junior.cache_warmup`, and as `cache_warming.*` logs. Their cost is added to the
+cost of the Conversation.
 
 ## Install-wide config defaults
 

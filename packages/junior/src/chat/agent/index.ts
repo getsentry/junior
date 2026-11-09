@@ -52,7 +52,7 @@ import {
   sameActorIdentity,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
-import type { Actor } from "@/chat/actor";
+import { isUserActor, type Actor } from "@/chat/actor";
 import {
   actorLogContext,
   credentialUserSubjectId,
@@ -71,6 +71,7 @@ import {
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   isTurnInputCommitLostError,
@@ -999,6 +1000,12 @@ async function executeAgentRunInPrivacyContext(
     // Pi converts prepareNextTurn exceptions into error turns instead of
     // rejecting. Preserve Junior's yield so runAgentStep can restore it after
     // the Pi run settles without leaking Pi mechanics into the resume API.
+    // A Task inherits the person's actor, but only its parent agent sends it
+    // Turns. Keep its gaps out of the histograms of people.
+    const cacheWarming = createCacheWarmingRecorder(
+      conversationId,
+      isUserActor(actor) && conversationKind !== "task",
+    );
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
@@ -1006,7 +1013,7 @@ async function executeAgentRunInPrivacyContext(
       sessionId: conversationId,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : undefined),
+        base: cacheWarming.wrap(streamFn),
       }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
@@ -1190,13 +1197,21 @@ async function executeAgentRunInPrivacyContext(
           );
       }
       if (event.type === "message_end" && isAssistantMessage(event.message)) {
-        if (
-          event.message.stopReason === "error" ||
-          event.message.stopReason === "aborted"
-        ) {
-          return;
-        }
-        return deliverAssistantMessage(event.message);
+        const message = event.message;
+        const delivery =
+          message.stopReason === "error" || message.stopReason === "aborted"
+            ? undefined
+            : deliverAssistantMessage(message);
+        // Record after delivery, so the reply is not late. Record also when
+        // delivery fails: the model call wrote the cache and ended the idle
+        // period either way.
+        return Promise.resolve(delivery).then(
+          () => cacheWarming.record(message),
+          async (error: unknown) => {
+            await cacheWarming.record(message);
+            throw error;
+          },
+        );
       }
       return undefined;
     });
