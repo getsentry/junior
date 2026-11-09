@@ -81,8 +81,8 @@ uses their account for all Notion tools.
 To remove the account, click **Disconnect** on the Admin page, or run
 `junior service-account disconnect notion`. Then
 remove Junior's connection in the Notion account settings to revoke the grant.
-If Notion revokes the grant, Junior removes the account and falls back to
-per-user OAuth.
+If Notion revokes the grant, the Admin page shows the account as revoked, and
+Junior falls back to per-user OAuth until an admin reconnects it.
 
 ### Use only the service account
 

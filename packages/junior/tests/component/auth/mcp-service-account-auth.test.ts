@@ -14,10 +14,14 @@ import {
   putMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import {
+  disconnectServiceAccount,
+  getServiceAccountStatus,
+} from "@/chat/credentials/service-account";
+import {
   createMcpServiceAccountClientProvider,
-  deleteMcpServiceAccountCredentials,
   finishMcpServiceAccountSignIn,
-  getMcpServiceAccountCredentials,
+  getMcpServiceAccount,
+  type McpServiceAccountCredentials,
   startMcpServiceAccountSignIn,
 } from "@/chat/mcp/service-account";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -53,19 +57,32 @@ const onlyPlugin: PluginDefinition = {
   },
 };
 
-async function connectServiceAccount(): Promise<void> {
+/** Start a sign-in and return its approved provider callback. */
+async function approvedSignIn(): Promise<URLSearchParams> {
   const { authorizationUrl } = await startMcpServiceAccountSignIn({
     plugin,
     redirectUrl: "http://127.0.0.1:8765/oauth/callback",
   });
+  return new URLSearchParams({
+    code: SERVICE_ACCOUNT_MCP_CODE,
+    state: authorizationUrl.searchParams.get("state") ?? "",
+  });
+}
+
+async function connectServiceAccount(): Promise<void> {
   const result = await finishMcpServiceAccountSignIn({
-    callback: new URLSearchParams({
-      code: SERVICE_ACCOUNT_MCP_CODE,
-      state: authorizationUrl.searchParams.get("state") ?? "",
-    }),
+    callback: await approvedSignIn(),
     plugin,
   });
   expect(result.ok).toBe(true);
+}
+
+async function connectedAccount(): Promise<McpServiceAccountCredentials> {
+  const account = await getMcpServiceAccount(PROVIDER);
+  if (account?.status !== "connected") {
+    throw new Error("service account is not connected");
+  }
+  return account;
 }
 
 /** Actor OAuth with no stored tokens, so every call needs authorization. */
@@ -126,7 +143,7 @@ function tool(manager: McpToolManager, rawName: string) {
 describe("MCP service account auth", () => {
   beforeEach(async () => {
     await deleteMcpStoredOAuthCredentials(ACTOR_ID, PROVIDER);
-    await deleteMcpServiceAccountCredentials(PROVIDER);
+    await disconnectServiceAccount(plugin);
   });
 
   it("reads through the service account and sends other tools to the actor's own connection", async () => {
@@ -255,16 +272,17 @@ describe("MCP service account auth", () => {
     } finally {
       await outage.close();
     }
-    expect(
-      (await getMcpServiceAccountCredentials(PROVIDER))?.tokens.refresh_token,
-    ).toBe("refresh-1");
+    await expect(getMcpServiceAccount(PROVIDER)).resolves.toMatchObject({
+      status: "connected",
+      tokens: { refresh_token: "refresh-1" },
+    });
     server.setTokenEndpointDown(false);
 
     // A turn that read a refresh token that another turn already replaced
     // retries with the stored token instead of dropping the account.
     const stale = createMcpServiceAccountClientProvider(
       PROVIDER,
-      (await getMcpServiceAccountCredentials(PROVIDER))!,
+      await connectedAccount(),
     );
     await expect(stale.tokens()).resolves.toMatchObject({
       refresh_token: "refresh-1",
@@ -286,9 +304,10 @@ describe("MCP service account auth", () => {
     ).catch((error: unknown) => error);
     expect(staleRedirect).toBeInstanceOf(Error);
     expect(staleRedirect).not.toBeInstanceOf(McpAuthorizationRequiredError);
-    expect(
-      (await getMcpServiceAccountCredentials(PROVIDER))?.tokens.refresh_token,
-    ).toBe("refresh-2");
+    await expect(getMcpServiceAccount(PROVIDER)).resolves.toMatchObject({
+      status: "connected",
+      tokens: { refresh_token: "refresh-2" },
+    });
     await expect(stale.tokens()).resolves.toMatchObject({
       refresh_token: "refresh-2",
     });
@@ -309,9 +328,17 @@ describe("MCP service account auth", () => {
       expect.any(McpAuthorizationRequiredError),
       undefined,
     );
-    await expect(
-      getMcpServiceAccountCredentials(PROVIDER),
-    ).resolves.toBeUndefined();
+    // Admins see that the provider revoked the account, not that nobody
+    // connected it. A Disconnect clears the revocation.
+    await expect(getServiceAccountStatus(plugin)).resolves.toMatchObject({
+      status: "revoked",
+      connected: false,
+      revokedAt: expect.any(String),
+    });
+    await disconnectServiceAccount(plugin);
+    await expect(getServiceAccountStatus(plugin)).resolves.toMatchObject({
+      status: "disconnected",
+    });
   });
 
   it("reports the missing account when a service-account-only grant is revoked", async () => {
@@ -328,8 +355,42 @@ describe("MCP service account auth", () => {
       await manager.close();
     }
     expect(onAuthorizationRequired).not.toHaveBeenCalled();
-    await expect(
-      getMcpServiceAccountCredentials(PROVIDER),
-    ).resolves.toBeUndefined();
+    await expect(getMcpServiceAccount(PROVIDER)).resolves.toMatchObject({
+      status: "revoked",
+    });
+  });
+
+  it("keeps a Disconnect and a single-use new sign-in when an older turn saves tokens late", async () => {
+    useServiceAccountMcpServer();
+    const lateTokens = {
+      access_token: "late-access",
+      refresh_token: "late-refresh",
+      token_type: "Bearer",
+    };
+    await connectServiceAccount();
+    const late = createMcpServiceAccountClientProvider(
+      PROVIDER,
+      await connectedAccount(),
+    );
+
+    await disconnectServiceAccount(plugin);
+    await expect(late.saveTokens(lateTokens)).rejects.toThrow(
+      "changed during this request",
+    );
+    await expect(getMcpServiceAccount(PROVIDER)).resolves.toBeUndefined();
+
+    // A repeated callback finishes the sign-in only once.
+    const callback = await approvedSignIn();
+    const finished = await Promise.all([
+      finishMcpServiceAccountSignIn({ callback, plugin }),
+      finishMcpServiceAccountSignIn({ callback, plugin }),
+    ]);
+    expect(finished.filter((result) => result.ok)).toHaveLength(1);
+    const current = await connectedAccount();
+    await expect(late.saveTokens(lateTokens)).rejects.toThrow(
+      "changed during this request",
+    );
+    await expect(late.tokens()).resolves.toBeUndefined();
+    await expect(getMcpServiceAccount(PROVIDER)).resolves.toEqual(current);
   });
 });

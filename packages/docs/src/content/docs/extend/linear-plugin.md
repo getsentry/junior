@@ -65,7 +65,8 @@ connect, Junior uses their account for all Linear tools.
 
 To remove the account, click **Disconnect** on the Admin page, or run
 `junior service-account disconnect linear`. If Linear revokes the grant,
-Junior removes the account and falls back to per-user OAuth.
+the Admin page shows the account as revoked, and Junior falls back to
+per-user OAuth until an admin reconnects it.
 
 ### Use only the service account
 

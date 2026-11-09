@@ -153,7 +153,8 @@ accounts:
 The declaration has no effect until a Junior admin connects the account. In
 the dashboard, open **Admin**, find the plugin under **Service accounts**, and
 click **Connect**. Sign in as the account that Junior uses, not as yourself.
-The same card shows who connected the account and lets an admin disconnect it.
+The same card shows who connected the account, shows when the provider
+revoked it, and lets an admin reconnect or disconnect it.
 
 If the dashboard is not available, an operator can use the CLI on a machine
 with a browser and the deployment `REDIS_URL`:
