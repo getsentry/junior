@@ -182,7 +182,12 @@ function ConversationCardSection(props: {
   return (
     <section aria-labelledby={`conversation-section-${props.section.key}`}>
       <ConversationSectionHeading
-        className={cn("px-1", !props.collapsed && "mb-2")}
+        // The label stays at the top while its cards scroll under it, like a
+        // native grouped list. The fill covers the cards that pass below.
+        className={cn(
+          "sticky top-0 z-10 -mx-1 bg-dashboard-bg px-2 py-1.5",
+          !props.collapsed && "mb-0.5",
+        )}
         collapsed={props.collapsed}
         count={props.section.conversations.length}
         id={`conversation-section-${props.section.key}`}
@@ -255,7 +260,7 @@ function ConversationCard(props: ConversationCardProps) {
       {...prefetch}
       {...drag?.listeners}
       className={cn(
-        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft sm:px-4",
+        "group relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-3 py-2.5 transition-[background-color,border-color,scale] duration-100 ease-out hover:border-dashboard-border hover:bg-dashboard-fill-soft has-[>a:active]:scale-[0.99] has-[>a:active]:bg-dashboard-fill-soft motion-reduce:has-[>a:active]:scale-100 sm:px-4",
         drag?.dragging && "opacity-40",
       )}
       onKeyDown={drag?.onKeyDown}

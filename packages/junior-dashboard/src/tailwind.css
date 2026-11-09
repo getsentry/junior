@@ -305,6 +305,16 @@
 
   html {
     text-rendering: geometricPrecision;
+    /* Controls give their own press feedback; the browser tap flash would
+       paint over it. */
+    -webkit-tap-highlight-color: transparent;
+    /* No font inflation in landscape on phones. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Controls never double-tap zoom, so taps fire without the zoom wait. */
+  :is(a, button, [role="button"]) {
+    touch-action: manipulation;
   }
 
   /*
