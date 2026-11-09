@@ -13,7 +13,12 @@ import { notificationSettingsSchema } from "@/api/schema";
 import { createSlackActor } from "@/chat/actor";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -77,8 +82,15 @@ async function viewerApi() {
   };
 }
 
-/** Store one completed dashboard Turn and run the tasks it schedules. */
-async function completeDashboardTurn(reply: string): Promise<string[]> {
+/**
+ * Store one completed dashboard Turn and run the tasks it schedules. `reply`
+ * is the raw model text. `stored` is the Message that the Turn saved; a
+ * no-reply Turn saves none.
+ */
+async function completeDashboardTurn(
+  reply: string,
+  stored: { text: string; quiet?: true } | null = { text: reply },
+): Promise<string[]> {
   const conversationId = `local:web:${randomUUID()}`;
   const source = createWebSource(conversationId, "private");
   const destination = { platform: "local" as const, conversationId };
@@ -116,6 +128,20 @@ async function completeDashboardTurn(reply: string): Promise<string[]> {
     surface: "internal",
     turnId: "turn-1",
   });
+  if (stored) {
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: Date.now(),
+        data: {
+          type: "message",
+          messageId: "turn-1:assistant:1",
+          role: "assistant",
+          text: stored.text,
+          ...(stored.quiet ? { meta: { quiet: true } } : undefined),
+        },
+      },
+    ]);
+  }
   const scheduled: string[] = [];
   await scheduleSessionCompletedPluginTasks(
     { conversationId, sessionId: "turn-1" },
@@ -207,6 +233,17 @@ describe("reply notification task", () => {
     expect(pushes[0]!.headers.get("authorization")).toMatch(/^vapid /);
     const after = await api("GET", "/api/notifications");
     expect(after?.deviceCount).toBe(1);
+
+    // A Turn with no reply, or with a Quiet message, notifies nobody.
+    await completeDashboardTurn("[[NO_REPLY]]", null);
+    await completeDashboardTurn(
+      "Fixed the lint failure and pushed. [[QUIET]]",
+      {
+        text: "Fixed the lint failure and pushed.",
+        quiet: true,
+      },
+    );
+    expect(pushes).toHaveLength(1);
   });
 
   it("does not push outside the user's working hours", async () => {
