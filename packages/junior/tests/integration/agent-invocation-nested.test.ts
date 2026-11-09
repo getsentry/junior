@@ -91,12 +91,18 @@ describe("nested agent invocations", () => {
         parentConversationId: helper.childConversationId,
       });
 
-      // A child that finishes while its own child runs does not report yet.
-      for (const invocation of [child, helper]) {
-        await expect(
-          complete(invocation.invocationId, "Started a helper."),
-        ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
-      }
+      // A child that finishes while its own child runs does not report yet,
+      // even when it failed.
+      await expect(
+        complete(child.invocationId, "Started a helper."),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      await expect(
+        completeAgentInvocation({
+          errorMessage: "Helper run failed.",
+          invocationId: helper.invocationId,
+          status: "failed",
+        }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
       const grandResult = await complete(
         grandHelper.invocationId,
         "Grand helper fact: 42.",
@@ -105,7 +111,7 @@ describe("nested agent invocations", () => {
       await enqueueAgentInvocationResult(grandResult, { queue, state });
 
       // searchAgents shows the state of open work. A `replaced` child still
-      // has work.
+      // has work, so it shows no result and no error.
       const listedChild = (childConversationId: string) => ({
         conversation_id: childConversationId,
         kind: "task",

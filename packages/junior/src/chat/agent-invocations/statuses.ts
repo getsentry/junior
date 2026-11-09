@@ -31,3 +31,15 @@ export const AGENT_INVOCATION_PARENT_MAILBOX_STATUSES = [
   "skipped",
   "steered",
 ] as const;
+
+export type AgentInvocationParentMailboxStatus =
+  (typeof AGENT_INVOCATION_PARENT_MAILBOX_STATUSES)[number];
+
+/**
+ * Parent mailbox statuses of a result that goes, or went, to the parent. Only
+ * these results count as a result of the child agent.
+ */
+export const SENT_PARENT_MAILBOX_STATUSES = [
+  "pending",
+  "appended",
+] as const satisfies readonly AgentInvocationParentMailboxStatus[];

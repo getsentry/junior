@@ -12,6 +12,7 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { getAgentInvocationIdForResult } from "./ids";
+import { SENT_PARENT_MAILBOX_STATUSES } from "./statuses";
 import {
   invocationFromRow,
   isTerminalAgentInvocation,
@@ -23,6 +24,7 @@ import {
   type AgentInvocationStatus,
   type ChildAgent,
   type ChildAgentResult,
+  type TerminalAgentInvocation,
 } from "./types";
 
 function isChildAgentResult(
@@ -40,6 +42,36 @@ export function isChildAgentSessionStopped(
   stoppedAtMs: number | undefined,
 ): boolean {
   return stoppedAtMs !== undefined && stoppedAtMs >= latest.createdAtMs;
+}
+
+/** Return whether a terminal result goes, or went, to the parent. */
+function isSentResult(invocation: TerminalAgentInvocation): boolean {
+  return (SENT_PARENT_MAILBOX_STATUSES as readonly string[]).includes(
+    invocation.parentMailboxStatus,
+  );
+}
+
+/**
+ * Return the status of a child whose current agent invocation finished. The
+ * switch names every parent mailbox status, so a new one must choose here
+ * what models and the dashboard see.
+ */
+function terminalChildAgentStatus(
+  terminal: TerminalAgentInvocation,
+): AgentInvocationStatus {
+  switch (terminal.parentMailboxStatus) {
+    // Open child work starts a later agent invocation on this child, so the
+    // child has not finished.
+    case "replaced":
+      return "pending";
+    // Only a stop skips a result.
+    case "skipped":
+      return "stopped";
+    case "pending":
+    case "appended":
+    case "steered":
+      return terminal.status;
+  }
 }
 
 /** Stored facts of a child Conversation that its listing shows. */
@@ -82,39 +114,35 @@ function childAgentFromInvocations(
     tasks[0] ??
     invocations[invocations.length - 1]!;
   const terminal = isTerminalAgentInvocation(current) ? current : undefined;
-  // A `replaced`, `skipped`, or `steered` result is not reported, so it does
-  // not count as a result. A tree stop marks `replaced` results `skipped`.
+  // A result that is not sent to the parent is not a result.
   const lastResult = invocations
     .filter(isTerminalAgentInvocation)
-    .filter(
-      (invocation) =>
-        invocation.parentMailboxStatus !== "replaced" &&
-        invocation.parentMailboxStatus !== "skipped" &&
-        invocation.parentMailboxStatus !== "steered",
-    )
+    .filter(isSentResult)
     .map((invocation) => invocation.status)
     .find(isChildAgentResult);
+  const status = isChildAgentSessionStopped(latest, stoppedAtMs)
+    ? "stopped"
+    : terminal
+      ? terminalChildAgentStatus(terminal)
+      : current.status;
+  // The error explains only the status that the child shows. A `replaced`
+  // failure is not the child's state: its later work reports instead.
+  const errorMessage =
+    terminal &&
+    terminal.status !== "completed" &&
+    (status === "blocked" || status === "failed" || status === "stopped")
+      ? terminal.errorMessage
+      : undefined;
   return {
     ...(latest.agentName ? { agentName: latest.agentName } : undefined),
     ...(facts.archivedAtMs !== undefined
       ? { archivedAtMs: facts.archivedAtMs }
       : undefined),
     childConversationId: latest.childConversationId,
-    ...(terminal && terminal.status !== "completed"
-      ? { errorMessage: terminal.errorMessage }
-      : undefined),
+    ...(errorMessage ? { errorMessage } : undefined),
     kind: facts.kind,
     ...(lastResult ? { lastResult } : undefined),
-    // A `replaced` result means open child work starts a later agent
-    // invocation on this child, so the child has not finished. Only a stop
-    // skips a result.
-    status: isChildAgentSessionStopped(latest, stoppedAtMs)
-      ? "stopped"
-      : terminal?.parentMailboxStatus === "replaced"
-        ? "pending"
-        : terminal?.parentMailboxStatus === "skipped"
-          ? "stopped"
-          : current.status,
+    status,
     task: task.input,
     ...(task.title ? { title: task.title } : undefined),
     updatedAtMs: Math.max(

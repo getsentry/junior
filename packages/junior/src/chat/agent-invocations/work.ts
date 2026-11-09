@@ -24,7 +24,6 @@ import {
   AgentRunError,
   executeTurn,
   finishTurn,
-  type SavedTurnResult,
 } from "@/chat/runtime/turn-execution";
 import {
   getPersistedSandboxState,
@@ -64,6 +63,7 @@ import {
   agentTypeStartsWithParentHistory,
 } from "./agent-types";
 import { loadForkHistory } from "./fork-history";
+import { agentInvocationTurnEnd, invocationEndFromTurn } from "./turn-end";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
@@ -390,34 +390,6 @@ function createAgentMessageSteeringDrain(
   };
 }
 
-/**
- * How a terminal agent invocation ends its child Turn. The live save and the
- * recovery paths both use this, so a status cannot end the Turn two ways.
- */
-function agentInvocationTurnEnd(
-  terminal: TerminalAgentInvocation,
-): SavedTurnResult {
-  const finishedAtMs = terminal.terminalAtMs;
-  switch (terminal.status) {
-    case "completed":
-      return {
-        finishedAtMs,
-        outcome: terminal.result.trim() ? "success" : "no_reply",
-      };
-    case "stopped":
-      return { finishedAtMs, outcome: "cancelled" };
-    // A blocked child reported what it needs. That is a result, not a failure.
-    case "blocked":
-      return { finishedAtMs, outcome: "blocked" };
-    case "failed":
-      return {
-        failureCode: "model_execution_failed",
-        finishedAtMs,
-        outcome: "failed",
-      };
-  }
-}
-
 /** Project the terminal invocation into the idempotent turn lifecycle. */
 async function persistTerminalLifecycle(
   terminal: TerminalAgentInvocation,
@@ -500,20 +472,12 @@ async function projectTerminalTurn(
   return await completeAgentInvocation({
     ...completeOptions,
     invocationId: invocation.invocationId,
-    ...(failed
-      ? {
-          errorMessage: turn.errorMessage ?? "Agent invocation failed",
-          status: "failed" as const,
-        }
-      : blocked
-        ? {
-            errorMessage: blocked.missing,
-            status: "blocked" as const,
-          }
-        : {
-            result,
-            status: "completed" as const,
-          }),
+    ...invocationEndFromTurn({
+      blocked,
+      errorMessage: turn.errorMessage,
+      failed,
+      result,
+    }),
   });
 }
 
@@ -658,21 +622,12 @@ async function saveAgentInvocationResult(args: {
   }
   const terminal = await completeAgentInvocation({
     invocationId: args.invocation.invocationId,
-    ...(failed
-      ? {
-          errorMessage:
-            args.result.diagnostics.errorMessage ?? "Agent invocation failed",
-          status: "failed" as const,
-        }
-      : args.result.blocked
-        ? {
-            errorMessage: args.result.blocked.missing,
-            status: "blocked" as const,
-          }
-        : {
-            result: args.result.text,
-            status: "completed" as const,
-          }),
+    ...invocationEndFromTurn({
+      blocked: args.result.blocked,
+      errorMessage: args.result.diagnostics.errorMessage,
+      failed,
+      result: args.result.text,
+    }),
   });
   if (!terminal || !isTerminalAgentInvocation(terminal)) {
     throw new Error(
