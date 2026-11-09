@@ -145,8 +145,19 @@ async function say(someone: Person, mentionsJunior: boolean) {
 }
 
 /** Given Ana and Ben both mentioned Junior in one Slack thread. */
-async function sharedThread() {
+async function sharedThread(starter?: string) {
+  // The starter's Slack actor has no email, so no User exists yet and they
+  // get no participant row. `person(starter)` links a User later.
   await getConversationStore().recordActivity({
+    ...(starter
+      ? {
+          actor: {
+            platform: "slack" as const,
+            slackUserId: `U-${starter}`,
+            teamId: "T1",
+          },
+        }
+      : undefined),
     conversationId: CONVERSATION_ID,
     destination: { platform: "local", conversationId: CONVERSATION_ID },
     nowMs,
@@ -214,6 +225,17 @@ describe("conversation subscription", () => {
     await ben.setSubscribed(false);
     expect((await ana.open()).archivedAt).toEqual(expect.any(String));
     expect(await ana.feed("?status=archived")).toEqual([CONVERSATION_ID]);
+  });
+
+  it("the person who started it counts as subscribed before they post", async () => {
+    const { ana, ben } = await sharedThread("cleo");
+    const cleo = await person("cleo");
+    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
+
+    await ana.setSubscribed(false);
+    await ben.setSubscribed(false);
+    expect((await cleo.open()).archivedAt).toBeFalsy();
+    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
   });
 
   it("the agent tool changes only the person who started the Turn", async () => {

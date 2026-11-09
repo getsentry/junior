@@ -3,6 +3,7 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -40,7 +41,20 @@ export async function pinConversation(
   if (!access.get(conversationId)?.isParticipant) {
     throwApiError(404, "Conversation not found.");
   }
-  const db = getSqlExecutor().db();
+  const executor = getSqlExecutor();
+  return await executor.transaction(() =>
+    setPin(executor.db(), viewer, conversationId, body.pinned),
+  );
+}
+
+async function setPin(
+  db: JuniorDatabase,
+  viewer: User,
+  conversationId: string,
+  pinned: boolean,
+): Promise<PinConversationResponse> {
+  // The lock orders a pin with a last-subscriber unsubscribe, so the pin
+  // sees and restores that archive (contract: `subscription.ts`).
   const [conversation] = await db
     .select({
       archivedAt: juniorConversations.archivedAt,
@@ -51,7 +65,8 @@ export async function pinConversation(
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
-    .limit(1);
+    .limit(1)
+    .for("update");
   if (!conversation) throwApiError(404, "Conversation not found.");
   // The viewer passed the access check above, so the root id is safe to name.
   // MCP output has no root field, and the caller needs it to act.
@@ -63,7 +78,7 @@ export async function pinConversation(
   }
   // Pins are viewer marks, which the detail ETag reads on each request, so
   // they need no detail version bump.
-  if (!body.pinned) {
+  if (!pinned) {
     // oxlint-disable-next-line junior/touch-conversation-detail -- viewer marks are read on each request.
     await db
       .update(juniorConversationParticipants)

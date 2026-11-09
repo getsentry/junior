@@ -1,15 +1,13 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, notExists, or, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import {
-  conversationDescendants,
-  readConversationTrees,
-  setArchivedAt,
-} from "@/chat/conversations/sql/conversation-tree";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationParticipants,
   juniorConversations,
+  juniorIdentities,
 } from "@/db/schema";
 import { throwApiError } from "../http";
 import type {
@@ -38,9 +36,10 @@ import { readConversationAccessFromSql } from "./access";
  * - Given an unsubscribed person, when they address Junior (a Slack mention,
  *   a Slack DM, or a dashboard Message), then they are subscribed again.
  *   Pin and Subscribe also subscribe them again.
- * - Given the last subscribed participant, when they unsubscribe, then the
- *   root and its unarchived descendants are archived for everyone. No feed
- *   shows it anymore.
+ * - Given the last subscriber, when they unsubscribe, then the root and its
+ *   unarchived descendants are archived for everyone. No feed shows it
+ *   anymore. The person who started the Conversation is a subscriber before
+ *   they post in it.
  * - Given an archived root, when a person restores it (any Message that
  *   restores an archive, or Unarchive), then that person is subscribed
  *   again. A restored root never sits in no feed.
@@ -56,6 +55,9 @@ import { readConversationAccessFromSql } from "./access";
  *   its root.
  * - Unsubscribe clears the person's pin. Subscribe does not restore an
  *   archive.
+ * - A last-subscriber archive and a concurrent mention or pin are ordered by
+ *   row locks, so the mention or pin either keeps the archive from happening
+ *   or restores it.
  * - An unsubscribed person does not keep the root from auto-archive, and
  *   their own auto-archive run skips it.
  * - Code: the active feed filter (`conversationIsNotUnsubscribedRoot`), Turn
@@ -106,17 +108,31 @@ export async function updateConversationSubscription(
   );
   return await executor.transaction(async () => {
     const db = executor.db();
-    // The lock orders concurrent unsubscribes, so the last one sees that no
-    // subscriber is left.
-    const [root] = await db
+    // Lock the tree, children before the root. A Turn in a child locks its
+    // own row first and the root only to restore it, so this order cannot
+    // deadlock with it. A concurrent unsubscribe, mention, or pin either
+    // commits first, and the subscriber check below sees it, or it waits,
+    // then sees the archive and restores it.
+    const tree = await db
       .select({
         archivedAt: juniorConversations.archivedAt,
+        conversationId: juniorConversations.conversationId,
         lastActivityAt: juniorConversations.lastActivityAt,
       })
       .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, rootConversationId))
-      .limit(1)
+      .where(
+        or(
+          eq(juniorConversations.conversationId, rootConversationId),
+          eq(juniorConversations.rootConversationId, rootConversationId),
+        ),
+      )
+      .orderBy(
+        sql`${juniorConversations.conversationId} = ${rootConversationId}`,
+      )
       .for("update");
+    const root = tree.find(
+      (node) => node.conversationId === rootConversationId,
+    );
     if (!root) return undefined;
     const unsubscribedAt = subscribed ? null : new Date();
     // The root actor may not have a participant row yet. The detail ETag
@@ -145,33 +161,74 @@ export async function updateConversationSubscription(
         subscribed,
       };
     }
-    const [subscriber] = await db
-      .select({ userId: juniorConversationParticipants.userId })
-      .from(juniorConversationParticipants)
-      .where(
-        and(
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            rootConversationId,
-          ),
-          isNull(juniorConversationParticipants.unsubscribedAt),
-        ),
-      )
-      .limit(1);
-    if (subscriber) return { archivedAt: null, subscribed: false };
-    const tree = await readConversationTrees(db, [rootConversationId]);
+    if (await hasSubscriber(db, rootConversationId)) {
+      return { archivedAt: null, subscribed: false };
+    }
     const archivedAt = new Date();
     // Descendants that are already archived keep their own time.
     await setArchivedAt(
       db,
-      [
-        rootConversationId,
-        ...conversationDescendants(tree, rootConversationId)
-          .filter((node) => !node.archivedAt)
-          .map((node) => node.conversationId),
-      ],
+      tree
+        .filter((node) => !node.archivedAt)
+        .map((node) => node.conversationId),
       archivedAt,
     );
     return { archivedAt: archivedAt.toISOString(), subscribed: false };
   });
+}
+
+/**
+ * True when someone still has the root in their feed: a participant who did
+ * not unsubscribe, or the root actor before they have a participant row.
+ */
+async function hasSubscriber(
+  db: JuniorDatabase,
+  rootConversationId: string,
+): Promise<boolean> {
+  const [subscriber] = await db
+    .select({ userId: juniorConversationParticipants.userId })
+    .from(juniorConversationParticipants)
+    .where(
+      and(
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          rootConversationId,
+        ),
+        isNull(juniorConversationParticipants.unsubscribedAt),
+      ),
+    )
+    .limit(1);
+  if (subscriber) return true;
+  const [rowlessActor] = await db
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorConversations)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+    )
+    .where(
+      and(
+        eq(juniorConversations.conversationId, rootConversationId),
+        isNotNull(juniorIdentities.userId),
+        notExists(
+          db
+            .select({ userId: juniorConversationParticipants.userId })
+            .from(juniorConversationParticipants)
+            .where(
+              and(
+                eq(
+                  juniorConversationParticipants.rootConversationId,
+                  rootConversationId,
+                ),
+                eq(
+                  juniorConversationParticipants.userId,
+                  juniorIdentities.userId,
+                ),
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(1);
+  return Boolean(rowlessActor);
 }
