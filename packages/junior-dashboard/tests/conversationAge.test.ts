@@ -11,7 +11,7 @@ describe("conversation age", () => {
     vi.unstubAllEnvs();
   });
 
-  it("formats compact ages for dense conversation rows", () => {
+  it("formats compact ages and activity days for conversation rows", () => {
     vi.stubEnv("TZ", "UTC");
     const ago = (ms: number) => new Date(NOW_MS - ms).toISOString();
     expect(formatCompactAge(ago(30_000), NOW_MS)).toBe("now");
@@ -20,9 +20,7 @@ describe("conversation age", () => {
     expect(formatCompactAge(ago(2 * 86_400_000), NOW_MS)).toBe("2d");
     expect(formatCompactAge(ago(15 * 86_400_000), NOW_MS)).toBe("2w");
     expect(formatCompactAge("2026-06-20T12:00:00.000Z", NOW_MS)).toBe("Jun 20");
-  });
 
-  it("formats the activity day for conversation cards", () => {
     const now = Date.parse("2026-11-05T18:00:00.000Z");
     const format = (value: string) => formatActivityDay(value, now, "UTC");
     expect(format("2026-11-05T09:05:00.000Z")).toBe("9:05 AM");
