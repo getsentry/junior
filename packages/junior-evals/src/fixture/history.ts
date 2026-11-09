@@ -21,6 +21,7 @@ import { projectConversationMessages } from "@/chat/conversations/message-projec
 import {
   commitAcceptedReply,
   commitMessages,
+  recordToolExecutionStarted,
 } from "@/chat/conversations/projection";
 import {
   contextProvenance,
@@ -586,13 +587,19 @@ export async function loadHistory(args: {
     if (turn.replies.length === 0) {
       // Junior answered an input that addressed it with `noReply`.
       if (message.conversationMessage.meta?.explicitMention) {
-        for (const toolMessage of toolCallPiMessages(
+        const [request, output] = toolCallPiMessages(
           { name: NO_REPLY_TOOL_NAME, arguments: {}, result: {} },
           tick(),
-        )) {
-          agentHistory.push(toolMessage);
-          agentProvenance.push(contextProvenance);
-        }
+        );
+        // A real Turn records the tool start before it saves the call.
+        await recordToolExecutionStarted({
+          conversationId,
+          createdAtMs: request.timestamp,
+          toolCallId: output.toolCallId,
+          toolName: NO_REPLY_TOOL_NAME,
+        });
+        agentHistory.push(request, output);
+        agentProvenance.push(contextProvenance, contextProvenance);
         await commitMessages({
           conversationId,
           messages: agentHistory,
