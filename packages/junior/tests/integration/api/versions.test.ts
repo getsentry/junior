@@ -3,7 +3,11 @@ import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { CONVERSATION_VERSION_HEADER, versionsSchema } from "@/api/schema";
+import {
+  CONVERSATION_VERSION_HEADER,
+  type Versions,
+  versionsSchema,
+} from "@/api/schema";
 import {
   closeDb,
   getConversationEventStore,
@@ -74,6 +78,16 @@ function changed(
 ) {
   return Object.keys({ ...before, ...after })
     .filter((key) => before[key] !== after[key])
+    .sort();
+}
+
+/** Name the feed-row inputs whose part of the feed token differs. */
+function feedMoved(before: Versions, after: Versions) {
+  const parts = new Set(before.conversations.split(" "));
+  return after.conversations
+    .split(" ")
+    .filter((part) => !parts.has(part))
+    .map((part) => part.split(":")[0] ?? part)
     .sort();
 }
 
@@ -163,6 +177,7 @@ describe("versions API", () => {
       "conversation",
       "conversations",
     ]);
+    expect(feedMoved(withInput, withPin)).toEqual(["pin"]);
     expect(await detailVersion()).toBe(withPin.conversation);
 
     const item = await insertReviewItem(getDb(), {
@@ -262,6 +277,7 @@ describe("versions API", () => {
       "conversation",
       "conversations",
     ]);
+    expect(feedMoved(withRootTool, nextMinute)).toEqual(["activity"]);
 
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
@@ -312,6 +328,8 @@ describe("versions API", () => {
     expect(await reportRead(reply!.seq!)).toMatchObject({
       unreadReply: false,
     });
-    expect(changed(scrolled, await read())).toEqual(["conversations"]);
+    const cleared = await read();
+    expect(changed(scrolled, cleared)).toEqual(["conversations"]);
+    expect(feedMoved(scrolled, cleared)).toEqual(["unread"]);
   });
 });

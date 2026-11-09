@@ -753,6 +753,11 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   `Refresh changed reads`. `app.dashboard.versions.moved` lists the tokens
   that moved, such as `conversations,reviewItems`. A poll that moves none
   adds no span, so compare the count with the `/api/versions` polls.
+- When `conversations` moves, `app.dashboard.versions.feed_moved` lists the
+  feed-row inputs that moved it: `order`, `pin`, `title`, `status`,
+  `activity` (the minute of last activity), `messages` (the newest Message
+  of each role), `unread`, `threads`, and `annotations`. A Conversation that
+  joins or leaves the first page moves `order` and the inputs of its row.
 - `http.server` spans have the route pattern of the app that served the
   request, also when the core app passes the request to the dashboard or a
   plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
@@ -778,6 +783,14 @@ Versions polls that refresh a read, by the tokens that moved.
 ```text
 dataset=spans query='span.name:"Refresh changed reads"'
 fields=app.dashboard.versions.moved,count()
+sort=-count()
+```
+
+Feed-row inputs that moved the feed token.
+
+```text
+dataset=spans query='span.name:"Refresh changed reads" has:app.dashboard.versions.feed_moved'
+fields=app.dashboard.versions.feed_moved,count()
 sort=-count()
 ```
 
