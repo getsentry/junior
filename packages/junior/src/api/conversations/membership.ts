@@ -4,7 +4,7 @@ import {
   exists,
   inArray,
   isNotNull,
-  notInArray,
+  not,
   type SQL,
 } from "drizzle-orm";
 import { getDb } from "@/chat/db";
@@ -92,26 +92,17 @@ export function conversationIsMemberRoot(member: ConversationMember): SQL {
 export function conversationIsNotUnsubscribedRoot(
   member: ConversationMember,
 ): SQL {
-  const rows = getDb()
-    .select({
-      conversationId: juniorConversationParticipants.rootConversationId,
-    })
-    .from(juniorConversationParticipants);
-  const left = isNotNull(juniorConversationParticipants.unsubscribedAt);
-  const unsubscribedRoots =
-    "userId" in member
-      ? rows.where(
-          and(eq(juniorConversationParticipants.userId, member.userId), left),
-        )
-      : rows
-          .innerJoin(
-            juniorUsers,
-            eq(juniorUsers.id, juniorConversationParticipants.userId),
-          )
-          .where(
-            and(eq(juniorUsers.primaryEmailNormalized, member.email), left),
-          );
-  return notInArray(juniorConversations.conversationId, unsubscribedRoots);
+  // An anti-join keeps the feed plan driven by the person's member roots, so
+  // Postgres does not scan every root. The partial `unsubscribed` index
+  // holds only unsubscribed rows, so the anti-join stays cheap.
+  return not(
+    exists(
+      memberParticipantRow(
+        member,
+        isNotNull(juniorConversationParticipants.unsubscribedAt),
+      ),
+    ),
+  );
 }
 
 /** One person's pin marks on a conversation root. */

@@ -67,5 +67,10 @@ export const juniorConversationParticipants = pgTable(
     index("junior_conversation_participants_auto_archive_idx")
       .on(table.userId)
       .where(sql`${table.autoArchive}`),
+    // The active feed excludes a person's unsubscribed roots with an
+    // anti-join. Few rows are unsubscribed, so this index stays small.
+    index("junior_conversation_participants_unsubscribed_idx")
+      .on(table.userId, table.rootConversationId)
+      .where(sql`${table.unsubscribedAt} is not null`),
   ],
 );

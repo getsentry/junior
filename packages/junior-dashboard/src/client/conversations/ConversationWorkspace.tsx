@@ -21,6 +21,7 @@ import {
 } from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
+import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
@@ -198,6 +199,7 @@ export function ConversationWorkspace(props: {
   const createView = (
     <NewConversationView
       composerRef={createComposer}
+      docked={!sidebarFits}
       error={
         createConversation.error
           ? "Message failed to send. Try again."
@@ -274,31 +276,22 @@ export function ConversationWorkspace(props: {
   );
 
   // One tree for every width, so the create draft and its images survive a
-  // resize across the breakpoint.
+  // resize across the breakpoint: the create view is always the child of the
+  // second div.
   const homePane = (
     <main
       className={cn(
-        "h-full min-h-0 w-full",
-        pendingCreate && "hidden",
+        "h-full min-h-0 w-full overflow-hidden",
+        pendingCreate ? "hidden" : "grid",
         sidebarFits
-          ? "grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
-          : "overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6",
+          ? "grid-rows-[auto_minmax(0,1fr)]"
+          : "grid-rows-[minmax(0,1fr)_auto]",
       )}
     >
       {sidebarFits ? (
         <div className="flex h-13 items-center px-1">{sidebarToggle}</div>
-      ) : null}
-      <div
-        className={
-          sidebarFits
-            ? // The bottom pad matches the toggle row, so the create view
-              // sits in the middle of the pane.
-              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
-            : "mx-auto grid w-full max-w-6xl gap-8"
-        }
-      >
-        {createView}
-        {sidebarFits ? null : (
+      ) : (
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 pt-4 sm:px-6">
           <section aria-label="Conversations" className="grid gap-3">
             <SearchInput
               className="w-full sm:ml-auto sm:w-72"
@@ -332,7 +325,23 @@ export function ConversationWorkspace(props: {
               total={conversations.length}
             />
           </section>
-        )}
+        </div>
+      )}
+      <div
+        className={
+          sidebarFits
+            ? // The bottom pad matches the toggle row, so the create view
+              // sits in the middle of the pane.
+              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
+            : // Narrow screens dock the composer at the bottom, in thumb
+              // reach.
+              cn(
+                composerDockClass,
+                "overflow-y-auto border-t border-dashboard-border-subtle sm:px-6",
+              )
+        }
+      >
+        {createView}
       </div>
     </main>
   );
@@ -439,6 +448,8 @@ export function ConversationWorkspace(props: {
 
 function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
+  /** Docked at the bottom of the narrow home, where the list is above it. */
+  docked: boolean;
   error?: string;
   onSubmit(
     message: string,
@@ -454,7 +465,12 @@ function NewConversationView(props: {
       aria-label="New conversation"
       className="mx-auto grid w-full max-w-3xl gap-3"
     >
-      <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+      <h2
+        className={cn(
+          "m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl",
+          props.docked && "sr-only",
+        )}
+      >
         What do you need?
       </h2>
       <ConversationComposer
