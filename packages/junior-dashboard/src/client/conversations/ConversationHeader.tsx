@@ -15,6 +15,7 @@ import {
   TranscriptSearchToggle,
   type ConversationArchiveAction,
   type ConversationContinueInSlackAction,
+  type ConversationDeliveryAction,
   type ConversationPinAction,
   type ConversationReadAction,
   type ConversationSubscriptionAction,
@@ -39,6 +40,7 @@ export function ConversationHeader(props: {
   archive: ConversationArchiveAction;
   conversationId: string;
   continueInSlack?: ConversationContinueInSlackAction;
+  delivery?: ConversationDeliveryAction;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
   cost?: ReactNode;
   detailsOpen: boolean;
@@ -130,6 +132,7 @@ export function ConversationHeader(props: {
           },
         }
       }
+      delivery={props.delivery}
       pin={props.pin}
       read={props.read}
       subscription={props.subscription}
@@ -191,6 +194,7 @@ export function ConversationHeader(props: {
     props.pin.error ||
     props.read.error ||
     props.subscription.error ||
+    props.delivery?.error ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -332,6 +336,11 @@ export function ConversationHeader(props: {
         {props.subscription.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update subscription.
+          </div>
+        ) : null}
+        {props.delivery?.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not change Slack updates.
           </div>
         ) : null}
       </header>

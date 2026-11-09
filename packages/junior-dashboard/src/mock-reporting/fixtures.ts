@@ -158,6 +158,9 @@ const mockAutoArchiveByConversationId = new Map<string, boolean>();
 /** Process-local unsubscribes for mock visual QA. */
 const mockUnsubscribedConversationIds = new Set<string>();
 
+/** Process-local Slack detaches for mock visual QA. */
+const mockDeliveryPausedConversationIds = new Set<string>();
+
 /** Process-local archives. Like the API, an archive applies to everyone. */
 const initialMockArchives: [string, string][] = [
   [ARCHIVED_CONVERSATION_ID, iso(NOW_MS, -3 * 24 * 60 * 60_000)],
@@ -183,6 +186,7 @@ export function resetMockConversationViewerState(): void {
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
+  mockDeliveryPausedConversationIds.clear();
   mockArchivedAt.clear();
   mockArchiveCount = 0;
   for (const [id, at] of initialMockArchives) mockArchivedAt.set(id, at);
@@ -2506,6 +2510,28 @@ export function setMockConversationSubscribed(
   return { archivedAt: mockArchivedAt.get(rootId) ?? null, subscribed };
 }
 
+/**
+ * Detach a mock root from its Slack thread, or attach it again, for local
+ * dashboard visual QA. Like the API, only a participant's root with a Slack
+ * thread can change.
+ */
+export function setMockConversationDeliveryPaused(
+  conversationId: string,
+  paused: boolean,
+): { paused: boolean } | { error: string } | undefined {
+  const detail = readMockConversationDetail(conversationId);
+  if (!detail?.isParticipant) return undefined;
+  if (detail.deliveryPaused === undefined) {
+    return { error: "Only a conversation with a Slack thread can detach." };
+  }
+  if (paused) {
+    mockDeliveryPausedConversationIds.add(conversationId);
+  } else {
+    mockDeliveryPausedConversationIds.delete(conversationId);
+  }
+  return { paused };
+}
+
 /** Save a mock auto-archive choice for local dashboard visual QA. */
 export function setMockConversationAutoArchive(
   conversationId: string,
@@ -2819,9 +2845,17 @@ export function readMockConversationDetail(
       ? // Stands in for a public dashboard conversation.
         { ...bounded, canContinueInSlack: true as const }
       : bounded;
-  return located.channel && PUBLIC_MOCK_CHANNEL_IDS.has(located.channel)
-    ? { ...located, locationId: `mock:${located.channel}` }
-    : located;
+  const withDelivery =
+    located.isParticipant && !located.parentConversationId && located.channel
+      ? {
+          ...located,
+          deliveryPaused: mockDeliveryPausedConversationIds.has(conversationId),
+        }
+      : located;
+  return withDelivery.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(withDelivery.channel)
+    ? { ...withDelivery, locationId: `mock:${withDelivery.channel}` }
+    : withDelivery;
 }
 
 /** Move the mock dashboard conversation to a mock channel thread, once. */

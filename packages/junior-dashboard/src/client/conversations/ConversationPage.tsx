@@ -25,6 +25,7 @@ import {
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
+import { useConversationDelivery } from "./useConversationDelivery";
 import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
@@ -304,6 +305,8 @@ export function ConversationPage(props: {
   };
   const pin = usePinConversation(conversationId);
   const subscription = useConversationSubscription(conversationId);
+  const delivery = useConversationDelivery(conversationId);
+  const deliveryPaused = detail.data?.deliveryPaused;
   const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   // Focus or a click in the composer counts as reading, like transcript input.
@@ -660,6 +663,16 @@ export function ConversationPage(props: {
                   : undefined
               }
               cost={conversationCost(conversation, conversationDetail, "below")}
+              delivery={
+                deliveryPaused === undefined
+                  ? undefined
+                  : {
+                      disabled: delivery.isPending,
+                      error: Boolean(delivery.error),
+                      onClick: () => delivery.mutate(!deliveryPaused),
+                      paused: deliveryPaused,
+                    }
+              }
               detailsOpen={showDetails}
               onDetailsClick={() => {
                 if (eventOpen) setSelectedEventSeq(undefined);

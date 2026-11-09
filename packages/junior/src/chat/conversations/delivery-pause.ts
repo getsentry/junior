@@ -1,7 +1,15 @@
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import type { Conversation } from "@/chat/conversations/store";
 import { juniorConversations } from "@/db/schema";
+
+/** True when the Conversation is a root that delivers to a Location. */
+export function canPauseConversationDelivery(
+  conversation: Pick<Conversation, "kind" | "location">,
+): boolean {
+  return conversation.kind === "root" && conversation.location !== undefined;
+}
 
 const rootConversation = (conversationId: string) =>
   and(

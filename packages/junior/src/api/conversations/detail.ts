@@ -43,6 +43,7 @@ import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
 import { canContinueInSlack } from "@/chat/slack/continue-in-slack";
+import { canPauseConversationDelivery } from "@/chat/conversations/delivery-pause";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -352,6 +353,12 @@ async function readConversationDetailFromSql(
       : undefined),
     ...(canContinueInSlack(record.conversation, access)
       ? { canContinueInSlack: true as const }
+      : undefined),
+    ...(report.isParticipant &&
+    canPauseConversationDelivery(record.conversation)
+      ? {
+          deliveryPaused: record.conversation.deliveryPausedAtMs !== undefined,
+        }
       : undefined),
   };
 }

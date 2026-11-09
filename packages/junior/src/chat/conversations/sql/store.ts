@@ -298,6 +298,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.stoppedAt) !== undefined
       ? { stoppedAtMs: msFromDate(row.stoppedAt) }
       : undefined),
+    ...(msFromDate(row.deliveryPausedAt) !== undefined
+      ? { deliveryPausedAtMs: msFromDate(row.deliveryPausedAt) }
+      : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }

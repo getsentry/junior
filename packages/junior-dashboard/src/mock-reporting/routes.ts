@@ -16,6 +16,8 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
   markConversationUnreadBodySchema,
@@ -105,6 +107,7 @@ import {
   readMockAutomationList,
   setMockConversationArchived,
   setMockConversationPinned,
+  setMockConversationDeliveryPaused,
   setMockConversationSubscribed,
   setMockPinOrder,
   setMockConversationTitle,
@@ -552,6 +555,23 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(conversationSubscriptionResponseSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/delivery", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationDeliveryBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationDeliveryPaused(
+      params.data.conversationId,
+      body.data.paused,
+    );
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(conversationDeliveryResponseSchema, result);
   });
   app.patch("/conversations/:conversationId/unread", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
