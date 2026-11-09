@@ -90,6 +90,13 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history;
   }
 
+  async loadEventsOfType(
+    _conversationId: string,
+    type: string,
+  ): Promise<ConversationEvent[]> {
+    return this.history.filter((event) => event.data.type === type);
+  }
+
   async query(
     _conversationId: string,
     query: ConversationEventQuery,
