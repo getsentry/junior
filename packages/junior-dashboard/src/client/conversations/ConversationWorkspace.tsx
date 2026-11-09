@@ -2,6 +2,7 @@ import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { flushSync } from "react-dom";
 import {
   NavigationType,
   useNavigate,
@@ -36,13 +37,27 @@ import {
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
 import { prefetchConversationDetail } from "./conversationPrefetch";
-import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
+import {
+  newConversationDraftId,
+  NewConversationPending,
+  type PendingNewConversation,
+} from "./NewConversationPending";
+import {
+  restoreStoredDraftText,
+  takeStoredDraftText,
+} from "./ConversationComposer";
+import {
+  conversationPath,
+  FOCUS_REPLY_STATE,
+  NEW_CONVERSATION_PATH,
+} from "./conversationRoutes";
 import {
   attentionConversationIds,
   pinnedAndAttentionFirst,
 } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
+import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
@@ -97,6 +112,11 @@ export function ConversationWorkspace(props: {
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
+  const offerPushNotifications = usePushNotificationsTip();
+  const [pendingCreate, setPendingCreate] = useState<PendingNewConversation>();
+  // A pending create shows only on home. Leaving home ends it, whether the
+  // route opened its Conversation or the reader went elsewhere.
+  if (!home && pendingCreate) setPendingCreate(undefined);
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const createRequested = useRef(false);
@@ -150,6 +170,8 @@ export function ConversationWorkspace(props: {
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
   const homeVisit = useRef<AbortSignal>(undefined);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   useEffect(() => {
     if (!home) return;
     const visit = new AbortController();
@@ -179,25 +201,58 @@ export function ConversationWorkspace(props: {
       docked={!sidebarFits}
       error={
         createConversation.error
-          ? "Could not create the conversation. Try again."
+          ? "Message failed to send. Try again."
           : undefined
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
         const visit = homeVisit.current;
-        const accepted = await createConversation.mutateAsync({
+        const pendingDraftId = newConversationDraftId(idempotencyKey);
+        // Show the Conversation at once. The create view stays mounted but
+        // hidden, so a failed create comes back with the draft and its key.
+        setPendingCreate({
+          createdAt: new Date().toISOString(),
           idempotencyKey,
-          message,
           images,
+          message,
           visibility,
         });
-        // Open the Conversation with its transcript and composer, not a
-        // skeleton. The draft stays on this page until the route changes, so
-        // the message moves from the composer to the transcript at once.
+        let accepted;
+        try {
+          accepted = await createConversation.mutateAsync({
+            idempotencyKey,
+            message,
+            images,
+            visibility,
+          });
+        } catch (error) {
+          // Show home before the composer takes the failure, so it can
+          // focus the draft for a retry. A reply typed meanwhile has no
+          // Conversation to go to.
+          flushSync(() => setPendingCreate(undefined));
+          takeStoredDraftText(pendingDraftId);
+          throw error;
+        }
+        // The page then opens with its transcript, not a skeleton. The
+        // pending view stays until the route shows it.
         await prefetchConversationDetail(queryClient, accepted.conversationId);
-        if (visit?.aborted) return;
+        const left = visit?.aborted;
+        if (left && selectedIdRef.current !== accepted.conversationId) {
+          // The reply typed meanwhile waits in the new Conversation.
+          restoreStoredDraftText(
+            accepted.conversationId,
+            takeStoredDraftText(pendingDraftId),
+          );
+          return;
+        }
+        // The reader may have opened the new Conversation already. Its
+        // reply box is mounted then, so pass the draft through the route.
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
+          replace: left,
+          // The page's reply box takes focus and the text typed meanwhile.
+          state: { ...FOCUS_REPLY_STATE, draftFrom: pendingDraftId },
         });
+        offerPushNotifications();
       }}
     />
   );
@@ -225,7 +280,8 @@ export function ConversationWorkspace(props: {
   const homePane = (
     <main
       className={cn(
-        "grid h-full min-h-0 w-full overflow-hidden",
+        "h-full min-h-0 w-full overflow-hidden",
+        pendingCreate ? "hidden" : "grid",
         sidebarFits
           ? "grid-rows-[auto_minmax(0,1fr)]"
           : "grid-rows-[minmax(0,1fr)_auto]",
@@ -341,34 +397,46 @@ export function ConversationWorkspace(props: {
         </>
       ) : null}
       <ResizablePanel id="selected-conversation">
-        {home ? (
-          homePane
-        ) : (
+        {home ? homePane : null}
+        {/* A pending create shows in the same section as the page that
+            replaces it, so the swap keeps this element. */}
+        {selectedId || pendingCreate ? (
           <section
+            aria-busy={home || undefined}
             aria-label="Selected conversation"
             className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
           >
-            <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-              <FeedThreads value={feedThreads}>
-                <ConversationPage
-                  conversationId={selectedId}
-                  detail={props.detail}
-                  data={
-                    feed.data
-                      ? {
-                          conversations: feed.data,
-                        }
-                      : undefined
-                  }
-                  pendingArchiveUpdate={pendingArchiveUpdates.find(
-                    (update) => update.conversationId === selectedId,
-                  )}
-                  sidebarToggle={sidebarToggle}
-                />
-              </FeedThreads>
-            </UnsentAnswersProvider>
+            {selectedId ? (
+              <UnsentAnswersProvider
+                conversationId={selectedId}
+                key={selectedId}
+              >
+                <FeedThreads value={feedThreads}>
+                  <ConversationPage
+                    conversationId={selectedId}
+                    detail={props.detail}
+                    data={
+                      feed.data
+                        ? {
+                            conversations: feed.data,
+                          }
+                        : undefined
+                    }
+                    pendingArchiveUpdate={pendingArchiveUpdates.find(
+                      (update) => update.conversationId === selectedId,
+                    )}
+                    sidebarToggle={sidebarToggle}
+                  />
+                </FeedThreads>
+              </UnsentAnswersProvider>
+            ) : pendingCreate ? (
+              <NewConversationPending
+                pending={pendingCreate}
+                sidebarToggle={sidebarToggle}
+              />
+            ) : null}
           </section>
-        )}
+        ) : null}
       </ResizablePanel>
     </ResizablePanelGroup>
   );

@@ -183,10 +183,7 @@ export async function withGitHubPullRequestPeople(args: {
   if (peopleEvents.length === 0 || !hasMatch || !args.load || !parsed.success) {
     return args.events;
   }
-  const matches = await Promise.all(
-    peopleEvents.map((event) => hasMatch(event)),
-  );
-  if (!matches.some(Boolean)) return args.events;
+  if (!(await hasMatch(peopleEvents))) return args.events;
 
   const { pull_request: pullRequest, repository } = parsed.data;
   const target = {

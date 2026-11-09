@@ -293,9 +293,16 @@
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
-/* Desktop windows tall enough to afford the top bar. Shorter windows, such as
-   most laptops, keep the nav rail so conversations get the height. */
+/* Desktop windows tall enough for roomier conversation chrome. Shorter
+   windows, such as most laptops, keep it compact so the transcript gets the
+   height. */
 @custom-variant tall (@media (min-height: 62.5rem));
+
+/* Desktop and mobile layouts. Width alone treats landscape phones as
+   desktop, so short windows below 64rem stay mobile. Keep in sync with
+   `client/layoutMedia.ts`. */
+@custom-variant md (@media (width >= 48rem) and ((width >= 64rem) or (height >= 30rem)));
+@custom-variant max-md (@media (width < 48rem) or ((width < 64rem) and (height < 30rem)));
 
 @layer base {
   :root {
@@ -404,9 +411,9 @@
   }
 }
 
-@media (max-width: 767px) {
-  /* Keep long mobile feeds cheap while preserving their full scroll range. */
-  .mobile-conversation-row {
+/* Keep long mobile feeds cheap while preserving their full scroll range. */
+.mobile-conversation-row {
+  @variant max-md {
     content-visibility: auto;
     contain-intrinsic-size: auto 3.5rem;
   }

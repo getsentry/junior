@@ -14,6 +14,7 @@ export {
   type Message,
   type Model,
   type ThinkingLevel,
+  type Tool,
 } from "@earendil-works/pi-ai/compat";
 
 export {

@@ -110,6 +110,8 @@ const agentInvocationMailboxMetadataSchema = z
 
 type EnqueueOptions = {
   conversationStore?: ConversationStore;
+  /** Event fields of input that came from Events, for its transcript row. */
+  eventMeta?: Parameters<typeof recordSubagentStarted>[1];
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
@@ -167,7 +169,7 @@ export async function enqueueAgentInvocation(
   ) {
     return;
   }
-  await recordSubagentStarted(invocation);
+  await recordSubagentStarted(invocation, options.eventMeta);
   // New work from a parent tool call ends the stop of the child and of the
   // child agents below it. A child's own Events and results do not.
   if (invocation.parentToolCallId !== undefined) {

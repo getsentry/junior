@@ -274,6 +274,51 @@ describe("createTracedStreamFn", () => {
     expect(otherTool["app.ai.request.system_instructions.hash"]).toBe(
       first["app.ai.request.system_instructions.hash"],
     );
+
+    // A 1920x1080 PNG header, and an image whose size cannot be read.
+    const png = Buffer.alloc(24);
+    png.writeUInt32BE(0x89504e47, 0);
+    png.write("IHDR", 12, "latin1");
+    png.writeUInt32BE(1920, 16);
+    png.writeUInt32BE(1080, 20);
+    const image = (mediaType: string, data: Buffer) => ({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: mediaType,
+        data: data.toString("base64"),
+      },
+    });
+    const withImages = await hashesFor(
+      request([
+        {
+          role: "user",
+          content: [image("image/png", png), { type: "text", text: "u1" }],
+        },
+        reply,
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call-1",
+              content: [image("image/jpeg", Buffer.from("not a jpeg"))],
+            },
+          ],
+        },
+      ]),
+    );
+    expect(withImages).toMatchObject({
+      "app.ai.request.images.count": 2,
+      // 2,691 for the PNG on the high-resolution tier, plus the flat 1,920.
+      "app.ai.request.images.estimate": 4_611,
+      "app.ai.request.images.unsized": 1,
+    });
+    expect(
+      Object.keys(first).filter((key) =>
+        key.startsWith("app.ai.request.images."),
+      ),
+    ).toEqual([]);
   });
 
   it("keeps private conversation content out of semantic attributes", async () => {

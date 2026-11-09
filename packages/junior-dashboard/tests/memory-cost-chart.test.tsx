@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import { MemoryCostChart } from "../src/client/pages/memory/MemoryCostChart";
@@ -17,11 +18,14 @@ function costDays(costUsd: number, events: number) {
 describe("MemoryCostChart", () => {
   it("totals extraction and recall cost in the legend", () => {
     const html = renderToStaticMarkup(
-      <MemoryCostChart
-        extractionDays={costDays(0.005, 1)}
-        range={30}
-        recallDays={costDays(0.005, 2)}
-      />,
+      // The chart heading links to its section, which reads the URL.
+      <MemoryRouter>
+        <MemoryCostChart
+          extractionDays={costDays(0.005, 1)}
+          range={30}
+          recallDays={costDays(0.005, 2)}
+        />
+      </MemoryRouter>,
     );
 
     expect(html).toContain("$0.01");

@@ -377,18 +377,21 @@ class SqlConversationEventStore implements ConversationEventStore {
   async loadCurrentHistory(
     conversationId: string,
   ): Promise<ConversationEvent[]> {
-    const cursor = await this.readCursor(conversationId);
-    if (cursor.maxHistoryVersion === null) {
-      return [];
-    }
-    const rows = await this.executor
-      .db()
+    const db = this.executor.db();
+    // One statement: the current version and its events come from one snapshot.
+    const currentHistoryVersion = db
+      .select({
+        historyVersion: sql<number>`max(${juniorConversationEvents.historyVersion})`,
+      })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
+    const rows = await db
       .select()
       .from(juniorConversationEvents)
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.historyVersion, cursor.maxHistoryVersion),
+          eq(juniorConversationEvents.historyVersion, currentHistoryVersion),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
@@ -413,24 +416,10 @@ class SqlConversationEventStore implements ConversationEventStore {
     return row ? eventFromRow(row) : undefined;
   }
 
-  async loadHistoryContaining(
+  async loadEventsAfter(
     conversationId: string,
-    seq: number,
-    throughSeq?: number,
-  ): Promise<ConversationEvent[] | undefined> {
-    const [boundary] = await this.executor
-      .db()
-      .select({ historyVersion: juniorConversationEvents.historyVersion })
-      .from(juniorConversationEvents)
-      .where(
-        and(
-          eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.seq, seq),
-        ),
-      )
-      .limit(1);
-    if (!boundary) return undefined;
-
+    afterSeq: number,
+  ): Promise<ConversationEvent[]> {
     const rows = await this.executor
       .db()
       .select()
@@ -438,14 +427,47 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.historyVersion, boundary.historyVersion),
-          throughSeq === undefined
-            ? undefined
-            : lte(juniorConversationEvents.seq, throughSeq),
+          gt(juniorConversationEvents.seq, afterSeq),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
+  }
+
+  async loadHistoryContaining(
+    conversationId: string,
+    seq: number,
+    throughSeq?: number,
+  ): Promise<ConversationEvent[] | undefined> {
+    const db = this.executor.db();
+    const boundaryHistoryVersion = db
+      .select({ historyVersion: juniorConversationEvents.historyVersion })
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.seq, seq),
+        ),
+      );
+    // One statement. The range always includes the boundary row, so no rows
+    // means the boundary does not exist.
+    const rows = await db
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.historyVersion, boundaryHistoryVersion),
+          throughSeq === undefined
+            ? undefined
+            : lte(juniorConversationEvents.seq, Math.max(seq, throughSeq)),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    if (rows.length === 0) return undefined;
+    return rows
+      .filter((row) => throughSeq === undefined || row.seq <= throughSeq)
+      .map(eventFromRow);
   }
 
   async loadLatestStructuredEvent(

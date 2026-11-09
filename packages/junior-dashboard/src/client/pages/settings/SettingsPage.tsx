@@ -20,7 +20,10 @@ import {
   type ConversationStartPosition,
 } from "../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
+import { navLayoutChoices } from "../../components/NavLayoutSwitcher";
+import { useNavLayoutChoice, type NavLayoutChoice } from "../../navLayout";
 import { InlineError } from "../../components/InlineError";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { Card } from "../../components/layout/Card";
 import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";
 import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
@@ -74,7 +77,11 @@ export function SettingsPage({ identity }: SettingsPageProps) {
     >
       <form onSubmit={submit}>
         <Card className="mb-0" padding="md" variant="raised">
-          <h2 className="m-0 text-lg font-bold">Profile</h2>
+          <AnchorHeading
+            anchor="profile"
+            className="m-0 text-lg font-bold"
+            title="Profile"
+          />
           <Field className="mt-5">
             <FieldLabel htmlFor="display-name">Display name</FieldLabel>
             <Input
@@ -108,12 +115,51 @@ export function SettingsPage({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
+      <NavLayoutSetting />
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
     </SettingsPageLayout>
+  );
+}
+
+/** Let the user choose desktop navigation on this browser. Phones skip it. */
+function NavLayoutSetting() {
+  const [choice, setChoice] = useNavLayoutChoice();
+  return (
+    <Card className="mt-6 mb-0 hidden md:block" padding="md" variant="raised">
+      <AnchorHeading
+        anchor="navigation"
+        className="m-0 text-lg font-bold"
+        title="Navigation"
+      />
+      <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
+        This choice applies to this browser.
+      </p>
+      <RadioGroup<NavLayoutChoice>
+        aria-label="Navigation"
+        className="grid gap-3"
+        onValueChange={setChoice}
+        value={choice}
+      >
+        {navLayoutChoices.map((option) => (
+          <label
+            className="flex cursor-pointer items-start gap-3"
+            key={option.value}
+          >
+            <RadioGroupItem className="mt-0.5" value={option.value} />
+            <span className="grid gap-0.5">
+              <span className="text-sm font-medium">{option.label}</span>
+              <span className="text-xs text-dashboard-text-muted">
+                {option.description}
+              </span>
+            </span>
+          </label>
+        ))}
+      </RadioGroup>
+    </Card>
   );
 }
 
@@ -139,36 +185,36 @@ function ConversationStartSetting() {
   const [startPosition, setStartPosition] = useConversationStartPosition();
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <fieldset className="m-0 min-w-0 border-0 p-0">
-        <legend className="m-0 p-0 text-lg font-bold">
-          Open conversations at
-        </legend>
-        <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
-          Junior keeps your place in each conversation on all your devices. This
-          choice applies to this browser.
-        </p>
-        <RadioGroup<ConversationStartPosition>
-          aria-label="Open conversations at"
-          className="grid gap-3"
-          onValueChange={setStartPosition}
-          value={startPosition}
-        >
-          {startPositionOptions.map((option) => (
-            <label
-              className="flex cursor-pointer items-start gap-3"
-              key={option.value}
-            >
-              <RadioGroupItem className="mt-0.5" value={option.value} />
-              <span className="grid gap-0.5">
-                <span className="text-sm font-medium">{option.label}</span>
-                <span className="text-xs text-dashboard-text-muted">
-                  {option.description}
-                </span>
+      <AnchorHeading
+        anchor="open-conversations-at"
+        className="m-0 text-lg font-bold"
+        title="Open conversations at"
+      />
+      <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
+        Junior keeps your place in each conversation on all your devices. This
+        choice applies to this browser.
+      </p>
+      <RadioGroup<ConversationStartPosition>
+        aria-label="Open conversations at"
+        className="grid gap-3"
+        onValueChange={setStartPosition}
+        value={startPosition}
+      >
+        {startPositionOptions.map((option) => (
+          <label
+            className="flex cursor-pointer items-start gap-3"
+            key={option.value}
+          >
+            <RadioGroupItem className="mt-0.5" value={option.value} />
+            <span className="grid gap-0.5">
+              <span className="text-sm font-medium">{option.label}</span>
+              <span className="text-xs text-dashboard-text-muted">
+                {option.description}
               </span>
-            </label>
-          ))}
-        </RadioGroup>
-      </fieldset>
+            </span>
+          </label>
+        ))}
+      </RadioGroup>
     </Card>
   );
 }
@@ -178,7 +224,11 @@ function ComposerAutocorrectSetting() {
   const [autocorrect, setAutocorrect] = useComposerAutocorrect();
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <h2 className="m-0 text-lg font-bold">Message box</h2>
+      <AnchorHeading
+        anchor="message-box"
+        className="m-0 text-lg font-bold"
+        title="Message box"
+      />
       <label className="mt-4 flex cursor-pointer items-start gap-3">
         <Checkbox
           checked={autocorrect}
@@ -250,7 +300,11 @@ function CustomizationForm() {
   return (
     <form onSubmit={submit}>
       <Card className="mb-0" padding="md" variant="raised">
-        <h2 className="m-0 text-lg font-bold">Customization</h2>
+        <AnchorHeading
+          anchor="customization"
+          className="m-0 text-lg font-bold"
+          title="Customization"
+        />
         <Field className="mt-5">
           <FieldLabel htmlFor="user-customization">
             How should replies to you change?

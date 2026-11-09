@@ -161,6 +161,11 @@ export type {
   MarkConversationUnreadBody,
 } from "./schema/conversation-unread";
 export {
+  CONVERSATION_OUTLINE_TEXT_LENGTH,
+  conversationOutlineSchema,
+} from "./schema/conversation-outline";
+export type { ConversationOutline } from "./schema/conversation-outline";
+export {
   CONVERSATION_TITLE_MAX_LENGTH,
   renameConversationBodySchema,
   renameConversationResponseSchema,
@@ -289,6 +294,7 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export { transcriptionSchema } from "./schema/transcription";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,

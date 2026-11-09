@@ -9,7 +9,7 @@ export const NOTIFICATION_TARGET_CACHE = "junior-notification-target";
 export const NOTIFICATION_TARGET_KEY = "/_junior/dashboard/notification-target";
 
 /**
- * The service worker only shows phone notifications. It has no `fetch`
+ * The service worker only shows push notifications. It has no `fetch`
  * handler, so it never caches or changes dashboard requests. Its one cache
  * entry holds the last tapped notification URL for the page to open.
  *

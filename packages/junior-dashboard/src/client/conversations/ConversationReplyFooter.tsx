@@ -22,6 +22,7 @@ import { ComposerDock } from "./ComposerDock";
 import {
   ConversationComposer,
   restoreStoredDraftText,
+  takeStoredDraftText,
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
@@ -34,6 +35,14 @@ import {
   useSteerConversationPendingMessages,
   useStopConversationTurn,
 } from "./queries";
+import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+
+/** Ask the reply box for focus once per navigation `key`. */
+export type ReplyFocusRequest = {
+  /** Draft id of the composer the reader typed in before. Its text moves here. */
+  draftFrom?: string;
+  key: string;
+};
 
 /**
  * Own mutation state and mailbox chrome outside the page tree that re-renders
@@ -48,8 +57,8 @@ function ReplyFooter(props: {
   authors?: ConversationDetailReport["authors"];
   committedMessageIds: readonly string[];
   conversationId: string;
-  /** Key of a request to focus the message box. */
-  focusRequest?: string;
+  /** A request to focus the message box. */
+  focusRequest?: ReplyFocusRequest;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
@@ -128,7 +137,7 @@ function ReplyFooter(props: {
   useEffect(() => {
     if (pendingMessageVersionRef.current === pendingMessageVersion) return;
     pendingMessageVersionRef.current = pendingMessageVersion;
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
   // No Turn runs and nothing waits in the queue, so the next send would
@@ -206,13 +215,28 @@ function ReplyFooter(props: {
   // On a touch screen, focus would open the keyboard over the transcript.
   const reviewItemPending =
     Boolean(props.reviewItemId) && reviewItemQuery.isPending;
-  const { focusRequest, onFocusRequestDone } = props;
+  const { onFocusRequestDone } = props;
+  const focusKey = props.focusRequest?.key;
+  const draftFrom = props.focusRequest?.draftFrom;
   const questionShown = Boolean(question);
   useEffect(() => {
-    if (!focusRequest || reviewItemPending) return;
-    onFocusRequestDone(focusRequest);
-    if (!questionShown && !touchKeyboardMatches()) composerRef.current?.focus();
-  }, [focusRequest, onFocusRequestDone, questionShown, reviewItemPending]);
+    if (!focusKey || reviewItemPending) return;
+    onFocusRequestDone(focusKey);
+    // A new Conversation opens here after its first send. The reader was
+    // typing in its pending reply box, so the text and the cursor move here,
+    // even on a touch screen where the keyboard is already open.
+    const text = draftFrom ? takeStoredDraftText(draftFrom) : "";
+    if (text) composerRef.current?.restoreMessage({ text });
+    else if (draftFrom || (!questionShown && !touchKeyboardMatches())) {
+      composerRef.current?.focus();
+    }
+  }, [
+    draftFrom,
+    focusKey,
+    onFocusRequestDone,
+    questionShown,
+    reviewItemPending,
+  ]);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
@@ -305,13 +329,13 @@ function ReplyFooter(props: {
   }, []);
 
   const onMailboxLayoutChange = useCallback(() => {
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, []);
   // Mobile keyboard open shrinks the transcript. Focus must re-pin the latest
   // message so the reader does not stay stuck above the docked composer.
   const onComposerFocus = useCallback(() => {
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, []);
 

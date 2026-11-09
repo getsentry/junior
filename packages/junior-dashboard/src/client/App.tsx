@@ -30,6 +30,7 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
+import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -42,6 +43,7 @@ import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
+import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -233,6 +235,7 @@ export function DashboardShell() {
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -307,31 +310,35 @@ export function DashboardShell() {
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        <NavRail
-          navItems={primaryNavItems}
-          onSearch={openCommandPalette}
-          profile={
-            loggedIn ? (
-              <ProfileMenu
-                identity={data!.me}
-                onSignOut={signOut}
-                spend={personalSpendQuery.data}
-                pages={profileNavItems}
-              />
-            ) : undefined
-          }
-          workspaceActive={workspace}
-        />
+        {desktopTopBar ? null : (
+          <NavRail
+            navItems={primaryNavItems}
+            onSearch={openCommandPalette}
+            profile={
+              loggedIn ? (
+                <ProfileMenu
+                  identity={data!.me}
+                  onSignOut={signOut}
+                  spend={personalSpendQuery.data}
+                  pages={profileNavItems}
+                />
+              ) : undefined
+            }
+            workspaceActive={workspace}
+          />
+        )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
             workspace ||
             location.pathname === "/review" ||
             hasAutomationDetailsFrame(location.pathname) ||
+            hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
           }
         >
           <DashboardChrome
+            desktopTopBar={desktopTopBar}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -340,6 +347,7 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
+                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
