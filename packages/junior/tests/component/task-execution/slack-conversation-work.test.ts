@@ -46,8 +46,10 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
   getCapturedSlackApiCalls,
+  queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+import { conversationsRepliesPage } from "../../fixtures/slack/factories/api";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -259,6 +261,103 @@ describe("Slack conversation work execution", () => {
       nowMs: 1_100,
       queue,
       state,
+    });
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        lookupSlackUser: async () => ({
+          email: "david@example.com",
+          fullName: "David Cramer",
+          userName: "dcramer",
+        }),
+        queue,
+        runtime: {
+          handleNewMention,
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(handleNewMention).toHaveBeenCalledOnce();
+  });
+
+  it("adds a file that Slack attaches after a person links it", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const fileUrl =
+      "https://files.slack.com/files-pri/T123-F0LINKED/report.csv";
+    const envelope = slackEnvelope({
+      text: `<@${SLACK_BOT_USER_ID}> read this F0LINKED`,
+    });
+    // Slack sends the message events with only the rich text file element.
+    const blocks = [
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              { type: "user", user_id: SLACK_BOT_USER_ID },
+              { type: "text", text: " read this " },
+              {
+                type: "file",
+                file_id: "F0LINKED",
+                url: "https://example.slack.com/files/U123/F0LINKED/report.csv",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest({
+        ...envelope,
+        event: { ...envelope.event, blocks },
+      }),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        messages: [
+          {
+            ts: "1712345.0001",
+            user: "U123",
+            text: envelope.event.text,
+            blocks,
+            upload: false,
+            files: [
+              {
+                id: "F0LINKED",
+                mimetype: "text/csv",
+                name: "report.csv",
+                size: 12,
+                url_private: fileUrl,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
+      expect(restored.attachments).toEqual([
+        expect.objectContaining({
+          type: "file",
+          mimeType: "text/csv",
+          name: "report.csv",
+          url: fileUrl,
+        }),
+      ]);
+      await hooks.ack?.();
     });
 
     await expect(

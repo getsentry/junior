@@ -25,6 +25,7 @@ import {
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
+import { attachLinkedSlackFiles } from "@/chat/slack/linked-files";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { removeReactionFromMessage } from "@/chat/slack/outbound";
 import { getMessageTs } from "@/chat/runtime/thread-context";
@@ -727,6 +728,11 @@ export function createSlackConversationWorker(
             record,
           }),
         );
+        await Promise.all(
+          messages.map((message) =>
+            attachLinkedSlackFiles({ adapter, message }),
+          ),
+        );
         await bindSlackActorIdentities({
           lookupSlackUser: actorLookup,
           messages,
@@ -788,6 +794,11 @@ export function createSlackConversationWorker(
                 (candidate) =>
                   requireSlackAuthorId(candidate.message) === activeAuthorId,
               );
+            await Promise.all(
+              candidates.map(({ message }) =>
+                attachLinkedSlackFiles({ adapter, message }),
+              ),
+            );
             return candidates.length > 0 ? await accept(candidates) : [];
           });
         };
