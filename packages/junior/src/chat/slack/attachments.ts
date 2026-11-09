@@ -100,8 +100,10 @@ export function slackAttachmentsVersionQuery(
 export function getSlackFileId(attachment: Attachment): string | undefined {
   const metadataId = attachment.fetchMetadata?.fileId;
   if (metadataId) return metadataId;
+  // Slack file ids are upper case. Matching without case would read the
+  // `files` in `/files-pri/` as the id.
   const match = (attachment.url ?? attachment.fetchMetadata?.url ?? "").match(
-    /(?:^|[-/])(F[A-Z0-9]+)(?:[-/]|$)/i,
+    /(?:^|[-/])(F[A-Z0-9]+)(?:[-/]|$)/,
   );
   return match?.[1];
 }
