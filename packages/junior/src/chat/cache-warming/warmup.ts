@@ -558,6 +558,7 @@ export async function runCacheWarmup(
         ),
         globalGapsMs: await state.getList<number>(segmentGapsKey(idle.segment)),
         idleMs: Date.now() - idle.sinceMs,
+        cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,
         prefixTokens: warm.prefixTokens,
         cacheReadPrice: model.cost.cacheRead,

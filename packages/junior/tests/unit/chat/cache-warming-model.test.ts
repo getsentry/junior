@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { decideWarmup, NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
+import {
+  decideWarmup as decideWarmupAt,
+  NO_REPLY_GAP_MS,
+  type WarmupDecisionInput,
+} from "@/chat/cache-warming/model";
 
 const MINUTE = 60_000;
 // Anthropic Opus prices in $/MTok and its 5-minute cache.
@@ -12,6 +16,12 @@ const prices = {
 function gaps(count: number, gapMs: number): number[] {
   return Array.from({ length: count }, () => gapMs);
 }
+
+// Most cases decide one minute before the current cache expires.
+const decideWarmup = (
+  input: Omit<WarmupDecisionInput, "cacheExpiryIdleMs"> &
+    Partial<Pick<WarmupDecisionInput, "cacheExpiryIdleMs">>,
+) => decideWarmupAt({ cacheExpiryIdleMs: input.idleMs + MINUTE, ...input });
 
 describe("decideWarmup", () => {
   it("warms when people usually reply within the next cache TTL", () => {
@@ -124,6 +134,21 @@ describe("decideWarmup", () => {
 
     expect(decision.returnProbability).toBe(0);
     expect(decision).toMatchObject({ warm: true, reason: "warm" });
+  });
+
+  it("gives no credit for returns that the current cache still covers", () => {
+    // People reply at 4:30, before the current cache expires at 5:00. A
+    // warmup at 4:15 saves no write for them.
+    const decision = decideWarmup({
+      ...prices,
+      conversationGapsMs: [],
+      globalGapsMs: [...gaps(20, 4.5 * MINUTE), ...gaps(80, NO_REPLY_GAP_MS)],
+      idleMs: 4.25 * MINUTE,
+      cacheExpiryIdleMs: 5 * MINUTE,
+      prefixTokens: 200_000,
+    });
+
+    expect(decision).toMatchObject({ warm: false, reason: "unlikely_return" });
   });
 
   it("counts warmups every TTL minus the margin in a plan", () => {

@@ -176,6 +176,11 @@ export interface WarmupDecisionInput {
   globalGapsMs: readonly number[];
   /** Time since the cached request started. */
   idleMs: number;
+  /**
+   * Idle time at which the current cache expires. Returns before it read the
+   * cache without a warmup, so no plan gets credit for them.
+   */
+  cacheExpiryIdleMs: number;
   /** How long the cache lives after a read (`cacheTtlMs` in `warmup.ts`). */
   cacheTtlMs: number;
   prefixTokens: number;
@@ -229,6 +234,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const perWarmup = returnsPerWarmup(
     histogram,
     input.idleMs,
+    input.cacheExpiryIdleMs,
     input.cacheTtlMs,
     input.prefixTokens,
   );
@@ -254,22 +260,29 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
 // Best expected returns per warmup over plans of 1, 2, ... warmups that end
 // at the horizon. Each warmup runs one margin before the cache from the
 // previous warmup expires, so warmups come every TTL minus the margin. A
-// warmup runs only if nobody returned before it.
+// warmup runs only if nobody returned before it. A plan gets credit only for
+// returns after the current cache expires.
 function returnsPerWarmup(
   histogram: GapHistogram,
   idleMs: number,
+  cacheExpiryIdleMs: number,
   ttlMs: number,
   prefixTokens: number,
 ): number {
   const now = survival(histogram, idleMs);
   const intervalMs = ttlMs - warmupMarginMs(prefixTokens);
   if (now < 0.001 || intervalMs <= 0) return 0;
+  const leftAtExpiry = survival(
+    histogram,
+    Math.min(cacheExpiryIdleMs, IDLE_HORIZON_MS),
+  );
   let best = 0;
   let warmups = 0;
   for (let startMs = idleMs; startMs < IDLE_HORIZON_MS; startMs += intervalMs) {
     warmups += survival(histogram, startMs) / now;
     const endMs = Math.min(startMs + ttlMs, IDLE_HORIZON_MS);
-    const returns = (now - survival(histogram, endMs)) / now;
+    const returns =
+      Math.max(0, leftAtExpiry - survival(histogram, endMs)) / now;
     best = Math.max(best, returns / warmups);
   }
   return best;
