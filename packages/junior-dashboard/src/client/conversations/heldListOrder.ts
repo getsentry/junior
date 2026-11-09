@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useState,
   type FocusEvent,
   type PointerEvent,
@@ -81,7 +82,8 @@ type Hold = { following: boolean; order: HeldOrder };
  * the list is `settled`, so a pointer that rests on the list during a page
  * load does not hold back the first rows. New activity waits as
  * `pending` until the reader calls `applyPending`, or the pointer and focus
- * leave. `releaseHold` follows the latest order until the hold ends; row
+ * leave. React events bubble through portals, so a row menu counts as in
+ * the list. `releaseHold` follows the latest order until the hold ends; row
  * actions such as pin, archive, and mark unread call it, so their result
  * shows at once.
  */
@@ -108,6 +110,13 @@ export function useHeldListOrder(
       ? holdSectionOrder(hold.order, sections)
       : { pending: 0, sections };
 
+  // A focused pill that unmounts sends no blur, and focus falls to the body.
+  useEffect(() => {
+    if (focusInside && document.activeElement === document.body) {
+      setFocusInside(false);
+    }
+  }, [focusInside, view.pending]);
+
   const applyPending = useCallback(
     () =>
       setHold((current) =>
@@ -133,11 +142,7 @@ export function useHeldListOrder(
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {
       if (event.pointerType !== "touch") setPointerInside(true);
     },
-    onPointerLeave: (event: PointerEvent<HTMLElement>) => {
-      setPointerInside(false);
-      // A focused element that unmounts, such as the pill, sends no blur.
-      setFocusInside(event.currentTarget.contains(document.activeElement));
-    },
+    onPointerLeave: () => setPointerInside(false),
   };
   return {
     applyPending,

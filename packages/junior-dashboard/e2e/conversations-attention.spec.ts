@@ -506,8 +506,12 @@ test.describe("stable conversation list", () => {
     const waitingRow = sidebar.getByRole("link", {
       name: /Checkout latency triage/,
     });
+    // An open menu hides the sidebar from the accessibility tree.
     const rowSection = () =>
-      sidebarSectionOf(sidebar, /Checkout latency triage/);
+      sidebarSectionOf(
+        page.locator('[role="navigation"][aria-label="Your conversations"]'),
+        /Checkout latency triage/,
+      );
     const pill = page.getByRole("button", { name: "1 updated" });
     await expect(waitingRow).toBeVisible();
     await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
@@ -526,6 +530,30 @@ test.describe("stable conversation list", () => {
       view: "desktop",
     });
 
+    // A row menu opens outside the list, and it still holds the order.
+    await waitingRow.click({ button: "right" });
+    await page.getByRole("menuitem").last().hover();
+    await expect(pill).toBeVisible();
+    expect(await rowSection()).not.toMatch(/^Needs you/);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    // A pill applied from the keyboard lets go of focus, so the next update
+    // applies with no pointer on the list.
+    await page.mouse.move(1_200, 500);
+    await pill.focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(rowSection).toMatch(/^Needs you/);
+    setWaiting(false);
+    await expect
+      .poll(rowSection, { timeout: 15_000 })
+      .toMatch(/^(?!Needs you)/);
+    await expect(pill).toHaveCount(0);
+
+    // Hold again, then apply with a click.
+    await waitingRow.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
     await pill.click();
     await expect.poll(rowSection).toMatch(/^Needs you/);
     await expect(pill).toHaveCount(0);
