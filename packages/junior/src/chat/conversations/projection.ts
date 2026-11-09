@@ -471,17 +471,10 @@ export async function recordMcpProviderConnected(args: {
   provider: string;
   credentialSubjectId: string;
 }): Promise<void> {
-  const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentHistory(args.conversationId);
-  if (
-    connectedMcpProvidersFromEvents(events, args.credentialSubjectId).includes(
-      args.provider,
-    )
-  ) {
-    return;
-  }
-  await eventStore.append(args.conversationId, [
+  // Idempotency keys span every history version, as the reader does.
+  await getConversationEventStore().append(args.conversationId, [
     {
+      idempotencyKey: `mcp_provider_connected:${args.provider}:${args.credentialSubjectId}`,
       data: {
         type: "mcp_provider_connected",
         provider: args.provider,
@@ -501,19 +494,9 @@ export async function recordAuthorizationRequested(args: {
   authorizationId: string;
   delivery: "private_link_sent" | "private_link_reused";
 }): Promise<void> {
-  const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentHistory(args.conversationId);
-  if (
-    events.some(
-      (event) =>
-        event.data.type === "authorization_requested" &&
-        event.data.authorizationId === args.authorizationId,
-    )
-  ) {
-    return;
-  }
-  await eventStore.append(args.conversationId, [
+  await getConversationEventStore().append(args.conversationId, [
     {
+      idempotencyKey: `authorization_requested:${args.authorizationId}`,
       data: {
         type: "authorization_requested",
         kind: args.kind,
@@ -535,19 +518,9 @@ export async function recordAuthorizationCompleted(args: {
   actorId: string;
   authorizationId: string;
 }): Promise<void> {
-  const eventStore = getConversationEventStore();
-  const events = await eventStore.loadCurrentHistory(args.conversationId);
-  if (
-    events.some(
-      (event) =>
-        event.data.type === "authorization_completed" &&
-        event.data.authorizationId === args.authorizationId,
-    )
-  ) {
-    return;
-  }
-  await eventStore.append(args.conversationId, [
+  await getConversationEventStore().append(args.conversationId, [
     {
+      idempotencyKey: `authorization_completed:${args.authorizationId}`,
       data: {
         type: "authorization_completed",
         kind: args.kind,
