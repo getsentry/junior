@@ -1,6 +1,7 @@
 import type { SlackAdapter, SlackEvent } from "@chat-adapter/slack";
 import type { Message } from "chat";
-import { listThreadReplies } from "@/chat/slack/channel";
+import { logWarn } from "@/chat/logging";
+import { readSlackMessage } from "@/chat/slack/channel";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import { sleep } from "@/chat/sleep";
@@ -38,8 +39,8 @@ function missingLinkedFileIds(raw: SlackEvent): Set<string> {
  * When a person pastes a link to an existing Slack file, the message events
  * have the file only as a rich text `file` element. Slack attaches the file
  * later with a `message_changed` event, and ingress ignores that event so that
- * accepted Conversation Messages do not change. Read the message again to get
- * the files that Slack attached for the author.
+ * accepted Messages do not change. Read the message again to get the files
+ * that Slack attached.
  */
 export async function attachLinkedSlackFiles(args: {
   adapter: SlackAdapter;
@@ -54,23 +55,36 @@ export async function attachLinkedSlackFiles(args: {
 
   // Each read returns the full message, so keep only the latest files.
   let files: NonNullable<SlackEvent["files"]> = [];
-  for (const delayMs of READ_DELAYS_MS) {
-    await sleep(delayMs);
-    const replies = await listThreadReplies({
-      channelId,
-      threadTs,
-      targetMessageTs: [ts],
+  try {
+    for (const delayMs of READ_DELAYS_MS) {
+      await sleep(delayMs);
+      const message = await readSlackMessage({ channelId, threadTs, ts });
+      files = (message?.files ?? [])
+        .filter((file) => file.id && missing.has(file.id))
+        .map((file) => ({
+          id: file.id,
+          mimetype: file.mimetype,
+          name: file.name,
+          size: file.size,
+          url_private: file.url_private,
+        }));
+      if (files.length === missing.size) break;
+    }
+  } catch (error) {
+    // Linked files are optional input. The turn runs without them, the same
+    // as before Junior read them, instead of failing on a Slack read error.
+    logWarn("slack.linked_file.read.failed", {
+      "messaging.message.id": ts,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
     });
-    files = (replies.find((reply) => reply.ts === ts)?.files ?? [])
-      .filter((file) => file.id && missing.has(file.id))
-      .map((file) => ({
-        id: file.id,
-        mimetype: file.mimetype,
-        name: file.name,
-        size: file.size,
-        url_private: file.url_private,
-      }));
-    if (files.length === missing.size) break;
+  }
+  if (files.length < missing.size) {
+    logWarn("slack.linked_file.missing", {
+      "messaging.message.id": ts,
+      "app.slack.linked_file.count": missing.size,
+      "app.slack.linked_file.missing.count": missing.size - files.length,
+    });
   }
   if (files.length > 0) {
     args.message.attachments.push(

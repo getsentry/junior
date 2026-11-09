@@ -128,6 +128,30 @@ export async function listThreadReplies(input: {
   return replies.slice(0, targetLimit);
 }
 
+/** Read one Slack message, a thread root or a reply, by its timestamp. */
+export async function readSlackMessage(input: {
+  channelId: SlackChannelId;
+  threadTs: SlackMessageTs;
+  ts: SlackMessageTs;
+}): Promise<SlackThreadReply | undefined> {
+  const response = await withSlackRetries(
+    () =>
+      getSlackClient().conversations.replies({
+        channel: input.channelId,
+        ts: input.threadTs,
+        oldest: input.ts,
+        latest: input.ts,
+        inclusive: true,
+        // Slack can also return the thread root.
+        limit: 2,
+      }),
+    3,
+    { action: "conversations.replies" },
+  );
+  const message = response.messages?.find((reply) => reply.ts === input.ts);
+  return message && { ...message, ...replySubtypeSchema.parse(message) };
+}
+
 export interface SlackConversationInfo {
   id: SlackChannelId;
   name?: string;

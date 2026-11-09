@@ -46,6 +46,7 @@ import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { createTestMessage } from "../../fixtures/slack-harness";
 import {
   getCapturedSlackApiCalls,
+  queueSlackApiError,
   queueSlackApiResponse,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
@@ -284,11 +285,7 @@ describe("Slack conversation work execution", () => {
     expect(handleNewMention).toHaveBeenCalledOnce();
   });
 
-  it("adds the files that Slack attaches after a person links them", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const slackAdapter = createSlackAdapterFixture();
+  describe("linked Slack files", () => {
     const linkedFile = (id: string, name: string) => ({
       id,
       mimetype: "text/csv",
@@ -317,31 +314,12 @@ describe("Slack conversation work execution", () => {
         ],
       },
     ];
-    await handleSlackWebhookAndFlush({
-      request: slackWebhookRequest({
-        ...envelope,
-        event: { ...envelope.event, blocks },
-      }),
-      services: {
-        getSlackAdapter: () => slackAdapter,
-        queue,
-        runtime: createNoopSlackWebhookRuntime(),
-        state,
-      },
-    });
-    // Slack attaches the linked files one at a time.
-    for (const files of [
-      [linkedFile("F0FIRST", "first.csv")],
-      [
-        linkedFile("F0FIRST", "first.csv"),
-        linkedFile("F0SECOND", "second.csv"),
-      ],
-    ]) {
+    const queueRead = (files: ReturnType<typeof linkedFile>[]) =>
       queueSlackApiResponse("conversations.replies", {
         body: conversationsRepliesPage({
           messages: [
             {
-              ts: "1712345.0001",
+              ts: envelope.event.ts,
               user: "U123",
               text: envelope.event.text,
               blocks,
@@ -351,35 +329,86 @@ describe("Slack conversation work execution", () => {
           ],
         }),
       });
-    }
-    const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
-      expect(
-        restored.attachments.map(
+
+    /** Run one mention turn and return the names of its attachments. */
+    async function runTurn(): Promise<string[]> {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest({
+          ...envelope,
+          event: { ...envelope.event, blocks },
+        }),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+      let names: string[] = [];
+      const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
+        names = restored.attachments.map(
           (attachment: { name?: string }) => attachment.name,
+        );
+        await hooks.ack?.();
+      });
+      await expect(
+        processNextQueuedSlackWork({
+          getSlackAdapter: () => slackAdapter,
+          lookupSlackUser: async () => ({
+            email: "david@example.com",
+            fullName: "David Cramer",
+            userName: "dcramer",
+          }),
+          queue,
+          runtime: {
+            handleNewMention,
+            handleSubscribedMessage: async () => {
+              throw new Error("unexpected subscribed route");
+            },
+          },
+          state,
+        }),
+      ).resolves.toEqual({ status: "completed" });
+      expect(handleNewMention).toHaveBeenCalledOnce();
+      return names;
+    }
+
+    it("adds the files that Slack attaches after a person links them", async () => {
+      // Slack attaches the linked files one at a time.
+      queueRead([linkedFile("F0FIRST", "first.csv")]);
+      queueRead([
+        linkedFile("F0FIRST", "first.csv"),
+        linkedFile("F0SECOND", "second.csv"),
+      ]);
+
+      await expect(runTurn()).resolves.toEqual(["first.csv", "second.csv"]);
+      // Each read asks Slack for only the linked message.
+      expect(
+        getCapturedSlackApiCalls("conversations.replies").map(
+          (call) => call.params,
         ),
-      ).toEqual(["first.csv", "second.csv"]);
-      await hooks.ack?.();
+      ).toEqual(
+        Array(2).fill(
+          expect.objectContaining({
+            oldest: envelope.event.ts,
+            latest: envelope.event.ts,
+            inclusive: "true",
+          }),
+        ),
+      );
     });
 
-    await expect(
-      processNextQueuedSlackWork({
-        getSlackAdapter: () => slackAdapter,
-        lookupSlackUser: async () => ({
-          email: "david@example.com",
-          fullName: "David Cramer",
-          userName: "dcramer",
-        }),
-        queue,
-        runtime: {
-          handleNewMention,
-          handleSubscribedMessage: async () => {
-            throw new Error("unexpected subscribed route");
-          },
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-    expect(handleNewMention).toHaveBeenCalledOnce();
+    it("runs the turn without linked files when Slack cannot read the message", async () => {
+      queueSlackApiError("conversations.replies", {
+        error: "channel_not_found",
+      });
+
+      await expect(runTurn()).resolves.toEqual([]);
+    });
   });
 
   it("rejects malformed serialized Slack mailbox metadata", async () => {
