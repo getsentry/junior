@@ -74,9 +74,6 @@ export function ConversationWorkspace(props: {
 }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  // The narrow home hides the create dock while the reader searches, so the
-  // keyboard and results share the screen without the composer.
-  const [searchFocused, setSearchFocused] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
@@ -239,23 +236,13 @@ export function ConversationWorkspace(props: {
       ) : (
         <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 pt-4 sm:px-6">
           <section aria-label="Conversations" className="grid gap-3">
-            <div
-              onBlur={(event) => {
-                // Focus can move to the clear button inside the same field.
-                if (!event.currentTarget.contains(event.relatedTarget)) {
-                  setSearchFocused(false);
-                }
-              }}
-              onFocus={() => setSearchFocused(true)}
-            >
-              <SearchInput
-                className="w-full sm:ml-auto sm:w-72"
-                label="Search your conversations"
-                onChange={setQuery}
-                placeholder="Search conversations…"
-                value={query}
-              />
-            </div>
+            <SearchInput
+              className="w-full sm:ml-auto sm:w-72"
+              label="Search your conversations"
+              onChange={setQuery}
+              placeholder="Search conversations…"
+              value={query}
+            />
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
@@ -291,11 +278,7 @@ export function ConversationWorkspace(props: {
               "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
             : // Narrow screens dock the composer at the bottom, in thumb
               // reach. The shell owns the keyboard and safe-area pad.
-              cn(
-                "max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] overflow-y-auto border-t border-dashboard-border-subtle bg-dashboard-bg px-2 pb-[var(--dashboard-composer-dock-padding,0.375rem)] pt-2 sm:px-6",
-                // Hidden, not removed, so the draft stays.
-                searchFocused && "hidden",
-              )
+              "max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] overflow-y-auto border-t border-dashboard-border-subtle bg-dashboard-bg px-2 pb-[var(--dashboard-composer-dock-padding,0.375rem)] pt-2 sm:px-6"
         }
       >
         {createView}
