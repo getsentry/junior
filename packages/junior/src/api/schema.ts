@@ -143,6 +143,14 @@ export type {
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
 export {
+  conversationSubscriptionBodySchema,
+  conversationSubscriptionResponseSchema,
+} from "./schema/conversation-subscription";
+export type {
+  ConversationSubscriptionBody,
+  ConversationSubscriptionResponse,
+} from "./schema/conversation-subscription";
+export {
   conversationUnreadSchema,
   markConversationUnreadBodySchema,
 } from "./schema/conversation-unread";

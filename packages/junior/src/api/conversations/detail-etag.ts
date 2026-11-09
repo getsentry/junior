@@ -82,7 +82,7 @@ function viewerStateVersion(
     .where(eq(versionConversation.conversationId, conversationId));
   const participant = db
     .select({
-      state: sql<string>`row(${versionParticipant.pinnedAt}, ${versionParticipant.pinPosition}, ${versionParticipant.autoArchive})::text`,
+      state: sql<string>`row(${versionParticipant.pinnedAt}, ${versionParticipant.pinPosition}, ${versionParticipant.autoArchive}, ${versionParticipant.unsubscribedAt})::text`,
     })
     .from(versionParticipant)
     .where(
@@ -187,6 +187,7 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
       pinnedAt: juniorConversationParticipants.pinnedAt,
       pinPosition: juniorConversationParticipants.pinPosition,
       rootConversationId: sql<string>`${rootConversationId}`,
+      unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
       version: sql<
         string | null
       >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
@@ -215,6 +216,8 @@ export type ConversationDetailState = {
   autoArchive?: boolean;
   forks: Awaited<ReturnType<typeof readConversationForks>>;
   readPosition?: ConversationReadPosition;
+  /** The viewer has not unsubscribed from the root. */
+  subscribed?: boolean;
   /**
    * Changes when events that a reader already has may project differently,
    * so an `appendCursor` from before it cannot extend them.
@@ -304,6 +307,7 @@ async function readDetailState(
       ...(row?.lastReadSeq != null
         ? { readPosition: { lastReadSeq: row.lastReadSeq } }
         : undefined),
+      ...(viewer ? { subscribed: !row?.unsubscribedAt } : undefined),
       transcriptVersion,
       ...(viewer && row
         ? { unreadReply: unreadIds.has(row.rootConversationId) }
@@ -367,6 +371,7 @@ export async function readConversationDetailEtag(
     forks: state.forks,
     junior: JUNIOR_VERSION,
     limit: options.limit ?? null,
+    subscribed: state.subscribed ?? null,
     version,
     // The read position is not hashed, but whether it leaves a reply unread
     // is, so the next poll after a read or a mark shows the new state.

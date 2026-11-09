@@ -34,6 +34,7 @@ import {
   conversationViewerMarks,
   conversationHasParticipantUser,
   conversationIsMemberRoot,
+  conversationIsNotUnsubscribedRoot,
   viewerConversationMembership,
   type ConversationMember,
 } from "./membership";
@@ -86,7 +87,12 @@ function conversationFeedMembershipFilter(
       ? isNotNull(juniorConversations.archivedAt)
       : status === "all"
         ? undefined
-        : isNull(juniorConversations.archivedAt),
+        : // An unsubscribed person still finds the conversation in archived
+          // and search results. Contract: `subscription.ts`.
+          and(
+            isNull(juniorConversations.archivedAt),
+            conversationIsNotUnsubscribedRoot(member),
+          ),
   );
 }
 

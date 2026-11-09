@@ -154,6 +154,9 @@ const mockTitles = new Map<string, string>();
 /** Process-local auto-archive choices for mock visual QA. */
 const mockAutoArchiveByConversationId = new Map<string, boolean>();
 
+/** Process-local unsubscribes for mock visual QA. */
+const mockUnsubscribedConversationIds = new Set<string>();
+
 /** Process-local archives. Like the API, an archive applies to everyone. */
 const initialMockArchives: [string, string][] = [
   [ARCHIVED_CONVERSATION_ID, iso(NOW_MS, -3 * 24 * 60 * 60_000)],
@@ -178,6 +181,7 @@ export function resetMockConversationViewerState(): void {
   mockUnreadConversationIds.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
+  mockUnsubscribedConversationIds.clear();
   mockArchivedAt.clear();
   mockArchiveCount = 0;
   for (const [id, at] of initialMockArchives) mockArchivedAt.set(id, at);
@@ -2194,8 +2198,9 @@ export function readMockConversationFeed(
     .filter((conversation) =>
       status === "archived"
         ? Boolean(conversation.archivedAt)
-        : !conversation.archivedAt ||
-          Date.parse(conversation.archivedAt) >= recentArchiveCutoffMs,
+        : !mockUnsubscribedConversationIds.has(conversation.conversationId) &&
+          (!conversation.archivedAt ||
+            Date.parse(conversation.archivedAt) >= recentArchiveCutoffMs),
     )
     .filter(
       (conversation) =>
@@ -2374,6 +2379,31 @@ export function archiveMockDoneConversations(): { archived: number } {
     archived += 1;
   }
   return { archived };
+}
+
+/**
+ * Subscribe to or unsubscribe from one mock root for local dashboard visual
+ * QA. Like the API, an unsubscribe drops the pin. The mock viewer is never
+ * the last subscriber, so it never archives.
+ */
+export function setMockConversationSubscribed(
+  conversationId: string,
+  subscribed: boolean,
+): { archivedAt: string | null; subscribed: boolean } | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  const rootId =
+    mockAgentTree(conversation)?.[0]?.conversationId ?? conversationId;
+  if (subscribed) {
+    mockUnsubscribedConversationIds.delete(rootId);
+  } else {
+    mockUnsubscribedConversationIds.add(rootId);
+    mockPinnedConversationIds.delete(rootId);
+    mockPinPositions.delete(rootId);
+  }
+  return { archivedAt: mockArchivedAt.get(rootId) ?? null, subscribed };
 }
 
 /** Save a mock auto-archive choice for local dashboard visual QA. */
@@ -2661,6 +2691,9 @@ export function readMockConversationDetail(
       ? {
           autoArchive:
             mockAutoArchiveByConversationId.get(conversationId) ?? false,
+          subscribed: !mockUnsubscribedConversationIds.has(
+            agentTree?.[0]?.conversationId ?? conversationId,
+          ),
         }
       : undefined),
   };
