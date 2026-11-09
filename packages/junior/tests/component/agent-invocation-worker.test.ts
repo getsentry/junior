@@ -402,7 +402,9 @@ describe("agent invocation worker", () => {
           {
             last_result: "completed",
             name: "researcher",
-            status: "idle",
+            // The stub attempt never ends the child's work, so its execution
+            // stays paused, and a paused Conversation is active.
+            status: "active",
             task: `Skip the "cache" path & <retry>.`,
           },
         ],
