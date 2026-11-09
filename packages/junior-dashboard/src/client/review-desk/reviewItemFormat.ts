@@ -122,10 +122,20 @@ export function answerLine(
   return parts.join(" · ");
 }
 
-/** The open Review items of the inbox, in the groups and order it shows. */
-export type InboxGroups = {
-  fyi: ReviewItemPayload[];
-  needsYou: ReviewItemPayload[];
+/**
+ * The Review items of one Conversation, triaged as one unit. `needsYou` sorts
+ * the bundle into the queue; other bundles are FYI and sort after it.
+ */
+export type InboxBundle = {
+  /** The Conversation that added the items. */
+  conversationId: string;
+  /** Items in inbox order: questions first, then the oldest. */
+  items: ReviewItemPayload[];
+  /** The item added last, which the collapsed bundle shows. */
+  newest: ReviewItemPayload;
+  needsYou: boolean;
+  /** When the first item that needs the viewer arrived, or the first item. */
+  waitingSince: string;
 };
 
 /** Inbox order: action items first, then the oldest, then the item id. */
@@ -137,26 +147,80 @@ function inboxOrder(a: ReviewItemPayload, b: ReviewItemPayload): number {
 }
 
 /**
- * Split open items into inbox groups, oldest first, so the item that waited
- * longest is at the top. Archived items are in no group.
+ * True when an item waits on the viewer, as the server's waiting rule says:
+ * an open action item assigned to them, not to Everyone. A plugin ask, such
+ * as `Ready to merge · #42`, is an action item with no `request`.
  */
-export function inboxGroups(items: readonly ReviewItemPayload[]): InboxGroups {
-  const open = items.filter((item) => item.status === "open");
-  return {
-    fyi: open.filter((item) => item.kind === "notice").sort(inboxOrder),
-    needsYou: open.filter((item) => item.kind === "action").sort(inboxOrder),
-  };
+function itemNeedsViewer(item: ReviewItemPayload): boolean {
+  return (
+    item.status === "open" &&
+    item.kind === "action" &&
+    item.canAct &&
+    !item.assignedToEveryone
+  );
 }
 
 /**
- * The open item that follows `current` in inbox order. `current` can be an
- * item that closed and left the open groups.
+ * Group items into one bundle per Conversation. Bundles that need the viewer
+ * come first, the one that waited longest at the top, so the order does not
+ * change while the reader works. FYI bundles follow, oldest first.
  */
-export function nextInboxItem(
-  groups: InboxGroups,
-  current: ReviewItemPayload,
-): ReviewItemPayload | undefined {
-  return [...groups.needsYou, ...groups.fyi].find(
-    (item) => inboxOrder(current, item) < 0,
+export function inboxBundles(
+  items: readonly ReviewItemPayload[],
+): InboxBundle[] {
+  const byConversation = new Map<string, ReviewItemPayload[]>();
+  for (const item of items) {
+    const key = item.addedByConversationId;
+    byConversation.set(key, [...(byConversation.get(key) ?? []), item]);
+  }
+  const bundles = [...byConversation].map(([conversationId, group]) => {
+    const sorted = [...group].sort(inboxOrder);
+    const waiting = sorted.filter(itemNeedsViewer);
+    const newest = sorted.reduce((latest, item) =>
+      Date.parse(item.createdAt) > Date.parse(latest.createdAt) ? item : latest,
+    );
+    const since = Math.min(
+      ...(waiting.length > 0 ? waiting : sorted).map((item) =>
+        Date.parse(item.createdAt),
+      ),
+    );
+    return {
+      conversationId,
+      items: sorted,
+      newest,
+      needsYou: waiting.length > 0,
+      waitingSince: new Date(since).toISOString(),
+    };
+  });
+  return bundles.sort(
+    (a, b) =>
+      Number(b.needsYou) - Number(a.needsYou) ||
+      Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
+      a.conversationId.localeCompare(b.conversationId),
   );
+}
+
+/**
+ * Say in one short line why a bundle is in the inbox, after the newest
+ * item's title: how many questions wait on the viewer, and the steps that
+ * other plugin asks name, such as `Ready to merge · #42`. Other bundles are
+ * FYI. Undefined when the newest title already says it all.
+ */
+export function inboxBundleReason(bundle: InboxBundle): string | undefined {
+  const waiting = bundle.items.filter(itemNeedsViewer);
+  const questions = waiting.filter((item) => item.request).length;
+  const parts = [
+    ...(questions > 0
+      ? [`${questions} question${questions === 1 ? "" : "s"}`]
+      : []),
+    // A plugin ask's title names the step that it waits for.
+    ...waiting
+      .filter((item) => !item.request && item !== bundle.newest)
+      .map((item) => item.title),
+  ];
+  if (parts.length > 0) return parts.join(" · ");
+  if (bundle.needsYou) return undefined;
+  return bundle.items.some((item) => item.status === "open")
+    ? "FYI"
+    : reviewItemStatusLabel(bundle.newest);
 }

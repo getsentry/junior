@@ -1,7 +1,8 @@
 /**
  * Process-local Review items for mock reporting. Two Conversations ask the
  * viewer questions, so the questions above the message box, their transcript
- * rows, and the review desk can be checked without a database.
+ * rows, and the review desk can be checked without a database. GitHub
+ * plugin asks and FYI notices fill the rest of the inbox.
  */
 import type {
   ConversationReportEvent,
@@ -20,10 +21,21 @@ const viewer = {
   userId: "u-dev",
 };
 
+// Fixture Conversations that the plugin asks and notices link to.
+const DEPLOY_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
+const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
+const DIGEST_CONVERSATION_ID = "scheduler:daily-ops-digest";
+
 type MockItemSeed = Pick<
   ReviewItemPayload,
-  "answer" | "body" | "id" | "request" | "status" | "title"
-> & { conversationId: string; createdAt: string };
+  "answer" | "body" | "id" | "request" | "status" | "subject" | "title"
+> &
+  Partial<Pick<ReviewItemPayload, "assignedToEveryone" | "kind">> & {
+    conversationId: string;
+    createdAt: string;
+    /** The plugin that added the item. Plugin items have no Turn. */
+    plugin?: string;
+  };
 
 function seeds(nowMs: number): MockItemSeed[] {
   const at = (minutes: number) =>
@@ -153,6 +165,54 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Handle the negative invoices",
     },
+    {
+      // The GitHub plugin asks the opener once the pull request can merge.
+      body: "**Update Junior to 0.288.0** is approved, and GitHub says that it can merge: https://github.com/getsentry/junior/pull/2201",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(12),
+      id: "qa-ready-2201",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/junior/pull/2201",
+        title: "getsentry/junior#2201",
+        url: "https://github.com/getsentry/junior/pull/2201",
+      },
+      title: "Ready to merge · #2201",
+    },
+    {
+      body: "GitHub asks you to review **Pin the release train to payments 4.2**: https://github.com/getsentry/payments/pull/91",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(89),
+      id: "qa-review-91",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/payments/pull/91",
+        title: "getsentry/payments#91",
+        url: "https://github.com/getsentry/payments/pull/91",
+      },
+      title: "Review requested · #91",
+    },
+    {
+      assignedToEveryone: true,
+      body: "The canary deploy paused after the error budget alert. Nothing to do unless it stays paused.",
+      conversationId: DEPLOY_CONVERSATION_ID,
+      createdAt: at(30),
+      id: "qa-deploy-paused",
+      kind: "notice",
+      status: "open",
+      title: "Canary deploy paused",
+    },
+    {
+      body: "The digest skipped two alerts that fired more than 20 times today.",
+      conversationId: DIGEST_CONVERSATION_ID,
+      createdAt: at(300),
+      id: "qa-digest-skipped",
+      kind: "notice",
+      status: "open",
+      title: "Digest skipped two noisy alerts",
+    },
   ];
 }
 
@@ -169,18 +229,19 @@ export function resetMockReviewItems(): void {
 }
 
 function payload(seed: MockItemSeed): ReviewItemPayload {
-  const { conversationId, ...rest } = seed;
+  const { conversationId, plugin: _plugin, ...rest } = seed;
   const change = changes.get(seed.id);
   const item = { ...rest, ...change };
+  const everyone = seed.assignedToEveryone ?? false;
   return {
     ...item,
     addedByConversationId: conversationId,
-    assignedToEveryone: false,
-    assignees: [viewer],
+    assignedToEveryone: everyone,
+    assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
     conversationIds: [conversationId],
-    kind: "action",
+    kind: seed.kind ?? "action",
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
     ...(item.status !== "open" && !item.closedAt
@@ -245,7 +306,9 @@ export function answerMockReviewItemByReply(
   conversationId: string,
   text: string,
 ): void {
-  const [item] = readMockReviewItems(nowMs, { conversationId });
+  const item = readMockReviewItems(nowMs, { conversationId }).find(
+    (candidate) => candidate.request,
+  );
   if (!item) return;
   changes.set(item.id, {
     answer: { other: text, requestId: item.id, values: {} },
@@ -256,9 +319,19 @@ export function answerMockReviewItemByReply(
   });
 }
 
-/** Count the open items and list the Conversations that wait on the viewer. */
+/**
+ * Count the open items that need the viewer and list the Conversations that
+ * wait on them. Like the API, notices and items for Everyone do not count.
+ */
 export function readMockWaitingConversations(nowMs: number) {
-  const open = readMockReviewItems(nowMs, {});
+  const plugins = new Map(
+    seeds(nowMs).flatMap((seed) =>
+      seed.plugin ? [[seed.id, seed.plugin] as const] : [],
+    ),
+  );
+  const open = readMockReviewItems(nowMs, {}).filter(
+    (item) => item.kind === "action" && !item.assignedToEveryone,
+  );
   const byConversation = new Map<string, ReviewItemPayload[]>();
   for (const item of open) {
     const id = item.addedByConversationId;
@@ -267,7 +340,12 @@ export function readMockWaitingConversations(nowMs: number) {
   return {
     conversations: [...byConversation].map(([conversationId, items]) => ({
       conversationId,
-      items: [...items].reverse().map(({ title }) => ({ title })),
+      items: [...items]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .map(({ id, title }) => {
+          const plugin = plugins.get(id);
+          return { title, ...(plugin ? { plugin } : undefined) };
+        }),
       waitingSince: items
         .map((item) => item.createdAt)
         .reduce((oldest, createdAt) =>

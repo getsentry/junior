@@ -11,8 +11,8 @@ import { useConversationData } from "../conversations/queries";
 import type { ConversationTranscript } from "../types";
 import { excerptMessage } from "./reviewItemFormat";
 
-/** Messages before the item that the excerpt shows. */
-const BEFORE_COUNT = 3;
+/** Messages before the item that the excerpt shows: the one that asked. */
+const BEFORE_COUNT = 1;
 /** Messages after the item that the excerpt shows. */
 const AFTER_COUNT = 3;
 

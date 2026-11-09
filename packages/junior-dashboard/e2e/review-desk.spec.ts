@@ -112,12 +112,35 @@ const migration = {
   title: "Pick the billing migration window",
 };
 
+// The GitHub plugin's ask for a Junior pull request: an action item with no
+// question. The mock Conversation has the object annotation for the same URL.
+const prMerge = {
+  ...base,
+  addedByConversationId: conversationId,
+  body: "**Retry checkout writes after lock timeouts** is approved, and GitHub says that it can merge.",
+  conversationIds: [conversationId],
+  createdAt: "2026-08-07T11:00:00.000Z",
+  id: "item-pr-merge",
+  kind: "action" as const,
+  subject: {
+    id: "https://github.com/getsentry/payments/pull/42",
+    title: "getsentry/payments#42",
+    url: "https://github.com/getsentry/payments/pull/42",
+  },
+  title: "Ready to merge · #42",
+};
+
+/**
+ * Serve the given open items and the archived one. An answer or dismiss
+ * closes the item, as on the server, so the inbox can move on. `keepOpen`
+ * keeps an answered item open, so a test can answer it twice.
+ */
 async function mockReviewItems(
   page: Page,
-  options: { open?: unknown[]; pageSize?: number } = {},
+  options: { keepOpen?: boolean; open?: unknown[]; pageSize?: number } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
-  const open = (options.open ?? [
+  let open = (options.open ?? [
     rollout,
     license,
     audit,
@@ -125,7 +148,6 @@ async function mockReviewItems(
     migration,
   ]) as (typeof license)[];
   const archived = [answered];
-  const items = [...open, ...archived];
   await page.route("**/api/review-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
@@ -152,13 +174,15 @@ async function mockReviewItems(
     const action = path.match(/^\/([^/]+)\/actions$/);
     if (action) {
       const id = decodeURIComponent(action[1]!);
+      const item = open.find((i) => i.id === id);
       actions.push({ body: route.request().postDataJSON(), id });
-      const acted = items.find((i) => i.id === id);
-      return acted
-        ? route.fulfill({ json: acted })
-        : route.fulfill({ json: { error: "Not found" }, status: 404 });
+      if (options.keepOpen) return route.fulfill({ json: item });
+      open = open.filter((i) => i.id !== id);
+      return route.fulfill({ json: { ...item, status: "done" } });
     }
-    const item = items.find((i) => i.id === decodeURIComponent(path.slice(1)));
+    const item = [...open, ...archived].find(
+      (i) => i.id === decodeURIComponent(path.slice(1)),
+    );
     return item
       ? route.fulfill({ json: item })
       : route.fulfill({ json: { error: "Not found" }, status: 404 });
@@ -183,119 +207,184 @@ async function mockNoBlockedAutomations(page: Page) {
   );
 }
 
-test("each review item gets a fresh answer form", async ({
+test("the inbox bundles review items by conversation", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/review`);
+  const needsYou = page.getByRole("region", { name: "Needs you" });
+  const bundles = needsYou.getByRole("button", { expanded: false });
+  // One bundle per Conversation. The one that waited longest comes first.
+  await expect(bundles).toHaveCount(2);
+  await expect(bundles.nth(0)).toContainText(audit.title);
+  await expect(bundles.nth(0)).toContainText("2 questions");
+  await expect(bundles.nth(1)).toContainText("Investigate checkout latency");
+  await expect(bundles.nth(1)).toContainText(rollout.title);
+  // Archived items show only in a search.
+  await expect(page.getByText(answered.title)).toHaveCount(0);
+  await screenshot(page, "review-desk", { lightTheme: true, view: "desktop" });
+
+  // j shows where the reader is, and Enter opens the bundle in place.
+  await page.keyboard.press("j");
+  await expect(bundles.nth(0)).toBeFocused();
+  await page.keyboard.press("Enter");
+  const bundle = page.getByRole("region", {
+    name: `${audit.title}: review items`,
+  });
+  await expect(
+    bundle.getByRole("region", { name: license.title }),
+  ).toBeVisible();
+  await expect(bundle.getByRole("region", { name: audit.title })).toBeVisible();
+  // Without its object card, a notice links to its subject.
+  await expect(
+    bundle.getByRole("link", { name: prReady.subject.title }),
+  ).toBeVisible();
+  await screenshot(page, "review-desk-bundle", {
+    lightTheme: true,
+    view: "desktop",
+  });
+  await page.keyboard.press("Escape");
+  await expect(bundle).toBeHidden();
+
+  await page.keyboard.press("j");
+  await page.keyboard.press("Enter");
+  const checkout = page.getByRole("region", {
+    name: "Investigate checkout latency: review items",
+  });
+  await expect(checkout.getByText("New since Junior asked")).toBeVisible();
+  await expect(checkout.getByText("Checkout p95 jumped after")).toBeVisible();
+});
+
+test("a pull request bundle shows the saved pull request card", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, { open: [prMerge] });
+  await page.goto(`${dashboard.baseURL}/review?item=${prMerge.id}`);
+  const bundle = page.getByRole("region", {
+    name: "Investigate checkout latency: review items",
+  });
+  await expect(
+    bundle.getByRole("link", {
+      name: "Retry checkout writes after lock timeouts",
+    }),
+  ).toBeVisible();
+  await expect(bundle.getByText("fix/checkout-lock-retry")).toBeVisible();
+  await screenshot(page, "review-desk-pull-request", {
+    lightTheme: true,
+    view: "desktop",
+  });
+});
+
+test("each review item gets its own answer form", async ({
   dashboard,
   page,
 }) => {
   const actions = await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/review?item=${license.id}`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  const list = page.getByRole("navigation", { name: "Review items" });
-  await expect(
-    detail.getByRole("heading", { name: license.title }),
-  ).toBeVisible();
+  // This Conversation has no title, so the bundle is named after its newest
+  // item, which changes as items close.
+  const bundle = page.getByRole("region", { name: /: review items$/ });
+  const licenseItem = bundle.getByRole("region", { name: license.title });
+  const auditItem = bundle.getByRole("region", { name: audit.title });
 
   // A choice on one item must not carry over to the next item.
-  await detail.getByRole("radio", { name: "Approve" }).click();
-  await expect(detail.getByRole("radio", { name: "Approve" })).toBeChecked();
-  await list.getByRole("link", { name: new RegExp(audit.title) }).click();
+  await licenseItem.getByRole("radio", { name: "Approve" }).click();
   await expect(
-    detail.getByRole("heading", { name: audit.title }),
-  ).toBeVisible();
+    licenseItem.getByRole("radio", { name: "Approve" }),
+  ).toBeChecked();
   await expect(
-    detail.getByRole("radio", { name: "Approve" }),
+    auditItem.getByRole("radio", { name: "Approve" }),
   ).not.toBeChecked();
 
-  // A sent answer must not lock the form of the next item.
-  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
-  await detail.getByRole("button", { name: "Roll out" }).click();
+  await auditItem.getByRole("radio", { name: "Reject" }).click();
+  await expect(auditItem.getByText("1 of 2 answered")).toBeVisible();
+  // The note goes with the picked answer. It must not replace it.
+  await auditItem.getByLabel("Anything else?").fill("Ask legal first.");
+  await auditItem.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => actions.length).toBe(1);
   expect(actions[0]).toMatchObject({
-    body: { action: "submit", answer: { values: { go: ["Roll out"] } } },
-    id: rollout.id,
-  });
-  await list.getByRole("link", { name: new RegExp(license.title) }).click();
-  await expect(
-    detail.getByRole("heading", { name: license.title }),
-  ).toBeVisible();
-  await detail.getByRole("radio", { name: "Reject" }).click();
-  await expect(detail.getByText("1 of 2 answered")).toBeVisible();
-  // The note goes with the picked answer. It must not replace it.
-  await detail.getByLabel("Anything else?").fill("Ask legal first.");
-  await detail.getByRole("button", { name: "Send" }).click();
-  await expect.poll(() => actions.length).toBe(2);
-  expect(actions[1]).toMatchObject({
     body: {
       action: "submit",
       answer: { other: "Ask legal first.", values: { decision: ["Reject"] } },
     },
-    id: license.id,
+    id: audit.id,
   });
+  // The bundle stays open while it has items.
+  await expect(licenseItem).toBeVisible();
+});
 
+test("after the last answer the next bundle opens", async ({
+  dashboard,
+  page,
+}) => {
+  const actions = await mockReviewItems(page, { open: [audit, rollout] });
+  await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
+  const checkout = page.getByRole("region", {
+    name: "Investigate checkout latency: review items",
+  });
   // Other… lets the reader answer a button question in their own words.
-  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
-  await detail.getByRole("button", { name: "Other…" }).click();
-  await expect(detail.getByLabel("Anything else?")).toBeFocused();
+  await checkout.getByRole("button", { name: "Other…" }).click();
+  await expect(checkout.getByLabel("Anything else?")).toBeFocused();
   await page.keyboard.type("Wait for the EU canary first.");
-  await screenshot(page, "review-desk-other", { view: "desktop" });
   // Every text box sends its form on Ctrl+Enter or Cmd+Enter.
   await page.keyboard.press("ControlOrMeta+Enter");
-  await expect.poll(() => actions.length).toBe(3);
-  expect(actions[2]).toMatchObject({
+  await expect.poll(() => actions.length).toBe(1);
+  expect(actions[0]).toMatchObject({
     body: {
       action: "submit",
       answer: { other: "Wait for the EU canary first.", values: {} },
     },
     id: rollout.id,
   });
+  await expect(checkout).toBeHidden();
+  const next = page.getByRole("button", { name: new RegExp(audit.title) });
+  await expect(next).toHaveAttribute("aria-expanded", "true");
+  await expect(next).toBeFocused();
 });
 
-test("the inbox shows an item in its conversation", async ({
+test("bundle keys mark done, snooze, and open the conversation", async ({
   dashboard,
   page,
 }) => {
-  await mockReviewItems(page);
-  await page.goto(`${dashboard.baseURL}/review`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  const list = page.getByRole("navigation", { name: "Review items" });
-  // The item that waited longest opens first.
-  await expect(
-    detail.getByRole("heading", { name: license.title }),
-  ).toBeVisible();
-  await expect(
-    list.getByRole("link", { name: new RegExp(license.title) }),
-  ).toHaveAttribute("aria-current", "page");
-  // Archived items show only in a search.
-  await expect(page.getByRole("region", { name: "Archived" })).toHaveCount(0);
-  await expect(
-    list.getByRole("link", { name: new RegExp(answered.title) }),
-  ).toHaveCount(0);
-
-  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
-  await expect(detail.getByText("New since Junior asked")).toBeVisible();
-  await expect(
-    detail.getByText("Find the slow checkout requests"),
-  ).toBeVisible();
-  await expect(detail.getByRole("button", { name: "Roll out" })).toBeVisible();
-  const details = page.getByRole("complementary", {
-    name: "Review item details",
+  const actions = await mockReviewItems(page, {
+    open: [license, audit, rollout],
   });
-  await expect(details.getByText(rollout.body)).toBeVisible();
-  await screenshot(page, "review-desk", { lightTheme: true, view: "desktop" });
+  await page.goto(`${dashboard.baseURL}/review`);
+  const needsYou = page.getByRole("region", { name: "Needs you" });
+  await expect(needsYou.getByRole("button", { expanded: false })).toHaveCount(
+    2,
+  );
 
-  await detail.getByRole("link", { name: `Next: ${prReady.title}` }).click();
+  // h opens the snooze choices, and a number picks one. The next bundle
+  // then opens in its place.
+  await page.keyboard.press("j");
+  await page.keyboard.press("h");
+  await expect(page.getByRole("group", { name: "Snooze until" })).toBeVisible();
+  await page.keyboard.press("2");
+  const snoozed = page.getByRole("region", { name: "Snoozed" });
+  await expect(snoozed).toBeVisible();
+  await expect(needsYou.getByRole("button", { name: /globex/ })).toHaveCount(0);
   await expect(
-    detail.getByRole("heading", { name: prReady.title }),
-  ).toBeVisible();
-  await expect(
-    details.getByRole("link", { name: prReady.subject.title }),
+    page.getByRole("region", {
+      name: "Investigate checkout latency: review items",
+    }),
   ).toBeVisible();
 
-  // A closed item links to the open item after it, not to the oldest one.
-  await page.goto(`${dashboard.baseURL}/review?item=${answered.id}`);
-  await expect(
-    detail.getByRole("link", { name: `Next: ${migration.title}` }),
-  ).toBeVisible();
+  // e closes every item in the bundle.
+  await page.keyboard.press("e");
+  await expect
+    .poll(() => actions.map((action) => action.id))
+    .toEqual([rollout.id]);
+  await snoozed.getByRole("button", { name: "Snoozed" }).click();
+  await snoozed.getByRole("button", { name: "Wake" }).click();
+  await expect(snoozed).toBeHidden();
+
+  // o opens the Conversation of the active bundle.
+  await page.keyboard.press("j");
+  await page.keyboard.press("o");
+  await expect(page).toHaveURL(/\/conversations\//);
 });
 
 test("review item changes show as rows, not as context for other items", async ({
@@ -375,10 +464,10 @@ test("review item changes show as rows, not as context for other items", async (
   );
 
   await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  await expect(
-    detail.getByText("Find the slow checkout requests"),
-  ).toBeVisible();
+  const detail = page.getByRole("region", {
+    name: "Investigate checkout latency: review items",
+  });
+  await expect(detail.getByText("Checkout p95 jumped after")).toBeVisible();
   await expect(
     detail.getByRole("region", { name: new RegExp(answered.title) }),
   ).toHaveCount(0);
@@ -416,63 +505,46 @@ test("review item changes show as rows, not as context for other items", async (
   await expect(page.getByText("1 events")).toHaveCount(0);
 });
 
-test("on mobile the list opens one item at a time", async ({
-  dashboard,
-  page,
-}) => {
+test("on mobile the inbox is the same queue", async ({ dashboard, page }) => {
   await mockReviewItems(page);
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(`${dashboard.baseURL}/review`);
-  const list = page.getByRole("navigation", { name: "Review items" });
+  await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
   await expect(
-    page.getByRole("region", { name: "Selected review item" }),
-  ).toBeHidden();
-  await screenshot(page, "review-desk-list", { view: "mobile" });
-
-  await list.getByRole("link", { name: new RegExp(rollout.title) }).click();
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  await expect(
-    detail.getByRole("heading", { name: rollout.title }),
+    page.getByRole("region", {
+      name: "Investigate checkout latency: review items",
+    }),
   ).toBeVisible();
-  await expect(list).toBeHidden();
-  await screenshot(page, "review-desk-item", { view: "mobile" });
-  await detail.getByRole("link", { name: "Inbox" }).click();
-  await expect(list).toBeVisible();
+  await screenshot(page, "review-desk-bundle", { view: "mobile" });
 });
 
-test("a search lists open and archived items together", async ({
+test("a search bundles open and archived items together", async ({
   dashboard,
   page,
 }) => {
   await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/review`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
   await page.getByLabel("Search review items").fill("license");
   await expect(page).toHaveURL(/[?&]q=license/);
   const results = page.getByRole("list", { name: "Search results" });
-  await expect(results.getByRole("link")).toHaveCount(3);
+  const bundle = results.getByRole("button", { expanded: false });
+  await expect(bundle).toHaveCount(1);
   await expect(page.getByRole("region", { name: "Needs you" })).toHaveCount(0);
-  await expect(
-    results.getByRole("link", { name: new RegExp(answered.title) }),
-  ).toContainText("Done");
+  await bundle.click();
+  // A closed item shows its answer.
+  await expect(results.getByText("MIT license, no change.")).toBeVisible();
   await screenshot(page, "review-desk-search", { view: "desktop" });
-  await results.getByRole("link", { name: new RegExp(answered.title) }).click();
-  await expect(
-    detail.getByRole("heading", { name: answered.title }),
-  ).toBeVisible();
-  await expect(detail.getByText(/closed this/)).toBeVisible();
 });
 
 test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await mockReviewItems(page, { open: [] });
   await mockNoBlockedAutomations(page);
   await page.goto(`${dashboard.baseURL}/review`);
-  const detail = page.getByRole("region", { name: "Selected review item" });
-  await expect(detail.getByText("Nothing needs you")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: new RegExp(answered.title) }),
-  ).toHaveCount(0);
-  await screenshot(page, "review-desk-empty", { view: "desktop" });
+  await expect(page.getByText("Nothing needs you")).toBeVisible();
+  await expect(page.getByText(answered.title)).toHaveCount(0);
+  await screenshot(page, "review-desk-empty", {
+    lightTheme: true,
+    view: "desktop",
+  });
 });
 
 test("Send sends docked picks and asks before a message drops others", async ({
@@ -480,7 +552,9 @@ test("Send sends docked picks and asks before a message drops others", async ({
   page,
 }) => {
   // A notice fills the first page, so the question docks from the second.
+  // The details panel answers the same item after the docked answer.
   const actions = await mockReviewItems(page, {
+    keepOpen: true,
     open: [{ ...prReady, conversationIds: [conversationId] }, migration],
     pageSize: 1,
   });
