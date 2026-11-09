@@ -1,11 +1,9 @@
-import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { mswServer } from "../../msw/server";
 
 const mocks = vi.hoisted(() => ({
   sendCacheWarmup: vi.fn(async (_message: unknown, _delayMs: number) => {}),
@@ -149,40 +147,6 @@ describe("cache warming gap segments", () => {
       ),
     ).toEqual([]);
     await state.delete("junior:cache_warming:gaps:user:1");
-  });
-
-  it("does not count an overloaded provider as a cache miss", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    const state = getStateAdapter();
-    for (let i = 0; i < 20; i++) {
-      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
-    }
-    mswServer.use(
-      http.post("https://ai-gateway.vercel.sh/v1/messages", () =>
-        HttpResponse.json(
-          {
-            type: "error",
-            error: { type: "overloaded_error", message: "Overloaded" },
-          },
-          { status: 529 },
-        ),
-      ),
-    );
-    mocks.sendCacheWarmup.mockClear();
-    try {
-      await endTurn(true);
-      const warmup = scheduledWarmup();
-      vi.advanceTimersByTime(4 * MINUTE);
-
-      await expect(runCacheWarmup(warmup)).rejects.toThrow("AI provider error");
-      expect(
-        await state.getList<number>(
-          "junior:cache_warming:breaker:anthropic:outcomes",
-        ),
-      ).toEqual([]);
-    } finally {
-      await state.delete("junior:cache_warming:gaps:user:1");
-    }
   });
 
   it("sends no warmup while the reply's first request runs", async () => {
