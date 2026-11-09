@@ -6,7 +6,8 @@ import {
   type NotificationSchedule,
   type NotificationSettings,
 } from "@sentry/junior/api/schema";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useLocation } from "react-router";
 
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -17,7 +18,7 @@ import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 import { NativeSelect } from "../components/ui/native-select";
 import { Skeleton } from "../components/ui/skeleton";
-import { del, fetchDashboardJson, post, put } from "../http";
+import { del, post, put } from "../http";
 import {
   currentPushSubscription,
   pushSupport,
@@ -25,10 +26,14 @@ import {
   subscribeThisDevice,
   unsubscribeThisDevice,
 } from "./push";
+import {
+  NOTIFICATIONS_PATH,
+  notificationSettingsQuery,
+  PUSH_NOTIFICATIONS_ANCHOR,
+} from "./queries";
 
-const notificationSettingsQueryKey = ["dashboard", "notifications"] as const;
+const notificationSettingsQueryKey = notificationSettingsQuery.queryKey;
 const deviceQueryKey = ["dashboard", "notifications", "device"] as const;
-const NOTIFICATIONS_PATH = "/api/notifications";
 
 const WEEKDAYS = [
   [1, "Mon"],
@@ -59,36 +64,41 @@ function timezoneOptions(): string[] {
 
 /** Show the device control and notification hours on the Settings page. */
 export function NotificationSettingsCard() {
-  const settingsQuery = useQuery({
-    queryKey: notificationSettingsQueryKey,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        notificationSettingsSchema,
-        NOTIFICATIONS_PATH,
-        signal,
-      ),
-  });
+  const settingsQuery = useQuery(notificationSettingsQuery);
+  // The push notifications tip links here; the card is below the fold.
+  const anchor = useRef<HTMLDivElement>(null);
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash === `#${PUSH_NOTIFICATIONS_ANCHOR}`)
+      anchor.current?.scrollIntoView();
+  }, [hash]);
 
   return (
-    <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <h2 className="m-0 text-lg font-bold">Phone notifications</h2>
-      <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
-        Get a notification when Junior replies to a conversation you started
-        here. Slack threads keep using Slack notifications.
-      </p>
-      {settingsQuery.isPending ? (
-        <NotificationSettingsSkeleton />
-      ) : settingsQuery.isError ? (
-        <InlineError className="mt-5">
-          Could not load notification settings. Reload the page to try again.
-        </InlineError>
-      ) : (
-        <>
-          <DeviceSection settings={settingsQuery.data} />
-          <ScheduleForm settings={settingsQuery.data} />
-        </>
-      )}
-    </Card>
+    <div
+      className="mt-6 scroll-mt-6"
+      id={PUSH_NOTIFICATIONS_ANCHOR}
+      ref={anchor}
+    >
+      <Card className="mb-0" padding="md" variant="raised">
+        <h2 className="m-0 text-lg font-bold">Push notifications</h2>
+        <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
+          Get a notification when Junior replies to a conversation you started
+          here. Slack threads keep using Slack notifications.
+        </p>
+        {settingsQuery.isPending ? (
+          <NotificationSettingsSkeleton />
+        ) : settingsQuery.isError ? (
+          <InlineError className="mt-5">
+            Could not load notification settings. Reload the page to try again.
+          </InlineError>
+        ) : (
+          <>
+            <DeviceSection settings={settingsQuery.data} />
+            <ScheduleForm settings={settingsQuery.data} />
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -161,7 +171,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
   if (!settings.publicKey) {
     return (
       <p className="mt-5 mb-0 text-sm text-dashboard-text-muted">
-        Phone notifications are not set up for this Junior install. Ask a Junior
+        Push notifications are not set up for this Junior install. Ask a Junior
         admin to add Web Push keys.
       </p>
     );

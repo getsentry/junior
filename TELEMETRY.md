@@ -215,7 +215,7 @@ attributes. Nested logs and spans inherit them.
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                      |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
-| Phone notification missing or late   | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
+| Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
 
 ## Code Mode
 

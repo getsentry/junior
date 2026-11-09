@@ -40,7 +40,7 @@ function isVapidSubject(subject: string): boolean {
 }
 
 /**
- * Read VAPID settings from the environment. Phone notifications are off when
+ * Read VAPID settings from the environment. Push notifications are off when
  * either key is missing or the subject is not `https:` or `mailto:`, such as
  * an `http://` base URL.
  */

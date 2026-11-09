@@ -4,6 +4,7 @@ import {
   NOTIFICATION_TARGET_KEY,
 } from "../src/service-worker";
 import { screenshot } from "./screenshot";
+import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-reporting/fixtures";
 
 test("updates the signed-in user's display name", async ({
   page,
@@ -28,11 +29,11 @@ test("updates the signed-in user's display name", async ({
 test("saves notification working hours", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/settings`);
   await expect(
-    page.getByRole("heading", { name: "Phone notifications" }),
+    page.getByRole("heading", { name: "Push notifications" }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Phone notifications are not set up for this Junior install.",
+      "Push notifications are not set up for this Junior install.",
     ),
   ).toBeVisible();
   await screenshot(page, "settings-notifications");
@@ -55,6 +56,71 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   });
   await expect(page.getByText("Hours saved.")).toBeVisible();
   await expect(saturday).toHaveAttribute("aria-pressed", "true");
+});
+
+test("offers push notifications once after a new conversation", async ({
+  page,
+  dashboard,
+}) => {
+  // The e2e install has no Web Push keys, so return a configured install.
+  await page.route("**/api/notifications", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      json: { ...(await response.json()), publicKey: "test-public-key" },
+      response,
+    });
+  });
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        // A fixture Conversation, so the page renders a transcript.
+        conversationId: DASHBOARD_QA_CONVERSATION_ID,
+        messageId: "tip-message",
+        status: "accepted",
+      },
+    });
+  });
+  async function startConversation(message: string) {
+    await page.goto(dashboard.baseURL);
+    await page.getByPlaceholder("Message Junior…").fill(message);
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
+  }
+
+  await startConversation("First question");
+  const tip = page
+    .getByRole("dialog")
+    .filter({ hasText: "Push notifications" });
+  await expect(tip).toContainText(
+    "Get a push notification when Junior replies.",
+  );
+  await screenshot(page, "push-notifications-tip", { view: "desktop" });
+  await tip.getByRole("button", { name: "Turn on" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/settings#push-notifications`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Push notifications" }),
+  ).toBeInViewport();
+
+  // The tip checks this flag before anything else, so a later Conversation
+  // cannot show it again.
+  expect(
+    await page.evaluate(() =>
+      window.localStorage.getItem(
+        "junior:dashboard:push-notifications-tip-shown",
+      ),
+    ),
+  ).toBe("1");
+  await startConversation("Second question");
+  await expect(page.getByText("Second question")).toBeVisible();
+  await expect(
+    page.getByText("Get a push notification when Junior replies."),
+  ).toHaveCount(0);
 });
 
 test("opens a tapped notification that the app did not open", async ({
