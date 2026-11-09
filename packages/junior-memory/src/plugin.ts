@@ -171,31 +171,37 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
-        const readTools = {
+        // All memory is public, so only a person's message in a public
+        // Conversation writes it. Child agents can suggest memories in their
+        // result. Other Sources, such as automations, carry no visibility.
+        // Disable the write tools instead of removing them, so the tool list
+        // and the cached prompt stay the same in every Turn.
+        const writeAccess =
+          "visibility" in ctx.source && ctx.source.visibility === "public"
+            ? {}
+            : {
+                disabledReason:
+                  "Memory writes need a message from a person in a public Conversation.",
+              };
+        return {
+          createMemory: {
+            ...createMemoryCreateTool(
+              memoryCreateToolContext({
+                ...ctx,
+                agent,
+                db: ctx.db as MemoryDb,
+                embedder: ctx.embedder,
+                supersessionDecider: agent,
+              }),
+            ),
+            ...writeAccess,
+          },
+          archiveMemory: {
+            ...createMemoryArchiveTool(context),
+            ...writeAccess,
+          },
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
-        };
-        // All memory is public, so only a main agent in a public Conversation
-        // writes it. Child agents can suggest memories in their result. Other
-        // Sources, such as automations, carry no visibility, so they only read.
-        if (
-          !("visibility" in ctx.source) ||
-          ctx.source.visibility !== "public"
-        ) {
-          return readTools;
-        }
-        return {
-          createMemory: createMemoryCreateTool(
-            memoryCreateToolContext({
-              ...ctx,
-              agent,
-              db: ctx.db as MemoryDb,
-              embedder: ctx.embedder,
-              supersessionDecider: agent,
-            }),
-          ),
-          archiveMemory: createMemoryArchiveTool(context),
-          ...readTools,
         };
       },
       ...(!options.disableRecall

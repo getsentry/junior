@@ -23,8 +23,11 @@ import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
+import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { createEmptyJuniorSqlFixture } from "../fixtures/sql";
 import {
+  createEventSource,
   createSlackSource,
   createWebSource,
   defineJuniorPlugin,
@@ -494,11 +497,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         userText: "what do you remember about me?",
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
       });
-      // A private Conversation recalls public memory but cannot create any.
-      expect(Object.keys(webTools).sort()).toEqual([
-        "memory_listMemories",
-        "memory_searchMemories",
-      ]);
       await expect(
         webTools.memory_listMemories!.execute!({}, {}),
       ).resolves.toMatchObject({
@@ -560,11 +558,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         kind: "knowledge",
       });
 
-      const tools = getPluginTools({
+      const turnContext = {
         conversationId,
         locationId: userContext.locationId,
         destination: {
-          platform: "slack",
+          platform: "slack" as const,
           teamId: "T123",
           channelId: "C123",
         },
@@ -576,9 +574,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         actor,
         resolveActorIdentity: () => readActorIdentity(actor),
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
-        source,
         userText: "remember memory plugin facts",
-      });
+      };
+      const tools = getPluginTools({ ...turnContext, source });
 
       expect(tools).toHaveProperty("memory_createMemory");
       await expect(
@@ -634,6 +632,58 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           { toolCallId: "tool-create-personal" },
         ),
       ).rejects.toThrow(PluginToolInputError);
+
+      // An event Turn in the same Conversation has no Source visibility. It
+      // gets the same tool list, so the cached prompt stays valid, but it
+      // cannot write memory.
+      const eventTools = getPluginTools({
+        ...turnContext,
+        source: createEventSource({
+          eventKey: "event-1",
+          eventType: "issue.created",
+          identifier: "getsentry/junior",
+          namespace: "github",
+        }),
+      });
+      const agentToolsFor = (registry: typeof tools) =>
+        createPiAgentTools(
+          registry,
+          new SkillSandbox([], []),
+          {},
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { countToolCall: () => 1 },
+        );
+      const modelView = (agentTools: ReturnType<typeof agentToolsFor>) =>
+        JSON.stringify(
+          agentTools.map(({ name, description, parameters }) => ({
+            name,
+            description,
+            parameters,
+          })),
+        );
+      const eventAgentTools = agentToolsFor(eventTools);
+      expect(modelView(eventAgentTools)).toBe(modelView(agentToolsFor(tools)));
+      const executeTool = eventAgentTools.find(
+        (candidate) => candidate.name === "executeTool",
+      );
+      await expect(
+        executeTool!.execute("event-create-memory", {
+          tool_name: "memory_createMemory",
+          arguments: { content: "I prefer event-written memory." },
+        }),
+      ).rejects.toThrow(
+        "memory_createMemory is disabled in this Turn. Memory writes need a message from a person in a public Conversation.",
+      );
+      await expect(
+        eventTools.memory_listMemories!.execute!({}, {}),
+      ).resolves.toMatchObject({ memories: { length: 2 } });
     } finally {
       await fixture.close();
     }
