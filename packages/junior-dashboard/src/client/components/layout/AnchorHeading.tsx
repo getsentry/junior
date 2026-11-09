@@ -8,6 +8,11 @@ import { cn } from "../../styles";
 // padding above a card heading.
 const SCROLL_GAP_PX = 40;
 
+/** Id of the title text, for `aria-labelledby` on the section. */
+export function anchorTitleId(anchor: string): string {
+  return `${anchor}-title`;
+}
+
 /**
  * Render a section heading that people can link to with `#anchor`. The page
  * scrolls to the heading when the URL hash names it.
@@ -31,7 +36,7 @@ export function AnchorHeading(props: {
     // `key` changes when someone follows the same anchor again.
   }, [hash, key, props.anchor]);
 
-  const titleId = `${props.anchor}-title`;
+  const titleId = anchorTitleId(props.anchor);
   return (
     <h2
       aria-labelledby={titleId}
