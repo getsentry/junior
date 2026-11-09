@@ -419,6 +419,10 @@ test.describe("conversation sections", () => {
     // The newest item comes from GitHub, so the chip shows its mark.
     await expect(chip.getByRole("img", { name: "GitHub" })).toBeVisible();
     await expect(chip).not.toHaveAttribute("title");
+    await screenshot(page, "conversation-sidebar-review-chip", {
+      lightTheme: true,
+      view: "desktop",
+    });
     // The tooltip lists every waiting item in full.
     await chip.hover();
     const tooltip = page.getByRole("tooltip");
@@ -427,10 +431,6 @@ test.describe("conversation sections", () => {
       reviewItem.title,
     ]);
     await screenshot(page, "conversation-sidebar-review-chip-tooltip", {
-      view: "desktop",
-    });
-    await screenshot(page, "conversation-sidebar-review-chip", {
-      lightTheme: true,
       view: "desktop",
     });
 
