@@ -388,12 +388,7 @@ async function processConversationWorkInContext(
   }
   const pendingCount = initial ? countPendingConversationMessages(initial) : 0;
   setSpanAttributes({ "app.worker.pending_count": pendingCount });
-  if (
-    !initial ||
-    (pendingCount === 0 &&
-      initial.execution.status === "idle" &&
-      !initial.execution.lease)
-  ) {
+  if (!initial?.needsRun) {
     if (initial) {
       await clearConsumedConversationWake({
         conversationId,
@@ -404,9 +399,9 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  // Mailbox wakes may omit Destination. Read it from this root Conversation
-  // only. Conversations with a parent keep no Destination, so invocation and
-  // dispatch workers stay free of provider Destinations.
+  // Mailbox wakes may omit Destination. Read it from a root Conversation
+  // only. A child stores its root's Destination, but its work keeps none, so
+  // invocation and dispatch workers stay free of provider Destinations.
   let destination = initial.destination;
   if (!destination && options.conversationStore) {
     const stored = await options.conversationStore.get({ conversationId });

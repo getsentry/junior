@@ -10,6 +10,7 @@ function detail(
 ): ConversationDetailReport {
   const startedAt = "2026-01-01T00:00:00.000Z";
   return {
+    kind: "root",
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
@@ -109,9 +110,9 @@ describe("ConversationUsageBreakdown", () => {
     );
 
     expect(html).toContain(
-      "This agent 2k $0.0250 2 subagents 1k $0.0150 Total 3k $0.0400",
+      "This agent 2k $0.0250 2 child conversations 1k $0.0150 Total 3k $0.0400",
     );
-    expect(html).toContain("Totals include subagents at any depth.");
+    expect(html).toContain("Totals include child conversations at any depth.");
   });
 
   it("caps the subagent rows to the total", () => {
@@ -132,7 +133,7 @@ describe("ConversationUsageBreakdown", () => {
     );
 
     expect(html).toContain(
-      "This agent 0 $0.0000 1 subagent 3k $0.0400 Total 3k $0.0400",
+      "This agent 0 $0.0000 1 child conversation 3k $0.0400 Total 3k $0.0400",
     );
   });
 

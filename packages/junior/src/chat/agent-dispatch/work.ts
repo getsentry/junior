@@ -108,13 +108,17 @@ interface EnqueueAgentDispatchOptions {
 export interface AgentDispatchConversationWorkerOptions {
   resumeTurn: (
     dispatch: DispatchRecord,
-    hooks: { shouldYield?: () => boolean },
+    hooks: {
+      shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
+    },
   ) => Promise<void>;
   runTurn: (
     dispatch: DispatchRecord,
     hooks: {
       ack: () => Promise<void>;
       shouldYield?: () => boolean;
+      checkIn?: () => Promise<boolean>;
     },
   ) => Promise<DispatchTurnResult>;
 }
@@ -164,6 +168,7 @@ export async function enqueueAgentDispatch(
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,
+    ...(claimedDispatch.title ? { title: claimedDispatch.title } : undefined),
   });
   await appendAndEnqueueInboundMessage({
     message: buildAgentDispatchInboundMessage(
@@ -475,12 +480,14 @@ export function createAgentDispatchConversationWorker(
       if (resumesDurableTurn) {
         await options.resumeTurn(dispatch, {
           shouldYield: context.shouldYield,
+          checkIn: context.checkIn,
         });
         result = await readDispatchTurnResult(dispatch);
       } else {
         const runtimeResult = await options.runTurn(dispatch, {
           ack: acknowledge,
           shouldYield: context.shouldYield,
+          checkIn: context.checkIn,
         });
         result = runtimeResult.outcome
           ? runtimeResult

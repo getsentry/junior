@@ -83,6 +83,40 @@ describe("Sentry private payload filtering", () => {
     });
   });
 
+  it("keeps only the host of push endpoints", () => {
+    const endpoint = "https://fcm.googleapis.com/fcm/send/device-token";
+    const span = {
+      attributes: {
+        "server.address": "fcm.googleapis.com",
+        "url.full": endpoint,
+        "url.path": "/fcm/send/device-token",
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: `POST ${endpoint}`,
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+    const event = {
+      type: undefined,
+      breadcrumbs: [{ category: "http", data: { url: endpoint } }],
+    } as SentryEvent;
+
+    scrubPrivateSentrySpan(span);
+    scrubPrivateSentryEvent(event);
+
+    expect(span.name).toBe("POST https://fcm.googleapis.com");
+    expect(span.attributes).toEqual({
+      "server.address": "fcm.googleapis.com",
+      "url.full": "https://fcm.googleapis.com",
+    });
+    expect(event.breadcrumbs?.[0]?.data).toEqual({
+      url: "https://fcm.googleapis.com",
+    });
+  });
+
   it("removes OAuth secrets from captured request data", () => {
     const event = {
       type: undefined,

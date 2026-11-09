@@ -3,7 +3,7 @@ import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { readLocationConfigurationValues } from "@/chat/configuration/sql";
 import { getConversationStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
-import { completeText } from "@/chat/pi/client";
+import { completeText } from "@/chat/core-model";
 import { getPluginConversationTitleContext } from "@/chat/plugins/conversation-title-context";
 import { getThreadTitleSourceMessage } from "@/chat/services/conversation-memory";
 import {
@@ -110,8 +110,8 @@ async function ensureConversationTitleOnce(args: {
     if (stored?.title?.trim()) {
       return undefined;
     }
-    // Conversations with a parent are execution machinery, not listable threads.
-    if (stored?.parentConversationId) {
+    // A Task is execution machinery that people do not list or message.
+    if (stored?.kind === "task") {
       return undefined;
     }
     // Only dispatched runs use bot-authored input as the title source.
@@ -139,6 +139,7 @@ async function ensureConversationTitleOnce(args: {
       title = await generateShortTitle({
         completeText,
         context,
+        cost: { conversationId: args.conversationId },
         kind,
         sourceText,
       });

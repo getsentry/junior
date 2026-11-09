@@ -1,5 +1,5 @@
 import { del, get, put } from "@vercel/blob";
-import type { AttachmentStorage } from "./storage";
+import { rangeHeader, type AttachmentStorage } from "./storage";
 
 /** Store private conversation attachments in Vercel Blob. */
 export function createVercelAttachmentStorage(): AttachmentStorage {
@@ -13,12 +13,23 @@ export function createVercelAttachmentStorage(): AttachmentStorage {
         contentType: input.contentType,
       });
     },
-    async get(key) {
+    async get(key, range) {
       // Bypass the CDN so a read shortly after a write for a fresh key cannot
       // observe a not-yet-propagated (empty/stale) cached response. See
       // https://vercel.com/changelog/vercel-blob-now-supports-consistent-reads-on-private-storage.
-      const result = await get(key, { access: "private", useCache: false });
-      return result?.statusCode === 200 ? result.stream : null;
+      const result = await get(key, {
+        access: "private",
+        useCache: false,
+        ...(range ? { headers: { range: rangeHeader(range) } } : undefined),
+      });
+      if (result?.statusCode !== 200) return null;
+      // The SDK reports a 206 response as 200. Only `content-range` shows
+      // that Blob sent the range and not the whole object.
+      if (range && !result.headers.get("content-range")) {
+        await result.stream.cancel();
+        throw new Error("Vercel Blob get ignored the byte range");
+      }
+      return result.stream;
     },
     async delete(keys) {
       if (keys.length === 0) return;

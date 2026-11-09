@@ -82,7 +82,7 @@ test("surfaces token create errors without losing the list", async ({
   await page.goto(`${dashboard.baseURL}/settings/api-tokens`);
   await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
   await page.getByLabel("Token name").fill("Review token");
-  await page.getByRole("button", { name: "Create token" }).click();
+  await page.getByLabel("Token name").press("ControlOrMeta+Enter");
   await expect(
     page.getByText("Could not create the API token. Try again."),
   ).toBeVisible();

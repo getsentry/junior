@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -7,7 +8,7 @@ import {
   CONVERSATION_DETAIL_VERSION_HEADER,
   conversationDetailReportSchema,
   conversationEventPageSchema,
-  conversationReadPositionSchema,
+  conversationReadReportSchema,
 } from "@/api/schema";
 import {
   closeDb,
@@ -16,7 +17,11 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationEvents, juniorIdentities } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversationReadPositions,
+  juniorIdentities,
+} from "@/db/schema";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -30,18 +35,27 @@ async function authenticatedApi(email: string) {
   return { app, viewer };
 }
 
-async function recordConversation(conversationId: string) {
+// Readers in these tests are not participants, so the Conversation is public.
+async function recordConversation(
+  conversationId: string,
+  visibility: "private" | "public" = "public",
+) {
   await getConversationStore().recordActivity({
     destination: { platform: "local" as const, conversationId },
     conversationId,
     nowMs: 1_000,
     source: "internal",
     title: "Read position",
+    visibility,
   });
 }
 
-async function seedConversation(conversationId: string, eventCount: number) {
-  await recordConversation(conversationId);
+async function seedConversation(
+  conversationId: string,
+  eventCount: number,
+  visibility?: "private" | "public",
+) {
+  await recordConversation(conversationId, visibility);
   await getDb()
     .insert(juniorConversationEvents)
     .values(
@@ -99,19 +113,25 @@ describe("conversation read position API", () => {
 
     const first = await putReadPosition(app, conversationId, 2);
     expect(first.status).toBe(200);
-    expect(conversationReadPositionSchema.parse(await first.json())).toEqual({
+    expect(
+      conversationReadReportSchema.parse(await first.json()),
+    ).toMatchObject({
       lastReadSeq: 2,
     });
 
     // Another device that reports an older place does not move it back.
     const older = await putReadPosition(app, conversationId, 1);
-    expect(conversationReadPositionSchema.parse(await older.json())).toEqual({
+    expect(
+      conversationReadReportSchema.parse(await older.json()),
+    ).toMatchObject({
       lastReadSeq: 2,
     });
 
     // A place after the last event stops at the last event.
     const ahead = await putReadPosition(app, conversationId, 99);
-    expect(conversationReadPositionSchema.parse(await ahead.json())).toEqual({
+    expect(
+      conversationReadReportSchema.parse(await ahead.json()),
+    ).toMatchObject({
       lastReadSeq: 4,
     });
 
@@ -261,9 +281,9 @@ describe("conversation read position API", () => {
     // The viewer wrote Message 3 after reading Message 1, so it and the rows
     // before it are not new. Message 5 is from someone else, so it is new.
     const reported = await putReadPosition(app, conversationId, 1);
-    expect(conversationReadPositionSchema.parse(await reported.json())).toEqual(
-      { lastReadSeq: 3 },
-    );
+    expect(
+      conversationReadReportSchema.parse(await reported.json()),
+    ).toMatchObject({ lastReadSeq: 3 });
     expect(
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer }),
@@ -277,7 +297,7 @@ describe("conversation read position API", () => {
     ).toBeUndefined();
   });
 
-  it("requires a viewer and an existing conversation", async () => {
+  it("requires a viewer who may read the conversation", async () => {
     const conversationId = "local:test:read-position-missing";
     await seedConversation(conversationId, 1);
 
@@ -291,8 +311,22 @@ describe("conversation read position API", () => {
     );
     expect(unauthenticated.status).toBe(401);
 
-    const { app } = await authenticatedApi("reader@example.com");
+    const { app, viewer } = await authenticatedApi("reader@example.com");
     const missing = await putReadPosition(app, "local:test:no-such", 0);
     expect(missing.status).toBe(404);
+
+    // A private Conversation that the reader is not in answers like a
+    // missing one, and stores nothing.
+    const privateConversationId = "local:test:read-position-private";
+    await seedConversation(privateConversationId, 1, "private");
+    const denied = await putReadPosition(app, privateConversationId, 0);
+    expect(denied.status).toBe(404);
+    expect(await denied.json()).toEqual(await missing.json());
+    expect(
+      await getDb()
+        .select()
+        .from(juniorConversationReadPositions)
+        .where(eq(juniorConversationReadPositions.userId, viewer.id)),
+    ).toEqual([]);
   });
 });

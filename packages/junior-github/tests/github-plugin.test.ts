@@ -781,6 +781,7 @@ describe("github plugin", () => {
     expect(
       await grantForEgress({
         method: "GET",
+        operation: "github.issue.get",
         url: "https://api.github.com/repos/getsentry/junior/issues/449",
       }),
     ).toMatchObject({
@@ -1626,8 +1627,7 @@ Conversation: \`local:test:old-conversation\`
     });
     // Merge conflicts always reach the Watch, so Junior keeps its pull
     // request ready to merge. Approval and merge always reach the people
-    // involved, so the Watch stores guidance for those outcomes. A merge
-    // restacks the open pull requests above it first.
+    // involved, so the Watch stores guidance for those outcomes.
     expect(subscribe).toHaveBeenCalledWith({
       events: [
         "pull_request.checks.failed",
@@ -1640,8 +1640,8 @@ Conversation: \`local:test:old-conversation\`
         "pull_request.review.approved": expect.stringContaining(
           "Mention each person in People involved",
         ),
-        "pull_request.merged": expect.stringMatching(
-          /gh stack sync[\s\S]*mention each person in People involved/,
+        "pull_request.merged": expect.stringContaining(
+          "Mention each person in People involved",
         ),
       },
       intent: "Report failed checks and requested changes.",
@@ -2657,6 +2657,48 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780",
       }),
     ).rejects.toThrow("must use the github_updatePullRequest tool");
+  });
+
+  it("routes raw issue reads to github_getIssue", async () => {
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).rejects.toThrow("Use github_getIssue");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            "query IssueByNumber($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issueOrPullRequest(number: $number) { ... on Issue { title } } } }",
+        }),
+      }),
+    ).rejects.toThrow("Use github_getIssue");
+    await expect(
+      grantForEgress({
+        method: "GET",
+        operation: "github.issue.get",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForEgress({
+        method: "GET",
+        url: "https://api.github.com/repos/getsentry/junior/issues/2768/comments",
+      }),
+    ).resolves.toMatchObject({ access: "read" });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          query:
+            'query { repository(owner: "getsentry", name: "junior") { issues(first: 1) { nodes { number } } } }',
+        }),
+      }),
+    ).resolves.toMatchObject({ access: "read" });
   });
 
   it("keeps unsupported repository writes outside the allowlist", async () => {

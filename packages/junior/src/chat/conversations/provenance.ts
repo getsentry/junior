@@ -39,8 +39,8 @@ export function instructionProvenanceFor(
 
 /**
  * Provenance of an instruction that an agent wrote, such as a parent agent
- * task in a child Conversation. It has no Actor, so it never counts as user
- * intent.
+ * task in a child Conversation. It has no Actor: it is user intent only for a
+ * Run whose instructions an agent writes.
  */
 export const agentInstructionProvenance: ConversationMessageProvenance = {
   authority: "instruction",

@@ -14,9 +14,14 @@ export {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  countPendingConversationMessages,
   hasConversationStop,
+  hasRunnableConversationWork,
   isFinalAttempt,
   isInvalidConversationRecordError,
+  moveIdleConversationDestination,
+  pruneActiveConversation,
+  releaseInboundMessage,
   type AgentInput,
   type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,
@@ -46,7 +51,10 @@ import type {
   Conversation,
   InboundMessage,
 } from "@/chat/task-execution/state";
-import { CONVERSATION_WORK_STALE_ENQUEUE_MS } from "@/chat/task-execution/state";
+import {
+  CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  hasRunnableConversationWork,
+} from "@/chat/task-execution/state";
 
 interface MetadataOptions {
   conversationStore?: ConversationStore;
@@ -150,23 +158,6 @@ export async function recordConversationRetry(args: {
   return result;
 }
 
-/** Count mailbox messages that have not yet reached the conversation event log. */
-export function countPendingConversationMessages(
-  conversation: Conversation,
-): number {
-  return conversation.execution.pendingMessages.length;
-}
-
-/** Return whether a conversation has pending or resumable execution work. */
-export function hasRunnableConversationWork(
-  conversation: Conversation,
-): boolean {
-  return (
-    conversation.execution.status !== "idle" ||
-    countPendingConversationMessages(conversation) > 0
-  );
-}
-
 /**
  * Ensure runnable conversation work has one accepted queue wake-up nudge.
  *
@@ -240,6 +231,36 @@ export async function appendInboundMessage(args: {
     conversationStore: args.conversationStore,
     state: args.state,
   });
+  return result;
+}
+
+/**
+ * Record an inbound message id that skips the mailbox. When the claim is
+ * saved but its metadata write fails, this releases the claim, so a
+ * redelivery can claim it again.
+ */
+export async function claimInboundMessage(args: {
+  message: workState.InboundMessageClaim;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.claimInboundMessage(args);
+  if (result.status === "claimed") {
+    try {
+      await recordExecutionMetadata({
+        conversationId: args.message.conversationId,
+        conversationStore: args.conversationStore,
+        state: args.state,
+      });
+    } catch (error) {
+      await workState.releaseInboundMessage({
+        message: args.message,
+        state: args.state,
+      });
+      throw error;
+    }
+  }
   return result;
 }
 
@@ -366,10 +387,15 @@ export async function stopConversationWork(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  /** Runs once the stop request is saved, before its metadata write. */
+  onStopSaved?: () => void;
+  /** Stop only person input sent at or before this time. */
+  sentAtOrBeforeMs?: number;
   state?: StateAdapter;
 }) {
   const result = await workState.stopConversationWork(args);
   if (result.status === "requested") {
+    args.onStopSaved?.();
     await recordExecutionMetadata(args);
   }
   return result;
@@ -632,14 +658,6 @@ export async function clearExpiredConversationLease(args: {
   const result = await workState.clearExpiredConversationLease(args);
   await recordExecutionMetadata(args);
   return result;
-}
-
-/** Remove one conversation from the active index after it is missing or idle. */
-export async function removeActiveConversation(args: {
-  conversationId: string;
-  state?: StateAdapter;
-}) {
-  return await workState.removeActiveConversation(args);
 }
 
 /** List active conversation ids by oldest execution update first. */

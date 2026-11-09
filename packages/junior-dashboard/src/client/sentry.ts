@@ -1,8 +1,10 @@
 import {
   BrowserClient,
   browserTracingIntegration,
+  captureFeedback,
   defaultStackParser,
   getActiveSpan,
+  getClient,
   getRootSpan,
   makeFetchTransport,
   setCurrentClient,
@@ -162,10 +164,45 @@ export async function readResponseJson<T>(
   }
 }
 
+/** A reader's rating of one Junior Reply. */
+export type ReplyRating = "good" | "bad";
+
+/** Whether the server gave the browser a DSN, so Reply ratings can be sent. */
+export function canSendReplyRating(): boolean {
+  return getClient() !== undefined;
+}
+
 /**
- * Send dashboard performance spans to the server's Sentry project when the
- * server provides a DSN. Only tracing is enabled: error events and
- * breadcrumbs could carry conversation content shown on the page.
+ * Send a reader's rating of one Junior Reply as Sentry user feedback, with
+ * the reader's name and email and their optional comment. It holds no Reply
+ * text or page query.
+ */
+export function sendReplyRating(props: {
+  comment?: string;
+  conversationId: string;
+  messageId: string;
+  rating: ReplyRating;
+  reader?: { email: string; name?: string | null };
+}): void {
+  const label = props.rating === "good" ? "Good reply" : "Bad reply";
+  captureFeedback({
+    email: props.reader?.email,
+    message: props.comment ? `${label}: ${props.comment}` : label,
+    name: props.reader?.name || undefined,
+    source: "dashboard_reply_rating",
+    tags: {
+      "app.reply.rating": props.rating,
+      "gen_ai.conversation.id": props.conversationId,
+      "messaging.message.id": props.messageId,
+    },
+    url: `${window.location.origin}${window.location.pathname}`,
+  });
+}
+
+/**
+ * Send dashboard performance spans and Reply ratings to the server's Sentry
+ * project when the server provides a DSN. Error events and breadcrumbs stay
+ * off: they could carry conversation content shown on the page.
  */
 export function initDashboardSentry(): void {
   const config = window.__JUNIOR_DASHBOARD_SENTRY__;

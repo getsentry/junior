@@ -44,14 +44,12 @@ export interface CodeModeCall {
 export interface CodeModeResult {
   /** True when the script returned or called `exit()`. */
   ok: boolean;
-  /** Return value of the script. A value cut to the output limit is a string. */
+  /** Return value of the script. */
   value?: unknown;
   /** Why the script did not return. */
   error?: { kind: CodeModeErrorKind; message: string };
-  /** Text from `text()` and `console.*`, cut to the output limit. */
+  /** Text from `text()` and `console.*`. */
   output: string;
-  /** True when `output` or `value` was cut to the output limit. */
-  truncated: boolean;
   /** Every nested call, in the order the script made them. */
   calls: CodeModeCall[];
 }

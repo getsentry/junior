@@ -38,7 +38,6 @@ export interface ImageGenerateToolDeps {
 export interface WebFetchToolDeps {
   execute?: (input: {
     url: string;
-    max_chars?: number;
   }) => Promise<JuniorToolOutput> | JuniorToolOutput;
 }
 
@@ -91,7 +90,9 @@ interface BaseToolRuntimeContext {
   conversationId: string;
   /** Turn that runs this tool call. */
   turnId?: string;
-  /** Parent of a child agent Conversation. Unset for a root Conversation. */
+  /** Agent invocation that this Run advances. See `AgentRun.agentInvocationId`. */
+  agentInvocationId?: string;
+  /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */
   location?: Location;

@@ -107,6 +107,7 @@ describe("people profile API", () => {
         .db()
         .update(juniorConversations)
         .set({
+          kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
         })
@@ -115,6 +116,7 @@ describe("people profile API", () => {
         .db()
         .update(juniorConversations)
         .set({
+          kind: "task",
           parentConversationId: rootConversationId,
           rootConversationId,
         })

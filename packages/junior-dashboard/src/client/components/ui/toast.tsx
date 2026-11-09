@@ -168,7 +168,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
   return (
     <span
       data-slot="toast-icon"
-      className="shrink-0 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
+      className="shrink-0 translate-y-0.5 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
     >
       {icon}
     </span>
@@ -181,14 +181,16 @@ function ToastList() {
   return toasts.map((toastItem) => (
     <Toast key={toastItem.id} toast={toastItem}>
       <ToastContent>
-        <ToastIcon type={toastItem.type} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <ToastTitle />
-          <ToastDescription />
+        {/* Top-align the icon with the title, like Alert; buttons stay centered. */}
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <ToastIcon type={toastItem.type} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <ToastTitle />
+            <ToastDescription />
+          </div>
         </div>
-        {toastItem.actionProps ? (
-          <ToastAction {...toastItem.actionProps} />
-        ) : null}
+        {/* ToastAction reads actionProps from the toast; spreading them too runs onClick twice. */}
+        {toastItem.actionProps ? <ToastAction /> : null}
         <ToastClose />
       </ToastContent>
     </Toast>

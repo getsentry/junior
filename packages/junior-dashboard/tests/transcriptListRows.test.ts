@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   rowIndexForSeq,
+  transcriptListRows,
   type TranscriptListRow,
   UNREAD_MARKER_KEY,
 } from "../src/client/conversations/transcriptListRows";
@@ -40,5 +41,77 @@ describe("rowIndexForSeq", () => {
       entryRow(7),
     ];
     expect(rowIndexForSeq(rows, 5)).toBe(1);
+  });
+});
+
+function subagentEntry(
+  seq: number,
+  childKind: "thread" | "task" = "task",
+): RenderedTranscriptEntry {
+  return {
+    key: `subagent:child-${seq}`,
+    kind: "subagent",
+    part: {
+      childConversationId: `child-${seq}`,
+      id: `child-${seq}:${seq}`,
+      status: "completed",
+      childKind,
+      subagentKind: "agent",
+      type: "subagent",
+    },
+    seq,
+  };
+}
+
+function messageEntry(seq: number): RenderedTranscriptEntry {
+  return {
+    key: `${seq}:message:0`,
+    kind: "message",
+    message: {
+      parts: [{ type: "text", text: "Done." }],
+      role: "assistant",
+      sourceSeq: seq,
+    },
+    seq,
+  };
+}
+
+describe("transcriptListRows", () => {
+  it("collapses each run of Tasks to one row and keeps each Thread as its own row", () => {
+    const rows = transcriptListRows({
+      entries: [
+        subagentEntry(1),
+        subagentEntry(2),
+        subagentEntry(3, "thread"),
+        subagentEntry(4),
+        messageEntry(5),
+        subagentEntry(6),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(
+      rows.map((row) => ({
+        keys:
+          row.kind === "tasks"
+            ? row.entries.map((entry) => entry.key)
+            : row.kind === "entry"
+              ? [row.entry.key]
+              : undefined,
+        kind: row.kind,
+        seq: "seq" in row ? row.seq : undefined,
+      })),
+    ).toEqual([
+      {
+        keys: ["subagent:child-1", "subagent:child-2"],
+        kind: "tasks",
+        seq: 2,
+      },
+      { keys: ["subagent:child-3"], kind: "entry", seq: 3 },
+      { keys: ["subagent:child-4"], kind: "tasks", seq: 4 },
+      { keys: ["5:message:0"], kind: "entry", seq: 5 },
+      { keys: ["subagent:child-6"], kind: "tasks", seq: 6 },
+    ]);
   });
 });

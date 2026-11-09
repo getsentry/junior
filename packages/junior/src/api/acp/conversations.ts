@@ -9,7 +9,7 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
-import { stopConversationTurn } from "@/chat/conversations/stop";
+import { stopConversation } from "@/chat/conversations/stop";
 import { clearSlackPendingReactions } from "@/chat/task-execution/slack-work";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import type { ConversationEventStore } from "@/chat/conversations/history";
@@ -140,7 +140,7 @@ export function createAcpConversations(
       if (!(await hasConversationAccess(conversationId, user))) {
         return "not_found";
       }
-      const stopped = await stopConversationTurn({
+      const stopped = await stopConversation({
         conversationId,
         conversationStore: options.conversationStore,
         queue: options.queue,

@@ -13,10 +13,13 @@ export const DASHBOARD_ASSETS_PATH = "/_junior/dashboard/assets";
 
 /** Path under the assets prefix of a content-hashed browser file. */
 export const DASHBOARD_PUBLIC_ASSET_NAME =
-  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Z0-9]{8}\.(?:css|js|webp|woff2)$/;
+  /^(?:chunks\/)?[A-Za-z0-9_-]+-[A-Za-z0-9]{8}\.(?:css|js|webp|woff2)$/;
+
+/** File name of the content-hashed dashboard stylesheet. */
+export const DASHBOARD_STYLESHEET_NAME = /^styles-[A-Z0-9]{8}\.css$/;
 
 /** File name of the content-hashed dashboard browser entry. */
-export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Z0-9]{8}\.js$/;
+export const DASHBOARD_CLIENT_ENTRY_NAME = /^client-[A-Za-z0-9]{8}\.js$/;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
@@ -57,7 +60,7 @@ export const dashboardClientManifestSchema = z.object({
   entry: z.string().regex(DASHBOARD_CLIENT_ENTRY_NAME),
   fonts: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
   imports: z.array(z.string().regex(DASHBOARD_PUBLIC_ASSET_NAME)),
-  stylesheet: z.string().regex(/^styles-[A-Z0-9]{8}\.css$/),
+  stylesheet: z.string().regex(DASHBOARD_STYLESHEET_NAME),
 });
 
 /** The browser files that the dashboard page shell names. */

@@ -1,4 +1,8 @@
 import { expect, test } from "./test";
+import {
+  NOTIFICATION_TARGET_CACHE,
+  NOTIFICATION_TARGET_KEY,
+} from "../src/service-worker";
 import { screenshot } from "./screenshot";
 
 test("updates the signed-in user's display name", async ({
@@ -19,6 +23,74 @@ test("updates the signed-in user's display name", async ({
   await expect(
     page.getByRole("button", { name: /profile menu for Cramer Jr\./i }),
   ).toBeVisible();
+});
+
+test("saves notification working hours", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/settings`);
+  await expect(
+    page.getByRole("heading", { name: "Phone notifications" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Phone notifications are not set up for this Junior install.",
+    ),
+  ).toBeVisible();
+  await screenshot(page, "settings-notifications");
+
+  const saturday = page.getByRole("button", { name: "Sat", exact: true });
+  await expect(saturday).toHaveAttribute("aria-pressed", "false");
+  await saturday.click();
+  await page.getByLabel("Start").fill("08:30");
+  const saved = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" &&
+      request.url().endsWith("/api/notifications/schedule"),
+  );
+  await page.getByRole("button", { name: "Save hours" }).click();
+  expect((await saved).postDataJSON()).toEqual({
+    workingHoursOnly: true,
+    days: [1, 2, 3, 4, 5, 6],
+    start: "08:30",
+    end: "18:00",
+  });
+  await expect(page.getByText("Hours saved.")).toBeVisible();
+  await expect(saturday).toHaveAttribute("aria-pressed", "true");
+});
+
+test("opens a tapped notification that the app did not open", async ({
+  page,
+  dashboard,
+}) => {
+  // The service worker saves the tapped URL. iOS can lose its navigation to
+  // a suspended Home Screen app, so the page opens the URL when shown.
+  async function saveTappedNotification(path: string, ageMs: number) {
+    await page.evaluate(
+      async ({ ageMs, cacheName, key, path }) => {
+        const cache = await caches.open(cacheName);
+        await cache.put(
+          key,
+          new Response(JSON.stringify({ atMs: Date.now() - ageMs, url: path })),
+        );
+      },
+      {
+        ageMs,
+        cacheName: NOTIFICATION_TARGET_CACHE,
+        key: NOTIFICATION_TARGET_KEY,
+        path,
+      },
+    );
+  }
+
+  await page.goto(dashboard.baseURL);
+  await saveTappedNotification("/settings", 10 * 60_000);
+  await page.reload();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+
+  await saveTappedNotification("/settings", 0);
+  await page.reload();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
+  await page.reload();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
 });
 
 test("follows the system theme until the user picks one", async ({
@@ -57,6 +129,7 @@ test("turns on composer autocorrect for this browser", async ({
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
   await expect(composer).toHaveAttribute("spellcheck", "false");
+  await expect(composer).toHaveAttribute("autocomplete", "off");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -66,6 +139,7 @@ test("turns on composer autocorrect for this browser", async ({
   await expect(composer).toHaveAttribute("autocorrect", "on");
   await expect(composer).toHaveAttribute("autocapitalize", "sentences");
   await expect(composer).toHaveAttribute("spellcheck", "true");
+  await expect(composer).not.toHaveAttribute("autocomplete");
 });
 
 test("saves the auto-archive default and wait time", async ({

@@ -2,6 +2,7 @@
 # Model-repairable failures must use ToolInputError or PluginToolInputError.
 # Only keep true system/config/integrity failures here.
 # Format: relativePath<TAB>normalized throw statement
+packages/junior-github/src/tools/comment-on-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/comment-on-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.", );
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue was created, but the runtime could not persist the completed issue state.", { cause: error }, );
@@ -12,6 +13,7 @@ packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request was created, but the runtime could not persist the completed pull request state.", { cause: error }, );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
+packages/junior-github/src/tools/get-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/get-release.ts	throw new Error( `GitHub release lookup failed with HTTP ${response.status}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubErrorMessage(lookupPayload)}`, );
@@ -20,6 +22,7 @@ packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error("GitHub did not resolve the requested review thread.");
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( "GitHub review thread resolution returned an unexpected response shape.", { cause: resolveResult.error }, );
 packages/junior-github/src/tools/submit-pull-request-review.ts	throw new Error(message);
+packages/junior-github/src/tools/update-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/update-issue.ts	throw new Error( `GitHub issue update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error("GitHub App bot identity is not configured.");
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubErrorMessage(listPayload)}`, );
@@ -41,15 +44,10 @@ packages/junior/src/chat/tools/index.ts	throw new Error(`Plugin tool "${name}" c
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} read ${data.byteLength} bytes, expected ${attachment.bytes}.`, );
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Failed to create attachment directory: ${mkdir.stderr}`, );
 packages/junior/src/chat/tools/publish-image.ts	throw new Error( "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.", );
+packages/junior/src/chat/tools/runtime/archive-agent.ts	throw new Error( `Archive of Thread ${childConversationId} returned ${result.status}`, );
 packages/junior/src/chat/tools/sandbox/bash.ts	throw new Error("bash can only run when sandbox execution is enabled.");
 packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile can only run when sandbox execution is enabled.", );
-packages/junior/src/chat/tools/sandbox/find-files.ts	throw new Error( "findFiles can only run when sandbox execution is enabled.", );
-packages/junior/src/chat/tools/sandbox/find-files.ts	throw new Error(`ripgrep file search failed: ${detail}`);
 packages/junior/src/chat/tools/sandbox/generated-artifacts.ts	throw new Error( `failed to create generated artifact directory: ${mkdir.stderr}`, );
-packages/junior/src/chat/tools/sandbox/grep.ts	throw new Error("grep can only run when sandbox execution is enabled.");
-packages/junior/src/chat/tools/sandbox/grep.ts	throw new Error("ripgrep returned invalid JSON output", { cause: error });
-packages/junior/src/chat/tools/sandbox/grep.ts	throw new Error(`ripgrep search failed: ${detail}`);
-packages/junior/src/chat/tools/sandbox/list-dir.ts	throw new Error( "listDir can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/write-file.ts	throw new Error( "writeFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to load ${skill.name}`);

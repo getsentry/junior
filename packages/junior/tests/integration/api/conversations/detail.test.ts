@@ -20,7 +20,11 @@ import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+} from "../../../msw/handlers/slack-api";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createChild,
   insertLegacyEvent,
@@ -102,16 +106,61 @@ describe("conversation detail API", () => {
         type: "turn_routed",
       },
     });
+    // Background and active summaries are one compaction operation. The swap
+    // of a prepared summary makes no model call, so it adds no cost.
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 5,
+        data: {
+          costUsd: 0.0003,
+          historyVersion: 0,
+          markSeq: 0,
+          modelId: "test-model",
+          outcome: "ready",
+          summary: "Prepared summary.",
+          type: "compaction_prepared",
+        },
+      },
+    ]);
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 6,
+      data: {
+        modelId: "test-model",
+        replacementHistory: [],
+        summary: "Prepared summary.",
+        type: "compaction",
+      },
+    });
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 7,
+      data: {
+        costUsd: 0.0001,
+        modelId: "test-model",
+        replacementHistory: [],
+        summary: "Active summary.",
+        type: "compaction",
+      },
+    });
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
     );
     const refreshed = conversationDetailReportSchema.parse(
       await refreshedResponse.json(),
     );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
+    expect(refreshed.events.map((event) => event.data.type)).toEqual([
+      "message",
+      "compaction",
+      "compaction",
+    ]);
     expect(refreshed.auxiliaryCosts).toEqual({
-      costUsd: 0.0006,
+      costUsd: 0.001,
       operations: [
+        {
+          costUsd: 0.0004,
+          events: 2,
+          name: "compaction",
+          namespace: "junior",
+        },
         {
           costUsd: 0.0002,
           events: 1,
@@ -447,11 +496,17 @@ describe("conversation detail API", () => {
         data: {
           messageId: "reply-1",
           role: "assistant",
-          text: "<@UOWNER1> merged. cc <@UNEW1234>",
+          text: "<@UOWNER1> merged. cc <@UNEW1234> <@USHARED1>",
           type: "message",
         },
       },
     ]);
+    // Another instance already asked Slack for USHARED1.
+    await getStateAdapter().set(
+      "slack-user-names:T123:USHARED1",
+      { fullName: "Shared Person" },
+      60_000,
+    );
     await appendConversationBrief(getDb(), {
       conversationId,
       turnId: "mentions-brief-turn",
@@ -484,8 +539,16 @@ describe("conversation detail API", () => {
           slackUserId: "UNEW1234",
           slackUserName: "new.person",
         },
+        { fullName: "Shared Person", slackUserId: "USHARED1" },
       ],
     });
+    expect(
+      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+    ).toEqual(["UNEW1234"]);
+    // Other instances can now skip Slack for UNEW1234.
+    expect(
+      await getStateAdapter().get("slack-user-names:T123:UNEW1234"),
+    ).toEqual({ fullName: "New Person", userName: "new.person" });
     // The Brief uses the same lookup as transcript events.
     expect(detail?.brief?.mentions).toEqual([
       {

@@ -439,6 +439,12 @@ Use `privateTraceResult` only for fields that are safe to retain when the
 conversation is private. Without it, Junior records bounded result metadata
 instead of the raw structured result.
 
+Return the same tools from `tools(ctx)` in every Turn of a Conversation. A
+change to the tool list invalidates the model provider's prompt cache. When one
+Turn cannot use a tool, set `disabledReason` on it instead of omitting it.
+Junior keeps the tool in the tool list, lists it as disabled in the Turn
+context, and rejects its calls before review or execution.
+
 Every hook context has `ctx.cache`. Use it to keep short-lived copies of
 provider reads, such as a user's role. It is not durable. Junior can drop an
 entry at any time, so keep data that must survive in `ctx.state`. Return a
@@ -488,7 +494,9 @@ export function myProviderPlugin() {
 
 Heartbeat dispatches are durable, signed, bounded, and scoped to the plugin
 that created them. Plugins can dispatch only to validated Slack destinations
-and receive projection records, not raw runtime state.
+and receive projection records, not raw runtime state. Pass `title` to name
+the dispatch Conversation. When you omit it, Junior generates one from
+`input`.
 
 ## Validate
 
@@ -496,10 +504,11 @@ Run validation before deploy:
 
 ```bash
 pnpm exec junior check
-pnpm exec junior snapshot create
 ```
 
-`junior check` validates manifest and skill structure. `junior snapshot create` verifies runtime dependency snapshot inputs when your plugin declares them.
+`junior check` validates manifest and skill structure. The deploy build runs
+`junior snapshot create`, which installs your runtime dependencies. Confirm that
+its build log lists them.
 
 ## Next step
 

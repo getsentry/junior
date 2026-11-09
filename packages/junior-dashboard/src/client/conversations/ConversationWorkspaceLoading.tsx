@@ -4,6 +4,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
+import { ConversationRowSkeletons } from "./ConversationSidebar";
 import {
   readSidebarWidth,
   useConversationSidebarOpen,
@@ -13,7 +14,6 @@ import { TranscriptLoading } from "./TranscriptLoading";
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
   const [sidebarOpen] = useConversationSidebarOpen();
-  if (!props.detail) return <ConversationHomeLoading />;
   return (
     <div
       aria-busy="true"
@@ -31,55 +31,50 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
         } as CSSProperties
       }
     >
-      <span className="sr-only">Loading conversation</span>
+      <span className="sr-only">
+        {props.detail ? "Loading conversation" : "Loading conversations"}
+      </span>
       {sidebarOpen ? <ConversationSidebarLoading /> : null}
-      <ConversationDetailLoading />
+      {props.detail ? (
+        <ConversationDetailLoading />
+      ) : (
+        <ConversationHomeLoading />
+      )}
     </div>
   );
 }
 
+// Mirror the live sidebar chrome so the first paint does not jump.
 function ConversationSidebarLoading() {
   return (
-    <aside className="hidden h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-fill-faint md:grid">
-      <div className="flex items-center justify-between gap-2 px-4 py-3">
-        <h2 className="m-0 font-display text-base font-medium leading-tight text-dashboard-text">
-          Conversations
-        </h2>
-        <div className="flex gap-1">
-          <Skeleton className="size-7 rounded-md" />
-          <Skeleton className="size-7 rounded-md" />
+    <aside className="hidden h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel md:grid">
+      <div className="px-3 pb-1.5 pt-2.5">
+        <div className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-sm leading-snug">
+          <Skeleton className="size-[1.125rem] justify-self-center rounded-md" />
+          <span className="flex h-[1lh] items-center">
+            <Skeleton className="h-3 w-28" />
+          </span>
         </div>
       </div>
-      <div className="px-4 pb-2">
-        <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft" />
-      </div>
-      <div className="grid content-start gap-1 px-1.5 pb-2">
-        <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
-        {Array.from({ length: 7 }, (_, index) => (
-          <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
-            <Skeleton
-              className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
-            />
-            <Skeleton className="h-2.5 w-2/5 opacity-70" />
-          </div>
-        ))}
+      <div className="min-h-0 overflow-hidden px-3">
+        <ConversationRowSkeletons />
       </div>
     </aside>
   );
 }
 
+// Wide screens show only the create view beside the list. Narrow screens
+// show the home list with the create composer docked below it.
 function ConversationHomeLoading() {
   return (
-    <main
-      aria-busy="true"
-      aria-live="polite"
-      className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6"
-      role="status"
-    >
-      <span className="sr-only">Loading conversations</span>
-      <div className="mx-auto grid w-full max-w-4xl gap-8 sm:pt-[clamp(1.5rem,10vh,7rem)]">
-        <section className="mx-auto grid w-full max-w-3xl gap-5 sm:gap-6">
-          <Skeleton className="mx-auto h-8 w-56" />
+    <div className="grid h-full min-h-0 w-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden md:grid-rows-[minmax(0,1fr)]">
+      <section className="grid min-h-0 content-start gap-3 overflow-hidden px-4 pb-3 pt-4 sm:px-6 md:hidden">
+        <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
+        <ConversationHomeListLoading />
+      </section>
+      <div className="border-t border-dashboard-border-subtle px-2 pb-[var(--dashboard-composer-dock-padding,0.375rem)] pt-2 sm:px-6 md:grid md:place-items-center md:border-t-0 md:px-6 md:pb-13 md:pt-13">
+        <section className="mx-auto grid w-full max-w-3xl gap-3">
+          <Skeleton className="mx-auto hidden h-8 w-56 md:block" />
           <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
             <Skeleton className="h-20 w-full bg-dashboard-fill-faint" />
             <div className="mt-3 flex justify-between">
@@ -88,12 +83,8 @@ function ConversationHomeLoading() {
             </div>
           </div>
         </section>
-        <section className="grid gap-3">
-          <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
-          <ConversationHomeListLoading />
-        </section>
       </div>
-    </main>
+    </div>
   );
 }
 

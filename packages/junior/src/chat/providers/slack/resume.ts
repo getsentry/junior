@@ -35,7 +35,7 @@ import {
   setTags,
   type LogContext,
 } from "@/chat/logging";
-import { withTurnSpan } from "@/chat/providers/slack/turn-input-telemetry";
+import { withTurnSpan } from "@/chat/task-execution/turn-telemetry";
 import type { TraceContext } from "@/chat/task-execution/state";
 import {
   finalizeFailedTurnReplyWithEvent,
@@ -66,6 +66,7 @@ import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   CooperativeTurnYieldError,
   isCooperativeTurnYieldError,
+  isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -788,6 +789,10 @@ async function resumeSlackTurnInContext(
     // Lease owner must requeue after a hard timeout park. Do not convert this
     // into a user-visible resume failure.
     if (isCooperativeTurnYieldError(runError)) {
+      throw runError;
+    }
+    // Another worker holds the Lease and owns this Turn's outcome.
+    if (isTurnInputCommitLostError(runError)) {
       throw runError;
     }
 

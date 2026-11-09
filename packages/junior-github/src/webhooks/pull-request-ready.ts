@@ -2,7 +2,8 @@
  * The "ready to merge" notice on the review desk for a Junior pull request.
  *
  * A pull request is ready to merge when it is open, not a draft, approved,
- * and GitHub's merge state is `clean`. Each webhook that can change one of
+ * and GitHub's merge state is `clean`. With auto-merge on, GitHub merges it,
+ * so no person needs the notice. Each webhook that can change one of
  * these facts reads them again from GitHub. The notice goes to the
  * Conversation where a person asked Junior to open the pull request. It is
  * assigned to that person only when they are in that Conversation. It closes
@@ -37,6 +38,8 @@ const READY_SYNC_STALE_MS = 60_000;
 /** Webhook actions that can change whether a pull request is ready. */
 const READY_ACTIONS: Record<string, ReadonlySet<string>> = {
   pull_request: new Set([
+    "auto_merge_disabled",
+    "auto_merge_enabled",
     "closed",
     "converted_to_draft",
     "ready_for_review",
@@ -84,6 +87,9 @@ function closeReason(state: GitHubPullRequestMergeState): {
       status: "dismissed",
     };
   }
+  if (state.autoMerge) {
+    return { reason: "Auto-merge is on.", status: "dismissed" };
+  }
   return {
     reason: "The pull request is no longer ready to merge.",
     status: "dismissed",
@@ -128,12 +134,19 @@ async function syncOne(
     try {
       const state = await loadPullRequestMergeState(args.env, target);
       const open = state.state === "open" && !state.draft;
-      const ready = open && state.mergeableState === "clean" && state.approved;
+      const ready =
+        open &&
+        !state.autoMerge &&
+        state.mergeableState === "clean" &&
+        state.approved;
       // Act only on a change. So repeat events add no second notice, and a
       // notice that a person closed does not come back until the pull
       // request is ready again. When GitHub has not computed the merge state
       // yet, nothing changes, and a later event decides.
-      if ((!open || state.mergeableState) && ready !== saved) {
+      if (
+        (!open || state.autoMerge || state.mergeableState) &&
+        ready !== saved
+      ) {
         if (ready) {
           await items.upsert({
             assigneeIdentityIds: [opener.identityId],

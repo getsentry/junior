@@ -1,7 +1,13 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
 import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  NavigationType,
+  useNavigate,
+  useNavigationType,
+  useParams,
+} from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { useConversationsData } from "../api";
@@ -15,13 +21,21 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
-import { ConversationComposer } from "./ConversationComposer";
+import { useConversationActionToasts } from "./conversationActionToasts";
+import { useConversationPageArchiveResult } from "./conversationArchive";
+import {
+  ConversationComposer,
+  touchKeyboardMatches,
+  type ConversationComposerHandle,
+} from "./ConversationComposer";
 import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
   usePendingArchiveConversationUpdates,
+  withoutThreads,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import { useCreateConversation, type ConversationData } from "./queries";
+import { prefetchConversationDetail } from "./conversationPrefetch";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import {
   attentionConversationIds,
@@ -32,12 +46,13 @@ import { useDebouncedValue } from "../debouncedValue";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
+import { FeedThreads, feedThreadsById } from "./feedThreads";
 import {
   useWaitingConversationIds,
   useWaitingConversations,
 } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
-import { useConversationFinishedIndicators } from "./useConversationFinishedIndicators";
+import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import {
   readSidebarWidth,
   saveSidebarWidth,
@@ -49,7 +64,10 @@ import {
 const CONVERSATION_PAGE_SIZE = 20;
 const SIDEBAR_PANEL_ID = "conversation-list";
 
-/** Render the conversation home page or one selected conversation. */
+/**
+ * Render the conversation list beside the create view or one selected
+ * conversation. Narrow screens without room for the list get a stacked home.
+ */
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
@@ -57,18 +75,31 @@ export function ConversationWorkspace(props: {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
+  // Home reports an archive that started on a conversation page. Do it here,
+  // not in a list, because the list can be hidden.
+  const { showArchiveError, showArchived } = useConversationActionToasts();
+  useConversationPageArchiveResult(showArchived, showArchiveError);
   const sidebarFits = useSidebarFits();
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const sidebarGroup = useRef<HTMLDivElement>(null);
   const sidebarId = useId();
-  const search = useDebouncedValue(query.trim());
+  // Only the stacked home has a search box. The sidebar lists every
+  // conversation; the command palette searches them. Debounce only the typed
+  // text, so the sidebar drops a stale search at once.
+  const debouncedQuery = useDebouncedValue(query.trim());
+  const search = sidebarFits ? "" : debouncedQuery;
   const params = useParams();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
+  const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
+  const queryClient = useQueryClient();
+  const createComposer = useRef<ConversationComposerHandle>(null);
+  const createRequested = useRef(false);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -80,18 +111,21 @@ export function ConversationWorkspace(props: {
   );
   const openCreate = () => {
     createConversation.reset();
-    if (selectedId) navigate(NEW_CONVERSATION_PATH);
+    if (selectedId) {
+      // The reader asked to type, so home takes focus even on a touch screen.
+      createRequested.current = true;
+      navigate(NEW_CONVERSATION_PATH);
+    } else createComposer.current?.focus();
   };
 
+  // Thread cards, breadcrumbs, and details show each Thread's own title and
+  // status from its feed row.
+  const feedThreads = useMemo(
+    () => feedThreadsById(conversations),
+    [conversations],
+  );
   const waitingConversations = useWaitingConversations();
   const waitingConversationIds = useWaitingConversationIds();
-  const { finishedConversationIds, heldConversationId, markRead } =
-    useConversationFinishedIndicators(
-      conversations,
-      selectedId,
-      Boolean(feed.data),
-      !search,
-    );
 
   const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
   const pagedConversations = useMemo(
@@ -99,15 +133,12 @@ export function ConversationWorkspace(props: {
       pageItems(
         pinnedAndAttentionFirst(
           conversations,
-          attentionConversationIds(
-            waitingConversationIds,
-            finishedConversationIds,
-          ),
+          attentionConversationIds(conversations, waitingConversationIds),
         ),
         page,
         CONVERSATION_PAGE_SIZE,
       ),
-    [conversations, finishedConversationIds, page, waitingConversationIds],
+    [conversations, page, waitingConversationIds],
   );
   useEffect(() => {
     setPage(1);
@@ -116,30 +147,94 @@ export function ConversationWorkspace(props: {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
+  // Aborts when the reader leaves home, so a late create does not pull them
+  // back from the page they went to.
+  const homeVisit = useRef<AbortSignal>(undefined);
+  useEffect(() => {
+    if (!home) return;
+    const visit = new AbortController();
+    homeVisit.current = visit.signal;
+    return () => visit.abort();
+  }, [home]);
+
+  // Home exists to start a conversation, so the reader can type at once. On a
+  // touch screen, focus opens the keyboard over the conversation list. There,
+  // focus only when the dashboard opens on home or the reader asks to create,
+  // not when they come back from a conversation or follow a link.
+  const homeShown = useRef(false);
+  useEffect(() => {
+    if (!home) return;
+    const returned =
+      (homeShown.current || navigationType === NavigationType.Push) &&
+      !createRequested.current;
+    homeShown.current = true;
+    createRequested.current = false;
+    if (returned && touchKeyboardMatches()) return;
+    createComposer.current?.focus();
+  }, [home, navigationType]);
+
   const createView = (
     <NewConversationView
+      composerRef={createComposer}
+      docked={!sidebarFits}
       error={
         createConversation.error
           ? "Could not create the conversation. Try again."
           : undefined
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
+        const visit = homeVisit.current;
         const accepted = await createConversation.mutateAsync({
           idempotencyKey,
           message,
           images,
           visibility,
         });
-        navigate(conversationPath(accepted.conversationId));
+        // Open the Conversation with its transcript and composer, not a
+        // skeleton. The draft stays on this page until the route changes, so
+        // the message moves from the composer to the transcript at once.
+        await prefetchConversationDetail(queryClient, accepted.conversationId);
+        if (visit?.aborted) return;
+        await navigate(conversationPath(accepted.conversationId), {
+          flushSync: true,
+        });
       }}
     />
   );
 
-  if (home) {
-    return (
-      <main className="h-full min-h-0 w-full overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6">
-        <div className="mx-auto grid w-full max-w-4xl gap-8 sm:pt-[clamp(1.5rem,10vh,7rem)]">
-          {createView}
+  const toggleSidebar = () => {
+    const panel = sidebarPanel.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) panel.resize(readSidebarWidth());
+    else panel.collapse();
+  };
+  const sidebarToggle = (
+    <HeaderIconButton
+      controls={sidebarId}
+      expanded={sidebarOpen}
+      label={sidebarOpen ? "Hide conversation list" : "Show conversation list"}
+      onClick={toggleSidebar}
+    >
+      <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
+    </HeaderIconButton>
+  );
+
+  // One tree for every width, so the create draft and its images survive a
+  // resize across the breakpoint: the create view is always the child of the
+  // second div.
+  const homePane = (
+    <main
+      className={cn(
+        "grid h-full min-h-0 w-full overflow-hidden",
+        sidebarFits
+          ? "grid-rows-[auto_minmax(0,1fr)]"
+          : "grid-rows-[minmax(0,1fr)_auto]",
+      )}
+    >
+      {sidebarFits ? (
+        <div className="flex h-13 items-center px-1">{sidebarToggle}</div>
+      ) : (
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 pt-4 sm:px-6">
           <section aria-label="Conversations" className="grid gap-3">
             <SearchInput
               className="w-full sm:ml-auto sm:w-72"
@@ -151,8 +246,16 @@ export function ConversationWorkspace(props: {
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
-              finishedConversationIds={finishedConversationIds}
               loading={feed.isPending}
+              // Search, or more pins than one page holds, shows only some
+              // pins, so a drop could not place the rest.
+              onReorderPins={
+                search ||
+                conversations.filter((conversation) => conversation.pinnedAt)
+                  .length > CONVERSATION_PAGE_SIZE
+                  ? undefined
+                  : reorderPins
+              }
               timeZone={getDashboardTimeZone()}
               waitingConversationIds={waitingConversationIds}
             />
@@ -166,16 +269,22 @@ export function ConversationWorkspace(props: {
             />
           </section>
         </div>
-      </main>
-    );
-  }
-
-  const toggleSidebar = () => {
-    const panel = sidebarPanel.current;
-    if (!panel) return;
-    if (panel.isCollapsed()) panel.resize(readSidebarWidth());
-    else panel.collapse();
-  };
+      )}
+      <div
+        className={
+          sidebarFits
+            ? // The bottom pad matches the toggle row, so the create view
+              // sits in the middle of the pane.
+              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
+            : // Narrow screens dock the composer at the bottom, in thumb
+              // reach. The shell owns the keyboard and safe-area pad.
+              "max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] overflow-y-auto border-t border-dashboard-border-subtle bg-dashboard-bg px-2 pb-[var(--dashboard-composer-dock-padding,0.375rem)] pt-2 sm:px-6"
+        }
+      >
+        {createView}
+      </div>
+    </main>
+  );
 
   return (
     <ResizablePanelGroup
@@ -216,12 +325,9 @@ export function ConversationWorkspace(props: {
               <ConversationSidebar
                 conversations={conversations}
                 error={feed.error?.message}
-                finishedConversationIds={finishedConversationIds}
-                heldConversationId={heldConversationId}
                 loading={feed.isPending}
                 onNewConversation={openCreate}
-                onQueryChange={setQuery}
-                query={query}
+                onReorderPins={reorderPins}
                 selectedId={selectedId}
                 timeZone={getDashboardTimeZone()}
                 waitingConversations={waitingConversations}
@@ -235,48 +341,43 @@ export function ConversationWorkspace(props: {
         </>
       ) : null}
       <ResizablePanel id="selected-conversation">
-        <section
-          aria-label="Selected conversation"
-          className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
-        >
-          <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-            <ConversationPage
-              conversationId={selectedId}
-              detail={props.detail}
-              data={
-                feed.data
-                  ? {
-                      conversations: feed.data,
-                    }
-                  : undefined
-              }
-              onRead={markRead}
-              pendingArchiveUpdate={pendingArchiveUpdates.find(
-                (update) => update.conversationId === selectedId,
-              )}
-              sidebarToggle={
-                <HeaderIconButton
-                  controls={sidebarId}
-                  expanded={sidebarOpen}
-                  label={
-                    sidebarOpen
-                      ? "Hide conversation list"
-                      : "Show conversation list"
+        {home ? (
+          homePane
+        ) : (
+          <section
+            aria-label="Selected conversation"
+            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+          >
+            <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
+              <FeedThreads value={feedThreads}>
+                <ConversationPage
+                  conversationId={selectedId}
+                  detail={props.detail}
+                  data={
+                    feed.data
+                      ? {
+                          conversations: feed.data,
+                        }
+                      : undefined
                   }
-                  onClick={toggleSidebar}
-                >
-                  <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
-                </HeaderIconButton>
-              }
-            />
-          </UnsentAnswersProvider>
-        </section>
+                  pendingArchiveUpdate={pendingArchiveUpdates.find(
+                    (update) => update.conversationId === selectedId,
+                  )}
+                  sidebarToggle={sidebarToggle}
+                />
+              </FeedThreads>
+            </UnsentAnswersProvider>
+          </section>
+        )}
       </ResizablePanel>
     </ResizablePanelGroup>
   );
 }
 
 function NewConversationView(props: {
+  composerRef: Ref<ConversationComposerHandle>;
+  /** Docked at the bottom of the narrow home, where the list is above it. */
+  docked: boolean;
   error?: string;
   onSubmit(
     message: string,
@@ -290,9 +391,14 @@ function NewConversationView(props: {
   return (
     <section
       aria-label="New conversation"
-      className="mx-auto grid w-full max-w-3xl gap-5 sm:gap-6"
+      className="mx-auto grid w-full max-w-3xl gap-3"
     >
-      <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+      <h2
+        className={cn(
+          "m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl",
+          props.docked && "sr-only",
+        )}
+      >
         What do you need?
       </h2>
       <ConversationComposer
@@ -318,7 +424,8 @@ function NewConversationView(props: {
           </ToggleGroup>
         }
         label="Start a conversation"
-        restoreDraftOnError
+        holdDraftUntilAccept
+        ref={props.composerRef}
         submitLabel="Send"
         onSubmit={(message, idempotencyKey, images) =>
           props.onSubmit(message, idempotencyKey, visibility, images)
@@ -361,7 +468,17 @@ function applyPendingArchiveUpdates(
         : null,
     });
   }
-  return [...byId.values()].sort((a, b) =>
+  const rows = [...byId.values()].sort((a, b) =>
     b.lastSeenAt.localeCompare(a.lastSeenAt),
   );
+  // A refetch can bring back a Thread whose archive is still pending.
+  const archivedIds = new Set(
+    updates
+      .filter((update) => update.archived)
+      .map((update) => update.conversationId),
+  );
+  // Keep row identity when nothing is pending, so memoized rows skip renders.
+  return includeArchived || archivedIds.size === 0
+    ? rows
+    : withoutThreads(rows, (thread) => archivedIds.has(thread.id));
 }

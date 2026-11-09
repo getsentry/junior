@@ -6,9 +6,13 @@ import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
-  getAgentInvocation,
+} from "@/chat/agent-invocations/create";
+import {
   getAgentInvocationMessageId,
   getAgentInvocationTurnId,
+} from "@/chat/agent-invocations/ids";
+import {
+  getAgentInvocation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
@@ -18,6 +22,7 @@ import {
   agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
 import { commitMessages } from "@/chat/conversations/projection";
+import { stopConversation } from "@/chat/conversations/stop";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -30,6 +35,7 @@ import type {
   InboxAttempt,
 } from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
@@ -63,7 +69,7 @@ describe("agent invocation worker", () => {
     vi.restoreAllMocks();
   });
 
-  it("stops a stranded running child without starting another agent run", async () => {
+  it("stops a stranded running child that already used its resume", async () => {
     const fixture = await prepareParentConversation();
     const state = getStateAdapter();
     await state.connect();
@@ -108,6 +114,7 @@ describe("agent invocation worker", () => {
           },
         ] as PiMessage[],
         turnId,
+        lostWorkerResumeCount: 1,
         sliceId: 1,
         source: { kind: "agent_invocation" },
         state: "running",
@@ -164,7 +171,7 @@ describe("agent invocation worker", () => {
     }
   });
 
-  it("stops open child agents when a stop comes after the child saved its result", async () => {
+  it("stops open child agents when the child is stopped during its run", async () => {
     const fixture = await prepareParentConversation();
     try {
       const created = await createAgentInvocation({
@@ -179,7 +186,12 @@ describe("agent invocation worker", () => {
       const stopRequest = new AbortController();
       const worker = createAgentInvocationWorker({
         run: async () => {
-          // The stop request arrives after the run finished.
+          // A person stops the child as its run finishes. This harness has no
+          // stop check, so abort the signal that the check would abort.
+          await stopConversation({
+            conversationId: created.childConversationId,
+            queue: createConversationWorkQueueTestAdapter(),
+          });
           stopRequest.abort(new Error("Conversation work stopped"));
           return {
             status: "completed" as const,
@@ -216,8 +228,8 @@ describe("agent invocation worker", () => {
         status: "completed",
       });
 
-      // The open helper would have reported for the child. The stop ends the
-      // helper, so the child's own result reports now.
+      // The open helper would have reported for the child. The stop ended the
+      // helper before the child saved, so the child's own result reports.
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
@@ -243,6 +255,7 @@ describe("agent invocation worker", () => {
         ...INVOCATION_INPUT,
         agentName: "researcher",
         idempotencyKey: "steer-task",
+        parentToolCallId: "call-steer-task",
       });
       await markAgentInvocationRunning(created.invocationId);
       const { invocation: message, queued } =
@@ -271,6 +284,7 @@ describe("agent invocation worker", () => {
         destination: DESTINATION,
         piMessages: [
           buildSteeringPiMessage({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: agentInvocationInputText(savedMessage),
             timestampMs: savedMessage.createdAtMs,
@@ -286,8 +300,10 @@ describe("agent invocation worker", () => {
       // The runner drains steering messages, as the agent does before its
       // next model call.
       const steered: AgentSteeringMessage[][] = [];
+      const provenances: unknown[] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
+          provenances.push(run.instruction.provenance);
           await run.durability?.drainSteeringMessages?.(async (messages) => {
             steered.push(messages);
           });
@@ -339,13 +355,16 @@ describe("agent invocation worker", () => {
       expect(context.attempt.drain).toHaveBeenCalledWith(expect.any(Function), {
         deferred: true,
       });
-      // The parent's text is labeled as agent-written and has no Actor.
+      // The parent's task and messages are the child's instructions, with no
+      // Actor.
+      expect(provenances).toEqual([agentInstructionProvenance]);
       expect(steered).toEqual([
         [
           expect.objectContaining({
+            kind: "runtime",
             provenance: agentInstructionProvenance,
             text: expect.stringMatching(
-              /^\[parent agent task\][\s\S]*Also check the retry path\.$/,
+              /^<parent-agent-task>\n[\s\S]*Also check the retry path\.\n<\/parent-agent-task>$/,
             ),
           }),
         ],
@@ -523,51 +542,48 @@ describe("agent invocation worker", () => {
     }
   });
 
-  it("lets child agents spawn only down to maxAgentDepth", async () => {
+  it("offers spawnAgent to a child only when maxAgentDepth is above 0", async () => {
     const fixture = await prepareParentConversation();
     try {
-      const child = await createAgentInvocation({
-        ...INVOCATION_INPUT,
-        idempotencyKey: "depth-child",
-      });
-      const helper = await createAgentInvocation({
-        ...INVOCATION_INPUT,
-        idempotencyKey: "depth-helper",
-        parentConversationId: child.childConversationId,
-      });
-      const runs: AgentRun[] = [];
-      const worker = createAgentInvocationWorker(
-        {
-          run: async (run) => {
-            runs.push(run);
-            throw new Error("stop after reading the run");
-          },
-        },
-        { maxAgentDepth: 1 },
+      const [first, second] = await Promise.all(
+        ["depth-default", "depth-1"].map((idempotencyKey) =>
+          createAgentInvocation({ ...INVOCATION_INPUT, idempotencyKey }),
+        ),
       );
-      // With maxAgentDepth 1, depth 1 can spawn and depth 2 cannot.
-      for (const invocation of [child, helper]) {
+      const runs: AgentRun[] = [];
+      const runner = {
+        run: async (run: AgentRun) => {
+          runs.push(run);
+          throw new Error("stop after reading the run");
+        },
+      };
+      // The default, 0, lets only the root spawn. With 1, the child's Runs
+      // offer spawnAgent, and spawnAgent checks the depth when it is called.
+      for (const [child, worker] of [
+        [first!, createAgentInvocationWorker(runner)],
+        [second!, createAgentInvocationWorker(runner, { maxAgentDepth: 1 })],
+      ] as const) {
         await expect(
           worker(
             {
               attempt: {
                 ack: vi.fn(),
-                conversationId: invocation.childConversationId,
+                conversationId: child.childConversationId,
                 drain: vi.fn(),
                 isFinalAttempt: false,
-                messages: [buildAgentInvocationInboundMessage(invocation)],
+                messages: [buildAgentInvocationInboundMessage(child)],
               },
               checkIn: vi.fn(),
-              conversationId: invocation.childConversationId,
+              conversationId: child.childConversationId,
               shouldYield: () => false,
             },
-            invocation.invocationId,
+            child.invocationId,
           ),
         ).rejects.toThrow("stop after reading the run");
       }
       expect(runs.map((run) => run.disabledFeatures)).toEqual([
-        ["interactive-auth"],
         ["interactive-auth", "subagents"],
+        ["interactive-auth"],
       ]);
     } finally {
       await fixture.close();

@@ -48,6 +48,7 @@ import type {
   AgentAttachment,
   AgentInstruction,
   AgentInstructionActor,
+  AgentInstructionInput,
   AgentRun,
   AgentSteeringMessage,
 } from "@/chat/agent/types";
@@ -110,7 +111,7 @@ interface PromptReplayArgs {
  */
 function renderThreadContextForPrompt(context: string): string {
   if (
-    /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
+    /^<(?:thread-context|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
       context,
     )
   ) {
@@ -129,6 +130,35 @@ export function buildUserTurnText(
   actor?: AgentInstructionActor,
 ): string {
   return renderCurrentInstruction(userInput, actor);
+}
+
+/**
+ * Build the instruction for Turn inputs. Each input keeps its own prompt
+ * content part, and `text` joins them for action review.
+ */
+export function instructionForInputs(
+  inputs: readonly AgentInstructionInput[],
+): Pick<AgentInstruction, "inputs" | "text"> {
+  return {
+    inputs,
+    text: inputs
+      .map((input) => input.text.trim())
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+}
+
+// Render one prompt text part per input, in order. Inputs are never joined.
+// A batch has one Actor, so every person part has the same attributes.
+function renderInputParts(instruction: AgentInstruction): string[] {
+  const inputs = instruction.inputs ?? [
+    { kind: "person" as const, text: instruction.text },
+  ];
+  return inputs.map((input) =>
+    input.kind === "person"
+      ? buildUserTurnText(input.text, instruction.actor)
+      : input.text.trim(),
+  );
 }
 
 /** Render an explicitly selected skill as instructions for the current turn. */
@@ -199,13 +229,14 @@ function buildOmittedImageAttachmentNotice(count: number): string {
 }
 
 function buildUserTurnInput(args: {
+  inputParts: readonly string[];
   omittedImageAttachmentCount: number;
   userAttachments?: AgentAttachment[];
-  userTurnText: string;
 }): PromptInput {
-  const userContentParts: UserContentPart[] = [
-    { type: "text", text: args.userTurnText },
-  ];
+  const userContentParts: UserContentPart[] = args.inputParts.map((text) => ({
+    type: "text",
+    text,
+  }));
 
   if (args.omittedImageAttachmentCount > 0) {
     const omittedImagesNotice = buildOmittedImageAttachmentNotice(
@@ -262,23 +293,16 @@ function buildUserTurnInput(args: {
 /** Build the prompt-facing user input. */
 export function buildPromptInput(args: {
   instruction: AgentInstruction;
-  history?: readonly import("@/chat/pi/messages").PiMessage[];
 }): PromptInput {
-  const { instruction, history } = args;
-  const promptConversationContext =
-    history &&
-    history.length > 0 &&
-    !instruction.includeConversationContextWithHistory
-      ? undefined
-      : instruction.context;
+  const { instruction } = args;
   const promptInput = buildUserTurnInput({
     omittedImageAttachmentCount: instruction.omittedImageAttachmentCount ?? 0,
     userAttachments: instruction.attachments
       ? [...instruction.attachments]
       : undefined,
-    userTurnText: buildUserTurnText(instruction.text, instruction.actor),
+    inputParts: renderInputParts(instruction),
   });
-  const trimmedContext = promptConversationContext?.trim();
+  const trimmedContext = instruction.context?.trim();
   return {
     ...promptInput,
     contextContentParts: trimmedContext
@@ -296,7 +320,11 @@ export function buildSteeringPiMessage(
   message: AgentSteeringMessage,
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
-    userTurnText: buildUserTurnText(message.text, message.actor),
+    inputParts: [
+      message.kind === "runtime"
+        ? message.text.trim()
+        : buildUserTurnText(message.text, message.actor),
+    ],
     userAttachments: message.attachments ? [...message.attachments] : undefined,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
@@ -567,7 +595,7 @@ export async function assemblePrompt(args: {
     | "slackConversation"
     | "location"
     | "delivery"
-    | "parentConversationId"
+    | "agentInvocationId"
   >;
   spanContext: LogContext;
   disabledTools: DisabledToolPromptContext[];
@@ -601,7 +629,7 @@ export async function assemblePrompt(args: {
     !hasRuntimeTurnContext(promptHistoryMessages);
   const promptMode = args.run.dispatch?.declaresResult
     ? "automation"
-    : args.run.parentConversationId
+    : args.run.agentInvocationId
       ? "child_agent"
       : "conversation";
   // Automation runs have no Delivery port. Their declared message still goes

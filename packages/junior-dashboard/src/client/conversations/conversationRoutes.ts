@@ -19,6 +19,19 @@ export function conversationPath(
   return search ? `${path}?${search}` : path;
 }
 
+/** Navigation state that asks the opened Conversation to focus its reply box. */
+export const FOCUS_REPLY_STATE = { focusReply: true } as const;
+
+/** True when navigation state asks the Conversation to focus its reply box. */
+export function requestsReplyFocus(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    "focusReply" in state &&
+    state.focusReply === true
+  );
+}
+
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */
 export const NEW_CONVERSATION_PATH = "/";
 

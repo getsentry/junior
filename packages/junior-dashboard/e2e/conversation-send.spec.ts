@@ -1,5 +1,6 @@
 import {
   CONVERSATION_DETAIL_VERSION_HEADER,
+  CONVERSATION_VERSION_HEADER,
   webMessageId,
 } from "@sentry/junior/api/schema";
 import type {
@@ -9,7 +10,7 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { withRequestedMailbox } from "./harness";
+import { routeConversationVersion, withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
 
@@ -138,13 +139,15 @@ test("starts and continues conversations from the dashboard", async ({
     buffer: Buffer.from(imageBase64, "base64"),
   });
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
+  await startComposer.fill("Check the deploy");
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => createRequests.length).toBe(1);
-  // Create restore keeps send locked while the first accept is open so a later
-  // submit cannot race the failed-draft restore.
+  // The draft stays in the locked composer while the first accept is open,
+  // so a later submit cannot send it twice.
   await expect(
     page.getByRole("button", { name: "Sending message" }),
   ).toBeDisabled();
+  await expect(startComposer).toHaveValue("Check the deploy");
   await startComposer.evaluate((element) => {
     element.closest("form")?.requestSubmit();
   });
@@ -153,25 +156,70 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(
     page.getByText("Could not create the conversation. Try again."),
   ).toBeVisible();
-  // New roots have no mailbox outbox, so a failed create restores the draft and
-  // keeps the same idempotency key for a safe retry.
-  await expect(startComposer).toHaveValue("");
+  // New roots have no mailbox outbox, so a failed create keeps the draft and
+  // the same idempotency key for a safe retry.
+  await expect(startComposer).toHaveValue("Check the deploy");
   await expect(page.getByRole("img", { name: "pasted.png" })).toBeVisible();
   expect(createRequests[0]?.images).toEqual([
     { filename: "pasted.png", contentType: "image/png", data: imageBase64 },
   ]);
   const failedCreateKey = createRequests[0]?.idempotencyKey;
-  expect(createRequests[0]?.message).toBe("");
+  expect(createRequests[0]?.message).toBe("Check the deploy");
   expect(createRequests[0]?.visibility).toBe("private");
   expect(failedCreateKey).toBeTruthy();
 
+  let createdDetailReads = 0;
+  let releaseCreatedDetail: (() => void) | undefined;
+  const createdDetailHeld = new Promise<void>((resolve) => {
+    releaseCreatedDetail = resolve;
+  });
+  // Serve the new Conversation before its history has the first message.
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(createdConversationId)}*`,
+    async (route) => {
+      createdDetailReads += 1;
+      await createdDetailHeld;
+      const url = route.request().url();
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
+        // Any mock Conversation with available history.
+        url: url.replace(
+          encodeURIComponent(createdConversationId),
+          encodeURIComponent("slack:CQA123:1770003600.000200"),
+        ),
+      });
+      const detail = await response.json();
+      await route.fulfill({
+        json: withRequestedMailbox(route, {
+          ...detail,
+          conversationId: createdConversationId,
+          events: [],
+          isParticipant: true,
+          previousCursor: undefined,
+          status: "active",
+        }),
+      });
+    },
+  );
   await page.getByRole("button", { name: "Send" }).click();
+  // The draft stays on the home page until the new Conversation can open
+  // with its transcript.
+  await expect.poll(() => createdDetailReads).toBe(1);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(startComposer).toHaveValue("Check the deploy");
+  releaseCreatedDetail?.();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
+  await expect(
+    page.getByLabel("Conversation transcript").getByText("Check the deploy"),
+  ).toBeVisible();
   expect(createRequests).toHaveLength(2);
   expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
-  expect(createRequests[1]?.message).toBe("");
+  expect(createRequests[1]?.message).toBe("Check the deploy");
   expect(createRequests[1]?.visibility).toBe("private");
   expect(createRequests[1]?.images).toEqual(createRequests[0]?.images);
 
@@ -307,6 +355,7 @@ test("hands web and external messages from queue to history without gaps", async
   let active = false;
   let started = false;
   let detailReads = 0;
+  let detailReadsInFlight = 0;
   let releaseAccept!: () => void;
   const accept = new Promise<void>((resolve) => {
     releaseAccept = resolve;
@@ -333,8 +382,13 @@ test("hands web and external messages from queue to history without gaps", async
       },
     });
   });
+  // The tree token moves with the mailbox and history, as on the server.
+  const conversationVersion = () =>
+    JSON.stringify([queued, committed, active, started]);
+  await routeConversationVersion(page, conversationVersion);
   await page.route(`${path}*`, async (route) => {
     detailReads += 1;
+    detailReadsInFlight += 1;
     // Like the server, read the mailbox before history.
     const mailbox = {
       conversationId,
@@ -350,8 +404,13 @@ test("hands web and external messages from queue to history without gaps", async
       },
     });
     const detail = await response.json();
+    const { "content-length": _, ...headers } = response.headers();
     await route.fulfill({
       response,
+      headers: {
+        ...headers,
+        [CONVERSATION_VERSION_HEADER]: conversationVersion(),
+      },
       json: {
         ...detail,
         mailbox,
@@ -388,6 +447,7 @@ test("hands web and external messages from queue to history without gaps", async
         ],
       },
     });
+    detailReadsInFlight -= 1;
   });
   await page.route(`${path}/messages`, async (route) => {
     const body = route.request().postDataJSON();
@@ -531,7 +591,9 @@ test("hands web and external messages from queue to history without gaps", async
   await expect(thinking).toBeHidden();
 
   // The mailbox can empty before the slower history read returns. Publish both
-  // together, and do not hide the web message in the meantime.
+  // together, and do not hide the web message in the meantime. A read that is
+  // already past the hold would show the new history early.
+  await expect.poll(() => detailReadsInFlight).toBe(0);
   const readsBeforeCommit = detailReads;
   queued = [];
   committed = [waiting, web];
@@ -897,7 +959,7 @@ test("edits a queued message back into the composer", async ({
 
   await pending.getByRole("button", { name: "Edit queued message" }).click();
   await expect(
-    page.getByText("Junior already read that message."),
+    page.getByText("That message was already read or removed."),
   ).toBeVisible();
   await expect(composer).toHaveValue(
     `${queuedMessage.text}\nDraft in progress`,

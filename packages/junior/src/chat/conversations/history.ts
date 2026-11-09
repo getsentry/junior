@@ -8,7 +8,6 @@
  * are validated by the Pi adapter when it restores model context.
  */
 import * as z from "zod";
-import type { ConversationCompaction } from "@/chat/state/conversation";
 import { conversationMessageProvenanceSchema } from "./provenance";
 import { decodeHistoryPayload, isEncodedHistoryType } from "./history-payload";
 
@@ -86,6 +85,9 @@ const historyReplacementEventDataSchema = z
     modelProfile: legacyModelProfileSchema,
     modelId: z.string().min(1),
     details: compactionDetailsSchema.optional(),
+    // Estimated cost of the summary requests. A swap of a prepared summary
+    // makes no model call, so it has none.
+    costUsd: z.number().finite().nonnegative().optional(),
     summary: z.string().min(1).optional(),
     replacementHistory: replacementHistorySchema,
   })
@@ -222,20 +224,24 @@ const messageHandledEventDataSchema = z
   })
   .strict();
 
+// Sets where loaded Message history starts, after trimming. The name is from
+// thread compaction. Its old rows also have summaries, which nothing reads.
 const messagesSummarizedEventDataSchema = z
   .object({
     type: z.literal("messages_summarized"),
     historyFromSeq: z.number().int().nonnegative(),
-    compactions: z.array(
-      z
-        .object({
-          coveredMessageCount: z.number().int().nonnegative(),
-          createdAtMs: z.number(),
-          id: z.string().min(1),
-          summary: z.string(),
-        })
-        .strict(),
-    ) satisfies z.ZodType<ConversationCompaction[]>,
+    compactions: z
+      .array(
+        z
+          .object({
+            coveredMessageCount: z.number().int().nonnegative(),
+            createdAtMs: z.number(),
+            id: z.string().min(1),
+            summary: z.string(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -293,6 +299,8 @@ const turnStartedEventDataSchema = z
     turnId: z.string().min(1),
     inputMessageIds: z.array(z.string().min(1)).min(1),
     surface: conversationTurnSurfaceSchema,
+    /** Highest Message seq known when the Turn built its thread context. */
+    threadContextThroughSeq: z.number().int().nonnegative().optional(),
   })
   .strict()
   .refine(
@@ -355,6 +363,17 @@ const attachmentsDeliveredEventDataSchema = z
     attachments: z.array(deliveredAttachmentSchema).min(1),
     toolCallId: z.string().min(1).optional(),
     turnId: z.string().min(1).optional(),
+  })
+  .strict();
+
+/** Host-owned transcript item for a reply that a plugin tool posted. */
+const replyPostedEventDataSchema = z
+  .object({
+    type: z.literal("reply_posted"),
+    plugin: z.string().min(1),
+    text: z.string().min(1),
+    url: z.string().url().optional(),
+    toolCallId: z.string().min(1),
   })
   .strict();
 
@@ -426,6 +445,8 @@ const compactionRequestedEventDataSchema = z
 
 const compactionPreparedFields = compactionRequestedEventDataSchema.extend({
   type: z.literal("compaction_prepared"),
+  // Estimated cost of the summary requests, also when they failed.
+  costUsd: z.number().finite().nonnegative().optional(),
 });
 
 const compactionPreparedEventDataSchema = z.discriminatedUnion("outcome", [
@@ -456,6 +477,7 @@ const appendableConversationEventDataSchema = z.union([
   turnContextEventDataSchema,
   structuredConversationEventDataSchema,
   attachmentsDeliveredEventDataSchema,
+  replyPostedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
@@ -499,6 +521,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "turn_context",
   "structured_event",
   "attachments_delivered",
+  "reply_posted",
   "turn_routed",
   "turn_completed",
   "turn_failed",
@@ -561,7 +584,7 @@ export const conversationEventSchema = z.union([
 /** One versioned event read from the durable conversation log. */
 export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
-/** A decoded message-summary event and its readable history boundary. */
+/** A decoded event that sets where readable Message history starts. */
 export type MessagesSummarizedEvent = Omit<
   Extract<ConversationEvent, { schemaVersion: 1 | 2 }>,
   "data"
@@ -572,7 +595,6 @@ export type MessagesSummarizedEvent = Omit<
 /** Projection-ready message events paired with their authoritative boundary. */
 export interface MessageHistory {
   events: ConversationEvent[];
-  compaction: MessagesSummarizedEvent | undefined;
   historyFromSeq: number;
 }
 
@@ -695,6 +717,11 @@ export interface ConversationEventStore {
   loadMessageHistory(conversationId: string): Promise<MessageHistory>;
   /** All events across every history version in `seq` order. */
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
+  /** Events of one type across every history version in `seq` order. */
+  loadEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]>;
   /**
    * Bounded raw event page for observational/debug reads.
    * Defaults to the newest matching events when neither bound is set.

@@ -1,6 +1,6 @@
 import { AwsClient } from "aws4fetch";
 import { toOptionalTrimmed } from "@/chat/optional-string";
-import type { AttachmentStorage } from "./storage";
+import { rangeHeader, type AttachmentStorage } from "./storage";
 
 /** Settings for an S3-compatible object store. */
 export interface S3StorageConfig {
@@ -90,14 +90,24 @@ export function createS3AttachmentStorage(
       });
       await expectOk(response, "put");
     },
-    async get(key) {
-      const response = await client.fetch(objectUrl(config, key));
+    async get(key, range) {
+      const response = await client.fetch(
+        objectUrl(config, key),
+        range ? { headers: { range: rangeHeader(range) } } : undefined,
+      );
       if (response.status === 404) {
         await drain(response);
         return null;
       }
       if (!response.ok) {
         await expectOk(response, "get");
+      }
+      // A server that ignores the range sends the whole object with 200.
+      if (range && response.status !== 206) {
+        await drain(response);
+        throw new Error(
+          `S3 get ignored the byte range with status ${response.status}`,
+        );
       }
       return response.body;
     },

@@ -139,6 +139,143 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
   });
 
+  it("hashes the provider request body and leaves it unchanged", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    // Runs one call whose provider builds `payload`, and returns the
+    // `app.ai.request.*` attributes that the span got.
+    const hashesFor = async (payload: Record<string, unknown>) => {
+      startInactiveSpan.mockClear();
+      const span = {
+        setAttribute: vi.fn(),
+        setAttributes: vi.fn(),
+        setStatus: vi.fn(),
+        end: vi.fn(),
+      };
+      startInactiveSpan.mockReturnValueOnce(span);
+      let hookResult: unknown = "not called";
+      const base: StreamFn = async (model, _context, options) => {
+        hookResult = await options?.onPayload?.(payload, model);
+        return createAssistantMessageEventStream();
+      };
+      await createTracedStreamFn(base)(
+        fakeModel("anthropic/claude-opus-5.5"),
+        { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+        undefined,
+      );
+      expect(hookResult).toBeUndefined();
+      const attributes = Object.assign(
+        {},
+        ...span.setAttributes.mock.calls.map((c) => c[0]),
+      ) as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.entries(attributes).filter(([key]) =>
+          key.startsWith("app.ai.request."),
+        ),
+      );
+    };
+    const breakpoint = { type: "ephemeral" };
+    // Like Pi: the last user message becomes a text block with the
+    // breakpoint, and earlier ones keep string content.
+    const user = (text: string, cached = false) => ({
+      role: "user",
+      content: cached
+        ? [{ type: "text", text, cache_control: breakpoint }]
+        : text,
+    });
+    const reply = {
+      role: "assistant",
+      content: [{ type: "text", text: "a1" }],
+    };
+    const request = (
+      messages: unknown[],
+      description = "Search the web.",
+      cached = true,
+      effort = "high",
+    ) => ({
+      model: "anthropic/claude-opus-5.5",
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort },
+      system: [
+        {
+          type: "text",
+          text: "you are junior",
+          cache_control: cached ? breakpoint : undefined,
+        },
+      ],
+      tools: [
+        {
+          name: "search",
+          description,
+          input_schema: { type: "object", properties: {} },
+          cache_control: cached ? breakpoint : undefined,
+        },
+      ],
+      messages,
+    });
+
+    const first = await hashesFor(request([user("u1", true)]));
+    const appended = await hashesFor(
+      request([user("u1"), reply, user("u2", true)]),
+    );
+    const edited = await hashesFor(
+      request([user("u1 edited"), reply, user("u2", true)]),
+    );
+    const withoutBreakpoints = await hashesFor(
+      request([user("u1"), reply, user("u2")], "Search the web.", false),
+    );
+    const otherTool = await hashesFor(
+      request([user("u1", true)], "Search the internet."),
+    );
+    const otherEffort = await hashesFor(
+      request([user("u1", true)], "Search the web.", true, "medium"),
+    );
+
+    expect(first["app.ai.request.tools.count"]).toBe(1);
+    expect(first["app.ai.request.messages.count"]).toBe(1);
+    expect(first["app.ai.request.tools.hash"]).toMatch(/^[0-9a-f]{16}$/);
+    expect(first["app.ai.request.system_instructions.hash"]).toMatch(
+      /^[0-9a-f]{16}$/,
+    );
+    expect(first).not.toHaveProperty(
+      "app.ai.request.messages.before_last_reply.hash",
+    );
+    expect(appended["app.ai.request.messages.before_last_reply.hash"]).toBe(
+      first["app.ai.request.messages.hash"],
+    );
+    expect(edited["app.ai.request.messages.before_last_reply.hash"]).not.toBe(
+      first["app.ai.request.messages.hash"],
+    );
+    expect(appended["app.ai.request.prefix.before_last_reply.hash"]).toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    expect(edited["app.ai.request.prefix.before_last_reply.hash"]).not.toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    expect(first).not.toHaveProperty(
+      "app.ai.request.prefix.before_last_reply.hash",
+    );
+    expect(first["app.ai.request.thinking.type"]).toBe("adaptive");
+    expect(first["app.ai.request.effort"]).toBe("high");
+    expect(otherEffort["app.ai.request.effort"]).toBe("medium");
+    expect(otherEffort["app.ai.request.prefix.hash"]).not.toBe(
+      first["app.ai.request.prefix.hash"],
+    );
+    for (const key of [
+      "app.ai.request.tools.hash",
+      "app.ai.request.system_instructions.hash",
+      "app.ai.request.messages.hash",
+    ]) {
+      expect(otherEffort[key]).toBe(first[key]);
+    }
+    expect(withoutBreakpoints).toEqual(appended);
+    expect(otherTool["app.ai.request.tools.hash"]).not.toBe(
+      first["app.ai.request.tools.hash"],
+    );
+    expect(otherTool["app.ai.request.system_instructions.hash"]).toBe(
+      first["app.ai.request.system_instructions.hash"],
+    );
+  });
+
   it("keeps private conversation content out of semantic attributes", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
@@ -202,6 +339,12 @@ describe("createTracedStreamFn", () => {
 
     // Resolve the stream's terminal Promise to trigger end-attribute population.
     const finalMessage = fakeMessage();
+    finalMessage.usage = {
+      ...finalMessage.usage,
+      input: 97,
+      cacheWrite: 3,
+      cacheWrite1h: 2,
+    };
     stream.end(finalMessage);
     for await (const _event of returned) {
       // The relayed stream ends when the provider stream ends.
@@ -217,6 +360,8 @@ describe("createTracedStreamFn", () => {
     expect(typeof endAttributes["gen_ai.output.messages"]).toBe("string");
     expect(endAttributes["gen_ai.usage.input_tokens"]).toBe(100);
     expect(endAttributes["gen_ai.usage.output_tokens"]).toBe(5);
+    expect(endAttributes["gen_ai.usage.cache_creation.input_tokens"]).toBe(3);
+    expect(endAttributes["app.ai.usage.cache_write_1h"]).toBe(2);
     expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
     expect(endAttributes["gen_ai.response.model"]).toBe("openai/gpt-5.4");
     expect(span.end).toHaveBeenCalledTimes(1);

@@ -8,6 +8,7 @@ import {
 } from "@/api/schema/conversation";
 import {
   briefCodeChangeSchema,
+  briefResourceLabel,
   parseBriefInput,
   type BriefCodeChange,
   type BriefInput,
@@ -130,7 +131,7 @@ export function briefInputFromSnapshot(
       annotation.url !== null && Date.parse(annotation.createdAt) <= boundaryMs
         ? [
             {
-              label: annotation.label,
+              label: briefResourceLabel(annotation),
               url: annotation.url,
               ...(annotation.status
                 ? { status: annotation.status }

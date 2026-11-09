@@ -9,7 +9,8 @@ import { cn } from "../styles";
  * `VisualViewportShell` / `useMobileViewportHeight`. Callers must not invent
  * `env(safe-area-inset-bottom)` math here.
  *
- * Create/empty-state compose is not a dock — keep that layout on the page.
+ * The narrow home docks its create composer with the same padding variable;
+ * its layout stays in `ConversationWorkspace`.
  */
 export function ComposerDock(props: {
   children: ReactNode;

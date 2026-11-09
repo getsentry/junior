@@ -1,4 +1,7 @@
-import { messageCardText } from "@sentry/junior/api/schema";
+import {
+  isAgentInvocationResultEventType,
+  messageCardText,
+} from "@sentry/junior/api/schema";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -14,6 +17,29 @@ import type {
   TranscriptViewTextPart,
   TranscriptViewToolCallPart,
 } from "../types";
+import { memoryRecallContent } from "./turnContext";
+
+/**
+ * True for the parent Event message that delivers agent invocation results.
+ * Core writes `subagent_ended` before it sends the result, so the Thread card
+ * or Task line already shows the outcome. The transcript keeps this message
+ * only for the memories its Turn recalled, folded into activity.
+ */
+export function isAgentInvocationResultMessage(
+  message: Pick<TranscriptViewMessage, "eventType" | "role">,
+): boolean {
+  return (
+    message.role === "user" &&
+    message.eventType !== undefined &&
+    isAgentInvocationResultEventType(message.eventType)
+  );
+}
+
+function hasRecalledMemories(message: TranscriptViewMessage): boolean {
+  return (
+    message.contexts?.some((context) => memoryRecallContent(context)) === true
+  );
+}
 
 export type RenderedFailureEntry = {
   key: string;
@@ -98,6 +124,12 @@ export function groupTranscriptMessages(
   const entries: RenderedTranscriptEntry[] = [];
 
   for (const message of messages) {
+    if (
+      isAgentInvocationResultMessage(message) &&
+      !hasRecalledMemories(message)
+    ) {
+      continue;
+    }
     const seq = message.pending ? undefined : message.sourceSeq;
     const source = seq === undefined ? {} : { seq };
     let textParts: TranscriptViewTextPart[] = [];

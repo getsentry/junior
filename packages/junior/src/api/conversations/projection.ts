@@ -26,13 +26,17 @@ const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 type ConversationProjectionSource = Pick<
   StoredConversation,
   | "actor"
+  | "archivedAtMs"
   | "channelName"
   | "conversationId"
   | "createdAtMs"
   | "execution"
+  | "kind"
   | "lastActivityAtMs"
   | "location"
+  | "parentConversationId"
   | "source"
+  | "stoppedAtMs"
   | "title"
   | "updatedAtMs"
 >;
@@ -117,16 +121,22 @@ function actorIdentityReport(
   return Object.keys(identity).length > 0 ? identity : undefined;
 }
 
+/**
+ * A stopped Conversation shows as `stopped` while no work runs. A Turn that
+ * runs before the stop ends, such as one that its parent's new work starts,
+ * shows as `active`.
+ */
 function statusFromConversation(
   conversation: ConversationProjectionSource,
 ): ConversationReportStatus {
-  if (conversation.execution.status === "idle") {
-    return "completed";
+  const status = conversation.execution.status;
+  if (status !== "idle" && status !== "failed") {
+    return "active";
   }
-  if (conversation.execution.status === "failed") {
-    return "failed";
+  if (conversation.stoppedAtMs !== undefined) {
+    return "stopped";
   }
-  return "active";
+  return status === "idle" ? "completed" : "failed";
 }
 
 function titleFromConversation(args: {
@@ -219,7 +229,6 @@ export function conversationEventHistory(args: {
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
-  archivedAtMs?: number;
   /** Name of the Automation that started this conversation, when known. */
   automationTitle?: string;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
@@ -230,6 +239,9 @@ export function conversationSummaryFromStoredConversation(args: {
   firstHumanMessageText?: string;
   locationId?: string;
   pinnedAtMs?: number;
+  pinPosition?: number;
+  /** A visible Junior reply is after the viewer's read position. */
+  unreadReply?: boolean;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
@@ -262,6 +274,11 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation,
     canViewPrivateContent,
   );
+  const status = statusFromConversation(conversation);
+  // Only an idle Conversation waits on the reader. A stopped one is idle too.
+  const unread =
+    (status === "completed" || status === "stopped") &&
+    args.unreadReply === true;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
@@ -273,6 +290,10 @@ export function conversationSummaryFromStoredConversation(args: {
       surface,
       visibility,
     }),
+    kind: conversation.kind,
+    ...(conversation.parentConversationId
+      ? { parentConversationId: conversation.parentConversationId }
+      : undefined),
     isParticipant: args.access?.isParticipant ?? false,
     ...(visibility ? { visibility } : undefined),
     lastProgressAt: new Date(
@@ -280,7 +301,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ).toISOString(),
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
-    status: statusFromConversation(conversation),
+    status,
     surface,
     ...(args.auxiliaryCosts
       ? { auxiliaryCosts: args.auxiliaryCosts }
@@ -292,13 +313,17 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(actorIdentity ? { actorIdentity } : undefined),
     ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:
-      args.archivedAtMs === undefined
+      conversation.archivedAtMs === undefined
         ? null
-        : new Date(args.archivedAtMs).toISOString(),
+        : new Date(conversation.archivedAtMs).toISOString(),
     pinnedAt:
       args.pinnedAtMs === undefined
         ? null
         : new Date(args.pinnedAtMs).toISOString(),
+    ...(args.pinPosition === undefined
+      ? undefined
+      : { pinPosition: args.pinPosition }),
+    ...(unread ? { unread: true } : undefined),
     ...(slackThread ? { channel: slackThread.channelId } : undefined),
     ...(channelName ? { channelName } : undefined),
     ...(channelNameRedacted ? { channelNameRedacted: true } : undefined),

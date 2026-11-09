@@ -11,6 +11,7 @@ import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import type { ToolActionReview } from "@/chat/guardian/gate";
 import {
   disableTools,
@@ -305,6 +306,7 @@ describe("Pi tool adapter integration", () => {
         ...runtimeContext(),
         automation: { sendsMessage: false },
         messageAgent,
+        agentInvocationId: "invocation-1",
         parentConversationId: "local:test:parent",
         spawnAgent,
       },
@@ -348,11 +350,24 @@ describe("Pi tool adapter integration", () => {
       }),
     };
     const sandbox = new SkillSandbox([], []);
-    const enabled = createPiAgentTools(definitions, sandbox, {});
-    const disabled = createPiAgentTools(
+    const withCodeMode = (registry: Record<string, AnyToolDefinition>) =>
+      createPiAgentTools(
+        registry,
+        sandbox,
+        {},
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { countToolCall: () => 1 },
+      );
+    const enabled = withCodeMode(definitions);
+    const disabled = withCodeMode(
       disableTools(definitions, "It needs a person's message."),
-      sandbox,
-      {},
     );
     const modelView = (tools: ReturnType<typeof createPiAgentTools>) =>
       JSON.stringify(
@@ -376,6 +391,13 @@ describe("Pi tool adapter integration", () => {
         arguments: { text: "hi" },
       }),
     ).rejects.toThrow("catalogNotify is disabled in this Turn.");
+    const script = await agentTool(disabled, CODEMODE_TOOL_NAME).execute(
+      "disabled-script",
+      { code: `await tools.catalogNotify({ text: "hi" });` },
+    );
+    expect(script.details).toMatchObject({
+      calls: [{ toolName: "catalogNotify", status: "error" }],
+    });
     expect(execute).not.toHaveBeenCalled();
   });
 });

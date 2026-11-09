@@ -6,35 +6,31 @@ test("finds an old archived conversation by title and restores it", async ({
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(dashboard.baseURL);
-  // The landing view keeps a hidden mobile sidebar mounted alongside the
-  // visible desktop one; scope to the desktop (first) instance throughout.
-  const conversationLink = page
-    .getByRole("link", {
-      name: /Archived restore target/,
-    })
-    .first();
-  await expect(conversationLink).toHaveCount(0);
+  const sidebarLink = page.getByRole("link", {
+    name: /Archived restore target/,
+  });
+  await expect(sidebarLink).toHaveCount(0);
 
-  await page
-    .getByLabel("Search your conversations")
-    .first()
-    .fill("archived restore");
-  await expect(conversationLink).toBeVisible();
-  await conversationLink.hover();
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("archived restore");
+  await palette
+    .getByRole("option", { name: /Archived restore target.*Archived/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Archived restore target" }),
+  ).toBeVisible();
+
   const restoreRequest = page.waitForRequest(
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
-  await page
-    .getByRole("button", { name: "Restore Archived restore target" })
-    .first()
-    .click();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Unarchive" }).click();
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
-
-  await page.getByLabel("Search your conversations").first().fill("");
-  await expect(conversationLink).toBeVisible();
+  await expect(sidebarLink).toBeVisible();
 });
 
 test("archives and restores a conversation from the sidebar", async ({
@@ -94,7 +90,7 @@ test("archives and restores a conversation from the sidebar", async ({
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
   expect(page.url()).toBe(currentUrl);
 
-  const undoNotice = page.getByRole("status").filter({
+  const undoNotice = page.getByRole("dialog").filter({
     hasText: "Conversation archived",
   });
   await expect(undoNotice).toBeVisible();
@@ -148,6 +144,8 @@ for (const outcome of ["success", "error"] as const) {
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
     ).toBeVisible();
 
+    // Home must report the result even with the list hidden.
+    await page.getByRole("button", { name: "Hide conversation list" }).click();
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("button", { name: "Archive", exact: true }).click();
 
@@ -160,7 +158,7 @@ for (const outcome of ["success", "error"] as const) {
     releaseArchive();
 
     if (outcome === "success") {
-      const undoNotice = page.getByRole("status").filter({
+      const undoNotice = page.getByRole("dialog").filter({
         hasText: "Conversation archived",
       });
       await expect(undoNotice).toContainText("Dashboard QA edge cases");
@@ -170,9 +168,54 @@ for (const outcome of ["success", "error"] as const) {
       hasText: "Could not archive",
     });
     await expect(archiveError).toContainText("Dashboard QA edge cases");
+    await page.getByRole("button", { name: "Show conversation list" }).click();
     await expect(conversationLink).toBeVisible();
   });
 }
+
+test("confirms a child archive and archives its children too", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.route("**/api/conversations/*/archive", (route) =>
+    route.fulfill({ json: { archivedAt: "2026-08-21T16:45:00.000Z" } }),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-plan")}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Archive", exact: true }).click();
+
+  const confirm = page.getByRole("alertdialog", {
+    name: "Also archive its child conversations?",
+  });
+  await expect(confirm).toContainText("for everyone");
+  const archiveRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" && request.url().endsWith("/archive"),
+  );
+  await confirm.getByRole("button", { name: "Archive" }).click();
+  expect((await archiveRequest).postDataJSON()).toMatchObject({
+    applyToChildren: true,
+    archived: true,
+  });
+  await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+});
+
+test("shows why a child restore is refused", async ({ page, dashboard }) => {
+  const error =
+    "Conversation junior:internal:dashboard-qa:advisor-plan above this one is archived. Restore it first.";
+  await page.route("**/api/conversations/*/archive", (route) =>
+    route.fulfill({ json: { error }, status: 409 }),
+  );
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:archived-thread")}`,
+  );
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Unarchive", exact: true }).click();
+  await expect(page.getByText(error)).toBeVisible();
+});
 
 test.describe("expires the archive undo notice", () => {
   test.use({ controlTimers: true });
@@ -200,6 +243,63 @@ test.describe("expires the archive undo notice", () => {
     await expect(undo).toBeVisible();
     await page.clock.fastForward(1_000);
     await expect(undo).toHaveCount(0);
+  });
+});
+
+test.describe("keeps undo through a slow failed restore", () => {
+  test.use({ controlTimers: true });
+  test("keeps undo through a slow failed restore", async ({
+    page,
+    dashboard,
+  }) => {
+    let releaseRestore!: () => void;
+    const restoreReleased = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    let restoreRequests = 0;
+    await page.route("**/api/conversations/*/archive", async (route) => {
+      const archived = route.request().postDataJSON().archived;
+      if (archived) {
+        await route.fulfill({
+          json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+        });
+        return;
+      }
+      restoreRequests += 1;
+      if (restoreRequests === 1) {
+        await restoreReleased;
+        await route.fulfill({ json: { error: "Restore failed" }, status: 500 });
+        return;
+      }
+      await route.fulfill({ json: { archivedAt: null } });
+    });
+    await page.goto(dashboard.baseURL);
+
+    await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+    await page
+      .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+      .click();
+    const undo = page.getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    });
+    await page.clock.fastForward(5_000);
+    await undo.click();
+    await expect(undo).toHaveText("Restoring…");
+    await expect(undo).toBeDisabled();
+
+    // A pending restore outlives the undo window.
+    await page.clock.fastForward(3_000);
+    await expect(undo).toHaveText("Restoring…");
+
+    releaseRestore();
+    const restoreError = page.getByRole("dialog").filter({
+      hasText: "Could not restore",
+    });
+    await expect(restoreError).toContainText("Dashboard QA edge cases");
+    await expect(undo).toHaveText("Undo");
+    await undo.click();
+    await expect(undo).toHaveCount(0);
+    expect(restoreRequests).toBe(2);
   });
 });
 
@@ -283,6 +383,9 @@ test("shows archive failures after the row returns", async ({
   await expect(archiveError).toBeVisible();
   await expect(archiveError).toContainText("Dashboard QA edge cases");
 
+  // Hover again: the first hover's tooltip can cover the returned row.
+  await page.mouse.move(0, 0);
+  await conversationLink.hover();
   await page
     .getByRole("button", { name: "Archive Dashboard QA edge cases" })
     .click();

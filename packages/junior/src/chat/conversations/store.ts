@@ -15,6 +15,13 @@ export type ConversationSource =
   | "slack"
   | "web";
 
+/**
+ * Where a Conversation sits in its tree. A root has no parent. A Thread is a
+ * child that people can message. A Task is a child that only its parent
+ * messages. A Conversation never changes kind.
+ */
+export type ConversationKind = "root" | "thread" | "task";
+
 export type ConversationStatus =
   | "paused"
   | "failed"
@@ -60,9 +67,16 @@ export interface Conversation {
   execution: ConversationExecution;
   /** Metrics of the latest Run that wrote metrics. */
   executionMetrics?: ConversationRunMetrics & { runId?: string };
+  /** Immutable kind. Set when the Conversation is created. */
+  kind: ConversationKind;
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
+  /**
+   * When the Conversation was archived for everyone. Only archive, auto-archive,
+   * pin, and a person's message write it; `upsertConversation` does not.
+   */
+  archivedAtMs?: number;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the
@@ -90,18 +104,25 @@ export interface Conversation {
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
   transcriptPurgedAtMs?: number;
+  /** When a person stopped this Conversation. Unset when it is not stopped. */
+  stoppedAtMs?: number;
   /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
-  /** Create one Conversation with an immutable parent. */
+  /**
+   * Create one Conversation with an immutable parent and kind. `title` is
+   * saved only when the child is new.
+   */
   createChild(args: {
     childConversationId: string;
+    kind: Exclude<ConversationKind, "root">;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
+    title?: string;
   }): Promise<void>;
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
   /** Read one Run's stored metrics, including a Run that is not the latest. */

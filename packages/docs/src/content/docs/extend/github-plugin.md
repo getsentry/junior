@@ -177,7 +177,7 @@ export const plugins = defineJuniorPlugins([
 
 `subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice. When the merged pull request is in a stack, Junior also restacks the open pull requests above it whose branches it pushed, and resolves conflicts. GitHub rebases the next pull request in a stack after a merge, but it stops at a conflict and sends no event for it.
+This watch always includes `pull_request.review.approved` and `pull_request.merged`, even when `events` omits them. When the pull request is approved or merged, Junior mentions the people involved in the thread. These are the pull request author and assignees, the commit authors, and the people in `Co-authored-by` commit trailers. Junior only mentions people whose GitHub account or email links to a Slack user. When the reviewer or commenter links to a Slack user, Junior knows that the GitHub login and the Slack user are the same person, so it does not name them twice.
 
 When the base of a new pull request is the head branch of another open pull request in the same repository, `github_createPullRequest` links it into a GitHub stack. It adds the pull request to the stack of the pull request below, or creates a stack from the chain of base branches down to the trunk. A stack merges as one group, and GitHub rebases it after each merge. When the repository has no stacked pull requests, or the pull request below is not on top of its stack, the pull request stays unstacked.
 
@@ -284,13 +284,13 @@ Webhook signing secret for events and PR or issue outcome reporting.
 
 </details>
 
-## Run migrations
+## Migrations
 
-```bash
-pnpm exec junior upgrade
-```
+The next Vercel deploy applies this plugin's migrations, because the scaffolded
+build runs [junior upgrade](/cli/upgrade/). For a local database, run
+`pnpm exec junior upgrade` yourself.
 
-This creates the `junior_github_pull_requests` and `junior_github_issues`
+The migrations create the `junior_github_pull_requests` and `junior_github_issues`
 projections used by webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.
@@ -597,9 +597,10 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   or event automation first. A webhook alone does not create either one.
 - Missing repository context: include `owner/repo`, or set a thread default
   repository.
-- A `403` that names `github_createIssue`, `github_updateIssue`,
-  `github_createPullRequest`, or `github_updatePullRequest` is a Junior routing
-  denial. Retry with the named tool.
+- A `403` that names `github_createIssue`, `github_getIssue`,
+  `github_updateIssue`, `github_createPullRequest`, or
+  `github_updatePullRequest` is a Junior routing denial. Retry with the named
+  tool.
 - Private OAuth prompt for a personal operation: complete the private
   authorization prompt. Do not paste personal access tokens into chat.
 - Permission failures on issue or PR workflows: update App permissions or the

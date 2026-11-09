@@ -1,10 +1,9 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const WAITING_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
-const FINISHED_CONVERSATION_ID = "agent-dispatch:event-1";
 
 const reviewItem = {
   assignedToEveryone: false,
@@ -81,6 +80,27 @@ async function mockWaitingConversation(
   });
 }
 
+/** Label of the sidebar section that lists the first row matching `title`. */
+async function sidebarSectionOf(
+  sidebar: Locator,
+  title: RegExp,
+): Promise<string | undefined> {
+  const items = await sidebar
+    .locator("button[aria-expanded], a")
+    .evaluateAll((elements) =>
+      elements.map((element) => ({
+        heading: element.tagName === "BUTTON",
+        text: element.textContent?.trim() ?? "",
+      })),
+    );
+  let section: string | undefined;
+  for (const item of items) {
+    if (item.heading) section = item.text;
+    else if (title.test(item.text)) return section;
+  }
+  return undefined;
+}
+
 test.describe("conversation sections", () => {
   test("puts waiting conversations in Needs attention first", async ({
     page,
@@ -89,33 +109,35 @@ test.describe("conversation sections", () => {
     await mockWaitingConversation(page);
     await page.goto(dashboard.baseURL);
 
-    const list = page.getByRole("list", { name: "Your conversations" });
-    const attention = list.getByRole("button", { name: "Needs attention" });
-    const waitingCard = list.getByRole("listitem").filter({
-      has: page.getByRole("heading", { name: "Checkout latency triage" }),
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
     });
-    await expect(list.getByRole("button").first()).toHaveText(
+    const attention = sidebar.getByRole("button", { name: "Needs attention" });
+    const waitingRow = sidebar.getByRole("link", {
+      name: /Checkout latency triage/,
+    });
+    await expect(sidebar.getByRole("button").first()).toHaveText(
       /^Needs attention/,
     );
-    await expect(list.getByRole("listitem").first()).toContainText(
-      "Checkout latency triage",
+    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
+      /Checkout latency triage/,
     );
     await expect(
-      waitingCard.getByRole("img", { name: "Waiting on you" }),
+      waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
     await screenshot(page, "conversations-needs-attention");
 
     await attention.click();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingCard).toHaveCount(0);
+    await expect(waitingRow).toHaveCount(0);
     await screenshot(page, "conversations-sections-collapsed");
 
     await page.reload();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingCard).toHaveCount(0);
+    await expect(waitingRow).toHaveCount(0);
 
     await attention.click();
-    await expect(waitingCard).toBeVisible();
+    await expect(waitingRow).toBeVisible();
   });
 
   test("pinning moves a conversation to Pinned only", async ({
@@ -128,9 +150,6 @@ test.describe("conversation sections", () => {
     );
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
-    });
-    const sectionButtons = sidebar.getByRole("button", {
-      name: /^(Pinned|Needs attention)/,
     });
     const activeRows = sidebar.getByRole("link", {
       name: /Investigate checkout latency/,
@@ -151,9 +170,11 @@ test.describe("conversation sections", () => {
     expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
     await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
-    // Pinned wins over Needs attention, so the section is gone.
-    await expect(sectionButtons).toHaveCount(1);
+    // Pinned wins over Needs attention, so the row shows only in Pinned.
     await expect(activeRows).toHaveCount(1);
+    await expect
+      .poll(() => sidebarSectionOf(sidebar, /Investigate checkout latency/))
+      .toMatch(/^Pinned/);
     await expect(
       activeRows.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
@@ -182,62 +203,172 @@ test.describe("conversation sections", () => {
     );
   });
 
-  test("keeps an opened unread conversation in place until another opens", async ({
+  test("keeps an unread conversation in Needs attention until marked read", async ({
     page,
     dashboard,
   }) => {
-    // The viewer last read the conversation before its final activity. Seed
-    // it once, before the app reads storage on the first load.
-    await page.addInitScript((conversationId) => {
-      if (window.sessionStorage.getItem("qa:seeded")) return;
-      window.sessionStorage.setItem("qa:seeded", "true");
-      window.localStorage.setItem(
-        "junior:conversation-finished-indicators",
-        JSON.stringify({
-          [conversationId]: { lastReadAt: "2026-08-07T08:00:00.000Z" },
-        }),
-      );
-    }, FINISHED_CONVERSATION_ID);
     await page.goto(dashboard.baseURL);
 
-    const list = page.getByRole("list", { name: "Your conversations" });
-    const finishedCard = list.getByRole("listitem").filter({
-      has: page.getByRole("heading", { name: "Closed issue summary" }),
-    });
-    await expect(list.getByRole("listitem").first()).toContainText(
-      "Closed issue summary",
-    );
-    await expect(
-      finishedCard.getByRole("img", { name: "Finished since last viewed" }),
-    ).toBeVisible();
-
-    await finishedCard
-      .getByRole("link", { name: "Open Closed issue summary" })
-      .click();
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
     const finishedRow = sidebar.getByRole("link", {
       name: /Closed issue summary/,
     });
-    await expect(finishedRow).toHaveAttribute("aria-current", "page");
-    // Read now, but held at the top so the row does not move under the pointer.
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Closed issue summary/,
-    );
-    await expect(sidebar.getByRole("img", { name: "Unread" })).toHaveCount(0);
+    const unreadDot = finishedRow.getByRole("img", { name: "Unread" });
+    const finishedSection = () =>
+      sidebarSectionOf(sidebar, /Closed issue summary/);
+    await expect(finishedRow).toBeVisible();
+    await expect(unreadDot).toHaveCount(0);
+    await expect.poll(finishedSection).toMatch(/^(?!Needs attention)/);
 
+    const unreadRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/unread"),
+    );
+    await finishedRow.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Mark as unread" }).click();
+    expect((await unreadRequest).postDataJSON()).toEqual({ unread: true });
+    await expect(unreadDot).toBeVisible();
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
+
+    // The server keeps it, so a reload or another device sees it too.
+    await page.reload();
+    await expect(unreadDot).toBeVisible();
+
+    // Opening it is not an act on it, so it stays unread and in place.
+    await finishedRow.click();
+    await expect(finishedRow).toHaveAttribute("aria-current", "page");
+    await expect(unreadDot).toBeVisible();
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
+    await screenshot(page, "conversation-open-unread", { view: "desktop" });
     await sidebar
       .getByRole("link", { name: /Checkout latency triage/ })
       .click();
-    await expect(sidebar.getByRole("link").first()).not.toHaveAccessibleName(
-      /Closed issue summary/,
-    );
+    await expect(finishedRow).not.toHaveAttribute("aria-current", "page");
+    await expect(unreadDot).toBeVisible();
 
-    await page.goto(dashboard.baseURL);
+    await finishedRow.click({ button: "right" });
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Mark as read",
+      "Pin",
+      "Rename",
+      "Archive",
+    ]);
+    await screenshot(page, "conversation-sidebar-context-menu", {
+      lightTheme: true,
+      view: "desktop",
+    });
+    await page.getByRole("menuitem", { name: "Mark as read" }).click();
+    await expect(unreadDot).toHaveCount(0);
+    await expect.poll(finishedSection).toMatch(/^(?!Needs attention)/);
+
+    await page.reload();
+    await expect(finishedRow).toBeVisible();
+    await expect(unreadDot).toHaveCount(0);
+
+    // The leading marker toggles read state too.
+    const markUnread = sidebar.getByRole("button", {
+      name: /^Mark Closed issue summary.* as unread$/,
+    });
+    await markUnread.hover();
+    await screenshot(page, "conversation-sidebar-read-toggle", {
+      view: "desktop",
+    });
+    await markUnread.click();
+    await expect(unreadDot).toBeVisible();
+    await expect.poll(finishedSection).toMatch(/^Needs attention/);
+    await sidebar
+      .getByRole("button", { name: /^Mark Closed issue summary.* as read$/ })
+      .click();
+    await expect(unreadDot).toHaveCount(0);
+
+    // Reading it is an act: input in the transcript reports the rows in view.
+    await markUnread.click();
+    await finishedRow.click();
+    await expect(unreadDot).toBeVisible();
+    await page.getByLabel("Conversation transcript").hover();
+    await page.mouse.wheel(0, 1);
+    await expect(unreadDot).toHaveCount(0);
+    await expect.poll(finishedSection).toMatch(/^(?!Needs attention)/);
+  });
+
+  test("marks a conversation read or unread from its menu on mobile", async ({
+    page,
+    dashboard,
+  }) => {
+    // Below 768px there is no sidebar, so the conversation menu is the way.
+    await page.setViewportSize({ height: 844, width: 390 });
+    // Only participants can mark read. Make the viewer one of this mock.
+    await page.route(
+      /\/api\/conversations\/agent-dispatch%3Aevent-1(?:\?.*)?$/,
+      async (route) => {
+        const response = await route.fetch();
+        if (response.status() !== 200) return route.fulfill({ response });
+        const detail = await response.json();
+        await route.fulfill({
+          response,
+          json: { ...detail, isParticipant: true },
+        });
+      },
+    );
+    // A deep link, so the menu cannot lean on a loaded feed row.
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("agent-dispatch:event-1")}`,
+    );
     await expect(
-      finishedCard.getByRole("img", { name: "Finished since last viewed" }),
-    ).toHaveCount(0);
+      page.getByRole("heading", { name: "Closed issue summary" }),
+    ).toBeVisible();
+
+    const menu = page.getByRole("button", { name: "Conversation menu" });
+    const requests: unknown[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "PATCH" && request.url().endsWith("/unread")) {
+        requests.push(request.postDataJSON());
+      }
+    });
+    // The menu stays open, like Pin, so the label flips in place.
+    await menu.click();
+    await page.getByRole("button", { name: "Mark as unread" }).click();
+    await page.getByRole("button", { name: "Mark as read" }).click();
+    await expect(
+      page.getByRole("button", { name: "Mark as unread" }),
+    ).toBeVisible();
+    expect(requests).toEqual([{ unread: true }, { unread: false }]);
+  });
+
+  test("renames a conversation from the row menu", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const renameRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/title"),
+    );
+    await sidebar
+      .getByRole("link", { name: /Closed issue summary/ })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Rename" }).click();
+    const titleInput = page.getByRole("textbox", { name: "Title" });
+    await expect(titleInput).toBeFocused();
+    await expect(titleInput).toHaveValue("Closed issue summary");
+    await titleInput.fill("  Closed issue follow-up ");
+    await page.getByRole("button", { name: "Save" }).click();
+    expect((await renameRequest).postDataJSON()).toEqual({
+      title: "Closed issue follow-up",
+    });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const renamedRow = sidebar.getByRole("link", {
+      name: /Closed issue follow-up/,
+    });
+    await expect(renamedRow).toBeVisible();
+
+    await page.reload();
+    await expect(renamedRow).toBeVisible();
   });
 
   test("the sidebar review chip opens details at Needs you", async ({

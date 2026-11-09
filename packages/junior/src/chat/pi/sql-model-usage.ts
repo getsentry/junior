@@ -4,12 +4,13 @@ import * as z from "zod";
 import { notInheritedByForkChild } from "@/chat/agent-invocations/fork-history";
 import { notCopiedByFork } from "@/chat/conversations/fork";
 import {
-  conversationSubtree,
-  conversationSubtreeColumns,
-} from "@/chat/conversations/sql/subtree";
+  readSubtreeEventWatermarks,
+  seqRangeJoin,
+  type SeqRange,
+} from "@/chat/conversations/sql/event-watermarks";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { juniorConversationEvents } from "@/db/schema";
 import {
   agentTurnUsageSchema,
   hasAgentTurnUsage,
@@ -141,14 +142,6 @@ function usageFromRow(row: ModelUsageSums): AgentTurnUsage | undefined {
     : undefined;
 }
 
-interface SeqRange {
-  conversationId: string;
-  /** Exclusive. */
-  fromSeq: number;
-  /** Inclusive. */
-  toSeq: number;
-}
-
 /** Sum assistant calls by model id, in the given seq range of each Conversation. */
 async function sumModelUsage(
   executor: JuniorSqlDatabase,
@@ -167,13 +160,6 @@ async function sumModelUsage(
   const outputTokens = token("output", "outputTokens");
   const cachedInputTokens = token("cacheRead", "cachedInputTokens");
   const cacheCreationTokens = token("cacheWrite", "cacheCreationTokens");
-  const rangeRows = sql.join(
-    ranges.map(
-      (range) =>
-        sql`(${range.conversationId}::text, ${range.fromSeq}::integer, ${range.toSeq}::integer)`,
-    ),
-    sql`, `,
-  );
   return await executor
     .db()
     .select({
@@ -198,12 +184,7 @@ async function sumModelUsage(
       costTotal: summedCost(nonnegativeNumber(cost, "total")),
     })
     .from(juniorConversationEvents)
-    .innerJoin(
-      sql`(values ${rangeRows}) as seq_range(conversation_id, from_seq, to_seq)`,
-      sql`seq_range.conversation_id = ${juniorConversationEvents.conversationId}
-        and ${juniorConversationEvents.seq} > seq_range.from_seq
-        and ${juniorConversationEvents.seq} <= seq_range.to_seq`,
-    )
+    .innerJoin(...seqRangeJoin(ranges))
     .crossJoinLateral(assistantCall)
     .where(
       and(
@@ -218,41 +199,6 @@ async function sumModelUsage(
       ),
     )
     .groupBy(modelId);
-}
-
-/**
- * The last event seq of each Conversation in a subtree, and the creation time
- * of its first event. A purged Conversation can get new events under the same
- * id, with seq starting again at 0; the first event time tells them apart.
- */
-async function readEventWatermarks(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-): Promise<
-  Array<{ conversationId: string; seq: number | null; originMs: number | null }>
-> {
-  const conversation = juniorConversations.conversationId;
-  return await executor
-    .db()
-    .select({
-      conversationId: conversation,
-      seq: sql<number | null>`(
-        select max(watermark.seq) from junior_conversation_events watermark
-        where watermark.conversation_id = ${conversation}
-      )`,
-      originMs: sql<number | null>`(
-        select (extract(epoch from origin.created_at) * 1000)::double precision
-        from junior_conversation_events origin
-        where origin.conversation_id = ${conversation}
-        order by origin.seq
-        limit 1
-      )`,
-    })
-    .from(juniorConversations)
-    .innerJoin(
-      conversationSubtree([conversationId]),
-      eq(conversationSubtreeColumns.conversationId, conversation),
-    );
 }
 
 const modelUsageCacheSchema = z.object({
@@ -325,7 +271,7 @@ export async function readConversationModelUsageFromSql(
   const key = modelUsageCacheKey(options.conversationId);
   const [stored, watermarks] = await Promise.all([
     state.get(key),
-    readEventWatermarks(executor, options.conversationId),
+    readSubtreeEventWatermarks(executor.db(), [options.conversationId]),
   ]);
   const cached = modelUsageCacheSchema.safeParse(stored).data;
   // Purge removes the whole subtree's events, so rebuild all on any mismatch.

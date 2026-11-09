@@ -14,7 +14,6 @@ import {
 // Compaction, image summaries, and Slack profile lookups have their own
 // tests. These cases need only the thread and the stored transcript.
 const prepareTurnState = createPrepareTurnState({
-  compactConversationIfNeeded: async () => {},
   hydrateConversationVisionContext: async () => {},
   resolveBackfillMessageActors: async () => {},
 });

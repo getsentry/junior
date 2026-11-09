@@ -2,10 +2,10 @@ import { getConversationEventStore, getDb } from "@/chat/db";
 import { isRecord } from "@/chat/coerce";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
-  getAgentInvocation,
   getAgentInvocationTurnId,
   parseAgentInvocationResultMessageId,
-} from "@/chat/agent-invocations/store";
+} from "@/chat/agent-invocations/ids";
+import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import {
   readMessageCardRefs,
   removedCardSchema,

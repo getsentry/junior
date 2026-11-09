@@ -179,8 +179,8 @@ describeEval("Guardian Code Delivery Snapshots", guardianEvals, (it) => {
             text: '{"ok":true,"key":"github.repo","found":false}',
           },
           {
-            role: "tool listDir result",
-            text: '{"entries":["skills/"],"path":"/vercel/sandbox"}',
+            role: "tool bash result",
+            text: '{"exit_code":0,"stdout":"skills/\\n"}',
           },
         ]),
         input: { repo: "getsentry/show-and-tell-cf" },

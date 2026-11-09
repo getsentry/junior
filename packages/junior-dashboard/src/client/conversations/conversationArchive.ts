@@ -1,4 +1,6 @@
 import {
+  mutationOptions,
+  type QueryClient,
   useMutation,
   useMutationState,
   useQueryClient,
@@ -6,16 +8,94 @@ import {
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ConversationFeedItem,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import { archiveConversationResponseSchema } from "@sentry/junior/api/schema";
+import { useEffect } from "react";
+import { useLocation, useNavigate } from "react-router";
 
+import { buildConversations } from "../format";
 import { patch } from "../http";
 import type { Conversation } from "../types";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
 } from "./queries";
+
+/** Apply archive marks to one feed row, at any depth of nested Threads. */
+function markFeedConversation(
+  items: ConversationFeedItem[],
+  conversationId: string,
+  marks: Partial<ConversationFeedItem>,
+): ConversationFeedItem[] {
+  return items.map((item) =>
+    item.conversationId === conversationId
+      ? { ...item, ...marks }
+      : item.threads
+        ? {
+            ...item,
+            threads: markFeedConversation(item.threads, conversationId, marks),
+          }
+        : item,
+  );
+}
+
+/** Find a feed row at any depth, with the row whose `threads` hold it. */
+function findFeedRow(
+  items: ConversationFeedItem[],
+  conversationId: string,
+  parentConversationId?: string,
+): { parentConversationId?: string; row: ConversationFeedItem } | undefined {
+  for (const item of items) {
+    if (item.conversationId === conversationId) {
+      return { parentConversationId, row: item };
+    }
+    const nested =
+      item.threads &&
+      findFeedRow(item.threads, conversationId, item.conversationId);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+/** Put a restored Thread back under the feed row that held it. */
+function withRestoredThread(
+  items: ConversationFeedItem[],
+  parentConversationId: string,
+  thread: ConversationFeedItem,
+): ConversationFeedItem[] {
+  return items.map((item) =>
+    item.conversationId === parentConversationId
+      ? {
+          ...item,
+          threads: [...(item.threads ?? []), thread].sort((a, b) =>
+            b.lastSeenAt.localeCompare(a.lastSeenAt),
+          ),
+        }
+      : item.threads
+        ? {
+            ...item,
+            threads: withRestoredThread(
+              item.threads,
+              parentConversationId,
+              thread,
+            ),
+          }
+        : item,
+  );
+}
+
+/**
+ * An archive can also write descendants, which show in other detail pages
+ * and in their ancestors' child-agents reports.
+ */
+function isTreeArchiveRead({ queryKey }: { queryKey: readonly unknown[] }) {
+  return (
+    queryKey[0] === "conversation" &&
+    (queryKey[2] === "detail" || queryKey[2] === "agents")
+  );
+}
 
 function archivedConversationQueryKey(conversationId: string) {
   return ["dashboard", "archived-conversation", conversationId] as const;
@@ -30,8 +110,10 @@ function conversationFeedStatus(
 }
 
 type ArchivedConversationSnapshot = {
-  conversation: ConversationSummaryReport;
+  conversation: ConversationFeedItem;
   feedQueryHashes: string[];
+  /** Set for a nested Thread: the feed row whose `threads` held it. */
+  parentConversationId?: string;
 };
 
 const archiveConversationMutationKey = [
@@ -75,7 +157,11 @@ export function usePendingArchiveConversationUpdates() {
       const conversationId = mutation.options.mutationKey?.[2];
       return {
         archived: variables.archived,
-        conversation: context?.archivedSnapshot?.conversation,
+        // A nested Thread is restored under its parent by the cache write, not
+        // as a top-level row.
+        conversation: context?.archivedSnapshot?.parentConversationId
+          ? undefined
+          : context?.archivedSnapshot?.conversation,
         conversationId:
           typeof conversationId === "string" ? conversationId : "",
       } satisfies PendingArchiveConversationUpdate;
@@ -92,7 +178,7 @@ export type ArchivedFromConversationState = {
 };
 
 /** Read the newest archive or restore status for one conversation. */
-export function useLatestArchiveStatus(conversationId: string | undefined) {
+function useLatestArchiveStatus(conversationId: string | undefined) {
   const statuses = useMutationState({
     filters: {
       exact: true,
@@ -104,22 +190,74 @@ export function useLatestArchiveStatus(conversationId: string | undefined) {
   return conversationId ? statuses.at(-1) : undefined;
 }
 
+/**
+ * Report an archive started on the conversation page, which navigated home
+ * before the request finished.
+ */
+export function useConversationPageArchiveResult(
+  onArchived: (conversation: Conversation) => void,
+  onArchiveError: (conversation: Conversation, wasArchiving: boolean) => void,
+) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const conversation = (location.state as ArchivedFromConversationState | null)
+    ?.archivedConversation;
+  const status = useLatestArchiveStatus(conversation?.id);
+  useEffect(() => {
+    if (!conversation || (status !== "success" && status !== "error")) return;
+    if (status === "success") onArchived(conversation);
+    else onArchiveError(conversation, true);
+    // Clear the state so a reload or a later restore does not report again.
+    navigate(
+      { hash: location.hash, search: location.search },
+      { replace: true, state: null },
+    );
+  }, [
+    conversation,
+    location.hash,
+    location.search,
+    navigate,
+    onArchiveError,
+    onArchived,
+    status,
+  ]);
+}
+
+type ArchiveConversationOptions = {
+  onError?(): void;
+  onSuccess?(archivedAt: string | null): void;
+};
+
 /** Archive or restore one conversation with an immediate reversible cache update. */
 export function useArchiveConversation(
   conversationId: string,
-  options?: {
-    onError?(): void;
-    onSuccess?(archivedAt: string | null): void;
-  },
+  options?: ArchiveConversationOptions,
 ) {
   const queryClient = useQueryClient();
-  return useMutation({
+  return useMutation(
+    archiveConversationMutationOptions(queryClient, conversationId, options),
+  );
+}
+
+/**
+ * Build the archive mutation for callers that outlive a component, such as a
+ * toast action. The shared mutation key keeps pending-state readers in sync.
+ */
+export function archiveConversationMutationOptions(
+  queryClient: QueryClient,
+  conversationId: string,
+  options?: ArchiveConversationOptions,
+) {
+  return mutationOptions({
     mutationKey: [...archiveConversationMutationKey, conversationId],
+    // The dashboard archives a Conversation with its children, and restores
+    // the children archived with it. A child page confirms first. A root
+    // archive hid its tree before, so it needs no confirm.
     mutationFn: (args: ArchiveConversationVariables) =>
       patch(
         archiveConversationResponseSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
-        args,
+        { ...args, applyToChildren: true },
       ),
     onMutate: async (args) => {
       const conversationQueries = { queryKey: ["dashboard", "conversations"] };
@@ -138,20 +276,28 @@ export function useArchiveConversation(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Match the API: archive also unpins.
+      // Match the API: archive also marks it read for this viewer; restore
+      // keeps the read state, because auto-archive does not mark it read.
       const viewerMarks = args.archived
-        ? { archivedAt, pinnedAt: null }
+        ? { archivedAt, unread: undefined }
         : { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
-      const archivedSnapshot =
+      const snapshot =
         buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
         previousArchivedSnapshot;
+      const archivedSnapshot =
+        snapshot && args.archived
+          ? {
+              ...snapshot,
+              conversation: { ...snapshot.conversation, unread: undefined },
+            }
+          : snapshot;
 
       previousFeeds.forEach(([queryKey, feed]) => {
         if (!feed) return;
-        const conversationExists = feed.conversations.some(
-          (conversation) => conversation.conversationId === conversationId,
+        const conversationExists = Boolean(
+          findFeedRow(feed.conversations, conversationId),
         );
         const feedStatus = conversationFeedStatus(queryKey);
         const shouldRestore =
@@ -159,24 +305,32 @@ export function useArchiveConversation(
           !conversationExists &&
           Boolean(archivedSnapshot) &&
           feedStatus !== "archived";
-        const conversations = shouldRestore
-          ? [
-              ...feed.conversations,
-              // The archive cleared the pin, so the restored row is unpinned.
-              {
+        const restoreParentId = archivedSnapshot?.parentConversationId;
+        const conversations = !shouldRestore
+          ? markFeedConversation(
+              feed.conversations,
+              conversationId,
+              viewerMarks,
+            )
+          : restoreParentId
+            ? withRestoredThread(feed.conversations, restoreParentId, {
                 ...archivedSnapshot!.conversation,
                 archivedAt: null,
-                pinnedAt: null,
-              },
-            ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
-          : feed.conversations.map((conversation) =>
-              conversation.conversationId === conversationId
-                ? { ...conversation, ...viewerMarks }
-                : conversation,
-            );
+              })
+            : [
+                ...feed.conversations,
+                { ...archivedSnapshot!.conversation, archivedAt: null },
+              ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
         queryClient.setQueryData<ConversationFeed>(queryKey, {
           ...feed,
-          conversations,
+          // The feed nests Threads under their root, so hide an archived
+          // Thread there too.
+          conversations: args.archived
+            ? withoutThreads(
+                conversations,
+                (thread) => thread.conversationId === conversationId,
+              )
+            : conversations,
         });
       });
       queryClient.setQueryData<ConversationSnapshot>(
@@ -250,10 +404,7 @@ export function useArchiveConversation(
           queryKey: ["dashboard", "locations"],
         }),
         queryClient.invalidateQueries({ queryKey: ["dashboard", "people"] }),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
+        queryClient.invalidateQueries({ predicate: isTreeArchiveRead }),
       ]);
     },
   });
@@ -263,15 +414,55 @@ function buildArchivedConversationSnapshot(
   feeds: Array<[readonly unknown[], ConversationFeed | undefined]>,
   conversationId: string,
 ): ArchivedConversationSnapshot | undefined {
-  let conversation: ConversationSummaryReport | undefined;
+  let found: ReturnType<typeof findFeedRow>;
   const feedQueryHashes: string[] = [];
   for (const [queryKey, feed] of feeds) {
-    const feedConversation = feed?.conversations.find(
-      (item) => item.conversationId === conversationId,
-    );
-    if (!feedConversation) continue;
-    conversation ??= feedConversation;
+    const feedRow = feed && findFeedRow(feed.conversations, conversationId);
+    if (!feedRow) continue;
+    found ??= feedRow;
     feedQueryHashes.push(JSON.stringify(queryKey));
   }
-  return conversation ? { conversation, feedQueryHashes } : undefined;
+  return found
+    ? {
+        conversation: found.row,
+        feedQueryHashes,
+        parentConversationId: found.parentConversationId,
+      }
+    : undefined;
+}
+
+/**
+ * Show a pending archive change on the conversation page before the server
+ * confirms it.
+ */
+export function applyPendingArchiveUpdate(
+  conversation: Conversation | undefined,
+  update: PendingArchiveConversationUpdate | undefined,
+): Conversation | undefined {
+  const updatedConversation =
+    conversation ??
+    (update?.conversation
+      ? buildConversations([update.conversation])[0]
+      : undefined);
+  if (!updatedConversation || !update) return updatedConversation;
+  const archivedAt = update.archived
+    ? (updatedConversation.archivedAt ?? updatedConversation.lastSeenAt)
+    : null;
+  return { ...updatedConversation, archivedAt };
+}
+
+/** Drop matching Threads from the nested `threads` of rows, at any depth. */
+export function withoutThreads<T extends { threads?: T[] }>(
+  rows: T[],
+  isDropped: (thread: T) => boolean,
+): T[] {
+  return rows.map((row) => {
+    if (!row.threads) return row;
+    const { threads, ...rest } = row;
+    const kept = withoutThreads(
+      threads.filter((thread) => !isDropped(thread)),
+      isDropped,
+    );
+    return (kept.length ? { ...rest, threads: kept } : rest) as T;
+  });
 }

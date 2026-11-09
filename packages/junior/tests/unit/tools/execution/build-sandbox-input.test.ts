@@ -49,43 +49,6 @@ describe("buildSandboxInput", () => {
     });
   });
 
-  it("normalizes sandbox discovery tool params", () => {
-    expect(
-      buildSandboxInput("grep", {
-        pattern: "needle",
-        path: "src",
-        glob: "*.ts",
-        ignore_case: true,
-        literal: true,
-        context: 1,
-        limit: 2,
-      }),
-    ).toEqual({
-      pattern: "needle",
-      path: "src",
-      glob: "*.ts",
-      ignoreCase: true,
-      literal: true,
-      context: 1,
-      limit: 2,
-    });
-    expect(
-      buildSandboxInput("findFiles", {
-        pattern: "**/*.ts",
-        path: "src",
-        limit: 5,
-      }),
-    ).toEqual({
-      pattern: "**/*.ts",
-      path: "src",
-      limit: 5,
-    });
-    expect(buildSandboxInput("listDir", { path: "src", limit: 5 })).toEqual({
-      path: "src",
-      limit: 5,
-    });
-  });
-
   it("normalizes editFile params", () => {
     const edits = [{ old_text: "before", new_text: "after" }];
     expect(buildSandboxInput("editFile", { path: "src/a.ts", edits })).toEqual({

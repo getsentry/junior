@@ -249,14 +249,14 @@ describe("tool timeout continuation composition", () => {
     const conversationId = "local:test:tool-timeout-continuation";
     const turnId = "turn-tool-timeout-continuation";
     const request = {
-  conversationId: conversationId,
-  turnId: turnId,
-  instruction:   {
-  text: "Run the targeted test and create the PR.",
-  },
-  destination: { platform: "local" as const, conversationId },
-  source: createLocalSource(conversationId),
-};
+      conversationId: conversationId,
+      turnId: turnId,
+      instruction: {
+        text: "Run the targeted test and create the PR.",
+      },
+      destination: { platform: "local" as const, conversationId },
+      source: createLocalSource(conversationId),
+    };
 
     const suspendedPromise = executeAgentRun({
       ...request,

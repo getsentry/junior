@@ -144,15 +144,19 @@ describe("event tools", () => {
     );
   });
 
-  it("keeps inspection and stopping in the resource-watch catalog", () => {
+  it("loads only watch creation up front among resource-watch tools", () => {
     const tools = createEventTools(context, GITHUB_EVENTS);
     const exposure = planToolExposure(tools);
 
-    expect(exposure.directTools).toHaveProperty("searchEventTypes");
     expect(exposure.directTools).toHaveProperty("watchEvents");
+    expect(exposure.directTools).not.toHaveProperty("searchEventTypes");
+    expect(exposure.directTools).toHaveProperty("watchTimer");
     expect(exposure.directTools).not.toHaveProperty("listWatches");
     expect(exposure.directTools).not.toHaveProperty("stopWatchingResources");
     expect(exposure.catalogTools).toHaveProperty("listWatches");
+    expect(exposure.catalogTools.searchEventTypes).toMatchObject({
+      source: { id: "resource-watches" },
+    });
     expect(exposure.catalogTools.stopWatchingResources).toMatchObject({
       source: { id: "resource-watches" },
     });

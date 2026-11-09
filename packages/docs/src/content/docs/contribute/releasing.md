@@ -29,6 +29,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-notion`
 - `@sentry/junior-octolens`
 - `@sentry/junior-pagerduty`
+- `@sentry/junior-restream`
 - `@sentry/junior-sentry`
 - `@sentry/junior-vercel`
 - `@sentry/junior-xdotcom`

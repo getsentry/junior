@@ -28,7 +28,7 @@ import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
 } from "@/chat/providers/slack/runtime";
-import { getTurnInputSpanAttributes } from "@/chat/providers/slack/turn-input-telemetry";
+import { getTurnInputSpanAttributes } from "@/chat/task-execution/turn-telemetry";
 import {
   createTestDestination,
   createTestMessage,

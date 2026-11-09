@@ -9,7 +9,7 @@
  * Vercel Queue transports and `waitUntil` with in-process versions, so it
  * knows when the agent is idle.
  */
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { type HarnessRun, type TranscriptEvent } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
@@ -18,6 +18,8 @@ import type { JuniorApiEnv } from "@/api/route";
 import { forkConversationResponseSchema } from "@/api/schema";
 import { createConversationId } from "@/chat/conversations/web-input";
 import { findUserByEmail, resolveViewerUser } from "@/chat/plugins/viewer";
+import { slackAvatarSavedKey } from "@/chat/slack/avatar";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
@@ -30,6 +32,8 @@ import {
   webImage,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
+import { actOnWebReviewItem } from "./review-desk";
+import { automationRequest, isAutomationInput } from "./automation-request";
 import { installWebReplay } from "./web";
 import type {
   AutomationInput,
@@ -38,6 +42,7 @@ import type {
   Input,
   MentionInput,
   MessageInput,
+  ReviewItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
@@ -78,6 +83,7 @@ import {
   SLACK_APP,
   SLACK_APP_BOT_ID,
   SLACK_BOT_USER_ID,
+  SLACK_TEAM_ID,
 } from "./slack";
 
 /**
@@ -139,6 +145,8 @@ export interface Conversation extends HarnessRun {
   threadTitles: string[];
   /** The title that the dashboard shows after the call. */
   title: string;
+  /** Whether the dashboard shows the Conversation as archived after the call. */
+  archived: boolean;
   /** Slack user ids of the participants that the dashboard lists after the call. */
   participantSlackUserIds: string[];
   /**
@@ -154,6 +162,11 @@ export interface Conversation extends HarnessRun {
     options?: CallOptions,
   ): Promise<Conversation>;
   fork(reply: Reply | HistoryReply): Promise<Conversation>;
+  /**
+   * Open a child Conversation of this one, such as a Thread that a spawnAgent
+   * call started. Its `continue()` posts as the person who reads this one.
+   */
+  child(conversationId: string): Promise<Conversation>;
 }
 
 export type RunAgent = (
@@ -264,6 +277,16 @@ export async function createFixtureAgent(
         ...authors.map((author) => author.userId),
         ...webUsers.flatMap((user) => (user ? [user.id] : [])),
       ]);
+      // Redis outlives the Postgres reset of each test. The saved-photo mark
+      // means the Identity is linked to a User, and the next test loses that
+      // link, so delete the mark too. Otherwise the next Turn skips the link
+      // and its author gets no participant row.
+      const state = getStateAdapter();
+      await Promise.all(
+        authors.map((author) =>
+          state.delete(slackAvatarSavedKey(SLACK_TEAM_ID, author.userId)),
+        ),
+      );
     }
   };
 
@@ -398,6 +421,13 @@ export async function createFixtureAgent(
       });
       return;
     }
+    if (input.kind === "review_item_action") {
+      if (record.surface !== "web" || !record.started) {
+        throw new Error("A review item action continues a web Conversation");
+      }
+      await actOnWebReviewItem(api, input, record);
+      return;
+    }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
@@ -484,10 +514,11 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = (
-    first: MessageInput,
+    first: MessageInput | ReviewItemActionInput,
     history: CallOptions["history"],
   ): ConversationRecord => {
-    if (first.kind === "web_message") {
+    // A review desk action comes from the dashboard.
+    if (first.kind === "web_message" || first.kind === "review_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);
@@ -758,6 +789,7 @@ export async function createFixtureAgent(
       participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles,
       title: detail.displayTitle,
+      archived: Boolean(detail.archivedAt),
       toolCalls: events.toolCalls,
       turns: events.turns,
     });
@@ -835,27 +867,35 @@ export async function createFixtureAgent(
     }
     const forked = forkConversationResponseSchema.parse(await response.json());
     // The person who forked owns the fork.
-    const forkRecord = newRecord(
-      { conversationId: forked.conversationId, surface: "web" },
-      record.viewerEmail,
-    );
-    forkRecord.started = true;
+    return await openWebConversation(forked.conversationId, record.viewerEmail);
+  };
+
+  /**
+   * Open a web Conversation that already exists, such as a fork or a child,
+   * as one person. Its stored messages are the earlier messages of its calls.
+   */
+  const openWebConversation = async (
+    conversationId: string,
+    viewerEmail: string,
+  ): Promise<Conversation> => {
+    const record = newRecord({ conversationId, surface: "web" }, viewerEmail);
+    record.started = true;
     const detail = await readConversationDetail(
       api,
-      forkRecord.conversationId,
-      forkRecord.viewerEmail,
+      conversationId,
+      viewerEmail,
     );
     const copied = readCallEvents({
       afterSeq: BEFORE_FIRST_EVENT,
-      conversationId: forkRecord.conversationId,
+      conversationId,
       detail,
     });
-    forkRecord.lastSeq = copied.lastSeq;
-    forkRecord.visibleMessages = copied.visibleMessages;
-    return conversationResult(forkRecord, {
+    record.lastSeq = copied.lastSeq;
+    record.visibleMessages = copied.visibleMessages;
+    return conversationResult(record, {
       ...toHarnessRun({
-        conversationId: forkRecord.conversationId,
-        earlier: forkRecord.visibleMessages,
+        conversationId,
+        earlier: record.visibleMessages,
         usage: currentUsage(),
         messages: [],
         startedAtMs,
@@ -870,6 +910,7 @@ export async function createFixtureAgent(
       participantSlackUserIds: participantSlackUserIds(detail),
       threadTitles: [],
       title: detail.displayTitle,
+      archived: Boolean(detail.archivedAt),
       toolCalls: [],
       turns: [],
     });
@@ -877,13 +918,20 @@ export async function createFixtureAgent(
 
   const conversationResult = (
     record: ConversationRecord,
-    result: Omit<Conversation, "continue" | "conversationId" | "fork">,
+    result: Omit<
+      Conversation,
+      "child" | "continue" | "conversationId" | "fork"
+    >,
   ): Conversation => ({
     conversationId: record.conversationId,
     ...result,
     continue: (input, options = {}) =>
       runEvalWork(() => converse(record, input, options)),
     fork: (reply) => runEvalWork(() => fork(record, reply)),
+    child: (conversationId) =>
+      runEvalWork(() =>
+        openWebConversation(conversationId, record.viewerEmail),
+      ),
   });
 
   /** Send an automation input and return the Conversation it started. */
@@ -938,51 +986,4 @@ export async function createFixtureAgent(
   };
 
   return { run, close };
-}
-
-function isAutomationInput(input: Input): input is AutomationInput {
-  return input.kind === "heartbeat" || input.kind === "github_webhook";
-}
-
-/** The production request for an automation input. */
-function automationRequest(input: AutomationInput): Request {
-  if (input.kind === "heartbeat") {
-    return new Request("http://junior.test/api/internal/heartbeat", {
-      headers: { authorization: `Bearer ${heartbeatSecret()}` },
-    });
-  }
-  const body = JSON.stringify({
-    ...input.payload,
-    installation: { id: Number(requiredEnv("GITHUB_INSTALLATION_ID")) },
-  });
-  const signature = createHmac("sha256", requiredEnv("GITHUB_WEBHOOK_SECRET"))
-    .update(body)
-    .digest("hex");
-  return new Request("http://junior.test/api/webhooks/github", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-github-delivery": randomUUID(),
-      "x-github-event": input.event,
-      "x-hub-signature-256": `sha256=${signature}`,
-    },
-    body,
-  });
-}
-
-function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`The agent test fixture needs ${name}`);
-  return value;
-}
-
-/** The secret of the heartbeat route, read as the route reads it. */
-function heartbeatSecret(): string {
-  const secret =
-    process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-    process.env.CRON_SECRET?.trim();
-  if (!secret) {
-    throw new Error("The agent test fixture needs JUNIOR_SCHEDULER_SECRET");
-  }
-  return secret;
 }

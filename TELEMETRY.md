@@ -87,14 +87,6 @@ fields=timestamp,trace,gen_ai.conversation.id,gen_ai.tool.name,gen_ai.tool.call.
 sort=-gen_ai.tool.call.result.size
 ```
 
-Search tool volume, truncation, and raw output size.
-
-```text
-dataset=spans query='span.op:gen_ai.execute_tool gen_ai.tool.name:[grep,findFiles] app.sandbox.search.raw_output_bytes:*'
-fields=timestamp,trace,gen_ai.tool.name,span.duration,app.sandbox.search.raw_output_bytes,app.sandbox.search.parsed_records,app.sandbox.search.result_count,app.sandbox.search.result_bytes,app.sandbox.search.limit,app.sandbox.search.limit_reached
-sort=-timestamp
-```
-
 Code Mode scripts, with their nested call counts and failures.
 
 ```text
@@ -215,12 +207,15 @@ attributes. Nested logs and spans inherit them.
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`            |
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
+| Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
+| Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                      |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
+| Phone notification missing or late   | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
 
 ## Code Mode
 
@@ -245,18 +240,17 @@ attributes below.
 
 Attributes on the `codemode` span:
 
-| Attribute                                      | Type    | Meaning                                                |
-| ---------------------------------------------- | ------- | ------------------------------------------------------ |
-| `app.codemode.script.bytes`                    | int     | script size in UTF-8 bytes                             |
-| `app.codemode.call.count`                      | int     | nested calls made, including rejected calls            |
-| `app.codemode.call.peak_concurrency`           | int     | most nested calls that ran at the same time            |
-| `app.codemode.call.rejected_count`             | int     | nested calls not allowed by action review              |
-| `app.codemode.call.batch_limit_rejected_count` | int     | nested calls refused by the per-drain batch limit      |
-| `app.codemode.vm.start_ms`                     | int     | time until the VM was ready                            |
-| `app.codemode.run_ms`                          | int     | time from VM ready until the result settled            |
-| `app.codemode.output.bytes`                    | int     | script output in UTF-8 bytes, before truncation        |
-| `app.codemode.output.truncated`                | boolean | output was cut to the output limit                     |
-| `app.codemode.error.kind`                      | string  | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
+| Attribute                                      | Type   | Meaning                                                |
+| ---------------------------------------------- | ------ | ------------------------------------------------------ |
+| `app.codemode.script.bytes`                    | int    | script size in UTF-8 bytes                             |
+| `app.codemode.call.count`                      | int    | nested calls made, including rejected calls            |
+| `app.codemode.call.peak_concurrency`           | int    | most nested calls that ran at the same time            |
+| `app.codemode.call.rejected_count`             | int    | nested calls not allowed by action review              |
+| `app.codemode.call.batch_limit_rejected_count` | int    | nested calls refused by the per-drain batch limit      |
+| `app.codemode.vm.start_ms`                     | int    | time until the VM was ready                            |
+| `app.codemode.run_ms`                          | int    | time from VM ready until the result settled            |
+| `app.codemode.output.bytes`                    | int    | script output and return value in UTF-8 bytes          |
+| `app.codemode.error.kind`                      | string | `script`, `timeout`, `memory`, `aborted`, or `sandbox` |
 
 - `app.codemode.vm.start_ms` and `app.codemode.run_ms` are absent when the VM
   did not start. `app.codemode.error.kind` is absent when the script returned
@@ -305,6 +299,76 @@ compare the phases:
 - The same `service.instance.id` on more than one slow call: they shared one
   process.
 
+### Cache Prefix
+
+The provider caches a request prefix in the order tools, system prompt,
+messages. A change to the tool list or the system prompt between two calls
+writes the full history to the cache again. Per Anthropic's docs, a change to
+the thinking settings or the effort also drops the cached prefix.
+`chat/pi/request-prefix-attributes.ts` hashes the provider request body that
+Pi builds, through Pi's `onPayload` hook. The values are hashes, never the
+text.
+
+| Attribute                                        | Type   | Meaning                                    |
+| ------------------------------------------------ | ------ | ------------------------------------------ |
+| `app.ai.request.system_instructions.hash`        | string | hash of the `system` blocks                |
+| `app.ai.request.tools.hash`                      | string | hash of the `tools` list, in order         |
+| `app.ai.request.tools.count`                     | int    | tools in the request                       |
+| `app.ai.request.messages.hash`                   | string | hash of all `messages`                     |
+| `app.ai.request.messages.before_last_reply.hash` | string | hash of the messages before the last reply |
+| `app.ai.request.messages.count`                  | int    | messages in the request                    |
+| `app.ai.request.prefix.hash`                     | string | hash of model, settings, and all parts     |
+| `app.ai.request.prefix.before_last_reply.hash`   | string | the same, with messages before last reply  |
+| `app.ai.request.thinking.type`                   | string | `thinking.type`, such as `adaptive`        |
+| `app.ai.request.effort`                          | string | `output_config.effort`, such as `high`     |
+
+- Each hash is the first 16 hex chars of a SHA-256. The hashes leave out
+  `cache_control`, because Pi moves the last breakpoint on each request. In
+  messages, string `content` hashes as one text block, because Pi changes the
+  last user message to that form.
+- The hashes cover the body that Junior sends to AI Gateway, not the request
+  that the gateway sends to the upstream provider.
+- `prefix.hash` hashes, in this order: `model`, a hash of the `thinking` and
+  `output_config` settings, and the tools, system, and messages hashes.
+  `prefix.before_last_reply.hash` uses `messages.before_last_reply.hash` for
+  the messages, and is absent when that hash is absent.
+- `thinking.type` and `effort` are absent when the body does not set them.
+- `messages.before_last_reply.hash` stops before the last `assistant`
+  message. It is absent when the request has no `assistant` message. When the
+  history was only appended, it is equal to `messages.hash` of the previous
+  call.
+- The `codemode` tool description lists the script tools, so a script tool
+  change also changes the tool hash.
+- `completeText` calls have the same attributes. `completeObject` uses the AI
+  SDK, which has no payload hook, so it has none.
+- On calls through the Pi stream wrapper, `app.ai.usage.cache_write_1h` is the
+  part of `gen_ai.usage.cache_creation.input_tokens` written with 1h
+  retention. The rest used 5m retention.
+
+To classify a cache miss, compare a call with the previous call in the same
+`gen_ai.conversation.id`:
+
+1. Compare `prefix.before_last_reply.hash` with the previous `prefix.hash`.
+   When they are not equal, find the part that changed:
+   - System or tools hash changed: Junior changed the prefix.
+   - `thinking.type` or `effort` changed: the settings changed the prefix.
+     When all part hashes match, the model or another thinking setting, such
+     as a budget, changed.
+   - `messages.before_last_reply.hash` is not equal to the previous
+     `messages.hash`: Junior rewrote the history. This is expected when the
+     call has `gen_ai.conversation.compacted`.
+2. When they are equal and the gap is 5 minutes or more: the cache expired.
+3. When they are equal and the gap is less than 5 minutes: the provider or the
+   gateway did not use the cache.
+
+Prefix hashes of each model call in a Conversation. Compare consecutive rows.
+
+```text
+dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,trace,gen_ai.request.model,app.ai.request.prefix.hash,app.ai.request.prefix.before_last_reply.hash,app.ai.request.system_instructions.hash,app.ai.request.tools.hash,app.ai.request.messages.hash,app.ai.request.messages.before_last_reply.hash,app.ai.request.thinking.type,app.ai.request.effort,gen_ai.conversation.compacted,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
+sort=timestamp
+```
+
 ## Context Compaction
 
 A compaction replaces the history when its estimate is above the threshold.
@@ -316,8 +380,18 @@ A compaction replaces the history when its estimate is above the threshold.
 - The span and all its children have `app.compaction.mode`. Group the summary
   `gen_ai.chat` spans by mode to compare duration and cache reads.
 - `app.turn.compaction_wait_ms` on `chat.turn` is the time that the Turn
-  waited on compaction in this execution slice. It is absent when no
-  compaction ran.
+  waited on summary compactions in this execution slice. It is absent when no
+  summary compaction ran.
+- `app.turn.compaction_swap_wait_ms` on `chat.turn` is the time that the Turn
+  waited on prepared-summary swaps, also when the swap was `not_ready` or
+  `discarded`. It includes the wait for a running summary at the input
+  limit. It is absent when no swap span ran.
+- After each replacement, the next model request logs
+  `context_compaction.next_request.completed` with
+  `app.compaction.next_input.size` (provider-reported input, cache included),
+  `app.compaction.threshold`, `app.compaction.mode`, and
+  `app.compaction.next_input.over_threshold`. When it is `true`, the
+  replacement did not get the history below the threshold.
 - Sentry data scrubbing removes the values of attribute keys that contain
   `token`. So these keys do not contain it, but the estimates count tokens.
 
@@ -326,7 +400,8 @@ Attributes on the `agent.context_compaction` span:
 | Attribute                             | Type   | Meaning                                       |
 | ------------------------------------- | ------ | --------------------------------------------- |
 | `app.compaction.mode`                 | string | `blocking`, `active`, `background`            |
-| `app.compaction.outcome`              | string | `compacted` or `summary_failed`               |
+| `app.compaction.outcome`              | string | `compacted`, `skipped`, or `summary_failed`   |
+| `app.compaction.skip_reason`          | string | why no summary was made above the threshold   |
 | `app.compaction.input.estimate`       | int    | estimated history tokens before compaction    |
 | `app.compaction.replacement.estimate` | int    | estimated request tokens after compaction     |
 | `app.compaction.threshold`            | int    | estimated tokens that start a compaction      |
@@ -340,26 +415,40 @@ Attributes on the `agent.context_compaction` span:
   on kept messages, because that usage counts the history before compaction.
 - `blocking` runs in the agent before the first model request of a Turn.
   `active` runs between model calls in a Turn.
+- `app.compaction.skip_reason`: `over_target` (the context that a
+  replacement keeps is above the target without a summary),
+  `last_over_threshold` (the first model call after the latest full
+  compaction was above the threshold), or `over_input_limit` (the context
+  that a replacement keeps is at the input limit, so no summary can fit). A
+  compaction skipped for one of the first two reasons runs at the input limit.
 
 A swap of a prepared background summary has its own
 `agent.context_compaction` span and makes no model call.
 `chat/services/context-compaction-swap.ts` owns it. The mode tells the swap
 point: `blocking` at Turn start, `active` between model calls. The span exists
-only when the current History version has a background compaction request or
-result.
+only when the history is above the threshold and the current History version
+has a background compaction request or result.
 
-| Attribute                         | Type   | Meaning                                         |
-| --------------------------------- | ------ | ----------------------------------------------- |
-| `app.compaction.outcome`          | string | `applied`, `not_ready`, or `discarded`          |
-| `app.compaction.discard_reason`   | string | why a ready summary was not used                |
-| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap      |
-| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary |
-| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages        |
-| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer       |
-| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                |
+A request younger than 45 seconds is a running summary. Below the input
+limit, the swap is `deferred` and no blocking summary runs. At the input
+limit, the swap polls until the summary has a result or the 45 seconds end.
 
-- `not_ready`: the job has not written a ready summary, or it failed. A
-  blocking compaction can still follow at the threshold.
+| Attribute                         | Type   | Meaning                                          |
+| --------------------------------- | ------ | ------------------------------------------------ |
+| `app.compaction.outcome`          | string | `applied`, `deferred`, `not_ready`, `discarded`  |
+| `app.compaction.discard_reason`   | string | why a ready summary was not used                 |
+| `app.compaction.prepared.age_ms`  | int    | time from the prepared summary to the swap       |
+| `app.compaction.request.age_ms`   | int    | time from the pending request to the swap        |
+| `app.compaction.wait.timed_out`   | bool   | the wait at the input limit ended with no result |
+| `app.compaction.carried_messages` | int    | messages after the mark, kept after the summary  |
+| `app.compaction.carried.estimate` | int    | estimated tokens of the carried messages         |
+| `app.compaction.trimmed_results`  | int    | carried tool results cleared to a pointer        |
+| `app.compaction.trimmed_chars`    | int    | characters that trimming removed                 |
+
+- `deferred`: a running summary exists, and the next model call fits below
+  the input limit. A later check swaps the summary in.
+- `not_ready`: the request is older than 45 seconds, the job failed, or the
+  wait ended. A blocking compaction can still follow at the threshold.
 - `app.compaction.discard_reason`: `history_version_changed`,
   `over_target`, `conflict` (another replacement committed first), or
   `split_tool_call` (the mark falls between a tool call and its result).
@@ -408,6 +497,25 @@ dataset=spans query='span.op:chat.turn has:tags[app.turn.compaction_wait_ms,numb
 fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.compaction_wait_ms,number]),p50(span.duration)
 ```
 
+## Thread Context
+
+Each Turn prompt gets one `<thread-context>` block.
+`chat/conversations/thread-context.ts` sets these attributes when it builds
+the block: on `chat.reply` in a Slack Turn, on `chat.turn` in a web or Event
+Turn. The block holds only the Messages since the
+previous Turn when agent history exists.
+
+| Attribute                             | Type   | Meaning                                                   |
+| ------------------------------------- | ------ | --------------------------------------------------------- |
+| `app.thread_context.chars`            | int    | characters of the block, 0 when there is none             |
+| `app.thread_context.shown_messages`   | int    | Messages in the block                                     |
+| `app.thread_context.omitted_messages` | int    | Messages left out by the 60,000-character cap             |
+| `app.thread_context.cursor`           | string | `found`, `missing` (Turn before cursors), or `no_history` |
+| `app.thread_messages.trimmed`         | int    | oldest Messages dropped from the loaded window            |
+
+- `app.thread_messages.trimmed` is set in Turn preparation, only when the
+  loaded Messages pass the trim threshold. Trimming makes no model call.
+
 ## Invariants
 
 - `slack.message.ingress` records sender, team, and `app.slack.membership`
@@ -417,9 +525,11 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
   They follow the Sentry queue span conventions. `queue.process` starts a new
   trace.
-- `chat.turn` continues the trace of the oldest input `slack.message.ingress`
-  span and links to the other inputs and to `queue.process`. A resumed slice
-  continues the trace of the first slice.
+- `chat.turn` continues the trace of the oldest input: the
+  `slack.message.ingress` span, or the dashboard `http.server` request that
+  sent the Message. It links to the other inputs and to `queue.process`. A
+  resumed slice continues the trace of the first slice. An Event Turn has no
+  input trace, so its `chat.turn` is a child of `queue.process`.
 - `app.turn.delivery_lag_ms`, `app.turn.wait_ms`, and the `chat.turn` duration
   are contiguous. The timing attributes are absent when the value is negative
   (clock skew) and on resumed slices.
@@ -438,12 +548,53 @@ fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.c
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it.
 
+## Plugin Tasks and Notifications
+
+- A `plugin.task` span runs each plugin task. `app.plugin.name`,
+  `app.plugin.task`, and `app.ai.turn.session_id` name the task and the
+  Turn. A web or Event Turn runs its tasks in its `chat.turn`, before the
+  queue message is acknowledged. A Slack Turn queues its tasks, so each task
+  is in its own trace. Find its Turn by `gen_ai.conversation.id`.
+- On `plugin.task` `notifyReply`, `app.notification.outcome` is `sent` or
+  `skipped`. `app.notification.skip_reason` says why it skipped, such as
+  `outside_hours` or `has_location`. A sent task has device counts and
+  `app.notification.reply_lag_ms`: the time from the completed Turn to the
+  end of the pushes.
+- A `notification.push.send` span sends to one browser. `server.address` is
+  the push service host. `app.notification.push.outcome` is `delivered`,
+  `gone` (the subscription is deleted), or `failed`. Spans, logs, and errors
+  keep no endpoint path, because the path identifies the device.
+- `notification.push.sent` logs the counts for one notification.
+  `app.notification.kind` is `reply` or `test`.
+
+Reply notification outcomes and lag.
+
+```text
+dataset=spans query='span.op:plugin.task app.plugin.task:notifyReply'
+fields=app.notification.outcome,app.notification.skip_reason,count(),p50(app.notification.reply_lag_ms),p95(app.notification.reply_lag_ms),p95(span.duration)
+```
+
+Push service latency and failures by host.
+
+```text
+dataset=spans query='span.op:notification.push.send'
+fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p95(span.duration)
+```
+
 ## Dashboard
 
 - When `SENTRY_DSN` is set, dashboard pages send browser spans to the same
   project. The `pageload` span continues the trace of the page request, and
   dashboard API calls continue the browser trace.
-- The browser sends only spans. It sends no errors, breadcrumbs, or replays.
+- The browser sends only spans and Reply ratings. It sends no errors,
+  breadcrumbs, or replays.
+- A Reply rating is Sentry user feedback with `source`
+  `dashboard_reply_rating`. Tags: `app.reply.rating` (`good` or `bad`),
+  `gen_ai.conversation.id`, and `messaging.message.id`. It has the reader's
+  name and email, and the message is `Good reply` or `Bad reply`, plus the
+  reader's optional comment on a bad rating. It has no Reply text. Each Reply
+  sends at most one rating each time the reader opens its Conversation. The
+  dashboard hides the thumbs when it has no DSN.
 - Browser spans keep no URL query strings or fragments, and no element
   `aria-label`, `title`, `alt`, `name`, or `type` values.
 - `pageload` and `navigation` spans have the dashboard route pattern as their

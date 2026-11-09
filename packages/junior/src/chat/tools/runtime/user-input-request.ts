@@ -216,16 +216,16 @@ function answerLine(text: string): string {
 }
 
 /**
- * Write an answer as the text of the person's message. Slack and the web
- * dashboard both send this text, so the model reads one format. The first
- * line names the request, and each field starts its own line.
+ * Write the fields of an answer, one `Label (field_id): value` line each.
+ * Slack, the web dashboard, and the prompt all use this text, so the model
+ * reads one format.
  */
 export function formatUserInputAnswer(
   request: UserInputRequest,
   answer: UserInputAnswer,
 ): string {
   const normalized = normalizeUserInputAnswer(request, answer);
-  const lines = [`Answer to request ${normalized.requestId}:`];
+  const lines: string[] = [];
   for (const field of request.fields) {
     const values = normalized.values[field.id];
     const value = values?.length ? values.join(", ") : "(no answer)";

@@ -20,6 +20,7 @@ import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
+import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
 import { NavRail, NavRailProvider } from "./components/layout/NavRail";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
@@ -50,13 +51,14 @@ import {
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
-import { buildPrimaryNavItems } from "./primaryNav";
+import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "./TracedRoutes";
 import {
   ReviewDeskLoading,
   ReviewDeskPage,
 } from "./review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "./review-desk/queries";
+import { useVersionsPoll } from "./versions";
 import type { DashboardCoreData } from "./types";
 
 // Pages outside the conversation workspace load on first visit, so the
@@ -64,6 +66,11 @@ import type { DashboardCoreData } from "./types";
 const RepositoryPage = lazy(() =>
   import("./pages/code/RepositoryPage").then((module) => ({
     default: module.RepositoryPage,
+  })),
+);
+const BoardPage = lazy(() =>
+  import("./pages/board/BoardPage").then((module) => ({
+    default: module.BoardPage,
   })),
 );
 const CodePage = lazy(() =>
@@ -216,6 +223,8 @@ const settingsRoutes: {
 export function DashboardShell() {
   const location = useLocation();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const openCommandPalette = () => setCommandPaletteOpen(true);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
   const data = query.data;
@@ -238,7 +247,9 @@ export function DashboardShell() {
   // page mounts. One fetch for each visit also brings the unread page.
   const conversationDetail = useConversationData(conversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
+    versionsPoll: true,
   });
+  useVersionsPoll(conversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -258,8 +269,12 @@ export function DashboardShell() {
     pathname: location.pathname,
     primaryUserPages,
     reviewCount: reviewCountQuery.data?.needsViewer,
-    userPagesPending: userPagesQuery.isPending,
   });
+  const profileNavItems = loggedIn
+    ? buildProfileNavItems(
+        userPages.filter((page) => page.navigation === "profile"),
+      )
+    : [];
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -286,15 +301,22 @@ export function DashboardShell() {
   return (
     <DashboardChromeProvider>
       <NavRailProvider>
+        <CommandPalette
+          currentConversationId={conversationId}
+          navItems={[...primaryNavItems, ...profileNavItems]}
+          onOpenChange={setCommandPaletteOpen}
+          open={commandPaletteOpen}
+        />
         <NavRail
           navItems={primaryNavItems}
+          onSearch={openCommandPalette}
           profile={
             loggedIn ? (
               <ProfileMenu
                 identity={data!.me}
                 onSignOut={signOut}
                 spend={personalSpendQuery.data}
-                userPages={userPages}
+                pages={profileNavItems}
               />
             ) : undefined
           }
@@ -323,13 +345,14 @@ export function DashboardShell() {
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
+                onSearch={openCommandPalette}
                 profile={
                   loggedIn ? (
                     <ProfileMenu
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="top-bar"
                     />
                   ) : undefined
@@ -340,7 +363,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-identity"
                     />
                   ) : undefined
@@ -351,7 +374,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-links"
                     />
                   ) : undefined
@@ -362,7 +385,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      userPages={userPages}
+                      pages={profileNavItems}
                       variant="sheet-spend"
                     />
                   ) : undefined
@@ -543,6 +566,8 @@ export function DashboardShell() {
               }
               path="/review"
             />
+            {/* The Board is an experiment, so no navigation links to it. */}
+            <Route element={<BoardPage />} path="/board" />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route

@@ -24,7 +24,7 @@
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",
-    "@sentry/roach": "0.2.0",
+    "@sentry/roach": "0.3.0",
     "ai": "^7.0.153",
     "chat": "4.29.0",
     "hono": "^4.13.11",

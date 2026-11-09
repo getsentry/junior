@@ -7,6 +7,7 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
+import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 /** Create a tool that provisions a new Slack canvas in the active channel. */
 export function createSlackCanvasCreateTool(
@@ -14,14 +15,15 @@ export function createSlackCanvasCreateTool(
   state: ToolState,
 ) {
   return zodTool({
+    exposure: "deferred",
+    source: SLACK_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
       idempotentHint: false,
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description:
-      "Create a Slack canvas in the active channel.",
+    description: "Create a Slack canvas in the active channel.",
     inputSchema: z.object({
       title: z.string().min(1).max(160).describe("Canvas title."),
       markdown: z.string().min(1).describe("Canvas markdown body content."),

@@ -16,19 +16,33 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  conversationReadPositionSchema,
+  conversationReadReportSchema,
   type ConversationDetailReport,
   type ConversationEventPage,
+  type ConversationFeed,
   type ConversationReadPosition,
 } from "@sentry/junior/api/schema";
+import { CONVERSATION_START_POSITION_STORAGE_KEY as START_POSITION_STORAGE_KEY } from "../../conversation-open";
 import { put } from "../http";
-import { conversationDetailQueryKey } from "./queries";
+import {
+  conversationDetailQueryKey,
+  conversationReadScope,
+  conversationUnreadMutationKey,
+} from "./queries";
 import { scrollRootFor } from "./transcriptBottomPinning";
 
 const READ_REPORT_DELAY_MS = 750;
 const SEQ_ATTRIBUTE = "data-transcript-seq";
 const ROW_SELECTOR = `[${SEQ_ATTRIBUTE}]`;
-const START_POSITION_STORAGE_KEY = "junior:conversation:start-position";
+const SCROLL_KEYS = new Set([
+  " ",
+  "ArrowDown",
+  "ArrowUp",
+  "End",
+  "Home",
+  "PageDown",
+  "PageUp",
+]);
 
 /** Where a Conversation opens: at the first unread row or at the latest. */
 export type ConversationStartPosition = "unread" | "latest";
@@ -170,16 +184,60 @@ function withReadPosition(
 export function useMarkConversationRead(conversationId: string) {
   const queryClient = useQueryClient();
   const { mutate } = useMutation({
+    scope: conversationReadScope(conversationId),
     mutationFn: (lastReadSeq: number) =>
       put(
-        conversationReadPositionSchema,
+        conversationReadReportSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/read-position`,
         { lastReadSeq },
       ),
-    onSuccess: (readPosition) => {
+    onSuccess: async ({ unreadReply, ...readPosition }) => {
+      const detailQueryKey = conversationDetailQueryKey(conversationId);
+      const feeds = { queryKey: ["dashboard", "conversations"] };
+      // A Mark as read or unread queued after this report owns the flag.
+      const clearsUnread =
+        !unreadReply &&
+        queryClient.isMutating({
+          mutationKey: conversationUnreadMutationKey(conversationId),
+        }) === 0 &&
+        (queryClient.getQueryData<ConversationDetailReport>(detailQueryKey)
+          ?.unread ||
+          queryClient
+            .getQueriesData<ConversationFeed>(feeds)
+            .some(([, feed]) =>
+              feed?.conversations.some(
+                (conversation) =>
+                  conversation.conversationId === conversationId &&
+                  conversation.unread,
+              ),
+            ));
+      if (clearsUnread) {
+        // A poll that started before this read would put the unread flag
+        // back. The next poll reads after the write.
+        await Promise.all([
+          queryClient.cancelQueries(feeds),
+          queryClient.cancelQueries({ exact: true, queryKey: detailQueryKey }),
+        ]);
+        queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
+          feed
+            ? {
+                ...feed,
+                conversations: feed.conversations.map((conversation) =>
+                  conversation.conversationId === conversationId
+                    ? { ...conversation, unread: undefined }
+                    : conversation,
+                ),
+              }
+            : feed,
+        );
+      }
       queryClient.setQueryData<ConversationDetailReport>(
-        conversationDetailQueryKey(conversationId),
-        (detail) => detail && withReadPosition(detail, readPosition),
+        detailQueryKey,
+        (detail) =>
+          detail && {
+            ...withReadPosition(detail, readPosition),
+            ...(clearsUnread ? { unread: undefined } : undefined),
+          },
       );
     },
   });
@@ -189,6 +247,14 @@ export function useMarkConversationRead(conversationId: string) {
         conversationDetailQueryKey(conversationId),
       )?.readPosition?.lastReadSeq;
       if (stored !== undefined && lastReadSeq <= stored) return;
+      // A row seen before Mark as unread must not read the conversation again.
+      if (
+        queryClient.isMutating({
+          mutationKey: conversationUnreadMutationKey(conversationId),
+        }) > 0
+      ) {
+        return;
+      }
       mutate(lastReadSeq);
     },
     [conversationId, mutate, queryClient],
@@ -203,12 +269,20 @@ export function useMarkConversationRead(conversationId: string) {
  * a short time and only move forward. A hidden or paused page does not
  * report. Leaving the page or hiding it sends the pending row at once, so a
  * quick exit keeps progress.
+ *
+ * Opening a Conversation is not reading it, so nothing reports until the
+ * reader acts in this visit: a wheel, touch, pointer, or key input in the
+ * transcript, or `engaged` from the composer. A scroll that the page makes,
+ * such as to the "New" marker or to follow new rows, does not count. After
+ * the first input, the rows in view and the rows that come into view report.
  */
 export function useTranscriptReadReporter(input: {
   content: HTMLElement | null;
-  /** The stored position when the Conversation opened. */
+  /** The stored position. Rows after it report. */
   lastReadSeq?: number;
   onRead?: (seq: number) => void;
+  /** The reader acted outside the transcript, such as in the composer. */
+  engaged?: boolean;
   /**
    * Stop reporting while the rows are not in reading order, such as search
    * results. This is read when a report is scheduled, so the render that
@@ -221,7 +295,27 @@ export function useTranscriptReadReporter(input: {
   const pausedRef = useRef(input.paused);
   pausedRef.current = input.paused;
   const reportedRef = useRef(input.lastReadSeq ?? -1);
+  // Once per visit: the page is keyed by Conversation.
+  const engagedRef = useRef(false);
+  const engageRef = useRef<() => void>(undefined);
+  const engagedInputRef = useRef(input.engaged);
+  engagedInputRef.current = input.engaged;
+
+  // Mark as unread moves the stored position back. A cached copy at open can
+  // also be ahead of the fetched one. Rows after it must report again.
+  useEffect(() => {
+    if (
+      input.lastReadSeq !== undefined &&
+      input.lastReadSeq < reportedRef.current
+    ) {
+      reportedRef.current = input.lastReadSeq;
+    }
+  }, [input.lastReadSeq]);
   const enabled = Boolean(input.onRead);
+
+  useEffect(() => {
+    if (input.engaged) engageRef.current?.();
+  }, [input.engaged]);
 
   useEffect(() => {
     const content = input.content;
@@ -242,7 +336,13 @@ export function useTranscriptReadReporter(input: {
       onReadRef.current?.(seq);
     };
     const schedule = () => {
-      if (pausedRef.current || document.visibilityState !== "visible") return;
+      if (
+        !engagedRef.current ||
+        pausedRef.current ||
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
       // Read the seq now: an activity group row moves its seq as it grows.
       for (const row of visibleRows) {
         const seq = Number(row.dataset.transcriptSeq);
@@ -302,9 +402,38 @@ export function useTranscriptReadReporter(input: {
       subtree: true,
     });
     observeRows(content);
+    // Rows already in view report on the first input, without a scroll.
+    const engage = () => {
+      if (engagedRef.current) return;
+      engagedRef.current = true;
+      schedule();
+    };
+    engageRef.current = engage;
+    // Input events, not `scroll`: the page scrolls on its own too.
+    const inputTarget = root === window ? content : (root as HTMLElement);
+    const inputEvents = ["wheel", "touchstart", "pointerdown", "keydown"];
+    for (const type of inputEvents) {
+      inputTarget.addEventListener(type, engage, { passive: true });
+    }
+    // Scroll keys go to the page when nothing has focus.
+    const onPageKey = (event: KeyboardEvent) => {
+      if (
+        document.activeElement === document.body &&
+        SCROLL_KEYS.has(event.key)
+      ) {
+        engage();
+      }
+    };
+    document.addEventListener("keydown", onPageKey);
+    if (engagedInputRef.current) engage();
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       send();
+      engageRef.current = undefined;
+      for (const type of inputEvents) {
+        inputTarget.removeEventListener(type, engage);
+      }
+      document.removeEventListener("keydown", onPageKey);
       intersections.disconnect();
       mutations.disconnect();
       document.removeEventListener("visibilitychange", onVisibilityChange);

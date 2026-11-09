@@ -15,14 +15,27 @@ const cardClass =
 export function ConversationCatchUpButton() {
   const state = useConversationCatchUpState();
   if (!state || state.data || state.pending) return null;
+  const { count, more } = state.unreadMessages;
+  // A large count reads as "99+", like an unread badge.
+  const shown = count > 99 ? "99+" : `${count}${more ? "+" : ""}`;
   return (
     <button
+      aria-label={
+        count
+          ? `Catch me up, ${shown} new ${count === 1 && !more ? "message" : "messages"}`
+          : undefined
+      }
       className="inline-flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-dashboard-accent/30 bg-transparent px-2.5 font-sans text-xs font-medium text-dashboard-accent-text transition-colors hover:border-dashboard-accent/60 hover:bg-dashboard-accent/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus/55"
       onClick={state.request}
       type="button"
     >
       <Sparkles aria-hidden="true" size={12} strokeWidth={2} />
       Catch me up
+      {count ? (
+        <span className="-mr-1 ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-dashboard-accent/15 px-1 text-2xs font-semibold leading-none tabular-nums">
+          {shown}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -34,15 +47,19 @@ export function ConversationCatchUpCard() {
   const cardRef = useRef<HTMLDivElement>(null);
   const shown = state?.data ? "data" : state?.pending ? "pending" : undefined;
   // The transcript holds the row below the reader's place, so the card grows
-  // up, out of view. Bring it back after that scroll fix runs.
+  // up, out of view. Bring it back after that scroll fix runs. The fix runs
+  // in a ResizeObserver callback, which comes after animation frame callbacks
+  // in the same frame, so wait for the next frame.
   useEffect(() => {
     if (!shown) return;
-    const frame = requestAnimationFrame(() => {
-      // Keep the "New" marker above the card in view too.
-      const marker = cardRef.current?.closest(
-        "[data-transcript-unread-marker]",
-      );
-      marker?.scrollIntoView({ block: "nearest" });
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        // Keep the "New" marker above the card in view too.
+        const marker = cardRef.current?.closest(
+          "[data-transcript-unread-marker]",
+        );
+        marker?.scrollIntoView({ block: "nearest" });
+      });
     });
     return () => cancelAnimationFrame(frame);
   }, [shown]);
