@@ -12,8 +12,7 @@
  * time from a request that ended with tool calls to the next request.
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
-import { runWithLogContext } from "@/chat/log-context";
-import { logInfo, logWarn } from "@/chat/logging";
+import { logInfo, logWarn, setSpanStatus, withSpan } from "@/chat/logging";
 import {
   decideWarmup,
   MIN_WARMUP_PREFIX_TOKENS,
@@ -105,30 +104,42 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     current: number,
   ) => {
     const { request, prefixTokens } = cache;
-    return runWithLogContext(
+    const attributes: Record<string, unknown> = {
+      "app.cache_warming.cycle": cycle,
+      "app.cache_warming.prefix_tokens": prefixTokens,
+      "app.cache_warming.trigger": "tool_wait",
+    };
+    return withSpan(
+      "cache_warming.warmup",
+      "cache_warming.warmup",
       { conversationId, modelId: request.model.id },
-      {},
-      async () => {
-        const attributes: Record<string, unknown> = {
-          "app.cache_warming.cycle": cycle,
-          "app.cache_warming.prefix_tokens": prefixTokens,
-          "app.cache_warming.trigger": "tool_wait",
+      async (setSpanAttributes) => {
+        const setOutcome = (
+          outcome: string,
+          extra: Record<string, unknown> = {},
+        ) =>
+          setSpanAttributes({
+            ...attributes,
+            ...extra,
+            "app.cache_warming.outcome": outcome,
+          });
+        const skip = (reason: string) => {
+          const skipReason = { "app.cache_warming.skip_reason": reason };
+          logInfo("cache_warming.warmup.skipped", {
+            ...attributes,
+            ...skipReason,
+          });
+          setOutcome("skipped", skipReason);
         };
         // A long request can leave no time before the cache expires.
         if (warmupTooLate(cacheExpiresAtMs)) {
-          logInfo("cache_warming.warmup.skipped", {
-            ...attributes,
-            "app.cache_warming.skip_reason": "cache_expired",
-          });
+          skip("cache_expired");
           return;
         }
         try {
           const state = await connectedState();
           if (await breakerOpen(state, request.model.id)) {
-            logInfo("cache_warming.warmup.skipped", {
-              ...attributes,
-              "app.cache_warming.skip_reason": "breaker_open",
-            });
+            skip("breaker_open");
             return;
           }
           const decision = decideWarmup({
@@ -147,12 +158,14 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             decision.returnsPerWarmup;
           attributes["app.cache_warming.threshold"] = decision.threshold;
           // The tool returned while the gaps were read.
-          if (current !== generation) return;
-          if (!decision.warm) {
-            logInfo("cache_warming.warmup.skipped", {
-              ...attributes,
-              "app.cache_warming.skip_reason": decision.reason,
+          if (current !== generation) {
+            setOutcome("skipped", {
+              "app.cache_warming.skip_reason": "stopped",
             });
+            return;
+          }
+          if (!decision.warm) {
+            skip(decision.reason);
             return;
           }
           const startedAtMs = Date.now();
@@ -168,9 +181,11 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
           Object.assign(attributes, warmup.attributes);
           if (!warmup.refreshed) {
             logWarn("cache_warming.warmup.failed", attributes);
+            setOutcome("missed");
             return;
           }
           logInfo("cache_warming.warmup.completed", attributes);
+          setOutcome("completed");
           if (current === generation) {
             schedule(cache, startedAtMs, cycle + 1);
           }
@@ -181,8 +196,13 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             "exception.message":
               error instanceof Error ? error.message : String(error),
           });
+          setOutcome("failed", {
+            "error.type": error instanceof Error ? error.name : typeof error,
+          });
+          setSpanStatus("error");
         }
       },
+      attributes,
     );
   };
 

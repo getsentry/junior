@@ -18,7 +18,7 @@ import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-r
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getChatConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
-import { logInfo } from "@/chat/logging";
+import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   gapSegment,
@@ -332,46 +332,62 @@ export async function backfillCacheWarmingGaps(args: {
   ) {
     return;
   }
-  // Check before the scan, so live gaps that arrive during the scan do not
-  // stop the fill. A list that has gaps now has live gaps, or gaps from a run
-  // that failed while it wrote. Both are kept as they are.
-  const emptySegments = new Set<string>();
-  for (const segment of ALL_SEGMENTS) {
-    const gaps = await state.getList(segmentGapsKey(segment));
-    if (gaps.length === 0) emptySegments.add(segment);
-  }
-  const { bySegment, scanned, canceledBatches, budgetExceeded } =
-    await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
-  const logAttributes = {
-    "app.cache_warming.backfill.conversation_count": scanned,
-    "app.cache_warming.backfill.canceled_batch_count": canceledBatches,
-    "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
-  };
-  // Only canceled queries: no history was read. The claim expires, and a
-  // later heartbeat tries again.
-  if (scanned === 0 && canceledBatches > 0) {
-    logInfo("cache_warming.backfill.not_completed", logAttributes);
-    return;
-  }
-  let gapCount = 0;
-  let segmentCount = 0;
-  for (const [segment, gaps] of bySegment) {
-    if (!emptySegments.has(segment)) continue;
-    const key = segmentGapsKey(segment);
-    const newest = gaps.slice(-BACKFILL_GAPS_MAX);
-    for (const gapMs of newest) {
-      await state.appendToList(key, gapMs, {
-        maxLength: GLOBAL_GAPS_MAX,
-        ttlMs: GLOBAL_GAPS_TTL_MS,
+  await withSpan(
+    "cache_warming.backfill",
+    "cache_warming.backfill",
+    {},
+    async (setSpanAttributes) => {
+      // Check before the scan, so live gaps that arrive during the scan do
+      // not stop the fill. A list that has gaps now has live gaps, or gaps
+      // from a run that failed while it wrote. Both are kept as they are.
+      const emptySegments = new Set<string>();
+      for (const segment of ALL_SEGMENTS) {
+        const gaps = await state.getList(segmentGapsKey(segment));
+        if (gaps.length === 0) emptySegments.add(segment);
+      }
+      const { bySegment, scanned, canceledBatches, budgetExceeded } =
+        await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
+      const logAttributes = {
+        "app.cache_warming.backfill.conversation_count": scanned,
+        "app.cache_warming.backfill.canceled_batch_count": canceledBatches,
+        "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
+      };
+      // Only canceled queries: no history was read. The claim expires, and a
+      // later heartbeat tries again.
+      if (scanned === 0 && canceledBatches > 0) {
+        logInfo("cache_warming.backfill.not_completed", logAttributes);
+        setSpanAttributes({
+          ...logAttributes,
+          "app.cache_warming.backfill.outcome": "not_completed",
+        });
+        return;
+      }
+      let gapCount = 0;
+      let segmentCount = 0;
+      for (const [segment, gaps] of bySegment) {
+        if (!emptySegments.has(segment)) continue;
+        const key = segmentGapsKey(segment);
+        const newest = gaps.slice(-BACKFILL_GAPS_MAX);
+        for (const gapMs of newest) {
+          await state.appendToList(key, gapMs, {
+            maxLength: GLOBAL_GAPS_MAX,
+            ttlMs: GLOBAL_GAPS_TTL_MS,
+          });
+        }
+        gapCount += newest.length;
+        segmentCount += 1;
+      }
+      await state.set(BACKFILL_KEY, "done");
+      const completed = {
+        ...logAttributes,
+        "app.cache_warming.backfill.gap_count": gapCount,
+        "app.cache_warming.backfill.segment_count": segmentCount,
+      };
+      logInfo("cache_warming.backfill.completed", completed);
+      setSpanAttributes({
+        ...completed,
+        "app.cache_warming.backfill.outcome": "completed",
       });
-    }
-    gapCount += newest.length;
-    segmentCount += 1;
-  }
-  await state.set(BACKFILL_KEY, "done");
-  logInfo("cache_warming.backfill.completed", {
-    ...logAttributes,
-    "app.cache_warming.backfill.gap_count": gapCount,
-    "app.cache_warming.backfill.segment_count": segmentCount,
-  });
+    },
+  );
 }
