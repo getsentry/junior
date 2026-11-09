@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import {
   automationCreatorUserId,
+  conversationOwnerUserId,
   conversationParticipantUserIds,
   type ResolvedAssignees,
 } from "./assignees";
@@ -166,8 +167,55 @@ export function canReadReviewItem(
   );
 }
 
+/**
+ * Return whether a person can read one Review item: by the reader rule, or
+ * because they take part in a Conversation that the item links. The second
+ * part is the person rule of `policies/conversation-access.md`; it lets the
+ * Conversation view show its items. Viewing a public Conversation is not
+ * enough: a private item stays private when its Conversation becomes public.
+ */
+export async function canUserReadReviewItem(
+  item: ReviewItem,
+  user: User,
+): Promise<boolean> {
+  if (canReadReviewItem(item, reviewItemReaderForUser(user))) return true;
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    item.conversationIds,
+    user,
+  );
+  return item.conversationIds.some(
+    (id) => access.get(id)?.isParticipant === true,
+  );
+}
+
+/**
+ * The reader for one person who looks at one Conversation: the person's
+ * reader, plus the items linked to the Conversation when they take part in
+ * it. It is the list form of `canUserReadReviewItem`.
+ */
+export async function reviewItemReaderForUserInConversation(
+  user: User,
+  conversationId: string,
+): Promise<ReviewItemReader> {
+  const reader = reviewItemReaderForUser(user);
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    [conversationId],
+    user,
+  );
+  return access.get(conversationId)?.isParticipant
+    ? { ...reader, conversationId }
+    : reader;
+}
+
 /** What an agent can see and change, from the Conversation it runs in. */
 export interface ReviewItemAgentScope {
+  /**
+   * Whether the Actor of the Turn is a person. A system Actor, such as the
+   * Actor of an event Turn, is not.
+   */
+  actorIsPerson: boolean;
   /** Whether the current Conversation is not public. */
   inPrivateConversation: boolean;
   reader: ReviewItemReader;
@@ -187,7 +235,9 @@ export async function readReviewItemAgentScope(
     "conversationId" | "resolveActorIdentity" | "source"
   >,
 ): Promise<ReviewItemAgentScope> {
-  const user = (await context.resolveActorIdentity?.())?.user;
+  // Only a user Identity resolves, so a system Actor has none.
+  const actor = await context.resolveActorIdentity?.();
+  const user = actor?.user;
   const automationId =
     context.source.kind === "scheduled_automation" ||
     context.source.kind === "event_automation"
@@ -198,6 +248,7 @@ export async function readReviewItemAgentScope(
   ).get(context.conversationId);
   const tenant = current?.tenant;
   return {
+    actorIsPerson: actor !== undefined,
     inPrivateConversation: current?.visibility !== "public",
     reader: {
       conversationId: context.conversationId,
@@ -277,9 +328,11 @@ export async function requireReviewItemLinks(args: {
 
 /**
  * Check who an agent assigns a private item to. It cannot go to Everyone.
- * Each User must be the current Actor, a person in one of the given
- * Conversations (the current one and, for an existing item, the one that
- * added it), or the creator of the Automation that added the item. An
+ * Each User must be the current Actor, the Owner of or a person in one of
+ * the given Conversations (the current one and, for an existing item, the
+ * one that added it), or the creator of the Automation that added the item.
+ * The Owner has no participant row when their Identity got its User later,
+ * and a Turn without a person assigns the Owner by default. An
  * Automation run often has no Actor and no people yet, and its creator wrote
  * the work. A public item can go to anyone.
  */
@@ -304,6 +357,8 @@ export async function requireReviewItemAssignees(args: {
   );
   const inConversation = new Set<string>();
   for (const conversationId of new Set(args.conversationIds)) {
+    const ownerId = await conversationOwnerUserId(getDb(), conversationId);
+    if (ownerId) inConversation.add(ownerId);
     for (const id of await conversationParticipantUserIds(
       getDb(),
       conversationId,

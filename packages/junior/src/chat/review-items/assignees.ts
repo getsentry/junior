@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -6,8 +7,11 @@ import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAutomations,
   juniorConversationParticipants,
+  juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
+
+const ownerRoot = alias(juniorConversations, "review_item_owner_root");
 
 /** Text that the agent writes to assign Everyone. */
 export const EVERYONE_ASSIGNEE = "everyone";
@@ -102,6 +106,34 @@ export async function conversationParticipantUserIds(
       ),
     );
   return new Set(rows.map((row) => row.userId));
+}
+
+/**
+ * Return the User of the Owner of a Conversation's root, when the Owner is a
+ * person with a Junior User. The system Identity of an Automation run or a
+ * plugin dispatch is not a person, so it returns undefined.
+ */
+export async function conversationOwnerUserId(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ userId: juniorIdentities.userId })
+    .from(juniorConversations)
+    .innerJoin(
+      ownerRoot,
+      eq(ownerRoot.conversationId, juniorConversations.rootConversationId),
+    )
+    .innerJoin(
+      juniorIdentities,
+      and(
+        eq(juniorIdentities.id, ownerRoot.actorIdentityId),
+        eq(juniorIdentities.kind, "user"),
+      ),
+    )
+    .where(eq(juniorConversations.conversationId, conversationId))
+    .limit(1);
+  return row?.userId ?? undefined;
 }
 
 /** Return the User who created an Automation, if Junior knows them. */
