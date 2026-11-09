@@ -34,6 +34,7 @@ import {
   useSteerConversationPendingMessages,
   useStopConversationTurn,
 } from "./queries";
+import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
 /**
  * Own mutation state and mailbox chrome outside the page tree that re-renders
@@ -128,7 +129,7 @@ function ReplyFooter(props: {
   useEffect(() => {
     if (pendingMessageVersionRef.current === pendingMessageVersion) return;
     pendingMessageVersionRef.current = pendingMessageVersion;
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
   // No Turn runs and nothing waits in the queue, so the next send would
@@ -305,13 +306,13 @@ function ReplyFooter(props: {
   }, []);
 
   const onMailboxLayoutChange = useCallback(() => {
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, []);
   // Mobile keyboard open shrinks the transcript. Focus must re-pin the latest
   // message so the reader does not stay stuck above the docked composer.
   const onComposerFocus = useCallback(() => {
-    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, []);
 
