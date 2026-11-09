@@ -8,9 +8,10 @@
  * as live recording, so warming can start soon after the first deploy.
  *
  * The heartbeat runs it. Only one run claims it, and a completed run marks
- * the install as done, also when it stopped on its time budget or on a
- * canceled query. It fills only segment lists that are empty, so it does not
- * add history to gaps that live recording already has.
+ * the install as done, also when it stopped on its time budget or skipped a
+ * batch that the statement timeout canceled. It fills only segment lists
+ * that are empty when it starts, so it does not add history to gaps that
+ * live recording already has.
  */
 import { performance } from "node:perf_hooks";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -52,6 +53,13 @@ const BACKFILL_BUDGET_MS = 60_000;
 // arrives during the write. The model reads the list as a histogram, so mixed
 // order does not matter.
 const BACKFILL_GAPS_MAX = GLOBAL_GAPS_MAX / 2;
+// Each segment that `gapSegment` can return. It puts 3 or more ended Turns
+// in one group.
+const ALL_SEGMENTS = new Set(
+  [true, false].flatMap((userActor) =>
+    [0, 1, 2, 3].map((endedTurns) => gapSegment(userActor, endedTurns)),
+  ),
+);
 
 interface ConversationRow {
   conversationId: string;
@@ -242,27 +250,31 @@ async function collectGaps(
 ): Promise<{
   bySegment: Map<string, number[]>;
   scanned: number;
+  canceledBatches: number;
   budgetExceeded: boolean;
-  queryCanceled: boolean;
 }> {
   const startedAt = performance.now();
   const windowStartMs = nowMs - GLOBAL_GAPS_TTL_MS;
   const conversations = await loadConversations(windowStartMs);
   const recorded: RecordedGap[] = [];
   let scanned = 0;
-  let queryCanceled = false;
+  let canceledBatches = 0;
+  let budgetExceeded = false;
   for (let i = 0; i < conversations.length; i += CONVERSATION_BATCH_SIZE) {
-    if (i > 0 && performance.now() - startedAt >= budgetMs) break;
+    if (i > 0 && performance.now() - startedAt >= budgetMs) {
+      budgetExceeded = true;
+      break;
+    }
     const batch = conversations.slice(i, i + CONVERSATION_BATCH_SIZE);
     let rows: EventRow[];
     try {
       rows = await loadEvents(batch.map((row) => row.conversationId));
     } catch (error) {
-      // A batch that is too large for one query stops the scan like the
-      // budget does. Later batches are not smaller on average.
+      // A batch with too much history for one query is skipped. The budget
+      // check still stops the scan in time.
       if (!isQueryCanceled(error)) throw error;
-      queryCanceled = true;
-      break;
+      canceledBatches += 1;
+      continue;
     }
     const events = new Map<string, EventRow[]>();
     for (const event of rows) {
@@ -290,8 +302,8 @@ async function collectGaps(
   return {
     bySegment,
     scanned,
-    budgetExceeded: !queryCanceled && scanned < conversations.length,
-    queryCanceled,
+    canceledBatches,
+    budgetExceeded,
   };
 }
 
@@ -320,15 +332,32 @@ export async function backfillCacheWarmingGaps(args: {
   ) {
     return;
   }
-  const { bySegment, scanned, budgetExceeded, queryCanceled } =
+  // Check before the scan, so live gaps that arrive during the scan do not
+  // stop the fill. A list that has gaps now has live gaps, or gaps from a run
+  // that failed while it wrote. Both are kept as they are.
+  const emptySegments = new Set<string>();
+  for (const segment of ALL_SEGMENTS) {
+    const gaps = await state.getList(segmentGapsKey(segment));
+    if (gaps.length === 0) emptySegments.add(segment);
+  }
+  const { bySegment, scanned, canceledBatches, budgetExceeded } =
     await collectGaps(args.nowMs, args.budgetMs ?? BACKFILL_BUDGET_MS);
+  const logAttributes = {
+    "app.cache_warming.backfill.conversation_count": scanned,
+    "app.cache_warming.backfill.canceled_batch_count": canceledBatches,
+    "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
+  };
+  // Only canceled queries: no history was read. The claim expires, and a
+  // later heartbeat tries again.
+  if (scanned === 0 && canceledBatches > 0) {
+    logInfo("cache_warming.backfill.not_completed", logAttributes);
+    return;
+  }
   let gapCount = 0;
   let segmentCount = 0;
   for (const [segment, gaps] of bySegment) {
+    if (!emptySegments.has(segment)) continue;
     const key = segmentGapsKey(segment);
-    // A list that is not empty has live gaps, or gaps from a run that failed
-    // while it wrote. Both are kept as they are.
-    if ((await state.getList(key)).length > 0) continue;
     const newest = gaps.slice(-BACKFILL_GAPS_MAX);
     for (const gapMs of newest) {
       await state.appendToList(key, gapMs, {
@@ -341,10 +370,8 @@ export async function backfillCacheWarmingGaps(args: {
   }
   await state.set(BACKFILL_KEY, "done");
   logInfo("cache_warming.backfill.completed", {
+    ...logAttributes,
     "app.cache_warming.backfill.gap_count": gapCount,
     "app.cache_warming.backfill.segment_count": segmentCount,
-    "app.cache_warming.backfill.conversation_count": scanned,
-    "app.cache_warming.backfill.budget_exceeded": budgetExceeded,
-    "app.cache_warming.backfill.query_canceled": queryCanceled,
   });
 }
