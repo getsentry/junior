@@ -171,13 +171,23 @@ describe("Slack MCP authorization", () => {
 
       await stop(harness, threadTs);
       await harness.drain();
-      // The stop ended the request, so its link shows "Authorization expired".
-      await expect(approve(harness, link!)).rejects.toThrow(
-        "The MCP OAuth callback returned 400",
-      );
+      // A sign-in after the stop saves the credential but does not resume
+      // the stopped request.
+      await approve(harness, link!);
       await harness.drain();
-
       expect(harness.replies()).not.toContain(ANSWER);
+
+      // A later request uses the saved credential without a new link.
+      await harness.send({
+        user,
+        ts: "1712345.4201",
+        text: `<@${SLACK_BOT_USER_ID}> look up the budget`,
+      });
+      await harness.drain();
+      expect({
+        answered: harness.replies().includes(ANSWER),
+        links: slackApiOutbox.authorizationLinks(user).length,
+      }).toEqual({ answered: true, links: 1 });
     },
   );
 });
