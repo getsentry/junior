@@ -172,9 +172,9 @@ Set the required environment variables:
 Dashboard cookies are signed with `JUNIOR_SECRET` by default. Set `BETTER_AUTH_SECRET` only when you need a separate rotation boundary for browser sessions.
 Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `JUNIOR_BASE_URL` to the public origin users should visit. Alternate deployment origins redirect there before Google sign-in so the OAuth state and callback cookies share one host. Slack reply footers and other surfaces that include a dashboard conversation link use the same public origin.
 
-## Configure phone notifications
+## Configure push notifications
 
-The dashboard can send phone notifications through Web Push. When Junior
+The dashboard can send push notifications through Web Push. When Junior
 replies in a dashboard Conversation, the person who sent the message gets a
 notification on each device that they turned on. A Conversation in a Slack
 thread does not send these notifications. Slack notifies people there.
@@ -194,7 +194,9 @@ thread does not send these notifications. Slack notifies people there.
    | `JUNIOR_WEB_PUSH_SUBJECT`     | No       | `mailto:` or `https:` contact for push services. Defaults to an `https:` `JUNIOR_BASE_URL`. Notifications stay off with an `http:` URL. |
 
 3. Redeploy. Each person opens **Settings** and selects **Turn on for this
-   device**.
+   device**. After a person starts a dashboard Conversation, the dashboard
+   also shows a tip one time in each browser. The person can turn on
+   notifications from the tip.
 
 On iPhone and iPad, Web Push works only from a Home Screen app. Open the
 dashboard in Safari, select **Share**, then **Add to Home Screen**. Open Junior
