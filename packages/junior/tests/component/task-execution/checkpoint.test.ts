@@ -1726,6 +1726,70 @@ describe("turn checkpoint", () => {
     expect(logException).not.toHaveBeenCalled();
   });
 
+  it("checks a checkpoint against history written after its turn record was read", async () => {
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const { loadProjection, recordAuthorizationCompleted } =
+      await import("@/chat/conversations/projection");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "conversation-stale-read";
+    const turnId = "turn-stale-read";
+    const request = userMessage("help me");
+    const reply = assistantMessage("done", request.timestamp + 1);
+    const summary = userMessage("summary");
+    const followup = userMessage("follow up");
+    const save = (
+      piMessages: PiMessage[],
+      read: Awaited<ReturnType<typeof getTurnRecord>>,
+    ) =>
+      upsertTurnRecord({
+        conversationId,
+        turnId,
+        sliceId: 1,
+        state: "running",
+        piMessages,
+        storedProjection: read?.storedProjection,
+      });
+
+    await save([request], undefined);
+    const read = await getTurnRecord(conversationId, turnId);
+    // Another writer adds model history after the checkpoint read its record.
+    await recordAuthorizationCompleted({
+      conversationId,
+      kind: "mcp",
+      provider: "notion",
+      actorId: "U123",
+      authorizationId: "authorization-stale-read",
+    });
+    const [, authObservation] = await loadProjection({ conversationId });
+
+    await expect(save([request], read)).rejects.toThrow(
+      "changed before its committed boundary",
+    );
+    await expect(
+      save([request, authObservation!, reply], read),
+    ).resolves.toMatchObject({ piMessages: [request, authObservation, reply] });
+
+    // A history replacement after the read makes the commit read the new
+    // history version.
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: summary.timestamp,
+      data: {
+        type: "compaction",
+        modelId: "test/model",
+        replacementHistory: [
+          { item: historyItemFromPiMessage(summary, { authority: "context" }) },
+        ],
+      },
+    });
+    await expect(
+      save([request, authObservation!, reply, followup], read),
+    ).rejects.toThrow("changed before its committed boundary");
+    await expect(save([summary, followup], read)).resolves.toMatchObject({
+      piMessages: [summary, followup],
+    });
+  });
+
   it("keeps a completed turn completed when a late worker saves progress", async () => {
     const logException = vi.fn();
     vi.doMock("@/chat/logging", async (importOriginal) => {

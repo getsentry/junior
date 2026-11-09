@@ -413,6 +413,24 @@ class SqlConversationEventStore implements ConversationEventStore {
     return row ? eventFromRow(row) : undefined;
   }
 
+  async loadEventsAfter(
+    conversationId: string,
+    afterSeq: number,
+  ): Promise<ConversationEvent[]> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          gt(juniorConversationEvents.seq, afterSeq),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
   async loadHistoryContaining(
     conversationId: string,
     seq: number,
