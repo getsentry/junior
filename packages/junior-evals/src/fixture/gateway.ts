@@ -2,7 +2,8 @@
  * AI Gateway observer for the agent test fixture.
  *
  * Every model request goes to the real AI Gateway. This observer only watches
- * agent requests (the ones that offer tools) and holds them while a test
+ * agent requests (the ones that offer tools). It keeps each one for the
+ * prompt cache prefix check (`cache-prefix.ts`) and holds them while a test
  * reacts. It never changes a model request or its response, and it writes
  * a model answer only for a forced Guardian decision (`guardian.ts`). A test
  * can make the provider reject one agent request with
@@ -15,6 +16,7 @@
 import { bypass, http, HttpResponse, passthrough } from "msw";
 import { onTestFinished } from "vitest";
 import { mswServer } from "@junior-tests/msw/server";
+import type { AgentGatewayRequest } from "./cache-prefix";
 import { answerGuardianReview, resetGuardianReviews } from "./guardian";
 import { answerWebSearch } from "./web";
 
@@ -77,6 +79,8 @@ export type GatewayProgress =
 export interface GatewayObserver {
   /** AI Gateway requests seen since the observer started, by endpoint. */
   requestCounts(): Record<string, number>;
+  /** Agent model requests of every Conversation, in the order they were sent. */
+  agentRequests(): readonly AgentGatewayRequest[];
   /** Called for agent model requests and their tool requests. */
   setProgressHook(
     hook: ((progress: GatewayProgress) => Promise<void>) | undefined,
@@ -138,6 +142,7 @@ function toolRequests(body: string): Array<{ name: string; args: unknown }> {
 /** Install the AI Gateway observer for the current test. */
 export function installGatewayObserver(): GatewayObserver {
   const counts: Record<string, number> = {};
+  const agentRequests: AgentGatewayRequest[] = [];
   let progressHook: ((progress: GatewayProgress) => Promise<void>) | undefined;
   resetGuardianReviews();
 
@@ -152,18 +157,17 @@ export function installGatewayObserver(): GatewayObserver {
       if (request.url === GATEWAY_IMAGE_MODEL_URL) {
         return HttpResponse.json({ images: [generatedImageBase64] });
       }
+      if (!request.url.startsWith(GATEWAY_MESSAGES_URL)) return passthrough();
+      const payload = (await request.clone().json()) as Omit<
+        AgentGatewayRequest,
+        "sessionAffinity"
+      > & { tools?: unknown[] };
+      const sessionAffinity = request.headers.get("x-session-affinity");
+      // Titles and other side calls offer no tools or have no agent session.
+      if (!payload.tools?.length || !sessionAffinity) return passthrough();
+      const { model, system, tools, messages } = payload;
+      agentRequests.push({ model, system, tools, messages, sessionAffinity });
       const hook = progressHook;
-      if (
-        (!hook && modelRejections.length === 0) ||
-        !request.url.startsWith(GATEWAY_MESSAGES_URL)
-      ) {
-        return passthrough();
-      }
-      const payload = (await request.clone().json()) as { tools?: unknown[] };
-      if (!payload.tools?.length) {
-        // Titles and other side calls do not offer tools.
-        return passthrough();
-      }
       const rejection = modelRejections.shift();
       if (rejection) {
         return HttpResponse.json(
@@ -204,6 +208,7 @@ export function installGatewayObserver(): GatewayObserver {
 
   return {
     requestCounts: () => ({ ...counts }),
+    agentRequests: () => agentRequests,
     setProgressHook(hook) {
       progressHook = hook;
     },

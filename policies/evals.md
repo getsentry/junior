@@ -49,6 +49,9 @@ runtime. Harness mechanics live in `packages/junior-evals/src/`.
   fields and upload serialization belong in integration tests.
 - Keep shared assertion helpers small and typed. Prefer selectors. Keep
   `expect` at the call site.
+- The agent test fixture fails a call when an agent model request does not
+  start with the cached prompt prefix of its Conversation. See
+  `src/fixture/cache-prefix.ts`.
 
 ### Failures and prompts
 

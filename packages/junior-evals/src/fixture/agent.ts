@@ -22,6 +22,7 @@ import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
+import { findCachePrefixBreaks } from "./cache-prefix";
 import { installGatewayObserver, type GatewayProgress } from "./gateway";
 import {
   expectAccepted,
@@ -323,6 +324,14 @@ export async function createFixtureAgent(
     const errors = [...queue.takeErrors(), ...backgroundErrors.splice(0)];
     if (errors.length > 0) {
       throw new AggregateError(errors, "Agent work failed");
+    }
+    // Each eval is also a prompt cache scenario. A model request that does
+    // not extend the cached prefix of its Conversation fails the call.
+    const cacheBreaks = findCachePrefixBreaks(gateway.agentRequests());
+    if (cacheBreaks.length > 0) {
+      throw new Error(
+        `Agent model requests rewrote the cached prompt prefix: ${JSON.stringify(cacheBreaks, null, 2)}`,
+      );
     }
   };
 
