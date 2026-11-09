@@ -10,9 +10,11 @@ import {
   type JuniorApiVariables,
 } from "@/api";
 import { notificationSettingsSchema } from "@/api/schema";
+import { createSlackActor } from "@/chat/actor";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { closeDb, getConversationStore } from "@/chat/db";
+import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   processPluginTask,
@@ -20,6 +22,12 @@ import {
 } from "@/chat/plugins/task-runner";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
+import { dndInfoOk } from "../../fixtures/slack/factories/api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiError,
+  queueSlackApiResponse,
+} from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
 
 const EMAIL = "alice@example.com";
@@ -225,5 +233,61 @@ describe("reply notification task", () => {
     await completeDashboardTurn("Done while you were away.");
 
     expect(pushes).toHaveLength(0);
+  });
+
+  it("follows the linked Slack notification schedule and falls back to the hours", async () => {
+    const api = await viewerApi();
+    await resolveActorIdentityId(
+      getSqlExecutor(),
+      createSlackActor("T123", "U0ALICE", { email: EMAIL }),
+    );
+    await api(
+      "POST",
+      "/api/notifications/subscriptions",
+      browserSubscription("phone"),
+    );
+    const hour = new Date().getUTCHours();
+    const clock = (offset: number) =>
+      `${String((hour + offset) % 24).padStart(2, "0")}:00`;
+    const closedHours = {
+      followSlack: true,
+      workingHoursOnly: true,
+      days: [0, 1, 2, 3, 4, 5, 6],
+      start: clock(2),
+      end: clock(3),
+      timezone: "UTC",
+    };
+    const settings = await api(
+      "PUT",
+      "/api/notifications/schedule",
+      closedHours,
+    );
+    expect(settings?.slackPausedNow).toBe(false);
+
+    // Slack has no Do Not Disturb window, so it overrides the closed hours.
+    await completeDashboardTurn("Slack says you are around.");
+    expect(pushes).toHaveLength(1);
+
+    const nowMs = Date.now();
+    await api("PUT", "/api/notifications/schedule", {
+      ...closedHours,
+      workingHoursOnly: false,
+    });
+    queueSlackApiResponse("dnd.info", {
+      body: dndInfoOk({ startMs: nowMs - 60_000, endMs: nowMs + 3_600_000 }),
+    });
+    await completeDashboardTurn("Slack is paused.");
+    expect(pushes).toHaveLength(1);
+
+    // Injected fault: the install has not granted `dnd:read` yet.
+    queueSlackApiError("dnd.info", {
+      error: "missing_scope",
+      needed: "dnd:read",
+    });
+    await completeDashboardTurn("Slack cannot answer.");
+    expect(pushes).toHaveLength(2);
+    expect(
+      getCapturedSlackApiCalls("dnd.info").map((call) => call.params.user),
+    ).toContain("U0ALICE");
   });
 });

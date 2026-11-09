@@ -265,7 +265,11 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
     draft.start !== draft.end &&
     (!draft.workingHoursOnly || draft.days.length > 0);
   const timezone = draft.timezone ?? settings.timezone;
-  const openNow = isWithinNotificationSchedule(draft, timezone, Date.now());
+  const followingSlack =
+    draft.followSlack === true && settings.slackPausedNow !== undefined;
+  const openNow = followingSlack
+    ? !settings.slackPausedNow
+    : isWithinNotificationSchedule(draft, timezone, Date.now());
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -278,6 +282,23 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
       onSubmit={submit}
     >
       <h3 className="m-0 text-base font-bold">Working hours</h3>
+      <label className="mt-4 flex items-center gap-3 text-sm">
+        <Checkbox
+          checked={draft.followSlack === true}
+          onCheckedChange={(checked) =>
+            // The saved schedule omits the field when it is off.
+            update({ followSlack: checked === true ? true : undefined })
+          }
+        />
+        Follow my Slack notification schedule
+      </label>
+      {draft.followSlack ? (
+        <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
+          {settings.slackPausedNow === undefined
+            ? "Junior cannot read your Slack notification schedule, so it uses the hours below."
+            : "Junior pauses notifications when Slack does. It uses the hours below only when it cannot read Slack."}
+        </p>
+      ) : null}
       <label className="mt-4 flex items-center gap-3 text-sm">
         <Checkbox
           checked={draft.workingHoursOnly}

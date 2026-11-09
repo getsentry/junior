@@ -25,6 +25,11 @@ export const notificationSettingsSchema = z
     /** Timezone that Junior uses for the schedule now. */
     timezone: z.string().min(1),
     timezoneSource: notificationTimezoneSourceSchema,
+    /**
+     * Whether the viewer's Slack notification schedule pauses notifications
+     * now. Absent when Junior cannot read it.
+     */
+    slackPausedNow: z.boolean().optional(),
     /** Number of browsers that receive the viewer's notifications. */
     deviceCount: z.number().int().nonnegative(),
   })

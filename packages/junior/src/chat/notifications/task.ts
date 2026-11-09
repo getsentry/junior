@@ -10,6 +10,7 @@ import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
 import { isWithinNotificationSchedule } from "./schedule";
+import { isPausedBySlack } from "./slack";
 import { readNotificationSchedule } from "./store";
 import { resolveNotificationTimezone } from "./timezone";
 import {
@@ -76,7 +77,8 @@ type SkipReason =
   | "no_reply"
   | "no_user"
   | "not_configured"
-  | "outside_hours";
+  | "outside_hours"
+  | "slack_paused";
 
 function skip(reason: SkipReason): void {
   setSpanAttributes({
@@ -109,14 +111,20 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
 
   const nowMs = Date.now();
   const schedule = await readNotificationSchedule(db, userId);
-  const { timezone } = await resolveNotificationTimezone({
-    db,
-    nowMs,
-    schedule,
-    userId,
-  });
-  if (!isWithinNotificationSchedule(schedule, timezone, nowMs)) {
-    return skip("outside_hours");
+  const pausedBySlack = schedule.followSlack
+    ? await isPausedBySlack(db, userId, nowMs)
+    : undefined;
+  if (pausedBySlack) return skip("slack_paused");
+  if (pausedBySlack === undefined) {
+    const { timezone } = await resolveNotificationTimezone({
+      db,
+      nowMs,
+      schedule,
+      userId,
+    });
+    if (!isWithinNotificationSchedule(schedule, timezone, nowMs)) {
+      return skip("outside_hours");
+    }
   }
 
   // The payload holds only a short plain-text preview. Logs hold only counts.
