@@ -128,6 +128,12 @@ function buildChatEndAttributes(
   }
 
   Object.assign(attributes, extractGenAiUsageAttributes(message));
+  // The 1h-retention part of the cache write. The 5m part is the rest of
+  // `gen_ai.usage.cache_creation.input_tokens`. The key avoids "token",
+  // because Sentry scrubs keys that contain it.
+  if (message.usage.cacheWrite1h !== undefined) {
+    attributes["app.ai.usage.cache_write_1h"] = message.usage.cacheWrite1h;
+  }
 
   if (message.stopReason) {
     attributes["gen_ai.response.finish_reasons"] = [

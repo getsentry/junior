@@ -318,6 +318,12 @@ describe("createTracedStreamFn", () => {
 
     // Resolve the stream's terminal Promise to trigger end-attribute population.
     const finalMessage = fakeMessage();
+    finalMessage.usage = {
+      ...finalMessage.usage,
+      input: 97,
+      cacheWrite: 3,
+      cacheWrite1h: 2,
+    };
     stream.end(finalMessage);
     for await (const _event of returned) {
       // The relayed stream ends when the provider stream ends.
@@ -333,6 +339,8 @@ describe("createTracedStreamFn", () => {
     expect(typeof endAttributes["gen_ai.output.messages"]).toBe("string");
     expect(endAttributes["gen_ai.usage.input_tokens"]).toBe(100);
     expect(endAttributes["gen_ai.usage.output_tokens"]).toBe(5);
+    expect(endAttributes["gen_ai.usage.cache_creation.input_tokens"]).toBe(3);
+    expect(endAttributes["app.ai.usage.cache_write_1h"]).toBe(2);
     expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
     expect(endAttributes["gen_ai.response.model"]).toBe("openai/gpt-5.4");
     expect(span.end).toHaveBeenCalledTimes(1);

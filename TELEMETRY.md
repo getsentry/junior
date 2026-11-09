@@ -331,6 +331,9 @@ text.
   change also changes the tool hash.
 - `completeText` calls have the same attributes. `completeObject` uses the AI
   SDK, which has no payload hook, so it has none.
+- On calls through the Pi stream wrapper, `app.ai.usage.cache_write_1h` is the
+  part of `gen_ai.usage.cache_creation.input_tokens` written with 1h
+  retention. The rest used 5m retention.
 
 To classify a cache miss, compare a call with the previous call in the same
 `gen_ai.conversation.id`:
