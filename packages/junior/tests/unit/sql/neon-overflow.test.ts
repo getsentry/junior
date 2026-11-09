@@ -120,6 +120,31 @@ describe("Neon pool overflow", () => {
     ]);
   });
 
+  it("uses a free client while pg-pool hands another one over", async () => {
+    // Open two idle clients. Queries under the migration lock never overflow.
+    await executor.withMigrationLock("junior_migrations", async () => {
+      await Promise.all([
+        executor.execute("select 'warm 1'"),
+        executor.execute("select 'warm 2'"),
+      ]);
+    });
+    wire.websocketQueries.length = 0;
+
+    const first = executor.query("select 'first'");
+    // pg-pool hands the first query its client on the next tick. This tick
+    // runs after that and before the first query resumes.
+    const second = new Promise((resolve) => {
+      process.nextTick(() => resolve(executor.query("select 'second'")));
+    });
+    await Promise.all([first, second]);
+
+    expect(wire.websocketQueries).toEqual([
+      "select 'first'",
+      "select 'second'",
+    ]);
+    expect(wire.httpQueries).toEqual([]);
+  });
+
   it("keeps every query in a transaction on its client", async () => {
     let finish = () => {};
     const finished = new Promise<void>((resolve) => (finish = resolve));

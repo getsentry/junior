@@ -98,13 +98,7 @@ class OverflowPool extends Pool {
   }
 
   private async queryWebSocket(query: PlainQuery, params: unknown[]) {
-    this.pendingAcquires++;
-    let client: PoolClient;
-    try {
-      client = await this.connect();
-    } finally {
-      this.pendingAcquires--;
-    }
+    const client = await this.acquire();
     try {
       const result = await client.query({ ...query, values: params });
       client.release();
@@ -114,6 +108,23 @@ class OverflowPool extends Pool {
       client.release(error as Error);
       throw error;
     }
+  }
+
+  // pg-pool calls this callback in the same step that removes the client from
+  // `idleCount`. A promise would resume later, and queries in between would
+  // count that client twice.
+  private acquire(): Promise<PoolClient> {
+    this.pendingAcquires++;
+    return new Promise((resolve, reject) => {
+      this.connect((error, client) => {
+        this.pendingAcquires--;
+        if (client) {
+          resolve(client);
+        } else {
+          reject(error);
+        }
+      });
+    });
   }
 
   private async queryHttp(query: PlainQuery, params: unknown[]) {
