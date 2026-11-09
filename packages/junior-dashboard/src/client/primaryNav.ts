@@ -19,16 +19,15 @@ export function isAuthPrimaryNavPath(pathname: string): boolean {
   );
 }
 
-const CODE_NAV_ITEM: DashboardHeaderNavItem = {
-  key: "code",
-  label: "Code",
-  to: "/code",
-};
-const SYSTEM_NAV_ITEM: DashboardHeaderNavItem = {
-  key: "system",
-  label: "System",
-  to: "/system",
-};
+/**
+ * Low-traffic pages for every viewer. The desktop sidebar footer holds them.
+ * On mobile they sit in the account links, or in the primary nav without an
+ * account.
+ */
+export const SYSTEM_NAV_ITEMS: DashboardHeaderNavItem[] = [
+  { key: "code", label: "Code", to: "/code" },
+  { key: "system", label: "System", to: "/system" },
+];
 
 /** Build the signed-in primary nav, holding auth slots while shell data loads. */
 export function buildPrimaryNavItems(input: {
@@ -44,9 +43,6 @@ export function buildPrimaryNavItems(input: {
   const reserveAuthPrimaryNav =
     input.loading && isAuthPrimaryNavPath(input.pathname);
   const showTasksNav = input.loggedIn || reserveAuthPrimaryNav;
-  // Signed-in viewers find Code and System in the profile menu. Without an
-  // account there is no profile menu, so the pages stay here.
-  const showAccountPages = !input.loading && !input.loggedIn;
 
   return [
     ...(showTasksNav
@@ -61,19 +57,14 @@ export function buildPrimaryNavItems(input: {
         ]
       : []),
     ...input.primaryUserPages.map(userPageNavItem),
-    ...(showAccountPages ? [CODE_NAV_ITEM, SYSTEM_NAV_ITEM] : []),
   ];
 }
 
-/** Build the pages in the profile menu: plugin profile pages, Code, and System. */
+/** Build the plugin pages in the profile menu. */
 export function buildProfileNavItems(
   profileUserPages: PluginUserPageLink[],
 ): DashboardHeaderNavItem[] {
-  return [
-    ...profileUserPages.map(userPageNavItem),
-    CODE_NAV_ITEM,
-    SYSTEM_NAV_ITEM,
-  ];
+  return profileUserPages.map(userPageNavItem);
 }
 
 function userPageNavItem(page: PluginUserPageLink): DashboardHeaderNavItem {

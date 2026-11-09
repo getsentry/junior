@@ -53,7 +53,11 @@ import {
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
-import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
+import {
+  buildPrimaryNavItems,
+  buildProfileNavItems,
+  SYSTEM_NAV_ITEMS,
+} from "./primaryNav";
 import { TracedRoutes } from "./TracedRoutes";
 import {
   ReviewDeskLoading,
@@ -278,6 +282,14 @@ export function DashboardShell() {
       )
     : [];
 
+  // Mobile has no sidebar footer. Code and System sit in the account links,
+  // or in the primary nav without an account.
+  const mobileNavItems =
+    loggedIn || loading
+      ? primaryNavItems
+      : [...primaryNavItems, ...SYSTEM_NAV_ITEMS];
+  const mobileAccountPages = [...profileNavItems, ...SYSTEM_NAV_ITEMS];
+
   useEffect(() => {
     setMobileNavigationOpen(false);
   }, [location.pathname]);
@@ -305,12 +317,17 @@ export function DashboardShell() {
       <AppSidebarProvider>
         <CommandPalette
           currentConversationId={conversationId}
-          navItems={[...primaryNavItems, ...profileNavItems]}
+          navItems={[
+            ...primaryNavItems,
+            ...profileNavItems,
+            ...SYSTEM_NAV_ITEMS,
+          ]}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
         <AppSidebar
           conversations={<ConversationSidebar selectedId={conversationId} />}
+          footerNavItems={SYSTEM_NAV_ITEMS}
           navItems={primaryNavItems}
           onSearch={openCommandPalette}
           profile={
@@ -346,7 +363,7 @@ export function DashboardShell() {
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
-                navItems={primaryNavItems}
+                navItems={mobileNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
                 onSearch={openCommandPalette}
                 mobileIdentity={
@@ -366,7 +383,7 @@ export function DashboardShell() {
                       identity={data!.me}
                       onSignOut={signOut}
                       spend={personalSpendQuery.data}
-                      pages={profileNavItems}
+                      pages={mobileAccountPages}
                       variant="sheet-links"
                     />
                   ) : undefined

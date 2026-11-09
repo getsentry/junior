@@ -28,10 +28,7 @@ import {
 } from "../ui/sidebar";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import { navItemIcon } from "./navIcons";
-import {
-  COMMAND_PALETTE_LABEL,
-  COMMAND_PALETTE_SHORTCUT,
-} from "../CommandPalette";
+import { COMMAND_PALETTE_SHORTCUT } from "../CommandPalette";
 import { isPlatformShortcut } from "../../keyboard";
 import { cn } from "../../styles";
 import { FOCUS_CREATE_STATE } from "../../conversations/conversationRoutes";
@@ -102,6 +99,7 @@ export function AppSidebarProvider(props: { children: ReactNode }) {
 
 function NavItem(props: {
   active?: boolean;
+  className?: string;
   count?: number;
   icon: LucideIcon;
   label: string;
@@ -116,7 +114,7 @@ function NavItem(props: {
     <SidebarMenuItem>
       <SidebarMenuButton
         aria-label={label}
-        className={NAV_BUTTON_CLASS}
+        className={cn(NAV_BUTTON_CLASS, props.className)}
         isActive={props.active}
         render={
           <Link
@@ -147,18 +145,18 @@ function SearchItem(props: { onSearch(): void }) {
     <SidebarMenuItem>
       <SidebarMenuButton
         aria-keyshortcuts="Meta+K Control+K"
-        aria-label={COMMAND_PALETTE_LABEL}
+        aria-label="Search"
         className={NAV_BUTTON_CLASS}
         onClick={props.onSearch}
         tooltip={{
-          children: `${COMMAND_PALETTE_LABEL} ${COMMAND_PALETTE_SHORTCUT}`,
+          children: `Search ${COMMAND_PALETTE_SHORTCUT}`,
           size: "compact",
           sideOffset: 6,
         }}
       >
         <Search aria-hidden="true" strokeWidth={1.9} />
         <span className={cn("flex items-center", COLLAPSED_HIDDEN_CLASS)}>
-          <span className="truncate">{COMMAND_PALETTE_LABEL}</span>
+          <span className="truncate">Search</span>
           <kbd className="ml-auto pl-2 font-sans text-xs text-dashboard-text-faint">
             {COMMAND_PALETTE_SHORTCUT}
           </kbd>
@@ -168,11 +166,15 @@ function SearchItem(props: { onSearch(): void }) {
   );
 }
 
-function PageNavItem(props: { item: DashboardHeaderNavItem }) {
+function PageNavItem(props: {
+  className?: string;
+  item: DashboardHeaderNavItem;
+}) {
   const active = useMatch({ end: false, path: props.item.to }) !== null;
   return (
     <NavItem
       active={active}
+      className={props.className}
       count={props.item.count}
       icon={navItemIcon(props.item.key)}
       label={props.item.label}
@@ -269,13 +271,15 @@ function SidebarResizeHandle() {
 /**
  * The one desktop sidebar. Its first row lines up with the page top bar and
  * holds the brand and the collapse toggle. Below it are the app destinations,
- * then the viewer's conversations, then the profile. Collapsed, it keeps the
- * destination icons and hides the conversations. `DashboardHeader` owns
- * mobile navigation.
+ * then the viewer's conversations. The footer holds low-traffic pages and the
+ * profile with spend. Collapsed, it keeps the icons and hides the
+ * conversations. `DashboardHeader` owns mobile navigation.
  */
 export function AppSidebar(props: {
   /** The conversation list. It shows only while the sidebar is expanded. */
   conversations: ReactNode;
+  /** Low-traffic pages above the profile. */
+  footerNavItems: DashboardHeaderNavItem[];
   navItems: DashboardHeaderNavItem[];
   onSearch(): void;
   profile?: ReactNode;
@@ -326,13 +330,20 @@ export function AppSidebar(props: {
       >
         {props.conversations}
       </div>
-      {props.profile ? (
-        <SidebarFooter className="border-t border-dashboard-border px-3 py-2 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:border-t-0 group-data-[collapsible=icon]:px-2">
+      <SidebarFooter className="gap-1 border-t border-dashboard-border px-3 py-2 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
+        <nav aria-label="More pages" className="w-full">
+          <SidebarMenu className="gap-0.5 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-1.5">
+            {props.footerNavItems.map((item) => (
+              <PageNavItem className="h-8" item={item} key={item.key} />
+            ))}
+          </SidebarMenu>
+        </nav>
+        {props.profile ? (
           <SidebarMenu className="group-data-[collapsible=icon]:items-center">
             {props.profile}
           </SidebarMenu>
-        </SidebarFooter>
-      ) : null}
+        ) : null}
+      </SidebarFooter>
       <SidebarResizeHandle />
     </Sidebar>
   );

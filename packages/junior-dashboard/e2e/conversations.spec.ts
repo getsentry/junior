@@ -579,25 +579,27 @@ test("shows personal spend and groups profile and session actions", async ({
   });
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  // Spend shows under the name on every page, without opening the menu.
+  await expect(trigger).toHaveAccessibleDescription(
+    "Personal model spend: 7 days $0.46, 30 days $0.46",
+  );
+  await expect(trigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
+    useInnerText: true,
+  });
   await trigger.click();
 
   const popover = page.locator("#profile-popover");
   await expect(popover.getByText("dev@example.com")).toBeVisible();
-  await expect(popover).toContainText("7d $0.46");
-  await expect(popover).toContainText("30d $0.46");
   await expect(
     popover.getByRole("link", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
     popover.getByRole("link", { name: "Settings", exact: true }),
   ).toHaveAttribute("href", "/settings");
-  // Low-traffic pages live here instead of the primary nav.
+  // Low-traffic pages sit in the sidebar footer, not the primary nav.
   await expect(
-    popover.getByRole("link", { name: "Code", exact: true }),
-  ).toHaveAttribute("href", "/code");
-  await expect(
-    popover.getByRole("link", { name: "System", exact: true }),
-  ).toHaveAttribute("href", "/system");
+    rail.getByRole("navigation", { name: "More pages" }).getByRole("link"),
+  ).toHaveText(["Code", "System"]);
   await expect(
     rail
       .getByRole("navigation", { name: "Primary" })

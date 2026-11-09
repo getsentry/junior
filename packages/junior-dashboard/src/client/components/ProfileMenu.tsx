@@ -5,7 +5,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 
@@ -27,8 +27,8 @@ type ProfileMenuProps = {
   /** Pages that live in this menu instead of the primary nav. */
   pages: DashboardHeaderNavItem[];
   /**
-   * `popover` is the profile row at the bottom of the desktop nav sidebar.
-   * It shows only the avatar while the sidebar is collapsed.
+   * `popover` is the profile and spend row at the bottom of the desktop
+   * sidebar. It shows only the avatar while the sidebar is collapsed.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
@@ -139,6 +139,7 @@ export function ProfileMenu({
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
+  const spendId = useId();
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
   const sevenDaySpend = spend
@@ -162,24 +163,6 @@ export function ProfileMenu({
             </p>
           ) : null}
         </div>
-      </div>
-      <div
-        aria-label="Personal model spend"
-        className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs tabular-nums text-dashboard-text-muted"
-        role="group"
-      >
-        <span>
-          7d{" "}
-          <span className="font-semibold text-dashboard-text">
-            <SpendAmount value={spend?.sevenDaysUsd} />
-          </span>
-        </span>
-        <span>
-          30d{" "}
-          <span className="font-semibold text-dashboard-text">
-            <SpendAmount value={spend?.thirtyDaysUsd} />
-          </span>
-        </span>
       </div>
     </div>
   );
@@ -337,17 +320,37 @@ export function ProfileMenu({
     >
       <SidebarMenuItem>
         <SidebarMenuButton
+          aria-describedby={spendId}
           aria-label={menuLabel}
           className={cn(
-            // The collapsed nav sidebar shows only the avatar.
-            "h-10 gap-2.5 rounded-lg px-1.5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-3.5",
+            // The collapsed sidebar shows only the avatar.
+            "h-12 gap-2.5 rounded-lg px-1.5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-3.5",
             open && "bg-sidebar-accent",
           )}
           render={<PopoverTrigger {...hoverTrigger} />}
         >
           <ProfileAvatar user={identity.user} />
-          <span className="min-w-0 flex-1 truncate font-medium group-data-[collapsible=icon]:hidden">
-            {name}
+          {/* Spend stays in view on every page, under the name. */}
+          <span className="grid min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+            <span className="truncate font-medium">{name}</span>
+            <span
+              aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
+              className="flex gap-2 font-sans text-xs tabular-nums text-dashboard-text-muted"
+              id={spendId}
+            >
+              <span className="whitespace-nowrap">
+                7d{" "}
+                <span className="font-semibold text-dashboard-text">
+                  <SpendAmount value={spend?.sevenDaysUsd} />
+                </span>
+              </span>
+              <span className="whitespace-nowrap">
+                30d{" "}
+                <span className="font-semibold text-dashboard-text">
+                  <SpendAmount value={spend?.thirtyDaysUsd} />
+                </span>
+              </span>
+            </span>
           </span>
           <ChevronsUpDown
             aria-hidden="true"
