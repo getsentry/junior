@@ -23,6 +23,8 @@ export const DisplayText = memo(function DisplayText(props: {
   chat?: boolean;
   /** Keep body line height compact in narrow panels. */
   compact?: boolean;
+  /** Read a Markdown file, not a chat message. */
+  document?: boolean;
   inline?: boolean;
   /**
    * Link people to their page. Set false inside a button, which cannot hold
@@ -44,6 +46,7 @@ export const DisplayText = memo(function DisplayText(props: {
         <DisplayTextBlocks
           chat={props.chat}
           compact={props.compact}
+          document={props.document}
           text={props.text}
         />
       )}
@@ -54,6 +57,7 @@ export const DisplayText = memo(function DisplayText(props: {
 function DisplayTextBlocks(props: {
   chat?: boolean;
   compact?: boolean;
+  document?: boolean;
   text: string;
 }) {
   return (
@@ -64,6 +68,7 @@ function DisplayTextBlocks(props: {
             <MarkdownText
               chat={props.chat}
               compact={props.compact}
+              document={props.document}
               key={index}
               text={block.code}
             />

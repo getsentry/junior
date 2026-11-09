@@ -1073,6 +1073,12 @@ Run targeted tests before broad suites, and keep durable explanations beside the
             contentType: "text/plain",
             bytes: 42,
           },
+          {
+            id: "qa-readme-md",
+            filename: "README.md",
+            contentType: "text/markdown",
+            bytes: 115,
+          },
         ],
       }),
       reportEvent(16, iso(Date.parse(startedAt), 64_000), {
