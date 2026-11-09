@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, isNull, notExists, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, ne, notExists } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
@@ -107,31 +107,18 @@ export async function updateConversationSubscription(
   );
   return await executor.transaction(async () => {
     const db = executor.db();
-    // Lock the tree, children before the root. A Turn in a child locks its
-    // own row first and the root only to restore it, so this order cannot
-    // deadlock with it. A concurrent unsubscribe, mention, or pin either
-    // commits first, and the subscriber check below sees it, or it waits,
-    // then sees the archive and restores it.
-    const tree = await db
+    // Lock the root first, like an archive does, so unsubscribes and
+    // archives of one tree run one at a time. `no key update` lets a Turn
+    // in a child add a participant row (a foreign key to the root) without
+    // a wait on this lock.
+    const [root] = await db
       .select({
         archivedAt: juniorConversations.archivedAt,
-        conversationId: juniorConversations.conversationId,
         lastActivityAt: juniorConversations.lastActivityAt,
       })
       .from(juniorConversations)
-      .where(
-        or(
-          eq(juniorConversations.conversationId, rootConversationId),
-          eq(juniorConversations.rootConversationId, rootConversationId),
-        ),
-      )
-      .orderBy(
-        sql`${juniorConversations.conversationId} = ${rootConversationId}`,
-      )
-      .for("update");
-    const root = tree.find(
-      (node) => node.conversationId === rootConversationId,
-    );
+      .where(eq(juniorConversations.conversationId, rootConversationId))
+      .for("no key update");
     if (!root) return undefined;
     const unsubscribedAt = subscribed ? null : new Date();
     // The root actor may not have a participant row yet. The detail ETag
@@ -160,6 +147,23 @@ export async function updateConversationSubscription(
         subscribed,
       };
     }
+    // Lock the unarchived descendants before the subscriber check. A Turn in
+    // a child holds that child's row, so a mention in flight commits first
+    // and the check sees it. A later mention waits, then sees the archive
+    // and restores it. That Turn does not lock the root while the root is
+    // not archived, so it cannot deadlock with this transaction.
+    const descendants = await db
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(
+        and(
+          eq(juniorConversations.rootConversationId, rootConversationId),
+          ne(juniorConversations.conversationId, rootConversationId),
+          isNull(juniorConversations.archivedAt),
+        ),
+      )
+      .orderBy(juniorConversations.conversationId)
+      .for("no key update");
     if (await hasSubscriber(db, rootConversationId)) {
       return { archivedAt: null, subscribed: false };
     }
@@ -167,9 +171,7 @@ export async function updateConversationSubscription(
     // Descendants that are already archived keep their own time.
     await setArchivedAt(
       db,
-      tree
-        .filter((node) => !node.archivedAt)
-        .map((node) => node.conversationId),
+      [rootConversationId, ...descendants.map((node) => node.conversationId)],
       archivedAt,
     );
     return { archivedAt: archivedAt.toISOString(), subscribed: false };
