@@ -5,8 +5,7 @@ import {
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
-import { cancelSignInPausedTurn } from "@/chat/task-execution/conversation-turn";
-import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
+import { cancelSignInWait } from "@/chat/task-execution/conversation-turn";
 import {
   getConversationWorkState,
   stopConversationWork,
@@ -138,9 +137,9 @@ export async function stopChildAgentsBelow(
  * stopped each child agent, so no result becomes `appended` after this read.
  *
  * The mailbox read is not atomic with the parent worker. A worker that takes
- * a result before this update holds the work lease, so the
- * `stopConversationTurn` that each caller runs next stops its Turn. A result
- * that such a Turn took but did not ack yet is marked `skipped`.
+ * a result before this update holds the work lease, so the stop request of
+ * the Conversation stops its Turn. A result that such a Turn took but did not
+ * ack yet is marked `skipped`.
  */
 async function skipUnreadResults(
   conversationId: string,
@@ -186,10 +185,7 @@ async function finishStoppedTree(
   }
   await markConversationsStopped(conversationIdsToStop, options);
   for (const conversationId of conversationIdsToStop) {
-    const pausedTurnId = await getAuthPausedConversationTurnId(conversationId);
-    if (pausedTurnId) {
-      await cancelSignInPausedTurn({ conversationId, turnId: pausedTurnId });
-    }
+    await cancelSignInWait(conversationId);
     await stopConversationWork({ conversationId, state: options.state });
   }
 }

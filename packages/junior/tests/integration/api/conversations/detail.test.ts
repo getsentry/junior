@@ -106,16 +106,61 @@ describe("conversation detail API", () => {
         type: "turn_routed",
       },
     });
+    // Background and active summaries are one compaction operation. The swap
+    // of a prepared summary makes no model call, so it adds no cost.
+    await getConversationEventStore().append(conversationId, [
+      {
+        createdAtMs: 5,
+        data: {
+          costUsd: 0.0003,
+          historyVersion: 0,
+          markSeq: 0,
+          modelId: "test-model",
+          outcome: "ready",
+          summary: "Prepared summary.",
+          type: "compaction_prepared",
+        },
+      },
+    ]);
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 6,
+      data: {
+        modelId: "test-model",
+        replacementHistory: [],
+        summary: "Prepared summary.",
+        type: "compaction",
+      },
+    });
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: 7,
+      data: {
+        costUsd: 0.0001,
+        modelId: "test-model",
+        replacementHistory: [],
+        summary: "Active summary.",
+        type: "compaction",
+      },
+    });
     const refreshedResponse = await app.request(
       `http://localhost/api/conversations/${conversationId}`,
     );
     const refreshed = conversationDetailReportSchema.parse(
       await refreshedResponse.json(),
     );
-    expect(refreshed.events.map((event) => event.seq)).toEqual([0]);
+    expect(refreshed.events.map((event) => event.data.type)).toEqual([
+      "message",
+      "compaction",
+      "compaction",
+    ]);
     expect(refreshed.auxiliaryCosts).toEqual({
-      costUsd: 0.0006,
+      costUsd: 0.001,
       operations: [
+        {
+          costUsd: 0.0004,
+          events: 2,
+          name: "compaction",
+          namespace: "junior",
+        },
         {
           costUsd: 0.0002,
           events: 1,

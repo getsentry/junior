@@ -609,23 +609,22 @@ test("inspects and copies a child agent transcript", async ({
   await expect(
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
-  // Adjacent child agents share one group card in the main view. A blocked
-  // row stays visible; a completed row folds until the card opens.
-  const group = page.getByRole("button", { name: /^2 agents/ });
-  await expect(group).toContainText("1 blocked");
+  // A run of Tasks collapses to one line that says what needs attention.
+  const tasksLine = page.getByRole("button", { name: /^2 Tasks/ });
+  await expect(tasksLine).toContainText("1 blocked");
   const planner = page.getByRole("button", {
-    name: "Open planner transcript",
+    name: "Open Review the dashboard plan transcript",
   });
   const reviewer = page.getByRole("button", {
     name: "Open reviewer transcript",
   });
-  await expect(reviewer).toContainText("blocked");
   await expect(planner).toBeHidden();
-  // The card already shows the result, so its Event row does not render.
+  // The line already shows the result, so its Event row does not render.
   await expect(
     page.getByText('Child agent "reviewer" is blocked.'),
   ).toBeHidden();
-  await page.getByRole("button", { name: "1 completed" }).click();
+  await tasksLine.click();
+  await expect(reviewer).toContainText("blocked");
   await expect(planner).toContainText("completed");
   await screenshot(page, "conversation-child-agents");
 
@@ -868,10 +867,7 @@ test("rates a Junior Reply once, with time to change it", async ({
   });
 });
 
-test("shows the agent tree of a child agent conversation", async ({
-  page,
-  dashboard,
-}) => {
+test("shows the breadcrumb of a Task page", async ({ page, dashboard }) => {
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-plan")}`,
   );
@@ -879,14 +875,17 @@ test("shows the agent tree of a child agent conversation", async ({
   await expect(
     page.getByRole("heading", { name: "Review the dashboard plan" }),
   ).toBeVisible();
-  const tree = page.getByRole("navigation", { name: "Agent tree" });
+  // A Task page keeps its agent label as its title.
+  const tree = page.getByRole("navigation", { name: "Breadcrumb" });
   await expect(
     tree.getByRole("link", { name: "Dashboard QA edge cases" }),
   ).toHaveAttribute(
     "href",
     `/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
   );
-  await expect(tree).not.toContainText("Review the dashboard plan");
+  await expect(
+    tree.getByRole("heading", { name: "Review the dashboard plan" }),
+  ).toBeVisible();
   await expect(
     page.getByText("Review complete; no blocking issues found."),
   ).toBeVisible();
@@ -897,6 +896,6 @@ test("shows the agent tree of a child agent conversation", async ({
     page.getByRole("heading", { name: "Dashboard QA edge cases" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "Agent tree" }),
+    page.getByRole("navigation", { name: "Breadcrumb" }),
   ).toHaveCount(0);
 });

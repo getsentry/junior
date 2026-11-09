@@ -10,7 +10,7 @@ import {
   hasRunnableConversationWork,
   isInvalidConversationRecordError,
   listActiveConversationIds,
-  removeActiveConversation,
+  pruneActiveConversation,
   type ConversationWorkState,
 } from "./store";
 
@@ -70,7 +70,7 @@ export async function recoverConversationWork(args: {
         // bounded oldest-first scan so it cannot starve recovery for every
         // other conversation.
         if (isInvalidConversationRecordError(error)) {
-          await removeActiveConversation({
+          await pruneActiveConversation({
             conversationId,
             state: args.state,
           });
@@ -78,16 +78,8 @@ export async function recoverConversationWork(args: {
         return;
       }
       try {
-        if (!work) {
-          await removeActiveConversation({
-            conversationId,
-            state: args.state,
-          });
-          return;
-        }
-
-        if (work.execution.status === "idle") {
-          await removeActiveConversation({
+        if (!work || !hasRunnableConversationWork(work)) {
+          await pruneActiveConversation({
             conversationId,
             state: args.state,
           });
@@ -141,7 +133,7 @@ export async function recoverConversationWork(args: {
           return;
         }
 
-        if (work.execution.lease || !hasRunnableConversationWork(work)) {
+        if (work.execution.lease) {
           return;
         }
 

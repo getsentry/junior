@@ -96,9 +96,15 @@ export async function ingestEventAutomations(
   const db = getDb();
   const nowMs = options.nowMs ?? Date.now();
   const catalog = getEventCatalog();
-  const tasks = (
-    await findMatchingEventAutomations(db, event, options.teamId, catalog)
-  ).filter((task) => slackChannelMessageRunsAutomation(event, task));
+  const [matches = []] = await findMatchingEventAutomations(
+    db,
+    [event],
+    options.teamId,
+    catalog,
+  );
+  const tasks = matches.filter((task) =>
+    slackChannelMessageRunsAutomation(event, task),
+  );
   let dispatched = 0;
   const errors: unknown[] = [];
   for (const task of tasks) {

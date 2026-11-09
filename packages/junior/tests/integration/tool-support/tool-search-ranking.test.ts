@@ -162,7 +162,6 @@ function catalogTools(): AgentTools {
             return new Response("ok");
           },
         },
-        // Memory writes are registered only for public Conversations.
         source: createWebSource(CONVERSATION_ID, "public"),
         workspace: {} as Parameters<typeof createTools>[2]["workspace"],
       },

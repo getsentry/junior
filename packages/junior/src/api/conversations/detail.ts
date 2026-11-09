@@ -15,7 +15,6 @@ import {
 } from "./event-page";
 import { conversationEventPageReport } from "./event-list";
 import { attachConversationMentions } from "./mentions";
-import { readConversationRecordFromSql } from "./record";
 import {
   conversationEventHistory,
   conversationSummaryFromStoredConversation,
@@ -26,7 +25,7 @@ import {
 } from "./access";
 import {
   readConversationDetailState,
-  type ConversationDetailState,
+  type DetailStateRead,
 } from "./detail-etag";
 import {
   childAgentTotalsReport,
@@ -43,7 +42,7 @@ import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
-import { canContinueInSlack } from "./continue-in-slack";
+import { canContinueInSlack } from "@/chat/slack/continue-in-slack";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -147,20 +146,18 @@ async function readConversationDetailFromSql(
     after?: string;
     latestTurns?: number;
     limit: number;
-    state?: ConversationDetailState;
+    stored?: DetailStateRead;
     unreadPage?: boolean;
     viewer?: User;
   },
 ): Promise<ConversationDetailReport | undefined> {
-  const [record, state] = await Promise.all([
-    readConversationRecordFromSql(conversationId),
-    options.state ??
-      readConversationDetailState(
-        conversationId,
-        options.viewer,
-        createConversationAccessReader(getDb(), options.viewer),
-      ),
-  ]);
+  const { record, state } =
+    options.stored ??
+    (await readConversationDetailState(
+      conversationId,
+      options.viewer,
+      createConversationAccessReader(getDb(), options.viewer),
+    ));
   if (!record) return undefined;
   const { access, readPosition } = state;
   const canExposePayload = access?.canViewPrivateContent ?? false;
@@ -350,6 +347,9 @@ async function readConversationDetailFromSql(
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }
       : undefined),
+    ...(report.isParticipant && state.subscribed !== undefined
+      ? { subscribed: state.subscribed }
+      : undefined),
     ...(canContinueInSlack(record.conversation, access)
       ? { canContinueInSlack: true as const }
       : undefined),
@@ -369,8 +369,8 @@ export async function readConversationDetail(
     /** An `appendCursor`: return only newer events when it still applies. */
     after?: string;
     limit?: number;
-    /** The state that the route already read for the ETag. */
-    state?: ConversationDetailState;
+    /** The record and state that the route already read for the ETag. */
+    stored?: DetailStateRead;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
     viewer?: User;

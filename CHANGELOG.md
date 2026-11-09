@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.287.0
+
+Junior expands user-facing workflows, resolves sharing and integration failures, and improves automation status handling and evaluation coverage for broader operation.
+
+### New Features ✨
+
+Threads, subscriptions, attribution, dashboards, Guardian reviews, and browser previews expand Junior’s capabilities.
+
+- (agents) Let a parent spawn a Thread by @dcramer with @sentry-junior in [#2931](https://github.com/getsentry/junior/pull/2931)
+- (conversations) Let a participant unsubscribe from a conversation by @dcramer with @sentry-junior in [#2939](https://github.com/getsentry/junior/pull/2939)
+- (core) Attribute the cost of every core model call by @dcramer with @sentry-junior in [#2926](https://github.com/getsentry/junior/pull/2926)
+- (dashboard) Show Thread breadcrumbs, transcript cards and status by @dcramer with @sentry-junior in [#2933](https://github.com/getsentry/junior/pull/2933)
+- (guardian) Review every Run against its own Conversation by @dcramer with @sentry-junior in [#2910](https://github.com/getsentry/junior/pull/2910)
+- (sandbox) Share previews of browser-facing work without being asked by @betegon with @sentry-junior in [#2835](https://github.com/getsentry/junior/pull/2835)
+
+### Bug Fixes 🐛
+
+Compaction avoids failures, Slack navigation improves, and conversation sharing, authorization, Guardian, and Turn handling are corrected.
+
+#### Compaction
+
+- Estimate Claude requests at measured token density by @BYK with @sentry-junior in [#2936](https://github.com/getsentry/junior/pull/2936)
+- Skip the summary when the kept context alone is at the input limit by @dcramer with @sentry-junior in [#2934](https://github.com/getsentry/junior/pull/2934)
+
+#### Dashboard
+
+- Search channels in Continue in Slack by @BYK with @sentry-junior in [#2943](https://github.com/getsentry/junior/pull/2943)
+- Focus the reply box after a command palette switch by @BYK with @sentry-junior in [#2928](https://github.com/getsentry/junior/pull/2928)
+
+#### Other
+
+- (access) Let any Conversation read public Conversations by @dcramer with @sentry-junior in [#2929](https://github.com/getsentry/junior/pull/2929)
+- (conversations) Load only MCP connection events at turn start by @BYK with @sentry-junior in [#2940](https://github.com/getsentry/junior/pull/2940)
+- (guardian) Don't show a tool call as already run while Guardian checks it by @dcramer with @sentry-junior in [#2935](https://github.com/getsentry/junior/pull/2935)
+- (mcp) Send a new sign-in link when the old attempt is gone by @dcramer with @sentry-junior in [#2932](https://github.com/getsentry/junior/pull/2932)
+- (task-execution) Fail the Turn record when the last attempt fails by @sentry-junior in [#2927](https://github.com/getsentry/junior/pull/2927)
+
+### Internal Changes 🔧
+
+- (automations) Remove the unused status input from scheduled edits by @sentry-junior in [#2909](https://github.com/getsentry/junior/pull/2909)
+- (evals) Run behavioral and integration evals on Luna at high reasoning by @dcramer with @sentry-junior in [#2866](https://github.com/getsentry/junior/pull/2866)
+
 ## 0.286.0
 
 Junior now shares conversation state, accepts stored-thread input, clarifies lifecycle ownership, prevents invalid child actions, improves recovery and context limits, and reduces feed refetches.

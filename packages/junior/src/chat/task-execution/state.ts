@@ -3,7 +3,7 @@
  *
  * The conversation record owns pending inbound work, execution status, and the
  * lease. `conversation:active` feeds heartbeat recovery and contains every
- * non-idle conversation until the lease/status path makes it idle.
+ * conversation with runnable work. `writeConversation` keeps it in step.
  * `conversation:by-activity` supports legacy SQL import only; SQL owns durable
  * conversation metadata in configured runtime.
  */
@@ -463,7 +463,7 @@ function normalizeStop(value: unknown): ConversationStop | undefined {
   return runId ? { inboundMessageIds, runId } : undefined;
 }
 
-/** Decode execution state and repair idle records that still own work. */
+/** Decode stored execution state. */
 function normalizeExecution(
   conversationId: string,
   value: unknown,
@@ -494,29 +494,20 @@ function normalizeExecution(
       )
     : [];
 
-  const lease = normalizeLease(value.lease);
-  const runId = toOptionalString(value.runId);
-  const normalizedStatus =
-    status === "idle" && lease
-      ? "running"
-      : status === "idle" && pendingMessages.length > 0
-        ? "pending"
-        : status;
-
   return {
-    status: normalizedStatus,
+    status,
     inboundMessageIds: uniqueStrings([
       ...inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
     ]),
     pendingCount: pendingMessages.length,
     pendingMessages,
-    lease,
+    lease: normalizeLease(value.lease),
     lastCheckpointAtMs: toOptionalNumber(value.lastCheckpointAtMs),
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
     lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
     retryCount: toOptionalNumber(value.retryCount),
-    runId,
+    runId: toOptionalString(value.runId),
     updatedAtMs: toOptionalNumber(value.updatedAtMs),
   };
 }
@@ -616,17 +607,37 @@ function pendingMessages(conversation: Conversation): InboundMessage[] {
   return [...conversation.execution.pendingMessages].sort(compareMessages);
 }
 
-// Failed executions are terminal for reporting, but pending messages still keep
-// them runnable through hasRunnableWork.
-function isRunnableStatus(status: ExecutionStatus): boolean {
-  return status !== "failed" && status !== "idle";
+/**
+ * The one runnable check: a worker must start or resume this Conversation.
+ * A `failed` execution is runnable only while new input waits.
+ */
+function hasRunnableWork(conversation: Conversation): boolean {
+  const { status } = conversation.execution;
+  return (
+    (status !== "failed" && status !== "idle") ||
+    conversation.execution.pendingMessages.length > 0
+  );
 }
 
-function hasRunnableWork(conversation: Conversation): boolean {
-  return (
-    isRunnableStatus(conversation.execution.status) ||
-    pendingMessages(conversation).length > 0
-  );
+/**
+ * Reject an execution that no transition may write. Only a Run holds the
+ * lease, and an `idle` Conversation has no input that waits.
+ */
+function assertLegalExecution(
+  conversationId: string,
+  execution: ConversationExecution,
+): void {
+  const { lease, pendingMessages, status } = execution;
+  if (lease && status !== "running" && status !== "paused") {
+    throw new Error(
+      `Conversation execution ${status} cannot hold a lease for ${conversationId}`,
+    );
+  }
+  if (status === "idle" && pendingMessages.length > 0) {
+    throw new Error(
+      `Conversation execution idle cannot have pending messages for ${conversationId}`,
+    );
+  }
 }
 
 function executionWithPendingMessages(
@@ -634,15 +645,8 @@ function executionWithPendingMessages(
   pending: InboundMessage[],
 ): ConversationExecution {
   const pendingMessages = [...pending].sort(compareMessages);
-  const status =
-    execution.status === "idle" && execution.lease
-      ? "running"
-      : execution.status === "idle" && pendingMessages.length > 0
-        ? "pending"
-        : execution.status;
   return {
     ...execution,
-    status,
     inboundMessageIds: uniqueStrings([
       ...execution.inboundMessageIds,
       ...pendingMessages.map((message) => message.inboundMessageId),
@@ -1031,6 +1035,7 @@ async function writeConversation(
     conversation.execution,
     conversation.execution.pendingMessages,
   );
+  assertLegalExecution(conversation.conversationId, execution);
   const next: Conversation = {
     ...conversation,
     execution,
@@ -2496,16 +2501,32 @@ export async function deleteConversationState(args: {
   });
 }
 
-/** Remove one conversation from the active index after it is missing or idle. */
-export async function removeActiveConversation(args: {
+/**
+ * Remove a stale active index entry. This holds the mutation lock and reads
+ * the record again, so it cannot remove the entry of work that a writer just
+ * made runnable. A missing or invalid record can never run again.
+ */
+export async function pruneActiveConversation(args: {
   conversationId: string;
   state?: StateAdapter;
 }): Promise<void> {
-  const state = await getConnectedState(args.state);
-  await removeIndexEntry({
-    state,
-    indexKey: CONVERSATION_ACTIVE_INDEX_KEY,
-    conversationId: args.conversationId,
+  await withConversationMutation(args, async (state) => {
+    let current: Conversation | undefined;
+    try {
+      current = await readConversation(state, args.conversationId);
+    } catch (error) {
+      if (!(error instanceof InvalidConversationRecordError)) {
+        throw error;
+      }
+    }
+    if (current && hasRunnableWork(current)) {
+      return;
+    }
+    await removeIndexEntry({
+      state,
+      indexKey: CONVERSATION_ACTIVE_INDEX_KEY,
+      conversationId: args.conversationId,
+    });
   });
 }
 

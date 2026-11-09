@@ -112,13 +112,17 @@ export interface Conversation {
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
-  /** Create one Conversation with an immutable parent and kind. */
+  /**
+   * Create one Conversation with an immutable parent and kind. `title` is
+   * saved only when the child is new.
+   */
   createChild(args: {
     childConversationId: string;
     kind: Exclude<ConversationKind, "root">;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
+    title?: string;
   }): Promise<void>;
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
   /** Read one Run's stored metrics, including a Run that is not the latest. */

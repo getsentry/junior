@@ -16,14 +16,23 @@ import { juniorConversationEvents } from "@/db/schema";
 import type { ConversationAuxiliaryCosts } from "../schema/conversation";
 import { notCopiedByFork } from "@/chat/conversations/fork";
 
-// `turn_routed` rows come from the retired Turn router. They still carry the
-// router cost of old Turns.
+// Core event types with a top-level `costUsd`. `turn_routed` rows come from
+// the retired Turn router. They still carry the router cost of old Turns.
+// `compaction` and `compaction_prepared` carry the cost of the summary
+// requests. A swap of a prepared summary has no cost, so it does not count.
+const CORE_COST_EVENT_TYPES = [
+  "compaction",
+  "compaction_prepared",
+  "guardian_action_reviewed",
+  "turn_routed",
+] as const;
+
 function eventCost(): SQL<number | null> {
   return sql<number | null>`CASE
     WHEN ${juniorConversationEvents.type} = 'structured_event'
       AND jsonb_typeof(${juniorConversationEvents.payload}->'content'->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->'content'->>'costUsd')::numeric
-    WHEN ${juniorConversationEvents.type} IN ('guardian_action_reviewed', 'turn_routed')
+    WHEN ${inArray(juniorConversationEvents.type, [...CORE_COST_EVENT_TYPES])}
       AND jsonb_typeof(${juniorConversationEvents.payload}->'costUsd') = 'number'
       THEN (${juniorConversationEvents.payload}->>'costUsd')::numeric
     ELSE NULL
@@ -67,8 +76,10 @@ type AuxiliaryCostCache = z.infer<typeof auxiliaryCostCacheSchema>;
 // costs one full recompute, which is cheap for a Conversation that is idle.
 const AUXILIARY_COST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Change the version when the set of counted events changes. An entry that an
+// older reader wrote can cover events that it did not count.
 function auxiliaryCostCacheKey(conversationId: string): string {
-  return `conversation-auxiliary-costs:${conversationId}`;
+  return `conversation-auxiliary-costs:v2:${conversationId}`;
 }
 
 function operationKey(operation: OperationSums): string {
@@ -106,9 +117,12 @@ async function sumOperationCosts(
       THEN ${juniorConversationEvents.payload}->>'namespace'
     ELSE 'junior'
   END`;
+  // Active and background summaries are one operation: compaction.
   const name = sql<string>`CASE
     WHEN ${juniorConversationEvents.type} = 'structured_event'
       THEN ${juniorConversationEvents.payload}->>'name'
+    WHEN ${juniorConversationEvents.type} = 'compaction_prepared'
+      THEN 'compaction'
     ELSE ${juniorConversationEvents.type}
   END`;
   const cost = eventCost();
@@ -128,8 +142,7 @@ async function sumOperationCosts(
       and(
         inArray(juniorConversationEvents.type, [
           "structured_event",
-          "guardian_action_reviewed",
-          "turn_routed",
+          ...CORE_COST_EVENT_TYPES,
         ]),
         sql`${cost} >= 0`,
         // A fork copies these events, but their cost belongs to the source.

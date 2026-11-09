@@ -208,10 +208,13 @@ attributes. Nested logs and spans inherit them.
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
 | Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
+| Tool calls ran one at a time         | `agent.tool_batch.started`, `app.sandbox.bash.wait_ms` on span `bash`                                        |
+| Auth signal missed by a command      | `sandbox.egress.auth_signal.missing`, span `bash`                                                            |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
+| Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                      |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
 | Phone notification missing or late   | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
@@ -257,6 +260,24 @@ Attributes on the `codemode` span:
 - `gen_ai.tool.call.result.size` is the size of the result the model gets,
   after truncation.
 
+## Tool Batches
+
+`agent.tool_batch.started` logs each assistant message with two or more tool
+calls. Pi runs the calls in parallel, unless one of the tools is
+`sequential`. Then it runs all of them one at a time.
+
+| Attribute                              | Type     | Meaning                                    |
+| -------------------------------------- | -------- | ------------------------------------------ |
+| `app.tool_batch.size`                  | int      | tool calls in the message                  |
+| `app.tool_batch.execution`             | string   | `parallel` or `sequential`                 |
+| `app.tool_batch.tool_names`            | string[] | tool names, in call order                  |
+| `app.tool_batch.sequential_tool_names` | string[] | tools that made the batch run sequentially |
+
+- `app.sandbox.bash.wait_ms` on span `bash` is the time the command waited for
+  earlier bash commands of the same Run.
+- `sandbox.egress.auth_signal.missing` means that the command output has the
+  `junior-auth-required` marker, but the command read no auth signal.
+
 ## Model Requests
 
 A `gen_ai.chat` span covers one model call through AI Gateway. Its child
@@ -297,6 +318,86 @@ compare the phases:
   at the Vercel edge. Use `app.ai.gateway.vercel_id` with Vercel.
 - The same `service.instance.id` on more than one slow call: they shared one
   process.
+
+### Cache Prefix
+
+The provider caches a request prefix in the order tools, system prompt,
+messages. A change to the tool list or the system prompt between two calls
+writes the full history to the cache again. Per Anthropic's docs, a change to
+the thinking settings or the effort also drops the cached prefix.
+`chat/pi/request-prefix-attributes.ts` hashes the provider request body that
+Pi builds, through Pi's `onPayload` hook. The values are hashes, never the
+text.
+
+| Attribute                                        | Type   | Meaning                                    |
+| ------------------------------------------------ | ------ | ------------------------------------------ |
+| `app.ai.request.system_instructions.hash`        | string | hash of the `system` blocks                |
+| `app.ai.request.tools.hash`                      | string | hash of the `tools` list, in order         |
+| `app.ai.request.tools.count`                     | int    | tools in the request                       |
+| `app.ai.request.messages.hash`                   | string | hash of all `messages`                     |
+| `app.ai.request.messages.before_last_reply.hash` | string | hash of the messages before the last reply |
+| `app.ai.request.messages.count`                  | int    | messages in the request                    |
+| `app.ai.request.prefix.hash`                     | string | hash of model, settings, and all parts     |
+| `app.ai.request.prefix.before_last_reply.hash`   | string | the same, with messages before last reply  |
+| `app.ai.request.thinking.type`                   | string | `thinking.type`, such as `adaptive`        |
+| `app.ai.request.effort`                          | string | `output_config.effort`, such as `high`     |
+| `app.ai.request.images.count`                    | int    | image blocks in the request                |
+| `app.ai.request.images.estimate`                 | int    | sum of the context estimate of each image  |
+| `app.ai.request.images.unsized`                  | int    | images that used the flat per-image value  |
+
+- Each hash is the first 16 hex chars of a SHA-256. The hashes leave out
+  `cache_control`, because Pi moves the last breakpoint on each request. In
+  messages, string `content` hashes as one text block, because Pi changes the
+  last user message to that form.
+- The hashes cover the body that Junior sends to AI Gateway, not the request
+  that the gateway sends to the upstream provider.
+- `prefix.hash` hashes, in this order: `model`, a hash of the `thinking` and
+  `output_config` settings, and the tools, system, and messages hashes.
+  `prefix.before_last_reply.hash` uses `messages.before_last_reply.hash` for
+  the messages, and is absent when that hash is absent.
+- `thinking.type` and `effort` are absent when the body does not set them.
+- The `images.*` attributes are absent when the request has no image. They
+  count image blocks in message content and in `tool_result` content. The
+  estimate uses the rule of `estimateMessagesTokens` in
+  `chat/services/token-estimate.ts`. Anthropic usage has no per-image split,
+  so the estimate is the only per-image number. To check it, compare it with
+  the change in `gen_ai.usage.input_tokens` from the previous call in the
+  same `gen_ai.conversation.id`.
+- `messages.before_last_reply.hash` stops before the last `assistant`
+  message. It is absent when the request has no `assistant` message. When the
+  history was only appended, it is equal to `messages.hash` of the previous
+  call.
+- The `codemode` tool description lists the script tools, so a script tool
+  change also changes the tool hash.
+- `completeText` calls have the same attributes. `completeObject` uses the AI
+  SDK, which has no payload hook, so it has none.
+- On calls through the Pi stream wrapper, `app.ai.usage.cache_write_1h` is the
+  part of `gen_ai.usage.cache_creation.input_tokens` written with 1h
+  retention. The rest used 5m retention.
+
+To classify a cache miss, compare a call with the previous call in the same
+`gen_ai.conversation.id`:
+
+1. Compare `prefix.before_last_reply.hash` with the previous `prefix.hash`.
+   When they are not equal, find the part that changed:
+   - System or tools hash changed: Junior changed the prefix.
+   - `thinking.type` or `effort` changed: the settings changed the prefix.
+     When all part hashes match, the model or another thinking setting, such
+     as a budget, changed.
+   - `messages.before_last_reply.hash` is not equal to the previous
+     `messages.hash`: Junior rewrote the history. This is expected when the
+     call has `gen_ai.conversation.compacted`.
+2. When they are equal and the gap is 5 minutes or more: the cache expired.
+3. When they are equal and the gap is less than 5 minutes: the provider or the
+   gateway did not use the cache.
+
+Prefix hashes of each model call in a Conversation. Compare consecutive rows.
+
+```text
+dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
+fields=timestamp,trace,gen_ai.request.model,app.ai.request.prefix.hash,app.ai.request.prefix.before_last_reply.hash,app.ai.request.system_instructions.hash,app.ai.request.tools.hash,app.ai.request.messages.hash,app.ai.request.messages.before_last_reply.hash,app.ai.request.thinking.type,app.ai.request.effort,gen_ai.conversation.compacted,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
+sort=timestamp
+```
 
 ## Context Compaction
 
@@ -568,6 +669,10 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
 - A browser request after the `pageload` or `navigation` span ends, such as
   a poll, is its own `http.client` segment. Add `!span.op:http.client` to
   segment queries to leave them out.
+- A versions poll that moves a change token adds a `function` span named
+  `Refresh changed reads`. `app.dashboard.versions.moved` lists the tokens
+  that moved, such as `conversations,reviewItems`. A poll that moves none
+  adds no span, so compare the count with the `/api/versions` polls.
 - `http.server` spans have the route pattern of the app that served the
   request, also when the core app passes the request to the dashboard or a
   plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
@@ -585,6 +690,14 @@ Dashboard API response read time by path.
 ```text
 dataset=spans query='span.op:deserialize span.name:"Read API response"'
 fields=url.path,count(),p50(span.duration),p95(span.duration)
+sort=-count()
+```
+
+Versions polls that refresh a read, by the tokens that moved.
+
+```text
+dataset=spans query='span.name:"Refresh changed reads"'
+fields=app.dashboard.versions.moved,count()
 sort=-count()
 ```
 

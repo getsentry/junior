@@ -7,9 +7,9 @@ import type {
 import { setSpanAttributes } from "@/chat/logging";
 import {
   calculateContextCompactionTargetTokens,
-  estimateTextTokens,
   getConversationContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
+import { estimateTextTokens } from "@/chat/services/token-estimate";
 
 import {
   parseSlackMessageTs,

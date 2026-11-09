@@ -224,7 +224,11 @@ function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-/** Name the previewed message in one line. */
+/**
+ * Name the previewed message in one line. With no description, it shows as
+ * much of the message as a title and a description hold, so the preview
+ * keeps its height as it glides between items.
+ */
 function MessageOutlinePreviewTitle({
   className,
   ...props
@@ -234,6 +238,8 @@ function MessageOutlinePreviewTitle({
       data-slot="message-outline-preview-title"
       className={cn(
         "m-0 truncate text-sm font-medium text-dashboard-text",
+        // One title line, the gap, and three description lines.
+        "only:min-h-[calc(var(--text-sm)*(var(--text-sm--line-height)+3*var(--leading-relaxed))+--spacing(1.5))] only:line-clamp-4 only:leading-relaxed only:whitespace-normal",
         className,
       )}
       {...props}

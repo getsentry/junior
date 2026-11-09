@@ -28,6 +28,7 @@ import {
 import {
   commitMessages,
   loadTurnProjection,
+  type StoredProjection,
 } from "@/chat/conversations/projection";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
@@ -168,6 +169,12 @@ export interface TurnRecord {
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
   piMessageProvenance: ConversationMessageProvenance[];
+  /**
+   * Event-store projection this record was read from. Absent on records that
+   * a write returns. A checkpoint passes it so its commit reads only later
+   * events.
+   */
+  storedProjection?: StoredProjection;
   /**
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Derived from committed provenance so a
@@ -573,11 +580,19 @@ async function materializeStoredTurnRecord(
     conversation,
     turnId,
   );
-  return materializeTurnRecord(parsed, piProjection, turnStartMessageIndex, {
-    channelName: conversation?.channelName,
-    cumulativeDurationMs: executionMetrics?.durationMs,
-    cumulativeUsage: executionMetrics?.usage,
-  });
+  const record = materializeTurnRecord(
+    parsed,
+    piProjection,
+    turnStartMessageIndex,
+    {
+      channelName: conversation?.channelName,
+      cumulativeDurationMs: executionMetrics?.durationMs,
+      cumulativeUsage: executionMetrics?.usage,
+    },
+  );
+  return followsReplacement
+    ? record
+    : { ...record, storedProjection: pinnedProjection };
 }
 
 /** Read a turn record pinned to the history version containing its checkpoint. */
@@ -821,6 +836,8 @@ export async function upsertTurnRecord(args: {
   state: TurnStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
+  /** Projection from the record read before this write; see `TurnRecord`. */
+  storedProjection?: StoredProjection;
   /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
@@ -892,6 +909,9 @@ async function upsertTurnRecordLocked(
       : undefined),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
+      : undefined),
+    ...(args.storedProjection
+      ? { storedProjection: args.storedProjection }
       : undefined),
     ...(args.turnContexts && args.turnContexts.length > 0
       ? {

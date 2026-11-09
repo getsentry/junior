@@ -16,6 +16,8 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  conversationSubscriptionBodySchema,
+  conversationSubscriptionResponseSchema,
   markConversationUnreadBodySchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
@@ -37,9 +39,11 @@ import {
   conversationReadPositionSchema,
   conversationReadReportSchema,
   conversationUnreadSchema,
+  conversationOutlineSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  boardReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -68,6 +72,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
+import { readMockConversationOutline } from "./outline";
 import {
   markMockConversationRead,
   setMockConversationReadState,
@@ -77,6 +82,7 @@ import {
   filterMockConversationsByRepository,
   readMockCodeRepository,
 } from "./code-repository";
+import { readMockBoard } from "./board";
 import {
   readMockConversationChildAgents,
   continueMockConversationInSlack,
@@ -99,6 +105,7 @@ import {
   readMockAutomationList,
   setMockConversationArchived,
   setMockConversationPinned,
+  setMockConversationSubscribed,
   setMockPinOrder,
   setMockConversationTitle,
   setMockConversationAutoArchive,
@@ -169,6 +176,9 @@ export function createMockReportingApi(): Hono<{
     return mockNotificationSettings(parsed.data);
   });
 
+  app.get("/board", () =>
+    jsonResponse(boardReportSchema, readMockBoard(Date.now())),
+  );
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
@@ -373,6 +383,16 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationEventPageSchema, report)
       : errorResponse("Invalid conversation cursor.", 400);
   });
+  app.get("/conversations/:conversationId/outline", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const outline = readMockConversationOutline(params.data.conversationId);
+    return outline
+      ? jsonResponse(conversationOutlineSchema, outline)
+      : errorResponse("Conversation not found.", 404);
+  });
   app.get("/conversations/:conversationId/agents", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
@@ -513,6 +533,25 @@ export function createMockReportingApi(): Hono<{
     if (!result) return errorResponse("Conversation not found.", 404);
     if ("error" in result) return errorResponse(result.error, 409);
     return jsonResponse(pinConversationResponseSchema, result);
+  });
+  app.patch("/conversations/:conversationId/subscription", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationSubscriptionBodySchema.safeParse(
+      await c.req.json(),
+    );
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationSubscribed(
+      params.data.conversationId,
+      body.data.subscribed,
+    );
+    return result
+      ? jsonResponse(conversationSubscriptionResponseSchema, result)
+      : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/unread", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

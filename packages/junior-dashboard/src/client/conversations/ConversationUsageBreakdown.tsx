@@ -133,11 +133,21 @@ function BreakdownTable(props: {
           </TableHead>
         </TableRow>
       </TableHeader>
-      {props.rows.map((row) => {
-        const padding = row.parts ? "pt-2 pb-0.5" : "py-2";
+      {props.rows.map((row, index, rows) => {
+        // A row with token types is a group with a border. Rows without
+        // token types stack as a dense list, like the token types of a model.
+        const padding = row.parts
+          ? "pt-2 pb-0.5"
+          : cn(
+              index === 0 ? "pt-2" : "pt-0",
+              index === rows.length - 1 ? "pb-2" : "pb-0",
+            );
         return (
           <TableBody
-            className="border-b border-dashboard-border-subtle last-of-type:border-b-0"
+            className={cn(
+              row.parts &&
+                "border-b border-dashboard-border-subtle last-of-type:border-b-0",
+            )}
             key={row.key}
           >
             {/* The tbody draws the group border, so its rows have none. */}

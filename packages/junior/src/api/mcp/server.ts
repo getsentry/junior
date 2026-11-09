@@ -26,6 +26,7 @@ import { registerSearchConversationsTool } from "./tools/search-conversations";
 import { registerSearchReviewItemsTool } from "./tools/search-review-items";
 import { registerSendMessageTool } from "./tools/send-message";
 import { registerSetConversationAutoArchiveTool } from "./tools/set-conversation-auto-archive";
+import { registerSetConversationSubscriptionTool } from "./tools/set-conversation-subscription";
 import { registerStopConversationTool } from "./tools/stop-conversation";
 
 type RegisterTool = (server: McpServer, context: McpToolContext) => void;
@@ -42,6 +43,7 @@ const TOOLS_BY_SCOPE: Record<McpScope, readonly RegisterTool[]> = {
     registerArchiveDoneConversationsTool,
     registerPinConversationTool,
     registerSetConversationAutoArchiveTool,
+    registerSetConversationSubscriptionTool,
     registerMarkConversationReadTool,
     registerStopConversationTool,
     registerCancelQueuedMessagesTool,

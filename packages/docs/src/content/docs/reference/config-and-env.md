@@ -197,9 +197,14 @@ const app = await createApp({
 ```
 
 Child agents are always on: every app gives the model `spawnAgent`,
-`messageAgent`, `searchAgents`, and `stopAgent`. `experimental.subagents` was
-removed; remove it from your config, because Junior rejects unknown
-experimental keys.
+`messageAgent`, `searchAgents`, `stopAgent`, and `archiveAgent`.
+`experimental.subagents` was removed; remove it from your config, because
+Junior rejects unknown experimental keys.
+
+A child agent is a Task by default: only its parent gives it work. The model
+can start a Thread instead, a child agent that people can open and message
+directly. A parent can have at most 8 child agents with open work, Tasks and
+Threads alike. The model can archive a finished Thread with `archiveAgent`.
 
 By default, only the root Conversation can start child agents. Set
 `limits.maxAgentDepth` to let child agents start their own child agents. For

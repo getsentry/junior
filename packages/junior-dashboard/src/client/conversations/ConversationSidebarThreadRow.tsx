@@ -1,14 +1,14 @@
-import { ChevronRight, CircleAlert, CircleCheck, CircleX } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { memo } from "react";
 import { Link } from "react-router";
 
-import {
-  conversationDisplayTitle,
-  visualStatusForConversation,
-} from "../format";
-import { Spinner } from "../components/ui/spinner";
+import { conversationDisplayTitle } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import type { Conversation } from "../types";
+import {
+  ChildConversationStatusIcon,
+  childConversationStatus,
+} from "./ChildConversationStatus";
 import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
@@ -32,7 +32,6 @@ export const ConversationSidebarThreadRow = memo(
     waiting: boolean;
   }) {
     const prefetch = usePrefetchConversation(props.conversation.id);
-    const status = visualStatusForConversation(props.conversation);
     return (
       <Link
         {...prefetch}
@@ -44,7 +43,9 @@ export const ConversationSidebarThreadRow = memo(
         )}
         to={conversationPath(props.conversation.id)}
       >
-        <ThreadStatusIcon status={status} waiting={props.waiting} />
+        <ChildConversationStatusIcon
+          status={childConversationStatus(props.conversation, props.waiting)}
+        />
         <span
           className={cn(
             "min-w-0 truncate font-sans text-sm leading-snug",
@@ -85,50 +86,5 @@ export function ConversationSidebarThreadToggle(props: {
       />
       {props.expanded ? "Show fewer" : `Show ${props.hiddenCount} more`}
     </button>
-  );
-}
-
-/**
- * Mark a Thread with the status that exists today: waiting on the viewer,
- * running, failed, or idle.
- */
-function ThreadStatusIcon(props: {
-  status: ReturnType<typeof visualStatusForConversation>;
-  waiting: boolean;
-}) {
-  // TODO(dcramer): Show the derived Conversation status (needs input,
-  // working, failed, completed) once the list API returns it.
-  if (props.waiting) {
-    return (
-      <CircleAlert
-        aria-label="Waiting on you"
-        className="size-3.5 text-amber-400"
-        role="img"
-      />
-    );
-  }
-  if (props.status === "active") {
-    return (
-      <Spinner
-        aria-label="Running"
-        className="size-3.5 text-dashboard-text-muted"
-      />
-    );
-  }
-  if (props.status === "failed") {
-    return (
-      <CircleX
-        aria-label="Failed"
-        className="size-3.5 text-rose-400"
-        role="img"
-      />
-    );
-  }
-  return (
-    <CircleCheck
-      aria-label="Idle"
-      className="size-3.5 text-dashboard-text-faint"
-      role="img"
-    />
   );
 }

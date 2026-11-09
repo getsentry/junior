@@ -44,6 +44,7 @@ packages/junior/src/chat/tools/index.ts	throw new Error(`Plugin tool "${name}" c
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Attachment ${attachment.id} read ${data.byteLength} bytes, expected ${attachment.bytes}.`, );
 packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Failed to create attachment directory: ${mkdir.stderr}`, );
 packages/junior/src/chat/tools/publish-image.ts	throw new Error( "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.", );
+packages/junior/src/chat/tools/runtime/archive-agent.ts	throw new Error( `Archive of Thread ${childConversationId} returned ${result.status}`, );
 packages/junior/src/chat/tools/sandbox/bash.ts	throw new Error("bash can only run when sandbox execution is enabled.");
 packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/generated-artifacts.ts	throw new Error( `failed to create generated artifact directory: ${mkdir.stderr}`, );

@@ -45,6 +45,7 @@ import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
+import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -69,6 +70,11 @@ import type { DashboardCoreData } from "./types";
 const RepositoryPage = lazy(() =>
   import("./pages/code/RepositoryPage").then((module) => ({
     default: module.RepositoryPage,
+  })),
+);
+const BoardPage = lazy(() =>
+  import("./pages/board/BoardPage").then((module) => ({
+    default: module.BoardPage,
   })),
 );
 const CodePage = lazy(() =>
@@ -338,6 +344,7 @@ export function DashboardShell() {
             workspace ||
             location.pathname === "/review" ||
             hasAutomationDetailsFrame(location.pathname) ||
+            hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
           }
         >
@@ -584,6 +591,8 @@ export function DashboardShell() {
               }
               path="/review"
             />
+            {/* The Board is an experiment, so no navigation links to it. */}
+            <Route element={<BoardPage />} path="/board" />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route

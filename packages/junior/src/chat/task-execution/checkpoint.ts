@@ -247,6 +247,7 @@ async function saveRunning(
     return await upsertTurnRecord({
       ...sharedWrite(args, traceContext, latest),
       ...definedProps({
+        storedProjection: latest?.storedProjection,
         trailingMessageProvenance: args.trailingMessageProvenance,
         turnContexts: args.turnContexts,
       }),
