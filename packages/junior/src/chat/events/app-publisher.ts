@@ -1,5 +1,6 @@
 import type { Event, EventData } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
+import pLimit from "p-limit";
 import { getDb } from "@/chat/db";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
@@ -16,8 +17,12 @@ import { createEventTeamIdResolver } from "@/chat/events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
+// Each Watch check reads the state adapter. Bound the reads for a webhook
+// with many events.
+const WATCH_MATCH_CONCURRENCY = 4;
+
 export type EventAppPublisher = {
-  hasMatch(event: Event): Promise<boolean>;
+  hasMatch(events: Event[]): Promise<boolean>;
   neededMatchKeys(input: {
     data?: EventData;
     eventTypes: string[];
@@ -26,44 +31,6 @@ export type EventAppPublisher = {
   }): Promise<string[]>;
   publish(event: Event): Promise<void>;
 };
-
-/**
- * Check event automations for the `hasMatch` calls that start in one
- * synchronous run, such as a webhook checking each copy of its Event with
- * `Promise.all`, with one read per namespace. A batch takes calls until its
- * read starts and keeps nothing after it, so each answer is the same as from
- * a read for that Event alone.
- */
-function createEventAutomationMatcher(
-  resolveTeamId: () => Promise<string | undefined>,
-): (event: Event) => Promise<boolean> {
-  const batches = new Map<
-    string,
-    { events: Event[]; matches: Promise<boolean[]> }
-  >();
-  return async (event) => {
-    let batch = batches.get(event.namespace);
-    if (!batch) {
-      const events: Event[] = [];
-      const matches = Promise.resolve().then(async () => {
-        batches.delete(event.namespace);
-        const teamId = await resolveTeamId();
-        if (!teamId) return events.map(() => false);
-        const tasks = await findMatchingEventAutomations(
-          getDb(),
-          events,
-          teamId,
-          getEventCatalog(),
-        );
-        return tasks.map((matched) => matched.length > 0);
-      });
-      batch = { events, matches };
-      batches.set(event.namespace, batch);
-    }
-    const index = batch.events.push(event) - 1;
-    return (await batch.matches)[index] === true;
-  };
-}
 
 /** Build the core event publisher used by plugin routes. */
 export function createEventAppPublisher(args: {
@@ -74,24 +41,36 @@ export function createEventAppPublisher(args: {
 }): EventAppPublisher {
   // Event automations still key by destination team until that store is conversation-owned.
   const resolveEventAutomationTeamId = createEventTeamIdResolver();
-  const hasEventAutomationMatch = createEventAutomationMatcher(
-    resolveEventAutomationTeamId,
-  );
 
   return {
-    async hasMatch(event) {
+    async hasMatch(events) {
       const work = args.conversationWork();
-      const [subscriptions, taskMatch] = await Promise.all([
-        findMatchingWatches({
-          data: event.data,
-          eventType: event.eventType,
-          namespace: event.namespace,
-          identifier: event.identifier,
-          state: work.state,
-        }),
-        hasEventAutomationMatch(event),
+      const eventAutomationTeamId = await resolveEventAutomationTeamId();
+      const limit = pLimit(WATCH_MATCH_CONCURRENCY);
+      const [subscriptions, tasks] = await Promise.all([
+        Promise.all(
+          events.map((event) =>
+            limit(() =>
+              findMatchingWatches({
+                data: event.data,
+                eventType: event.eventType,
+                namespace: event.namespace,
+                identifier: event.identifier,
+                state: work.state,
+              }),
+            ),
+          ),
+        ),
+        eventAutomationTeamId
+          ? findMatchingEventAutomations(
+              getDb(),
+              events,
+              eventAutomationTeamId,
+              getEventCatalog(),
+            )
+          : Promise.resolve([]),
       ]);
-      return subscriptions.length > 0 || taskMatch;
+      return [...subscriptions, ...tasks].some((matched) => matched.length > 0);
     },
     async neededMatchKeys(input) {
       const work = args.conversationWork();

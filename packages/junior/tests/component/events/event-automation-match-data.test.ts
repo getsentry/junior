@@ -116,30 +116,29 @@ describe("event automation match data", () => {
         trustedSummary: "A pull request was opened.",
         data: { openerRole, pullRequest: 7, repo: "getsentry/junior" },
       });
-      await expect(publisher.hasMatch(event("admin"))).resolves.toBe(true);
-      await expect(publisher.hasMatch(event("write"))).resolves.toBe(false);
+      await expect(publisher.hasMatch([event("admin")])).resolves.toBe(true);
+      await expect(publisher.hasMatch([event("write")])).resolves.toBe(false);
 
-      // Concurrent checks, such as one per copy of a webhook Event, share
-      // one automations read and keep each Event's own answer.
+      // All copies of a webhook Event share one automations read. The
+      // automation for #8 does not match the #7 copy, and does not select
+      // the merged copy.
       const db = getDb();
       const select = vi.spyOn(db, "select");
       vi.spyOn(dbModule, "getDb").mockReturnValue(db);
+      const pullRequest8 = {
+        ...event("write"),
+        identifier: "getsentry/junior#8",
+      };
       await expect(
-        Promise.all([
-          publisher.hasMatch(event("admin")),
-          publisher.hasMatch(event("write")),
-          publisher.hasMatch({
-            ...event("write"),
-            identifier: "getsentry/junior#8",
-          }),
-          publisher.hasMatch({
-            ...event("write"),
-            eventType: "pull_request.merged",
-            identifier: "getsentry/junior#8",
-          }),
+        publisher.hasMatch([
+          event("write"),
+          { ...pullRequest8, eventType: "pull_request.merged" },
         ]),
-      ).resolves.toEqual([true, false, true, false]);
+      ).resolves.toBe(false);
       expect(select).toHaveBeenCalledTimes(1);
+      await expect(
+        publisher.hasMatch([event("write"), pullRequest8]),
+      ).resolves.toBe(true);
     } finally {
       await deleteEventAutomation(getDb(), automationId);
       await deleteEventAutomation(getDb(), pullRequestAutomationId);
