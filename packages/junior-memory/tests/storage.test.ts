@@ -695,7 +695,7 @@ describe("memory plugin storage", () => {
 
     // Every Source gets the same tools, so the cached tool list stays the same.
     const disabled =
-      "Memory writes need a message from a person in a public Conversation.";
+      "Only a person's message in a public Conversation can write memory.";
     const readOnly = {
       archiveMemory: disabled,
       createMemory: disabled,

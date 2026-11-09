@@ -171,17 +171,15 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
-        // All memory is public, so only a person's message in a public
-        // Conversation writes it. Child agents can suggest memories in their
-        // result. Other Sources, such as automations, carry no visibility.
-        // Disable the write tools instead of removing them, so the tool list
-        // and the cached prompt stay the same in every Turn.
+        // Only a person's message in a public Conversation may write memory.
+        // Disable the write tools instead of omitting them, so the tool list
+        // and the prompt cache stay the same in every Turn.
         const writeAccess =
           "visibility" in ctx.source && ctx.source.visibility === "public"
             ? {}
             : {
                 disabledReason:
-                  "Memory writes need a message from a person in a public Conversation.",
+                  "Only a person's message in a public Conversation can write memory.",
               };
         return {
           createMemory: {

@@ -679,7 +679,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           arguments: { content: "I prefer event-written memory." },
         }),
       ).rejects.toThrow(
-        "memory_createMemory is disabled in this Turn. Memory writes need a message from a person in a public Conversation.",
+        "memory_createMemory is disabled in this Turn. Only a person's message in a public Conversation can write memory.",
       );
       await expect(
         eventTools.memory_listMemories!.execute!({}, {}),
