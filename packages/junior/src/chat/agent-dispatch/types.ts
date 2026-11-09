@@ -42,26 +42,46 @@ export interface BoundDispatchOptions extends Omit<
     | ScheduledAutomationSource;
 }
 
-export interface DispatchRecord {
+/**
+ * One dispatch lifecycle state. Each state carries only the facts that are
+ * valid in it: a result message exists only after the run ended, and an error
+ * exists only on a failed or blocked run.
+ */
+export type DispatchState =
+  | {
+      status: "pending" | "running" | "awaiting_resume";
+      errorMessage?: never;
+      resultMessageTs?: never;
+    }
+  | { status: "completed"; errorMessage?: never; resultMessageTs?: string }
+  | {
+      status: "blocked" | "failed";
+      errorMessage: string;
+      resultMessageTs?: string;
+    };
+
+/** A legal next state. A dispatch never moves back to `pending`. */
+export type DispatchChange = DispatchState & {
+  status: Exclude<DispatchStatus, "pending">;
+};
+
+export type DispatchRecord = {
   actor: CredentialSystemActor;
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
   destination: SlackDestination;
   destinationVisibility: DestinationVisibility;
-  errorMessage?: string;
   id: string;
   idempotencyKey: string;
   input: string;
   metadata?: Record<string, string>;
   plugin: string;
   replyAttribution?: ReplyAttribution;
-  resultMessageTs?: string;
   source: Source;
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
-  status: DispatchStatus;
   updatedAtMs: number;
-}
+} & DispatchState;
 
 export interface DispatchProjection {
   errorMessage?: string;

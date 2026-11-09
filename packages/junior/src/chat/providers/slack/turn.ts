@@ -809,10 +809,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           await options.onTurnCompleted?.();
           turnCompletionNotified = true;
         };
-        /** Post and record one completed assistant message in the active thread. */
+        /**
+         * Post and record one completed assistant message in the active
+         * thread. An accepted dispatch reply fixes the dispatch outcome, so
+         * its receipt stores that outcome. A reply sent while the run is still
+         * going completes the dispatch.
+         */
         const deliverAssistantMessage = async (
           reply: AssistantMessage | string,
-          terminalDispatchOutcome?: "blocked" | "failed",
+          dispatchOutcome: "blocked" | "completed" | "failed" = "completed",
         ): Promise<void> => {
           const agentMessage = typeof reply === "string" ? undefined : reply;
           const text =
@@ -940,15 +945,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   destination,
                   destinationVisibility,
                   dispatchId: options.execution?.dispatch?.id,
+                  dispatchOutcome,
                   resultMessageId: slackTs,
                   turnId: turnId,
                   sliceId: 1,
                   source,
                   startedAtMs: message.metadata.dateSent.getTime(),
-                  ...(terminalDispatchOutcome
-                    ? { dispatchOutcome: terminalDispatchOutcome }
-                    : undefined),
-                  state: terminalDispatchOutcome ? "failed" : "running",
+                  state: "running",
                   surface: options.execution?.surface ?? "slack",
                 }),
               );
@@ -1189,10 +1192,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               finalResult,
               options.execution?.dispatch,
             );
-            if (reply !== undefined) {
-              await deliverAssistantMessage(reply);
-            }
             const turnResult = runDispatchOutcome(finalResult);
+            if (reply !== undefined) {
+              await deliverAssistantMessage(reply, turnResult.outcome);
+            }
             runResultHandled = true;
             shouldPersistFailureState = false;
             boundaryFailureCode = "agent_run_failed";
@@ -1329,7 +1332,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 { "app.ai.failure_code": "agent_run_failed" },
               );
               const text = `I could not act on this subscribed event because ${outcome.providerDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.providerDisplayName} before retrying.`;
-              await deliverAssistantMessage(text);
+              await deliverAssistantMessage(text, "blocked");
               markTurnClosed({
                 conversation: preparedState.conversation,
                 nowMs: Date.now(),

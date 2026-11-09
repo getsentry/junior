@@ -499,9 +499,13 @@ async function resumeSlackTurnInContext(
         ...(userMessageId ? { userMessageId } : undefined),
       };
     };
-    /** Post and record one completed assistant message for the resumed turn. */
+    /**
+     * Post and record one completed assistant message for the resumed turn.
+     * Its receipt stores the dispatch outcome that the accepted reply fixes.
+     */
     const deliverAssistantMessage = async (
       reply: AssistantMessage | string,
+      dispatchOutcome: "blocked" | "completed" | "failed" = "completed",
     ): Promise<void> => {
       const message = typeof reply === "string" ? undefined : reply;
       const text =
@@ -601,6 +605,7 @@ async function resumeSlackTurnInContext(
               conversationId: runArgs.conversationId,
               destination: savedRun.destination,
               dispatchId,
+              dispatchOutcome,
               resultMessageId: messageTs,
               turnId: runArgs.turnId,
               sliceId: runArgs.sliceId ?? 1,
@@ -644,7 +649,7 @@ async function resumeSlackTurnInContext(
         : undefined;
       const replyText = finishedRunReply(reply, run.dispatch);
       if (replyText !== undefined) {
-        await deliverAssistantMessage(replyText);
+        await deliverAssistantMessage(replyText, dispatchResult.outcome);
       }
       runResultHandled = true;
 

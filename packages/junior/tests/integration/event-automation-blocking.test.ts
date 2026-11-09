@@ -4,7 +4,10 @@ import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchRecord,
+  transitionDispatch,
+} from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -42,6 +45,12 @@ vi.hoisted(() => {
 
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
+
+function dispatchIdOf(index: number): string {
+  return queue
+    .sentRecords()
+    [index]!.conversationId!.replace(/^agent-dispatch:/, "");
+}
 
 describe("event automation blocking", () => {
   beforeEach(async () => {
@@ -98,12 +107,10 @@ describe("event automation blocking", () => {
       });
     // The work owner blocks the dispatch when a run cannot get authorization.
     const blockRun = (index: number) =>
-      markDispatchBlocked(
-        queue
-          .sentRecords()
-          [index]!.conversationId!.replace(/^agent-dispatch:/, ""),
-        reason,
-      );
+      transitionDispatch(dispatchIdOf(index), {
+        errorMessage: reason,
+        status: "blocked",
+      });
 
     expect(await ingest("github:blocked-1")).toEqual({ dispatched: 1 });
     // A redelivered block must not notify the creator again.
@@ -168,6 +175,38 @@ describe("event automation blocking", () => {
       status: "blocked",
       statusReason: reason,
     });
+  });
+
+  it("does not block an event automation whose run finished first", async () => {
+    const { automation } = await createTask("Add the release-train label.");
+    expect(
+      await ingestEventAutomations(changesRequestedEvent("github:late-block"), {
+        queue,
+        teamId,
+      }),
+    ).toEqual({ dispatched: 1 });
+    const dispatchId = dispatchIdOf(0);
+    const lateBlock = () =>
+      transitionDispatch(dispatchId, {
+        errorMessage: "Late block.",
+        status: "blocked",
+      });
+
+    // The run completes while a stale worker blocks it, and that worker
+    // retries after the lock is free.
+    await Promise.allSettled([
+      transitionDispatch(dispatchId, { status: "completed" }),
+      lateBlock(),
+    ]);
+    await lateBlock();
+
+    await expect(getDispatchRecord(dispatchId)).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(
+      await getEventAutomation(fixture.sql.db(), automation.id),
+    ).toMatchObject({ status: "active" });
+    expect(getCapturedSlackApiCalls("conversations.open")).toEqual([]);
   });
 
   it("limits runs for each event automation, not for its trigger", async () => {

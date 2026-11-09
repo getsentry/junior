@@ -41,11 +41,7 @@ import {
   getDispatchRecord,
   getDispatchTurnId,
   isTerminalDispatchStatus,
-  markDispatchAwaitingResume,
-  markDispatchBlocked,
-  markDispatchCompleted,
-  markDispatchFailed,
-  markDispatchRunning,
+  transitionDispatch,
 } from "./store";
 import type {
   DispatchRecord,
@@ -293,8 +289,10 @@ async function readDispatchTurnResult(
     };
   }
   if (resultMessageTs) {
-    // Provider acceptance is the delivery fence. A worker may die before the
-    // terminal outcome write, but redelivery must never regenerate that reply.
+    // Provider acceptance is the delivery fence: redelivery must never
+    // regenerate an accepted reply. Receipts now store their outcome; this
+    // reads receipts saved before that, which had none.
+    // TODO(dcramer): Remove after receipts without an outcome expire.
     return {
       outcome: "completed",
       resultMessageTs,
@@ -322,27 +320,34 @@ async function projectDispatchTurnResult(
   dispatchId: string,
   result: DispatchTurnResult,
 ): Promise<void> {
+  const resultMessageTs = result.resultMessageTs
+    ? { resultMessageTs: result.resultMessageTs }
+    : undefined;
   switch (result.outcome) {
     case "awaiting_resume":
-      await markDispatchAwaitingResume(dispatchId);
+      await transitionDispatch(dispatchId, { status: "awaiting_resume" });
       break;
     case "blocked":
-      await markDispatchBlocked(
-        dispatchId,
-        result.errorMessage ??
+      await transitionDispatch(dispatchId, {
+        errorMessage:
+          result.errorMessage ??
           "Dispatch requires authorization that is unavailable for background work",
-        result.resultMessageTs,
-      );
+        status: "blocked",
+        ...resultMessageTs,
+      });
       break;
     case "failed":
-      await markDispatchFailed(
-        dispatchId,
-        result.errorMessage ?? "Agent turn failed",
-        result.resultMessageTs,
-      );
+      await transitionDispatch(dispatchId, {
+        errorMessage: result.errorMessage ?? "Agent turn failed",
+        status: "failed",
+        ...resultMessageTs,
+      });
       break;
     case "completed":
-      await markDispatchCompleted(dispatchId, result.resultMessageTs);
+      await transitionDispatch(dispatchId, {
+        status: "completed",
+        ...resultMessageTs,
+      });
       break;
   }
 }
@@ -386,12 +391,13 @@ async function persistBlockedDispatchTurn(
     state: "failed",
     surface: "api",
   });
-  await markDispatchBlocked(
-    dispatch.id,
-    error instanceof AuthorizationFlowDisabledError
-      ? missingAuthorizationReason(dispatch, error.provider)
-      : error.message,
-  );
+  await transitionDispatch(dispatch.id, {
+    errorMessage:
+      error instanceof AuthorizationFlowDisabledError
+        ? missingAuthorizationReason(dispatch, error.provider)
+        : error.message,
+    status: "blocked",
+  });
 }
 
 /** Run one dispatch start or resume under the owning conversation lease. */
@@ -452,15 +458,17 @@ export function createAgentDispatchConversationWorker(
       return { status: "completed" };
     }
     if (Date.now() - dispatch.createdAtMs > AGENT_DISPATCH_MAX_AGE_MS) {
-      await markDispatchFailed(
-        dispatch.id,
-        "Dispatch exceeded its maximum processing age",
-      );
+      await transitionDispatch(dispatch.id, {
+        errorMessage: "Dispatch exceeded its maximum processing age",
+        status: "failed",
+      });
       await acknowledge();
       return { status: "completed" };
     }
 
-    const runningDispatch = await markDispatchRunning(dispatch.id);
+    const runningDispatch = await transitionDispatch(dispatch.id, {
+      status: "running",
+    });
     if (!runningDispatch) {
       throw new Error(`Dispatch record disappeared for ${dispatch.id}`);
     }
@@ -509,7 +517,7 @@ export function createAgentDispatchConversationWorker(
         : { status: "completed" };
     } catch (error) {
       if (isCooperativeTurnYieldError(error)) {
-        await markDispatchAwaitingResume(dispatch.id);
+        await transitionDispatch(dispatch.id, { status: "awaiting_resume" });
         return { status: "yielded" };
       }
       if (isTurnInputCommitLostError(error)) {
@@ -524,10 +532,11 @@ export function createAgentDispatchConversationWorker(
       if (!context.attempt.isFinalAttempt) {
         throw error;
       }
-      await markDispatchFailed(
-        dispatch.id,
-        error instanceof Error ? error.message : "Dispatch turn failed",
-      );
+      await transitionDispatch(dispatch.id, {
+        errorMessage:
+          error instanceof Error ? error.message : "Dispatch turn failed",
+        status: "failed",
+      });
       await acknowledge();
       return { status: "completed" };
     }

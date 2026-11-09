@@ -18,6 +18,7 @@ import { blockEventAutomation } from "@/chat/event-automations/store";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
 import type {
   BoundDispatchOptions,
+  DispatchChange,
   DispatchCreateResult,
   DispatchProjection,
   DispatchRecord,
@@ -38,41 +39,50 @@ const nonEmptyExactStringSchema = z
 const pendingDispatchMailboxAppendIndexSchema = z.array(
   nonEmptyExactStringSchema,
 );
-const dispatchStatusSchema = z.enum([
-  "pending",
-  "running",
-  "awaiting_resume",
-  "completed",
-  "failed",
-  "blocked",
-]);
 const dispatchActorSchema = z
   .object({
     platform: z.literal("system"),
     name: nonEmptyExactStringSchema,
   })
   .strict();
+const dispatchFieldsSchema = z.object({
+  actor: dispatchActorSchema,
+  createdAtMs: z.number().finite(),
+  credentialSubject: credentialSubjectSchema.optional(),
+  destination: destinationSchema,
+  destinationVisibility: destinationVisibilitySchema,
+  id: nonEmptyExactStringSchema,
+  idempotencyKey: z.string().min(1),
+  input: z.string().min(1),
+  metadata: z.record(z.string(), z.string()).optional(),
+  plugin: nonEmptyExactStringSchema,
+  replyAttribution: replyAttributionSchema.optional(),
+  source: sourceSchema,
+  outcomes: z.array(taskOutcomeSchema).max(5).optional(),
+  updatedAtMs: z.number().finite(),
+});
+// Each state allows only its own fields. Records stored before this union
+// already had this shape: only a finished write set `resultMessageTs`, and
+// only a failed or blocked write set `errorMessage`.
 const dispatchRecordSchema = z
-  .object({
-    actor: dispatchActorSchema,
-    createdAtMs: z.number().finite(),
-    credentialSubject: credentialSubjectSchema.optional(),
-    destination: destinationSchema,
-    destinationVisibility: destinationVisibilitySchema,
-    errorMessage: z.string().optional(),
-    id: nonEmptyExactStringSchema,
-    idempotencyKey: z.string().min(1),
-    input: z.string().min(1),
-    metadata: z.record(z.string(), z.string()).optional(),
-    plugin: nonEmptyExactStringSchema,
-    replyAttribution: replyAttributionSchema.optional(),
-    resultMessageTs: z.string().optional(),
-    source: sourceSchema,
-    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
-    status: dispatchStatusSchema,
-    updatedAtMs: z.number().finite(),
-  })
-  .strict()
+  .discriminatedUnion("status", [
+    dispatchFieldsSchema
+      .extend({ status: z.enum(["pending", "running", "awaiting_resume"]) })
+      .strict(),
+    dispatchFieldsSchema
+      .extend({
+        status: z.literal("completed"),
+        resultMessageTs: z.string().optional(),
+      })
+      .strict(),
+    dispatchFieldsSchema
+      .extend({
+        status: z.enum(["blocked", "failed"]),
+        errorMessage: z.string(),
+        resultMessageTs: z.string().optional(),
+      })
+      .strict(),
+  ])
   .superRefine((record, ctx) => {
     if (!isSlackDestination(record.destination)) {
       ctx.addIssue({
@@ -227,7 +237,9 @@ function toDispatchProjection(record: DispatchRecord): DispatchProjection {
 }
 
 /** Gate recovery to dispatches that can still make progress. */
-export function isTerminalDispatchStatus(status: DispatchStatus): boolean {
+export function isTerminalDispatchStatus(
+  status: DispatchStatus,
+): status is "blocked" | "completed" | "failed" {
   return status === "completed" || status === "failed" || status === "blocked";
 }
 
@@ -290,9 +302,17 @@ async function updatePendingDispatchMailboxAppendIndex(
       stored === undefined || stored === null
         ? []
         : pendingDispatchMailboxAppendIndexSchema.parse(stored);
-    const next = [...new Set(update([...new Set(ids)]))].slice(
-      -DISPATCH_MAILBOX_APPEND_INDEX_MAX_LENGTH,
-    );
+    const next = [...new Set(update([...new Set(ids)]))];
+    // A dropped id would lose the only reminder to enqueue its dispatch, so a
+    // full index rejects new dispatches instead.
+    if (
+      next.length > ids.length &&
+      next.length > DISPATCH_MAILBOX_APPEND_INDEX_MAX_LENGTH
+    ) {
+      throw new Error(
+        `Dispatch mailbox append index is full (${DISPATCH_MAILBOX_APPEND_INDEX_MAX_LENGTH} pending)`,
+      );
+    }
     if (
       next.length === ids.length &&
       next.every((id, index) => id === ids[index])
@@ -367,152 +387,79 @@ export async function createOrGetDispatch(args: {
   });
 }
 
-async function transitionDispatch(
-  id: string,
-  transition: (record: DispatchRecord) => DispatchRecord,
-): Promise<DispatchRecord | undefined> {
-  return await withDispatchLock(id, async (state) => {
-    const current = parseDispatchRecord(
-      await state.get(getDispatchStorageKey(id)),
-    );
-    if (!current) {
-      return undefined;
-    }
-    const transitioned = transition(current);
-    if (transitioned === current) {
-      return current;
-    }
-    const next = {
-      ...transitioned,
-      updatedAtMs: Date.now(),
-    };
-    await putRecord(state, next);
-    return next;
-  });
-}
-
-/** Mark a dispatch projection as actively running. */
-export async function markDispatchRunning(
-  id: string,
-): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) =>
-    isTerminalDispatchStatus(record.status)
-      ? record
-      : { ...record, status: "running", errorMessage: undefined },
-  );
-}
-
-/** Project a durable awaiting-resume turn state to the plugin API. */
-export async function markDispatchAwaitingResume(
-  id: string,
-): Promise<DispatchRecord | undefined> {
-  return await transitionDispatch(id, (record) =>
-    isTerminalDispatchStatus(record.status)
-      ? record
-      : {
-          ...record,
-          status: "awaiting_resume",
-        },
-  );
-}
-
-async function recordEventAutomationExecution(
-  previous: DispatchRecord | undefined,
-  next: DispatchRecord | undefined,
-  status: "blocked" | "completed" | "failed",
-): Promise<void> {
-  if (!next || next.status !== status || previous?.status === status) return;
-  if (next.plugin !== "junior") return;
-  const eventAutomationId = next.metadata?.eventAutomationId;
-  if (!eventAutomationId) return;
-  await recordAutomationExecution(eventAutomationId, {
-    conversationId: getDispatchConversationId(next),
-    errorMessage: next.errorMessage,
-    executionId: next.id,
-    nowMs: next.updatedAtMs,
-    status,
-  });
+function eventAutomationIdOf(record: DispatchRecord): string | undefined {
+  return record.plugin === "junior"
+    ? record.metadata?.eventAutomationId
+    : undefined;
 }
 
 /**
- * Project a blocked turn to the plugin API. An Event automation is blocked
- * first, so a retry after a failed write still blocks it. Its creator is told
- * when the block is first stored. The heartbeat blocks a Scheduled automation
+ * Move one dispatch to its next state. This is the only writer of a stored
+ * dispatch status. A finished dispatch keeps its state, so a late writer
+ * cannot move it.
+ *
+ * The same step writes the copies of the outcome. An Event automation is
+ * blocked before the stored state, so a retry after a failed write still
+ * blocks it, and its creator is told once. The Automation run row is written
+ * from the stored state on each call, so a retry rebuilds a row that a
+ * stopped worker did not write. The heartbeat blocks a Scheduled automation
  * and tells its creator.
  */
-export async function markDispatchBlocked(
+export async function transitionDispatch(
   id: string,
-  errorMessage: string,
-  resultMessageTs?: string,
+  change: DispatchChange,
 ): Promise<DispatchRecord | undefined> {
-  const previous = await getDispatchRecord(id);
-  const eventAutomationId = previous?.metadata?.eventAutomationId;
-  if (
-    previous?.plugin === "junior" &&
-    eventAutomationId &&
-    !isTerminalDispatchStatus(previous.status) &&
-    (await blockEventAutomation(getDb(), eventAutomationId, errorMessage))
-  ) {
+  const result = await withDispatchLock(id, async (state) => {
+    const current = parseDispatchRecord(
+      await state.get(getDispatchStorageKey(id)),
+    );
+    if (!current || isTerminalDispatchStatus(current.status)) {
+      return { record: current };
+    }
+    const eventAutomationId = eventAutomationIdOf(current);
+    const blockedReason =
+      change.status === "blocked" &&
+      eventAutomationId &&
+      (await blockEventAutomation(
+        getDb(),
+        eventAutomationId,
+        change.errorMessage,
+      ))
+        ? change.errorMessage
+        : undefined;
+    // An unfinished record has no outcome fields, so the change sets all of
+    // them. `putRecord` checks the result against the state union.
+    const next = {
+      ...current,
+      ...change,
+      updatedAtMs: Date.now(),
+    } as DispatchRecord;
+    await putRecord(state, next);
+    return { blockedReason, record: next };
+  });
+  const record = result.record;
+  if (!record) {
+    return undefined;
+  }
+  const eventAutomationId = eventAutomationIdOf(record);
+  if (eventAutomationId && result.blockedReason !== undefined) {
     await notifyAutomationBlocked({
       automationId: eventAutomationId,
       dispatchId: id,
       kind: "event",
-      reason: errorMessage,
+      reason: result.blockedReason,
     });
   }
-  const next = await transitionDispatch(id, (record) =>
-    isTerminalDispatchStatus(record.status)
-      ? record
-      : {
-          ...record,
-          errorMessage,
-          ...(resultMessageTs ? { resultMessageTs } : undefined),
-          status: "blocked",
-        },
-  );
-  await recordEventAutomationExecution(previous, next, "blocked");
-  return next;
-}
-
-/** Project a completed turn and its accepted Slack message to the plugin API. */
-export async function markDispatchCompleted(
-  id: string,
-  resultMessageTs?: string,
-): Promise<DispatchRecord | undefined> {
-  const previous = await getDispatchRecord(id);
-  const next = await transitionDispatch(id, (record) =>
-    isTerminalDispatchStatus(record.status)
-      ? record
-      : {
-          ...record,
-          errorMessage: undefined,
-          ...(resultMessageTs ? { resultMessageTs } : undefined),
-          status: "completed",
-        },
-  );
-  await recordEventAutomationExecution(previous, next, "completed");
-  return next;
-}
-
-/** Project a terminal conversation turn failure to the plugin API. */
-export async function markDispatchFailed(
-  id: string,
-  errorMessage: string,
-  resultMessageTs?: string,
-): Promise<DispatchRecord | undefined> {
-  const previous = await getDispatchRecord(id);
-  const next = await transitionDispatch(id, (record) =>
-    isTerminalDispatchStatus(record.status)
-      ? record
-      : {
-          ...record,
-          errorMessage,
-          ...(resultMessageTs ? { resultMessageTs } : undefined),
-          status: "failed",
-        },
-  );
-  await recordEventAutomationExecution(previous, next, "failed");
-  return next;
+  if (eventAutomationId && isTerminalDispatchStatus(record.status)) {
+    await recordAutomationExecution(eventAutomationId, {
+      conversationId: getDispatchConversationId(record),
+      errorMessage: record.errorMessage,
+      executionId: record.id,
+      nowMs: record.updatedAtMs,
+      status: record.status,
+    });
+  }
+  return record;
 }
 
 /** Remove a dispatch after its durable mailbox append has succeeded. */
