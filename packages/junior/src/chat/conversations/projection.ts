@@ -199,15 +199,14 @@ function resolveCommitProvenance(args: {
         "trailing commit provenance cannot exceed committed messages",
       );
     }
-    const newMessageCount = args.nextMessages.length - matchingPrefix;
-    if (args.trailingMessageProvenance.length > newMessageCount) {
-      throw new Error(
-        "trailing commit provenance must align to newly committed messages",
-      );
-    }
+    // A redelivered Turn can commit input that is already committed. That
+    // input keeps its committed provenance; only new messages take the
+    // trailing provenance.
     const start = provenance.length - args.trailingMessageProvenance.length;
     args.trailingMessageProvenance.forEach((entry, offset) => {
-      provenance[start + offset] = entry;
+      if (start + offset >= matchingPrefix) {
+        provenance[start + offset] = entry;
+      }
     });
   }
   return provenance;
