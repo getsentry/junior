@@ -413,11 +413,15 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "available"
       ? transcript.events
       : undefined;
-  const selectOutlineItem = useCallback((seq: number) => {
+  const selectOutlineItem = (seq: number) => {
     // Search can hide the row.
     setSearch("");
     setRevealSeq(seq);
-  }, []);
+    // The outline lists messages that the loaded rows do not hold. Then the
+    // transcript opens at the page around the message.
+    const start = unheldLinkStart(history.data?.events, { event: seq });
+    if (start) setLinkStart(start);
+  };
   const selectedEvent =
     transcript?.eventHistory.status === "expired"
       ? undefined
@@ -776,6 +780,7 @@ export function ConversationPage(props: {
           overlay={
             view === "rich" && !transcriptPending && outlineEvents ? (
               <ConversationOutline
+                conversationId={conversationId}
                 events={outlineEvents}
                 onSelect={selectOutlineItem}
                 scrollRef={scrollRef}

@@ -126,6 +126,7 @@ const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
+const MANY_TURNS_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 /** Event automation run. Its trigger message id equals the conversation id. */
 const EVENT_AUTOMATION_RUN_CONVERSATION_ID = "agent-dispatch:event-1";
@@ -1595,6 +1596,55 @@ function failedConversation(nowMs: number): ConversationDetailReport {
   });
 }
 
+/** A Conversation longer than its detail page, for the outline. */
+function manyTurnsConversation(nowMs: number): ConversationDetailReport {
+  const startedAt = iso(nowMs, -26 * 60 * 60_000);
+  const topics = [
+    "the checkout error budget",
+    "the canary rollout order",
+    "the payments retry policy",
+    "the alert thresholds",
+    "the on-call handoff notes",
+  ];
+  return detail(nowMs, {
+    conversationId: MANY_TURNS_CONVERSATION_ID,
+    displayTitle: "Quarterly reliability review",
+    surface: "slack",
+    channel: "CQA456",
+    startedAt,
+    actorIdentity: actor("jordan@example.com", "Jordan Blake", "jordan"),
+    events: Array.from({ length: 24 }, (_, turn) => [
+      reportEvent(turn * 2, iso(Date.parse(startedAt), turn * 60_000), {
+        type: "message" as const,
+        messageId: `many-turns-user-${turn}`,
+        role: "user" as const,
+        text:
+          turn % 2 === 0
+            ? `Question ${turn + 1}: review ${topics[turn % topics.length]}.`
+            : `Question ${turn + 1}: review ${topics[turn % topics.length]}. Check last quarter's numbers, list the open follow-ups with their owners, and tell me whether anything blocks the next release or needs a decision from the team this week.`,
+      }),
+      reportEvent(
+        turn * 2 + 1,
+        iso(Date.parse(startedAt), turn * 60_000 + 20_000),
+        {
+          type: "message" as const,
+          messageId: `many-turns-reply-${turn}`,
+          role: "assistant" as const,
+          text: [
+            `Reviewed ${topics[turn % topics.length]}.`,
+            "",
+            "- Last quarter's numbers stay inside the target.",
+            "- Two follow-ups are open, and both have owners.",
+            "- No change blocks the next release.",
+            "",
+            "I will flag it in the weekly summary if the trend changes.",
+          ].join("\n"),
+        },
+      ),
+    ]).flat(),
+  });
+}
+
 function simpleConversation(
   nowMs: number,
   options: {
@@ -1816,6 +1866,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       -3.5 * 60 * 60_000,
     ),
     longConversation(nowMs),
+    manyTurnsConversation(nowMs),
     incidentConversation(nowMs),
     privateConversation(nowMs),
     failedConversation(nowMs),
@@ -2700,7 +2751,9 @@ export function readMockConversationDetail(
     detail,
     agentTree?.[0]?.conversationId,
   );
-  const events = withViewerState.events.slice(-limit);
+  const events = withViewerState.events.slice(
+    -mockPageLimit(conversationId, limit),
+  );
   const bounded =
     events.length < withViewerState.events.length && events[0]
       ? {
@@ -2758,14 +2811,7 @@ export function readMockConversationEvents(
   if (!conversation) return undefined;
   if (before === conversation.previousCursor) {
     return {
-      events: [
-        reportEvent(0, iso(Date.parse(conversation.startedAt), -60_000), {
-          type: "message",
-          messageId: `${conversationId}:earlier`,
-          role: "user",
-          text: "Prepare the release and include the complete earlier context.",
-        }),
-      ],
+      events: mockEarlierEvents(conversation),
       eventHistory: conversation.eventHistory,
       generatedAt: NOW,
     };
@@ -2776,7 +2822,7 @@ export function readMockConversationEvents(
   const olderEvents = conversation.events.filter(
     (event) => event.seq < beforeSeq,
   );
-  const events = olderEvents.slice(-limit);
+  const events = olderEvents.slice(-mockPageLimit(conversationId, limit));
   return {
     events,
     eventHistory: conversation.eventHistory,
@@ -2787,6 +2833,36 @@ export function readMockConversationEvents(
         ? { previousCursor: conversation.previousCursor }
         : {}),
   };
+}
+
+/** Return every event of a mock Conversation, with its earlier page. */
+export function readMockConversationAllEvents(
+  conversationId: string,
+): ConversationEventPage | undefined {
+  const conversation = mockConversations(NOW_MS).find(
+    (candidate) => candidate.conversationId === conversationId,
+  );
+  if (!conversation) return undefined;
+  return {
+    events: [...mockEarlierEvents(conversation), ...conversation.events],
+    eventHistory: conversation.eventHistory,
+    generatedAt: NOW,
+  };
+}
+
+/** The fixed earlier page of a Conversation that has a previous cursor. */
+function mockEarlierEvents(
+  conversation: ConversationDetailReport,
+): ConversationReportEvent[] {
+  if (!conversation.previousCursor) return [];
+  return [
+    reportEvent(0, iso(Date.parse(conversation.startedAt), -60_000), {
+      type: "message",
+      messageId: `${conversation.conversationId}:earlier`,
+      role: "user",
+      text: "Prepare the release and include the complete earlier context.",
+    }),
+  ];
 }
 
 /**
@@ -2812,6 +2888,14 @@ export function readMockConversationEventsAround(
   ) {
     return "turn-not-found";
   }
+  const earlier = mockEarlierEvents(conversation);
+  if ("event" in link && earlier.some(({ seq }) => seq === link.event)) {
+    return {
+      events: [...earlier, ...conversation.events],
+      eventHistory: conversation.eventHistory,
+      generatedAt: NOW,
+    };
+  }
   return {
     events: conversation.events,
     eventHistory: conversation.eventHistory,
@@ -2820,6 +2904,16 @@ export function readMockConversationEventsAround(
       ? { previousCursor: conversation.previousCursor }
       : undefined),
   };
+}
+
+/**
+ * Mock transcripts fit one page, except one that pages by 3 Turns, like the
+ * API, so the outline lists messages that have not loaded.
+ */
+function mockPageLimit(conversationId: string, limit: number): number {
+  return conversationId === MANY_TURNS_CONVERSATION_ID
+    ? Math.min(limit, 6)
+    : limit;
 }
 
 function mockBeforeCursor(conversationId: string, seq: number): string {

@@ -39,6 +39,7 @@ import {
   conversationReadPositionSchema,
   conversationReadReportSchema,
   conversationUnreadSchema,
+  conversationOutlineSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
@@ -71,6 +72,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
+import { readMockConversationOutline } from "./outline";
 import {
   markMockConversationRead,
   setMockConversationReadState,
@@ -380,6 +382,16 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationEventPageSchema, report)
       : errorResponse("Invalid conversation cursor.", 400);
+  });
+  app.get("/conversations/:conversationId/outline", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const outline = readMockConversationOutline(params.data.conversationId);
+    return outline
+      ? jsonResponse(conversationOutlineSchema, outline)
+      : errorResponse("Conversation not found.", 404);
   });
   app.get("/conversations/:conversationId/agents", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
