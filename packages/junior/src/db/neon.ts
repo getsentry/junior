@@ -39,6 +39,7 @@ class OverflowPool extends Pool {
   // pg-pool takes an idle client one tick after `connect()`, so `idleCount`
   // still includes clients that queued queries already claimed.
   private pendingAcquires = 0;
+  private readonly webSocketOnly = new AsyncLocalStorage<true>();
   private readonly sql;
   private readonly dispatcher: Agent;
   private readonly statementTimeoutMs: number | false | undefined;
@@ -81,10 +82,19 @@ class OverflowPool extends Pool {
     const params: unknown[] = values ?? query.values ?? [];
     // An empty pool opens its first client inline, as before, so the warm
     // path stays on WebSocket.
-    if (this.idleCount > this.pendingAcquires || this.totalCount === 0) {
+    if (
+      this.webSocketOnly.getStore() ||
+      this.idleCount > this.pendingAcquires ||
+      this.totalCount === 0
+    ) {
       return this.queryWebSocket(query, params);
     }
     return this.queryHttp(query, params);
+  }
+
+  /** Keep every pool query in `callback` on WebSocket. */
+  async onWebSocket<T>(callback: () => Promise<T>): Promise<T> {
+    return await this.webSocketOnly.run(true, callback);
   }
 
   private async queryWebSocket(query: PlainQuery, params: unknown[]) {
@@ -136,10 +146,10 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   private savepointId = 0;
   private isolatedQueryId = 0;
 
-  private readonly pool: Pool;
+  private readonly pool: OverflowPool;
   private readonly dispatcher: Agent;
 
-  constructor(pool: Pool, dispatcher: Agent) {
+  constructor(pool: OverflowPool, dispatcher: Agent) {
     this.pool = pool;
     this.dispatcher = dispatcher;
   }
@@ -263,7 +273,9 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
     const lockName = `junior:migrate:${migrationTable}`;
     try {
       await client.query("SELECT pg_advisory_lock(hashtext($1))", [lockName]);
-      return await callback();
+      // DDL such as `CREATE INDEX CONCURRENTLY` can outlast an HTTP request,
+      // and only a WebSocket session's statement_timeout cancels it.
+      return await this.pool.onWebSocket(callback);
     } finally {
       // Ending the session releases the lock without replacing a migration error.
       client.release(true);

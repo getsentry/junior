@@ -151,4 +151,18 @@ describe("Neon pool overflow", () => {
     ]);
     expect(wire.httpQueries).toEqual(["select 'outside'"]);
   });
+
+  it("keeps migration queries on WebSocket while the lock holds a client", async () => {
+    await executor.withMigrationLock("junior_migrations", async () => {
+      // The lock holds the only client, so a plain query would overflow.
+      await executor.execute("CREATE INDEX CONCURRENTLY example ON t (c)");
+    });
+
+    expect(wire.clientsOpened).toBe(2);
+    expect(wire.websocketQueries).toEqual([
+      "SELECT pg_advisory_lock(hashtext($1))",
+      "CREATE INDEX CONCURRENTLY example ON t (c)",
+    ]);
+    expect(wire.httpQueries).toEqual([]);
+  });
 });
