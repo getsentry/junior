@@ -21,6 +21,7 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import {
@@ -391,9 +392,11 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   return (
     <Card className="p-5 sm:p-6">
-      <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-        What Junior remembers
-      </h2>
+      <AnchorHeading
+        anchor="memory-types"
+        className="m-0 font-display text-xl font-medium text-dashboard-text"
+        title="What Junior remembers"
+      />
       <div className="mt-5 grid gap-px overflow-hidden rounded-md border border-dashboard-border-subtle bg-dashboard-fill-hover">
         <OverviewBreakdownRow
           detail="How people like to work"
@@ -423,9 +426,11 @@ function MemoryOriginPanel(props: { data: MemoryDashboardData }) {
   const other = Math.max(0, stats.active - stats.automatic - stats.explicit);
   return (
     <Card className="p-5 sm:p-6">
-      <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-        How they got here
-      </h2>
+      <AnchorHeading
+        anchor="memory-sources"
+        className="m-0 font-display text-xl font-medium text-dashboard-text"
+        title="How they got here"
+      />
       <p className="mt-1 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
         Same totals, split by how they were written.
       </p>

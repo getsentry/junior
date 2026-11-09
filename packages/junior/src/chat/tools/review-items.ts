@@ -17,6 +17,7 @@ import {
   type ReviewItemAgentScope,
 } from "@/chat/review-items/access";
 import {
+  activeParticipantUserIds,
   automationCreatorUserId,
   EVERYONE_ASSIGNEE,
   resolveAssignee,
@@ -95,19 +96,28 @@ type ReviewItemToolContext = Pick<
 
 /**
  * Pick the assignees of a new item when the agent names none: the User of
- * the Actor, or else the creator of the Automation of this run. A Slack
- * Actor without a Junior User gets an item with no assignees, so that the
- * agent can still ask; any person in the thread can then answer it.
+ * the Actor, or else the creator of the Automation of this run. A Turn with
+ * a system Actor, such as an event Turn, falls back to the active
+ * Participants of the Conversation. A Slack Actor without a Junior User gets
+ * an item with no assignees, so that the agent can still ask; any person in
+ * the thread can then answer it.
  */
 async function defaultAssignees(
   scope: ReviewItemAgentScope,
+  conversationId: string,
 ): Promise<ResolvedAssignees> {
   const userId =
     scope.user?.id ??
     (scope.reader.automationId
       ? await automationCreatorUserId(getDb(), scope.reader.automationId)
       : undefined);
-  return { everyone: false, userIds: userId ? [userId] : [] };
+  if (userId) return { everyone: false, userIds: [userId] };
+  return {
+    everyone: false,
+    userIds: scope.actorIsPerson
+      ? []
+      : await activeParticipantUserIds(getDb(), conversationId),
+  };
 }
 
 /** What app setup gives the Review item tools. */
@@ -189,7 +199,7 @@ export function createAddReviewItemTool(
   services: ReviewItemToolServices,
 ) {
   return zodTool({
-    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk, and in a Slack thread it also shows as a card with buttons. Write the question so it stands alone: a person who sees only the card must understand it. Put the option that you recommend first, set \`recommended: true\` on it, and say why in its description. Use kind \`action\` with a \`request\` to ask: a question and 1-4 fields. Each field is \`choice\` (pick one), \`multi_choice\` (pick any), or \`text\` (a short answer). For a simple decision, use one \`choice\` field. Ask for related input in one item. Use kind \`notice\` only to tell a person something. Assignees default to the person in this Turn, or to the Automation creator in an Automation run. The current Conversation is always linked. The answer arrives later as a \`<review-item-answer>\` with the item id, or a \`<review-item-dismissed>\` when the person dismisses it. A reply that the assignee types in the thread also closes the item when the reply answers it. If your next step needs the answer, end the Turn now: the card is your reply, so end with exactly ${NO_REPLY_MARKER}, or finish the Automation run. If other work does not need the answer, continue with it. If an open item has the same \`dedupe_key\`, this updates that item instead of adding another.`,
+    description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes on the review desk, and in a Slack thread it also shows as a card with buttons. Write the question so it stands alone: a person who sees only the card must understand it. Put the option that you recommend first, set \`recommended: true\` on it, and say why in its description. Use kind \`action\` with a \`request\` to ask: a question and 1-4 fields. Each field is \`choice\` (pick one), \`multi_choice\` (pick any), or \`text\` (a short answer). For a simple decision, use one \`choice\` field. Ask for related input in one item. Use kind \`notice\` only to tell a person something. Assignees default to the person in this Turn, to the Automation creator in an Automation run, or else to the people still subscribed to the Conversation. The current Conversation is always linked. The answer arrives later as a \`<review-item-answer>\` with the item id, or a \`<review-item-dismissed>\` when the person dismisses it. A reply that the assignee types in the thread also closes the item when the reply answers it. If your next step needs the answer, end the Turn now: the card is your reply, so end with exactly ${NO_REPLY_MARKER}, or finish the Automation run. If other work does not need the answer, continue with it. If an open item has the same \`dedupe_key\`, this updates that item instead of adding another.`,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -290,7 +300,18 @@ export function createAddReviewItemTool(
               everyone: existing.assignedToEveryone,
               userIds: existing.assignees.map((assignee) => assignee.userId),
             }
-          : await defaultAssignees(scope);
+          : await defaultAssignees(scope, context.conversationId);
+      // Only an assignee gets the item in their review desk count. A Turn
+      // without a person has nobody to show it to, so it needs an assignee.
+      if (
+        !assignees.everyone &&
+        assignees.userIds.length === 0 &&
+        !scope.actorIsPerson
+      ) {
+        throw new ToolInputError(
+          "No person would see this item: no default assignee has a Junior user, and this Turn has no person. Set `assignees`.",
+        );
+      }
       await requireReviewItemAssignees({
         assignees,
         automationId: existing

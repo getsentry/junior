@@ -23,7 +23,10 @@ import type {
   CreateConversationBody,
   CreateConversationMessageBody,
 } from "../schema/conversation";
-import { readConversationAccessFromSql } from "./access";
+import {
+  canAddConversationMessages,
+  readConversationAccessFromSql,
+} from "./access";
 
 /** Turn image validation failures into request errors before accepting work. */
 function parseImages(images: InputImage[] | undefined) {
@@ -100,8 +103,11 @@ export async function appendConversationMessageForViewer(
     [conversationId],
     viewer,
   );
-  if (!access.get(conversationId)?.isParticipant) {
-    throwApiError(403, "Only conversation participants can add messages.");
+  if (!canAddConversationMessages(access.get(conversationId))) {
+    throwApiError(
+      403,
+      "Only participants can add messages to a private conversation.",
+    );
   }
 
   const images = parseImages(body.images);

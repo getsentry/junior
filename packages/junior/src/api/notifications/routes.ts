@@ -8,6 +8,7 @@ import {
   saveNotificationSchedule,
   savePushSubscription,
 } from "@/chat/notifications/store";
+import { isPausedBySlack } from "@/chat/notifications/slack";
 import { resolveNotificationTimezone } from "@/chat/notifications/timezone";
 import {
   readWebPushConfig,
@@ -30,15 +31,18 @@ async function readSettings(userId: string) {
   const db = getDb();
   const nowMs = Date.now();
   const schedule = await readNotificationSchedule(db, userId);
-  const [{ source, timezone }, subscriptions] = await Promise.all([
-    resolveNotificationTimezone({ db, nowMs, schedule, userId }),
-    listPushSubscriptions(db, userId),
-  ]);
+  const [{ source, timezone }, subscriptions, slackPausedNow] =
+    await Promise.all([
+      resolveNotificationTimezone({ db, nowMs, schedule, userId }),
+      listPushSubscriptions(db, userId),
+      isPausedBySlack(db, userId, nowMs),
+    ]);
   const config = readWebPushConfig();
   return notificationSettingsSchema.parse({
     ...(config ? { publicKey: config.publicKey } : undefined),
     deviceCount: subscriptions.length,
     schedule,
+    slackPausedNow,
     timezone,
     timezoneSource: source,
   });

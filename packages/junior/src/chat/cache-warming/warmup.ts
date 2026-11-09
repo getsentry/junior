@@ -30,8 +30,7 @@ import {
   type Context,
 } from "@earendil-works/pi-ai/compat";
 import { getChatConfig } from "@/chat/config";
-import { runWithLogContext } from "@/chat/log-context";
-import { logInfo, logWarn } from "@/chat/logging";
+import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
@@ -465,34 +464,45 @@ export async function runCacheWarmup(
     return;
   }
 
-  await runWithLogContext(
+  const attributes: Record<string, unknown> = {
+    "app.cache_warming.cycle": message.cycle,
+    "app.cache_warming.prefix_tokens": warm.prefixTokens,
+    "app.cache_warming.trigger": "idle",
+    // Queue delay shows as a smaller time left than the warmup margin.
+    "app.cache_warming.cache_ttl_left_ms":
+      message.cacheExpiresAtMs - Date.now(),
+  };
+  await withSpan(
+    "cache_warming.warmup",
+    "cache_warming.warmup",
     { conversationId, modelId: warm.modelId },
-    {},
-    async () => {
-      const attributes: Record<string, unknown> = {
-        "app.cache_warming.cycle": message.cycle,
-        "app.cache_warming.prefix_tokens": warm.prefixTokens,
-        "app.cache_warming.trigger": "idle",
-        // Queue delay shows as a smaller time left than the warmup margin.
-        "app.cache_warming.cache_ttl_left_ms":
-          message.cacheExpiresAtMs - Date.now(),
+    async (setSpanAttributes) => {
+      const setOutcome = (
+        outcome: string,
+        extra: Record<string, unknown> = {},
+      ) =>
+        setSpanAttributes({
+          ...attributes,
+          ...extra,
+          "app.cache_warming.outcome": outcome,
+        });
+      const skip = async (reason: string) => {
+        const skipReason = { "app.cache_warming.skip_reason": reason };
+        logInfo("cache_warming.warmup.skipped", {
+          ...attributes,
+          ...skipReason,
+        });
+        setOutcome("skipped", skipReason);
+        await stop();
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
       if (warmupTooLate(message.cacheExpiresAtMs)) {
-        logInfo("cache_warming.warmup.skipped", {
-          ...attributes,
-          "app.cache_warming.skip_reason": "cache_expired",
-        });
-        await stop();
+        await skip("cache_expired");
         return;
       }
       if (await breakerOpen(state, warm.modelId)) {
-        logInfo("cache_warming.warmup.skipped", {
-          ...attributes,
-          "app.cache_warming.skip_reason": "breaker_open",
-        });
-        await stop();
+        await skip("breaker_open");
         return;
       }
 
@@ -515,11 +525,7 @@ export async function runCacheWarmup(
         decision.returnsPerWarmup;
       attributes["app.cache_warming.threshold"] = decision.threshold;
       if (!decision.warm) {
-        logInfo("cache_warming.warmup.skipped", {
-          ...attributes,
-          "app.cache_warming.skip_reason": decision.reason,
-        });
-        await stop();
+        await skip(decision.reason);
         return;
       }
 
@@ -528,6 +534,7 @@ export async function runCacheWarmup(
         snapshotKey(conversationId, generation),
       );
       if (!snapshot) {
+        setOutcome("skipped", { "app.cache_warming.skip_reason": "stopped" });
         return;
       }
       const context = JSON.parse(
@@ -543,6 +550,7 @@ export async function runCacheWarmup(
         ...(warm.reasoning ? { reasoning: warm.reasoning } : undefined),
         prefixTokens: warm.prefixTokens,
       }).catch(async (error: unknown) => {
+        setOutcome("failed");
         await stop();
         throw error;
       });
@@ -550,10 +558,12 @@ export async function runCacheWarmup(
       if (!warmup.refreshed) {
         // Stop this idle period. The miss already counts for the breaker.
         logWarn("cache_warming.warmup.failed", attributes);
+        setOutcome("missed");
         await stop();
         return;
       }
       logInfo("cache_warming.warmup.completed", attributes);
+      setOutcome("completed");
 
       await state.set(
         warmupsKey(conversationId, generation),
@@ -575,5 +585,6 @@ export async function runCacheWarmup(
         );
       }
     },
+    attributes,
   );
 }

@@ -1,4 +1,5 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
+import type { AgentDurability } from "@/chat/agent/types";
 import {
   Message,
   ThreadImpl,
@@ -61,6 +62,12 @@ import {
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { getChatConfig } from "@/chat/config";
 import { turnInputTelemetry } from "@/chat/task-execution/turn-telemetry";
+import {
+  canJoinTurn,
+  canShareTurn,
+} from "@/chat/task-execution/attempt-selection";
+import type { TurnRecord } from "@/chat/task-execution/checkpoint";
+import { supersedeTurnForInput } from "@/chat/task-execution/supersede-turns";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -463,6 +470,9 @@ export interface CreateSlackConversationWorkerOptions {
     conversationId: string,
     options: {
       checkIn: () => Promise<boolean>;
+      drainSteeringMessages: (
+        turn: TurnRecord,
+      ) => NonNullable<AgentDurability["drainSteeringMessages"]>;
       shouldYield: () => boolean;
       stopSignal?: AbortSignal;
     },
@@ -667,6 +677,12 @@ export function createSlackConversationWorker(
     const records = getPendingRecords({
       execution: { pendingMessages: [...context.attempt.messages] },
     });
+    // A Slack interruption that cannot join the active Turn makes the Turn
+    // yield at its next safe boundary. The next Run selects the interruption
+    // and supersedes the Turn before it starts its own.
+    let yieldForSlackInterrupt = false;
+    const shouldYield = (): boolean =>
+      yieldForSlackInterrupt || context.shouldYield();
     if (records.length === 0) {
       const destination = requireSlackDestination(
         context.destination,
@@ -679,7 +695,19 @@ export function createSlackConversationWorker(
           state,
           task: async () => {
             await options.runNextPausedTurn(context.conversationId, {
-              shouldYield: context.shouldYield,
+              // A resumed Run takes no steering. Input that can join its Turn
+              // waits for the Run to end.
+              drainSteeringMessages: (turn) => async () => {
+                await context.attempt.drain(async (pendingRecords) => {
+                  yieldForSlackInterrupt ||= pendingRecords.some(
+                    (record) =>
+                      record.source === "slack" && !canJoinTurn(turn, record),
+                  );
+                  return [];
+                });
+                return [];
+              },
+              shouldYield,
               checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
             });
@@ -712,6 +740,10 @@ export function createSlackConversationWorker(
     if (!(await context.checkIn())) {
       return { status: "lost_lease" };
     }
+    await supersedeTurnForInput({
+      conversationId: context.conversationId,
+      message: latestRecord,
+    });
 
     const turnResult = await runWithSlackInstallation({
       adapter,
@@ -755,7 +787,6 @@ export function createSlackConversationWorker(
           skipped,
           totalSinceLastHandler: messages.length,
         };
-        const activeAuthorId = requireSlackAuthorId(latestMessage);
         let initialMessagesAcked = false;
         const ack = async (): Promise<void> => {
           if (initialMessagesAcked) {
@@ -770,30 +801,26 @@ export function createSlackConversationWorker(
             );
           }
         };
-        // Only explicit Slack interruptions from the active author enter the
-        // active turn. The turn runs with that author's credentials, so another
-        // person's message always waits for its own turn. Deferred work and
-        // steered messages from other sources, such as the dashboard, stay
-        // pending for their own turn.
+        // Only explicit Slack interruptions that can join the active Turn
+        // enter it. Deferred work and steered messages from other sources,
+        // such as the dashboard, stay pending for their own Turn.
         const drainSteeringMessages = async (
           accept: (
             messages: SteeringCandidateMessage[],
           ) => Promise<readonly string[]>,
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
-            const candidates = pendingRecords
-              .filter((record) => record.source === "slack")
-              .map((record) => ({
-                inboundMessageId: record.inboundMessageId,
-                message: restoreMessage({
-                  adapter,
-                  record,
-                }),
-              }))
-              .filter(
-                (candidate) =>
-                  requireSlackAuthorId(candidate.message) === activeAuthorId,
-              );
+            const slackRecords = pendingRecords.filter(
+              (record) => record.source === "slack",
+            );
+            const steering = slackRecords.filter((record) =>
+              canShareTurn(latestRecord, record),
+            );
+            yieldForSlackInterrupt ||= steering.length < slackRecords.length;
+            const candidates = steering.map((record) => ({
+              inboundMessageId: record.inboundMessageId,
+              message: restoreMessage({ adapter, record }),
+            }));
             await Promise.all(
               candidates.map(({ message }) =>
                 attachLinkedSlackFiles({ adapter, message }),
@@ -811,7 +838,7 @@ export function createSlackConversationWorker(
               drainSteeringMessages,
               ack,
               isFinalAttempt: context.attempt.isFinalAttempt,
-              shouldYield: context.shouldYield,
+              shouldYield,
               checkIn: context.checkIn,
               stopSignal: context.stopSignal?.(),
               telemetry,
@@ -827,7 +854,7 @@ export function createSlackConversationWorker(
                 drainSteeringMessages,
                 ack,
                 isFinalAttempt: context.attempt.isFinalAttempt,
-                shouldYield: context.shouldYield,
+                shouldYield,
                 checkIn: context.checkIn,
                 stopSignal: context.stopSignal?.(),
                 telemetry,

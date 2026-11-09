@@ -10,6 +10,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
 import { NativeSelect } from "../../components/ui/native-select";
 import { InlineError } from "../../components/InlineError";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { Card } from "../../components/layout/Card";
 import { useArchiveDoneConversations } from "../../conversations/autoArchiveQueries";
 import { patch } from "../../http";
@@ -68,7 +69,11 @@ export function AutoArchiveSettings({
 
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
-      <h2 className="m-0 text-lg font-bold">Conversations</h2>
+      <AnchorHeading
+        anchor="conversations"
+        className="m-0 text-lg font-bold"
+        title="Conversations"
+      />
       <label className="mt-4 flex cursor-pointer items-start gap-3">
         <Checkbox
           checked={enabled}

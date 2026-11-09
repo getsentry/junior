@@ -215,7 +215,6 @@ attributes. Nested logs and spans inherit them.
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                      |
-| Dashboard dictation slow or failing  | span `gen_ai.transcription`, `ai.transcription.failed`                                                       |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`; `app.db.transport`                     |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
@@ -400,6 +399,79 @@ fields=timestamp,trace,gen_ai.request.model,app.ai.request.prefix.hash,app.ai.re
 sort=timestamp
 ```
 
+## Cache Warming
+
+`chat/cache-warming/` sends warmups that keep the prompt cache of an idle
+Conversation or a long tool wait warm. Production drops info logs, so use
+these spans for warmup and backfill outcomes in production.
+
+- Each warmup decision has one `cache_warming.warmup` span. An idle warmup
+  runs in the cache warmup queue callback. A tool wait warmup runs from a
+  timer in the agent run, so it is in the trace of its Turn. The warmup call
+  is a child `gen_ai.chat` span with `gen_ai.prompt.name:junior.cache_warmup`.
+- A queue message for an idle period that already ended makes no span.
+- `missed` means that the warmup call did not read the cached prefix. It also
+  logs `cache_warming.warmup.failed` and reports
+  `cache_warming.warmup.missed` to Sentry. `failed` means that the warmup
+  call threw.
+- `stopped` means that warming stopped, or the tools returned, before the
+  warmup call. It has no log event.
+- The run that claims the one-time gap backfill has one
+  `cache_warming.backfill` span. It runs at the end of the heartbeat. Later
+  heartbeats make no span. A thrown error sets the span status to error and
+  logs `cache_warming.backfill.failed`.
+
+Attributes on the `cache_warming.warmup` span:
+
+| Attribute                              | Type   | Meaning                                                   |
+| -------------------------------------- | ------ | --------------------------------------------------------- |
+| `app.cache_warming.trigger`            | string | `idle` or `tool_wait`                                     |
+| `app.cache_warming.outcome`            | string | `completed`, `skipped`, `missed`, or `failed`             |
+| `app.cache_warming.skip_reason`        | string | `cache_expired`, `breaker_open`, `stopped`, or a decision |
+| `app.cache_warming.cycle`              | int    | warmup number in the idle period or tool wait             |
+| `app.cache_warming.prefix_tokens`      | int    | cached prefix tokens that the warmup keeps                |
+| `app.cache_warming.cache_ttl_left_ms`  | int    | idle only: time left before the cache expires             |
+| `app.cache_warming.return_probability` | double | chance of a return in the next TTL                        |
+| `app.cache_warming.returns_per_warmup` | double | best expected returns per warmup                          |
+| `app.cache_warming.threshold`          | double | returns per warmup that make a warmup pay                 |
+| `app.cost.total_usd`                   | double | cost of the warmup call                                   |
+| `gen_ai.usage.cache_read.input_tokens` | int    | cached tokens that the warmup call read                   |
+
+- A decision `skip_reason` is a `decideWarmup` reason, such as `few_gaps`
+  or `unlikely_return`.
+- The decision attributes are absent when the warmup skipped before the
+  decision. The cost and usage attributes are absent when no warmup call
+  completed.
+
+Attributes on the `cache_warming.backfill` span:
+
+| Attribute                                         | Type    | Meaning                                  |
+| ------------------------------------------------- | ------- | ---------------------------------------- |
+| `app.cache_warming.backfill.outcome`              | string  | `completed` or `not_completed`           |
+| `app.cache_warming.backfill.conversation_count`   | int     | Conversations that the scan read         |
+| `app.cache_warming.backfill.canceled_batch_count` | int     | batches that the statement timeout ended |
+| `app.cache_warming.backfill.budget_exceeded`      | boolean | the scan stopped on its time budget      |
+| `app.cache_warming.backfill.gap_count`            | int     | `completed` only: gaps written           |
+| `app.cache_warming.backfill.segment_count`        | int     | `completed` only: segment lists filled   |
+
+- `not_completed` means that the statement timeout canceled each query. The
+  claim expires, and a later heartbeat tries again.
+
+Warmup outcomes and skip reasons.
+
+```text
+dataset=spans query='span.op:cache_warming.warmup'
+fields=app.cache_warming.trigger,app.cache_warming.outcome,app.cache_warming.skip_reason,count(),sum(app.cost.total_usd)
+```
+
+Backfill runs.
+
+```text
+dataset=spans query='span.op:cache_warming.backfill'
+fields=timestamp,trace,span.status,span.duration,app.cache_warming.backfill.outcome,app.cache_warming.backfill.conversation_count,app.cache_warming.backfill.gap_count,app.cache_warming.backfill.segment_count,app.cache_warming.backfill.budget_exceeded,app.cache_warming.backfill.canceled_batch_count
+sort=-timestamp
+```
+
 ## Context Compaction
 
 A compaction replaces the history when its estimate is above the threshold.
@@ -576,7 +648,9 @@ previous Turn when agent history exists.
   comments.
 - When no idle Neon pool client is free, a query outside a transaction runs
   over Neon's HTTP endpoint. Its `db` span has `app.db.transport: http`. A
-  `db` span without the attribute ran on a WebSocket client.
+  `db` span without the attribute ran on a WebSocket client. The pool then
+  opens a client in the background for the next query. If that open fails, it
+  logs `db.pool.client.connect_failed`.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
@@ -591,7 +665,9 @@ previous Turn when agent history exists.
   is in its own trace. Find its Turn by `gen_ai.conversation.id`.
 - On `plugin.task` `notifyReply`, `app.notification.outcome` is `sent` or
   `skipped`. `app.notification.skip_reason` says why it skipped, such as
-  `outside_hours` or `has_location`. A sent task has device counts and
+  `outside_hours`, `slack_paused`, `has_location`, or `quiet`. When Junior cannot read
+  a Slack notification schedule, `slack.action.failed` logs the Slack error
+  with `app.slack.action` `dnd.info`. A sent task has device counts and
   `app.notification.reply_lag_ms`: the time from the completed Turn to the
   end of the pushes.
 - A `notification.push.send` span sends to one browser. `server.address` is
@@ -677,6 +753,11 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   `Refresh changed reads`. `app.dashboard.versions.moved` lists the tokens
   that moved, such as `conversations,reviewItems`. A poll that moves none
   adds no span, so compare the count with the `/api/versions` polls.
+- When `conversations` moves, `app.dashboard.versions.feed_moved` lists the
+  feed-row inputs that moved it: `order`, `pin`, `title`, `status`,
+  `activity` (the minute of last activity), `messages` (the newest Message
+  of each role), `unread`, `threads`, and `annotations`. A Conversation that
+  joins or leaves the first page moves `order` and the inputs of its row.
 - `http.server` spans have the route pattern of the app that served the
   request, also when the core app passes the request to the dashboard or a
   plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
@@ -702,6 +783,14 @@ Versions polls that refresh a read, by the tokens that moved.
 ```text
 dataset=spans query='span.name:"Refresh changed reads"'
 fields=app.dashboard.versions.moved,count()
+sort=-count()
+```
+
+Feed-row inputs that moved the feed token.
+
+```text
+dataset=spans query='span.name:"Refresh changed reads" has:app.dashboard.versions.feed_moved'
+fields=app.dashboard.versions.feed_moved,count()
 sort=-count()
 ```
 

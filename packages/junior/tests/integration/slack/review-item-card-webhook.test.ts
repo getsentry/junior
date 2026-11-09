@@ -642,12 +642,15 @@ describe("Slack webhook: Review item cards", () => {
     expect((await getReviewItem(getDb(), item.id))?.status).toBe("open");
 
     // A question with no assignees takes an answer from anyone, but not
-    // from a Slack author outside the allowed domains.
+    // from a Slack author outside the allowed domains. A Slack Actor without
+    // a Junior User asks one.
     const unassigned = await (
       createAddReviewItemTool(
         {
           conversationId: THREAD,
-          resolveActorIdentity: async () => undefined,
+          resolveActorIdentity: async () => ({
+            identity: { id: "identity:slack:UNOUSER" } as any,
+          }),
           source: { kind: "slack" } as any,
         },
         createSlackReviewItemToolServices(

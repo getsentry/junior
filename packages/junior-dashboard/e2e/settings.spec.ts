@@ -26,7 +26,10 @@ test("updates the signed-in user's display name", async ({
   ).toBeVisible();
 });
 
-test("saves notification working hours", async ({ page, dashboard }) => {
+test("saves notification working hours and the Slack schedule choice", async ({
+  page,
+  dashboard,
+}) => {
   await page.goto(`${dashboard.baseURL}/settings`);
   await expect(
     page.getByRole("heading", { name: "Push notifications" }),
@@ -42,6 +45,24 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   await expect(saturday).toHaveAttribute("aria-pressed", "false");
   await saturday.click();
   await page.getByLabel("Start").fill("08:30");
+  // Following Slack is on by default. The e2e user has no linked Slack
+  // account, so the hours apply.
+  const followSlack = page.getByRole("checkbox", {
+    name: "Follow my Slack notification schedule",
+  });
+  await expect(followSlack).toBeChecked();
+  await expect(
+    page.getByText(
+      "Junior cannot read your Slack notification schedule, so it uses the hours below.",
+    ),
+  ).toBeVisible();
+  await screenshot(page, "settings-notifications-slack", {
+    target: page
+      .getByRole("heading", { exact: true, name: "Push notifications" })
+      .locator(".."),
+  });
+  await followSlack.click();
+  await expect(followSlack).not.toBeChecked();
   const saved = page.waitForRequest(
     (request) =>
       request.method() === "PUT" &&
@@ -49,6 +70,7 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   );
   await page.getByRole("button", { name: "Save hours" }).click();
   expect((await saved).postDataJSON()).toEqual({
+    followSlack: false,
     workingHoursOnly: true,
     days: [1, 2, 3, 4, 5, 6],
     start: "08:30",
@@ -275,7 +297,32 @@ test("saves the auto-archive default and wait time", async ({
   await page.getByRole("button", { name: "Archive done now" }).click();
   await expect(page.getByRole("status")).toHaveText("Archived 1 conversation.");
   await screenshot(page, "settings-auto-archive", {
-    target: page.getByRole("heading", { name: "Conversations" }).locator(".."),
+    target: page
+      .getByRole("heading", { exact: true, name: "Conversations" })
+      .locator(".."),
     view: "desktop",
   });
+});
+
+test("links to a settings section", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const heading = page.getByRole("heading", {
+    exact: true,
+    name: "Message box",
+  });
+  const link = page.getByRole("link", { name: "Link to Message box" });
+  // A screenshot resizes the page and drops hover, so show the link by focus.
+  await link.focus();
+  await screenshot(page, "settings-section-link", {
+    target: heading.locator(".."),
+    view: "desktop",
+  });
+  await link.click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#message-box`);
+  await expect(heading).toBeInViewport();
+
+  await page.goto(`${dashboard.baseURL}/settings#conversations`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Conversations" }),
+  ).toBeInViewport();
 });

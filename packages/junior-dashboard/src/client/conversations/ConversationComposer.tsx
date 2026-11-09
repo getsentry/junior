@@ -17,6 +17,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/ui/button";
@@ -28,8 +29,6 @@ import {
 } from "../components/ui/tooltip";
 import { useDashboardOnline } from "../connection";
 import { cn, dashboardComposerSurfaceClass } from "../styles";
-import { ComposerDictation } from "./ComposerDictation";
-import { useDictation } from "./useDictation";
 import { useComposerAutocorrect } from "./composerAutocorrect";
 import { useSwipeDownToBlur } from "./useSwipeDownToBlur";
 
@@ -155,10 +154,6 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [imageError, setImageError] = useState<string>();
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
-  const [dictationError, setDictationError] = useState<string>();
-  // A saved draft reports its cursor at 0, also after a programmatic focus.
-  // Use the cursor only after the reader clicks or types in the textarea.
-  const cursorPlacedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -311,9 +306,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     !submittingRef.current &&
     !confirmingRef.current &&
     !sendLocked &&
-    !readingImagesRef.current &&
-    // Send waits for dictation, so a clip is never left out of the message.
-    dictation.state === "idle";
+    !readingImagesRef.current;
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -350,7 +343,6 @@ export const ConversationComposer = memo(function ConversationComposer(
       replaceMessage(clearedDraft);
       replaceImages([]);
       setImageError(undefined);
-      setDictationError(undefined);
       storeDraft(storageKey, clearedDraft);
       attemptRef.current = nextAttempt;
     };
@@ -371,7 +363,10 @@ export const ConversationComposer = memo(function ConversationComposer(
       try {
         await send();
       } catch {
-        // The parent shows the error. The draft stays for a retry.
+        // The parent shows the error. The draft stays for a retry, with
+        // focus, so Enter sends it again.
+        flushSync(() => setHoldPending(false));
+        textareaRef.current?.focus({ preventScroll: true });
         return;
       } finally {
         submittingRef.current = false;
@@ -390,34 +385,6 @@ export const ConversationComposer = memo(function ConversationComposer(
     });
     await send().catch(() => {});
   };
-
-  const insertDictation = (text: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea || textarea.disabled) return;
-    const { value } = textarea;
-    // The textarea keeps its selection after blur, so this is where the
-    // reader left the cursor, even after editing during the recording.
-    const placed = cursorPlacedRef.current;
-    const start = placed ? textarea.selectionStart : value.length;
-    const end = placed ? textarea.selectionEnd : value.length;
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    const spaceBefore = before && !/\s$/.test(before) ? " " : "";
-    const spaceAfter = after && !/^\s/.test(after) ? " " : "";
-    textarea.setRangeText(
-      `${spaceBefore}${text}${spaceAfter}`,
-      start,
-      end,
-      "end",
-    );
-    setMessage(textarea.value);
-    syncTextareaHeight();
-    textarea.focus({ preventScroll: true });
-  };
-  const dictation = useDictation({
-    onError: setDictationError,
-    onText: insertDictation,
-  });
 
   // Put queued text back ahead of anything the reader already typed.
   const prependDraftText = (text: string) => {
@@ -496,12 +463,12 @@ export const ConversationComposer = memo(function ConversationComposer(
 
   return (
     <div className="grid min-w-0 gap-1.5">
-      {props.error || imageError || dictationError ? (
+      {props.error || imageError ? (
         <div
           aria-live="polite"
           className="min-w-0 font-sans text-xs leading-relaxed text-rose-300"
         >
-          {imageError ?? dictationError ?? props.error}
+          {imageError ?? props.error}
         </div>
       ) : null}
       <form
@@ -610,13 +577,7 @@ export const ConversationComposer = memo(function ConversationComposer(
             syncTextareaHeight();
           }}
           onFocus={props.onFocus}
-          onKeyDown={(event) => {
-            cursorPlacedRef.current = true;
-            handleKeyDown(event);
-          }}
-          onPointerDown={() => {
-            cursorPlacedRef.current = true;
-          }}
+          onKeyDown={handleKeyDown}
           placeholder={props.placeholder ?? "Message Junior…"}
           ref={textareaRef}
           rows={1}
@@ -662,10 +623,6 @@ export const ConversationComposer = memo(function ConversationComposer(
             )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <ComposerDictation
-              dictation={dictation}
-              disabled={sendLocked || !online}
-            />
             {props.onStop ? (
               <Button
                 aria-label={props.stopPending ? "Stopping" : "Stop"}
@@ -688,8 +645,7 @@ export const ConversationComposer = memo(function ConversationComposer(
                 (!canSend && !images.length) ||
                 !online ||
                 sendLocked ||
-                readingImages ||
-                dictation.state !== "idle"
+                readingImages
               }
               variant="primary"
               type="submit"
@@ -784,6 +740,17 @@ export function restoreStoredDraftText(draftId: string, text: string): void {
   if (!text.trim()) return;
   const storageKey = draftStorageKey(draftId);
   storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
+}
+
+/**
+ * Remove the saved draft text of a composer that is gone, to move it to
+ * another composer.
+ */
+export function takeStoredDraftText(draftId: string): string {
+  const storageKey = draftStorageKey(draftId);
+  const { text } = readStoredDraft(storageKey);
+  storeDraft(storageKey, { ...emptyDraft(), text: "" });
+  return text;
 }
 
 function storeDraft(storageKey: string, draft: ConversationDraft): void {

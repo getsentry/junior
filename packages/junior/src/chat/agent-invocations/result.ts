@@ -5,6 +5,7 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
+  eventBatchMessageMeta,
   isEventMailboxMetadata,
   renderEventBatchInputs,
   timerWatchCredentialSubject,
@@ -411,7 +412,10 @@ async function startAgentInvocationsForChildInput(
         source,
       },
     });
-    await enqueueAgentInvocation(invocation, options);
+    await enqueueAgentInvocation(invocation, {
+      ...options,
+      eventMeta: eventBatchMessageMeta(messages),
+    });
     await context.attempt.ack();
     return { status: "completed" };
   }
@@ -429,7 +433,10 @@ async function startAgentInvocationsForChildInput(
           : getAgentInvocationIdForMessage(message.inboundMessageId),
       latest,
     });
-    await enqueueAgentInvocation(invocation, options);
+    await enqueueAgentInvocation(invocation, {
+      ...options,
+      eventMeta: eventBatchMessageMeta([message]),
+    });
   }
   await context.attempt.ack();
   return { status: "completed" };

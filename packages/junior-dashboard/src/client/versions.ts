@@ -49,6 +49,15 @@ function readerIsAway(lastInputAtMs: number) {
   return Date.now() - lastInputAtMs >= AWAY_AFTER_MS;
 }
 
+/** Name the feed-row inputs whose `name:token` part differs between tokens. */
+function movedFeedInputs(previous: string, next: string) {
+  const before = new Set(previous.split(" "));
+  return next
+    .split(" ")
+    .filter((part) => !before.has(part))
+    .map((part) => part.split(":")[0] ?? part);
+}
+
 /**
  * Refresh the reads whose token moved since the last poll. Only mounted
  * queries refetch. The first poll of a tab sets the baseline: a change that
@@ -62,7 +71,12 @@ function refreshChangedReads(
 ) {
   const moved = (field: (typeof TAB_TOKENS)[number]) =>
     previous !== undefined && previous[field] !== next[field];
-  recordMovedVersions(TAB_TOKENS.filter(moved));
+  recordMovedVersions(
+    TAB_TOKENS.filter(moved),
+    previous && moved("conversations")
+      ? movedFeedInputs(previous.conversations, next.conversations)
+      : [],
+  );
   // Waiting Conversations outside the newest page join the feed.
   if (moved("conversations") || moved("reviewItems")) {
     void client.invalidateQueries({ queryKey: ["dashboard", "conversations"] });

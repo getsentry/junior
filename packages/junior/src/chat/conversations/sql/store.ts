@@ -498,6 +498,7 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
@@ -576,6 +577,7 @@ export class SqlStore implements ConversationStore {
       });
       if (args.metrics && args.execution.runId) {
         await replaceConversationMetrics(this.executor, {
+          actorIdentityId: args.actorIdentityId,
           conversationId: args.conversationId,
           runId: args.execution.runId,
           occurredAtMs: args.createdAtMs,
@@ -901,7 +903,7 @@ export class SqlStore implements ConversationStore {
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // Root actors stay in the personal feed even before they author a message.
+    // The root Actor is a Participant before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,

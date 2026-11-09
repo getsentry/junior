@@ -1,4 +1,5 @@
 import type { Identity, User } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
@@ -426,6 +427,70 @@ describe("review item tools", () => {
         body: "Private detail.",
       }),
     ).rejects.toThrow("A public item changes only from a public Conversation");
+  });
+
+  it("assigns the active Participants when a Turn without a person asks", async () => {
+    // A dashboard Conversation that Ana started and Ben joined. An event
+    // Turn, such as a watched pull request that merged, has a system Actor.
+    const ana = await user("ana@example.com");
+    const ben = await user("ben@example.com");
+    await getConversationStore().recordActivity({
+      actor: { email: "ana@example.com" },
+      conversationId: "local:web:shared",
+      destination: { platform: "local", conversationId: "local:web:shared" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "web",
+      visibility: "private",
+    });
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date("2026-10-01T12:05:00.000Z"),
+        rootConversationId: "local:web:shared",
+        userId: ben.id,
+      });
+    const eventTurn = (conversationId: string) =>
+      tools({
+        conversationId,
+        resolveActorIdentity: asActor(undefined),
+        source: { kind: "event" } as any,
+      });
+    const ask = {
+      kind: "action",
+      title: "Close the tracking issue?",
+      body: "The pull request merged.",
+      request: REQUEST,
+    };
+
+    const added = await execute(eventTurn("local:web:shared").add, {
+      ...ask,
+      dedupe_key: "both",
+    });
+    expect(added.item).toMatchObject({ visibility: "private" });
+    expect([...added.item.assignees].sort()).toEqual([ana.email, ben.email]);
+
+    // The person who started it gets no special place. Once Ana
+    // unsubscribes, only Ben is assigned.
+    await getDb()
+      .update(juniorConversationParticipants)
+      .set({ unsubscribedAt: new Date("2026-10-01T12:10:00.000Z") })
+      .where(eq(juniorConversationParticipants.userId, ana.id));
+    const left = await execute(eventTurn("local:web:shared").add, {
+      ...ask,
+      dedupe_key: "ben",
+    });
+    expect(left.item.assignees).toEqual([ben.email]);
+
+    // With no Participant, no person would see the item.
+    await conversation("slack:CPUB:1.000001", "CPUB", "public");
+    await expect(
+      execute(eventTurn("slack:CPUB:1.000001").add, ask),
+    ).rejects.toThrow("No person would see this item");
+    const everyone = await execute(eventTurn("slack:CPUB:1.000001").add, {
+      ...ask,
+      assignees: ["everyone"],
+    });
+    expect(everyone.item.assignees).toEqual(["everyone"]);
   });
 
   it("lets an agent close an item once, with a reason", async () => {

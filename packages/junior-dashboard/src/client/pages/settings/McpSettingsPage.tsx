@@ -1,5 +1,6 @@
 import { getDashboardAgentName } from "../../agentName";
 import { CopyButton } from "../../components/CopyButton";
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { dashboardInlineLinkClass } from "../../styles";
 import { SettingsPageLayout } from "./SettingsPageLayout";
 import { OutboundLink } from "../../components/OutboundLink";
@@ -16,11 +17,15 @@ function mcpServerName(): string {
   );
 }
 
-function ConfigBlock(props: { label: string; value: string }) {
+function ConfigBlock(props: { anchor: string; label: string; value: string }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
-        <h2 className="m-0 text-sm font-semibold">{props.label}</h2>
+        <AnchorHeading
+          anchor={props.anchor}
+          className="m-0 text-sm font-semibold"
+          title={props.label}
+        />
         <CopyButton getText={() => props.value} label={`Copy ${props.label}`} />
       </div>
       <pre className="mt-2 mb-0 whitespace-pre-wrap break-words rounded-md border border-dashboard-border-emphasis bg-dashboard-ink p-3 font-mono text-xs text-dashboard-text">
@@ -53,12 +58,17 @@ export function McpSettingsPage() {
       title="MCP"
     >
       <div className="grid gap-5">
-        <ConfigBlock label="Server URL" value={url} />
+        <ConfigBlock anchor="server-url" label="Server URL" value={url} />
         <ConfigBlock
+          anchor="claude-code"
           label="Claude Code"
           value={`claude mcp add --transport http ${name} ${url}`}
         />
-        <ConfigBlock label="JSON config" value={jsonConfig} />
+        <ConfigBlock
+          anchor="json-config"
+          label="JSON config"
+          value={jsonConfig}
+        />
       </div>
 
       <p className="m-0 text-sm text-dashboard-text-muted">
