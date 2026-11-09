@@ -17,6 +17,7 @@ import { useDashboardCoreData } from "../api";
 import {
   ComposerQuestion,
   useComposerQuestions,
+  type ComposerQuestionAnswers,
 } from "../review-desk/ComposerQuestion";
 import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
 import { readStoredComposerImages } from "./ComposerImages";
@@ -78,7 +79,7 @@ function ReplyFooter(props: {
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
   // A message closes the review items that it answers. Ask before it drops
-  // answers that the reader did not send.
+  // answers in the details panel that the reader did not send.
   const unsentAnswers = useConfirmUnsentAnswers();
   const stopTurn = useStopConversationTurn(props.conversationId);
   const stopTurnRef = useRef(stopTurn);
@@ -89,12 +90,27 @@ function ReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
-  // Open questions dock above the message box. A typed message answers
-  // them too: the server closes the questions that it answers.
+  // Open questions dock above the message box, and Send sends their picks
+  // before the typed message. The server then closes the open questions
+  // that the message answers.
   const { pending: questionsPending, questions } = useComposerQuestions(
     props.conversationId,
   );
   const questionRef = useRef<HTMLElement>(null);
+  const questionAnswersRef = useRef<ComposerQuestionAnswers>(null);
+  const [hasQuestionAnswers, setHasQuestionAnswers] = useState(false);
+  const hasQuestionAnswersRef = useRef(hasQuestionAnswers);
+  hasQuestionAnswersRef.current = hasQuestionAnswers;
+  const { confirmSubmit } = unsentAnswers;
+  // A failed answer keeps the draft, so the reader can send both again.
+  const beforeSubmit = useCallback(() => {
+    const confirmation = confirmSubmit();
+    if (!confirmation && !hasQuestionAnswersRef.current) return undefined;
+    return (async () => {
+      if (confirmation && !(await confirmation)) return false;
+      return (await questionAnswersRef.current?.send()) ?? true;
+    })();
+  }, [confirmSubmit]);
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -348,7 +364,9 @@ function ReplyFooter(props: {
           {/* The question sits right above the message box that also
               answers it. */}
           <ComposerQuestion
+            answersRef={questionAnswersRef}
             focusMessageBox={focusMessageBox}
+            onAnswersChange={setHasQuestionAnswers}
             questions={questions}
             ref={questionRef}
           />
@@ -357,7 +375,7 @@ function ReplyFooter(props: {
       }
     >
       <ConversationComposer
-        confirmSubmit={unsentAnswers.confirmSubmit}
+        beforeSubmit={beforeSubmit}
         draftId={props.conversationId}
         error={
           queueActionError ??
@@ -366,6 +384,7 @@ function ReplyFooter(props: {
         ref={composerRef}
         label="Continue this conversation"
         placeholder={questionShown ? "Or type your answer…" : undefined}
+        sendsWithoutDraft={hasQuestionAnswers}
         submitLabel="Send"
         onFocus={onComposerFocus}
         onStop={props.stoppable ? onStop : undefined}
