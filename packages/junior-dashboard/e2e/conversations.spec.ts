@@ -42,12 +42,12 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   const conversationList = page.getByRole("navigation", {
     name: "Your conversations",
   });
-  const hideList = page.getByRole("button", { name: "Hide conversation list" });
+  const hideList = page.getByRole("button", { name: "Hide sidebar" });
   await expect(conversationList).toBeVisible();
   await expect(hideList).toHaveAttribute("aria-expanded", "true");
   await hideList.click();
   await expect(conversationList).toBeHidden();
-  const showList = page.getByRole("button", { name: "Show conversation list" });
+  const showList = page.getByRole("button", { name: "Show sidebar" });
   await expect(showList).toHaveAttribute("aria-expanded", "false");
   await expect(showList).toBeFocused();
 
@@ -569,23 +569,11 @@ test("shows personal spend and groups profile and session actions", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1150 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(dashboard.baseURL);
 
-  const topBarTrigger = page.getByRole("button", {
-    name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
-  });
-  await expect(topBarTrigger).toBeVisible();
-  await expect(topBarTrigger).toHaveAttribute("aria-expanded", "false");
-  await expect(topBarTrigger).toContainText(/7d\s*\$0\.46\s*30d\s*\$0\.46/, {
-    useInnerText: true,
-  });
-
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const rail = page.locator('[data-slot="sidebar"]').filter({
-    has: page.getByRole("navigation", { name: "Primary" }),
-  });
-  const trigger = rail.getByRole("button", {
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  const trigger = page.getByRole("button", {
     name: "Open profile menu for Dashboard User",
     exact: true,
   });
@@ -611,9 +599,7 @@ test("shows personal spend and groups profile and session actions", async ({
     popover.getByRole("link", { name: "System", exact: true }),
   ).toHaveAttribute("href", "/system");
   await expect(
-    rail
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^(Code|System)$/ }),
+    primary.getByRole("link", { name: /^(Code|System)$/ }),
   ).toHaveCount(0);
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
 

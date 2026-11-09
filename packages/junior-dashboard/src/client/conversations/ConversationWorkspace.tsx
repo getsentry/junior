@@ -1,6 +1,6 @@
 import type { InputImage } from "@sentry/junior/api/schema";
-import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
-import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
+import { Globe2, LockKeyhole } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
@@ -30,7 +30,6 @@ import {
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
-import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
   usePendingArchiveConversationUpdates,
   withoutThreads,
@@ -67,9 +66,14 @@ import {
   readSidebarWidth,
   saveSidebarWidth,
   SIDEBAR_WIDTH,
-  useConversationSidebarOpen,
   useSidebarFits,
 } from "./conversationSidebarLayout";
+import {
+  ListPane,
+  PaneCollapsedControls,
+  usePaneOpen,
+  useSetPaneOpen,
+} from "../components/layout/PaneNav";
 
 const CONVERSATION_PAGE_SIZE = 20;
 const SIDEBAR_PANEL_ID = "conversation-list";
@@ -84,7 +88,8 @@ export function ConversationWorkspace(props: {
 }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useConversationSidebarOpen();
+  const sidebarOpen = usePaneOpen();
+  const setSidebarOpen = useSetPaneOpen();
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
   const { showArchiveError, showArchived } = useConversationActionToasts();
@@ -92,7 +97,6 @@ export function ConversationWorkspace(props: {
   const sidebarFits = useSidebarFits();
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const sidebarGroup = useRef<HTMLDivElement>(null);
-  const sidebarId = useId();
   // Only the stacked home has a search box. The sidebar lists every
   // conversation; the command palette searches them. Debounce only the typed
   // text, so the sidebar drops a stale search at once.
@@ -248,23 +252,14 @@ export function ConversationWorkspace(props: {
     />
   );
 
-  const toggleSidebar = () => {
+  // The pane toggles and Cmd/Ctrl+B set the open state; the panel follows.
+  // A drag past the minimum width collapses the panel and sets it too.
+  useEffect(() => {
     const panel = sidebarPanel.current;
-    if (!panel) return;
-    if (panel.isCollapsed()) panel.resize(readSidebarWidth());
+    if (!panel || panel.isCollapsed() !== sidebarOpen) return;
+    if (sidebarOpen) panel.resize(readSidebarWidth());
     else panel.collapse();
-  };
-  const sidebarToggle = (
-    <HeaderIconButton
-      controls={sidebarId}
-      expanded={sidebarOpen}
-      label={sidebarOpen ? "Hide conversation list" : "Show conversation list"}
-      onClick={toggleSidebar}
-    >
-      <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
-    </HeaderIconButton>
-  );
-
+  }, [sidebarOpen]);
   // One tree for every width, so the create draft and its images survive a
   // resize across the breakpoint: the create view is always the child of the
   // second div.
@@ -279,7 +274,9 @@ export function ConversationWorkspace(props: {
       )}
     >
       {sidebarFits ? (
-        <div className="flex h-13 items-center px-1">{sidebarToggle}</div>
+        <div className="flex h-13 items-center px-1">
+          <PaneCollapsedControls />
+        </div>
       ) : (
         <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 pt-4 sm:px-6">
           <section aria-label="Conversations" className="grid gap-3">
@@ -370,18 +367,18 @@ export function ConversationWorkspace(props: {
                 "h-full min-h-0 overflow-hidden",
                 !sidebarOpen && "hidden",
               )}
-              id={sidebarId}
             >
-              <ConversationSidebar
-                conversations={conversations}
-                error={feed.error?.message}
-                loading={feed.isPending}
-                onNewConversation={openCreate}
-                onReorderPins={reorderPins}
-                selectedId={selectedId}
-                timeZone={getDashboardTimeZone()}
-                waitingConversations={waitingConversations}
-              />
+              <ListPane onNewConversation={openCreate}>
+                <ConversationSidebar
+                  conversations={conversations}
+                  error={feed.error?.message}
+                  loading={feed.isPending}
+                  onReorderPins={reorderPins}
+                  selectedId={selectedId}
+                  timeZone={getDashboardTimeZone()}
+                  waitingConversations={waitingConversations}
+                />
+              </ListPane>
             </div>
           </ResizablePanel>
           <ResizableHandle
@@ -419,14 +416,14 @@ export function ConversationWorkspace(props: {
                     pendingArchiveUpdate={pendingArchiveUpdates.find(
                       (update) => update.conversationId === selectedId,
                     )}
-                    sidebarToggle={sidebarToggle}
+                    sidebarToggle=<PaneCollapsedControls />
                   />
                 </FeedThreads>
               </UnsentAnswersProvider>
             ) : pendingCreate ? (
               <NewConversationPending
                 pending={pendingCreate}
-                sidebarToggle={sidebarToggle}
+                sidebarToggle=<PaneCollapsedControls />
               />
             ) : null}
           </section>

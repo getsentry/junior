@@ -1,5 +1,4 @@
 import {
-  ChevronDown,
   ChevronsUpDown,
   LogOut,
   Settings,
@@ -15,12 +14,10 @@ import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
-import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button, buttonVariants } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -29,19 +26,12 @@ type ProfileMenuProps = {
   /** Pages that live in this menu instead of the primary nav. */
   pages: DashboardHeaderNavItem[];
   /**
-   * `popover` is the profile row at the bottom of the desktop nav sidebar.
-   * It shows only the avatar while the sidebar is collapsed.
-   * `top-bar` is the spend and avatar control in the desktop top bar.
+   * `popover` is the profile row at the bottom of the desktop pane.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
    */
-  variant?:
-    | "popover"
-    | "top-bar"
-    | "sheet-spend"
-    | "sheet-links"
-    | "sheet-identity";
+  variant?: "popover" | "sheet-spend" | "sheet-links" | "sheet-identity";
 };
 
 const HOVER_OPEN_DELAY_MS = 80;
@@ -323,8 +313,6 @@ export function ProfileMenu({
     );
   }
 
-  const topBar = variant === "top-bar";
-  const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
   const hoverTrigger = {
     closeDelay: HOVER_CLOSE_DELAY_MS,
     delay: HOVER_OPEN_DELAY_MS,
@@ -344,81 +332,32 @@ export function ProfileMenu({
       }}
       open={open}
     >
-      {topBar ? (
-        <PopoverTrigger
-          aria-label={`${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
-          className={cn(
-            "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-            open && "bg-dashboard-fill-hover text-dashboard-text",
-          )}
-          {...hoverTrigger}
-        >
-          <span className="flex items-center gap-2">
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                7d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.sevenDaysUsd} />
-              </span>
-            </span>
-            <span
-              aria-hidden="true"
-              className="h-3 w-px bg-dashboard-fill-strong"
-            />
-            <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
-              <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
-                30d
-              </span>
-              <span className="text-xs font-semibold text-dashboard-text">
-                <SpendAmount value={spend?.thirtyDaysUsd} />
-              </span>
-            </span>
-          </span>
-          <ProfileAvatar user={identity.user} />
-          <ChevronDown
-            aria-hidden="true"
-            className={cn(
-              "text-dashboard-text-muted transition-[color,transform] group-hover:text-dashboard-text",
-              open && "rotate-180 text-dashboard-text",
-            )}
-            size={14}
-            strokeWidth={2}
-          />
-        </PopoverTrigger>
-      ) : (
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            aria-label={menuLabel}
-            className={cn(
-              // The collapsed nav sidebar shows only the avatar.
-              "h-10 gap-2.5 rounded-lg px-1.5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-3.5",
-              open && "bg-sidebar-accent",
-            )}
-            render={<PopoverTrigger {...hoverTrigger} />}
-          >
-            <ProfileAvatar user={identity.user} />
-            <span className="min-w-0 flex-1 truncate font-medium group-data-[collapsible=icon]:hidden">
-              {name}
-            </span>
-            <ChevronsUpDown
-              aria-hidden="true"
-              className="text-dashboard-text-muted group-data-[collapsible=icon]:hidden"
-              strokeWidth={2}
-            />
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      )}
+      <PopoverTrigger
+        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}`}
+        className={cn(
+          "flex h-10 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1.5 text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          open && "bg-dashboard-fill-hover",
+        )}
+        {...hoverTrigger}
+      >
+        <ProfileAvatar user={identity.user} />
+        <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+        <ChevronsUpDown
+          aria-hidden="true"
+          className="shrink-0 text-dashboard-text-muted"
+          size={14}
+          strokeWidth={2}
+        />
+      </PopoverTrigger>
       <PopoverContent
         align="end"
-        side={topBar ? "bottom" : "right"}
+        side="right"
         className="w-64 rounded-xl border-0 bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
         id="profile-popover"
       >
         {identityBlock}
         <div className="grid gap-1 border-b border-dashboard-border-strong px-2.5 py-2">
           <ThemeSwitcher />
-          <NavLayoutSwitcher />
         </div>
         {menuLinks(() => setOpen(false))}
       </PopoverContent>
