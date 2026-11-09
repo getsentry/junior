@@ -361,6 +361,9 @@ export function createWorkspaceTools(
     }),
     switchWorkspace: zodTool({
       executionMode: "sequential",
+      // It replaces the Sandbox, so it must be the only call in its message.
+      // A script or `executeTool` could start it beside other calls.
+      exposure: "modelOnly",
       annotations: {
         destructiveHint: true,
         idempotentHint: true,
