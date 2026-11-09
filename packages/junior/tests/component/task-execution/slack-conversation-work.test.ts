@@ -284,17 +284,22 @@ describe("Slack conversation work execution", () => {
     expect(handleNewMention).toHaveBeenCalledOnce();
   });
 
-  it("adds a file that Slack attaches after a person links it", async () => {
+  it("adds the files that Slack attaches after a person links them", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     const slackAdapter = createSlackAdapterFixture();
-    const fileUrl =
-      "https://files.slack.com/files-pri/T123-F0LINKED/report.csv";
-    const envelope = slackEnvelope({
-      text: `<@${SLACK_BOT_USER_ID}> read this F0LINKED`,
+    const linkedFile = (id: string, name: string) => ({
+      id,
+      mimetype: "text/csv",
+      name,
+      size: 12,
+      url_private: `https://files.slack.com/files-pri/T123-${id}/${name}`,
     });
-    // Slack sends the message events with only the rich text file element.
+    const envelope = slackEnvelope({
+      text: `<@${SLACK_BOT_USER_ID}> read F0FIRST and F0SECOND`,
+    });
+    // Slack sends the message events with only the rich text file elements.
     const blocks = [
       {
         type: "rich_text",
@@ -303,12 +308,10 @@ describe("Slack conversation work execution", () => {
             type: "rich_text_section",
             elements: [
               { type: "user", user_id: SLACK_BOT_USER_ID },
-              { type: "text", text: " read this " },
-              {
-                type: "file",
-                file_id: "F0LINKED",
-                url: "https://example.slack.com/files/U123/F0LINKED/report.csv",
-              },
+              { type: "text", text: " read " },
+              { type: "file", file_id: "F0FIRST" },
+              { type: "text", text: " and " },
+              { type: "file", file_id: "F0SECOND" },
             ],
           },
         ],
@@ -326,37 +329,35 @@ describe("Slack conversation work execution", () => {
         state,
       },
     });
-    queueSlackApiResponse("conversations.replies", {
-      body: conversationsRepliesPage({
-        messages: [
-          {
-            ts: "1712345.0001",
-            user: "U123",
-            text: envelope.event.text,
-            blocks,
-            upload: false,
-            files: [
-              {
-                id: "F0LINKED",
-                mimetype: "text/csv",
-                name: "report.csv",
-                size: 12,
-                url_private: fileUrl,
-              },
-            ],
-          },
-        ],
-      }),
-    });
-    const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
-      expect(restored.attachments).toEqual([
-        expect.objectContaining({
-          type: "file",
-          mimeType: "text/csv",
-          name: "report.csv",
-          url: fileUrl,
+    // Slack attaches the linked files one at a time.
+    for (const files of [
+      [linkedFile("F0FIRST", "first.csv")],
+      [
+        linkedFile("F0FIRST", "first.csv"),
+        linkedFile("F0SECOND", "second.csv"),
+      ],
+    ]) {
+      queueSlackApiResponse("conversations.replies", {
+        body: conversationsRepliesPage({
+          messages: [
+            {
+              ts: "1712345.0001",
+              user: "U123",
+              text: envelope.event.text,
+              blocks,
+              upload: false,
+              files,
+            },
+          ],
         }),
-      ]);
+      });
+    }
+    const handleNewMention = vi.fn(async (_thread, restored, hooks) => {
+      expect(
+        restored.attachments.map(
+          (attachment: { name?: string }) => attachment.name,
+        ),
+      ).toEqual(["first.csv", "second.csv"]);
       await hooks.ack?.();
     });
 

@@ -52,6 +52,8 @@ export async function attachLinkedSlackFiles(args: {
   if (missing.size === 0 || !channelId || !ts) return;
   const threadTs = parseSlackMessageTs(raw.thread_ts) ?? ts;
 
+  // Each read returns the full message, so keep only the latest files.
+  let files: NonNullable<SlackEvent["files"]> = [];
   for (const delayMs of READ_DELAYS_MS) {
     await sleep(delayMs);
     const replies = await listThreadReplies({
@@ -59,7 +61,7 @@ export async function attachLinkedSlackFiles(args: {
       threadTs,
       targetMessageTs: [ts],
     });
-    const files = (replies.find((reply) => reply.ts === ts)?.files ?? [])
+    files = (replies.find((reply) => reply.ts === ts)?.files ?? [])
       .filter((file) => file.id && missing.has(file.id))
       .map((file) => ({
         id: file.id,
@@ -68,11 +70,11 @@ export async function attachLinkedSlackFiles(args: {
         size: file.size,
         url_private: file.url_private,
       }));
-    if (files.length > 0) {
-      args.message.attachments.push(
-        ...args.adapter.parseMessage({ ...raw, files }).attachments,
-      );
-      return;
-    }
+    if (files.length === missing.size) break;
+  }
+  if (files.length > 0) {
+    args.message.attachments.push(
+      ...args.adapter.parseMessage({ ...raw, files }).attachments,
+    );
   }
 }
