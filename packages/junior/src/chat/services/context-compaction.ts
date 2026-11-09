@@ -9,16 +9,16 @@
  * fresh runtime context; the next replacement removes it again.
  */
 import { estimateContextTokens } from "@earendil-works/pi-agent-core";
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ContextSummary } from "@/chat/agent/context-summary";
 import {
   calculateContextCompactionTargetTokens,
+  estimateMessagesTokens,
   estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
-  getTokenEstimateProfile,
+  textCharsForTokens,
 } from "@/chat/services/context-budget";
 import {
   contextProvenance,
@@ -162,7 +162,7 @@ function sanitizeText(text: string): string {
 }
 
 function truncateToTokenBudget(text: string, maxTokens: number): string {
-  const maxChars = Math.max(0, maxTokens * 4);
+  const maxChars = Math.max(0, textCharsForTokens(maxTokens));
   if (text.length <= maxChars) {
     return text;
   }
@@ -616,54 +616,6 @@ export function estimateReplacementTokens(
   requestOverheadTokens = 0,
 ): number {
   return requestOverheadTokens + estimateMessagesTokens(messages, modelId);
-}
-
-/** Estimate messages from their size at the model's characters per token. */
-function estimateMessagesTokens(
-  messages: PiMessage[],
-  modelId: string,
-): number {
-  const profile = getTokenEstimateProfile(modelId);
-  return messages.reduce((total, message) => {
-    const tokens = Math.ceil(messageChars(message) / profile.charsPerToken);
-    const overhead =
-      message.role === "toolResult" ? profile.toolResultOverheadTokens : 0;
-    return total + tokens + overhead;
-  }, 0);
-}
-
-// Pi's own size estimate counts each image as this many characters. Keep the
-// same basis; the model profile owns characters per token.
-const IMAGE_CHARS = 4_800;
-
-// Junior stores only user, assistant, and tool result messages.
-function messageChars(message: PiMessage): number {
-  switch (message.role) {
-    case "user":
-    case "toolResult":
-      return contentChars(message.content);
-    case "assistant": {
-      let chars = 0;
-      for (const block of message.content) {
-        if (block.type === "text") chars += block.text.length;
-        else if (block.type === "thinking") chars += block.thinking.length;
-        else
-          chars += block.name.length + JSON.stringify(block.arguments).length;
-      }
-      return chars;
-    }
-    default:
-      return 0;
-  }
-}
-
-function contentChars(content: string | (TextContent | ImageContent)[]) {
-  if (typeof content === "string") return content.length;
-  return content.reduce(
-    (chars, block) =>
-      chars + (block.type === "text" ? block.text.length : IMAGE_CHARS),
-    0,
-  );
 }
 
 async function loadLastInstruction(conversationId: string) {

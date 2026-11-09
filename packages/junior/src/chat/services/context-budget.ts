@@ -1,6 +1,7 @@
-import type { Tool } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent, Tool } from "@earendil-works/pi-ai";
 import { botConfig } from "@/chat/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import type { PiMessage } from "@/chat/pi/messages";
 
 const COMPACTION_TRIGGER_RATIO = 0.9;
 const CONTEXT_INPUT_LIMIT_RATIO = 0.95;
@@ -10,26 +11,6 @@ const COMPACTION_TARGET_RATIO = 0.8;
 const BACKGROUND_COMPACTION_MARK_RATIO = 0.7;
 const FALLBACK_CONTEXT_WINDOW_TOKENS = 400_000;
 
-/**
- * Size-only estimate inputs for the requests of one model. Production
- * provider usage gave these values: Claude counts about 1.6x the tokens of
- * characters / 4 for both replacements and tool results, plus about 150
- * tokens for each tool result. OpenAI models match characters / 4.
- */
-export interface TokenEstimateProfile {
-  charsPerToken: number;
-  toolResultOverheadTokens: number;
-}
-
-const CLAUDE_TOKEN_ESTIMATE: TokenEstimateProfile = {
-  charsPerToken: 2.5,
-  toolResultOverheadTokens: 150,
-};
-const DEFAULT_TOKEN_ESTIMATE: TokenEstimateProfile = {
-  charsPerToken: 4,
-  toolResultOverheadTokens: 0,
-};
-
 export interface ModelContextBudget {
   contextWindow: number;
 }
@@ -38,16 +19,96 @@ function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
-/** Estimate text tokens with the shared coarse heuristic used for local budgets. */
-export function estimateTextTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+// Provider usage is measured. Every other size is counted here, so Junior has
+// one counting rule: count the characters that Junior sends, then convert
+// them with the model's characters per token.
+
+/**
+ * Size-only estimate inputs for the requests of one model. Production
+ * provider usage gave these values: Claude counts about 1.6x the tokens of
+ * characters / 4 for both replacements and tool results, plus about 150
+ * tokens for each tool result. OpenAI models match characters / 4.
+ */
+interface TokenEstimateProfile {
+  charsPerToken: number;
+  toolResultOverheadTokens: number;
 }
 
-/** Resolve the size-only token estimate inputs for one model's requests. */
-export function getTokenEstimateProfile(modelId: string): TokenEstimateProfile {
+const CLAUDE_TOKEN_ESTIMATE: TokenEstimateProfile = {
+  charsPerToken: 2.5,
+  toolResultOverheadTokens: 150,
+};
+// Text estimates that have no model use this profile.
+const DEFAULT_TOKEN_ESTIMATE: TokenEstimateProfile = {
+  charsPerToken: 4,
+  toolResultOverheadTokens: 0,
+};
+
+// Pi's own size estimate counts each image as this many characters. Keep the
+// same basis.
+const IMAGE_CHARS = 4_800;
+
+function getTokenEstimateProfile(modelId: string): TokenEstimateProfile {
   return modelId.startsWith("anthropic/")
     ? CLAUDE_TOKEN_ESTIMATE
     : DEFAULT_TOKEN_ESTIMATE;
+}
+
+function tokensForChars(chars: number, profile: TokenEstimateProfile): number {
+  return Math.ceil(chars / profile.charsPerToken);
+}
+
+// Junior stores only user, assistant, and tool result messages.
+function messageChars(message: PiMessage): number {
+  switch (message.role) {
+    case "user":
+    case "toolResult":
+      return contentChars(message.content);
+    case "assistant": {
+      let chars = 0;
+      for (const block of message.content) {
+        if (block.type === "text") chars += block.text.length;
+        else if (block.type === "thinking") chars += block.thinking.length;
+        else
+          chars += block.name.length + JSON.stringify(block.arguments).length;
+      }
+      return chars;
+    }
+    default:
+      return 0;
+  }
+}
+
+function contentChars(content: string | (TextContent | ImageContent)[]) {
+  if (typeof content === "string") return content.length;
+  return content.reduce(
+    (chars, block) =>
+      chars + (block.type === "text" ? block.text.length : IMAGE_CHARS),
+    0,
+  );
+}
+
+/** Estimate text tokens for local budgets that have no model. */
+export function estimateTextTokens(text: string): number {
+  return tokensForChars(text.length, DEFAULT_TOKEN_ESTIMATE);
+}
+
+/** Convert a local text token budget to the characters it allows. */
+export function textCharsForTokens(tokens: number): number {
+  return tokens * DEFAULT_TOKEN_ESTIMATE.charsPerToken;
+}
+
+/** Estimate messages from their size at the model's characters per token. */
+export function estimateMessagesTokens(
+  messages: PiMessage[],
+  modelId: string,
+): number {
+  const profile = getTokenEstimateProfile(modelId);
+  return messages.reduce((total, message) => {
+    const overhead =
+      message.role === "toolResult" ? profile.toolResultOverheadTokens : 0;
+    return total + tokensForChars(messageChars(message), profile) + overhead;
+  }, 0);
 }
 
 /** Estimate the tokens that the system prompt and tool definitions add to a model request. */
@@ -62,7 +123,7 @@ export function estimateRequestOverheadTokens(
     parameters,
   }));
   const chars = systemPrompt.length + JSON.stringify(definitions).length;
-  return Math.ceil(chars / getTokenEstimateProfile(modelId).charsPerToken);
+  return tokensForChars(chars, getTokenEstimateProfile(modelId));
 }
 
 /** Derive the automatic compaction threshold from model context capacity. */

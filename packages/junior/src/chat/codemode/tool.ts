@@ -33,13 +33,13 @@ import {
 import { renderToolResultNudge } from "@/chat/plugins/after-tool-hooks";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import { estimateTextTokens } from "@/chat/services/context-budget";
 
 /**
  * Estimated tokens that the tool declarations may use in the description.
  * Pi's coding agent uses the same default.
  */
 const DECLARATION_BUDGET_TOKENS = 3_000;
-const CHARS_PER_TOKEN = 4;
 
 /** Services of one Run that the tool needs. */
 export interface CodeModeToolOptions {
@@ -110,7 +110,7 @@ function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
     .map(([name, tool]) => {
       const text = renderDeclaration(name, tool);
       return {
-        cost: Math.ceil(text.length / CHARS_PER_TOKEN),
+        cost: estimateTextTokens(text),
         name,
         scriptOnly: effectiveToolExposure(tool) === "codemode",
         text,
