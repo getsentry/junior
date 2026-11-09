@@ -36,7 +36,6 @@ export async function supersedeOpenMailboxTurns(args: {
     // late callback a resume no-op, matching Slack supersede behavior.
     markTurnClosed({
       conversation: args.conversation,
-      nowMs: Date.now(),
       sessionId: stale.turnId,
     });
   }

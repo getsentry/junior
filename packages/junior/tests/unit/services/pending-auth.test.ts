@@ -10,6 +10,8 @@ vi.mock("@/chat/task-execution/turn-cursor", () => ({
 import {
   abandonReplacedPendingAuth,
   canReusePendingAuthLink,
+  clearPendingAuth,
+  isPendingAuthFor,
   wasPendingAuthStopped,
 } from "@/chat/services/pending-auth";
 import type {
@@ -259,6 +261,48 @@ describe("wasPendingAuthStopped", () => {
         ]),
         pendingAuthState("turn_msg_9"),
       ),
+    ).toBe(false);
+  });
+});
+
+describe("clearPendingAuth", () => {
+  it("keeps a newer wait when an older Turn ends", () => {
+    const conversation = conversationWithMessages([]);
+    conversation.processing.pendingAuth = pendingAuth({ sessionId: "run_2" });
+
+    clearPendingAuth(conversation, "run_1");
+    expect(conversation.processing.pendingAuth?.sessionId).toBe("run_2");
+
+    clearPendingAuth(conversation, "run_2");
+    expect(conversation.processing.pendingAuth).toBeUndefined();
+  });
+});
+
+describe("isPendingAuthFor", () => {
+  const authorization = {
+    actorId: "U123",
+    authSessionId: "auth-session-1",
+    kind: "mcp" as const,
+    provider: "eval-auth",
+    turnId: "run_1",
+  };
+
+  it("matches the authorization for the same wait", () => {
+    expect(isPendingAuthFor(pendingAuth(), authorization)).toBe(true);
+  });
+
+  it("rejects an authorization for another attempt, Turn, or scope", () => {
+    expect(
+      isPendingAuthFor(pendingAuth(), {
+        ...authorization,
+        authSessionId: "auth-session-2",
+      }),
+    ).toBe(false);
+    expect(
+      isPendingAuthFor(pendingAuth(), { ...authorization, turnId: "run_2" }),
+    ).toBe(false);
+    expect(
+      isPendingAuthFor(pendingAuth(), { ...authorization, scope: "repo" }),
     ).toBe(false);
   });
 });
