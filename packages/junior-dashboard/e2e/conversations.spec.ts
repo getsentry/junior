@@ -278,6 +278,11 @@ test("previews text attachments in a drawer", async ({ page, dashboard }) => {
   await expect(
     preview.getByText("This line wraps in the source."),
   ).toBeVisible();
+  // A reference link after a fence still resolves.
+  await expect(preview.getByRole("link", { name: "docs" })).toHaveAttribute(
+    "href",
+    "https://example.com/docs",
+  );
   await expect(
     preview.getByRole("link", { name: "Download README.md" }),
   ).toHaveAttribute("download", "README.md");

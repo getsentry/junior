@@ -12,6 +12,7 @@ describe("text preview", () => {
     ["config.yml", "application/octet-stream", "yml"],
     ["server.log", "application/octet-stream", "plain"],
     ["main.go", "application/octet-stream", "plain"],
+    [".env", "application/octet-stream", "plain"],
     ["notes", "text/plain; charset=utf-8", "plain"],
     ["notes", "text/markdown", "markdown"],
     ["data", "application/json", "json"],

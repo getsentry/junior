@@ -54,8 +54,9 @@ const TEXT_TYPES: Record<string, TextPreviewLanguage> = {
 };
 
 function extensionLanguage(filename: string): TextPreviewLanguage | undefined {
+  // A dotfile such as `.env` has its name as its extension.
   const dot = filename.lastIndexOf(".");
-  if (dot <= 0) return undefined;
+  if (dot < 0) return undefined;
   const extension = filename.slice(dot + 1).toLowerCase();
   if (PLAIN_EXTENSIONS.has(extension)) return "plain";
   const candidate = EXTENSION_ALIASES[extension] ?? extension;

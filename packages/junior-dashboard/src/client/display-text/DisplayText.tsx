@@ -42,11 +42,13 @@ export const DisplayText = memo(function DisplayText(props: {
     >
       {props.inline ? (
         <MarkdownText inline text={props.text} />
+      ) : props.document ? (
+        // One tree, so reference links and footnotes resolve across fences.
+        <MarkdownText document text={props.text} />
       ) : (
         <DisplayTextBlocks
           chat={props.chat}
           compact={props.compact}
-          document={props.document}
           text={props.text}
         />
       )}
@@ -57,7 +59,6 @@ export const DisplayText = memo(function DisplayText(props: {
 function DisplayTextBlocks(props: {
   chat?: boolean;
   compact?: boolean;
-  document?: boolean;
   text: string;
 }) {
   return (
@@ -68,7 +69,6 @@ function DisplayTextBlocks(props: {
             <MarkdownText
               chat={props.chat}
               compact={props.compact}
-              document={props.document}
               key={index}
               text={block.code}
             />

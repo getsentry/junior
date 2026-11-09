@@ -666,7 +666,7 @@ export function createMockReportingApi(): Hono<{
     }
     if (attachmentId === "qa-readme-md") {
       const body =
-        "# Release notes\n\nThis line wraps\nin the source.\n\n- Preview text files\n- Keep downloads\n\n```ts\nconst ok = true;\n```\n";
+        "# Release notes\n\nThis line wraps\nin the source.\n\n- Preview text files\n- Keep downloads\n\n```ts\nconst ok = true;\n```\n\nRead the [docs][docs].\n\n[docs]: https://example.com/docs\n";
       return new Response(body, {
         headers: {
           "cache-control": "private, no-store",
