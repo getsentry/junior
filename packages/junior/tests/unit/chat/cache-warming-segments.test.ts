@@ -26,6 +26,7 @@ const MINUTE = 60_000;
 const conversationId = "local:test:cache-warming-segments";
 // Only this Conversation has plugin work, so the other cases keep `none`.
 const workConversationId = "local:test:cache-warming-segments-work";
+const childConversationId = `${workConversationId}:child`;
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
 const context: Context = {
   systemPrompt: "Answer the question.",
@@ -81,7 +82,11 @@ describe("cache warming gap segments", () => {
   afterEach(async () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
-    for (const id of [conversationId, workConversationId]) {
+    for (const id of [
+      conversationId,
+      workConversationId,
+      childConversationId,
+    ]) {
       await getStateAdapter().delete(`junior:cache_warming:conversation:${id}`);
     }
   });
@@ -165,9 +170,21 @@ describe("cache warming gap segments", () => {
     await endTurn(false, workConversationId);
     vi.advanceTimersByTime(3 * MINUTE);
     await endTurn(false, workConversationId);
+    // A child that starts after the archive is not archived itself, like the
+    // children of a root that auto-archive archived. It still counts as
+    // archived.
+    await store.createChild({
+      childConversationId,
+      kind: "task",
+      parentConversationId: workConversationId,
+    });
+    await endTurn(false, childConversationId);
+    vi.advanceTimersByTime(2 * MINUTE);
+    await endTurn(false, childConversationId);
 
     expect(await segmentGaps("system:1:done")).toEqual([NO_REPLY_GAP_MS]);
     expect(await segmentGaps("archived:open")).toEqual([3 * MINUTE]);
+    expect(await segmentGaps("archived:none")).toEqual([2 * MINUTE]);
     expect(await segmentGaps("system:2-3:open")).toEqual([]);
   });
 

@@ -1,5 +1,6 @@
 import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
-import { getConversationStore, getDb } from "@/chat/db";
+import { rootConversationIsArchived } from "@/chat/conversations/sql/participants";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import {
   isConversationWorkDone,
   listConversationWork,
@@ -9,18 +10,19 @@ import type { WorkState } from "./model";
 /**
  * Read the plugin work state and the archive state of a Conversation when an
  * idle period starts that Junior can warm. Work of child Conversations counts
- * for their root. The archive of a root also archives each child, so the
- * Conversation's own archive time covers an archived root.
+ * for their root. A child counts as archived when it or its root is: a manual
+ * archive also archives the children, but auto-archive sets only the root.
  */
 export async function readSegmentState(
   conversationId: string,
   nowMs: number,
 ): Promise<{ workState: WorkState; archived: boolean }> {
-  const [work, conversation] = await Promise.all([
+  const [work, conversation, rootArchived] = await Promise.all([
     listConversationWork([conversationId]),
     getConversationStore().get({ conversationId }),
+    rootConversationIsArchived(getSqlExecutor(), conversationId),
   ]);
-  const archived = conversation?.archivedAtMs !== undefined;
+  const archived = rootArchived || conversation?.archivedAtMs !== undefined;
   // A failed hook can hide open work. `none` keeps the segment that most
   // Conversations use, so warming goes on as without plugin work.
   if (work.failed || !work.assignedIds.includes(conversationId)) {

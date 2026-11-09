@@ -432,7 +432,7 @@ Attributes on the `cache_warming.warmup` span:
 | `app.cache_warming.prefix_tokens`      | int     | cached prefix tokens that the warmup keeps                |
 | `app.cache_warming.cache_ttl_left_ms`  | int     | idle only: time left before the cache expires             |
 | `app.cache_warming.work_state`         | string  | idle only: `open`, `done`, or `none`                      |
-| `app.cache_warming.archived`           | boolean | idle only: the Conversation was archived                  |
+| `app.cache_warming.archived`           | boolean | idle only: the Conversation or its root was archived      |
 | `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                        |
 | `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                          |
 | `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                 |
