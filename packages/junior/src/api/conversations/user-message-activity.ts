@@ -106,7 +106,8 @@ export async function readLastUserMessageAtByConversation(
 /**
  * Read when each selected conversation last got a Message that a reader
  * would notice: a true user message or a Junior reply that the transcript
- * shows. Tools, status, Events, and quiet replies do not count.
+ * shows. Tools, status, Events, quiet replies, and progress acks do not
+ * count.
  */
 export async function readLastMessageAtByConversation(
   db: JuniorDatabase,
@@ -115,11 +116,12 @@ export async function readLastMessageAtByConversation(
   if (conversationIds.length === 0) return new Map();
 
   const { instruction, message } = userMessageLaterals(db);
-  // Same filter as the unread reply: quiet replies fold into activity.
+  // Quiet replies and progress acks (`meta.progress`) fold into activity, so
+  // they do not move a row.
   const reply = latestEventAt(
     db,
     "message",
-    sql`${juniorConversationEvents.payload}->>'role' = 'assistant' and (${juniorConversationEvents.payload}->'meta'->>'quiet') is distinct from 'true'`,
+    sql`${juniorConversationEvents.payload}->>'role' = 'assistant' and (${juniorConversationEvents.payload}->'meta'->>'quiet') is distinct from 'true' and (${juniorConversationEvents.payload}->'meta'->>'progress') is distinct from 'true'`,
     "reply",
   );
   const rows = await db

@@ -55,7 +55,7 @@ async function appendMessage(
   conversationId: string,
   message:
     | { authorIdentityId: string }
-    | { quiet?: boolean; role: "assistant" },
+    | { progress?: boolean; quiet?: boolean; role: "assistant" },
 ): Promise<string> {
   const index = nextMessage++;
   const createdAtMs = 10_000 + index;
@@ -71,6 +71,7 @@ async function appendMessage(
           : {
               role: "assistant",
               ...(message.quiet ? { meta: { quiet: true } } : undefined),
+              ...(message.progress ? { meta: { progress: true } } : undefined),
             }),
       },
     },
@@ -264,6 +265,26 @@ describe("conversation unread API", () => {
     // unread.
     expect((await setUnread(app, conversationId, true)).status).toBe(409);
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
+  });
+
+  it("does not move the last Message for a progress ack", async () => {
+    const conversationId = "local:test:last-message-progress";
+    await recordActivity(conversationId, 1_000);
+    const { viewer } = await authenticatedApi("progress-reader@example.com");
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: conversationId,
+        userId: viewer.id,
+      });
+    const replyAt = await appendMessage(conversationId, { role: "assistant" });
+
+    // A progress ack only says that work continues.
+    await appendMessage(conversationId, { progress: true, role: "assistant" });
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: replyAt,
+    });
   });
 
   it("marks a reply at the first event unread", async () => {
