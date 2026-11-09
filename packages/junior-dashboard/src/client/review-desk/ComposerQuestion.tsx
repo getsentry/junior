@@ -1,5 +1,8 @@
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
 import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -13,13 +16,21 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
-import { UserInputForm } from "../components/UserInputForm";
+import {
+  UserInputForm,
+  type UserInputFormHandle,
+} from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
 import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
-import { useReportUnsentAnswer } from "./UnsentAnswers";
+
+/** Lets the message box send the picks of the docked questions. */
+export type ComposerQuestionAnswers = {
+  /** Send every question that has picks. Resolves false when one fails. */
+  send(): Promise<boolean>;
+};
 
 /**
  * Return the open questions in a Conversation that the viewer can answer,
@@ -55,19 +66,61 @@ function isTextTarget(target: EventTarget): boolean {
 
 /**
  * Dock the open questions of a Conversation above its message box, one at a
- * time. The reader answers with a choice, a number key, or the form, or types
- * the answer in the message box. Esc dismisses the question. While the
- * question has focus, any other typed key moves focus to the message box, so
- * the key starts the answer there.
+ * time. A choice or its number key is the answer. Form picks go with the
+ * next send from the message box, which also takes the answer in the
+ * reader's own words. Esc dismisses the question. While the question has
+ * focus, any other typed key moves focus to the message box, so the key
+ * starts the answer there.
  */
 export function ComposerQuestion(props: {
+  /** Lets the message box send the picks. */
+  answersRef?: Ref<ComposerQuestionAnswers>;
   /** Move focus to the message box. */
   focusMessageBox(): void;
+  /** Reports whether a question has picks that are not sent. */
+  onAnswersChange(hasAnswers: boolean): void;
   questions: readonly ReviewItemPayload[];
   ref?: Ref<HTMLElement>;
 }) {
   const [selectedId, setSelectedId] = useState<string>();
   const sectionRef = useRef<HTMLElement | null>(null);
+  const formsRef = useRef(new Map<string, UserInputFormHandle>());
+  const [withPicks, setWithPicks] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const onPicksChange = useCallback((id: string, picked: boolean) => {
+    setWithPicks((current) => {
+      if (current.has(id) === picked) return current;
+      const next = new Set(current);
+      if (picked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  // A closed question leaves the list, so its picks no longer count.
+  const hasAnswers = props.questions.some((question) =>
+    withPicks.has(question.id),
+  );
+  const { onAnswersChange } = props;
+  useEffect(() => {
+    onAnswersChange(hasAnswers);
+  }, [hasAnswers, onAnswersChange]);
+  // A send from the message box keeps focus there.
+  const sendingFromMessageBoxRef = useRef(false);
+  useImperativeHandle(props.answersRef, () => ({
+    send: async () => {
+      sendingFromMessageBoxRef.current = true;
+      const sends = props.questions.flatMap((question) => {
+        const send = formsRef.current.get(question.id)?.sendPicks();
+        return send ? [send] : [];
+      });
+      try {
+        return (await Promise.all(sends)).every(Boolean);
+      } finally {
+        sendingFromMessageBoxRef.current = false;
+      }
+    },
+  }));
   // A closed question leaves the list, so the oldest open one shows next.
   const index = Math.max(
     0,
@@ -82,6 +135,7 @@ export function ComposerQuestion(props: {
   // is open, and the message box takes it when none is left. Take keeps the
   // question open.
   const afterAction = (closed: boolean) => {
+    if (sendingFromMessageBoxRef.current) return;
     if (closed && count === 1) props.focusMessageBox();
     else sectionRef.current?.focus();
   };
@@ -130,8 +184,8 @@ export function ComposerQuestion(props: {
       }}
       tabIndex={-1}
     >
-      {/* Every open question stays mounted, so picks and notes survive a
-          step to another question, and each one reports its unsent answer. */}
+      {/* Every open question stays mounted, so its picks survive a step to
+          another question and go with the next send. */}
       {props.questions.map((question, position) => (
         <div
           className={position === index ? "grid min-w-0 gap-2" : "hidden"}
@@ -140,7 +194,12 @@ export function ComposerQuestion(props: {
         >
           <DockedQuestion
             afterAction={afterAction}
+            formRef={(handle) => {
+              if (handle) formsRef.current.set(question.id, handle);
+              else formsRef.current.delete(question.id);
+            }}
             item={question}
+            onPicksChange={onPicksChange}
             stepper={
               count > 1 ? (
                 <div className="flex shrink-0 items-center gap-0.5 text-xs text-dashboard-text-muted">
@@ -177,14 +236,18 @@ export function ComposerQuestion(props: {
 
 function DockedQuestion(props: {
   afterAction(closed: boolean): void;
+  formRef: Ref<UserInputFormHandle>;
   item: ReviewItemPayload;
+  onPicksChange(id: string, picked: boolean): void;
   stepper: ReactNode;
 }) {
-  const { item } = props;
+  const { item, onPicksChange } = props;
   const action = useReviewItemAction();
   const [error, setError] = useState<string>();
   const [unsent, setUnsent] = useState(false);
-  useReportUnsentAnswer(item, unsent);
+  useEffect(() => {
+    onPicksChange(item.id, unsent);
+  }, [item.id, onPicksChange, unsent]);
 
   async function run(body: ReviewItemActionBody) {
     setError(undefined);
@@ -232,6 +295,7 @@ function DockedQuestion(props: {
           </div>
           <UserInputForm
             docked
+            ref={props.formRef}
             onSubmit={(answer) =>
               run({
                 action: "submit",

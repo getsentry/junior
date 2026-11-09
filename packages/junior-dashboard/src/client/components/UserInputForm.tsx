@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import {
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type FormEvent,
@@ -35,6 +36,15 @@ const optionClass =
 // while the answer sends.
 const choiceButtonClass =
   "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
+
+/** Sends the picks of a docked form from outside it. */
+export type UserInputFormHandle = {
+  /**
+   * Send the picks and text. Undefined when there is nothing to send;
+   * otherwise resolves false when the send fails.
+   */
+  sendPicks(): Promise<boolean> | undefined;
+};
 
 // Marks the choice that Junior recommends, next to its label.
 function SuggestedLabel(props: { className?: string }) {
@@ -213,13 +223,15 @@ function TextField(props: {
  * the form has picks or text that the reader has not sent.
  *
  * `docked` is for the question above the message box. The message box takes
- * an answer in the reader's own words there, so Other… does not show, and
- * each choice button names its number key in `aria-keyshortcuts`.
+ * the reader's own words and sends the picks, so Other…, the note, and the
+ * form's Send do not show. `ref.sendPicks` sends the picks. Each choice
+ * button names its number key in `aria-keyshortcuts`.
  */
 export function UserInputForm(props: {
   docked?: boolean;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
+  ref?: Ref<UserInputFormHandle>;
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
@@ -244,18 +256,20 @@ export function UserInputForm(props: {
   // The lock stays after a sent answer; only a failed send can retry.
   const sendLock = useRef(false);
 
-  async function send(answer: UserInputAnswer) {
-    if (sendLock.current) return;
+  async function send(answer: UserInputAnswer): Promise<boolean> {
+    if (sendLock.current) return false;
     sendLock.current = true;
     setSending(true);
     setFailed(false);
     try {
       await props.onSubmit(answer);
+      return true;
     } catch {
       sendLock.current = false;
       setSending(false);
       setPicked(undefined);
       setFailed(true);
+      return false;
     }
   }
 
@@ -280,6 +294,9 @@ export function UserInputForm(props: {
   useEffect(() => {
     onUnsentChange?.(unsent);
   }, [onUnsentChange, unsent]);
+  useImperativeHandle(props.ref, () => ({
+    sendPicks: () => (unsent ? send(answer) : undefined),
+  }));
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!isEmptyUserInputAnswer(normalized)) {
@@ -401,29 +418,37 @@ export function UserInputForm(props: {
               />
             ),
           )}
-          <TextField
-            className="min-h-16"
-            description={USER_INPUT_NOTE.description}
-            disabled={sending}
-            label={USER_INPUT_NOTE.label}
-            onChange={setOther}
-            ref={noteRef}
-            value={other}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={sending} type="submit" variant="primary">
-              Send
-            </Button>
-            {fieldCount > 1 ? (
-              <span
-                aria-live="polite"
-                className="text-xs text-dashboard-text-muted"
-              >
-                {answeredCount} of {fieldCount} answered
-              </span>
-            ) : null}
-            {secondary}
-          </div>
+          {props.docked ? null : (
+            <TextField
+              className="min-h-16"
+              description={USER_INPUT_NOTE.description}
+              disabled={sending}
+              label={USER_INPUT_NOTE.label}
+              onChange={setOther}
+              ref={noteRef}
+              value={other}
+            />
+          )}
+          {/* A docked form sends from the message box, so this row can be
+              empty there. */}
+          {props.docked && fieldCount < 2 && !secondary ? null : (
+            <div className="flex flex-wrap items-center gap-2">
+              {props.docked ? null : (
+                <Button disabled={sending} type="submit" variant="primary">
+                  Send
+                </Button>
+              )}
+              {fieldCount > 1 ? (
+                <span
+                  aria-live="polite"
+                  className="text-xs text-dashboard-text-muted"
+                >
+                  {answeredCount} of {fieldCount} answered
+                </span>
+              ) : null}
+              {secondary}
+            </div>
+          )}
         </form>
       )}
       {failed ? (

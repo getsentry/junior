@@ -96,25 +96,45 @@ test("steps through several questions with the keyboard", async ({
     lightTheme: true,
     view: "desktop",
   });
-  await question.getByRole("button", { name: "Send" }).click();
-  // The oldest open question shows next and keeps focus, so keys still work.
+
+  // A number key answers the shown question. The oldest open question shows
+  // next and keeps focus, with its picks.
+  await question.getByRole("button", { name: "Previous question" }).click();
+  await expect(question).toContainText("1 of 3", { useInnerText: true });
+  await question.getByRole("heading").click();
+  await page.keyboard.press("2");
   await expect(question).toContainText("1 of 2", { useInnerText: true });
   await expect(question).toBeFocused();
-  await page.keyboard.press("2");
   await expect(
-    question.getByRole("heading", { name: "Handle the negative invoices" }),
-  ).toBeVisible();
-  await expect(question).not.toContainText(/\d of \d/, { useInnerText: true });
-  await page.keyboard.press("Escape");
+    question.getByRole("checkbox", { name: /invoices/ }),
+  ).toBeChecked();
+
+  // The form has no note and no Send of its own: the message box sends the
+  // picks, then the typed words, which answer another question.
+  await expect(
+    question.getByRole("textbox", { name: /Anything else/ }),
+  ).toHaveCount(0);
+  await expect(question.getByRole("button", { name: "Send" })).toHaveCount(0);
+  const composer = page.getByRole("textbox", {
+    name: "Continue this conversation",
+  });
+  await composer.fill("Write off the negative invoices.");
+  await screenshot(page, "conversation-question-picks-and-text", {
+    view: "desktop",
+  });
+  await composer.press("Enter");
   await expect(question).toHaveCount(0);
+  await expect(composer).toHaveValue("");
   expect(actions).toEqual([
+    { action: "submit", answer: { values: { window: ["Tuesday 14:00 UTC"] } } },
     {
       action: "submit",
       answer: { values: { owner: ["Riley"], tables: ["invoices"] } },
     },
-    { action: "submit", answer: { values: { window: ["Tuesday 14:00 UTC"] } } },
-    { action: "dismiss" },
   ]);
+  await expect(
+    page.getByRole("region", { name: "Asked Handle the negative invoices" }),
+  ).toContainText("Write off the negative invoices.");
 });
 
 test("a typed message answers the question", async ({ dashboard, page }) => {

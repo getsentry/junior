@@ -784,7 +784,9 @@ for (const view of [desktop, mobile]) {
     const question = page.getByRole("region", {
       name: `Question: ${item.title}`,
     });
-    await expect(question.getByRole("button", { name: "Send" })).toBeAttached();
+    await expect(
+      question.getByRole("radiogroup", { name: "Owner" }),
+    ).toBeAttached();
     await expect(
       question.getByRole("heading", { name: item.title }),
     ).toBeInViewport();
