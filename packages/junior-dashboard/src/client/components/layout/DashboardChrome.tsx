@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -16,9 +17,9 @@ import { cn } from "../../styles";
 /**
  * Replaces the mobile header back link while a page shows a nested view, or
  * a Conversation that has no route yet. `title` names it when the route
- * cannot.
+ * cannot. Without `onClick`, back shows but waits.
  */
-type MobileHeaderBack = { label: string; onClick(): void; title?: string };
+type MobileHeaderBack = { label: string; onClick?(): void; title?: string };
 
 type DashboardChromeContextValue = {
   mobileHeaderBack: MobileHeaderBack | null;
@@ -252,18 +253,24 @@ export function useMobileHeaderBack(): MobileHeaderBack | null {
  */
 export function useRegisterMobileHeaderBack(
   label: string | undefined,
-  onClick: () => void,
+  onClick: (() => void) | undefined,
   title?: string,
 ): void {
   const setBack = useContext(DashboardChromeContext)?.setMobileHeaderBack;
   const onClickRef = useRef(onClick);
   onClickRef.current = onClick;
+  const enabled = Boolean(onClick);
 
-  useEffect(() => {
+  // Before paint, so the header never shows a frame of the old chrome.
+  useLayoutEffect(() => {
     if (!setBack || !label) return;
-    setBack({ label, onClick: () => onClickRef.current(), title });
+    setBack({
+      label,
+      onClick: enabled ? () => onClickRef.current?.() : undefined,
+      title,
+    });
     return () => setBack(null);
-  }, [label, setBack, title]);
+  }, [enabled, label, setBack, title]);
 }
 
 /** Mount page navigation into the desktop chrome and mobile drawer. */

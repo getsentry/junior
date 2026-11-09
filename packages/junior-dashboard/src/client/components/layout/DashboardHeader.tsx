@@ -179,8 +179,9 @@ export function DashboardHeader(props: {
             aria-label={mobileBack.label}
             className={cn(
               mobileBackClass,
-              "cursor-pointer border-0 bg-transparent",
+              "cursor-pointer border-0 bg-transparent disabled:cursor-default",
             )}
+            disabled={!mobileBack.onClick}
             onClick={mobileBack.onClick}
             type="button"
           >

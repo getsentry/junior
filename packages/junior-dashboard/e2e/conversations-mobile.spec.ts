@@ -194,7 +194,7 @@ test("starts a new conversation from a centered compose empty state", async ({
   await composer.press("Enter");
   // The new Conversation shows its chrome before its route exists, so the
   // header does not flash home's menu first.
-  await expect(page.getByLabel("Back to conversations")).toBeVisible();
+  await expect(page.getByLabel("Back to conversations")).toBeDisabled();
   await expect(
     page.getByRole("heading", { level: 1, name: "New conversation" }),
   ).toBeVisible();
@@ -207,30 +207,6 @@ test("starts a new conversation from a centered compose empty state", async ({
   const reply = page.getByPlaceholder("Message Junior…");
   await reply.focus();
   await expectFocusedComposerAtVisualViewportBottom(reply, 844);
-});
-
-test("goes back home from a new Conversation before it opens", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(dashboard.baseURL);
-  const releaseCreate = await holdCreate(page);
-  const composer = page.getByLabel("Start a conversation");
-  await composer.fill("Check the rollback");
-  await composer.press("Enter");
-  await page.getByLabel("Back to conversations").click();
-
-  await expect(
-    page.getByRole("button", { name: "Open navigation" }),
-  ).toBeVisible();
-  releaseCreate();
-  // The create goes on, but home stays.
-  await expect(composer).toHaveValue("");
-  await expect(
-    page.getByRole("link", { name: "Open Check the rollback" }),
-  ).toBeVisible();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
 });
 
 test.describe("on a touch screen", () => {

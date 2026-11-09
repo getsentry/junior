@@ -61,7 +61,6 @@ export function newConversationDraftId(idempotencyKey: string): string {
  * dock. The page replaces it when the create is accepted.
  */
 export function NewConversationPending(props: {
-  onBack(): void;
   pending: PendingNewConversation;
   sidebarToggle?: ReactNode;
 }) {
@@ -113,10 +112,12 @@ export function NewConversationPending(props: {
   const showDetails = useDetailsDefaultOpen();
   const searchMatch = useTranscriptSearchMatch("");
   // Home has no Conversation chrome. Show the page's, so mobile does not
-  // flash the home header before the route changes.
+  // flash the home header before the route changes. Back waits, like the
+  // header actions: home's composer holds the sent text until the create is
+  // accepted.
   useRegisterMobileHeaderBack(
     "Back to conversations",
-    props.onBack,
+    undefined,
     PENDING_TITLE,
   );
 
