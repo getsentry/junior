@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
 import { readPeopleListFromSql } from "@/api/people/list.query";
+import { readPeopleProfileFromSql } from "@/api/people/profile.query";
 import { actorDirectoryReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -204,6 +205,34 @@ describe("people list API", () => {
         lastSeenAt: "2026-06-14T11:00:00.000Z",
         windows: { 7: { conversations: 1, costUsd: 0.3 } },
       });
+      // Ana ran two Turns on two days in her own Conversation. It failed.
+      for (const [turnId, at, status] of [
+        ["ana-own-1", "2026-06-13T10:00:00.000Z", "idle"],
+        ["ana-own-2", "2026-06-14T10:30:00.000Z", "failed"],
+      ] as const) {
+        await store.recordExecution({
+          actorIdentityId: await turnActorIdentityId(fixture, ana),
+          conversationId: "slack:C1:ana-own",
+          createdAtMs: Date.parse(at),
+          destination: { channelId: "C1", platform: "slack", teamId: "T1" },
+          execution: { runId: turnId, status, updatedAtMs: Date.parse(at) },
+          lastActivityAtMs: Date.parse(at),
+          metrics: { durationMs: 0 },
+          updatedAtMs: Date.parse(at),
+        });
+      }
+      const profile = await readPeopleProfileFromSql("ana@example.com");
+      // Recent order follows Ana's own last Turn, not Ben's later activity.
+      expect(
+        profile.recentConversations.map((item) => item.conversationId),
+      ).toEqual(["slack:C1:ana-own", conversationId]);
+      // The failure counts once, on the day of her last Turn in it.
+      const day = (date: string) =>
+        profile.activityDays.find((entry) => entry.date === date);
+      expect(day("2026-06-13")).toMatchObject({ conversations: 1, failed: 0 });
+      expect(day("2026-06-14")).toMatchObject({ conversations: 2, failed: 1 });
+      expect(profile.totals).toMatchObject({ conversations: 2, failed: 1 });
+
       const nowMs = Date.now();
       expect(
         await readPersonalSpendFromSql("ana@example.com", nowMs),

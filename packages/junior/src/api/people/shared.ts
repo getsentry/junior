@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
@@ -60,6 +60,13 @@ export function personTurns(email?: string) {
         ${juniorConversations.rootConversationId},
         ${juniorConversations.conversationId}
       )`.as("turn_root_conversation_id"),
+      // A root's status counts once per person, at their last Turn in it.
+      lastRootTurnAt: sql`max(${juniorConversationMetrics.occurredAt}) OVER (
+        PARTITION BY ${juniorUsers.id}, coalesce(
+          ${juniorConversations.rootConversationId},
+          ${juniorConversations.conversationId}
+        )
+      )`.as("last_root_turn_at"),
       // Web identities use the email as the subject. Only Slack fills these.
       slackUserId: sql<
         string | null
@@ -106,12 +113,17 @@ function turnSum(turns: PersonTurns, metric: ConversationMetric) {
 /**
  * Aggregate a person's Turn rows. A Conversation counts once for each person
  * who ran a Turn in it. Child Conversation Turns count for the root.
+ *
+ * Active and failed read the root's current status. They count only in the
+ * bucket of the person's last Turn in that root, so a status change does not
+ * mark every past day.
  */
 export function turnAggregateColumns(turns: PersonTurns) {
   const roots = sql`COUNT(DISTINCT ${turns.rootConversationId})`;
+  const lastTurn = sql`${turns.occurredAt} = ${turns.lastRootTurnAt}`;
   return {
     active: sql<number>`${roots} FILTER (
-      WHERE ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
+      WHERE ${lastTurn} AND ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
     )::integer`,
     conversations: sql<number>`${roots}::integer`,
     costUsd: sql<
@@ -120,7 +132,9 @@ export function turnAggregateColumns(turns: PersonTurns) {
     durationMs: sql<number>`COALESCE(${turnSum(turns, "duration_ms")}, 0)::double precision`,
     // A stopped Conversation reports `stopped`, not `failed`.
     failed: sql<number>`${roots} FILTER (
-      WHERE ${turnRoot.executionStatus} = 'failed' AND ${turnRoot.stoppedAt} IS NULL
+      WHERE ${lastTurn}
+        AND ${turnRoot.executionStatus} = 'failed'
+        AND ${turnRoot.stoppedAt} IS NULL
     )::integer`,
     tokens: sql<
       number | null
@@ -256,9 +270,17 @@ export function verifiedActorWhere(email?: string) {
   );
 }
 
-/** Read the recent Conversations where a person ran a Turn. */
+/** Read the Conversations where a person ran a Turn, by their last Turn. */
 export async function recentActorRows(email: string) {
   const turns = personTurns(email);
+  const lastTurns = getDb()
+    .select({
+      conversationId: turns.conversationId,
+      lastTurnAt: sql`max(${turns.occurredAt})`.as("last_turn_at"),
+    })
+    .from(turns)
+    .groupBy(turns.conversationId)
+    .as("person_last_turns");
   return getDb()
     .select({
       channelName: juniorConversations.channelName,
@@ -287,7 +309,11 @@ export async function recentActorRows(email: string) {
       updatedAt: juniorConversations.updatedAt,
       usage: juniorConversations.usage,
     })
-    .from(juniorConversations)
+    .from(lastTurns)
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, lastTurns.conversationId),
+    )
     .leftJoin(
       juniorIdentities,
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
@@ -297,14 +323,8 @@ export async function recentActorRows(email: string) {
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(
-      inArray(
-        juniorConversations.conversationId,
-        getDb().selectDistinct({ id: turns.conversationId }).from(turns),
-      ),
-    )
     .orderBy(
-      desc(juniorConversations.lastActivityAt),
+      desc(lastTurns.lastTurnAt),
       asc(juniorConversations.conversationId),
     )
     .limit(RECENT_LIMIT);
