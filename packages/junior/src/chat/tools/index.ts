@@ -20,6 +20,7 @@ import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
   createAddReviewItemTool,
@@ -28,6 +29,7 @@ import {
 } from "@/chat/tools/review-items";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
@@ -238,10 +240,13 @@ export function createTools(
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
 
+  // An Automation run ends with its declared result instead.
   if (context.automation) {
     tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
       context.automation,
     );
+  } else {
+    tools[NO_REPLY_TOOL_NAME] = createNoReplyTool();
   }
 
   if (context.mcpToolManager) {

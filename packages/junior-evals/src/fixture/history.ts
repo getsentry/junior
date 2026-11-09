@@ -35,7 +35,7 @@ import {
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { createSlackDestination } from "@/chat/destination";
 import { conversationVisibilityFromSlackChannelType } from "@/chat/slack/conversation-context";
 import { parseContent } from "@/chat/slack/message/content";
@@ -584,12 +584,15 @@ export async function loadHistory(args: {
       args.replyMessages.set(historyReply, replyId);
     }
     if (turn.replies.length === 0) {
-      // Junior answered an input that addressed it with the silence marker.
+      // Junior answered an input that addressed it with `noReply`.
       if (message.conversationMessage.meta?.explicitMention) {
-        agentHistory.push(
-          assistantPiMessage([{ type: "text", text: NO_REPLY_MARKER }], tick()),
-        );
-        agentProvenance.push(contextProvenance);
+        for (const toolMessage of toolCallPiMessages(
+          { name: NO_REPLY_TOOL_NAME, arguments: {}, result: {} },
+          tick(),
+        )) {
+          agentHistory.push(toolMessage);
+          agentProvenance.push(contextProvenance);
+        }
         await commitMessages({
           conversationId,
           messages: agentHistory,

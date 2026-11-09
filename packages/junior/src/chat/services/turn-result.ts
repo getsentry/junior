@@ -1,6 +1,10 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { isNoReplyMarker } from "@/chat/no-reply";
+import {
+  isLegacyNoReplyMarker,
+  readNoReply,
+  type NoReply,
+} from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
@@ -53,6 +57,8 @@ export interface AgentRunResult {
   automation?: AutomationResult;
   /** Blocked report of a child agent run. */
   blocked?: BlockedReport;
+  /** Set when the run ended with no reply. */
+  noReply?: NoReply;
   sandboxRef?: SandboxRef;
   piMessages?: PiMessage[];
   diagnostics: AgentTurnDiagnostics;
@@ -101,14 +107,18 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     )
     .map((output) => output.text)
     .join("\n\n");
-  // Intentional silence only for marker text. Tool-call suppress is not no-reply.
+  // A tool-call tail is not a no-reply. Only the tool, or a final text that
+  // is only a legacy marker, is.
   const terminalTexts = terminalAssistantMessages.map((message) =>
     sanitizeAssistantText(extractAssistantText(message)),
   );
-  const noReplyRequested =
-    !primaryText &&
-    terminalTexts.some((text) => isNoReplyMarker(text)) &&
-    terminalTexts.every((text) => !text || isNoReplyMarker(text));
+  const legacyMarkerOnly =
+    terminalTexts.some((text) => isLegacyNoReplyMarker(text)) &&
+    terminalTexts.every((text) => !text || isLegacyNoReplyMarker(text));
+  const noReply = primaryText
+    ? undefined
+    : (readNoReply(newMessages) ?? (legacyMarkerOnly ? {} : undefined));
+  const noReplyRequested = Boolean(noReply);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
@@ -130,17 +140,11 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       : undefined;
   const isProviderError = stopReason === "error";
 
-  if (noReplyRequested) {
-    const markerCategory = reactionPerformed ? "reaction" : "none";
-    const markerAttributes = {
-      "app.ai.no_reply_marker": true,
-      "app.ai.no_reply_marker_category": markerCategory,
-      "app.ai.no_reply_marker_accepted": !isProviderError,
-    };
-
-    if (!isProviderError) {
-      logInfo("ai.no_reply_marker.accepted", markerAttributes);
-    }
+  if (noReplyRequested && !isProviderError) {
+    logInfo("ai.no_reply.accepted", {
+      "app.ai.no_reply.category": reactionPerformed ? "reaction" : "none",
+      "app.ai.no_reply.legacy_marker": legacyMarkerOnly,
+    });
   }
 
   if (
@@ -187,6 +191,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   return {
     text: primaryText,
     ...(blocked ? { blocked } : undefined),
+    ...(noReply ? { noReply } : undefined),
     sandboxRef,
     piMessages: input.piMessages,
     diagnostics: buildDiagnostics(input, {

@@ -19,6 +19,7 @@ import {
 const VOLATILE_KEYS = new Set([
   "authorIdentityId",
   "cacheWrite1h",
+  "id",
   "idempotencyKey",
   "inputMessageIds",
   "messageId",
@@ -26,6 +27,7 @@ const VOLATILE_KEYS = new Set([
   "responseId",
   "slackTs",
   "timestamp",
+  "toolCallId",
   "turnId",
   "usage",
 ]);
@@ -153,8 +155,6 @@ describe("loaded history", () => {
     run,
   }) => {
     // Slack ingress escapes markdown, such as the brackets and underscore.
-    // The input does not name the no-reply marker, because the model then
-    // repeats the escaped text, which Junior delivers as a reply.
     await compareWithRealTurn(
       run,
       slackMention(

@@ -202,7 +202,6 @@ describe("scheduled automation heartbeat", () => {
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toMatch(/^<task>\n/);
-    expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
     expect(dispatchRecord?.input).toContain("<created-by><@U039RR91S>.");
     // The run gets the creator mention, not the stored phrase.
     expect(dispatchRecord?.input).toContain(
