@@ -17,6 +17,7 @@ import {
   type ConversationContinueInSlackAction,
   type ConversationPinAction,
   type ConversationReadAction,
+  type ConversationSubscriptionAction,
 } from "./ConversationHeaderActions";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
@@ -56,6 +57,7 @@ export function ConversationHeader(props: {
   sidebarToggle?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
   status?: ReactNode;
+  subscription: ConversationSubscriptionAction;
   title: string;
   view: TranscriptViewMode;
 }) {
@@ -124,6 +126,7 @@ export function ConversationHeader(props: {
       }
       pin={props.pin}
       read={props.read}
+      subscription={props.subscription}
       copyAction={props.copyAction}
       detailsOpen={detailsOpen}
       onDetailsClick={() => {
@@ -181,6 +184,7 @@ export function ConversationHeader(props: {
     Boolean(props.archive.error) ||
     props.pin.error ||
     props.read.error ||
+    props.subscription.error ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -311,6 +315,11 @@ export function ConversationHeader(props: {
         {props.read.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update read state.
+          </div>
+        ) : null}
+        {props.subscription.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not update subscription.
           </div>
         ) : null}
       </header>
