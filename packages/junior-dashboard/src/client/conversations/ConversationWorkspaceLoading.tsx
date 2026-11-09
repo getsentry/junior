@@ -6,15 +6,13 @@ import { ChatLayout } from "./ChatLayout";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeListLoading } from "./ConversationHomeList";
 import { ConversationRowSkeletons } from "./ConversationSidebar";
-import {
-  readSidebarWidth,
-  useConversationSidebarOpen,
-} from "./conversationSidebarLayout";
+import { readSidebarWidth } from "./conversationSidebarLayout";
+import { ListPane, usePaneOpen } from "../components/layout/PaneNav";
 import { TranscriptLoading } from "./TranscriptLoading";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
-  const [sidebarOpen] = useConversationSidebarOpen();
+  const sidebarOpen = usePaneOpen();
   return (
     <div
       aria-busy="true"
@@ -45,22 +43,15 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
   );
 }
 
-// Mirror the live sidebar chrome so the first paint does not jump.
+// Mirror the live pane so the first paint does not jump. The pane's
+// destinations do not wait for data, so they show at once.
 function ConversationSidebarLoading() {
   return (
-    <aside className="hidden h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel md:grid">
-      <div className="px-3 pb-1.5 pt-2.5">
-        <div className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-2 px-3 py-2 text-sm leading-snug">
-          <Skeleton className="size-[1.125rem] justify-self-center rounded-md" />
-          <span className="flex h-[1lh] items-center">
-            <Skeleton className="h-3 w-28" />
-          </span>
-        </div>
-      </div>
-      <div className="min-h-0 overflow-hidden px-3">
+    <ListPane className="max-md:hidden">
+      <aside className="h-full min-h-0 overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel px-3 pt-1.5">
         <ConversationRowSkeletons />
-      </div>
-    </aside>
+      </aside>
+    </ListPane>
   );
 }
 

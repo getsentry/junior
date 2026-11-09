@@ -22,7 +22,11 @@ import {
 } from "./components/layout/DashboardChrome";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { NavRail, NavRailProvider } from "./components/layout/NavRail";
+import {
+  ListPane,
+  PaneCollapsedControls,
+  PaneNavProvider,
+} from "./components/layout/PaneNav";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   automationPath,
@@ -30,12 +34,12 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
-import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
+import { useConversationSidebarOpen } from "./conversations/conversationSidebarLayout";
 import { readConversationStartPosition } from "./conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "./pages/code/codeRepositoryRoutes";
 import { SettingsPageLayout } from "./pages/settings/SettingsPageLayout";
@@ -60,6 +64,7 @@ import {
   ReviewDeskPage,
 } from "./review-desk/ReviewDeskPage";
 import { useReviewItemCountData } from "./review-desk/queries";
+import { cn } from "./styles";
 import { useVersionsPoll } from "./versions";
 import type { DashboardCoreData } from "./types";
 
@@ -235,7 +240,7 @@ export function DashboardShell() {
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
-  const desktopTopBar = useDesktopTopBar();
+  const [paneOpen, setPaneOpen] = useConversationSidebarOpen();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -243,6 +248,9 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  // These pages put their own list in the pane. Other pages get the pane
+  // with the primary destinations only.
+  const ownsPane = workspace || location.pathname === "/review";
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
   // The shell owns the open Conversation's data, and the page reads it. On a
@@ -303,29 +311,38 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <NavRailProvider>
+      <PaneNavProvider
+        navItems={primaryNavItems}
+        onOpenChange={setPaneOpen}
+        onSearch={openCommandPalette}
+        open={paneOpen}
+        profile={
+          loggedIn ? (
+            <ProfileMenu
+              identity={data!.me}
+              onSignOut={signOut}
+              spend={personalSpendQuery.data}
+              pages={profileNavItems}
+            />
+          ) : undefined
+        }
+        workspaceActive={workspace}
+      >
         <CommandPalette
           currentConversationId={conversationId}
           navItems={[...primaryNavItems, ...profileNavItems]}
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        {desktopTopBar ? null : (
-          <NavRail
-            navItems={primaryNavItems}
-            onSearch={openCommandPalette}
-            profile={
-              loggedIn ? (
-                <ProfileMenu
-                  identity={data!.me}
-                  onSignOut={signOut}
-                  spend={personalSpendQuery.data}
-                  pages={profileNavItems}
-                />
-              ) : undefined
-            }
-            workspaceActive={workspace}
-          />
+        {ownsPane ? null : (
+          <div
+            className={cn(
+              "sticky top-0 h-dvh w-60 shrink-0 max-md:hidden",
+              !paneOpen && "md:hidden",
+            )}
+          >
+            <ListPane />
+          </div>
         )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
@@ -338,7 +355,8 @@ export function DashboardShell() {
           }
         >
           <DashboardChrome
-            desktopTopBar={desktopTopBar}
+            // Conversation pages put these in their own header.
+            desktopControls={workspace ? undefined : <PaneCollapsedControls />}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -347,24 +365,12 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
-                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
                 onSearch={openCommandPalette}
-                profile={
-                  loggedIn ? (
-                    <ProfileMenu
-                      identity={data!.me}
-                      onSignOut={signOut}
-                      spend={personalSpendQuery.data}
-                      pages={profileNavItems}
-                      variant="top-bar"
-                    />
-                  ) : undefined
-                }
                 mobileIdentity={
                   loggedIn ? (
                     <ProfileMenu
@@ -774,7 +780,7 @@ export function DashboardShell() {
             style={dashboardNoise}
           />
         </VisualViewportShell>
-      </NavRailProvider>
+      </PaneNavProvider>
     </DashboardChromeProvider>
   );
 }

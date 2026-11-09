@@ -155,7 +155,7 @@ for (const outcome of ["success", "error"] as const) {
     ).toBeVisible();
 
     // Home must report the result even with the list hidden.
-    await page.getByRole("button", { name: "Hide conversation list" }).click();
+    await page.getByRole("button", { name: "Hide sidebar" }).click();
     await page.getByRole("button", { name: "Conversation menu" }).click();
     await page.getByRole("button", { name: "Archive", exact: true }).click();
 
@@ -178,7 +178,7 @@ for (const outcome of ["success", "error"] as const) {
       hasText: "Could not archive",
     });
     await expect(archiveError).toContainText("Dashboard QA edge cases");
-    await page.getByRole("button", { name: "Show conversation list" }).click();
+    await page.getByRole("button", { name: "Show sidebar" }).click();
     await expect(conversationLink).toBeVisible();
   });
 }

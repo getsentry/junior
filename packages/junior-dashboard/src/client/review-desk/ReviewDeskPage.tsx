@@ -8,6 +8,7 @@ import { useDetailsPanel } from "../components/DetailsPanel";
 import { Skeleton } from "../components/ui/skeleton";
 import { useDocumentTitle } from "../documentTitle";
 import { pathWithSearch, useDebouncedSearchParam } from "../searchParams";
+import { ListPane } from "../components/layout/PaneNav";
 import { cn } from "../styles";
 import { ReviewDeskSidebar, type InboxGroupKey } from "./ReviewDeskSidebar";
 import { ReviewItemDetails } from "./ReviewItemDetails";
@@ -21,7 +22,7 @@ import {
 import { inboxGroups, nextInboxItem, reviewItemPath } from "./reviewItemFormat";
 
 const shellClass =
-  "grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]";
+  "grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[auto_minmax(0,1fr)]";
 
 function InboxEmpty(props: { className?: string }) {
   return (
@@ -42,20 +43,22 @@ function InboxEmpty(props: { className?: string }) {
 export function ReviewDeskLoading() {
   return (
     <div className={shellClass}>
-      <aside
-        aria-busy="true"
-        aria-label="Loading review items"
-        className="grid content-start gap-2 border-r border-dashboard-border bg-dashboard-surface-panel px-5 py-3"
-      >
-        <Skeleton className="h-5 w-16" />
-        <Skeleton className="h-8 w-full" />
-        {[0, 1, 2, 3].map((row) => (
-          <div className="grid gap-1 py-2" key={row}>
-            <Skeleton className="h-4 w-4/5" />
-            <Skeleton className="h-3 w-2/5 opacity-70" />
-          </div>
-        ))}
-      </aside>
+      <ListPane className="md:w-80">
+        <aside
+          aria-busy="true"
+          aria-label="Loading review items"
+          className="grid h-full content-start gap-2 border-r border-dashboard-border bg-dashboard-surface-panel px-5 py-3"
+        >
+          <Skeleton className="h-5 w-16" />
+          <Skeleton className="h-8 w-full" />
+          {[0, 1, 2, 3].map((row) => (
+            <div className="grid gap-1 py-2" key={row}>
+              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-3 w-2/5 opacity-70" />
+            </div>
+          ))}
+        </aside>
+      </ListPane>
     </div>
   );
 }
@@ -146,12 +149,7 @@ export function ReviewDeskPage() {
 
   return (
     <div className={shellClass}>
-      <div
-        className={cn(
-          "h-full min-h-0 overflow-hidden",
-          itemParam && "max-md:hidden",
-        )}
-      >
+      <ListPane className={cn("md:w-80", itemParam && "max-md:hidden")}>
         <ReviewDeskSidebar
           blocked={blockedAutomations}
           collapsed={collapsed}
@@ -194,7 +192,7 @@ export function ReviewDeskPage() {
           selectedShown={Boolean(itemParam)}
           sourceTitle={sourceTitle}
         />
-      </div>
+      </ListPane>
       <section
         aria-label="Selected review item"
         className={cn(

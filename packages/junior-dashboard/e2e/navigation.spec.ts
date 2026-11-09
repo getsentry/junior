@@ -1,91 +1,81 @@
 import { expect, test } from "./test";
+import { screenshot } from "./screenshot";
 
-test("expands the nav sidebar and keeps the choice", async ({
+test("shows the primary destinations at the top of every desktop pane", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(dashboard.baseURL);
 
-  const sidebar = page.locator('[data-slot="sidebar"]').filter({
-    has: page.getByRole("navigation", { name: "Primary" }),
-  });
-  const profile = sidebar.getByRole("button", {
-    name: "Open profile menu for Dashboard User",
-    exact: true,
-  });
-  // The sidebar starts as the icon rail, with only the avatar.
-  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  await expect(profile).not.toContainText("Dashboard User", {
-    useInnerText: true,
-  });
-
-  // An expanded sidebar adds labels, and the choice survives a reload.
-  await sidebar.getByRole("button", { name: "Expand sidebar" }).click();
-  await expect(sidebar).toHaveAttribute("data-state", "expanded");
-  await expect(profile).toContainText("Dashboard User", {
-    useInnerText: true,
-  });
-  await page.reload();
-  await expect(sidebar).toHaveAttribute("data-state", "expanded");
-
-  // Narrower desktop windows keep the choice and the toggle.
-  await page.setViewportSize({ width: 1100, height: 900 });
-  await expect(sidebar).toHaveAttribute("data-state", "expanded");
-  await page.keyboard.press("ControlOrMeta+b");
-  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  const destinations = primary.getByRole("link");
+  // Inbox carries the open review item count.
+  await expect(destinations).toHaveText([
+    "Conversations",
+    /^Inbox\d+$/,
+    "Automations",
+  ]);
   await expect(
-    sidebar.getByRole("button", { name: "Expand sidebar" }),
+    primary.getByRole("link", { name: "Conversations" }),
+  ).toHaveAttribute("aria-current", "page");
+  // The pane is one column: destinations above the conversation list.
+  await expect(
+    page.getByRole("navigation", { name: "Your conversations" }),
   ).toBeVisible();
+
+  // Inbox puts its own list under the same destinations.
+  await primary.getByRole("link", { name: "Inbox" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/review`);
+  await expect(primary.getByRole("link", { name: "Inbox" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByPlaceholder("Search items…")).toBeVisible();
+
+  // Pages without a list get the destinations alone.
+  await primary.getByRole("link", { name: "Automations" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+  await expect(
+    primary.getByRole("link", { name: "Automations" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("button", {
+      name: "Open profile menu for Dashboard User",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await screenshot(page, "navigation-pane-automations", { view: "desktop" });
 });
 
-test("switches desktop navigation between adaptive, top bar, and sidebar", async ({
-  page,
-  dashboard,
-}) => {
-  // Adaptive tall windows use the top bar.
-  await page.setViewportSize({ width: 1440, height: 1150 });
-  await page.goto(dashboard.baseURL);
-  const primary = page.getByRole("navigation", { name: "Primary" });
-  const sidebar = page
-    .locator('[data-slot="sidebar"]')
-    .filter({ has: primary });
-  await expect(primary).toBeVisible();
-  await expect(sidebar).toHaveCount(0);
-
-  const openMenu = async () => {
-    await page
-      .getByRole("button", { name: /^Open profile menu for Dashboard User/ })
-      .click();
-    return page.locator("#profile-popover");
-  };
-  const navigation = (await openMenu()).getByRole("group", {
-    name: "Navigation",
-  });
-  await expect(
-    navigation.getByRole("button", { name: "Adaptive navigation" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await navigation.getByRole("button", { name: "Sidebar navigation" }).click();
-  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  // The top bar's menu closes with the top bar.
-  await expect(page.locator("#profile-popover")).toHaveCount(0);
-
-  // The choice survives a reload, and the top bar choice ignores height.
+test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.reload();
-  await expect(sidebar).toBeVisible();
-  await (await openMenu())
-    .getByRole("button", { name: "Top bar navigation" })
-    .click();
-  await expect(sidebar).toHaveCount(0);
-  await expect(primary).toBeVisible();
-  // The sidebar shortcut does nothing while the sidebar is hidden.
-  await page.keyboard.press("ControlOrMeta+b");
+  await page.goto(`${dashboard.baseURL}/automations`);
 
-  // Settings shows the same choice.
-  await page.goto(`${dashboard.baseURL}/settings`);
-  const setting = page.getByRole("radiogroup", { name: "Navigation" });
-  await expect(setting.getByRole("radio", { name: /^Top bar/ })).toBeChecked();
-  await setting.getByRole("radio", { name: /^Adaptive/ }).click();
-  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  await expect(primary).toBeVisible();
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await expect(primary).toBeHidden();
+  // Only the toggle and the command palette stay.
+  const show = page.getByRole("button", { name: "Show sidebar" });
+  await expect(show).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Go to conversation" }),
+  ).toBeVisible();
+
+  // The choice survives a reload and a move to another page.
+  await page.reload();
+  await expect(primary).toBeHidden();
+  await page.goto(dashboard.baseURL);
+  await expect(primary).toBeHidden();
+  await expect(
+    page.getByRole("navigation", { name: "Your conversations" }),
+  ).toBeHidden();
+
+  // Cmd/Ctrl+B shows it again.
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(primary).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Your conversations" }),
+  ).toBeVisible();
 });
