@@ -71,12 +71,13 @@ export function DashboardHeader(props: {
   const closeRef = useRef<HTMLButtonElement>(null);
   const onOpenChangeRef = useRef(props.onMobileNavigationOpenChange);
   onOpenChangeRef.current = props.onMobileNavigationOpenChange;
-  // Conversation chrome is path-driven. Undefined title keeps the loading
+  // Conversation chrome is path-driven, or set by a registered back for a
+  // Conversation that has no route yet. Undefined title keeps the loading
   // fallback; explicit empty string means no title (create compose).
-  const conversationMode = Boolean(props.mobileBackTo);
   const mobileBack = useMobileHeaderBack();
-  const mobileTitle =
-    props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
+  const conversationMode = Boolean(props.mobileBackTo || mobileBack);
+  const title = props.mobileTitle ?? mobileBack?.title;
+  const mobileTitle = title === undefined ? "Conversation" : title.trim();
 
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);

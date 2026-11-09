@@ -169,15 +169,22 @@ export function ConversationWorkspace(props: {
 
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
-  const homeVisit = useRef<AbortSignal>(undefined);
+  const homeVisit = useRef<AbortController>(undefined);
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
   useEffect(() => {
     if (!home) return;
-    const visit = new AbortController();
-    homeVisit.current = visit.signal;
-    return () => visit.abort();
+    homeVisit.current = new AbortController();
+    return () => homeVisit.current?.abort();
   }, [home]);
+  // Mobile back from a pending create returns to home, which is the same
+  // route. It ends the visit like leaving home: the create goes on, and its
+  // Conversation waits in the list with the reply typed meanwhile.
+  const leavePendingCreate = () => {
+    homeVisit.current?.abort();
+    homeVisit.current = new AbortController();
+    setPendingCreate(undefined);
+  };
 
   // Home exists to start a conversation, so the reader can type at once. On a
   // touch screen, focus opens the keyboard over the conversation list. There,
@@ -204,7 +211,7 @@ export function ConversationWorkspace(props: {
           : undefined
       }
       onSubmit={async (message, idempotencyKey, visibility, images) => {
-        const visit = homeVisit.current;
+        const visit = homeVisit.current?.signal;
         const pendingDraftId = newConversationDraftId(idempotencyKey);
         // Show the Conversation at once. The create view stays mounted but
         // hidden, so a failed create comes back with the draft and its key.
@@ -426,6 +433,7 @@ export function ConversationWorkspace(props: {
               </UnsentAnswersProvider>
             ) : pendingCreate ? (
               <NewConversationPending
+                onBack={leavePendingCreate}
                 pending={pendingCreate}
                 sidebarToggle={sidebarToggle}
               />

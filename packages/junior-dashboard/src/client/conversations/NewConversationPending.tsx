@@ -19,6 +19,7 @@ import { ConversationPrivacyChip } from "./ConversationMeta";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
 import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
 import { DetailsPanel } from "../components/DetailsPanel";
+import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import {
   conversationOutboxMessageForSubmit,
   mailboxMessageFromOutbox,
@@ -60,6 +61,7 @@ export function newConversationDraftId(idempotencyKey: string): string {
  * dock. The page replaces it when the create is accepted.
  */
 export function NewConversationPending(props: {
+  onBack(): void;
   pending: PendingNewConversation;
   sidebarToggle?: ReactNode;
 }) {
@@ -110,6 +112,13 @@ export function NewConversationPending(props: {
   // would not carry over to the page.
   const showDetails = useDetailsDefaultOpen();
   const searchMatch = useTranscriptSearchMatch("");
+  // Home has no Conversation chrome. Show the page's, so mobile does not
+  // flash the home header before the route changes.
+  useRegisterMobileHeaderBack(
+    "Back to conversations",
+    props.onBack,
+    PENDING_TITLE,
+  );
 
   return (
     <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)]">

@@ -13,8 +13,12 @@ import { createPortal } from "react-dom";
 
 import { cn } from "../../styles";
 
-/** Replaces the mobile header back link while a page shows a nested view. */
-type MobileHeaderBack = { label: string; onClick(): void };
+/**
+ * Replaces the mobile header back link while a page shows a nested view, or
+ * a Conversation that has no route yet. `title` names it when the route
+ * cannot.
+ */
+type MobileHeaderBack = { label: string; onClick(): void; title?: string };
 
 type DashboardChromeContextValue = {
   mobileHeaderBack: MobileHeaderBack | null;
@@ -243,11 +247,13 @@ export function useMobileHeaderBack(): MobileHeaderBack | null {
 
 /**
  * Point the mobile header back control at `onClick` while `label` is set,
- * such as from the event log back to its Conversation.
+ * such as from the event log back to its Conversation. `title` names a
+ * Conversation that has no route yet.
  */
 export function useRegisterMobileHeaderBack(
   label: string | undefined,
   onClick: () => void,
+  title?: string,
 ): void {
   const setBack = useContext(DashboardChromeContext)?.setMobileHeaderBack;
   const onClickRef = useRef(onClick);
@@ -255,9 +261,9 @@ export function useRegisterMobileHeaderBack(
 
   useEffect(() => {
     if (!setBack || !label) return;
-    setBack({ label, onClick: () => onClickRef.current() });
+    setBack({ label, onClick: () => onClickRef.current(), title });
     return () => setBack(null);
-  }, [label, setBack]);
+  }, [label, setBack, title]);
 }
 
 /** Mount page navigation into the desktop chrome and mobile drawer. */
