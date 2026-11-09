@@ -65,6 +65,7 @@ import {
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
@@ -352,6 +353,10 @@ export async function completeText(params: {
             cacheRetention: params.cacheRetention,
             signal: params.signal,
             metadata: params.metadata,
+            onPayload: (payload) => {
+              setSpanAttributes(requestPrefixAttributes(payload));
+              return undefined;
+            },
           },
         );
       } catch (error) {
