@@ -33,6 +33,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { mockQuestionConversations } from "./review-items";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */
@@ -1840,6 +1841,9 @@ function mockConversations(nowMs: number): MockConversation[] {
 function fixtureConversations(nowMs: number): MockConversation[] {
   return [
     activeConversation(nowMs),
+    ...mockQuestionConversations(nowMs).map((options) =>
+      detail(nowMs, options),
+    ),
     dashboardQaConversation(nowMs),
     advisorConversation(
       nowMs,

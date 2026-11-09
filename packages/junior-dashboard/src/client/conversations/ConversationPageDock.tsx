@@ -8,7 +8,6 @@ import {
   type ReplyFocusRequest,
 } from "./ConversationReplyFooter";
 import { conversationIsResponding } from "./transcript";
-import { latestReviewItemId } from "../review-desk/reviewItemFormat";
 
 /** Render the reply composer under the transcript. The page decides who may reply. */
 export function ConversationPageDock(props: {
@@ -27,10 +26,6 @@ export function ConversationPageDock(props: {
   // reuse events via structural sharing, so the footer keeps a stable id list.
   const mailboxCommittedIds = useMemo(
     () => committedMessageIds(detail.data?.events),
-    [detail.data?.events],
-  );
-  const reviewItemId = useMemo(
-    () => latestReviewItemId(detail.data?.events),
     [detail.data?.events],
   );
   // Cancel needs the latest mailbox watermark, but not as a render prop. Live
@@ -55,7 +50,6 @@ export function ConversationPageDock(props: {
       pendingGeneratedAtRef={pendingGeneratedAtRef}
       pendingMessages={detail.pendingMessages}
       ref={props.ref}
-      reviewItemId={reviewItemId}
       // Without live history, an inline send would never leave the
       // transcript tail. A started Turn reads a new send only later.
       // Keep those sends in the queue. An earlier inline send that

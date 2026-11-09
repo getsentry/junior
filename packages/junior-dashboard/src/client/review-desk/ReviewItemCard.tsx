@@ -6,7 +6,6 @@ import { StatusChip } from "../components/StatusChip";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { ReviewItemActions } from "./ReviewItemActions";
-import { useReviewItemData } from "./queries";
 import {
   assigneeLabel,
   reviewItemPath,
@@ -76,13 +75,4 @@ export function ReviewItemCard(props: { item: ReviewItemPayload }) {
       </footer>
     </section>
   );
-}
-
-/**
- * Show the card of the Review item that a tool call added. It shows nothing
- * when the viewer cannot see the item.
- */
-export function TranscriptReviewItemCard(props: { itemId: string }) {
-  const item = useReviewItemData(props.itemId).data;
-  return item ? <ReviewItemCard item={item} /> : null;
 }

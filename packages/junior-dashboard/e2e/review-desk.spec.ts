@@ -129,10 +129,17 @@ async function mockReviewItems(page: Page, options: { open?: unknown[] } = {}) {
     if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      const linked = url.searchParams.get("conversationId");
       // A search also finds archived items, after the open ones.
       const list = q ? [...open, ...archived] : open;
       return route.fulfill({
-        json: { items: list.filter((i) => i.title.toLowerCase().includes(q)) },
+        json: {
+          items: list.filter(
+            (i) =>
+              i.title.toLowerCase().includes(q) &&
+              (!linked || i.conversationIds.includes(linked)),
+          ),
+        },
       });
     }
     const action = path.match(/^\/([^/]+)\/actions$/);
@@ -473,7 +480,7 @@ test("a message asks before it drops unsent picks", async ({
       json: { conversationId, messageId: "reply", status: "accepted" },
     });
   });
-  // Show the tool call that added the item, so its card is in the transcript.
+  // Show the tool call that added the item, as a live Turn does.
   await page.route(`${path}*`, async (route) => {
     const response = await route.fetch({
       headers: {
@@ -514,7 +521,7 @@ test("a message asks before it drops unsent picks", async ({
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
   const card = page.getByRole("region", {
-    name: `Review item: ${migration.title}`,
+    name: `Question: ${migration.title}`,
   });
   await card.getByRole("radio", { name: "Approve" }).click();
   const composer = page.getByLabel("Continue this conversation");
