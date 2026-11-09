@@ -24,6 +24,7 @@ import {
   CONTEXT_COMPACTION_PROMPT_NAME,
   ContextSummaryError,
   requestContextSummary,
+  type ContextSummary,
 } from "@/chat/agent/context-summary";
 import {
   runWithConversationPrivacy,
@@ -304,7 +305,10 @@ function failureLabel(error: unknown, signal: AbortSignal): string {
   if (signal.aborted) {
     return "timeout";
   }
-  if (error instanceof ContextSummaryError) {
+  if (
+    error instanceof ContextSummaryError &&
+    error.failure !== "request_failed"
+  ) {
     return error.failure;
   }
   const providerError = findProviderError(error);
@@ -383,8 +387,8 @@ async function prepareSummary(
   // `historyVersion`, so that event is never used.
   const writePrepared = async (
     result:
-      | { outcome: "ready"; summary: string }
-      | { outcome: "failed"; errorType: string },
+      | { outcome: "ready"; summary: string; costUsd?: number }
+      | { outcome: "failed"; errorType: string; costUsd?: number },
   ): Promise<JobOutcome> => {
     const currentVersion = await eventStore.loadCurrentHistoryVersion(
       message.conversationId,
@@ -434,7 +438,7 @@ async function prepareSummary(
   });
 
   const signal = AbortSignal.timeout(remainingMs);
-  let summary: string;
+  let summary: ContextSummary;
   try {
     summary = await runWithConversationPrivacy(
       snapshot.conversationPrivacy,
@@ -472,12 +476,15 @@ async function prepareSummary(
     return await writePrepared({
       outcome: "failed",
       errorType: failureLabel(error, signal),
+      ...(error instanceof ContextSummaryError && error.costUsd !== undefined
+        ? { costUsd: error.costUsd }
+        : undefined),
     });
   }
-  const outcome = await writePrepared({ outcome: "ready", summary });
+  const outcome = await writePrepared({ outcome: "ready", ...summary });
   if (outcome === "ready") {
     setSpanAttributes({
-      "app.compaction.summary_chars": summary.length,
+      "app.compaction.summary_chars": summary.summary.length,
       "app.compaction.ready_ms": Date.now() - request.createdAtMs,
     });
   }

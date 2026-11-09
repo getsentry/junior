@@ -146,7 +146,10 @@ describe("context compaction projection reset", () => {
         runtimeContextMessages: [...history, context, prompt],
         mode: "blocking",
       },
-      async () => "Open: migration approval and rollback plan.",
+      async () => ({
+        summary: "Open: migration approval and rollback plan.",
+        costUsd: 0.002,
+      }),
     );
 
     expect(result.compacted).toBe(true);
@@ -160,6 +163,12 @@ describe("context compaction projection reset", () => {
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.messages).toEqual(result.piMessages);
     expect(projection.provenance[1]).toEqual(askProvenance);
+    const { getConversationEventStore } = await import("@/chat/db");
+    const events =
+      await getConversationEventStore().loadCurrentHistory(conversationId);
+    expect(
+      events.find((event) => event.data.type === "compaction")?.data,
+    ).toMatchObject({ costUsd: 0.002 });
   });
 
   it("counts retained runtime context in the replacement hard limit", async () => {
@@ -210,7 +219,7 @@ describe("context compaction projection reset", () => {
             } as PiMessage,
           ],
         },
-        async () => "s".repeat(200_000),
+        async () => ({ summary: "s".repeat(200_000) }),
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
     await expect(loadProjection({ conversationId })).resolves.toEqual(original);
@@ -313,7 +322,7 @@ describe("context compaction projection reset", () => {
         ],
         turnStartMessageIndex: earlierTurns.length,
       },
-      async () => "Short summary.",
+      async () => ({ summary: "Short summary." }),
     );
 
     expect(result.compacted).toBe(true);
