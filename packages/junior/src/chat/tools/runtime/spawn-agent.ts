@@ -50,9 +50,9 @@ export function createSpawnAgentTool(
 ) {
   return zodTool({
     description: [
-      "Start a new asynchronous child agent on a delegated task. A child agent has its own sandbox and tool budget, runs at the same time as you, and sends back only its result. Use child agents to run independent work in parallel and to keep long investigations out of your context.",
-      "Delegate when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
-      "Do it yourself when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn.",
+      "Start a new asynchronous child agent. A child agent has its own sandbox and tool budget, runs at the same time as you, and sends back only its result. Its kind is a Thread for one discrete work item that people will own and talk to, or a Task for work that you delegate. Use Tasks to run independent work in parallel and to keep long investigations out of your context.",
+      "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
+      "Do it yourself instead of a Task when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn a Task.",
       `Pick agent_type when one fits; omit it for a fresh general-purpose child with your tools:\n${formatAgentTypes()}`,
       "After you delegate, do not do the same work yourself. End your turn with a short status. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
@@ -101,7 +101,7 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "thread: people can open and message the child directly, like a conversation of its own. Pick it for long-lived work that people will want to follow, steer, or talk to. task (default; omit or pass null): background work that only you message.",
+            "thread: one discrete work item, about the size of one issue or code change, that people can open, message, and steer directly, like a conversation of its own. A request to create or start a thread means this kind, not a Slack thread. Also pick it for long-lived work that people will follow or steer. Share its dashboard_url so people can find it. task (default; omit or pass null): background work that only you message.",
           ),
         agent_type: z
           .enum(AGENT_TYPES)
