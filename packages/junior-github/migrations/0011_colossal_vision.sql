@@ -1,0 +1,5 @@
+ALTER TABLE "junior_github_pull_requests" ADD COLUMN "base_branch" text;--> statement-breakpoint
+ALTER TABLE "junior_github_pull_requests" ADD COLUMN "conflict_check_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "junior_github_pull_requests" ADD COLUMN "conflict_check_attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE INDEX "junior_github_pull_requests_open_base_idx" ON "junior_github_pull_requests" USING btree ("repository_full_name","base_branch") WHERE "junior_github_pull_requests"."state" = 'open';--> statement-breakpoint
+CREATE INDEX "junior_github_pull_requests_conflict_check_idx" ON "junior_github_pull_requests" USING btree ("conflict_check_at") WHERE "junior_github_pull_requests"."state" = 'open' AND "junior_github_pull_requests"."conflict_check_at" IS NOT NULL;

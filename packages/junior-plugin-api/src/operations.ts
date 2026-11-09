@@ -19,6 +19,8 @@ export interface HeartbeatHookContext extends PluginContext {
   };
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
+  /** Publish events, as from a plugin route. */
+  events: EventPublisher;
   nowMs: number;
   state: PluginState;
 }

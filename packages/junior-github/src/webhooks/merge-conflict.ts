@@ -5,7 +5,8 @@
  * conflicted pull request gets no new checks. So when a webhook delivers
  * another event for a watched pull request, such as a comment, a review, or a
  * check result, the webhook also reads its mergeability and publishes
- * `pull_request.merge_conflict`.
+ * `pull_request.merge_conflict`. A push to the base branch of a Junior pull
+ * request also starts a check. See `merge-conflict-checks/`.
  */
 import type {
   EventInput,
@@ -74,6 +75,34 @@ export function gitHubMergeConflictEvents(
   );
 }
 
+/** What GitHub reports about the mergeability of one pull request. */
+export type GitHubMergeability =
+  | { conflict: GitHubMergeConflict; status: "conflict" }
+  /** Open, and GitHub did not calculate it yet. */
+  | { status: "unknown" }
+  /** Closed, or open with no conflict. */
+  | { status: "none" };
+
+/** Read the mergeability from a GitHub pull request body. */
+export function gitHubMergeability(pullRequest: unknown): GitHubMergeability {
+  const loaded = pullRequestSchema.parse(pullRequest);
+  if (loaded.state !== "open") return { status: "none" };
+  if (loaded.mergeable === null || loaded.mergeable === undefined) {
+    return { status: "unknown" };
+  }
+  if (loaded.mergeable || loaded.mergeable_state !== "dirty") {
+    return { status: "none" };
+  }
+  return {
+    conflict: {
+      baseBranch: loaded.base.ref,
+      headSha: loaded.head.sha,
+      ...(loaded.html_url ? { url: loaded.html_url } : undefined),
+    },
+    status: "conflict",
+  };
+}
+
 /** Open pull requests that the delivered events are about. */
 function pullRequestRefs(events: EventInput[]): GitHubPullRequestRef[] {
   const refs = new Map<string, GitHubPullRequestRef>();
@@ -139,24 +168,15 @@ export async function loadGitHubMergeConflictEvents(args: {
     // answer is the same as for the full events.
     if (!(await hasMatch(gitHubMergeConflictEvents(ref)))) continue;
     try {
-      const loaded =
+      const mergeability = gitHubMergeability(
         deliveredPullRequest(args.pullRequestPayload, ref) ??
-        pullRequestSchema.parse(await loadPullRequest(ref));
-      if (
-        loaded.state !== "open" ||
-        loaded.mergeable !== false ||
-        loaded.mergeable_state !== "dirty"
-      ) {
-        continue;
-      }
+          (await loadPullRequest(ref)),
+      );
+      if (mergeability.status !== "conflict") continue;
       conflicts.push(
         ...gitHubMergeConflictEvents({
           ...ref,
-          conflict: {
-            baseBranch: loaded.base.ref,
-            headSha: loaded.head.sha,
-            ...(loaded.html_url ? { url: loaded.html_url } : undefined),
-          },
+          conflict: mergeability.conflict,
         }),
       );
     } catch (error) {

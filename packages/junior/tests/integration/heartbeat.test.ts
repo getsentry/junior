@@ -37,12 +37,17 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue"
+    "conversationWorkQueue" | "events"
   >,
 ) {
   return createHeartbeatContext({
     ...args,
     conversationWorkQueue,
+    events: {
+      async publish() {
+        throw new Error("Dispatch tests do not publish events");
+      },
+    },
   });
 }
 

@@ -105,6 +105,20 @@ export const juniorGitHubPullRequests = pgTable(
     readySyncId: integer("ready_sync_id"),
     /** When the current check started. */
     readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
+    /**
+     * The branch that the pull request merges into. Null until a
+     * `pull_request` webhook for it arrives.
+     */
+    baseBranch: text("base_branch"),
+    /**
+     * When the heartbeat checks the pull request for a merge conflict. A push
+     * to its base branch sets it. Null when no check waits.
+     */
+    conflictCheckAt: timestamp("conflict_check_at", { withTimezone: true }),
+    /** Conflict checks since the last push that did not get an answer. */
+    conflictCheckAttempts: integer("conflict_check_attempts")
+      .notNull()
+      .default(0),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
@@ -116,6 +130,14 @@ export const juniorGitHubPullRequests = pgTable(
     index("junior_github_pull_requests_unmerged_conversations_idx")
       .using("gin", table.conversationIds)
       .where(sql`${table.state} <> 'merged'`),
+    index("junior_github_pull_requests_open_base_idx")
+      .on(table.repositoryFullName, table.baseBranch)
+      .where(sql`${table.state} = 'open'`),
+    index("junior_github_pull_requests_conflict_check_idx")
+      .on(table.conflictCheckAt)
+      .where(
+        sql`${table.state} = 'open' AND ${table.conflictCheckAt} IS NOT NULL`,
+      ),
   ],
 );
 

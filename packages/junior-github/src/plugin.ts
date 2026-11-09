@@ -18,6 +18,7 @@ import {
 import { createGitHubTools } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
@@ -312,6 +313,19 @@ export function githubPlugin(
       },
       formatMarkdown({ text }) {
         return linkifyGitHubReferences(text);
+      },
+      async heartbeat(ctx) {
+        await runGitHubConflictChecks({
+          db: ctx.db as GitHubDb,
+          events: ctx.events,
+          loadPullRequest: async (pullRequest) =>
+            await loadPullRequest(
+              { appIdEnv, installationIdEnv, privateKeyEnv },
+              pullRequest,
+            ),
+          log: ctx.log,
+          now: new Date(ctx.nowMs),
+        });
       },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;

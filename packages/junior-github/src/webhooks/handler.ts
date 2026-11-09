@@ -44,6 +44,10 @@ import {
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
 import {
+  markGitHubPushConflictChecks,
+  recordGitHubPullRequestWebhookBaseBranch,
+} from "../merge-conflict-checks/webhooks.js";
+import {
   pullRequestReadyTargets,
   syncGitHubPullRequestReadyNotices,
 } from "./pull-request-ready.js";
@@ -214,6 +218,16 @@ export function createGitHubWebhookRoute(args: {
       if (webhookInstallationId(body) !== installationId) {
         return new Response("Ignored", { status: 202 });
       }
+      if (eventName === "push") {
+        const marked = await markGitHubPushConflictChecks({
+          body,
+          db: args.db,
+          now: new Date(),
+        });
+        return new Response(marked > 0 ? "Accepted" : "Ignored", {
+          status: 202,
+        });
+      }
       const botEmail = args.botEmail();
       const pullRequestOutcome =
         eventName === "pull_request"
@@ -335,6 +349,10 @@ export function createGitHubWebhookRoute(args: {
             pullRequestLinkedIssues,
           )
         : false;
+      if (eventName === "pull_request") {
+        // After the outcome, so the row for a new pull request exists.
+        await recordGitHubPullRequestWebhookBaseBranch({ body, db: args.db });
+      }
 
       const checkSuitePublishTargets =
         eventName === "check_suite"

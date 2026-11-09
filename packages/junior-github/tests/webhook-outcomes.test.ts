@@ -1897,6 +1897,7 @@ describe("GitHub-owned pull request outcomes", () => {
         "0007_shallow_millenium_guard.sql",
         "0009_nostalgic_thing.sql",
         "0010_sleepy_slayback.sql",
+        "0011_colossal_vision.sql",
       ]) {
         await fixture.execute(await migrationSql(migration));
       }

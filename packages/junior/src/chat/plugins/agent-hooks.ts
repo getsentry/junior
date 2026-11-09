@@ -23,6 +23,7 @@ import type {
   Platform,
   Event,
   EventData,
+  EventPublisher,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -976,20 +977,85 @@ function requirePublishedEvent(
   }
 }
 
+/** The core event publisher that plugin event publishers write to. */
+export interface AppEventPublisher {
+  hasMatch?(events: Event[]): Promise<boolean>;
+  neededMatchKeys?(input: {
+    data?: EventData;
+    eventTypes: string[];
+    identifiers: string[];
+    namespace: string;
+  }): Promise<string[]>;
+  publish(event: Event): Promise<void>;
+}
+
+/**
+ * Bind the core event publisher to one plugin. Events get the plugin's
+ * namespace, and the plugin can publish only the event types it registered.
+ */
+export function createPluginEventPublisher(
+  plugin: PluginRegistration,
+  appEvents: AppEventPublisher,
+): EventPublisher {
+  const pluginName = plugin.manifest.name;
+  return {
+    async hasMatch(events) {
+      if (!appEvents.hasMatch) return false;
+      return await appEvents.hasMatch(
+        events.map((event) => {
+          const parsed = eventInputSchema.parse(event);
+          requirePublishedEvent(plugin, parsed.eventType);
+          return {
+            ...parsed,
+            identifier: normalizeEventIdentifier(
+              plugin.events,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          };
+        }),
+      );
+    },
+    async neededMatchKeys(input) {
+      if (!appEvents.neededMatchKeys) return [];
+      const identifiers = [
+        ...new Set(
+          input.identifiers
+            .map((identifier) =>
+              normalizeEventIdentifier(plugin.events, identifier),
+            )
+            .filter(Boolean),
+        ),
+      ];
+      if (identifiers.length === 0 || input.eventTypes.length === 0) {
+        return [];
+      }
+      return await appEvents.neededMatchKeys({
+        ...(input.data
+          ? { data: eventDataSchema.parse(input.data) }
+          : undefined),
+        eventTypes: input.eventTypes,
+        identifiers,
+        namespace: pluginName,
+      });
+    },
+    async publish(event) {
+      const parsed = eventInputSchema.parse(event);
+      requirePublishedEvent(plugin, parsed.eventType);
+      await appEvents.publish({
+        ...parsed,
+        identifier: normalizeEventIdentifier(plugin.events, parsed.identifier),
+        namespace: pluginName,
+      });
+    },
+  };
+}
+
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   /** Shows a Review item that a plugin route changed. App setup supplies it. */
   showReviewItem?: ShowReviewItem;
-  events: {
-    hasMatch?(events: Event[]): Promise<boolean>;
-    neededMatchKeys?(input: {
-      data?: EventData;
-      eventTypes: string[];
-      identifiers: string[];
-      namespace: string;
-    }): Promise<string[]>;
-    publish(event: Event): Promise<void>;
-  };
+  events: AppEventPublisher;
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -1021,60 +1087,7 @@ export function getPluginRoutes(options: {
           }),
       },
       users: { readIdentity: readIdentityById },
-      events: {
-        async hasMatch(events) {
-          if (!options.events.hasMatch) return false;
-          return await options.events.hasMatch(
-            events.map((event) => {
-              const parsed = eventInputSchema.parse(event);
-              requirePublishedEvent(plugin, parsed.eventType);
-              return {
-                ...parsed,
-                identifier: normalizeEventIdentifier(
-                  plugin.events,
-                  parsed.identifier,
-                ),
-                namespace: pluginName,
-              };
-            }),
-          );
-        },
-        async neededMatchKeys(input) {
-          if (!options.events.neededMatchKeys) return [];
-          const identifiers = [
-            ...new Set(
-              input.identifiers
-                .map((identifier) =>
-                  normalizeEventIdentifier(plugin.events, identifier),
-                )
-                .filter(Boolean),
-            ),
-          ];
-          if (identifiers.length === 0 || input.eventTypes.length === 0) {
-            return [];
-          }
-          return await options.events.neededMatchKeys({
-            ...(input.data
-              ? { data: eventDataSchema.parse(input.data) }
-              : undefined),
-            eventTypes: input.eventTypes,
-            identifiers,
-            namespace: pluginName,
-          });
-        },
-        async publish(event) {
-          const parsed = eventInputSchema.parse(event);
-          requirePublishedEvent(plugin, parsed.eventType);
-          await options.events.publish({
-            ...parsed,
-            identifier: normalizeEventIdentifier(
-              plugin.events,
-              parsed.identifier,
-            ),
-            namespace: pluginName,
-          });
-        },
-      },
+      events: createPluginEventPublisher(plugin, options.events),
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
