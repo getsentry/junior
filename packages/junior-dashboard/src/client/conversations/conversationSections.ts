@@ -1,3 +1,4 @@
+import type { WaitingConversation } from "../review-desk/queries";
 import type { Conversation } from "../types";
 
 export type ConversationSection = {
@@ -11,26 +12,30 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -2 };
 const NEEDS_YOU_SECTION = { key: "needs-you", label: "Needs you", order: -1 };
 
-/** Conversations that wait on the viewer, by id. */
-type WaitingIds = Pick<ReadonlySet<string>, "has">;
+/** Conversations that wait on the viewer, by id, with their wait start. */
+type Waiting = Pick<
+  ReadonlyMap<string, Pick<WaitingConversation, "waitingSince">>,
+  "get" | "has"
+>;
 
 /**
- * Group conversations into Pinned, then Needs you, then by last activity:
+ * Group conversations into Pinned, then Needs you, then by last Message:
  * Today, Yesterday, Previous 7 days, Previous 30 days, then one section per
  * month.
  *
- * Needs you holds only the conversations in `waitingIds`, which wait on the
+ * Needs you holds only the conversations in `waiting`, which wait on the
  * viewer. Unread and open work do not move a row. A pinned conversation
  * shows only in Pinned, even when it waits on the viewer. Pinned follows the
- * viewer's order; every other section, Needs you too, lists the newest
- * first.
+ * viewer's order. Needs you lists the longest wait first, so the queue keeps
+ * its order while the viewer works it. Every other section lists the newest
+ * Message first.
  */
 export function buildConversationSections(
   conversations: Conversation[],
   options: {
     nowMs: number;
     timeZone: string;
-    waitingIds: WaitingIds;
+    waiting: Waiting;
   },
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
@@ -42,7 +47,7 @@ export function buildConversationSections(
   for (const conversation of sorted) {
     const section = conversation.pinnedAt
       ? PINNED_SECTION
-      : options.waitingIds.has(conversation.id)
+      : options.waiting.has(conversation.id)
         ? NEEDS_YOU_SECTION
         : conversationSection(
             activityTime(conversation),
@@ -59,28 +64,41 @@ export function buildConversationSections(
   }
 
   sections.get(PINNED_SECTION.key)?.conversations.sort(comparePinOrder);
+  sections
+    .get(NEEDS_YOU_SECTION.key)
+    ?.conversations.sort(compareWaitStart(options.waiting));
   return [...sections.values()]
     .sort((left, right) => left.order - right.order)
     .map(({ order: _order, ...section }) => section);
 }
 
 /**
- * Sort pinned, then waiting conversations to the front. Pinned follows the
- * viewer's order. The sort is stable, so the other groups keep the feed order.
- * Paginated lists call this before paging, so page 1 holds every pinned and
- * waiting conversation.
+ * Sort pinned, then waiting conversations to the front, in the order that
+ * `buildConversationSections` shows them: pins in the viewer's order, the
+ * longest wait first, then the newest Message first. Paginated lists call
+ * this before paging, so page 1 holds every pinned and waiting conversation,
+ * and pages split where the sections do.
  */
 export function pinnedAndWaitingFirst(
   conversations: Conversation[],
-  waitingIds: WaitingIds,
+  waiting: Waiting,
 ): Conversation[] {
   const rank = (conversation: Conversation) =>
-    conversation.pinnedAt ? 0 : waitingIds.has(conversation.id) ? 1 : 2;
-  return [...conversations].sort(
-    (left, right) =>
-      rank(left) - rank(right) ||
-      (left.pinnedAt && right.pinnedAt ? comparePinOrder(left, right) : 0),
-  );
+    conversation.pinnedAt ? 0 : waiting.has(conversation.id) ? 1 : 2;
+  const byWait = compareWaitStart(waiting);
+  return [...conversations]
+    .sort((left, right) => activityTime(right) - activityTime(left))
+    .sort((left, right) => {
+      const leftRank = rank(left);
+      return (
+        leftRank - rank(right) ||
+        (leftRank === 0
+          ? comparePinOrder(left, right)
+          : leftRank === 1
+            ? byWait(left, right)
+            : 0)
+      );
+    });
 }
 
 /**
@@ -101,8 +119,34 @@ function pinTime(conversation: Conversation): number {
   return conversation.pinnedAt ? Date.parse(conversation.pinnedAt) || 0 : 0;
 }
 
+/**
+ * Order the longest wait first. A conversation with no known wait start
+ * follows those that have one, newest first. The stable sort keeps that
+ * activity order.
+ */
+function compareWaitStart(
+  waiting: Waiting,
+): (left: Conversation, right: Conversation) => number {
+  const start = (conversation: Conversation) => {
+    const time = Date.parse(waiting.get(conversation.id)?.waitingSince ?? "");
+    return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+  };
+  return (left, right) => {
+    const leftStart = start(left);
+    const rightStart = start(right);
+    return leftStart === rightStart ? 0 : leftStart < rightStart ? -1 : 1;
+  };
+}
+
+/**
+ * The time that sorts and groups a row: its last Message from a person or
+ * shown Junior reply. Tool, status, and quiet events do not move a row. A
+ * row with no Message yet uses its last activity.
+ */
 function activityTime(conversation: Conversation): number {
-  const time = Date.parse(conversation.lastSeenAt);
+  const time = Date.parse(
+    conversation.lastMessageAt ?? conversation.lastSeenAt,
+  );
   return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
 }
 

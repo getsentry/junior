@@ -182,6 +182,8 @@ export type Conversation = {
   cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
   displayTitle: string;
   id: string;
+  /** Newest true user Message or shown Junior reply. Feed rows only. */
+  lastMessageAt?: string;
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;

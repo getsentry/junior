@@ -60,10 +60,7 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
-import {
-  useWaitingConversationIds,
-  useWaitingConversations,
-} from "../review-desk/queries";
+import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import {
@@ -143,17 +140,16 @@ export function ConversationWorkspace(props: {
     [conversations],
   );
   const waitingConversations = useWaitingConversations();
-  const waitingConversationIds = useWaitingConversationIds();
 
   const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
   const pagedConversations = useMemo(
     () =>
       pageItems(
-        pinnedAndWaitingFirst(conversations, waitingConversationIds),
+        pinnedAndWaitingFirst(conversations, waitingConversations),
         page,
         CONVERSATION_PAGE_SIZE,
       ),
-    [conversations, page, waitingConversationIds],
+    [conversations, page, waitingConversations],
   );
   useEffect(() => {
     setPage(1);
@@ -308,7 +304,7 @@ export function ConversationWorkspace(props: {
                   : reorderPins
               }
               timeZone={getDashboardTimeZone()}
-              waitingConversationIds={waitingConversationIds}
+              waitingConversations={waitingConversations}
             />
             <PagePagination
               className="pt-1"

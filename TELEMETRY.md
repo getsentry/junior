@@ -764,10 +764,21 @@ fields=server.address,app.notification.push.outcome,count(),p50(span.duration),p
   `activity` (the minute of last activity), `messages` (the newest Message
   of each role), `unread`, `threads`, and `annotations`. A Conversation that
   joins or leaves the first page moves `order` and the inputs of its row.
+- A pin change tags its request span with `app.conversation.pin.action`
+  (`pin`, `unpin`, or `reorder`) and `app.conversation.pin.count`, the
+  viewer's pins after the change. Pins stay manual; use these to see how many
+  people use them, and how many pins they keep.
 - `http.server` spans have the route pattern of the app that served the
   request, also when the core app passes the request to the dashboard or a
   plugin app. Plugin API routes are `/api/plugins/<plugin>/*`. Sandbox egress
   is `/api/internal/sandbox-egress/<token>`.
+
+Pin use by action, with the pins each viewer keeps.
+
+```text
+dataset=spans query='has:app.conversation.pin.action'
+fields=app.conversation.pin.action,count(),count_unique(user.id),p50(app.conversation.pin.count),p95(app.conversation.pin.count)
+```
 
 Conversation open time, by the transcript render.
 

@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  LockKeyhole,
+  ArrowUp,
   Mail,
   MailOpen,
   Pencil,
@@ -38,6 +38,8 @@ import {
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
+import { ConversationStatusText } from "./ConversationListStatusIcon";
+import { useHeldListOrder } from "./heldListOrder";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
   ConversationSidebarThreadRow,
@@ -63,7 +65,10 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { Spinner } from "../components/ui/spinner";
-import type { WaitingConversation } from "../review-desk/queries";
+import {
+  useWaitingConversationsSettled,
+  type WaitingConversation,
+} from "../review-desk/queries";
 
 type ConversationSidebarEntry =
   | {
@@ -147,25 +152,35 @@ export function ConversationSidebar(props: {
   }, []);
   // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
   // arrays on unrelated parent renders while the reader is scrolling.
+  const latestSections = useMemo(
+    () =>
+      buildConversationSections(props.conversations, {
+        nowMs: Date.now(),
+        timeZone: props.timeZone,
+        waiting: props.waitingConversations,
+      }),
+    [props.conversations, props.timeZone, props.waitingConversations],
+  );
+  const waitingSettled = useWaitingConversationsSettled();
+  const held = useHeldListOrder(latestSections, {
+    settled: !props.loading && waitingSettled,
+  });
   const entries = useMemo(
     () =>
-      conversationSidebarEntries(
-        buildConversationSections(props.conversations, {
-          nowMs: Date.now(),
-          timeZone: props.timeZone,
-          waitingIds: props.waitingConversations,
-        }),
-        collapsedKeys,
-        { expandedThreadRoots, selectedId: props.selectedId },
-      ),
-    [
-      collapsedKeys,
-      expandedThreadRoots,
-      props.selectedId,
-      props.conversations,
-      props.timeZone,
-      props.waitingConversations,
-    ],
+      conversationSidebarEntries(held.sections, collapsedKeys, {
+        expandedThreadRoots,
+        selectedId: props.selectedId,
+      }),
+    [collapsedKeys, expandedThreadRoots, props.selectedId, held.sections],
+  );
+  const { releaseHold } = held;
+  const { onReorderPins } = props;
+  const reorderPins = useCallback<ReorderPins>(
+    (move) => {
+      releaseHold();
+      onReorderPins(move);
+    },
+    [onReorderPins, releaseHold],
   );
   const pinnedConversations = useMemo(
     () =>
@@ -200,7 +215,11 @@ export function ConversationSidebar(props: {
           New conversation
         </Button>
       </div>
-      <ScrollArea viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <ScrollArea
+        {...held.holdProps}
+        viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+      >
+        <ListUpdatesPill count={held.pending} onApply={held.applyPending} />
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -211,7 +230,7 @@ export function ConversationSidebar(props: {
           <PinnedConversationOrder
             conversations={pinnedConversations}
             onError={handleReorderError}
-            reorder={props.onReorderPins}
+            reorder={reorderPins}
           >
             <AnimatedList
               ariaLabel="Your conversations"
@@ -260,6 +279,7 @@ export function ConversationSidebar(props: {
                     onPinned={clearActionError}
                     onUnreadError={handleUnreadError}
                     onRenameError={handleRenameError}
+                    onRowAction={releaseHold}
                     selected={entry.conversation.id === props.selectedId}
                     waiting={props.waitingConversations.get(
                       entry.conversation.id,
@@ -273,6 +293,30 @@ export function ConversationSidebar(props: {
         )}
       </ScrollArea>
     </aside>
+  );
+}
+
+/**
+ * Offer the order that the held list keeps back. The list holds its order
+ * while the reader points at it or works in it; this applies the new order.
+ */
+function ListUpdatesPill(props: { count: number; onApply(): void }) {
+  return (
+    <div
+      aria-live="polite"
+      className="pointer-events-none sticky top-0 z-10 flex h-0 items-start justify-center"
+    >
+      {props.count > 0 ? (
+        <button
+          className="pointer-events-auto mt-1 inline-flex cursor-pointer items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-surface-raised px-2.5 py-1 font-sans text-xs font-medium text-dashboard-text shadow-sm duration-150 hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1"
+          onClick={props.onApply}
+          type="button"
+        >
+          <ArrowUp aria-hidden="true" className="size-3" />
+          {props.count} updated
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -376,6 +420,8 @@ type ConversationSidebarRowProps = {
   onPinned(conversation: Conversation): void;
   onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
   onRenameError(conversation: Conversation): void;
+  /** Runs before a row action that can move rows, so its result shows. */
+  onRowAction(): void;
   selected: boolean;
   waiting?: WaitingConversation;
 };
@@ -437,12 +483,21 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   // The leading marker toggles read state. A waiting row's marker is about
   // its review item, so it stays a plain marker.
   const canToggleRead = !props.waiting && (unread || canMarkUnread);
-  const togglePin = () => pin.mutate(!pinned);
-  const toggleArchive = () =>
+  const togglePin = () => {
+    props.onRowAction();
+    pin.mutate(!pinned);
+  };
+  const setUnread = (next: boolean) => {
+    props.onRowAction();
+    markUnread.mutate(next);
+  };
+  const toggleArchive = () => {
+    props.onRowAction();
     archive.mutate({
       archived: !archived,
       lastSeenAt: props.conversation.lastSeenAt,
     });
+  };
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -480,11 +535,6 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                 className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
                 role="img"
               />
-            ) : props.conversation.visibility === "private" ? (
-              <LockKeyhole
-                aria-label="Private conversation"
-                className="size-3 shrink-0 text-dashboard-text-faint"
-              />
             ) : null}
           </span>
           <span
@@ -501,7 +551,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             {title}
           </span>
           <ConversationRowState
-            lastSeenAt={props.conversation.lastSeenAt}
+            conversation={props.conversation}
             status={status}
           />
         </Link>
@@ -513,7 +563,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
                   aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
                   className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
                   disabled={markUnread.isPending}
-                  onClick={() => markUnread.mutate(!unread)}
+                  onClick={() => setUnread(!unread)}
                   type="button"
                 >
                   {/* On hover, preview the state that a click sets. */}
@@ -594,14 +644,14 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
       </ContextMenuTrigger>
       <ContextMenuContent>
         {unread ? (
-          <ContextMenuItem onClick={() => markUnread.mutate(false)}>
+          <ContextMenuItem onClick={() => setUnread(false)}>
             <MailOpen aria-hidden="true" />
             Mark as read
           </ContextMenuItem>
         ) : (
           <ContextMenuItem
             disabled={!canMarkUnread}
-            onClick={() => markUnread.mutate(true)}
+            onClick={() => setUnread(true)}
           >
             <Mail aria-hidden="true" />
             Mark as unread
@@ -639,32 +689,31 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   );
 });
 
-/** Show the row age, or the status when the conversation runs, failed, or stopped. */
+/**
+ * Show the row's secondary text: a lock when private, then the status when
+ * the conversation runs, failed, or stopped, or else the age of its last
+ * Message.
+ */
 function ConversationRowState(props: {
-  lastSeenAt: string;
+  conversation: Conversation;
   status: ReturnType<typeof visualStatusForConversation>;
 }) {
-  if (props.status === "active") {
-    return (
-      <Spinner
-        aria-label="Running"
-        className="size-3.5 text-dashboard-text-muted"
-      />
-    );
-  }
-  if (props.status === "failed") {
-    return <span className="font-sans text-xs text-rose-400">Failed</span>;
-  }
-  if (props.status === "stopped") {
-    return (
-      <span className="font-sans text-xs text-dashboard-text-muted">
-        Stopped
-      </span>
-    );
-  }
+  const isPrivate = props.conversation.visibility === "private";
   return (
-    <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
-      {formatCompactAge(props.lastSeenAt)}
+    <span className="flex items-center gap-1">
+      <ConversationStatusText isPrivate={isPrivate} status={props.status} />
+      {props.status === "active" ? (
+        <Spinner
+          aria-label="Running"
+          className="size-3.5 text-dashboard-text-muted"
+        />
+      ) : props.status === "failed" || props.status === "stopped" ? null : (
+        <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
+          {formatCompactAge(
+            props.conversation.lastMessageAt ?? props.conversation.lastSeenAt,
+          )}
+        </span>
+      )}
     </span>
   );
 }

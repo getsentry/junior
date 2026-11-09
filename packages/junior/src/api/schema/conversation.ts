@@ -262,6 +262,12 @@ export const conversationSummaryReportSchema = z
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),
+    /**
+     * Newest true user Message or Junior reply that the transcript shows.
+     * Tools, status, Events, and quiet replies do not move it. Present on
+     * the conversation feed. The dashboard sorts and groups rows by it.
+     */
+    lastMessageAt: z.string().datetime().optional(),
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),

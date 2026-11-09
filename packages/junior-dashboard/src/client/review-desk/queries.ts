@@ -155,12 +155,32 @@ export function useReviewItemAction() {
   });
 }
 
-/** Open Review items, newest first, that one Conversation waits on the viewer for. */
+/**
+ * Open Review items, newest first, that one Conversation waits on the viewer
+ * for, and when the wait began (the oldest item).
+ */
 export type WaitingConversation = {
   items: Array<{ plugin?: string; title: string }>;
+  waitingSince: string;
 };
 
 const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
+
+const waitingConversationsQuery = {
+  queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+  queryFn: ({ signal }: { signal: AbortSignal }) =>
+    fetchDashboardJson(
+      reviewItemWaitingConversationsSchema,
+      "/api/review-items/waiting-conversations",
+      signal,
+    ),
+  retry: false,
+};
+
+/** Whether the first read of the waiting Conversations has finished. */
+export function useWaitingConversationsSettled(): boolean {
+  return !useQuery(waitingConversationsQuery).isPending;
+}
 
 /**
  * Return the Conversations that wait on the viewer, by Conversation id: each
@@ -171,33 +191,18 @@ export function useWaitingConversations(): ReadonlyMap<
   string,
   WaitingConversation
 > {
-  const query = useQuery({
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        reviewItemWaitingConversationsSchema,
-        "/api/review-items/waiting-conversations",
-        signal,
-      ),
-    retry: false,
-  });
+  const query = useQuery(waitingConversationsQuery);
   const conversations = query.data?.conversations;
   return useMemo(
     () =>
       conversations
         ? new Map(
-            conversations.map(({ conversationId, items }) => [
+            conversations.map(({ conversationId, items, waitingSince }) => [
               conversationId,
-              { items },
+              { items, waitingSince },
             ]),
           )
         : NO_WAITING,
     [conversations],
   );
-}
-
-/** Return the ids of the Conversations that wait on the viewer. */
-export function useWaitingConversationIds(): ReadonlySet<string> {
-  const waiting = useWaitingConversations();
-  return useMemo(() => new Set(waiting.keys()), [waiting]);
 }
