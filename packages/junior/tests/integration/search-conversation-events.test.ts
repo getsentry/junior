@@ -396,6 +396,26 @@ describe("searchConversationEvents", () => {
     ).rejects.toThrow(
       `Conversation events are not accessible: ${privateConversationId}`,
     );
+    // Another Conversation in the same private channel or DM has the same
+    // audience, so it reads the private Conversation.
+    const privateNeighborId = "slack:D999:1700000000.350000";
+    await recordSlackConversation({
+      channelId: "D999",
+      conversationId: privateNeighborId,
+      visibility: "private",
+    });
+    await getConversationEventStore().append(
+      privateConversationId,
+      turnStarted,
+    );
+    await expect(
+      executeTool(
+        { conversation_id: privateConversationId, types: ["turn_started"] },
+        { ...context(), conversationId: privateNeighborId },
+      ),
+    ).resolves.toMatchObject({
+      events: [{ data: { type: "turn_started" } }],
+    });
     // A missing Conversation gets the same error as a private one.
     const missingConversationId = "slack:C404:1700000000.400000";
     await expect(

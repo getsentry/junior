@@ -12,6 +12,11 @@ const rootDestination = alias(juniorDestinations, "access_root_destination");
 
 export interface ConversationAccess {
   canViewPrivateContent: boolean;
+  /**
+   * Destination of the root, such as one Slack channel. Missing when the
+   * stored tree is invalid or the root has no Destination.
+   */
+  destinationId?: string;
   isParticipant: boolean;
   /** Root of the Conversation tree. Missing when the stored tree is invalid. */
   rootConversationId?: string;
@@ -42,6 +47,7 @@ export async function readConversationAccessFromSql(
       rootConversationId: rootConversation.conversationId,
       rootParentConversationId: rootConversation.parentConversationId,
       rootRootConversationId: rootConversation.rootConversationId,
+      destinationId: rootDestination.id,
       visibility: rootDestination.visibility,
       provider: rootDestination.provider,
       providerTenantId: rootDestination.providerTenantId,
@@ -107,6 +113,9 @@ export async function readConversationAccessFromSql(
         row.conversationId,
         {
           canViewPrivateContent,
+          ...(validRootConversationId !== undefined && row.destinationId
+            ? { destinationId: row.destinationId }
+            : undefined),
           isParticipant,
           ...(validRootConversationId !== undefined
             ? { rootConversationId: validRootConversationId }
@@ -177,7 +186,7 @@ export function createConversationAccessReader(
 /** The fields of a Conversation that decide access from another one. */
 export type ConversationReach = Pick<
   ConversationAccess,
-  "rootConversationId" | "visibility"
+  "destinationId" | "rootConversationId" | "visibility"
 >;
 
 /**
@@ -185,7 +194,8 @@ export type ConversationReach = Pick<
  * Conversation may read or find the data of the `target` Conversation. The
  * person of the Turn does not change the result. A public Conversation is
  * reachable from any Conversation, on any surface and in any provider tenant.
- * A private Conversation is reachable only from its own tree.
+ * A private Conversation is reachable only from its own tree and from
+ * Conversations at the same Destination, which have the same audience.
  */
 export function canAccessConversation(args: {
   requester: ConversationReach;
@@ -195,6 +205,14 @@ export function canAccessConversation(args: {
   if (
     requester.rootConversationId !== undefined &&
     requester.rootConversationId === target.rootConversationId
+  ) {
+    return true;
+  }
+  // Everyone who can see one Conversation at a Destination, such as a Slack
+  // channel, can see every other one there.
+  if (
+    requester.destinationId !== undefined &&
+    requester.destinationId === target.destinationId
   ) {
     return true;
   }

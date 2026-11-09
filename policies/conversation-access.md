@@ -2,13 +2,15 @@
 
 ## Intent
 
-Visibility is the only boundary between Conversations.
+Visibility and Destination are the only boundaries between Conversations.
 
 - Public is public. Any Conversation may read and find a public
   Conversation. The surface (Slack, web, local) and the provider tenant
   (Slack workspace) do not change this.
 - Private is isolated. No data goes into or out of a private Conversation,
-  except through the people who look at it.
+  except through the people who look at it, or to another Conversation at
+  the same Destination. Every Conversation at one Destination, such as one
+  private Slack channel or DM, has the same audience.
 
 One rule decides when a Conversation may read, find, or act on the data of
 another Conversation. A new feature uses this rule. It does not add its own
@@ -22,19 +24,23 @@ rule, and it does not add a surface or tenant check to public access.
   events, Messages, Briefs, Annotations, artifacts, and plugin records use
   the values of their root. Missing or unknown visibility is private. A
   direct message is private. When the root or its Destination is missing,
-  every row after row 1 denies.
+  rows 2 and 3 do not match, and row 4 denies.
 
 ## Rule between Conversations
 
 Check the rows in this order. The first match decides.
 
-| #   | Target                                         | Result |
-| --- | ---------------------------------------------- | ------ |
-| 1   | In the same Conversation tree as the requester | Allow  |
-| 2   | Public                                         | Allow  |
-| 3   | Private, outside the requester's tree          | Deny   |
+| #   | Target                                          | Result |
+| --- | ----------------------------------------------- | ------ |
+| 1   | In the same Conversation tree as the requester  | Allow  |
+| 2   | Root at the same Destination as the requester's | Allow  |
+| 3   | Public                                          | Allow  |
+| 4   | Private, in another tree and Destination        | Deny   |
 
-- Row 3 applies to every person and to every requester visibility. A
+- Row 2 compares the Destination row of the two roots. A Slack channel, DM,
+  or group DM is one Destination for all its Slack threads. A web or local
+  Conversation has its own Destination, so row 2 does not widen it.
+- Row 4 applies to every person and to every requester visibility. A
   person who is a participant of the target does not change the result.
 - Code: `canAccessConversation` in
   `packages/junior/src/api/conversations/access.ts`. Its unit test has one
@@ -45,8 +51,8 @@ Check the rows in this order. The first match decides.
 - A write needs read access first.
 - A private requester never writes into a public Conversation. For
   example, `messageAgent` from a private Conversation to a public one is
-  denied. Together with row 3, only public Conversations write into other
-  Conversations.
+  denied. Together with row 4, a private Conversation writes only into
+  Conversations at its own Destination.
 
 ## Rules for every surface
 
@@ -72,6 +78,8 @@ never lets one Conversation read another.
 
 - `messageAgent`, `searchConversationEvents`, and `readConversationEvent`
   use `canAccessConversation`.
+- `searchAgents` with `top_level` scope finds public roots and roots at the
+  requester's Destination.
 - `searchConversationBriefs` and `searchConversationMessages` are only
   available in public Conversations and return only public Conversations.
   `searchConversationMessages` is a Slack tool, so it returns only Slack
