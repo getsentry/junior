@@ -1,7 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, isNull, ne, notExists } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, notExists, or, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -107,9 +107,11 @@ export async function updateConversationSubscription(
   );
   return await executor.transaction(async () => {
     const db = executor.db();
-    // Lock the root first with the same lock as an archive. Unsubscribes and
-    // archives of one tree then run one at a time, and no child can be added
-    // under the root until this commits.
+    // Unsubscribes, pins, archives, and Turns in the root itself all lock the
+    // root row, so they run one at a time. `no key update` does not block a
+    // Turn in a child that adds a participant or child row (a foreign key to
+    // the root), so this transaction never waits on a lock that such a Turn
+    // waits on, and the two cannot deadlock.
     const [root] = await db
       .select({
         archivedAt: juniorConversations.archivedAt,
@@ -117,7 +119,7 @@ export async function updateConversationSubscription(
       })
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, rootConversationId))
-      .for("update");
+      .for("no key update");
     if (!root) return undefined;
     const unsubscribedAt = subscribed ? null : new Date();
     // The root actor may not have a participant row yet. The detail ETag
@@ -146,41 +148,18 @@ export async function updateConversationSubscription(
         subscribed,
       };
     }
-    // Lock every descendant before the subscriber check, in id order, while
-    // the root lock keeps new children out. A Turn in a child holds that
-    // child's row, so a mention or restore in flight commits first, and the
-    // check and the archive below see it. A later mention waits, then sees
-    // the archive and restores it. Archived descendants are locked too,
-    // because a Turn can restore one while this waits.
-    const descendants = await db
-      .select({
-        archivedAt: juniorConversations.archivedAt,
-        conversationId: juniorConversations.conversationId,
-      })
-      .from(juniorConversations)
-      .where(
-        and(
-          eq(juniorConversations.rootConversationId, rootConversationId),
-          ne(juniorConversations.conversationId, rootConversationId),
-        ),
-      )
-      .orderBy(juniorConversations.conversationId)
-      .for("update");
     if (await hasSubscriber(db, rootConversationId)) {
       return { archivedAt: null, subscribed: false };
     }
     const archivedAt = new Date();
-    // Descendants that are already archived keep their own time.
-    await setArchivedAt(
-      db,
-      [
-        rootConversationId,
-        ...descendants
-          .filter((node) => !node.archivedAt)
-          .map((node) => node.conversationId),
-      ],
-      archivedAt,
-    );
+    await archiveTree(db, rootConversationId, archivedAt);
+    // The archive waited for each Turn in a child that held its row. Such a
+    // Turn can subscribe someone, so check again and undo the archive if it
+    // did. A Turn that starts later sees the archive and restores it.
+    if (await hasSubscriber(db, rootConversationId)) {
+      await restoreTree(db, rootConversationId, archivedAt);
+      return { archivedAt: null, subscribed: false };
+    }
     return { archivedAt: archivedAt.toISOString(), subscribed: false };
   });
 }
@@ -239,4 +218,49 @@ async function hasSubscriber(
     )
     .limit(1);
   return Boolean(rowlessActor);
+}
+
+/**
+ * Archive the root and each descendant that is not archived. Descendants
+ * that are already archived keep their own time. The test runs on the
+ * latest row, so a descendant that a Turn restores while this waits is
+ * archived too. A child that a Turn adds while this runs stays unarchived,
+ * and its next Message restores the root.
+ */
+async function archiveTree(
+  db: JuniorDatabase,
+  rootConversationId: string,
+  archivedAt: Date,
+): Promise<void> {
+  await db
+    .update(juniorConversations)
+    .set({
+      archivedAt: sql`coalesce(${juniorConversations.archivedAt}, ${archivedAt.toISOString()}::timestamptz)`,
+      detailVersion: nextDetailVersion,
+    })
+    .where(inConversationTree(rootConversationId));
+}
+
+/** Undo `archiveTree`: restore only what it archived at `archivedAt`. */
+async function restoreTree(
+  db: JuniorDatabase,
+  rootConversationId: string,
+  archivedAt: Date,
+): Promise<void> {
+  await db
+    .update(juniorConversations)
+    .set({ archivedAt: null, detailVersion: nextDetailVersion })
+    .where(
+      and(
+        inConversationTree(rootConversationId),
+        eq(juniorConversations.archivedAt, archivedAt),
+      ),
+    );
+}
+
+function inConversationTree(rootConversationId: string) {
+  return or(
+    eq(juniorConversations.conversationId, rootConversationId),
+    eq(juniorConversations.rootConversationId, rootConversationId),
+  );
 }
