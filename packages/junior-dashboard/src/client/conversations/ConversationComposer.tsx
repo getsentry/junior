@@ -156,9 +156,6 @@ export const ConversationComposer = memo(function ConversationComposer(
   const [readingImages, setReadingImages] = useState(false);
   const readingImagesRef = useRef(false);
   const [dictationError, setDictationError] = useState<string>();
-  // A textarea that was never focused reports its cursor at 0, so dictated
-  // text goes at the end until the reader places the cursor.
-  const cursorPlacedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const replyLayout = !props.footerStart && !props.compact;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -197,6 +194,13 @@ export const ConversationComposer = memo(function ConversationComposer(
       storeDraft(storageKey, draftRef.current);
     };
   }, [storageKey]);
+
+  // A saved draft starts with the cursor at 0. Put it at the end, where
+  // typing, focus, and dictation should continue.
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, []);
 
   // Grow with wrapped and explicit lines. CSS `max-height` caps the box, and
   // longer drafts scroll inside it. Measure again when the text rewraps or
@@ -397,9 +401,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     const { value } = textarea;
     // The textarea keeps its selection after blur, so this is where the
     // reader left the cursor, even after editing during the recording.
-    const placed = cursorPlacedRef.current;
-    const start = placed ? textarea.selectionStart : value.length;
-    const end = placed ? textarea.selectionEnd : value.length;
+    const { selectionEnd: end, selectionStart: start } = textarea;
     const before = value.slice(0, start);
     const after = value.slice(end);
     const spaceBefore = before && !/\s$/.test(before) ? " " : "";
@@ -609,10 +611,7 @@ export const ConversationComposer = memo(function ConversationComposer(
             setMessage(event.target.value);
             syncTextareaHeight();
           }}
-          onFocus={() => {
-            cursorPlacedRef.current = true;
-            props.onFocus?.();
-          }}
+          onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
           placeholder={props.placeholder ?? "Message Junior…"}
           ref={textareaRef}
