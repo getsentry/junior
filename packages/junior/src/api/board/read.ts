@@ -46,6 +46,7 @@ const ROOT_LIMIT = 200;
 type TreeNode = {
   archived: boolean;
   conversationId: string;
+  createdAtMs: number;
   kind: ConversationKind | null;
   parentConversationId: string | null;
   status: ConversationStatus;
@@ -131,6 +132,7 @@ async function readViewerTrees(userId: string, nowMs: number) {
     .select({
       archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
+      createdAt: juniorConversations.createdAt,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
       status: juniorConversations.executionStatus,
@@ -149,6 +151,7 @@ async function readViewerTrees(userId: string, nowMs: number) {
       {
         archived: row.archivedAt !== null,
         conversationId: row.conversationId,
+        createdAtMs: row.createdAt.getTime(),
         kind: row.kind,
         parentConversationId: row.parentConversationId,
         status: row.status,
@@ -212,7 +215,6 @@ export async function readBoard(args: {
         .select({
           annotation: juniorConversationAnnotations.annotation,
           conversationId: juniorConversationAnnotations.conversationId,
-          createdAt: juniorConversationAnnotations.createdAt,
           key: juniorConversationAnnotations.key,
           plugin: juniorConversationAnnotations.plugin,
           updatedAt: juniorConversationAnnotations.updatedAt,
@@ -279,8 +281,24 @@ export async function readBoard(args: {
     const home = homeId(nodes, row.conversationId);
     if (home) needsViewerHomes.add(home);
   }
-  const homeFor = (conversationId: string): CardHome | undefined => {
-    const id = homeId(nodes, conversationId);
+  // An object can link to several Conversations. Its home is the oldest
+  // visible one, so the card stays in one place when links change order or
+  // a linked Conversation is archived.
+  const homeFor = (conversationIds: Iterable<string>): CardHome | undefined => {
+    let oldest: TreeNode | undefined;
+    for (const conversationId of conversationIds) {
+      const linked = nodes.get(conversationId);
+      if (!linked || !homeId(nodes, conversationId)) continue;
+      if (
+        !oldest ||
+        linked.createdAtMs < oldest.createdAtMs ||
+        (linked.createdAtMs === oldest.createdAtMs &&
+          linked.conversationId < oldest.conversationId)
+      ) {
+        oldest = linked;
+      }
+    }
+    const id = oldest ? homeId(nodes, oldest.conversationId) : undefined;
     const node = id ? nodes.get(id) : undefined;
     if (!id || !node) return undefined;
     const cached = homes.get(id);
@@ -304,11 +322,7 @@ export async function readBoard(args: {
 
   const cards: BoardCard[] = [];
   for (const change of codeChanges) {
-    // A code change can link to several Conversations. The first linked one
-    // in the viewer's trees is its home, so it gives one card.
-    const home = change.conversationIds
-      .map((id) => homeFor(id))
-      .find((candidate) => candidate !== undefined);
+    const home = homeFor(change.conversationIds);
     if (!home) continue;
     const mergedAtMs = change.mergedAt?.getTime();
     const column = codeChangeColumn({
@@ -336,24 +350,23 @@ export async function readBoard(args: {
   }
 
   // One ticket can be saved in several Conversations of a tree. The newest
-  // annotation has its current state; the oldest one shows where it began.
+  // annotation has its current state.
   const tickets = new Map<
     string,
-    { first: (typeof ticketRows)[number]; latest: (typeof ticketRows)[number] }
+    { conversationIds: Set<string>; latest: (typeof ticketRows)[number] }
   >();
   for (const row of ticketRows) {
     const key = `${row.plugin}:${row.key}`;
     const current = tickets.get(key);
-    tickets.set(key, {
-      first:
-        !current || row.createdAt < current.first.createdAt
-          ? row
-          : current.first,
-      latest:
-        !current || row.updatedAt > current.latest.updatedAt
-          ? row
-          : current.latest,
-    });
+    if (!current) {
+      tickets.set(key, {
+        conversationIds: new Set([row.conversationId]),
+        latest: row,
+      });
+      continue;
+    }
+    current.conversationIds.add(row.conversationId);
+    if (row.updatedAt > current.latest.updatedAt) current.latest = row;
   }
   for (const [key, ticket] of tickets) {
     const parsed = conversationAnnotationInputSchema.safeParse(
@@ -363,7 +376,7 @@ export async function readBoard(args: {
     const annotation = parsed.data;
     const status = annotation.status;
     if (!status) continue;
-    const home = homeFor(ticket.first.conversationId);
+    const home = homeFor(ticket.conversationIds);
     if (!home) continue;
     const column = ticketColumn({
       nowMs: args.nowMs,

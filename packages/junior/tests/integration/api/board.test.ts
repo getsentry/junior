@@ -28,7 +28,7 @@ async function rootConversation(conversationId: string, title: string) {
   await getConversationStore().recordActivity({
     conversationId,
     destination: { platform: "slack", teamId: "T123", channelId: "C1" },
-    nowMs: NOW - HOUR,
+    nowMs: NOW - 2 * HOUR,
     source: "slack",
     title,
     visibility: "public",
@@ -149,7 +149,8 @@ describe("board API", () => {
 
     // A Task's change shows on its Thread, which is running.
     await codeChange({ conversationIds: [TASK], number: 1, state: "open" });
-    // Linked to two Conversations, still one card.
+    // Linked to two Conversations, still one card, on the older one. The
+    // stored links sort the Thread first.
     await codeChange({
       conversationIds: [ROOT, THREAD],
       number: 2,
@@ -231,6 +232,9 @@ describe("board API", () => {
     await ticket(ROOT, 10, "open");
     await ticket(ROOT, 11, "open");
     await ticket(ROOT, 12, "In Review");
+    // Archiving the Conversation where a ticket began keeps it on the Board.
+    await ticket(ARCHIVED_THREAD, 14, "open");
+    await ticket(ROOT, 14, "open");
     // A running Task puts its Thread's open ticket in progress.
     await ticket(TASK, 13, "open");
     vi.setSystemTime(NOW - HOUR);
@@ -248,6 +252,7 @@ describe("board API", () => {
       "getsentry/junior#10": "done",
       "getsentry/junior#11": "planned",
       "getsentry/junior#13": "in_progress",
+      "getsentry/junior#14": "planned",
     });
     expect(new Set(board.cards.map((card) => card.key)).size).toBe(
       board.cards.length,
@@ -270,6 +275,9 @@ describe("board API", () => {
     });
     expect(
       byLabel.get("getsentry/junior#10")?.conversation.conversationId,
+    ).toBe(ROOT);
+    expect(
+      byLabel.get("getsentry/junior#14")?.conversation.conversationId,
     ).toBe(ROOT);
 
     expect((await boardFor(other)).cards.map((card) => card.label)).toEqual([
