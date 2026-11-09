@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import type { AttachmentWrite } from "@/chat/attachments/storage";
+import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   closeDb,
@@ -512,11 +512,11 @@ describe("Slack sendFiles", () => {
     ]);
     const [firstKey] = [...storage.objects.keys()];
 
-    await getSqlExecutor()
-      .db()
-      .update(juniorAttachments)
-      .set({ deleteRequestedAt: now })
-      .where(eq(juniorAttachments.id, attachmentId!));
+    await requestAttachmentDeletion(
+      getSqlExecutor(),
+      [conversationId],
+      now.getTime(),
+    );
 
     const retryTool = createSlackSendFilesTool(
       createContext("attach the report again"),
@@ -541,7 +541,7 @@ describe("Slack sendFiles", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       id: attachmentId,
-      deleteRequestedAt: null,
+      status: "live",
     });
     // Revive writes a new object and deletes the purge-marked one.
     expect(rows[0]?.storageKey).not.toBe(firstKey);

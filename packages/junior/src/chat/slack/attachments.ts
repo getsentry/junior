@@ -1,9 +1,10 @@
 import type { Attachment } from "chat";
 import type { MessageAttachment } from "@/chat/attachments/input";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
 import { conversationDetailTouch } from "@/chat/conversations/sql/detail-version";
+import { readableAttachment } from "@/chat/attachments/store";
 
 /** Save the vision summary for a stored Slack attachment. */
 export async function recordSlackAttachment(args: {
@@ -21,7 +22,7 @@ export async function recordSlackAttachment(args: {
       and(
         eq(juniorAttachments.id, args.attachmentId),
         eq(juniorAttachments.conversationId, args.conversationId),
-        isNull(juniorAttachments.deleteRequestedAt),
+        readableAttachment(new Date()),
       ),
     );
 }
@@ -40,7 +41,7 @@ export async function readAttachmentVisionSummary(args: {
       and(
         eq(juniorAttachments.id, args.attachmentId),
         eq(juniorAttachments.conversationId, args.conversationId),
-        isNull(juniorAttachments.deleteRequestedAt),
+        readableAttachment(new Date()),
       ),
     );
   return row?.visionSummary;
@@ -68,7 +69,7 @@ export async function matchSlackAttachments(args: {
         eq(juniorAttachments.conversationId, args.conversationId),
         eq(juniorAttachments.provider, "slack"),
         inArray(juniorAttachments.providerId, args.providerIds),
-        isNull(juniorAttachments.deleteRequestedAt),
+        readableAttachment(new Date()),
       ),
     );
 }
@@ -76,7 +77,9 @@ export async function matchSlackAttachments(args: {
 /**
  * Fingerprint the live Slack attachments that `matchSlackAttachments` can
  * return for a Conversation. It changes when one is stored or deleted, so a
- * reader can tell that stored messages may now show other files.
+ * reader can tell that stored messages may now show other files. It reads
+ * status, not expiry: GC moves an expired row out of `live`, and that changes
+ * the fingerprint.
  */
 export function slackAttachmentsVersionQuery(
   db: JuniorDatabase,
@@ -91,7 +94,7 @@ export function slackAttachmentsVersionQuery(
       and(
         eq(juniorAttachments.conversationId, conversationId),
         eq(juniorAttachments.provider, "slack"),
-        isNull(juniorAttachments.deleteRequestedAt),
+        eq(juniorAttachments.status, "live"),
       ),
     );
 }

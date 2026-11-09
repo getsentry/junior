@@ -1,12 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  lte,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
-import {
-  conversationDetailTouch,
-  touchConversationDetail,
-} from "@/chat/conversations/sql/detail-version";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import type { AttachmentStorage } from "./storage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -29,6 +36,21 @@ export interface AttachmentRecord {
   storageKey: string;
   storageProvider: string;
 }
+
+type AttachmentRow = Pick<
+  typeof juniorAttachments.$inferSelect,
+  | "contentType"
+  | "conversationId"
+  | "expiresAt"
+  | "filename"
+  | "id"
+  | "provider"
+  | "providerId"
+  | "sha256"
+  | "status"
+  | "storageKey"
+  | "storageProvider"
+>;
 
 export interface AttachmentGarbageCollectionResult {
   deleted: number;
@@ -87,6 +109,111 @@ async function bestEffortDelete(
   }
 }
 
+/** SQL filter for rows whose bytes Junior may read at `now`. */
+export function readableAttachment(now: Date): SQL {
+  return and(
+    eq(juniorAttachments.status, "live"),
+    gt(juniorAttachments.expiresAt, now),
+  )!;
+}
+
+function isReadable(row: AttachmentRow, now: Date): boolean {
+  return row.status === "live" && row.expiresAt > now;
+}
+
+type AttachmentTransition =
+  | { status: "live"; storageKey: string }
+  | { status: "delete_requested" }
+  | { status: "collected" };
+
+/**
+ * Move the rows that `where` matches to a new lifecycle state.
+ *
+ * A row is inserted `live`. After that, only this function changes its status.
+ * Each transition checks the state that it leaves in the same statement, so a
+ * late writer cannot undo a newer transition:
+ * - `live`: from `delete_requested` or expired `live`, with new bytes. The
+ *   30-day retention starts again because the bytes are new.
+ * - `delete_requested`: from `live`.
+ * - `collected`: from `delete_requested`, after GC deleted the bytes. This
+ *   deletes the row.
+ *
+ * A caller that acts on bytes it read matches on `storageKey`, so that the
+ * transition applies only to those bytes.
+ */
+async function transitionAttachments(args: {
+  db: JuniorSqlDatabase;
+  now: Date;
+  to: AttachmentTransition;
+  where: SQL;
+}): Promise<Array<{ conversationId: string; storageKey: string }>> {
+  const db = args.db.db();
+  const returning = {
+    conversationId: juniorAttachments.conversationId,
+    storageKey: juniorAttachments.storageKey,
+  };
+  let moved: Array<{ conversationId: string; storageKey: string }>;
+  if (args.to.status === "collected") {
+    moved = await db
+      .delete(juniorAttachments)
+      .where(and(args.where, eq(juniorAttachments.status, "delete_requested")))
+      .returning(returning);
+  } else if (args.to.status === "live") {
+    moved = await db
+      .update(juniorAttachments)
+      .set({
+        status: "live",
+        storageKey: args.to.storageKey,
+        expiresAt: new Date(args.now.getTime() + ATTACHMENT_RETENTION_MS),
+        deleteRequestedAt: null,
+      })
+      .where(
+        and(
+          args.where,
+          or(
+            eq(juniorAttachments.status, "delete_requested"),
+            lte(juniorAttachments.expiresAt, args.now),
+          ),
+        ),
+      )
+      .returning(returning);
+  } else {
+    moved = await db
+      .update(juniorAttachments)
+      .set({ status: "delete_requested", deleteRequestedAt: args.now })
+      .where(and(args.where, eq(juniorAttachments.status, "live")))
+      .returning(returning);
+  }
+  await touchConversationDetail(db, [
+    ...new Set(moved.map((row) => row.conversationId)),
+  ]);
+  return moved;
+}
+
+async function readAttachmentRow(
+  db: JuniorSqlDatabase,
+  id: string,
+): Promise<AttachmentRow | undefined> {
+  const [row] = await db
+    .db()
+    .select({
+      contentType: juniorAttachments.contentType,
+      conversationId: juniorAttachments.conversationId,
+      expiresAt: juniorAttachments.expiresAt,
+      filename: juniorAttachments.filename,
+      id: juniorAttachments.id,
+      provider: juniorAttachments.provider,
+      providerId: juniorAttachments.providerId,
+      sha256: juniorAttachments.sha256,
+      status: juniorAttachments.status,
+      storageKey: juniorAttachments.storageKey,
+      storageProvider: juniorAttachments.storageProvider,
+    })
+    .from(juniorAttachments)
+    .where(eq(juniorAttachments.id, id));
+  return row;
+}
+
 async function isConversationPurged(
   db: JuniorSqlDatabase,
   conversationId: string,
@@ -116,27 +243,35 @@ async function assertConversationNotPurged(
   }
 }
 
-/** Mark a just-written row for deletion and drop its unused object. */
-async function rejectPurgedAttachmentWrite(args: {
+/**
+ * Reject a committed write when purge won the race. Mark the row for deletion
+ * and drop the object that this write added.
+ */
+async function rejectWriteIfPurged(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
   id: string;
   now: Date;
   storage: AttachmentStorage;
   storageKey: string;
-}): Promise<never> {
-  const db = args.db.db();
-  await db
-    .with(conversationDetailTouch(db, [args.conversationId]))
-    .update(juniorAttachments)
-    .set({ deleteRequestedAt: args.now })
-    .where(eq(juniorAttachments.id, args.id));
+}): Promise<void> {
+  if (!(await isConversationPurged(args.db, args.conversationId))) return;
+  await transitionAttachments({
+    db: args.db,
+    now: args.now,
+    to: { status: "delete_requested" },
+    where: and(
+      eq(juniorAttachments.id, args.id),
+      eq(juniorAttachments.storageKey, args.storageKey),
+    )!,
+  });
   await bestEffortDelete(args.storage, args.storageKey);
   throw purgedConversationError(args.conversationId);
 }
 
 /**
- * Return another writer's live row only when the conversation is still active.
+ * Return another writer's readable row only when the conversation is still
+ * active.
  *
  * The caller already wrote a unique object for this attempt. Delete that unused
  * object either way. If the conversation is purged, do not report success for a
@@ -154,17 +289,20 @@ async function reuseLiveAttachment(args: {
   return { id: args.id };
 }
 
+/** Writers that race on one attachment id settle within this many reads. */
+const STORE_ATTEMPTS = 3;
+
 /**
  * Persist one conversation-owned file.
  *
- * Identity is content-stable under the conversation. Object storage is written
- * first under a unique key; the SQL row is created only after that write
- * succeeds. A row means the attachment is durable. Retries reuse an existing
- * live row. A purge-marked row is revived by writing a new object and pointing
- * the row at it, unless the conversation is still purged. If the SQL write
- * fails after object storage accepts the bytes, this path deletes that unique
- * object. A process crash between those steps can leave an unreferenced unique
- * object with no SQL row.
+ * Identity is content-stable under the conversation. A readable row is reused
+ * as is. Otherwise object storage is written first under a unique key, and the
+ * SQL row is then created, or moved back to `live` with the new key. A row
+ * that is not readable is either waiting for GC or expired, so its bytes are
+ * replaced and its retention starts again. If the SQL write fails after object
+ * storage accepts the bytes, this path deletes that unique object. A process
+ * crash between those steps can leave an unreferenced unique object with no
+ * SQL row.
  */
 export async function storeAttachment(args: {
   conversationId: string;
@@ -184,37 +322,22 @@ export async function storeAttachment(args: {
     storageProvider: args.storage.provider,
     sha256,
   });
-  const [existing] = await args.db
-    .db()
-    .select({
-      contentType: juniorAttachments.contentType,
-      conversationId: juniorAttachments.conversationId,
-      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      filename: juniorAttachments.filename,
-      id: juniorAttachments.id,
-      provider: juniorAttachments.provider,
-      providerId: juniorAttachments.providerId,
-      storageProvider: juniorAttachments.storageProvider,
-      sha256: juniorAttachments.sha256,
-      storageKey: juniorAttachments.storageKey,
-    })
-    .from(juniorAttachments)
-    .where(eq(juniorAttachments.id, id));
-  if (existing) {
+  let row = await readAttachmentRow(args.db, id);
+  if (row) {
     if (
-      existing.contentType !== args.file.mimeType ||
-      existing.conversationId !== args.conversationId ||
-      existing.filename !== args.file.filename ||
-      existing.provider !== (args.source?.provider ?? null) ||
-      existing.providerId !== (args.source?.id ?? null) ||
-      existing.storageProvider !== args.storage.provider ||
-      existing.sha256 !== sha256
+      row.contentType !== args.file.mimeType ||
+      row.conversationId !== args.conversationId ||
+      row.filename !== args.file.filename ||
+      row.provider !== (args.source?.provider ?? null) ||
+      row.providerId !== (args.source?.id ?? null) ||
+      row.storageProvider !== args.storage.provider ||
+      row.sha256 !== sha256
     ) {
-      throw new Error(`Attachment write conflicts with ${existing.id}`);
+      throw new Error(`Attachment write conflicts with ${row.id}`);
     }
-    if (existing.deleteRequestedAt === null) {
+    if (isReadable(row, now)) {
       await assertConversationNotPurged(args.db, args.conversationId);
-      return { id: existing.id };
+      return { id: row.id };
     }
   }
 
@@ -231,193 +354,87 @@ export async function storeAttachment(args: {
     contentType: args.file.mimeType,
     key: storageKey,
   });
+  const written = {
+    conversationId: args.conversationId,
+    db: args.db,
+    id,
+    now,
+    storage: args.storage,
+    storageKey,
+  };
 
-  if (existing?.deleteRequestedAt != null) {
-    if (await isConversationPurged(args.db, args.conversationId)) {
-      await bestEffortDelete(args.storage, storageKey);
-      throw purgedConversationError(args.conversationId);
-    }
-    const oldStorageKey = existing.storageKey;
-    const revived = await args.db
-      .db()
-      .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
-      .update(juniorAttachments)
-      .set({
-        deleteRequestedAt: null,
-        storageKey,
-      })
-      .where(
-        and(
-          eq(juniorAttachments.id, id),
-          isNotNull(juniorAttachments.deleteRequestedAt),
-        ),
-      )
-      .returning({ id: juniorAttachments.id });
-    if (revived.length > 0) {
+  for (let attempt = 0; attempt < STORE_ATTEMPTS; attempt++) {
+    if (!row) {
+      let inserted: Array<{ id: string }>;
+      try {
+        inserted = await args.db
+          .db()
+          .insert(juniorAttachments)
+          .values({
+            id,
+            conversationId: args.conversationId,
+            storageProvider: args.storage.provider,
+            storageKey,
+            provider: args.source?.provider,
+            providerId: args.source?.id,
+            filename: args.file.filename,
+            contentType: args.file.mimeType,
+            bytes: args.file.bytes,
+            sha256,
+            createdAt: now,
+            status: "live",
+            expiresAt: new Date(now.getTime() + ATTACHMENT_RETENTION_MS),
+          })
+          .onConflictDoNothing({ target: juniorAttachments.id })
+          .returning({ id: juniorAttachments.id });
+      } catch (error) {
+        // Only clean up when the insert itself failed. Post-insert purge
+        // handling must not delete a blob for a row that already committed.
+        await bestEffortDelete(args.storage, storageKey);
+        throw error;
+      }
+      if (inserted.length > 0) {
+        await touchConversationDetail(args.db.db(), [args.conversationId]);
+        await rejectWriteIfPurged(written);
+        return { id };
+      }
+    } else if (isReadable(row, now)) {
+      // Another writer owns the readable row. Our unique object is unused.
+      return reuseLiveAttachment(written);
+    } else {
       if (await isConversationPurged(args.db, args.conversationId)) {
-        await rejectPurgedAttachmentWrite({
-          conversationId: args.conversationId,
-          db: args.db,
-          id,
-          now,
-          storage: args.storage,
-          storageKey,
-        });
+        await bestEffortDelete(args.storage, storageKey);
+        throw purgedConversationError(args.conversationId);
       }
-      if (oldStorageKey !== storageKey) {
-        await bestEffortDelete(args.storage, oldStorageKey);
+      const moved = await transitionAttachments({
+        db: args.db,
+        now,
+        to: { status: "live", storageKey },
+        where: and(
+          eq(juniorAttachments.id, id),
+          eq(juniorAttachments.storageKey, row.storageKey),
+        )!,
+      });
+      if (moved.length > 0) {
+        // No row points at the old object now.
+        await bestEffortDelete(args.storage, row.storageKey);
+        await rejectWriteIfPurged(written);
+        return { id };
       }
-      return { id };
     }
-    const [afterRace] = await args.db
-      .db()
-      .select({
-        deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-        id: juniorAttachments.id,
-        storageKey: juniorAttachments.storageKey,
-      })
-      .from(juniorAttachments)
-      .where(eq(juniorAttachments.id, id));
-    if (afterRace?.deleteRequestedAt === null) {
-      return reuseLiveAttachment({
-        conversationId: args.conversationId,
-        db: args.db,
-        id: afterRace.id,
-        storage: args.storage,
-        storageKey,
-      });
-    }
-  }
-
-  let inserted: Array<{ id: string }> = [];
-  try {
-    inserted = await args.db
-      .db()
-      .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
-      .insert(juniorAttachments)
-      .values({
-        id,
-        conversationId: args.conversationId,
-        storageProvider: args.storage.provider,
-        storageKey,
-        provider: args.source?.provider,
-        providerId: args.source?.id,
-        filename: args.file.filename,
-        contentType: args.file.mimeType,
-        bytes: args.file.bytes,
-        sha256,
-        createdAt: now,
-      })
-      .onConflictDoNothing({ target: juniorAttachments.id })
-      .returning({ id: juniorAttachments.id });
-  } catch (error) {
-    // Only clean up when the insert itself failed. Post-insert purge handling
-    // must not delete a blob for a row that already committed.
-    await bestEffortDelete(args.storage, storageKey);
-    throw error;
-  }
-  if (inserted.length > 0) {
-    if (await isConversationPurged(args.db, args.conversationId)) {
-      await rejectPurgedAttachmentWrite({
-        conversationId: args.conversationId,
-        db: args.db,
-        id,
-        now,
-        storage: args.storage,
-        storageKey,
-      });
-    }
-    return { id };
-  }
-
-  const [row] = await args.db
-    .db()
-    .select({
-      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      id: juniorAttachments.id,
-      storageKey: juniorAttachments.storageKey,
-    })
-    .from(juniorAttachments)
-    .where(eq(juniorAttachments.id, id));
-  if (!row) {
-    await bestEffortDelete(args.storage, storageKey);
-    throw new Error(`Attachment row missing after write for ${id}`);
-  }
-  if (row.deleteRequestedAt === null) {
-    // Another writer owns the live row. Our unique object is unused.
-    return reuseLiveAttachment({
-      conversationId: args.conversationId,
-      db: args.db,
-      id: row.id,
-      storage: args.storage,
-      storageKey,
-    });
-  }
-
-  if (await isConversationPurged(args.db, args.conversationId)) {
-    await bestEffortDelete(args.storage, storageKey);
-    throw purgedConversationError(args.conversationId);
-  }
-
-  const revived = await args.db
-    .db()
-    .with(conversationDetailTouch(args.db.db(), [args.conversationId]))
-    .update(juniorAttachments)
-    .set({
-      deleteRequestedAt: null,
-      storageKey,
-    })
-    .where(
-      and(
-        eq(juniorAttachments.id, id),
-        isNotNull(juniorAttachments.deleteRequestedAt),
-      ),
-    )
-    .returning({ id: juniorAttachments.id });
-  if (revived.length > 0) {
-    if (await isConversationPurged(args.db, args.conversationId)) {
-      await rejectPurgedAttachmentWrite({
-        conversationId: args.conversationId,
-        db: args.db,
-        id,
-        now,
-        storage: args.storage,
-        storageKey,
-      });
-    }
-    if (row.storageKey !== storageKey) {
-      await bestEffortDelete(args.storage, row.storageKey);
-    }
-    return { id };
-  }
-
-  const [afterRace] = await args.db
-    .db()
-    .select({
-      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
-      id: juniorAttachments.id,
-    })
-    .from(juniorAttachments)
-    .where(eq(juniorAttachments.id, id));
-  if (afterRace?.deleteRequestedAt === null) {
-    return reuseLiveAttachment({
-      conversationId: args.conversationId,
-      db: args.db,
-      id: afterRace.id,
-      storage: args.storage,
-      storageKey,
-    });
+    row = await readAttachmentRow(args.db, id);
   }
 
   await bestEffortDelete(args.storage, storageKey);
-  throw new Error(`Attachment ${id} disappeared while reviving`);
+  throw new Error(`Attachment ${id} kept changing while storing`);
 }
 
-/** Load one live attachment owned by a conversation. */
+/** Load one readable attachment owned by a conversation. */
 export async function readLiveAttachment(args: {
   attachmentId: string;
   conversationId: string;
   db: JuniorSqlDatabase;
+  nowMs?: number;
 }): Promise<AttachmentRecord | null> {
   const [row] = await args.db
     .db()
@@ -425,7 +442,6 @@ export async function readLiveAttachment(args: {
       bytes: juniorAttachments.bytes,
       contentType: juniorAttachments.contentType,
       conversationId: juniorAttachments.conversationId,
-      deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
       storageProvider: juniorAttachments.storageProvider,
@@ -436,22 +452,14 @@ export async function readLiveAttachment(args: {
       and(
         eq(juniorAttachments.id, args.attachmentId),
         eq(juniorAttachments.conversationId, args.conversationId),
-        isNull(juniorAttachments.deleteRequestedAt),
+        readableAttachment(new Date(args.nowMs ?? Date.now())),
       ),
     );
   if (!row) return null;
   if (await isConversationPurged(args.db, args.conversationId)) {
     return null;
   }
-  return {
-    bytes: row.bytes,
-    contentType: row.contentType,
-    conversationId: row.conversationId,
-    filename: row.filename,
-    id: row.id,
-    storageKey: row.storageKey,
-    storageProvider: row.storageProvider,
-  };
+  return row;
 }
 
 /** Persist many conversation-owned files. */
@@ -484,26 +492,22 @@ export async function requestAttachmentDeletion(
   nowMs: number,
 ): Promise<void> {
   if (conversationIds.length === 0) return;
-  await db
-    .db()
-    .with(conversationDetailTouch(db.db(), conversationIds))
-    .update(juniorAttachments)
-    .set({ deleteRequestedAt: new Date(nowMs) })
-    .where(
-      and(
-        inArray(juniorAttachments.conversationId, conversationIds),
-        isNull(juniorAttachments.deleteRequestedAt),
-      ),
-    );
+  await transitionAttachments({
+    db,
+    now: new Date(nowMs),
+    to: { status: "delete_requested" },
+    where: inArray(juniorAttachments.conversationId, conversationIds),
+  });
 }
 
 /**
- * Delete purged attachments in one bounded batch.
+ * Delete unreadable attachments in one bounded batch.
  *
- * Eligible rows are 30 days old, explicitly purge-marked, or owned by a
- * conversation whose transcript is already purged. Delete object keys first,
- * then remove rows that are still eligible so a failed blob delete remains
- * retryable.
+ * Eligible rows are `delete_requested`, expired, or owned by a conversation
+ * whose transcript is already purged. Move each eligible `live` row to
+ * `delete_requested` before its bytes are deleted, so no reader gets a live row
+ * without bytes. Then delete the object keys, and then the rows that still
+ * point at them. A failed blob delete leaves the rows for a later run.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -511,11 +515,12 @@ export async function collectAttachmentGarbage(args: {
   storage: AttachmentStorage;
   limit?: number;
 }): Promise<AttachmentGarbageCollectionResult> {
-  const expiresBefore = new Date(args.nowMs - ATTACHMENT_RETENTION_MS);
+  const now = new Date(args.nowMs);
   const rows = await args.db
     .db()
     .select({
       id: juniorAttachments.id,
+      status: juniorAttachments.status,
       storageKey: juniorAttachments.storageKey,
     })
     .from(juniorAttachments)
@@ -527,54 +532,57 @@ export async function collectAttachmentGarbage(args: {
       and(
         eq(juniorAttachments.storageProvider, args.storage.provider),
         or(
-          lte(juniorAttachments.createdAt, expiresBefore),
-          isNotNull(juniorAttachments.deleteRequestedAt),
+          eq(juniorAttachments.status, "delete_requested"),
+          lte(juniorAttachments.expiresAt, now),
           isNotNull(juniorConversations.transcriptPurgedAt),
         ),
       ),
     )
-    .orderBy(asc(juniorAttachments.createdAt), asc(juniorAttachments.id))
+    .orderBy(asc(juniorAttachments.expiresAt), asc(juniorAttachments.id))
     .limit(args.limit ?? ATTACHMENT_GC_BATCH_LIMIT);
   if (rows.length === 0) return { deleted: 0 };
 
-  await args.storage.delete(rows.map((row) => row.storageKey));
-  const stillEligible = await args.db
-    .db()
-    .select({ id: juniorAttachments.id })
-    .from(juniorAttachments)
-    .innerJoin(
-      juniorConversations,
-      eq(juniorAttachments.conversationId, juniorConversations.conversationId),
-    )
-    .where(
-      and(
-        inArray(
-          juniorAttachments.id,
-          rows.map((row) => row.id),
-        ),
-        or(
-          lte(juniorAttachments.createdAt, expiresBefore),
-          isNotNull(juniorAttachments.deleteRequestedAt),
-          isNotNull(juniorConversations.transcriptPurgedAt),
-        ),
-      ),
-    );
-  if (stillEligible.length === 0) return { deleted: 0 };
-  const removed = await args.db
-    .db()
-    .delete(juniorAttachments)
-    .where(
+  const live = rows.filter((row) => row.status === "live");
+  // The selected key pins the selected bytes. A row that a writer moved to
+  // new bytes since the select does not match.
+  const claimed =
+    live.length > 0
+      ? await transitionAttachments({
+          db: args.db,
+          now,
+          to: { status: "delete_requested" },
+          where: and(
+            inArray(
+              juniorAttachments.id,
+              live.map((row) => row.id),
+            ),
+            inArray(
+              juniorAttachments.storageKey,
+              live.map((row) => row.storageKey),
+            ),
+          )!,
+        })
+      : [];
+  const keys = [
+    ...rows
+      .filter((row) => row.status === "delete_requested")
+      .map((row) => row.storageKey),
+    ...claimed.map((row) => row.storageKey),
+  ];
+  if (keys.length === 0) return { deleted: 0 };
+
+  await args.storage.delete(keys);
+  const removed = await transitionAttachments({
+    db: args.db,
+    now,
+    to: { status: "collected" },
+    where: and(
       inArray(
         juniorAttachments.id,
-        stillEligible.map((row) => row.id),
+        rows.map((row) => row.id),
       ),
-    )
-    .returning({
-      conversationId: juniorAttachments.conversationId,
-    });
-  await touchConversationDetail(
-    args.db.db(),
-    removed.map((row) => row.conversationId),
-  );
+      inArray(juniorAttachments.storageKey, keys),
+    )!,
+  });
   return { deleted: removed.length };
 }

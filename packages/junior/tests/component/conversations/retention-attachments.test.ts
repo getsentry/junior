@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   collectAttachmentGarbage,
+  readLiveAttachment,
   storeAttachment,
 } from "@/chat/attachments/store";
 import {
@@ -9,7 +10,11 @@ import {
   type MemoryAttachmentStorage,
 } from "@/chat/attachments/memory";
 import type { AttachmentWrite } from "@/chat/attachments/storage";
-import { runRetentionPurge } from "@/chat/conversations/retention";
+import {
+  purgeConversation,
+  runRetentionPurge,
+} from "@/chat/conversations/retention";
+import { ensureConversationRow } from "@/chat/conversations/sql/conversation-row";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import {
@@ -34,6 +39,14 @@ async function putObject(
     key,
   });
 }
+
+const reportFile = {
+  bytes: 6,
+  data: Buffer.from("report"),
+  filename: "report.txt",
+  mimeType: "text/plain",
+  path: "/tmp/report.txt",
+};
 
 describe("retention purge job: attachments", () => {
   let fixture: LocalJuniorSqlFixture;
@@ -102,6 +115,7 @@ describe("retention purge job: attachments", () => {
           bytes: 3,
           sha256: "old",
           createdAt: new Date(BASE_MS),
+          expiresAt: new Date(BASE_MS + 30 * DAY_MS),
         },
         {
           id: "current-attachment",
@@ -113,6 +127,7 @@ describe("retention purge job: attachments", () => {
           bytes: 3,
           sha256: "new",
           createdAt: new Date(BASE_MS + 2 * DAY_MS),
+          expiresAt: new Date(BASE_MS + 32 * DAY_MS),
         },
       ]);
     const storage = createMemoryAttachmentStorage();
@@ -152,6 +167,7 @@ describe("retention purge job: attachments", () => {
         bytes: 6,
         sha256: "digest",
         createdAt: new Date(BASE_MS),
+        status: "delete_requested",
         deleteRequestedAt: new Date(BASE_MS + DAY_MS),
       });
     const storage = {
@@ -174,8 +190,45 @@ describe("retention purge job: attachments", () => {
     expect(rows[0]).toMatchObject({
       id: "attachment-1",
       storageKey: "key-1",
-      deleteRequestedAt: expect.any(Date),
+      status: "delete_requested",
     });
+  });
+
+  it("hides an expired attachment before GC deletes its bytes", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "active-owner",
+      destinationId,
+      lastActivityAtMs: BASE_MS + 31 * DAY_MS,
+    });
+    const memoryStorage = createMemoryAttachmentStorage();
+    const stored = await storeAttachment({
+      conversationId: "active-owner",
+      db: fixture.sql,
+      file: reportFile,
+      nowMs: BASE_MS,
+      storage: memoryStorage,
+    });
+    const deleted: string[][] = [];
+    const storage = {
+      ...memoryStorage,
+      delete: async (keys: string[]) => {
+        deleted.push(keys);
+        throw new Error("blob delete failed");
+      },
+    };
+
+    await expect(
+      collectAttachmentGarbage({
+        db: fixture.sql,
+        nowMs: BASE_MS + 31 * DAY_MS,
+        storage,
+      }),
+    ).rejects.toThrow("blob delete failed");
+
+    expect(deleted).toHaveLength(1);
+    const rows = await fixture.sql.db().select().from(juniorAttachments);
+    expect(rows).toMatchObject([{ id: stored.id, status: "delete_requested" }]);
   });
 
   it("collects unmarked attachments owned by purged conversations", async () => {
@@ -293,7 +346,7 @@ describe("retention purge job: attachments", () => {
     expect(rows).toHaveLength(1);
     expect(puts).toEqual([rows[0]?.storageKey]);
     expect([...memoryStorage.objects.keys()]).toEqual([]);
-    expect(rows[0]?.deleteRequestedAt).toEqual(expect.any(Date));
+    expect(rows[0]?.status).toBe("delete_requested");
   });
 
   it("rejects live-row reuse when the conversation is already purged", async () => {
@@ -324,11 +377,11 @@ describe("retention purge job: attachments", () => {
       .update(juniorConversations)
       .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
       .where(eq(juniorConversations.conversationId, "purged-owner"));
-    // Leave the row unmarked so reuse hits the live-row path, not revive.
+    // Leave the row live so reuse hits the live-row path, not revive.
     await fixture.sql
       .db()
       .update(juniorAttachments)
-      .set({ deleteRequestedAt: null, storageKey: liveKey })
+      .set({ storageKey: liveKey })
       .where(eq(juniorAttachments.id, stored.id));
 
     await expect(
@@ -347,7 +400,112 @@ describe("retention purge job: attachments", () => {
     expect(rows[0]).toMatchObject({
       id: stored.id,
       storageKey: liveKey,
-      deleteRequestedAt: null,
+      status: "live",
     });
+  });
+  it("keeps a revived attachment for 30 days after its new write", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "revived-owner",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    const storage = createMemoryAttachmentStorage();
+    const first = await storeAttachment({
+      conversationId: "revived-owner",
+      db: fixture.sql,
+      file: reportFile,
+      nowMs: BASE_MS,
+      storage,
+    });
+    await purgeConversation(fixture.sql, "revived-owner", {
+      nowMs: BASE_MS + 20 * DAY_MS,
+    });
+    // New activity clears the purge before GC collects the marked row.
+    await ensureConversationRow(
+      fixture.sql,
+      "revived-owner",
+      BASE_MS + 31 * DAY_MS,
+    );
+
+    const revived = await storeAttachment({
+      conversationId: "revived-owner",
+      db: fixture.sql,
+      file: reportFile,
+      nowMs: BASE_MS + 31 * DAY_MS,
+      storage,
+    });
+    await collectAttachmentGarbage({
+      db: fixture.sql,
+      nowMs: BASE_MS + 31 * DAY_MS,
+      storage,
+    });
+
+    expect(revived.id).toBe(first.id);
+    const record = await readLiveAttachment({
+      attachmentId: revived.id,
+      conversationId: "revived-owner",
+      db: fixture.sql,
+      nowMs: BASE_MS + 31 * DAY_MS,
+    });
+    expect([...storage.objects.keys()]).toEqual([record?.storageKey]);
+
+    await collectAttachmentGarbage({
+      db: fixture.sql,
+      nowMs: BASE_MS + 61 * DAY_MS,
+      storage,
+    });
+    expect([...storage.objects.keys()]).toEqual([]);
+    expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
+  });
+  it("stores new bytes for an expired attachment that GC has not collected", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "active-owner",
+      destinationId,
+      lastActivityAtMs: BASE_MS + 31 * DAY_MS,
+    });
+    const storage = createMemoryAttachmentStorage();
+    const first = await storeAttachment({
+      conversationId: "active-owner",
+      db: fixture.sql,
+      file: reportFile,
+      nowMs: BASE_MS,
+      storage,
+    });
+    const [expiredKey] = [...storage.objects.keys()];
+
+    // An expired row is not live, even before GC removes it.
+    await expect(
+      readLiveAttachment({
+        attachmentId: first.id,
+        conversationId: "active-owner",
+        db: fixture.sql,
+        nowMs: BASE_MS + 31 * DAY_MS,
+      }),
+    ).resolves.toBeNull();
+
+    const again = await storeAttachment({
+      conversationId: "active-owner",
+      db: fixture.sql,
+      file: reportFile,
+      nowMs: BASE_MS + 31 * DAY_MS,
+      storage,
+    });
+    await collectAttachmentGarbage({
+      db: fixture.sql,
+      nowMs: BASE_MS + 31 * DAY_MS,
+      storage,
+    });
+
+    expect(again.id).toBe(first.id);
+    const record = await readLiveAttachment({
+      attachmentId: again.id,
+      conversationId: "active-owner",
+      db: fixture.sql,
+      nowMs: BASE_MS + 31 * DAY_MS,
+    });
+    expect(record?.storageKey).not.toBe(expiredKey);
+    expect([...storage.objects.keys()]).toEqual([record?.storageKey]);
   });
 });

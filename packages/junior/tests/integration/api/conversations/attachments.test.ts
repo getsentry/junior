@@ -1,19 +1,20 @@
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { afterEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { storeAttachment } from "@/chat/attachments/store";
+import {
+  requestAttachmentDeletion,
+  storeAttachment,
+} from "@/chat/attachments/store";
 import {
   closeDb,
   getConversationStore,
   getSqlExecutor,
   getConversationEventStore,
 } from "@/chat/db";
-import { juniorAttachments } from "@/db/schema";
 import { testViewer } from "../../../fixtures/user";
 
 function apiWithViewer(
@@ -358,11 +359,7 @@ describe("conversation attachment API", () => {
       },
       storage,
     });
-    await getSqlExecutor()
-      .db()
-      .update(juniorAttachments)
-      .set({ deleteRequestedAt: new Date(2) })
-      .where(eq(juniorAttachments.id, stored.id));
+    await requestAttachmentDeletion(getSqlExecutor(), [conversationId], 2);
 
     const response = await apiWithViewer(undefined, storage).request(
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/attachments/${stored.id}`,
