@@ -50,6 +50,20 @@ function SuggestedLabel(props: { className?: string }) {
   );
 }
 
+// Names the number key of a docked choice. The button already says it to
+// screen readers in `aria-keyshortcuts`.
+function ShortcutHint(props: { value?: string }) {
+  if (!props.value) return null;
+  return (
+    <kbd
+      aria-hidden="true"
+      className="grid size-5 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft font-sans text-2xs text-dashboard-text-muted max-md:hidden"
+    >
+      {props.value}
+    </kbd>
+  );
+}
+
 function OptionText(props: {
   description?: string;
   label: string;
@@ -197,8 +211,13 @@ function TextField(props: {
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
  * the form has picks or text that the reader has not sent.
+ *
+ * `docked` is for the question above the message box. The message box takes
+ * an answer in the reader's own words there, so Other… does not show, and
+ * each choice button names its number key in `aria-keyshortcuts`.
  */
 export function UserInputForm(props: {
+  docked?: boolean;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
   request: UserInputRequest;
@@ -275,11 +294,14 @@ export function UserInputForm(props: {
   ) : null;
   // Slack cards show the same button, so both surfaces take a free-text
   // answer when no choice fits.
-  const otherButton = (
+  const otherButton = props.docked ? null : (
     <Button disabled={sending} onClick={() => setWriteOther(true)}>
       Other…
     </Button>
   );
+  // Number keys pick the first nine choices.
+  const shortcut = (index: number) =>
+    props.docked && index < 9 ? String(index + 1) : undefined;
 
   return (
     <>
@@ -295,6 +317,7 @@ export function UserInputForm(props: {
                 aria-describedby={
                   option.description ? `${choicesId}-${index}` : undefined
                 }
+                aria-keyshortcuts={shortcut(index)}
                 aria-labelledby={`${choicesId}-${index}-label`}
                 className={choiceButtonClass}
                 data-picked={picked === option.label ? "" : undefined}
@@ -303,6 +326,7 @@ export function UserInputForm(props: {
                 onClick={() => pick(buttonField.id, option.label)}
                 type="button"
               >
+                <ShortcutHint value={shortcut(index)} />
                 <span className="grid min-w-0 flex-1 gap-0.5 break-words">
                   <span
                     className="font-medium text-dashboard-text"
@@ -335,12 +359,14 @@ export function UserInputForm(props: {
         </>
       ) : buttonField ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {buttonField.options.map((option) => (
+          {buttonField.options.map((option, index) => (
             <Button
+              aria-keyshortcuts={shortcut(index)}
               disabled={sending}
               key={option.label}
               onClick={() => pick(buttonField.id, option.label)}
             >
+              <ShortcutHint value={shortcut(index)} />
               {option.label}
               {/* The button gap already spaces the label. */}
               {option.recommended ? <SuggestedLabel className="ml-0" /> : null}

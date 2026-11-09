@@ -63,17 +63,48 @@ function subagentEntry(
   };
 }
 
-function messageEntry(seq: number): RenderedTranscriptEntry {
+function messageEntry(
+  seq: number,
+  role: "assistant" | "user" = "assistant",
+): RenderedTranscriptEntry {
   return {
     key: `${seq}:message:0`,
     kind: "message",
     message: {
       parts: [{ type: "text", text: "Done." }],
-      role: "assistant",
+      role,
       sourceSeq: seq,
     },
     seq,
   };
+}
+
+function toolEntry(seq: number, name = "bash"): RenderedTranscriptEntry {
+  return {
+    key: `${seq}:tool:0`,
+    kind: "tool",
+    part: {
+      id: `call-${seq}`,
+      name,
+      output: JSON.stringify({ item: { id: `item-${seq}` } }),
+      status: "completed",
+      type: "tool_call",
+    },
+    seq,
+  } as RenderedTranscriptEntry;
+}
+
+function rowSummary(rows: TranscriptListRow[]) {
+  return rows.map((row) => ({
+    keys:
+      row.kind === "tasks" || row.kind === "activity"
+        ? row.entries.map((entry) => entry.key)
+        : row.kind === "entry"
+          ? [row.entry.key]
+          : undefined,
+    kind: row.kind,
+    seq: "seq" in row ? row.seq : undefined,
+  }));
 }
 
 describe("transcriptListRows", () => {
@@ -112,6 +143,33 @@ describe("transcriptListRows", () => {
       { keys: ["subagent:child-4"], kind: "tasks", seq: 4 },
       { keys: ["5:message:0"], kind: "entry", seq: 5 },
       { keys: ["subagent:child-6"], kind: "tasks", seq: 6 },
+    ]);
+  });
+
+  it("moves a question that Junior asked to the end of its Turn", () => {
+    const rows = transcriptListRows({
+      entries: [
+        messageEntry(1, "user"),
+        toolEntry(2),
+        toolEntry(3, "addReviewItem"),
+        toolEntry(4),
+        messageEntry(5),
+        messageEntry(6, "user"),
+        toolEntry(7, "addReviewItem"),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    // The activity around the ask stays one row, and the moved rows keep
+    // seq order.
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["2:tool:0", "4:tool:0"], kind: "activity", seq: 4 },
+      { keys: ["5:message:0"], kind: "entry", seq: 5 },
+      { keys: ["3:tool:0"], kind: "entry", seq: 5 },
+      { keys: ["6:message:0"], kind: "entry", seq: 6 },
+      { keys: ["7:tool:0"], kind: "entry", seq: 6 },
     ]);
   });
 });

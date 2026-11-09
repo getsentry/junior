@@ -1,7 +1,8 @@
 import * as z from "zod";
-import type {
-  ConversationReportEvent,
-  ReviewItemPayload,
+import {
+  normalizeUserInputAnswer,
+  type ConversationReportEvent,
+  type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 /** Return the review desk route that selects one item. */
@@ -76,21 +77,6 @@ export function reviewItemIdFromToolCall(call: {
   return addedItemId(call.output);
 }
 
-/** Return the id of the last Review item that a tool call in the events added. */
-export function latestReviewItemId(
-  events: readonly ConversationReportEvent[] | undefined,
-): string | undefined {
-  for (let index = (events?.length ?? 0) - 1; index >= 0; index -= 1) {
-    const data = events![index]!.data;
-    if (data.type !== "tool_calls") continue;
-    for (let call = data.calls.length - 1; call >= 0; call -= 1) {
-      const id = reviewItemIdFromToolCall(data.calls[call]!);
-      if (id) return id;
-    }
-  }
-  return undefined;
-}
-
 /**
  * Return a message for another item's excerpt, without the Review item
  * changes that it records: those show on their own items. Returns undefined
@@ -115,6 +101,23 @@ export function reviewItemWaitsForAnswer(item: ReviewItemPayload): boolean {
     Boolean(item.request) &&
     item.canAct
   );
+}
+
+/**
+ * Return a submitted answer as one line: the values of each field, then the
+ * note, so a transcript row can show it after the question.
+ */
+export function answerLine(
+  request: NonNullable<ReviewItemPayload["request"]>,
+  answer: NonNullable<ReviewItemPayload["answer"]>,
+): string {
+  const normalized = normalizeUserInputAnswer(request, answer);
+  const parts = request.fields.flatMap((field) => {
+    const values = normalized.values[field.id];
+    return values?.length ? [values.join(", ")] : [];
+  });
+  if (normalized.other) parts.push(normalized.other);
+  return parts.join(" · ");
 }
 
 /** The open Review items of the inbox, in the groups and order it shows. */

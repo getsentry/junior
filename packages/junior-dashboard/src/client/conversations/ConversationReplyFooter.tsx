@@ -14,8 +14,10 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { useDashboardCoreData } from "../api";
-import { useReviewItemData } from "../review-desk/queries";
-import { reviewItemWaitsForAnswer } from "../review-desk/reviewItemFormat";
+import {
+  ComposerQuestion,
+  useComposerQuestions,
+} from "../review-desk/ComposerQuestion";
 import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
 import { readStoredComposerImages } from "./ComposerImages";
 import { ComposerDock } from "./ComposerDock";
@@ -66,8 +68,6 @@ function ReplyFooter(props: {
   pendingMessages: readonly ConversationMailboxMessage[];
   /** Lets the page add a quote of selected text to the draft. */
   ref?: Ref<Pick<ConversationComposerHandle, "appendText">>;
-  /** The last Review item that Junior added in the transcript. */
-  reviewItemId?: string;
   /**
    * True when history is live and no Turn has started, so the next Turn will
    * read a new send at once.
@@ -89,32 +89,12 @@ function ReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
-  // While Junior waits for an answer, hide the message box and the queued
-  // messages, so the reader answers in the question and does not type the
-  // answer as a new message.
-  // Dismiss on the question closes the item and shows the message box again.
-  // The message box stays mounted, so its text and images stay, and it does
-  // not hide while it has focus.
-  const reviewItemQuery = useReviewItemData(props.reviewItemId);
-  const reviewItem = reviewItemQuery.data;
-  const [composerShownForItemId, setComposerShownForItemId] =
-    useState<string>();
-  const [composerFocused, setComposerFocused] = useState(false);
-  const question =
-    reviewItem &&
-    !props.stoppable &&
-    !composerFocused &&
-    reviewItemWaitsForAnswer(reviewItem) &&
-    composerShownForItemId !== reviewItem.id
-      ? reviewItem
-      : undefined;
-  // The message box can show only because it has focus. Using the queued
-  // messages moves focus out of it, so keep them shown for this item.
-  const keepComposerShown = () => {
-    if (composerFocused && reviewItem && reviewItemWaitsForAnswer(reviewItem)) {
-      setComposerShownForItemId(reviewItem.id);
-    }
-  };
+  // Open questions dock above the message box. A typed message answers
+  // them too: the server closes the questions that it answers.
+  const { pending: questionsPending, questions } = useComposerQuestions(
+    props.conversationId,
+  );
+  const questionRef = useRef<HTMLElement>(null);
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -211,31 +191,32 @@ function ReplyFooter(props: {
   useImperativeHandle(props.ref, () => ({
     appendText: (text) => composerRef.current?.appendText(text),
   }));
-  // Focus keeps the message box shown, so wait until the question is known.
-  // On a touch screen, focus would open the keyboard over the transcript.
-  const reviewItemPending =
-    Boolean(props.reviewItemId) && reviewItemQuery.isPending;
+  // Wait until the questions are known: an open question takes focus, so
+  // its number keys work at once. On a touch screen, focus would open the
+  // keyboard over the transcript.
   const { onFocusRequestDone } = props;
   const focusKey = props.focusRequest?.key;
   const draftFrom = props.focusRequest?.draftFrom;
-  const questionShown = Boolean(question);
+  const questionShown = questions.length > 0;
   useEffect(() => {
-    if (!focusKey || reviewItemPending) return;
+    if (!focusKey || questionsPending) return;
     onFocusRequestDone(focusKey);
     // A new Conversation opens here after its first send. The reader was
     // typing in its pending reply box, so the text and the cursor move here,
     // even on a touch screen where the keyboard is already open.
     const text = draftFrom ? takeStoredDraftText(draftFrom) : "";
     if (text) composerRef.current?.restoreMessage({ text });
-    else if (draftFrom || (!questionShown && !touchKeyboardMatches())) {
-      composerRef.current?.focus();
+    else if (draftFrom) composerRef.current?.focus();
+    else if (!touchKeyboardMatches()) {
+      if (questionShown) questionRef.current?.focus();
+      else composerRef.current?.focus();
     }
   }, [
     draftFrom,
     focusKey,
     onFocusRequestDone,
     questionShown,
-    reviewItemPending,
+    questionsPending,
   ]);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
@@ -332,6 +313,7 @@ function ReplyFooter(props: {
     if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, []);
+  const focusMessageBox = useCallback(() => composerRef.current?.focus(), []);
   // Mobile keyboard open shrinks the transcript. Focus must re-pin the latest
   // message so the reader does not stay stuck above the docked composer.
   const onComposerFocus = useCallback(() => {
@@ -346,61 +328,51 @@ function ReplyFooter(props: {
           {props.pendingAuthorization ? (
             <PendingAuthorization authorization={props.pendingAuthorization} />
           ) : null}
-          {/* Queued messages hide with the message box, so the question is
-              the last thing above the dock. */}
-          <div
-            hidden={Boolean(question)}
-            onFocus={keepComposerShown}
-            onPointerDown={keepComposerShown}
-          >
-            <PendingMailboxStack
-              authors={props.authors}
-              cancelError={cancelError}
-              cancelPending={cancelPendingMessages.isPending}
-              cancelTargetInboundMessageId={cancelTargetInboundMessageId}
-              committedMessageIds={props.committedMessageIds}
-              conversationId={props.conversationId}
-              editTargetInboundMessageId={editTargetInboundMessageId}
-              messages={props.pendingMessages}
-              onCancelMessage={onCancelMessage}
-              onEditMessage={onEditMessage}
-              onLayoutChange={onMailboxLayoutChange}
-              onRetry={onRetry}
-              onSteerMessage={props.stoppable ? onSteerMessage : undefined}
-              steerTargetInboundMessageId={steerTargetInboundMessageId}
-              viewerEmail={viewerEmail}
-            />
-          </div>
+          <PendingMailboxStack
+            authors={props.authors}
+            cancelError={cancelError}
+            cancelPending={cancelPendingMessages.isPending}
+            cancelTargetInboundMessageId={cancelTargetInboundMessageId}
+            committedMessageIds={props.committedMessageIds}
+            conversationId={props.conversationId}
+            editTargetInboundMessageId={editTargetInboundMessageId}
+            messages={props.pendingMessages}
+            onCancelMessage={onCancelMessage}
+            onEditMessage={onEditMessage}
+            onLayoutChange={onMailboxLayoutChange}
+            onRetry={onRetry}
+            onSteerMessage={props.stoppable ? onSteerMessage : undefined}
+            steerTargetInboundMessageId={steerTargetInboundMessageId}
+            viewerEmail={viewerEmail}
+          />
+          {/* The question sits right above the message box that also
+              answers it. */}
+          <ComposerQuestion
+            focusMessageBox={focusMessageBox}
+            questions={questions}
+            ref={questionRef}
+          />
           {unsentAnswers.dialog}
         </>
       }
     >
-      <div
-        hidden={Boolean(question)}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) {
-            setComposerFocused(false);
-          }
-        }}
-        onFocus={() => setComposerFocused(true)}
-      >
-        <ConversationComposer
-          confirmSubmit={unsentAnswers.confirmSubmit}
-          draftId={props.conversationId}
-          error={
-            queueActionError ??
-            (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
-          }
-          ref={composerRef}
-          label="Continue this conversation"
-          submitLabel="Send"
-          onFocus={onComposerFocus}
-          onStop={props.stoppable ? onStop : undefined}
-          stopPending={stopTurn.isPending}
-          onSubmitStart={onSubmitStart}
-          onSubmit={onSubmit}
-        />
-      </div>
+      <ConversationComposer
+        confirmSubmit={unsentAnswers.confirmSubmit}
+        draftId={props.conversationId}
+        error={
+          queueActionError ??
+          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+        }
+        ref={composerRef}
+        label="Continue this conversation"
+        placeholder={questionShown ? "Or type your answer…" : undefined}
+        submitLabel="Send"
+        onFocus={onComposerFocus}
+        onStop={props.stoppable ? onStop : undefined}
+        stopPending={stopTurn.isPending}
+        onSubmitStart={onSubmitStart}
+        onSubmit={onSubmit}
+      />
     </ComposerDock>
   );
 }

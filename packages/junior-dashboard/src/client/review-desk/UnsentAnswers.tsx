@@ -94,7 +94,7 @@ export function useConfirmUnsentAnswers() {
   const resolveRef = useRef<(send: boolean) => void>(undefined);
 
   const confirmSubmit = useCallback(() => {
-    // The transcript card and the side panel can show the same item.
+    // The docked question and the side panel can show the same item.
     const unsent = [...new Set(context?.titles.values())];
     if (unsent.length === 0) return undefined;
     setTitles(unsent);

@@ -137,7 +137,7 @@ test("switches conversations from the command palette without a server search", 
   await expect(palette).toHaveCount(0);
 });
 
-test("a palette switch leaves the reply box hidden while Junior waits for an answer", async ({
+test("a palette switch focuses the question while Junior waits for an answer", async ({
   page,
   dashboard,
 }) => {
@@ -148,9 +148,13 @@ test("a palette switch leaves the reply box hidden while Junior waits for an ans
   const questionHeld = new Promise<void>((resolve) => {
     releaseQuestion = resolve;
   });
-  await page.route(`**/api/review-items/${question.id}`, async (route) => {
+  await page.route(`**/api/review-items?*`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
+      return route.fallback();
+    }
     await questionHeld;
-    await route.fulfill({ json: question });
+    await route.fulfill({ json: { items: [question] } });
   });
   await page.goto(dashboard.baseURL);
 
@@ -163,9 +167,13 @@ test("a palette switch leaves the reply box hidden while Junior waits for an ans
   const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toBeVisible();
 
-  // Focus would keep the reply box shown, so the reader answers the question.
+  // The question takes focus, so a number key answers it at once.
   releaseQuestion();
-  await expect(composer).toBeHidden();
+  const docked = page.getByRole("region", {
+    name: `Question: ${question.title}`,
+  });
+  await expect(docked).toBeFocused();
+  await expect(composer).toBeVisible();
 });
 
 test("jumps to a page from the command palette", async ({

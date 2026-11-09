@@ -2,6 +2,7 @@ import {
   isCollapsibleActivityEntry,
   quietTurnEntryKeys,
 } from "./TranscriptActivityGroup";
+import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
@@ -39,7 +40,8 @@ export const UNREAD_MARKER_KEY = "unread-marker";
  * Turn transcript entries into list rows. Runs of collapsible activity
  * become one group row, each run of Tasks becomes one Tasks row, a Thread
  * keeps its own row, search drops rows that do not match, and the "New"
- * marker becomes its own row before the first unread row.
+ * marker becomes its own row before the first unread row. A question that
+ * Junior asked moves to the end of its Turn, after the final message.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -75,13 +77,46 @@ export function transcriptListRows(input: {
     }
     rows.push(row);
   };
+  // The reader sees why Junior asks before the question. A moved row keeps
+  // the seq of the row before it, so the rows stay in seq order.
+  let asks: RenderedTranscriptEntry[] = [];
+  const pushAsks = () => {
+    for (const ask of asks) {
+      if (!matches(ask)) continue;
+      pushRow({
+        kind: "entry",
+        entry: ask,
+        key: `${input.keyPrefix}:${ask.key}`,
+        seq: lastRowSeq(rows) ?? ask.seq,
+      });
+    }
+    asks = [];
+  };
 
   for (let index = 0; index < entries.length; ) {
     const entry = entries[index]!;
+    if (isAskEntry(entry)) {
+      asks.push(entry);
+      index += 1;
+      continue;
+    }
+    // A message from a person starts the next Turn.
+    if (
+      entry.kind === "message" &&
+      entry.message.role === "user" &&
+      !collapsible(entry)
+    ) {
+      pushAsks();
+    }
     if (collapsible(entry)) {
       const group: RenderedTranscriptEntry[] = [];
-      while (index < entries.length && collapsible(entries[index]!)) {
-        group.push(entries[index]!);
+      // An ask in the activity moves out, so the activity on both sides of
+      // it stays one row.
+      while (index < entries.length) {
+        const next = entries[index]!;
+        if (isAskEntry(next)) asks.push(next);
+        else if (collapsible(next)) group.push(next);
+        else break;
         index += 1;
       }
       const visible = group.filter(matches);
@@ -129,7 +164,22 @@ export function transcriptListRows(input: {
     }
     index += 1;
   }
+  pushAsks();
   return rows;
+}
+
+function isAskEntry(entry: RenderedTranscriptEntry): boolean {
+  return (
+    entry.kind === "tool" && reviewItemIdFromToolCall(entry.part) !== undefined
+  );
+}
+
+function lastRowSeq(rows: readonly TranscriptListRow[]): number | undefined {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]!;
+    if (row.kind !== "unread_marker" && row.seq !== undefined) return row.seq;
+  }
+  return undefined;
 }
 
 function isTaskEntry(entry: RenderedTranscriptEntry): boolean {
