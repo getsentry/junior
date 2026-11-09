@@ -6,8 +6,9 @@
  * so no person needs the notice. Each webhook that can change one of
  * these facts reads them again from GitHub. The notice goes to the
  * Conversation where a person asked Junior to open the pull request. It is
- * assigned to that person only when they are in that Conversation. It closes
- * when the pull request merges, closes, or is no longer ready.
+ * assigned to that person only when they are in that Conversation, and it
+ * waits on them: the merge is their step. It closes when the pull request
+ * merges, closes, or is no longer ready.
  */
 import type {
   PluginConversationReviewItems,
@@ -153,7 +154,8 @@ async function syncOne(
             body: `**${state.title}** is approved, and GitHub says that it can merge: ${state.url}`,
             dedupeKey,
             subject: { id: state.url, title: name, url: state.url },
-            title: `Ready to merge: ${name}`,
+            title: `Ready to merge · #${target.number}`,
+            waitsOnAssignees: true,
           });
         } else {
           await items.close({ dedupeKey, ...closeReason(state) });

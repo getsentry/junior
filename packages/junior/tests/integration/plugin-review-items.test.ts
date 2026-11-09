@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createPluginReviewItems } from "@/chat/review-items/plugin";
+import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
 import {
+  countReviewItemsNeedingUser,
   getOpenReviewItemByDedupeKey,
   getReviewItem,
+  listWaitingConversations,
 } from "@/chat/review-items/store";
 import {
   createAddReviewItemTool,
@@ -84,13 +87,64 @@ const NOTICE = {
     title: "getsentry/junior#946",
     url: "https://github.com/getsentry/junior/pull/946",
   },
-  title: "Ready to merge: getsentry/junior#946",
+  title: "Ready to merge · #946",
 };
 
 describe("plugin review items", () => {
   afterEach(async () => {
     shown = [];
     await closeDb();
+  });
+
+  it("waits on the assignee only when the plugin asks", async () => {
+    await conversation("slack:C1:1.000001", "public");
+    const ana = await person("ana@example.com");
+    await participant("slack:C1:1.000001", ana.user);
+    const items = createPluginReviewItems({
+      conversationId: "slack:C1:1.000001",
+      plugin: "github",
+      show,
+    });
+
+    // A notice is for information: it does not wait on Ana.
+    await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
+    expect(await listWaitingConversations(getDb(), ana.user.id)).toEqual([]);
+
+    await items.upsert({
+      ...NOTICE,
+      assigneeIdentityIds: [ana.identityId],
+      waitsOnAssignees: true,
+    });
+    expect(
+      await getOpenReviewItemByDedupeKey(
+        getDb(),
+        `plugin:github:${NOTICE.dedupeKey}`,
+        TENANT,
+      ),
+    ).toMatchObject({ kind: "action", status: "open" });
+    // The dashboard shows the plugin's mark next to the title.
+    expect(await listWaitingConversations(getDb(), ana.user.id)).toEqual([
+      {
+        conversationId: "slack:C1:1.000001",
+        items: [{ plugin: "github", title: NOTICE.title }],
+      },
+    ]);
+    expect(await countReviewItemsNeedingUser(getDb(), ana.user.id)).toBe(1);
+
+    // A reply cannot close it: the plugin closes it when the provider state
+    // changes. No item can match, so the reply check stops early.
+    let checkedReply = false;
+    await closeReviewItemsAnsweredByReply({
+      canAnswer: async () => {
+        checkedReply = true;
+        return false;
+      },
+      conversationId: "slack:C1:1.000001",
+      delivery: {} as any,
+      resolveUser: async () => ana.user,
+      text: "Merged it, thanks.",
+    });
+    expect(checkedReply).toBe(false);
   });
 
   it("keeps one open notice per plugin key and closes it", async () => {

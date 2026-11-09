@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  attentionConversationIds,
   buildConversationSections,
-  pinnedAndAttentionFirst,
+  pinnedAndWaitingFirst,
 } from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
 
@@ -49,7 +48,7 @@ describe("conversation activity sections", () => {
         conversation("today-early", "2026-08-03T00:10:00-07:00"),
         conversation("today-late", "2026-08-03T11:45:00-07:00"),
       ],
-      { ...NOW, attentionIds: new Set() },
+      { ...NOW, waitingIds: new Set() },
     );
 
     expect(sectionIds(sections)).toEqual([
@@ -63,9 +62,10 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts unread, waiting, sign-in, and open-PR conversations in Needs attention before Today", () => {
+  it("puts only conversations that wait on the viewer or a sign-in in Needs you", () => {
     const conversations = [
       conversation("today", "2026-08-03T11:00:00-07:00"),
+      // Unread and an open pull request do not move a row.
       {
         ...conversation("today-unread", "2026-08-03T09:00:00-07:00"),
         unread: true,
@@ -73,16 +73,6 @@ describe("conversation activity sections", () => {
       conversation("yesterday", "2026-08-02T12:00:00-07:00"),
       conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
       conversation("saturday", "2026-08-01T12:00:00-07:00"),
-      // An open pull request waits on a person once Junior stops running.
-      {
-        ...conversation("open-pr", "2026-08-02T08:00:00-07:00"),
-        unfinishedWork: true,
-      },
-      {
-        ...conversation("open-pr-running", "2026-08-03T10:00:00-07:00"),
-        status: "active" as const,
-        unfinishedWork: true,
-      },
       // A Turn parked for authorization leaves the conversation idle.
       {
         ...conversation("connecting", "2026-08-02T10:00:00-07:00"),
@@ -91,21 +81,18 @@ describe("conversation activity sections", () => {
     ];
     const sections = buildConversationSections(conversations, {
       ...NOW,
-      attentionIds: attentionConversationIds(conversations, ["waiting-old"]),
+      waitingIds: new Set(["waiting-old"]),
     });
 
     expect(sectionIds(sections)).toEqual([
-      {
-        conversations: ["today-unread", "connecting", "open-pr", "waiting-old"],
-        label: "Needs attention",
-      },
-      { conversations: ["today", "open-pr-running"], label: "Today" },
+      { conversations: ["connecting", "waiting-old"], label: "Needs you" },
+      { conversations: ["today", "today-unread"], label: "Today" },
       { conversations: ["yesterday"], label: "Yesterday" },
       { conversations: ["saturday"], label: "Previous 7 days" },
     ]);
   });
 
-  it("puts pinned conversations only in Pinned, before Needs attention", () => {
+  it("puts pinned conversations only in Pinned, before Needs you", () => {
     const pinned = (
       id: string,
       lastSeenAt: string,
@@ -140,7 +127,7 @@ describe("conversation activity sections", () => {
         ),
         conversation("waiting", "2026-08-03T09:00:00-07:00"),
       ],
-      { ...NOW, attentionIds: new Set(["pinned-earlier", "waiting"]) },
+      { ...NOW, waitingIds: new Set(["pinned-earlier", "waiting"]) },
     );
 
     // Pins without a place go first, newest pin first, then the viewer's
@@ -155,20 +142,20 @@ describe("conversation activity sections", () => {
         ],
         label: "Pinned",
       },
-      { conversations: ["waiting"], label: "Needs attention" },
+      { conversations: ["waiting"], label: "Needs you" },
       { conversations: ["today"], label: "Today" },
     ]);
   });
 
-  it("moves pinned, then attention conversations before paging", () => {
+  it("moves pinned, then waiting conversations before paging", () => {
     const feed = ["a", "b", "c", "d", "e"].map((id) =>
       conversation(id, "2026-08-03T12:00:00-07:00"),
     );
     feed[4] = { ...feed[4]!, pinnedAt: "2026-08-03T08:00:00-07:00" };
-    feed[2] = { ...feed[2]!, unfinishedWork: true };
+    feed[2] = { ...feed[2]!, unread: true };
 
     expect(
-      pinnedAndAttentionFirst(feed, new Set(["d", "b"])).map((item) => item.id),
-    ).toEqual(["e", "b", "c", "d", "a"]);
+      pinnedAndWaitingFirst(feed, new Set(["d", "b"])).map((item) => item.id),
+    ).toEqual(["e", "b", "d", "a", "c"]);
   });
 });

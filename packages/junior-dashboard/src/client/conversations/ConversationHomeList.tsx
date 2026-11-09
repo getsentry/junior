@@ -29,7 +29,6 @@ import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./conversationArchive";
 import { DisplayText } from "../display-text/DisplayText";
 import {
-  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
@@ -78,12 +77,9 @@ export function ConversationHomeList(props: {
   }
 
   const sections = buildConversationSections(props.conversations, {
-    attentionIds: attentionConversationIds(
-      props.conversations,
-      props.waitingConversationIds,
-    ),
     nowMs: Date.now(),
     timeZone: props.timeZone,
+    waitingIds: props.waitingConversationIds,
   });
   const pinnedSection = sections.find((section) => section.key === "pinned");
   return (

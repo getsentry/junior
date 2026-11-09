@@ -125,7 +125,7 @@ describe("review item actions API", () => {
     await closeConversationFixture();
   });
 
-  it("lists each waiting conversation once, with its newest item", async () => {
+  it("lists each waiting conversation once, with its items newest first", async () => {
     const fixture = await createConversationFixture();
     await slackConversation("slack:CPUB:1.000001");
     const ana = await user("ana@example.com");
@@ -187,13 +187,14 @@ describe("review item actions API", () => {
       conversations: [
         {
           conversationId: "slack:CPUB:1.000001",
-          title: "Review globex entry",
-          count: 2,
+          items: [
+            { title: "Review globex entry" },
+            { title: "Review acme entry" },
+          ],
         },
         {
           conversationId: "slack:CPUB:1.000004",
-          title: "Review initech entry",
-          count: 1,
+          items: [{ title: "Review initech entry" }],
         },
       ],
     });
@@ -294,13 +295,11 @@ describe("review item actions API", () => {
       conversations: [
         {
           conversationId: "slack:CPUB:1.000001",
-          title: "Review acme entry",
-          count: 1,
+          items: [{ title: "Review acme entry" }],
         },
         {
           conversationId: "slack:CPUB:1.000002",
-          title: "Review acme entry",
-          count: 1,
+          items: [{ title: "Review acme entry" }],
         },
       ],
     });
@@ -464,8 +463,7 @@ describe("review item actions API", () => {
       conversations: [
         {
           conversationId: "slack:CPUB:1.000001",
-          title: "Pull request needs review",
-          count: 1,
+          items: [{ title: "Pull request needs review" }],
         },
       ],
     });

@@ -155,15 +155,17 @@ export function useReviewItemAction() {
   });
 }
 
-/** Newest open Review item title and item count for one waiting Conversation. */
-export type WaitingConversation = { count: number; title: string };
+/** Open Review items, newest first, that one Conversation waits on the viewer for. */
+export type WaitingConversation = {
+  items: Array<{ plugin?: string; title: string }>;
+};
 
 const NO_WAITING: ReadonlyMap<string, WaitingConversation> = new Map();
 
 /**
- * Return the Conversations that wait on the viewer, by Conversation id. Today
- * only the review desk sets this: a linked open action item assigned to the
- * viewer.
+ * Return the Conversations that wait on the viewer, by Conversation id: each
+ * has a linked open action item assigned to the viewer. An agent's action
+ * asks a question; a plugin's action asks for a step such as a merge.
  */
 export function useWaitingConversations(): ReadonlyMap<
   string,
@@ -184,9 +186,9 @@ export function useWaitingConversations(): ReadonlyMap<
     () =>
       conversations
         ? new Map(
-            conversations.map(({ conversationId, count, title }) => [
+            conversations.map(({ conversationId, items }) => [
               conversationId,
-              { count, title },
+              { items },
             ]),
           )
         : NO_WAITING,

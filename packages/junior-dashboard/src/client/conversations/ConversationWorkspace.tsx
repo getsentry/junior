@@ -51,10 +51,7 @@ import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
-import {
-  attentionConversationIds,
-  pinnedAndAttentionFirst,
-} from "./conversationSections";
+import { pinnedAndWaitingFirst } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
@@ -151,11 +148,7 @@ export function ConversationWorkspace(props: {
   // The feed holds every row. The home list shows them a batch at a time
   // and shows the next batch when the reader scrolls near its end.
   const orderedConversations = useMemo(
-    () =>
-      pinnedAndAttentionFirst(
-        conversations,
-        attentionConversationIds(conversations, waitingConversationIds),
-      ),
+    () => pinnedAndWaitingFirst(conversations, waitingConversationIds),
     [conversations, waitingConversationIds],
   );
   const visibleConversations = useMemo(
