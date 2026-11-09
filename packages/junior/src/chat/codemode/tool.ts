@@ -33,7 +33,7 @@ import {
 import { renderToolResultNudge } from "@/chat/plugins/after-tool-hooks";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { estimateTextTokens } from "@/chat/services/context-budget";
+import { estimateTextTokens } from "@/chat/services/token-estimate";
 
 /**
  * Estimated tokens that the tool declarations may use in the description.
