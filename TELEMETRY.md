@@ -208,6 +208,8 @@ attributes. Nested logs and spans inherit them.
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
 | Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
+| Tool calls ran one at a time         | `agent.tool_batch.started`, `app.sandbox.bash.wait_ms` on span `bash`                                        |
+| Auth signal missed by a command      | `sandbox.egress.auth_signal.missing`, span `bash`                                                            |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
@@ -258,6 +260,24 @@ Attributes on the `codemode` span:
   a result. `memory` is a `script` failure from the VM heap limit.
 - `gen_ai.tool.call.result.size` is the size of the result the model gets,
   after truncation.
+
+## Tool Batches
+
+`agent.tool_batch.started` logs each assistant message with two or more tool
+calls. Pi runs the calls in parallel, unless one of the tools is
+`sequential`. Then it runs all of them one at a time.
+
+| Attribute                              | Type     | Meaning                                    |
+| -------------------------------------- | -------- | ------------------------------------------ |
+| `app.tool_batch.size`                  | int      | tool calls in the message                  |
+| `app.tool_batch.execution`             | string   | `parallel` or `sequential`                 |
+| `app.tool_batch.tool_names`            | string[] | tool names, in call order                  |
+| `app.tool_batch.sequential_tool_names` | string[] | tools that made the batch run sequentially |
+
+- `app.sandbox.bash.wait_ms` on span `bash` is the time the command waited for
+  earlier bash commands of the same Run.
+- `sandbox.egress.auth_signal.missing` means that the command output has the
+  `junior-auth-required` marker, but the command read no auth signal.
 
 ## Model Requests
 
