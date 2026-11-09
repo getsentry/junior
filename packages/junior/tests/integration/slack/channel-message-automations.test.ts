@@ -51,20 +51,30 @@ function trigger(match?: Record<string, string>) {
 async function postChannelMessage(input: {
   botId?: string;
   channel?: string;
+  extShared?: boolean;
   threadTs?: string;
   ts: string;
   user?: string;
+  /** Post like an incoming webhook: a `bot_message` with no user. */
+  webhook?: boolean;
 }) {
   const state = getStateAdapter();
   await state.connect();
   const slackAdapter = createSlackAdapterFixture();
-  const { botId, ...message } = input;
+  const { botId, extShared, webhook, ...message } = input;
   const envelope = slackEnvelope({
     eventType: "message",
     text: "How do I connect the Jira integration?",
     ...message,
   });
   if (botId) Object.assign(envelope.event, { bot_id: botId });
+  if (webhook) {
+    delete (envelope.event as { user?: string }).user;
+    Object.assign(envelope.event, { subtype: "bot_message" });
+  }
+  if (extShared !== undefined) {
+    Object.assign(envelope, { is_ext_shared_channel: extShared });
+  }
   return await handleSlackWebhookAndFlush({
     request: slackWebhookRequest(envelope),
     services: {
@@ -232,6 +242,66 @@ describe("Slack channel-message automations", () => {
     );
     expect(dispatch).toMatchObject({
       destination: { channelId: "C123", threadTs: "1712346.0002" },
+      metadata: { eventAutomationId: automation.id },
+    });
+  });
+
+  it("runs for incoming-webhook posts only when its match names the bot ID", async () => {
+    const catalog = getEventCatalog();
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    const { automation } = (await execute(
+      createAutomationTool(automationToolContext(channelContext), catalog),
+      {
+        instruction: "Triage each new alert.",
+        title: "Triage webhook alerts",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger({ user_id: "B777" }),
+      },
+    )) as { automation: { id: string } };
+
+    // Another webhook, a thread reply, and a post in a channel shared with
+    // another workspace do not run it.
+    await postChannelMessage({
+      botId: "B888",
+      ts: "1712347.0001",
+      webhook: true,
+    });
+    await postChannelMessage({
+      botId: "B777",
+      threadTs: "1712347.0001",
+      ts: "1712347.0002",
+      webhook: true,
+    });
+    await postChannelMessage({
+      botId: "B777",
+      extShared: true,
+      ts: "1712347.0003",
+      webhook: true,
+    });
+    expect(queue.sentRecords()).toEqual([]);
+
+    // A post from the named webhook bot runs it and replies in its thread.
+    await postChannelMessage({
+      botId: "B777",
+      extShared: false,
+      ts: "1712347.0004",
+      webhook: true,
+    });
+    const sent = queue.sentRecords();
+    expect(sent).toHaveLength(1);
+    const dispatch = await getDispatchRecord(
+      sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch).toMatchObject({
+      destination: { channelId: "C123", threadTs: "1712347.0004" },
       metadata: { eventAutomationId: automation.id },
     });
   });

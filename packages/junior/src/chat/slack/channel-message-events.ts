@@ -34,7 +34,7 @@ const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   userId: {
     kind: "string",
     description:
-      "Slack user ID of the message author. Required to run on bot posts, such as alert bots.",
+      "Slack user ID of the message author, or the bot ID (B…) of a bot that posts with no user, such as an incoming webhook. Required to run on bot posts, such as alert bots.",
   },
 });
 

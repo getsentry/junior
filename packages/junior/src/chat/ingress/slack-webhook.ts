@@ -385,27 +385,12 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
-    // A new top-level message can run Event automations for this channel.
-    // Use only `message`: Slack also sends `app_mention` for a mention in code.
-    const channelMessage =
-      args.event.type === "message" && args.event.channel && args.event.ts
-        ? slackChannelMessageEvent({
-            botId: args.event.bot_id,
-            channelId: args.event.channel,
-            subtype: args.event.subtype,
-            text: args.event.text,
-            threadTs: args.event.thread_ts,
-            ts: args.event.ts,
-            userId: message.author.userId,
-          })
-        : undefined;
-    const teamId = args.installation.teamId;
-    if (channelMessage && teamId) {
-      await ingestEventAutomations(
-        { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
-        { queue: args.queue, teamId },
-      );
-    }
+    await ingestSlackChannelMessage({
+      authorId: message.author.userId,
+      event: args.event,
+      installation: args.installation,
+      queue: args.queue,
+    });
     return;
   }
 
@@ -531,6 +516,35 @@ async function routeParsedMessage(args: {
     throw error;
   }
   args.runAfterUnlock(closeAnswered);
+}
+
+/** Publish a new top-level channel message to the Event automations of its channel. */
+async function ingestSlackChannelMessage(args: {
+  authorId: string;
+  event: SlackInboundEvent;
+  installation: SlackInstallationContext;
+  queue: ConversationWorkQueue;
+}): Promise<void> {
+  // Use only `message`: Slack also sends `app_mention` for a mention in code.
+  const { event } = args;
+  const teamId = args.installation.teamId;
+  if (event.type !== "message" || !event.channel || !event.ts || !teamId) {
+    return;
+  }
+  const channelMessage = slackChannelMessageEvent({
+    botId: event.bot_id,
+    channelId: event.channel,
+    subtype: event.subtype,
+    text: event.text,
+    threadTs: event.thread_ts,
+    ts: event.ts,
+    userId: args.authorId,
+  });
+  if (!channelMessage) return;
+  await ingestEventAutomations(
+    { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
+    { queue: args.queue, teamId },
+  );
 }
 
 async function handleSlackEvent(args: {
@@ -680,7 +694,25 @@ async function handleSlackEvent(args: {
           setSpanAttributes({
             "app.slack.membership": member ? "verified" : "unverified",
           });
-          if (!member) return;
+          if (!member) {
+            // An incoming webhook posts with a bot ID and no user, so the
+            // member check cannot pass. Its posts can still run Event
+            // automations that name that bot ID, but never a Turn. A shared
+            // channel can carry bots from other workspaces, so skip those.
+            if (
+              !event.user &&
+              event.bot_id &&
+              args.body.is_ext_shared_channel !== true
+            ) {
+              await ingestSlackChannelMessage({
+                authorId: event.bot_id,
+                event,
+                installation,
+                queue: args.services.queue,
+              });
+            }
+            return;
+          }
           const message = adapter.parseMessage(event);
           let afterUnlock: (() => Promise<void>) | undefined;
           // The task runs after the lock is released, also when routing throws.
