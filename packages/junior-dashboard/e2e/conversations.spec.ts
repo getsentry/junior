@@ -527,7 +527,7 @@ test("shows personal spend and groups profile and session actions", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.setViewportSize({ width: 1440, height: 1150 });
   await page.goto(dashboard.baseURL);
 
   const topBarTrigger = page.getByRole("button", {
