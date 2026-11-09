@@ -1,6 +1,6 @@
 import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useId, useMemo, useRef, useState, type Ref } from "react";
-import { Globe2, LockKeyhole, PanelLeft } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
@@ -19,9 +19,9 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../components/ui/resizable";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
 import { ConversationHomeList } from "./ConversationHomeList";
+import { ConversationVisibilitySelect } from "./ConversationVisibilitySelect";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
@@ -461,23 +461,10 @@ function NewConversationView(props: {
         draftId="new"
         error={props.error}
         footerStart={
-          <ToggleGroup
-            aria-label="Conversation visibility"
-            className="inline-flex shrink-0 gap-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel p-0.5"
-            onValueChange={([next]) => {
-              if (next) setVisibility(next);
-            }}
-            value={[visibility]}
-          >
-            <ToggleGroupItem className="min-w-20 gap-1.5" value="public">
-              <Globe2 aria-hidden="true" className="size-3" />
-              Public
-            </ToggleGroupItem>
-            <ToggleGroupItem className="min-w-20 gap-1.5" value="private">
-              <LockKeyhole aria-hidden="true" className="size-3" />
-              Private
-            </ToggleGroupItem>
-          </ToggleGroup>
+          <ConversationVisibilitySelect
+            onChange={setVisibility}
+            value={visibility}
+          />
         }
         label="Start a conversation"
         holdDraftUntilAccept
