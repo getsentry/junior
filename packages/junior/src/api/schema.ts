@@ -27,6 +27,8 @@ export {
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
+export { boardReportSchema } from "./schema/board";
+export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
