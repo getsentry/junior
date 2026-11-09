@@ -423,22 +423,28 @@ these spans for warmup and backfill outcomes in production.
 
 Attributes on the `cache_warming.warmup` span:
 
-| Attribute                              | Type   | Meaning                                                   |
-| -------------------------------------- | ------ | --------------------------------------------------------- |
-| `app.cache_warming.trigger`            | string | `idle` or `tool_wait`                                     |
-| `app.cache_warming.outcome`            | string | `completed`, `skipped`, `missed`, or `failed`             |
-| `app.cache_warming.skip_reason`        | string | `cache_expired`, `breaker_open`, `stopped`, or a decision |
-| `app.cache_warming.cycle`              | int    | warmup number in the idle period or tool wait             |
-| `app.cache_warming.prefix_tokens`      | int    | cached prefix tokens that the warmup keeps                |
-| `app.cache_warming.cache_ttl_left_ms`  | int    | idle only: time left before the cache expires             |
-| `app.cache_warming.return_probability` | double | chance of a return in the next TTL                        |
-| `app.cache_warming.returns_per_warmup` | double | best expected returns per warmup                          |
-| `app.cache_warming.threshold`          | double | returns per warmup that make a warmup pay                 |
-| `app.cost.total_usd`                   | double | cost of the warmup call                                   |
-| `gen_ai.usage.cache_read.input_tokens` | int    | cached tokens that the warmup call read                   |
+| Attribute                              | Type    | Meaning                                                   |
+| -------------------------------------- | ------- | --------------------------------------------------------- |
+| `app.cache_warming.trigger`            | string  | `idle` or `tool_wait`                                     |
+| `app.cache_warming.outcome`            | string  | `completed`, `skipped`, `missed`, or `failed`             |
+| `app.cache_warming.skip_reason`        | string  | `cache_expired`, `breaker_open`, `stopped`, or a decision |
+| `app.cache_warming.cycle`              | int     | warmup number in the idle period or tool wait             |
+| `app.cache_warming.prefix_tokens`      | int     | cached prefix tokens that the warmup keeps                |
+| `app.cache_warming.cache_ttl_left_ms`  | int     | idle only: time left before the cache expires             |
+| `app.cache_warming.work_state`         | string  | idle only: `open`, `done`, or `none`                      |
+| `app.cache_warming.archived`           | boolean | idle only: the Conversation was archived                  |
+| `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                        |
+| `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                          |
+| `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                 |
+| `app.cost.total_usd`                   | double  | cost of the warmup call                                   |
+| `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                   |
 
 - A decision `skip_reason` is a `decideWarmup` reason, such as `few_gaps`
   or `unlikely_return`.
+- `work_state` and `archived` are read when the idle period starts. They
+  pick its gap segment: `user|system:1|2-3|4+:open|done|none`, or
+  `archived:open|done|none`. The `cache_warming.warmup.*` and
+  `cache_warming.conversation.returned` logs carry them too.
 - The decision attributes are absent when the warmup skipped before the
   decision. The cost and usage attributes are absent when no warmup call
   completed.
@@ -461,7 +467,7 @@ Warmup outcomes and skip reasons.
 
 ```text
 dataset=spans query='span.op:cache_warming.warmup'
-fields=app.cache_warming.trigger,app.cache_warming.outcome,app.cache_warming.skip_reason,count(),sum(app.cost.total_usd)
+fields=app.cache_warming.trigger,app.cache_warming.work_state,app.cache_warming.archived,app.cache_warming.outcome,app.cache_warming.skip_reason,count(),sum(app.cost.total_usd)
 ```
 
 Backfill runs.

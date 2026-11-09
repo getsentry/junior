@@ -12,6 +12,15 @@
  * batch that the statement timeout canceled. It fills only segment lists
  * that are empty when it starts, so it does not add history to gaps that
  * live recording already has.
+ *
+ * History does not tell the plugin work state or the archive state that a
+ * Conversation had when an idle period started. So it fills only the
+ * segments of Conversations that are not archived and have work state
+ * `none`, which most Conversations have. The `open` and `done` segments and
+ * the `archived:*` segments stay empty until live gaps arrive. With fewer
+ * than `MIN_GAP_SAMPLES` gaps, `decideWarmup` returns `few_gaps` and Junior
+ * sends no warmup. The idle period still records its gap, so the segment
+ * fills from live idle periods.
  */
 import { performance } from "node:perf_hooks";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -34,7 +43,9 @@ import {
   segmentGapsKey,
 } from "./warmup";
 
-const BACKFILL_KEY = "junior:cache_warming:backfill";
+// The key names the segment format. A change of the `gapSegment` keys must
+// change it, so that the fill runs again for the new segment lists.
+const BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
@@ -53,13 +64,22 @@ const BACKFILL_BUDGET_MS = 60_000;
 // arrives during the write. The model reads the list as a histogram, so mixed
 // order does not matter.
 const BACKFILL_GAPS_MAX = GLOBAL_GAPS_MAX / 2;
-// Each segment that `gapSegment` can return. It puts 3 or more ended Turns
-// in one group.
-const ALL_SEGMENTS = new Set(
+// Each segment that the backfill fills. `gapSegment` puts 3 or more ended
+// Turns in one group.
+const BACKFILL_SEGMENTS = new Set(
   [true, false].flatMap((userActor) =>
-    [0, 1, 2, 3].map((endedTurns) => gapSegment(userActor, endedTurns)),
+    [0, 1, 2, 3].map((endedTurns) => historySegment(userActor, endedTurns)),
   ),
 );
+
+function historySegment(userActor: boolean, endedTurns: number): string {
+  return gapSegment({
+    userActor,
+    endedTurns,
+    workState: "none",
+    archived: false,
+  });
+}
 
 interface ConversationRow {
   conversationId: string;
@@ -221,7 +241,7 @@ function replayConversation(
         Number(event.cacheRead ?? 0) + Number(event.cacheWrite ?? 0);
       idle = {
         sinceMs: startedAtMs,
-        segment: gapSegment(userActor, endedTurns),
+        segment: historySegment(userActor, endedTurns),
         eligible: prefixTokens >= MIN_WARMUP_PREFIX_TOKENS,
       };
       endedTurns += 1;
@@ -341,7 +361,7 @@ export async function backfillCacheWarmingGaps(args: {
       // not stop the fill. A list that has gaps now has live gaps, or gaps
       // from a run that failed while it wrote. Both are kept as they are.
       const emptySegments = new Set<string>();
-      for (const segment of ALL_SEGMENTS) {
+      for (const segment of BACKFILL_SEGMENTS) {
         const gaps = await state.getList(segmentGapsKey(segment));
         if (gaps.length === 0) emptySegments.add(segment);
       }

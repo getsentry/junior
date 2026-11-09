@@ -23,12 +23,12 @@ import { mockTitleModel } from "../fixtures/title-model";
 const MINUTE = 60_000;
 const T0 = Date.parse("2026-06-01T09:00:00.000Z");
 const SEGMENTS = [
-  "user:1",
-  "user:2-3",
-  "user:4+",
-  "system:1",
-  "system:2-3",
-  "system:4+",
+  "user:1:none",
+  "user:2-3:none",
+  "user:4+:none",
+  "system:1:none",
+  "system:2-3:none",
+  "system:4+:none",
 ];
 
 function reply(
@@ -97,7 +97,7 @@ describe("cache warming gap backfill", () => {
   afterEach(async () => {
     vi.useRealTimers();
     const state = getStateAdapter();
-    await state.delete("junior:cache_warming:backfill");
+    await state.delete("junior:cache_warming:backfill:work_state");
     for (const segment of SEGMENTS) {
       await state.delete(`junior:cache_warming:gaps:${segment}`);
     }
@@ -110,7 +110,7 @@ describe("cache warming gap backfill", () => {
     // Live recording already has a gap for later Turns of people. The
     // backfill does not add to it.
     await getStateAdapter().appendToList(
-      "junior:cache_warming:gaps:user:4+",
+      "junior:cache_warming:gaps:user:4+:none",
       1,
     );
 
@@ -149,14 +149,14 @@ describe("cache warming gap backfill", () => {
     ]);
     await heartbeat(T0 + 130 * MINUTE);
 
-    expect(await gaps("user:1")).toEqual([7 * MINUTE]);
-    expect(await gaps("user:2-3")).toEqual([NO_REPLY_GAP_MS]);
-    expect(await gaps("user:4+")).toEqual([1]);
-    expect(await gaps("system:1")).toEqual([NO_REPLY_GAP_MS]);
+    expect(await gaps("user:1:none")).toEqual([7 * MINUTE]);
+    expect(await gaps("user:2-3:none")).toEqual([NO_REPLY_GAP_MS]);
+    expect(await gaps("user:4+:none")).toEqual([1]);
+    expect(await gaps("system:1:none")).toEqual([NO_REPLY_GAP_MS]);
 
-    await getStateAdapter().delete("junior:cache_warming:gaps:user:1");
+    await getStateAdapter().delete("junior:cache_warming:gaps:user:1:none");
     await heartbeat(T0 + 131 * MINUTE);
-    expect(await gaps("user:1")).toEqual([]);
+    expect(await gaps("user:1:none")).toEqual([]);
   });
 
   it("keeps the Actor that started a Turn when a person steers it", async () => {
@@ -206,8 +206,8 @@ describe("cache warming gap backfill", () => {
 
     vi.setSystemTime(T0 + 130 * MINUTE);
     await backfillCacheWarmingGaps({ nowMs: T0 + 130 * MINUTE });
-    expect(await gaps("system:1")).toEqual([NO_REPLY_GAP_MS]);
-    expect(await gaps("user:1")).toEqual([]);
+    expect(await gaps("system:1:none")).toEqual([NO_REPLY_GAP_MS]);
+    expect(await gaps("user:1:none")).toEqual([]);
   });
 
   it("completes with the gaps it has when its scan budget is used", async () => {
@@ -246,11 +246,11 @@ describe("cache warming gap backfill", () => {
 
     vi.setSystemTime(T0 + 130 * MINUTE);
     await backfillCacheWarmingGaps({ nowMs: T0 + 130 * MINUTE, budgetMs: 0 });
-    expect(await gaps("user:1")).toEqual([7 * MINUTE]);
-    expect(await gaps("system:1")).toEqual([]);
+    expect(await gaps("user:1:none")).toEqual([7 * MINUTE]);
+    expect(await gaps("system:1:none")).toEqual([]);
 
     // The run completed, so a heartbeat does not scan the rest.
     await heartbeat(T0 + 131 * MINUTE);
-    expect(await gaps("system:1")).toEqual([]);
+    expect(await gaps("system:1:none")).toEqual([]);
   });
 });

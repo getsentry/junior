@@ -171,15 +171,41 @@ export function warmupMarginMs(prefixTokens: number): number {
 }
 
 /**
+ * Plugin work of a Conversation when its idle period starts. `open`: a plugin
+ * reports unfinished work, so an event, such as a CI result, can still come.
+ * `done`: all reported work finished and no person wrote after it finished.
+ * `none`: no reported work, a person wrote after it finished, or a plugin
+ * hook failed.
+ */
+export type WorkState = "open" | "done" | "none";
+
+/** What Junior knows about a Conversation when its idle period starts. */
+export interface GapSegmentInput {
+  /** A person started the Turn that ended. */
+  userActor: boolean;
+  /** Turns of the Conversation that ended before this one. */
+  endedTurns: number;
+  workState: WorkState;
+  archived: boolean;
+}
+
+/**
  * Pick the gap histogram for an idle period. Return chances differ most by
  * who started the Turn and by how many Turns the Conversation had before it.
  * Turns that no person started rarely get a quick reply. In 30 days of
  * production data, segments by these two keys saved more than one histogram.
  * Local time of day did not improve the result, so it is not a key.
+ *
+ * The work state lets the histograms learn how often anything returns after
+ * the work is done. An event does not restore an archived Conversation, so
+ * most returns to one are events, not people. Its segment has only the work
+ * state, which keeps the number of segments small.
  */
-export function gapSegment(userActor: boolean, endedTurns: number): string {
-  const depth = endedTurns === 0 ? "1" : endedTurns < 3 ? "2-3" : "4+";
-  return `${userActor ? "user" : "system"}:${depth}`;
+export function gapSegment(input: GapSegmentInput): string {
+  if (input.archived) return `archived:${input.workState}`;
+  const depth =
+    input.endedTurns === 0 ? "1" : input.endedTurns < 3 ? "2-3" : "4+";
+  return `${input.userActor ? "user" : "system"}:${depth}:${input.workState}`;
 }
 
 /** Inputs for one warmup decision. Prices use one unit, such as $/MTok. */
