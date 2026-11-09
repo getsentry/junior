@@ -422,6 +422,11 @@ export interface PluginToolDefinition<
   TExecuteOutput = TOutput,
 > extends ToolApprovalMetadata<TInput> {
   description: string;
+  /**
+   * Why the current Turn cannot run this tool. The host keeps the tool in the
+   * tool list, so the cached prompt stays the same, and rejects its calls.
+   */
+  disabledReason?: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
   exposure?: ToolExposure;
