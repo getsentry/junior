@@ -1,13 +1,14 @@
-import { and, asc, desc, eq, isNull, notExists, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
+  juniorConversationMetrics,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationAggregateColumns } from "../conversations/aggregate";
+import type { ConversationMetric } from "@/db/schema/conversation-metrics";
 import type {
   ActorActivityDayReport,
   ConversationStatsItem,
@@ -23,73 +24,34 @@ import {
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
 
-export const peopleTreeConversation = alias(
-  juniorConversations,
-  "people_tree_conversation",
-);
-const peopleRootConversation = alias(
-  juniorConversations,
-  "people_root_conversation",
-);
-const peopleRootIdentity = alias(juniorIdentities, "people_root_identity");
+/** Root Conversation of a Turn metric row, for its location and surface. */
+export const turnMetricRoot = alias(juniorConversations, "turn_metric_root");
 
-export const peopleTreeAggregateColumns = conversationAggregateColumns({
-  metrics: peopleTreeConversation,
-  roots: juniorConversations,
-});
+function turnMetricSum(metric: ConversationMetric) {
+  return sql`SUM(${juniorConversationMetrics.value}) FILTER (
+    WHERE ${juniorConversationMetrics.metric} = ${metric}
+  )`;
+}
 
 /**
- * Roll metrics through roots without counting a same-actor child twice.
- *
- * A child contributes its own metrics only when its owning root belongs to a
- * different actor.
+ * Sum the Turn metric rows of a person. Spend belongs to the Actor of each
+ * Turn, not to the Actor that started the Conversation.
  */
-export function peopleTreeMetricsJoin() {
-  const rootOwnedByActor = getDb()
-    .select({ conversationId: peopleRootConversation.conversationId })
-    .from(peopleRootConversation)
-    .innerJoin(
-      peopleRootIdentity,
-      eq(peopleRootIdentity.id, peopleRootConversation.actorIdentityId),
-    )
-    .where(
-      and(
-        eq(
-          peopleRootConversation.conversationId,
-          juniorConversations.rootConversationId,
-        ),
-        isNull(peopleRootConversation.parentConversationId),
-        eq(
-          peopleRootConversation.rootConversationId,
-          peopleRootConversation.conversationId,
-        ),
-        eq(
-          peopleRootIdentity.emailNormalized,
-          juniorUsers.primaryEmailNormalized,
-        ),
-        eq(peopleRootIdentity.emailVerified, true),
-      ),
-    );
+export const turnMetricColumns = {
+  costUsd: sql<number | null>`${turnMetricSum("cost_usd")}::double precision`,
+  durationMs: sql<number>`COALESCE(${turnMetricSum("duration_ms")}, 0)::double precision`,
+  tokens: sql<
+    number | null
+  >`${turnMetricSum("total_tokens")}::double precision`,
+};
 
-  return and(
-    eq(
-      peopleTreeConversation.rootConversationId,
-      juniorConversations.rootConversationId,
-    ),
-    or(
-      eq(
-        juniorConversations.rootConversationId,
-        juniorConversations.conversationId,
-      ),
-      and(
-        eq(
-          peopleTreeConversation.conversationId,
-          juniorConversations.conversationId,
-        ),
-        notExists(rootOwnedByActor),
-      ),
-    ),
-  );
+/** Join each Turn metric row to its Conversation and that Conversation's root. */
+export function turnMetricRootJoin() {
+  return sql`${turnMetricRoot.conversationId} = (
+    SELECT coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})
+    FROM ${juniorConversations}
+    WHERE ${juniorConversations.conversationId} = ${juniorConversationMetrics.conversationId}
+  )`;
 }
 
 /** Normalize emails before matching people API rows. */

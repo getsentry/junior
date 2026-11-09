@@ -120,8 +120,8 @@ Finish #2482.
     per-name system rows.
   - code and docs call `junior_conversations.actor_identity_id` the Owner.
     The Conversation exposes its Owner. The column keeps its name.
-  - every reader of the Owner uses the root Owner: access, the feed, People,
-    spend, and Locations. Child spend rolls up to the root Owner.
+  - every reader of the Owner uses the root Owner: access, the feed, People
+    counts, and Locations. Spend reads the Actor of each Turn.
   - Locations group by User, with the Identity as fallback.
   - children stop storing an Owner.
   - nothing writes or reads the two unused Conversation Identity columns.

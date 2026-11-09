@@ -195,6 +195,8 @@ export interface ConversationStore {
    * Conversation metric fields cache totals for existing readers.
    */
   recordExecution(args: {
+    /** Identity of the Turn Actor. Its metric rows record it. */
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     /** When this Run started. */

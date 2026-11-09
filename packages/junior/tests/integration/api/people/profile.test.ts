@@ -12,12 +12,20 @@ import {
   createConversationId,
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
-import { juniorConversations, juniorIdentities } from "@/db/schema";
+import {
+  juniorConversationMetrics,
+  juniorConversations,
+  juniorIdentities,
+} from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import { seedDisplayNameBackfill, seedPeople } from "./fixture";
+import {
+  seedDisplayNameBackfill,
+  seedPeople,
+  turnActorIdentityId,
+} from "./fixture";
 
 describe("people profile API", () => {
   test("validates and decodes profile identifiers", async () => {
@@ -123,23 +131,26 @@ describe("people profile API", () => {
         .where(
           eq(juniorConversations.conversationId, ownerChildConversationId),
         );
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ durationMs: 300, usage: { totalTokens: 3 } })
-        .where(eq(juniorConversations.conversationId, rootConversationId));
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ durationMs: 700, usage: { totalTokens: 7 } })
-        .where(eq(juniorConversations.conversationId, childConversationId));
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ durationMs: 500, usage: { totalTokens: 5 } })
-        .where(
-          eq(juniorConversations.conversationId, ownerChildConversationId),
-        );
+      // Each Turn records its own Actor. The child participant's Turn is
+      // theirs, not the root owner's.
+      const owner = { email: "owner@example.com", slackUserId: "U-owner" };
+      const child = { email: "child@example.com", slackUserId: "U-child" };
+      for (const [conversationId, actor, durationMs, totalTokens] of [
+        [rootConversationId, owner, 300, 3],
+        [childConversationId, child, 700, 7],
+        [ownerChildConversationId, owner, 500, 5],
+      ] as const) {
+        const nowMs = Date.now();
+        await store.recordExecution({
+          actorIdentityId: await turnActorIdentityId(fixture, actor),
+          conversationId,
+          createdAtMs: nowMs,
+          execution: { runId: `${conversationId}:turn`, status: "idle" },
+          lastActivityAtMs: nowMs,
+          metrics: { durationMs, usage: { totalTokens } },
+          updatedAtMs: nowMs,
+        });
+      }
 
       const rootReport = await readPeopleProfileFromSql("owner@example.com", {
         viewer: testViewer("owner@example.com"),
@@ -161,26 +172,26 @@ describe("people profile API", () => {
       );
       expect(rootReport).toMatchObject({
         locations: expect.arrayContaining([
-          expect.objectContaining({ durationMs: 1_500, tokens: 15 }),
+          expect.objectContaining({ durationMs: 800, tokens: 8 }),
         ]),
         surfaces: [
           expect.objectContaining({
             conversations: 2,
-            durationMs: 1_500,
-            tokens: 15,
+            durationMs: 800,
+            tokens: 8,
           }),
         ],
         totals: {
           conversations: 2,
-          durationMs: 1_500,
-          tokens: 15,
+          durationMs: 800,
+          tokens: 8,
         },
       });
       expect(rootReport.activityDays).toContainEqual(
         expect.objectContaining({
           conversations: 2,
-          durationMs: 1_500,
-          tokens: 15,
+          durationMs: 800,
+          tokens: 8,
         }),
       );
       const directory = await readPeopleListFromSql();
@@ -190,8 +201,8 @@ describe("people profile API", () => {
         ),
       ).toMatchObject({
         conversations: 2,
-        durationMs: 1_500,
-        tokens: 15,
+        durationMs: 800,
+        tokens: 8,
       });
 
       const report = await readPeopleProfileFromSql("child@example.com", {
@@ -442,18 +453,39 @@ describe("people profile API", () => {
           conversationId: `slack:C1:aggregate:${index}`,
           destination: null,
           destinationId: null,
-          durationMs: 2,
           createdAt: now,
           lastActivityAt: now,
           updatedAt: now,
-          usage: { totalTokens: 3 },
         }),
+      );
+      // Each Conversation has one Turn by the same Actor.
+      const metrics = conversations.flatMap(({ conversationId }) =>
+        (
+          [
+            ["duration_ms", 2],
+            ["total_tokens", 3],
+          ] as const
+        ).map(([metric, value]) => ({
+          actorIdentityId: identity?.id,
+          conversationId,
+          metric,
+          occurredAt: now,
+          runId: `${conversationId}:turn`,
+          updatedAt: now,
+          value,
+        })),
       );
       for (let offset = 0; offset < conversations.length; offset += 500) {
         await fixture.sql
           .db()
           .insert(juniorConversations)
           .values(conversations.slice(offset, offset + 500));
+      }
+      for (let offset = 0; offset < metrics.length; offset += 1_000) {
+        await fixture.sql
+          .db()
+          .insert(juniorConversationMetrics)
+          .values(metrics.slice(offset, offset + 1_000));
       }
 
       const report = await readPeopleProfileFromSql("aggregate@example.com");

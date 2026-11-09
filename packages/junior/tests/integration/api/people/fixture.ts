@@ -1,13 +1,44 @@
+import type { StoredSlackActor } from "@/chat/actor";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { juniorConversations, juniorIdentities } from "@/db/schema";
 import type { LocalJuniorSqlFixture } from "../../../fixtures/sql";
+
+/** Resolve the Identity that a Turn by this Slack Actor records. */
+export async function turnActorIdentityId(
+  fixture: LocalJuniorSqlFixture,
+  actor: StoredSlackActor,
+): Promise<string | undefined> {
+  return await resolveActorIdentityId(fixture.sql, {
+    platform: "slack",
+    teamId: actor.teamId ?? "T1",
+    userId: actor.slackUserId ?? "",
+    ...(actor.email ? { email: actor.email } : undefined),
+    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+  });
+}
 
 /** Seed representative verified and untrusted people rows for people API tests. */
 export async function seedPeople(fixture: LocalJuniorSqlFixture) {
   const store = createSqlStore(fixture.sql);
   await migrateSchema(fixture.sql);
 
+  const alice = {
+    email: "Alice@Example.com",
+    fullName: "Alice Example",
+    platform: "slack",
+    slackUserId: "U1",
+    slackUserName: "alice",
+    teamId: "T1",
+  } satisfies StoredSlackActor;
+  const providerAlice = {
+    email: "alice@example.com",
+    fullName: "Provider Specific Alice",
+    platform: "slack",
+    slackUserId: "U1B",
+    teamId: "T1",
+  } satisfies StoredSlackActor;
   await store.recordActivity({
     conversationId: "slack:C1:123",
     channelName: "proj-alpha",
@@ -16,19 +47,13 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       teamId: "T1",
       channelId: "C1",
     },
-    actor: {
-      email: "Alice@Example.com",
-      fullName: "Alice Example",
-      platform: "slack",
-      slackUserId: "U1",
-      slackUserName: "alice",
-      teamId: "T1",
-    },
+    actor: alice,
     source: "slack",
     visibility: "public",
     nowMs: Date.parse("2026-06-10T10:03:00.000Z"),
   });
   await store.recordExecution({
+    actorIdentityId: await turnActorIdentityId(fixture, alice),
     conversationId: "slack:C1:123",
     createdAtMs: Date.parse("2026-06-10T10:03:00.000Z"),
     execution: {
@@ -64,6 +89,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
     title: "Private project plan",
   });
   await store.recordExecution({
+    actorIdentityId: await turnActorIdentityId(fixture, providerAlice),
     conversationId: "slack:C4:456",
     createdAtMs: Date.parse("2026-06-12T11:00:00.000Z"),
     destination: {

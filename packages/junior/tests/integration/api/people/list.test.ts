@@ -5,7 +5,8 @@ import { actorDirectoryReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
-import { seedPeople } from "./fixture";
+import { readPersonalSpendFromSql } from "@/api/people/spend.query";
+import { seedPeople, turnActorIdentityId } from "./fixture";
 
 describe("people list API", () => {
   test("serves the route through its response schema", async () => {
@@ -122,6 +123,80 @@ describe("people list API", () => {
       expect(report.windowStart).toBe("2026-03-18T00:00:00.000Z");
       expect(report.windowEnd).toBe("2026-06-15T00:00:00.000Z");
       expect(report.source).toBe("conversation_index");
+    } finally {
+      vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+
+  test("attributes Turn spend to the Turn Actor", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
+    const fixture = createConfiguredJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      const store = createSqlStore(fixture.sql);
+      const ana = {
+        email: "ana@example.com",
+        fullName: "Ana Example",
+        platform: "slack",
+        slackUserId: "UANA",
+        teamId: "T1",
+      } as const;
+      const ben = {
+        email: "ben@example.com",
+        fullName: "Ben Example",
+        platform: "slack",
+        slackUserId: "UBEN",
+        teamId: "T1",
+      } as const;
+      const conversationId = "slack:C1:shared";
+      // Ana starts the Conversation. Ben runs a later Turn in it.
+      await store.recordActivity({
+        actor: ana,
+        conversationId,
+        destination: { channelId: "C1", platform: "slack", teamId: "T1" },
+        nowMs: Date.parse("2026-06-14T10:00:00.000Z"),
+        source: "slack",
+      });
+      for (const [turnId, actor, costUsd, atMs] of [
+        ["ana-turn", ana, 0.1, Date.parse("2026-06-14T10:00:00.000Z")],
+        ["ben-turn", ben, 0.3, Date.parse("2026-06-14T11:00:00.000Z")],
+      ] as const) {
+        await store.recordExecution({
+          actorIdentityId: await turnActorIdentityId(fixture, actor),
+          conversationId,
+          createdAtMs: atMs,
+          execution: { runId: turnId, status: "idle", updatedAtMs: atMs },
+          lastActivityAtMs: atMs,
+          metrics: { durationMs: 1_000, usage: { cost: { total: costUsd } } },
+          updatedAtMs: atMs,
+        });
+      }
+
+      const report = await readPeopleListFromSql();
+      const person = (email: string) =>
+        report.people.find((entry) => entry.actor.email === email);
+      expect(person("ana@example.com")).toMatchObject({
+        conversations: 1,
+        durationMs: 1_000,
+        windows: { 7: { conversations: 1, costUsd: 0.1 } },
+      });
+      expect(person("ben@example.com")).toMatchObject({
+        actor: { fullName: "Ben Example" },
+        conversations: 0,
+        durationMs: 1_000,
+        lastSeenAt: "2026-06-14T11:00:00.000Z",
+        windows: { 7: { conversations: 0, costUsd: 0.3 } },
+      });
+      const nowMs = Date.now();
+      expect(
+        await readPersonalSpendFromSql("ana@example.com", nowMs),
+      ).toMatchObject({ thirtyDaysUsd: 0.1 });
+      expect(
+        await readPersonalSpendFromSql("ben@example.com", nowMs),
+      ).toMatchObject({ thirtyDaysUsd: 0.3 });
     } finally {
       vi.useRealTimers();
       await fixture.close();
