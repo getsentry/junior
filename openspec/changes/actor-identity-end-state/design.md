@@ -76,7 +76,8 @@ The rules to prove:
   stops this. The data migration clears the old copies.
 - Access reads the Participants of the root, not the child's own copy. #2382
   uses the same rule for visibility.
-- Child spend goes to the root Actor. Today spend reads the child's own copy.
+- People counts and spend go to the Actor of each Turn, in a child or a
+  root. A child Task Turn runs as the Actor that started it.
 - `onBehalfOf` (#2181) is Message provenance. It gives no access, spend, or
   feed rights.
 
@@ -322,25 +323,25 @@ No gap is fully fixed on `main`. #2436 fixed part of gap 10. #2437 fixed part
 of gap 17. #2440 fixed part of gap 19. #2443 fixed part of gap 6. #2482 (in
 review) closes gap 10 for new writes and fixes part of gap 7.
 
-| #   | What breaks now                                                                                           | Where                                                                 | Step                          | Evidence  |
-| --- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------- | --------- |
-| 1   | No event Message has an author Identity. Core does not read the GitHub sender id.                         | `chat/events/notification.ts`, `junior-github/src/webhooks/events.ts` | 4; old Messages: 6            | Confirmed |
-| 2   | Guardian sends every web Actor as local.                                                                  | `guardian/gate.ts`, `guardian/proposal.ts`                            | 8                             | Confirmed |
-| 3   | Message authors in root Conversations come from the root Source or Location. A bot author gets no Actor.  | `agent-invocations/root-conversation.ts`                              | 8                             | Confirmed |
-| 4   | Session logs drop every Actor that is not Slack.                                                          | `task-execution/turn-cursor.ts`                                       | 2, 8                          | Confirmed |
-| 5   | Activity metadata guesses the Source. A web Turn with no saved Source gets `local`.                       | `task-execution/turn-cursor.ts`                                       | 8                             | Traced    |
-| 6   | Event Message authors are guessed from id patterns and the Location, and web gets the synthetic Identity. | `chat/conversations/sql/event-actor.ts`                               | 2, 4, 6, 8                    | Confirmed |
-| 7   | The participant list shows system Identities.                                                             | `api/conversations/participants.ts`                                   | 2, 4                          | Confirmed |
-| 8   | Locations show a person with two Identities two times.                                                    | `api/locations/query.ts`                                              | 3                             | Confirmed |
-| 9   | Connections are keyed per platform. A Slack connection does not show on the web.                          | `api/connections/routes.ts`                                           | Non-Goal                      | Confirmed |
-| 10  | A later human Turn can replace the root Actor of a system root. #2436 fixed only the Source case.         | `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`            | 2; old damage: 7              | Confirmed |
-| 11  | Legacy system Identity names do not match `SystemActor.name` values.                                      | `sql/actor-identity.ts`                                               | 3, 6                          | Confirmed |
-| 12  | The local CLI uses one user id for every person and for its tokens.                                       | `chat/local/runner.ts`, `chat/local/credential-sync.ts`               | 4; naming the human: Non-Goal | Confirmed |
-| 13  | The `Actor` schema is closed. A TODO questions the system platform value.                                 | `junior-plugin-api/src/schemas.ts`                                    | Non-Goal                      | Confirmed |
-| 14  | The dashboard author shape is Slack only. It cannot show a system, bot, or GitHub author.                 | `api/schema/conversation.ts`                                          | 8                             | Confirmed |
-| 15  | Conversations and Redis work state store a Slack-only Actor shape.                                        | `chat/conversations/store.ts`, `task-execution/state.ts`              | 6, 8, 9                       | Confirmed |
-| 16  | Two Conversation Identity columns are always empty.                                                       | `chat/conversations/sql/store.ts`                                     | 3, 9                          | Confirmed |
-| 17  | Web uses the synthetic `junior/<email>` Identity. The mock viewer and the local bypass have none.         | `sql/actor-identity.ts`, `junior-dashboard/src/app.ts`                | 4; old rows: no migration     | Confirmed |
-| 18  | No rule checks if an event author is a verified person before Junior follows their text.                  | `agent-invocations/root-conversation.ts`, `guardian/policy.ts`        | 4                             | Traced    |
-| 19  | Old rows: roots whose root Actor is not their starter, and wrong visibility from before #2440.            | `junior_conversations`, `junior_destinations`                         | 7 (repair); visibility: #2382 | Traced    |
-| 20  | Child rows store their own root Actor copy, and spend reads it. Child spend can miss the root Actor.      | `chat/conversations/sql/store.ts`, `api/people/spend.query.ts`        | 3, 6                          | Confirmed |
+| #   | What breaks now                                                                                                      | Where                                                                 | Step                          | Evidence  |
+| --- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------- | --------- |
+| 1   | No event Message has an author Identity. Core does not read the GitHub sender id.                                    | `chat/events/notification.ts`, `junior-github/src/webhooks/events.ts` | 4; old Messages: 6            | Confirmed |
+| 2   | Guardian sends every web Actor as local.                                                                             | `guardian/gate.ts`, `guardian/proposal.ts`                            | 8                             | Confirmed |
+| 3   | Message authors in root Conversations come from the root Source or Location. A bot author gets no Actor.             | `agent-invocations/root-conversation.ts`                              | 8                             | Confirmed |
+| 4   | Session logs drop every Actor that is not Slack.                                                                     | `task-execution/turn-cursor.ts`                                       | 2, 8                          | Confirmed |
+| 5   | Activity metadata guesses the Source. A web Turn with no saved Source gets `local`.                                  | `task-execution/turn-cursor.ts`                                       | 8                             | Traced    |
+| 6   | Event Message authors are guessed from id patterns and the Location, and web gets the synthetic Identity.            | `chat/conversations/sql/event-actor.ts`                               | 2, 4, 6, 8                    | Confirmed |
+| 7   | The participant list shows system Identities.                                                                        | `api/conversations/participants.ts`                                   | 2, 4                          | Confirmed |
+| 8   | Locations show a person with two Identities two times.                                                               | `api/locations/query.ts`                                              | 3                             | Confirmed |
+| 9   | Connections are keyed per platform. A Slack connection does not show on the web.                                     | `api/connections/routes.ts`                                           | Non-Goal                      | Confirmed |
+| 10  | A later human Turn can replace the root Actor of a system root. #2436 fixed only the Source case.                    | `chat/conversations/sql/store.ts`, `sql/actor-identity.ts`            | 2; old damage: 7              | Confirmed |
+| 11  | Legacy system Identity names do not match `SystemActor.name` values.                                                 | `sql/actor-identity.ts`                                               | 3, 6                          | Confirmed |
+| 12  | The local CLI uses one user id for every person and for its tokens.                                                  | `chat/local/runner.ts`, `chat/local/credential-sync.ts`               | 4; naming the human: Non-Goal | Confirmed |
+| 13  | The `Actor` schema is closed. A TODO questions the system platform value.                                            | `junior-plugin-api/src/schemas.ts`                                    | Non-Goal                      | Confirmed |
+| 14  | The dashboard author shape is Slack only. It cannot show a system, bot, or GitHub author.                            | `api/schema/conversation.ts`                                          | 8                             | Confirmed |
+| 15  | Conversations and Redis work state store a Slack-only Actor shape.                                                   | `chat/conversations/store.ts`, `task-execution/state.ts`              | 6, 8, 9                       | Confirmed |
+| 16  | Two Conversation Identity columns are always empty.                                                                  | `chat/conversations/sql/store.ts`                                     | 3, 9                          | Confirmed |
+| 17  | Web uses the synthetic `junior/<email>` Identity. The mock viewer and the local bypass have none.                    | `sql/actor-identity.ts`, `junior-dashboard/src/app.ts`                | 4; old rows: no migration     | Confirmed |
+| 18  | No rule checks if an event author is a verified person before Junior follows their text.                             | `agent-invocations/root-conversation.ts`, `guardian/policy.ts`        | 4                             | Traced    |
+| 19  | Old rows: roots whose root Actor is not their starter, and wrong visibility from before #2440.                       | `junior_conversations`, `junior_destinations`                         | 7 (repair); visibility: #2382 | Traced    |
+| 20  | Spend read the root Actor of each Conversation, not the Actor of each Turn. Fixed: metric rows store the Turn Actor. | `chat/conversations/sql/store.ts`, `api/people/spend.query.ts`        | 3, 6                          | Confirmed |

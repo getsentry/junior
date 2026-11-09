@@ -85,7 +85,8 @@ These are David Cramer's answers in the Slack thread for #2439.
 - The schema should be normalized.
 - Assistant output is just an event. It needs no author Identity.
 - Web users always have an Identity. The mock viewer mocks one.
-- Child spend rolls up to the root Actor.
+- Spend belongs to the Actor of each Turn: "spend should be coupled to the
+  turn, not the conversation".
 - Slack bots: "they have an identity, but not a user (does that make
   sense?) its still an actor"
 - For an inbound event, Junior finds the correct Identity. It verifies that
@@ -306,8 +307,8 @@ Resolved:
 - Automation-run spend leaves personal spend. A system root Actor has no User.
 - A human who replies to an automation Conversation gets access as a
   participant, not as root Actor.
-- Child spend rolls up to the root Actor. Today it can go to the child's own
-  Identity.
+- People counts and spend belong to the Actor of each Turn, not to the root
+  Actor.
 - A web user's new Messages and Conversations use their sign-in Identity.
   People still groups them with the same User as the old `junior/<email>`
   rows.

@@ -120,8 +120,8 @@ Finish #2482.
     per-name system rows.
   - code and docs call `junior_conversations.actor_identity_id` the root Actor.
     The Conversation exposes its root Actor. The column keeps its name.
-  - People, spend, and Locations read the root Actor of the root. Access and the
-    feed read only Participants. Child spend rolls up to the root Actor.
+  - Access and the feed read only Participants. People counts, spend, and
+    Locations read the Actor of each Turn.
   - Locations group by User, with the Identity as fallback.
   - children stop storing a root Actor.
   - nothing writes or reads the two unused Conversation Identity columns.

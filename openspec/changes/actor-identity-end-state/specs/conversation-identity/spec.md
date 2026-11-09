@@ -56,9 +56,9 @@ Actor of its root Conversation.
 
 #### Scenario: Child spend
 
-- **WHEN** a child Conversation uses tokens
-- **THEN** People and spend count them for the root Actor
-- **AND** not for the child's own Actor.
+- **WHEN** a Turn in a root or child Conversation uses tokens
+- **THEN** People and spend count them for the Actor of that Turn
+- **AND** not for the root Actor of the Conversation.
 
 ### Requirement: One System Identity
 

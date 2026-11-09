@@ -498,6 +498,7 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
@@ -576,6 +577,7 @@ export class SqlStore implements ConversationStore {
       });
       if (args.metrics && args.execution.runId) {
         await replaceConversationMetrics(this.executor, {
+          actorIdentityId: args.actorIdentityId,
           conversationId: args.conversationId,
           runId: args.execution.runId,
           occurredAtMs: args.createdAtMs,
