@@ -41,6 +41,15 @@ export function useComposerQuestions(conversationId: string) {
   // The list keeps the items of the last Conversation while the new one
   // loads. Those questions are not for this Conversation.
   const stale = query.isPlaceholderData;
+  // The list pages through every open item, notices too, so a question can
+  // sit past the first page. Load every page so each question docks.
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
+  // A failed page stops the loop, so it does not retry without end.
+  const failed = query.isFetchNextPageError;
+  useEffect(() => {
+    if (stale || failed || !hasNextPage || isFetchingNextPage) return;
+    void fetchNextPage();
+  }, [failed, fetchNextPage, hasNextPage, isFetchingNextPage, stale]);
   const questions = useMemo(
     () => (stale ? [] : items.filter(reviewItemWaitsForAnswer)),
     [items, stale],

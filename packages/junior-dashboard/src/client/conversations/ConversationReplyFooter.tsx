@@ -103,14 +103,18 @@ function ReplyFooter(props: {
   hasQuestionAnswersRef.current = hasQuestionAnswers;
   const { confirmSubmit } = unsentAnswers;
   // A failed answer keeps the draft, so the reader can send both again.
-  const beforeSubmit = useCallback(() => {
-    const confirmation = confirmSubmit();
-    if (!confirmation && !hasQuestionAnswersRef.current) return undefined;
-    return (async () => {
-      if (confirmation && !(await confirmation)) return false;
-      return (await questionAnswersRef.current?.send()) ?? true;
-    })();
-  }, [confirmSubmit]);
+  // Only a message drops the details-panel picks, so only a message asks.
+  const beforeSubmit = useCallback(
+    ({ sendsMessage }: { sendsMessage: boolean }) => {
+      const confirmation = sendsMessage ? confirmSubmit() : undefined;
+      if (!confirmation && !hasQuestionAnswersRef.current) return undefined;
+      return (async () => {
+        if (confirmation && !(await confirmation)) return false;
+        return (await questionAnswersRef.current?.send()) ?? true;
+      })();
+    },
+    [confirmSubmit],
+  );
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
