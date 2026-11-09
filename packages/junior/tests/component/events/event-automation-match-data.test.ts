@@ -2,6 +2,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
+import * as dbModule from "@/chat/db";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import {
   createEventAutomation,
@@ -16,10 +17,12 @@ describe("event automation match data", () => {
   afterEach(async () => {
     await closeDb();
     await disconnectStateAdapter();
+    vi.restoreAllMocks();
   });
 
   it("loads filters for event automations with no identifier", async () => {
     const automationId = `evt_any_resource_${Date.now()}`;
+    const pullRequestAutomationId = `evt_pull_request_${Date.now()}`;
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-event-test");
     try {
@@ -45,6 +48,24 @@ describe("event automation match data", () => {
           label: "Admin pull requests in getsentry/junior",
           match: { openerRole: "admin", repo: "getsentry/junior" },
           namespace: "github",
+        },
+      });
+      await createEventAutomation(getDb(), {
+        id: pullRequestAutomationId,
+        createdAtMs: Date.now(),
+        createdBy: { slackUserId: "U123" },
+        creatorIdentityId: creator.id,
+        credentialMode: "system",
+        destination: SLACK_DESTINATION,
+        destinationVisibility: "public",
+        outcomes: [],
+        task: { text: "Review pull request 8." },
+        trigger: {
+          events: ["pull_request.opened"],
+          identifier: "getsentry/junior#8",
+          label: "getsentry/junior#8",
+          namespace: "github",
+          resourceType: "pull_request",
         },
       });
       const publisher = createEventAppPublisher({
@@ -95,10 +116,32 @@ describe("event automation match data", () => {
         trustedSummary: "A pull request was opened.",
         data: { openerRole, pullRequest: 7, repo: "getsentry/junior" },
       });
-      await expect(publisher.hasMatch(event("admin"))).resolves.toBe(true);
-      await expect(publisher.hasMatch(event("write"))).resolves.toBe(false);
+      await expect(publisher.hasMatch([event("admin")])).resolves.toBe(true);
+      await expect(publisher.hasMatch([event("write")])).resolves.toBe(false);
+
+      // All copies of a webhook Event share one automations read. The
+      // automation for #8 does not match the #7 copy, and does not select
+      // the merged copy.
+      const db = getDb();
+      const select = vi.spyOn(db, "select");
+      vi.spyOn(dbModule, "getDb").mockReturnValue(db);
+      const pullRequest8 = {
+        ...event("write"),
+        identifier: "getsentry/junior#8",
+      };
+      await expect(
+        publisher.hasMatch([
+          event("write"),
+          { ...pullRequest8, eventType: "pull_request.merged" },
+        ]),
+      ).resolves.toBe(false);
+      expect(select).toHaveBeenCalledTimes(1);
+      await expect(
+        publisher.hasMatch([event("write"), pullRequest8]),
+      ).resolves.toBe(true);
     } finally {
       await deleteEventAutomation(getDb(), automationId);
+      await deleteEventAutomation(getDb(), pullRequestAutomationId);
       vi.unstubAllEnvs();
     }
   });

@@ -30,6 +30,7 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
+import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -42,6 +43,7 @@ import {
   SystemPageLayout,
   SystemRouteLoading,
 } from "./pages/system/SystemPageLayout";
+import { hasWorkspaceDetailsFrame } from "./pages/system/SystemNavigation";
 import {
   isMemoryLibraryPath,
   MemoryRouteLoading,
@@ -66,6 +68,11 @@ import type { DashboardCoreData } from "./types";
 const RepositoryPage = lazy(() =>
   import("./pages/code/RepositoryPage").then((module) => ({
     default: module.RepositoryPage,
+  })),
+);
+const BoardPage = lazy(() =>
+  import("./pages/board/BoardPage").then((module) => ({
+    default: module.BoardPage,
   })),
 );
 const CodePage = lazy(() =>
@@ -228,6 +235,7 @@ export function DashboardShell() {
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
   const personalSpendQuery = usePersonalSpendData(loggedIn);
+  const desktopTopBar = useDesktopTopBar();
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
@@ -302,31 +310,35 @@ export function DashboardShell() {
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        <NavRail
-          navItems={primaryNavItems}
-          onSearch={openCommandPalette}
-          profile={
-            loggedIn ? (
-              <ProfileMenu
-                identity={data!.me}
-                onSignOut={signOut}
-                spend={personalSpendQuery.data}
-                pages={profileNavItems}
-              />
-            ) : undefined
-          }
-          workspaceActive={workspace}
-        />
+        {desktopTopBar ? null : (
+          <NavRail
+            navItems={primaryNavItems}
+            onSearch={openCommandPalette}
+            profile={
+              loggedIn ? (
+                <ProfileMenu
+                  identity={data!.me}
+                  onSignOut={signOut}
+                  spend={personalSpendQuery.data}
+                  pages={profileNavItems}
+                />
+              ) : undefined
+            }
+            workspaceActive={workspace}
+          />
+        )}
         <VisualViewportShell
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
             workspace ||
             location.pathname === "/review" ||
             hasAutomationDetailsFrame(location.pathname) ||
+            hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
           }
         >
           <DashboardChrome
+            desktopTopBar={desktopTopBar}
             banner={
               <>
                 <VersionDriftBanner serverVersion={serverVersion} />
@@ -335,6 +347,7 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
+                desktopTopBar={desktopTopBar}
                 mobileBackTo={conversationId ? "/" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
@@ -561,6 +574,8 @@ export function DashboardShell() {
               }
               path="/review"
             />
+            {/* The Board is an experiment, so no navigation links to it. */}
+            <Route element={<BoardPage />} path="/board" />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route

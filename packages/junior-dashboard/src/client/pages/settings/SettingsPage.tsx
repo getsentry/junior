@@ -20,6 +20,8 @@ import {
   type ConversationStartPosition,
 } from "../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
+import { navLayoutChoices } from "../../components/NavLayoutSwitcher";
+import { useNavLayoutChoice, type NavLayoutChoice } from "../../navLayout";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
 import { NotificationSettingsCard } from "../../notifications/NotificationSettingsCard";
@@ -108,12 +110,49 @@ export function SettingsPage({ identity }: SettingsPageProps) {
           </div>
         </Card>
       </form>
+      <NavLayoutSetting />
       <ConversationStartSetting />
       <ComposerAutocorrectSetting />
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
     </SettingsPageLayout>
+  );
+}
+
+/** Let the user choose desktop navigation on this browser. Phones skip it. */
+function NavLayoutSetting() {
+  const [choice, setChoice] = useNavLayoutChoice();
+  return (
+    <Card className="mt-6 mb-0 hidden md:block" padding="md" variant="raised">
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        <legend className="m-0 p-0 text-lg font-bold">Navigation</legend>
+        <p className="mt-1 mb-4 text-sm text-dashboard-text-muted">
+          This choice applies to this browser.
+        </p>
+        <RadioGroup<NavLayoutChoice>
+          aria-label="Navigation"
+          className="grid gap-3"
+          onValueChange={setChoice}
+          value={choice}
+        >
+          {navLayoutChoices.map((option) => (
+            <label
+              className="flex cursor-pointer items-start gap-3"
+              key={option.value}
+            >
+              <RadioGroupItem className="mt-0.5" value={option.value} />
+              <span className="grid gap-0.5">
+                <span className="text-sm font-medium">{option.label}</span>
+                <span className="text-xs text-dashboard-text-muted">
+                  {option.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </RadioGroup>
+      </fieldset>
+    </Card>
   );
 }
 

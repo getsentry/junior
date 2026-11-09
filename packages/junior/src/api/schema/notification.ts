@@ -16,7 +16,7 @@ const notificationTimezoneSourceSchema = z.enum([
   "default",
 ]);
 
-/** The viewer's phone notification settings. */
+/** The viewer's push notification settings. */
 export const notificationSettingsSchema = z
   .object({
     /** Server VAPID public key. Absent when Web Push is not configured. */

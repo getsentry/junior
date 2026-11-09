@@ -70,6 +70,8 @@ const dispatchRecordSchema = z
     source: sourceSchema,
     outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     status: dispatchStatusSchema,
+    // Plugin titles may be any non-blank text, including "unknown".
+    title: z.string().min(1).optional(),
     updatedAtMs: z.number().finite(),
   })
   .strict()
@@ -355,6 +357,9 @@ export async function createOrGetDispatch(args: {
         : undefined),
       status: "pending",
       source: args.options.source,
+      ...(args.options.title?.trim()
+        ? { title: args.options.title.trim() }
+        : undefined),
       updatedAtMs: args.nowMs,
     };
     // Index first: a crash can leave a harmless dangling id, while writing the

@@ -10,7 +10,6 @@ import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { formatRelativeTime, formatTime } from "../format";
 import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
 import { Button } from "../components/ui/button";
-import type { Conversation } from "../types";
 import { ConversationBrief } from "./ConversationBrief";
 import {
   ConversationTasks,
@@ -50,8 +49,6 @@ export function ConversationDetails(props: {
   autoArchive: ReactNode;
   brief?: Brief;
   conversationId: string;
-  /** The loaded feed. Its Threads carry their own titles. */
-  feedConversations: readonly Conversation[];
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
@@ -182,12 +179,7 @@ export function ConversationDetails(props: {
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
-        {threads.length > 0 ? (
-          <ConversationThreads
-            feedConversations={props.feedConversations}
-            threads={threads}
-          />
-        ) : null}
+        {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
         {props.links.length > 0 || watches.length > 0 ? (
           // A Watch waits on something. It shows with linked work, so the
           // work and what Junior waits on read as one list.

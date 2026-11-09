@@ -85,6 +85,7 @@ import {
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurns } from "@/chat/task-execution/supersede-turns";
 import {
+  getAuthPausedConversationTurnId,
   getEventBatchDelayMs,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
@@ -207,9 +208,25 @@ async function completeCancelledConversationTurn(args: {
 }
 
 /**
+ * End the Turn of a stopped Conversation that waits for sign-in, so a later
+ * sign-in cannot resume it. A web Turn waits as an auth-paused Turn record. A
+ * Slack request waits as the thread's pending sign-in. Every stop path calls
+ * this, because no worker holds a waiting Turn and the stop wake can go to
+ * queued input first.
+ */
+export async function cancelSignInWait(conversationId: string): Promise<void> {
+  const turnId =
+    (await getAuthPausedConversationTurnId(conversationId)) ??
+    coerceThreadConversationState(await getPersistedThreadState(conversationId))
+      .processing.pendingAuth?.sessionId;
+  if (turnId) {
+    await cancelSignInPausedTurn({ conversationId, turnId });
+  }
+}
+
+/**
  * Cancel a Turn that waits for sign-in outside its worker, with the same
- * cleanup as a stopped resume. A tree stop calls this, because its stop wake
- * can go to queued input before the paused Turn.
+ * cleanup as a stopped resume.
  */
 export async function cancelSignInPausedTurn(args: {
   conversationId: string;

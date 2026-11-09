@@ -300,6 +300,7 @@ describe("dashboard conversation formatting", () => {
           startedSeq: 2,
           startedAt: "2026-01-01T00:00:02.000Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "advisor",
           parentToolCallId: "search-1",
           status: "running",
@@ -359,7 +360,7 @@ describe("dashboard conversation formatting", () => {
       { actorIdentity: { fullName: "Alice" } },
     );
     expect(summarizeMessages(conversation)).toEqual({
-      items: [{ author: "Agent invocation", bytes: 5 }],
+      items: [{ author: "Parent agent", bytes: 5 }],
       total: 1,
     });
   });

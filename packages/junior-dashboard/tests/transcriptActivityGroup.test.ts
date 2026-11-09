@@ -41,6 +41,7 @@ function subagent(id: string): RenderedTranscriptEntry {
       childConversationId: `child:${id}`,
       id,
       status: "completed",
+      childKind: "task",
       subagentKind: "explore",
       type: "subagent",
     },

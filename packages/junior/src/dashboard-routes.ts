@@ -177,6 +177,7 @@ function dashboardHostRoutePaths(
   const pagePaths = [
     basePath,
     pagePath("admin"),
+    pagePath("board"),
     pagePath("code"),
     `${pagePath("code")}/*`,
     conversationsPath,
@@ -223,6 +224,7 @@ function dashboardHostRoutePaths(
     "/api/automations",
     "/api/automations/*",
     "/api/skills",
+    "/api/board",
     "/api/code",
     "/api/code/*",
     "/api/connections",
@@ -231,6 +233,7 @@ function dashboardHostRoutePaths(
     "/api/notifications/*",
     "/api/stats",
     "/api/versions",
+    "/api/transcriptions",
     "/api/conversations",
     "/api/conversations/*",
     "/api/locations",

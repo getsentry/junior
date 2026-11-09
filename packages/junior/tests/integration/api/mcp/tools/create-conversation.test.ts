@@ -18,6 +18,7 @@ describe("createConversation MCP tool", () => {
     const created = await call("createConversation", {
       idempotencyKey: "first-question",
       message: "Is ingestion healthy?",
+      title: "Ingestion health",
     });
     const retried = await call("createConversation", {
       idempotencyKey: "first-question",
@@ -44,7 +45,10 @@ describe("createConversation MCP tool", () => {
     });
     expect(queue.takeMessageFor(conversationId)).toBeDefined();
     expect(listed.structuredContent).toEqual({
-      conversations: [expect.objectContaining({ conversationId })],
+      // The passed title names the Conversation instead of the message.
+      conversations: [
+        expect.objectContaining({ conversationId, title: "Ingestion health" }),
+      ],
     });
   });
 

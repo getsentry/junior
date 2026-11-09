@@ -164,6 +164,7 @@ describe("conversation event list API", () => {
           startedSeq: 4,
           startedAt: "1970-01-01T00:00:00.005Z",
           childConversationId: "child-1",
+          childKind: "task",
           subagentKind: "review",
           status: "completed",
         },
@@ -477,6 +478,14 @@ describe("conversation event list API", () => {
   it("keeps a history page self-contained when a subagent start is older", async () => {
     const conversationId = "local:test:paged-subagent";
     await recordConversation(conversationId);
+    // The child kind comes from its row, so a Thread reads as one even when
+    // its start is on an older page.
+    await getConversationStore().createChild({
+      childConversationId: "child-before-page",
+      kind: "thread",
+      nowMs: 2,
+      parentConversationId: conversationId,
+    });
     await getConversationEventStore().append(conversationId, [
       {
         data: {
@@ -523,6 +532,7 @@ describe("conversation event list API", () => {
           startedSeq: 0,
           startedAt: "1970-01-01T00:00:00.002Z",
           childConversationId: "child-before-page",
+          childKind: "thread",
           subagentKind: "advisor",
           parentToolCallId: "advisor-before-page",
           status: "error",
@@ -581,6 +591,7 @@ describe("conversation event list API", () => {
           startedSeq: 0,
           startedAt: "1970-01-01T00:00:00.001Z",
           childConversationId: "child-far",
+          childKind: "task",
           subagentKind: "advisor",
           status: "completed",
         },

@@ -43,9 +43,11 @@ import {
 } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
+import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
+import { FeedThreads, feedThreadsById } from "./feedThreads";
 import {
   useWaitingConversationIds,
   useWaitingConversations,
@@ -96,6 +98,7 @@ export function ConversationWorkspace(props: {
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
+  const offerPushNotifications = usePushNotificationsTip();
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const createRequested = useRef(false);
@@ -117,6 +120,12 @@ export function ConversationWorkspace(props: {
     } else createComposer.current?.focus();
   };
 
+  // Thread cards, breadcrumbs, and details show each Thread's own title and
+  // status from its feed row.
+  const feedThreads = useMemo(
+    () => feedThreadsById(conversations),
+    [conversations],
+  );
   const waitingConversations = useWaitingConversations();
   const waitingConversationIds = useWaitingConversationIds();
 
@@ -190,6 +199,7 @@ export function ConversationWorkspace(props: {
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
         });
+        offerPushNotifications();
       }}
     />
   );
@@ -337,21 +347,23 @@ export function ConversationWorkspace(props: {
             className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
           >
             <UnsentAnswersProvider conversationId={selectedId} key={selectedId}>
-              <ConversationPage
-                conversationId={selectedId}
-                detail={props.detail}
-                data={
-                  feed.data
-                    ? {
-                        conversations: feed.data,
-                      }
-                    : undefined
-                }
-                pendingArchiveUpdate={pendingArchiveUpdates.find(
-                  (update) => update.conversationId === selectedId,
-                )}
-                sidebarToggle={sidebarToggle}
-              />
+              <FeedThreads value={feedThreads}>
+                <ConversationPage
+                  conversationId={selectedId}
+                  detail={props.detail}
+                  data={
+                    feed.data
+                      ? {
+                          conversations: feed.data,
+                        }
+                      : undefined
+                  }
+                  pendingArchiveUpdate={pendingArchiveUpdates.find(
+                    (update) => update.conversationId === selectedId,
+                  )}
+                  sidebarToggle={sidebarToggle}
+                />
+              </FeedThreads>
             </UnsentAnswersProvider>
           </section>
         )}

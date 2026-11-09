@@ -236,7 +236,7 @@ jobs:
       - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=${{ matrix.max_workers }} --testTimeout=${{ matrix.test_timeout }} --coverage ${{ matrix.path }}
       - name: Upload coverage
         if: ${{ !cancelled() }}
-        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
+        uses: getsentry/codecov-action@eb2b4a6c4be3ecb42867043570579fa3b6879f6e # v0.3.8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: packages/junior/coverage/coverage-final.json
@@ -354,7 +354,7 @@ jobs:
       - run: pnpm --filter @sentry/junior-dashboard test:coverage
       - name: Upload coverage and test results
         if: ${{ !cancelled() }}
-        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
+        uses: getsentry/codecov-action@eb2b4a6c4be3ecb42867043570579fa3b6879f6e # v0.3.8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: packages/junior-dashboard/coverage/coverage-final.json

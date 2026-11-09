@@ -39,6 +39,7 @@
     "packages/junior/tests/integration/slack/attachment-media-behavior.test.ts": 9,
     "packages/junior/tests/integration/slack/bot-handlers.test.ts": 2,
     "packages/junior/tests/integration/slack/bot-image-hydration.test.ts": 13,
+    "packages/junior/tests/integration/slack/mcp-authorization.test.ts": 6,
     "packages/junior/tests/integration/slack/watched-message-behavior.test.ts": 12
   },
   "agent-test-imports": {},

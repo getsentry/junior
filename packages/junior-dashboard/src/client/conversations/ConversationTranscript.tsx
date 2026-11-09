@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { History, Network } from "lucide-react";
+import { History } from "lucide-react";
 import { cn } from "../styles";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 
@@ -27,8 +27,8 @@ import type {
   TranscriptViewMessage,
   TranscriptViewSubagentPart,
 } from "../types";
-import { TranscriptSubagentGroup } from "./TranscriptSubagentGroup";
-import { TranscriptSubagentView } from "./TranscriptSubagentView";
+import { TranscriptTasksLine } from "./TranscriptTasksLine";
+import { TranscriptThreadCard } from "./TranscriptThreadCard";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
 import { TranscriptToolView } from "./TranscriptToolView";
@@ -107,14 +107,22 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
   );
 }
 
-function renderSubagentGroupEntries(
+function renderThreadEntry(entry: TranscriptSubagentEntry): ReactNode {
+  return (
+    <TranscriptRailEvent kind="thread">
+      <TranscriptThreadCard part={entry.part} timestamp={entry.timestamp} />
+    </TranscriptRailEvent>
+  );
+}
+
+function renderTaskEntries(
   entries: TranscriptSubagentEntry[],
   openKey: string,
   onOpenTranscript: (part: TranscriptViewSubagentPart) => void,
 ): ReactNode {
   return (
-    <TranscriptRailEvent icon={Network} kind="subagent">
-      <TranscriptSubagentGroup
+    <TranscriptRailEvent kind="tasks">
+      <TranscriptTasksLine
         entries={entries}
         onOpenTranscript={onOpenTranscript}
         openKey={openKey}
@@ -383,22 +391,9 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           )}
         </TranscriptRailEvent>
       )}
-      renderSubagent={(entry) => (
-        <TranscriptRailEvent kind="subagent">
-          <TranscriptSubagentView
-            onOpenTranscript={(part: TranscriptViewSubagentPart) =>
-              props.onOpenSubagentTranscript?.({
-                part,
-                conversation: props.conversation,
-              })
-            }
-            part={entry.part}
-            timestamp={entry.timestamp}
-          />
-        </TranscriptRailEvent>
-      )}
-      renderSubagentGroup={(entries, openKey) =>
-        renderSubagentGroupEntries(entries, openKey, (part) =>
+      renderThread={renderThreadEntry}
+      renderTasks={(entries, openKey) =>
+        renderTaskEntries(entries, openKey, (part) =>
           props.onOpenSubagentTranscript?.({
             part,
             conversation: props.conversation,
@@ -422,8 +417,8 @@ type TranscriptEntryRenderers = {
   renderMessage: (entry: TranscriptMessageEntry) => ReactNode;
   renderStructuredEvent: (entry: TranscriptStructuredEventEntry) => ReactNode;
   renderReasoning: (entry: TranscriptReasoningEntry) => ReactNode;
-  renderSubagent: (entry: TranscriptSubagentEntry) => ReactNode;
-  renderSubagentGroup: (
+  renderThread: (entry: TranscriptSubagentEntry) => ReactNode;
+  renderTasks: (
     entries: TranscriptSubagentEntry[],
     openKey: string,
   ) => ReactNode;
@@ -539,13 +534,14 @@ function TranscriptEntryList(
     renderMessage,
     renderReasoning,
     renderStructuredEvent,
-    renderSubagent,
-    renderSubagentGroup,
+    renderThread,
+    renderTasks,
     renderTool,
   } = props;
   const renderEntry = useCallback(
     (entry: TranscriptEntry): ReactNode => {
-      if (entry.kind === "subagent") return renderSubagent(entry);
+      // Only a Thread has an entry row. Tasks always come as a Tasks row.
+      if (entry.kind === "subagent") return renderThread(entry);
       if (entry.kind === "context") return renderContext(entry);
       if (entry.kind === "attachments_delivered") {
         return renderAttachmentsDelivered(entry);
@@ -565,7 +561,7 @@ function TranscriptEntryList(
       renderMessage,
       renderReasoning,
       renderStructuredEvent,
-      renderSubagent,
+      renderThread,
       renderTool,
     ],
   );
@@ -590,7 +586,7 @@ function TranscriptEntryList(
               measure={virtualizer.measureElement}
               offset={item.start - virtualizer.options.scrollMargin}
               renderEntry={renderEntry}
-              renderSubagentGroup={renderSubagentGroup}
+              renderTasks={renderTasks}
               row={rows[item.index]!}
             />
           ))}
@@ -619,7 +615,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   measure: (element: HTMLElement | null) => void;
   offset: number;
   renderEntry: (entry: TranscriptEntry) => ReactNode;
-  renderSubagentGroup: TranscriptEntryRenderers["renderSubagentGroup"];
+  renderTasks: TranscriptEntryRenderers["renderTasks"];
   row: TranscriptListRow;
 }) {
   const { row } = props;
@@ -643,9 +639,9 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
             renderEntry={props.renderEntry}
           />
         </TranscriptRow>
-      ) : row.kind === "subagents" ? (
+      ) : row.kind === "tasks" ? (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
-          {props.renderSubagentGroup(row.entries, row.key)}
+          {props.renderTasks(row.entries, row.key)}
         </TranscriptRow>
       ) : (
         <TranscriptRow anchorKey={row.key} seq={row.seq}>
@@ -737,22 +733,9 @@ function RedactedTranscriptView(
           />
         </TranscriptRailEvent>
       )}
-      renderSubagent={(entry) => (
-        <TranscriptRailEvent kind="subagent">
-          <TranscriptSubagentView
-            onOpenTranscript={(part: TranscriptViewSubagentPart) =>
-              props.onOpenSubagentTranscript?.({
-                part,
-                conversation: props.conversation,
-              })
-            }
-            part={entry.part}
-            timestamp={entry.timestamp}
-          />
-        </TranscriptRailEvent>
-      )}
-      renderSubagentGroup={(entries, openKey) =>
-        renderSubagentGroupEntries(entries, openKey, (part) =>
+      renderThread={renderThreadEntry}
+      renderTasks={(entries, openKey) =>
+        renderTaskEntries(entries, openKey, (part) =>
           props.onOpenSubagentTranscript?.({
             part,
             conversation: props.conversation,
