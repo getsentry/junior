@@ -9,6 +9,8 @@ import {
 import { unfurlDashboardConversationLinks } from "./slack-conversation-unfurl";
 import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { handleSlackDetach, isSlackDetachCommand } from "./slack-detach";
+import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
@@ -464,6 +466,20 @@ async function routeParsedMessage(args: {
       },
     });
     return;
+  }
+
+  if (isSlackDetachCommand(args.event.text ?? "")) {
+    await handleSlackDetach({
+      adapter: args.adapter,
+      canonicalThreadId,
+      conversationId,
+      message,
+      state: args.state,
+    });
+    return;
+  }
+  if (route === "mention") {
+    await resumeConversationDelivery(conversationId);
   }
 
   // Keep non-mention thread messages as Conversation history without waking a

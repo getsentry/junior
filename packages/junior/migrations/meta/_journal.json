@@ -659,6 +659,13 @@
       "when": 1794256116275,
       "tag": "0093_participant_root_actor_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1794266800377,
+      "tag": "0094_conversation_delivery_paused_at",
+      "breakpoints": true
     }
   ]
 }
