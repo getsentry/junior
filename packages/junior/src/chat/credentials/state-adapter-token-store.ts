@@ -1,4 +1,4 @@
-import type { StateAdapter } from "chat";
+import type { Lock, StateAdapter } from "chat";
 import * as z from "zod";
 import { pluginProviderAccountSchema } from "@sentry/junior-plugin-api";
 import type {
@@ -98,43 +98,84 @@ export class StateAdapterTokenStore implements UserTokenStore {
     change: UserConnectionChange,
   ): Promise<boolean> {
     const key = tokenKey(userId, provider);
+    return await this.withWriteLock(userId, provider, async (lock) => {
+      if (change.type === "connect") {
+        const tokens = storedTokensSchema.parse(change.tokens);
+        await fenceLock(this.state, lock);
+        await this.state.set(key, tokens, tokenTtlMs(tokens));
+        return true;
+      }
+      if (change.type === "disconnect") {
+        await fenceLock(this.state, lock);
+        await this.state.delete(key);
+        return true;
+      }
+      const current = await this.read(userId, provider);
+      if (
+        current?.status !== "connected" ||
+        !hasSameTokens(current.tokens, change.from)
+      ) {
+        return false;
+      }
+      if (change.type === "update") {
+        const tokens = storedTokensSchema.parse(change.tokens);
+        await fenceLock(this.state, lock);
+        await this.state.set(key, tokens, tokenTtlMs(tokens));
+        return true;
+      }
+      const account = current.tokens.account;
+      await fenceLock(this.state, lock);
+      await this.state.set(
+        key,
+        { status: "expired", ...(account ? { account } : undefined) },
+        LONG_LIVED_TTL_MS,
+      );
+      return true;
+    });
+  }
+
+  /**
+   * Move a connected grant from one user id to another that has none. Both
+   * write locks are held, so a disconnect that clears `fromUserId` first and
+   * then `userId` cannot interleave and bring the grant back.
+   */
+  async move(
+    fromUserId: string,
+    userId: string,
+    provider: string,
+  ): Promise<UserConnection | undefined> {
+    return await this.withWriteLock(userId, provider, async (lock) => {
+      const current = await this.read(userId, provider);
+      if (current) return current;
+      return await this.withWriteLock(
+        fromUserId,
+        provider,
+        async (fromLock) => {
+          const moved = await this.read(fromUserId, provider);
+          if (moved?.status !== "connected") return undefined;
+          await fenceLock(this.state, lock);
+          await this.state.set(
+            tokenKey(userId, provider),
+            moved.tokens,
+            tokenTtlMs(moved.tokens),
+          );
+          await fenceLock(this.state, fromLock);
+          await this.state.delete(tokenKey(fromUserId, provider));
+          return moved;
+        },
+      );
+    });
+  }
+
+  private async withWriteLock<T>(
+    userId: string,
+    provider: string,
+    run: (lock: Lock) => Promise<T>,
+  ): Promise<T> {
     const attempt = await withLock(
       this.state,
       writeLockKey(userId, provider),
-      async (lock) => {
-        if (change.type === "connect") {
-          const tokens = storedTokensSchema.parse(change.tokens);
-          await fenceLock(this.state, lock);
-          await this.state.set(key, tokens, tokenTtlMs(tokens));
-          return true;
-        }
-        if (change.type === "disconnect") {
-          await fenceLock(this.state, lock);
-          await this.state.delete(key);
-          return true;
-        }
-        const current = await this.read(userId, provider);
-        if (
-          current?.status !== "connected" ||
-          !hasSameTokens(current.tokens, change.from)
-        ) {
-          return false;
-        }
-        if (change.type === "update") {
-          const tokens = storedTokensSchema.parse(change.tokens);
-          await fenceLock(this.state, lock);
-          await this.state.set(key, tokens, tokenTtlMs(tokens));
-          return true;
-        }
-        const account = current.tokens.account;
-        await fenceLock(this.state, lock);
-        await this.state.set(
-          key,
-          { status: "expired", ...(account ? { account } : undefined) },
-          LONG_LIVED_TTL_MS,
-        );
-        return true;
-      },
+      run,
       { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: WRITE_LOCK_WAIT_MS },
     );
     if (!attempt.acquired) {
