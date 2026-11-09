@@ -304,30 +304,50 @@ compare the phases:
 The provider caches a request prefix in the order tools, system prompt,
 messages. A change to the tool list or the system prompt between two calls
 writes the full history to the cache again.
-`chat/pi/request-prefix-attributes.ts` sets these attributes on `gen_ai.chat`
-spans. The values are hashes, never the text.
+`chat/pi/request-prefix-attributes.ts` hashes the provider request body that
+Pi builds, through Pi's `onPayload` hook. The values are hashes, never the
+text.
 
-| Attribute                                 | Type   | Meaning                                                |
-| ----------------------------------------- | ------ | ------------------------------------------------------ |
-| `app.ai.request.system_instructions.hash` | string | first 16 hex chars of the SHA-256 of the system prompt |
-| `app.ai.request.tools.hash`               | string | same hash of the model-facing tool list, in order      |
-| `app.ai.request.tools.count`              | int    | tools sent to the model                                |
+| Attribute                                        | Type   | Meaning                                    |
+| ------------------------------------------------ | ------ | ------------------------------------------ |
+| `app.ai.request.system_instructions.hash`        | string | hash of the `system` blocks                |
+| `app.ai.request.tools.hash`                      | string | hash of the `tools` list, in order         |
+| `app.ai.request.tools.count`                     | int    | tools in the request                       |
+| `app.ai.request.messages.hash`                   | string | hash of all `messages`                     |
+| `app.ai.request.messages.before_last_reply.hash` | string | hash of the messages before the last reply |
+| `app.ai.request.messages.count`                  | int    | messages in the request                    |
 
-- The tool hash covers each tool's name, description, parameter schema, and
-  constrained sampling setting. The `codemode` tool description lists the
-  script tools, so a script tool change also changes it.
-- Calls through the Pi stream wrapper always have the tool attributes.
-  `completeText` and `completeObject` send no tools, so they have only the
-  system prompt hash.
-- Low `gen_ai.usage.cache_read.input_tokens` on the next call with both hashes
-  the same: the cache expired or was evicted. A different hash: Junior changed
-  the prefix.
+- Each hash is the first 16 hex chars of a SHA-256. The hashes leave out
+  `cache_control`, because Pi moves the last breakpoint on each request. In
+  messages, string `content` hashes as one text block, because Pi changes the
+  last user message to that form.
+- The hashes cover the body that Junior sends to AI Gateway, not the request
+  that the gateway sends to the upstream provider.
+- `messages.before_last_reply.hash` stops before the last `assistant`
+  message. It is absent when the request has no `assistant` message. When the
+  history was only appended, it is equal to `messages.hash` of the previous
+  call.
+- The `codemode` tool description lists the script tools, so a script tool
+  change also changes the tool hash.
+- `completeText` calls have the same attributes. `completeObject` uses the AI
+  SDK, which has no payload hook, so it has none.
+
+To classify a cache miss, compare a call with the previous call in the same
+`gen_ai.conversation.id`:
+
+- System or tools hash changed: Junior changed the prefix.
+- `messages.before_last_reply.hash` is not equal to the previous
+  `messages.hash`: Junior rewrote the history. This is expected when the call
+  has `gen_ai.conversation.compacted`.
+- All hashes match and the gap is 5 minutes or more: the cache expired.
+- All hashes match and the gap is less than 5 minutes: the provider or the
+  gateway did not use the cache.
 
 Prefix hashes of each model call in a Conversation. Compare consecutive rows.
 
 ```text
 dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
-fields=timestamp,trace,gen_ai.request.model,app.ai.request.tools.hash,app.ai.request.tools.count,app.ai.request.system_instructions.hash,gen_ai.usage.input_tokens,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
+fields=timestamp,trace,gen_ai.request.model,app.ai.request.system_instructions.hash,app.ai.request.tools.hash,app.ai.request.messages.hash,app.ai.request.messages.before_last_reply.hash,gen_ai.conversation.compacted,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
 sort=timestamp
 ```
 

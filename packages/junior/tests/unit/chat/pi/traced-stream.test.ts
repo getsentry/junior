@@ -5,7 +5,6 @@ import {
   type AssistantMessage,
   type AssistantMessageEvent,
   type Model,
-  type Tool,
 } from "@earendil-works/pi-ai";
 import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 
@@ -140,45 +139,118 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
   });
 
-  it("hashes the system prompt and model-facing tool list", async () => {
+  it("hashes the provider request body and leaves it unchanged", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
-    const base = vi.fn(() => createAssistantMessageEventStream());
-    const traced = createTracedStreamFn(base as StreamFn);
-    const tool = (description: string): Tool => ({
-      name: "search",
-      description,
-      parameters: { type: "object", properties: {} } as Tool["parameters"],
-    });
-    const call = async (description: string) => {
-      await traced(
-        fakeModel("openai/gpt-5.4"),
-        {
-          systemPrompt: "you are junior",
-          messages: [{ role: "user", content: "hi", timestamp: 0 }],
-          tools: [tool(description)],
-        },
+    const hashKeys = [
+      "app.ai.request.system_instructions.hash",
+      "app.ai.request.tools.hash",
+      "app.ai.request.tools.count",
+      "app.ai.request.messages.hash",
+      "app.ai.request.messages.before_last_reply.hash",
+      "app.ai.request.messages.count",
+    ];
+    // Runs one call whose provider builds `payload`, and returns the hash
+    // attributes that the span got.
+    const hashesFor = async (payload: Record<string, unknown>) => {
+      startInactiveSpan.mockClear();
+      const span = {
+        setAttribute: vi.fn(),
+        setAttributes: vi.fn(),
+        setStatus: vi.fn(),
+        end: vi.fn(),
+      };
+      startInactiveSpan.mockReturnValueOnce(span);
+      let hookResult: unknown = "not called";
+      const base: StreamFn = async (model, _context, options) => {
+        hookResult = await options?.onPayload?.(payload, model);
+        return createAssistantMessageEventStream();
+      };
+      await createTracedStreamFn(base)(
+        fakeModel("anthropic/claude-opus-5.5"),
+        { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
         undefined,
       );
-      return spanStartOptions(startInactiveSpan.mock.calls.at(-1)?.[0])
-        .attributes;
+      expect(hookResult).toBeUndefined();
+      const attributes = Object.assign(
+        {},
+        ...span.setAttributes.mock.calls.map((c) => c[0]),
+      ) as Record<string, unknown>;
+      return Object.fromEntries(
+        hashKeys.flatMap((key) =>
+          key in attributes ? [[key, attributes[key]]] : [],
+        ),
+      );
     };
+    const breakpoint = { type: "ephemeral" };
+    // Like Pi: the last user message becomes a text block with the
+    // breakpoint, and earlier ones keep string content.
+    const user = (text: string, cached = false) => ({
+      role: "user",
+      content: cached
+        ? [{ type: "text", text, cache_control: breakpoint }]
+        : text,
+    });
+    const reply = {
+      role: "assistant",
+      content: [{ type: "text", text: "a1" }],
+    };
+    const request = (
+      messages: unknown[],
+      description = "Search the web.",
+      cached = true,
+    ) => ({
+      system: [
+        {
+          type: "text",
+          text: "you are junior",
+          cache_control: cached ? breakpoint : undefined,
+        },
+      ],
+      tools: [
+        {
+          name: "search",
+          description,
+          input_schema: { type: "object", properties: {} },
+          cache_control: cached ? breakpoint : undefined,
+        },
+      ],
+      messages,
+    });
 
-    const first = await call("Search the web.");
-    const same = await call("Search the web.");
-    const changed = await call("Search the internet.");
+    const first = await hashesFor(request([user("u1", true)]));
+    const appended = await hashesFor(
+      request([user("u1"), reply, user("u2", true)]),
+    );
+    const edited = await hashesFor(
+      request([user("u1 edited"), reply, user("u2", true)]),
+    );
+    const withoutBreakpoints = await hashesFor(
+      request([user("u1"), reply, user("u2")], "Search the web.", false),
+    );
+    const otherTool = await hashesFor(
+      request([user("u1", true)], "Search the internet."),
+    );
 
     expect(first["app.ai.request.tools.count"]).toBe(1);
+    expect(first["app.ai.request.messages.count"]).toBe(1);
     expect(first["app.ai.request.tools.hash"]).toMatch(/^[0-9a-f]{16}$/);
     expect(first["app.ai.request.system_instructions.hash"]).toMatch(
       /^[0-9a-f]{16}$/,
     );
-    expect(same["app.ai.request.tools.hash"]).toBe(
+    expect(first).not.toHaveProperty(
+      "app.ai.request.messages.before_last_reply.hash",
+    );
+    expect(appended["app.ai.request.messages.before_last_reply.hash"]).toBe(
+      first["app.ai.request.messages.hash"],
+    );
+    expect(edited["app.ai.request.messages.before_last_reply.hash"]).not.toBe(
+      first["app.ai.request.messages.hash"],
+    );
+    expect(withoutBreakpoints).toEqual(appended);
+    expect(otherTool["app.ai.request.tools.hash"]).not.toBe(
       first["app.ai.request.tools.hash"],
     );
-    expect(changed["app.ai.request.tools.hash"]).not.toBe(
-      first["app.ai.request.tools.hash"],
-    );
-    expect(changed["app.ai.request.system_instructions.hash"]).toBe(
+    expect(otherTool["app.ai.request.system_instructions.hash"]).toBe(
       first["app.ai.request.system_instructions.hash"],
     );
   });
