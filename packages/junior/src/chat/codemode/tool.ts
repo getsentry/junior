@@ -99,14 +99,20 @@ function renderDeclaration(name: string, tool: AnyToolDefinition): string {
 }
 
 /**
- * Declare the script tools that fit the token budget, cheapest first, so
- * that the most tools fit. The others stay callable. The model finds their
- * input with `searchTools`. Script-only tools come first, because
- * `searchTools` does not find them. The same tools give the same text, so
- * the description does not change between Turns.
+ * Tell the script which tools it may call. Direct tools are only named: the
+ * model already has their input schemas. The other tools are declared within
+ * the token budget, cheapest first, so that the most tools fit. The others
+ * stay callable. The model finds their input with `searchTools`. Script-only
+ * tools come first, because `searchTools` does not find them. The same tools
+ * give the same text, so the description does not change between Turns.
  */
 function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
+  const directNames = Object.entries(tools)
+    .filter(([, tool]) => effectiveToolExposure(tool) === "direct")
+    .map(([name]) => name)
+    .sort((a, b) => a.localeCompare(b));
   const entries = Object.entries(tools)
+    .filter(([, tool]) => effectiveToolExposure(tool) !== "direct")
     .map(([name, tool]) => {
       const text = renderDeclaration(name, tool);
       return {
@@ -134,9 +140,14 @@ function renderScriptTools(tools: Record<string, AnyToolDefinition>): string {
   shown.sort((a, b) => a.name.localeCompare(b.name));
   const omitted = entries.length - shown.length;
   return [
-    "declare const tools: {",
-    ...shown.map((entry) => entry.text),
-    "};",
+    ...(directNames.length > 0
+      ? [
+          `These tools from your tool list can also be called as \`tools.<name>(args)\`, with the same input: ${directNames.join(", ")}.`,
+        ]
+      : []),
+    ...(shown.length > 0
+      ? ["declare const tools: {", ...shown.map((entry) => entry.text), "};"]
+      : []),
     // The catalog tools are `modelOnly`. Models still call them from scripts.
     ...(omitted > 0
       ? [
