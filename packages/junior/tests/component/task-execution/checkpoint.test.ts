@@ -1133,6 +1133,19 @@ describe("turn checkpoint", () => {
       actor: alice,
       trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
     });
+    // JUNIOR-PM: a redelivered worker saves input that is already committed.
+    // It must keep the committed provenance instead of failing every retry.
+    await expect(
+      saveTurnCheckpoint({
+        mode: "running",
+        conversationId: "conversation-multi-actor",
+        turnId: "turn-multi-actor",
+        sliceId: 2,
+        messages: [aliceMessage, bobMessage],
+        actor: alice,
+        trailingMessageProvenance: [{ authority: "instruction", actor: alice }],
+      }),
+    ).resolves.toBeDefined();
 
     // getTurnRecord re-materializes from the stored record and the
     // committed provenance, so this is also the continuation/materialization

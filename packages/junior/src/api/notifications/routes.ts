@@ -49,7 +49,7 @@ async function settingsResponse(userId: string): Promise<Response> {
 }
 
 /**
- * Create authenticated routes for the viewer's phone notifications: browser
+ * Create authenticated routes for the viewer's push notifications: browser
  * subscriptions, notification hours, and a test notification.
  */
 export function createNotificationRoutes(): Hono<JuniorApiEnv> {
@@ -86,7 +86,7 @@ export function createNotificationRoutes(): Hono<JuniorApiEnv> {
     ),
     async (context) => {
       if (!readWebPushConfig()) {
-        throwApiError(503, "Phone notifications are not configured.");
+        throwApiError(503, "Push notifications are not configured.");
       }
       const viewer = context.get("viewer");
       const { endpoint, keys } = context.req.valid("json");
@@ -124,7 +124,7 @@ export function createNotificationRoutes(): Hono<JuniorApiEnv> {
   // A test ignores notification hours, so a user can check a device any time.
   app.post("/test", requireViewer, async (context) => {
     const config = readWebPushConfig();
-    if (!config) throwApiError(503, "Phone notifications are not configured.");
+    if (!config) throwApiError(503, "Push notifications are not configured.");
     const result = await sendPushNotificationToUser({
       config,
       db: getDb(),

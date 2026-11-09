@@ -163,6 +163,7 @@ import {
   requestContextSummary,
 } from "@/chat/agent/context-summary";
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
+import { logToolBatch } from "@/chat/agent/tool-batch";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -1008,10 +1009,13 @@ async function executeAgentRunInPrivacyContext(
         ...(streamFn ? { base: streamFn } : undefined),
       }),
       steeringMode: "all",
-      beforeToolCall: async ({ assistantMessage }) => {
+      beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
+        if (toolCalls.length > 1 && toolCall.id === toolCalls[0]!.id) {
+          logToolBatch(toolCalls, context.tools ?? []);
+        }
         const exclusiveTool = exclusiveToolName(toolCalls);
         if (exclusiveTool && toolCalls.length !== 1) {
           return {

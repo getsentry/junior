@@ -161,6 +161,11 @@ export type {
   MarkConversationUnreadBody,
 } from "./schema/conversation-unread";
 export {
+  CONVERSATION_OUTLINE_TEXT_LENGTH,
+  conversationOutlineSchema,
+} from "./schema/conversation-outline";
+export type { ConversationOutline } from "./schema/conversation-outline";
+export {
   CONVERSATION_TITLE_MAX_LENGTH,
   renameConversationBodySchema,
   renameConversationResponseSchema,

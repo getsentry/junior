@@ -439,8 +439,8 @@ class SqlConversationEventStore implements ConversationEventStore {
     seq: number,
     throughSeq?: number,
   ): Promise<ConversationEvent[] | undefined> {
-    const [boundary] = await this.executor
-      .db()
+    const db = this.executor.db();
+    const boundaryHistoryVersion = db
       .select({ historyVersion: juniorConversationEvents.historyVersion })
       .from(juniorConversationEvents)
       .where(
@@ -448,25 +448,26 @@ class SqlConversationEventStore implements ConversationEventStore {
           eq(juniorConversationEvents.conversationId, conversationId),
           eq(juniorConversationEvents.seq, seq),
         ),
-      )
-      .limit(1);
-    if (!boundary) return undefined;
-
-    const rows = await this.executor
-      .db()
+      );
+    // One statement. The range always includes the boundary row, so no rows
+    // means the boundary does not exist.
+    const rows = await db
       .select()
       .from(juniorConversationEvents)
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.historyVersion, boundary.historyVersion),
+          eq(juniorConversationEvents.historyVersion, boundaryHistoryVersion),
           throughSeq === undefined
             ? undefined
-            : lte(juniorConversationEvents.seq, throughSeq),
+            : lte(juniorConversationEvents.seq, Math.max(seq, throughSeq)),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
-    return rows.map(eventFromRow);
+    if (rows.length === 0) return undefined;
+    return rows
+      .filter((row) => throughSeq === undefined || row.seq <= throughSeq)
+      .map(eventFromRow);
   }
 
   async loadLatestStructuredEvent(
