@@ -631,6 +631,13 @@
       "when": 1794190578909,
       "tag": "0089_conversation_paused_status",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1794219775147,
+      "tag": "0090_conversation_participant_unsubscribed_index",
+      "breakpoints": true
     }
   ]
 }
