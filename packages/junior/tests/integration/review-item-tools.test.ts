@@ -1,4 +1,5 @@
 import type { Identity, User } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
@@ -455,6 +456,30 @@ describe("review item tools", () => {
 
     const added = await execute(eventTurn("local:web:owned").add, ask);
     expect(added.item.assignees).toEqual([ana.email]);
+
+    // A private Conversation also takes its Owner, even when the Owner has
+    // no participant row, as when their Identity got its User later.
+    await getConversationStore().recordActivity({
+      actor: { email: "ana@example.com" },
+      conversationId: "local:web:private",
+      destination: { platform: "local", conversationId: "local:web:private" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "web",
+      visibility: "private",
+    });
+    await getDb()
+      .delete(juniorConversationParticipants)
+      .where(
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          "local:web:private",
+        ),
+      );
+    const owned = await execute(eventTurn("local:web:private").add, ask);
+    expect(owned.item).toMatchObject({
+      assignees: [ana.email],
+      visibility: "private",
+    });
 
     // With no Owner User either, no person would see the item.
     await conversation("slack:CPUB:1.000001", "CPUB", "public");
