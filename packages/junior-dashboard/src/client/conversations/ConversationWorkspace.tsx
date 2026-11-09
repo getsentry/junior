@@ -43,6 +43,7 @@ import {
 } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
+import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
@@ -97,6 +98,7 @@ export function ConversationWorkspace(props: {
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
+  const offerPushNotifications = usePushNotificationsTip();
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const createRequested = useRef(false);
@@ -197,6 +199,7 @@ export function ConversationWorkspace(props: {
         await navigate(conversationPath(accepted.conversationId), {
           flushSync: true,
         });
+        offerPushNotifications();
       }}
     />
   );

@@ -89,7 +89,7 @@ function skip(reason: SkipReason): void {
 }
 
 /**
- * Send a phone notification to the Actor's user when a Turn finishes.
+ * Send a push notification to the Actor's user when a Turn finishes.
  *
  * Only Conversations without a Location qualify. A Conversation with a
  * Location, such as a Slack thread, already notifies people there.
@@ -154,7 +154,7 @@ export const notificationsTaskRegistration: PluginRegistration = {
   manifest: {
     name: "notifications",
     displayName: "Notifications",
-    description: "Phone notifications for dashboard replies",
+    description: "Push notifications for dashboard replies",
   },
   tasks: {
     notifyReply: {
