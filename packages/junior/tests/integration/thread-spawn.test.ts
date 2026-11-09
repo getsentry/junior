@@ -30,6 +30,7 @@ import {
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
+import { mockTitleModel } from "../fixtures/title-model";
 
 const parentRun: AgentRun = {
   actor: slackInvocationInput.actor,
@@ -100,6 +101,12 @@ describe("Thread spawn and archive", () => {
 
   it("spawns a Thread when the parent asks for one and a Task by default", async () => {
     const harness = await createHarness();
+    let titleRequests = 0;
+    mockTitleModel("Generated rollout title", {
+      onRequest: () => {
+        titleRequests++;
+      },
+    });
     try {
       const tool = createSpawnAgentTool(
         bindSpawnAgent(parentRun, {
@@ -133,10 +140,31 @@ describe("Thread spawn and archive", () => {
       ).resolves.toMatchObject({
         kind: "thread",
         parentConversationId: slackParentConversationId,
+        title: "Rollout plan",
       });
       await expect(
         harness.conversationStore.get({ conversationId: task.conversation_id }),
-      ).resolves.toMatchObject({ kind: "task" });
+      ).resolves.toMatchObject({ kind: "task", title: "Failing test" });
+      // A passed title skips title generation.
+      expect(titleRequests).toBe(0);
+
+      // A Thread without a title gets a generated one.
+      const untitled = await tool.execute!(
+        tool.prepareArguments!({
+          kind: "thread",
+          task: "Own the rollout follow-ups.",
+        }),
+        { toolCallId: "call-untitled-thread" },
+      );
+      expect(titleRequests).toBe(1);
+      await expect(
+        harness.conversationStore.get({
+          conversationId: untitled.conversation_id,
+        }),
+      ).resolves.toMatchObject({
+        kind: "thread",
+        title: "Generated rollout title",
+      });
       // A child never changes kind: a replay of the same spawn as a Task
       // is refused.
       await expect(
