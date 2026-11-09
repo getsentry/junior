@@ -1267,6 +1267,40 @@ function threadConversation(
   });
 }
 
+/**
+ * Add a Watch Event that reached a child after its last reply. The child runs
+ * it as an agent invocation, so the input names the invocation and the Event.
+ */
+function withChildWatchEvent(conversation: MockConversation): MockConversation {
+  const last = conversation.events.at(-1)!;
+  const at = iso(Date.parse(last.createdAt), 60_000);
+  const { conversationId } = conversation;
+  return {
+    ...conversation,
+    events: [
+      ...conversation.events,
+      reportEvent(last.seq + 1, at, {
+        type: "message",
+        messageId: `${conversationId}:watch-event`,
+        role: "user",
+        agentInvocationId: `${conversationId}:watch-invocation`,
+        eventType: "pull_request.checks.failed",
+        eventNamespace: "github",
+        eventObjectType: "code_change",
+        trustedSummary:
+          "GitHub PR getsentry/junior#2950 checks failed (1) for 705a328 on fix/pin-order.",
+        text: '<task about="GitHub PR getsentry/junior#2950" event="pull_request.checks.failed">\n<instructions>Fix failed checks that the pull request causes.</instructions>\n</task>',
+      }),
+      reportEvent(last.seq + 2, iso(Date.parse(at), 20_000), {
+        type: "message",
+        messageId: `${conversationId}:watch-output`,
+        role: "assistant",
+        text: "The failed check was a flaky runner, so I re-ran it.",
+      }),
+    ],
+  };
+}
+
 function longConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -92 * 60_000);
   const events: ConversationReportEvent[] = [
@@ -1846,12 +1880,14 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       },
     ),
     {
-      ...threadConversation(
-        nowMs,
-        DASHBOARD_QA_THREAD_ID,
-        "Check pinned row order",
-        "Check that pinned rows keep their order after a reload.",
-        -3 * 60 * 60_000,
+      ...withChildWatchEvent(
+        threadConversation(
+          nowMs,
+          DASHBOARD_QA_THREAD_ID,
+          "Check pinned row order",
+          "Check that pinned rows keep their order after a reload.",
+          -3 * 60 * 60_000,
+        ),
       ),
       // The nested Thread below.
       childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
