@@ -1,4 +1,61 @@
+import { isUserActor } from "@/chat/actor";
+import type { TurnRecord } from "./checkpoint";
 import type { ConversationWorkState, InboundMessage } from "./store";
+
+/** Source and Actor that own Turn input. */
+interface TurnOwner {
+  authorId?: string;
+  identityId?: string;
+  source?: string;
+}
+
+function inputOwner(message: InboundMessage): TurnOwner {
+  return {
+    authorId: message.input.authorId,
+    identityId: message.input.authorIdentityId,
+    source: message.source,
+  };
+}
+
+function turnOwner(turn: TurnRecord): TurnOwner {
+  return {
+    authorId: isUserActor(turn.actor) ? turn.actor.userId : undefined,
+    identityId: turn.actorIdentityId,
+    source: turn.source?.kind,
+  };
+}
+
+/**
+ * One Turn has one Actor and one Source: it runs with that Actor's
+ * credentials, so input from anyone else must not join it. Every id that both
+ * sides know must match, and they must share at least one. Input with no
+ * known author matches nothing.
+ */
+function hasSameOwner(a: TurnOwner, b: TurnOwner): boolean {
+  if (a.source === undefined || a.source !== b.source) return false;
+  const sameIdentity =
+    a.identityId && b.identityId ? a.identityId === b.identityId : undefined;
+  const sameAuthor =
+    a.authorId && b.authorId ? a.authorId === b.authorId : undefined;
+  return (
+    sameIdentity !== false &&
+    sameAuthor !== false &&
+    (sameIdentity ?? sameAuthor) === true
+  );
+}
+
+/** True when two Inbound messages may share one Turn. */
+export function canShareTurn(a: InboundMessage, b: InboundMessage): boolean {
+  return hasSameOwner(inputOwner(a), inputOwner(b));
+}
+
+/** True when an Inbound message may join `turn`. */
+export function canJoinTurn(
+  turn: TurnRecord,
+  message: InboundMessage,
+): boolean {
+  return hasSameOwner(turnOwner(turn), inputOwner(message));
+}
 
 function selectContiguousTurnBatch(
   messages: readonly InboundMessage[],
@@ -8,9 +65,7 @@ function selectContiguousTurnBatch(
     return [];
   }
   const nextTurnIndex = messages.findIndex(
-    (message) =>
-      message.input.authorId !== first.input.authorId ||
-      message.source !== first.source,
+    (message, index) => index > 0 && !canShareTurn(first, message),
   );
   return messages.slice(
     0,

@@ -32,6 +32,7 @@ import {
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { createSlackActor } from "@/chat/actor";
 import {
   failTurnRecord,
   getTurnRecord,
@@ -823,6 +824,7 @@ describe("Slack conversation work execution", () => {
     expect(runNextPausedTurn).toHaveBeenCalledOnce();
     expect(runNextPausedTurn).toHaveBeenCalledWith(CONVERSATION_ID, {
       checkIn: expect.any(Function),
+      drainSteeringMessages: expect.any(Function),
       shouldYield: expect.any(Function),
       // The resumed Run must observe a stop like a first Run does.
       stopSignal: expect.any(AbortSignal),
@@ -1367,6 +1369,79 @@ describe("Slack conversation work execution", () => {
 
     expect(getInstallation).toHaveBeenCalledWith("T123", false);
     expect(observedToken).toBe("xoxb-T123");
+  });
+
+  it("yields a resumed Run only for a Slack interruption that cannot join its Turn", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state,
+    });
+    const turn = await upsertTurnRecord({
+      actor: createSlackActor("T123", "U123", undefined),
+      conversationId: CONVERSATION_ID,
+      turnId: "turn-resumed",
+      sliceId: 2,
+      state: "running",
+      destination: SLACK_DESTINATION,
+      piMessages: [],
+      source: {
+        kind: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "public",
+      },
+    });
+    const mention = async (ts: string, user: string) =>
+      await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            text: `<@${SLACK_BOT_USER_ID}> check my deploy`,
+            ts,
+            threadTs: "1712345.0001",
+            user,
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+    const yieldsAfterStep: boolean[] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      state,
+      run: createSlackConversationWorker({
+        getSlackAdapter: () => slackAdapter,
+        runNextPausedTurn: async (_conversationId, runOptions) => {
+          const drain = runOptions.drainSteeringMessages(turn);
+          await mention("1712345.0002", "U123");
+          await drain(async () => {});
+          yieldsAfterStep.push(runOptions.shouldYield());
+          await mention("1712345.0003", "U456");
+          await drain(async () => {});
+          yieldsAfterStep.push(runOptions.shouldYield());
+          return true;
+        },
+        runtime: {
+          handleNewMention: async () => {},
+          handleSubscribedMessage: async () => {},
+        },
+        state,
+      }),
+    });
+
+    // The author's message waits for the Run to end. Another person's
+    // message ends the Run at its next step, so its own Turn can start.
+    expect(yieldsAfterStep).toEqual([false, true]);
   });
 
   it("terminalizes stale idle continuations skipped by resume startup", async () => {
