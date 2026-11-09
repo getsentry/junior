@@ -399,6 +399,79 @@ fields=timestamp,trace,gen_ai.request.model,app.ai.request.prefix.hash,app.ai.re
 sort=timestamp
 ```
 
+## Cache Warming
+
+`chat/cache-warming/` sends warmups that keep the prompt cache of an idle
+Conversation or a long tool wait warm. Production drops info logs, so use
+these spans for warmup and backfill outcomes in production.
+
+- Each warmup decision has one `cache_warming.warmup` span. An idle warmup
+  runs in the cache warmup queue callback. A tool wait warmup runs from a
+  timer in the agent run, so it is in the trace of its Turn. The warmup call
+  is a child `gen_ai.chat` span with `gen_ai.prompt.name:junior.cache_warmup`.
+- A queue message for an idle period that already ended makes no span.
+- `missed` means that the warmup call did not read the cached prefix. It also
+  logs `cache_warming.warmup.failed` and reports
+  `cache_warming.warmup.missed` to Sentry. `failed` means that the warmup
+  call threw.
+- `stopped` means that warming stopped, or the tools returned, before the
+  warmup call. It has no log event.
+- The run that claims the one-time gap backfill has one
+  `cache_warming.backfill` span. It runs at the end of the heartbeat. Later
+  heartbeats make no span. A thrown error sets the span status to error and
+  logs `cache_warming.backfill.failed`.
+
+Attributes on the `cache_warming.warmup` span:
+
+| Attribute                              | Type   | Meaning                                                   |
+| -------------------------------------- | ------ | --------------------------------------------------------- |
+| `app.cache_warming.trigger`            | string | `idle` or `tool_wait`                                     |
+| `app.cache_warming.outcome`            | string | `completed`, `skipped`, `missed`, or `failed`             |
+| `app.cache_warming.skip_reason`        | string | `cache_expired`, `breaker_open`, `stopped`, or a decision |
+| `app.cache_warming.cycle`              | int    | warmup number in the idle period or tool wait             |
+| `app.cache_warming.prefix_tokens`      | int    | cached prefix tokens that the warmup keeps                |
+| `app.cache_warming.cache_ttl_left_ms`  | int    | idle only: time left before the cache expires             |
+| `app.cache_warming.return_probability` | double | chance of a return in the next TTL                        |
+| `app.cache_warming.returns_per_warmup` | double | best expected returns per warmup                          |
+| `app.cache_warming.threshold`          | double | returns per warmup that make a warmup pay                 |
+| `app.cost.total_usd`                   | double | cost of the warmup call                                   |
+| `gen_ai.usage.cache_read.input_tokens` | int    | cached tokens that the warmup call read                   |
+
+- A decision `skip_reason` is a `decideWarmup` reason, such as `few_gaps`
+  or `unlikely_return`.
+- The decision attributes are absent when the warmup skipped before the
+  decision. The cost and usage attributes are absent when no warmup call
+  completed.
+
+Attributes on the `cache_warming.backfill` span:
+
+| Attribute                                         | Type    | Meaning                                  |
+| ------------------------------------------------- | ------- | ---------------------------------------- |
+| `app.cache_warming.backfill.outcome`              | string  | `completed` or `not_completed`           |
+| `app.cache_warming.backfill.conversation_count`   | int     | Conversations that the scan read         |
+| `app.cache_warming.backfill.canceled_batch_count` | int     | batches that the statement timeout ended |
+| `app.cache_warming.backfill.budget_exceeded`      | boolean | the scan stopped on its time budget      |
+| `app.cache_warming.backfill.gap_count`            | int     | `completed` only: gaps written           |
+| `app.cache_warming.backfill.segment_count`        | int     | `completed` only: segment lists filled   |
+
+- `not_completed` means that the statement timeout canceled each query. The
+  claim expires, and a later heartbeat tries again.
+
+Warmup outcomes and skip reasons.
+
+```text
+dataset=spans query='span.op:cache_warming.warmup'
+fields=app.cache_warming.trigger,app.cache_warming.outcome,app.cache_warming.skip_reason,count(),sum(app.cost.total_usd)
+```
+
+Backfill runs.
+
+```text
+dataset=spans query='span.op:cache_warming.backfill'
+fields=timestamp,trace,span.status,span.duration,app.cache_warming.backfill.outcome,app.cache_warming.backfill.conversation_count,app.cache_warming.backfill.gap_count,app.cache_warming.backfill.segment_count,app.cache_warming.backfill.budget_exceeded,app.cache_warming.backfill.canceled_batch_count
+sort=-timestamp
+```
+
 ## Context Compaction
 
 A compaction replaces the history when its estimate is above the threshold.
