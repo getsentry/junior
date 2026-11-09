@@ -573,7 +573,7 @@ describe("background compaction swap", () => {
       user("<runtime-turn-context>Slack</runtime-turn-context>", 1),
     ];
     await commitMessages({ conversationId, messages: context });
-    const summarize = vi.fn(async () => "Fresh summary.");
+    const summarize = vi.fn(async () => ({ summary: "Fresh summary." }));
 
     const result = await compactWithPreparedSummary(
       {
