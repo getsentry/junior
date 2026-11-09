@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  ChevronsUpDown,
   LogOut,
   Settings,
   ShieldCheck,
@@ -14,10 +15,12 @@ import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
+import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button, buttonVariants } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -26,8 +29,9 @@ type ProfileMenuProps = {
   /** Pages that live in this menu instead of the primary nav. */
   pages: DashboardHeaderNavItem[];
   /**
-   * `popover` is the avatar control at the bottom of the desktop nav rail.
-   * `top-bar` is the spend and avatar control in the tall desktop top bar.
+   * `popover` is the profile row at the bottom of the desktop nav sidebar.
+   * It shows only the avatar while the sidebar is collapsed.
+   * `top-bar` is the spend and avatar control in the desktop top bar.
    * `sheet-spend` is the vertical spend callout at the top of the mobile sheet.
    * `sheet-links` is plain account destinations for the mobile nav sheet.
    * `sheet-identity` is the quiet signed-in strip at the bottom of that sheet.
@@ -321,6 +325,11 @@ export function ProfileMenu({
 
   const topBar = variant === "top-bar";
   const menuLabel = `${open ? "Close" : "Open"} profile menu for ${name}`;
+  const hoverTrigger = {
+    closeDelay: HOVER_CLOSE_DELAY_MS,
+    delay: HOVER_OPEN_DELAY_MS,
+    openOnHover: true,
+  };
   return (
     <Popover
       onOpenChange={(nextOpen, details) => {
@@ -335,24 +344,15 @@ export function ProfileMenu({
       }}
       open={open}
     >
-      <PopoverTrigger
-        aria-label={
-          topBar
-            ? `${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`
-            : menuLabel
-        }
-        className={cn(
-          "cursor-pointer rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-          topBar
-            ? "group flex h-10 items-center gap-2 px-1.5"
-            : "grid size-10 place-items-center",
-          open && "bg-dashboard-fill-hover text-dashboard-text",
-        )}
-        closeDelay={HOVER_CLOSE_DELAY_MS}
-        delay={HOVER_OPEN_DELAY_MS}
-        openOnHover
-      >
-        {topBar ? (
+      {topBar ? (
+        <PopoverTrigger
+          aria-label={`${menuLabel}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
+          className={cn(
+            "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+            open && "bg-dashboard-fill-hover text-dashboard-text",
+          )}
+          {...hoverTrigger}
+        >
           <span className="flex items-center gap-2">
             <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
               <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
@@ -375,9 +375,7 @@ export function ProfileMenu({
               </span>
             </span>
           </span>
-        ) : null}
-        <ProfileAvatar user={identity.user} />
-        {topBar ? (
+          <ProfileAvatar user={identity.user} />
           <ChevronDown
             aria-hidden="true"
             className={cn(
@@ -387,8 +385,30 @@ export function ProfileMenu({
             size={14}
             strokeWidth={2}
           />
-        ) : null}
-      </PopoverTrigger>
+        </PopoverTrigger>
+      ) : (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            aria-label={menuLabel}
+            className={cn(
+              // The collapsed nav sidebar shows only the avatar.
+              "h-10 gap-2.5 rounded-lg px-1.5 group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-3.5",
+              open && "bg-sidebar-accent",
+            )}
+            render={<PopoverTrigger {...hoverTrigger} />}
+          >
+            <ProfileAvatar user={identity.user} />
+            <span className="min-w-0 flex-1 truncate font-medium group-data-[collapsible=icon]:hidden">
+              {name}
+            </span>
+            <ChevronsUpDown
+              aria-hidden="true"
+              className="text-dashboard-text-muted group-data-[collapsible=icon]:hidden"
+              strokeWidth={2}
+            />
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      )}
       <PopoverContent
         align="end"
         side={topBar ? "bottom" : "right"}
@@ -396,7 +416,10 @@ export function ProfileMenu({
         id="profile-popover"
       >
         {identityBlock}
-        <ThemeSwitcher className="border-b border-dashboard-border-strong px-2.5 py-2" />
+        <div className="grid gap-1 border-b border-dashboard-border-strong px-2.5 py-2">
+          <ThemeSwitcher />
+          <NavLayoutSwitcher />
+        </div>
         {menuLinks(() => setOpen(false))}
       </PopoverContent>
     </Popover>

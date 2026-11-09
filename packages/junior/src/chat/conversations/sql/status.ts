@@ -33,8 +33,9 @@ export function conversationStatusSql(
     eq(juniorReviewItems.addedByConversationId, conversation.conversationId),
     reviewItemNeedsInput(),
   )})`;
+  // TODO(dcramer): Drop awaiting_resume with the store reader's alias for it.
   return sql<ConversationReportStatus>`case
-    when ${conversation.executionStatus} in ('pending', 'running', 'paused') then 'active'
+    when ${conversation.executionStatus} in ('pending', 'running', 'paused', 'awaiting_resume') then 'active'
     when ${conversation.stoppedAt} is not null then 'stopped'
     when ${conversation.executionStatus} = 'failed' or ${conversation.failedTurnId} is not null then 'failed'
     when ${needsInput} then 'needs_input'

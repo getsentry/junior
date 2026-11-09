@@ -57,9 +57,12 @@ Canonical words for Junior code and docs. One concept, one word.
   provider-scoped. Junior is the web provider, so a web Actor id is the User
   id. Provider fields do not select the runtime. A Turn stores the starting
   Actor; steering inputs keep their own.
-- **Owner**: the Identity that started a root Conversation. Human for Slack,
-  web, and fork; the system Identity for Automation runs, plugin dispatch, and
-  CLI. Children use the root Owner. Automations have a creator, not an Owner.
+- **Participant**: a User who is the Actor of a Turn in a root Conversation or
+  its children. A Participant is active until they unsubscribe; an inactive
+  Participant keeps access but leaves the active feed. Access, feeds, and
+  defaults that need people use Participants. A Conversation has no owner.
+  The root Actor (`actor_identity_id`, the Actor of the first Turn) is a
+  Participant like any other, and is kept only for attribution such as spend.
 - **Admin**: a User with the Junior-wide admin role, set only by
   `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
 - **Service account**: a provider account Junior uses for one plugin, allowed

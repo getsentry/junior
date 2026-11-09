@@ -24,6 +24,7 @@ import {
   CONTEXT_COMPACTION_PROMPT_NAME,
   ContextSummaryError,
   requestContextSummary,
+  type ContextSummary,
 } from "@/chat/agent/context-summary";
 import {
   runWithConversationPrivacy,
@@ -157,7 +158,7 @@ export async function loadLatestBackgroundCompaction(conversationId: string) {
 
 /**
  * Return whether the newest fact is a pending request or a ready summary.
- * Then `mayRequest` is false too, so a Turn can skip the full history load.
+ * Then `mayRequest` is false too, so a Turn can skip the other reads.
  * Only one request is pending at a time, so the newest fact decides it.
  */
 function waitsForUse(event: ConversationEvent, nowMs: number): boolean {
@@ -214,13 +215,27 @@ async function requestAboveMark(args: {
   queue: BackgroundCompactionQueue;
 }): Promise<void> {
   const nowMs = Date.now();
-  // Each later model request of a large Turn checks again. Read only the
-  // newest fact while a request waits.
-  const latest = await loadLatestBackgroundCompaction(args.conversationId);
-  if (latest && waitsForUse(latest.event, nowMs)) {
-    return;
-  }
   const eventStore = getConversationEventStore();
+  // Each later model request of a large Turn checks again. Read only the
+  // newest fact while a request waits, and only background compaction facts
+  // to count failed attempts. Without a fact of this History version, no
+  // attempt exists yet.
+  const latest = await loadLatestBackgroundCompaction(args.conversationId);
+  if (latest) {
+    if (waitsForUse(latest.event, nowMs)) {
+      return;
+    }
+    const facts = await Promise.all([
+      eventStore.loadEventsOfType(args.conversationId, "compaction_requested"),
+      eventStore.loadEventsOfType(args.conversationId, "compaction_prepared"),
+    ]);
+    if (!mayRequest(facts.flat(), latest.historyVersion, nowMs)) {
+      return;
+    }
+  }
+  // Load the full history only to write a request: the mark comes from its
+  // projection. Check again on it, because another Turn or a replacement
+  // can write between the reads.
   const events = await eventStore.loadCurrentHistory(args.conversationId);
   const historyVersion = events[0]?.historyVersion;
   if (
@@ -304,7 +319,10 @@ function failureLabel(error: unknown, signal: AbortSignal): string {
   if (signal.aborted) {
     return "timeout";
   }
-  if (error instanceof ContextSummaryError) {
+  if (
+    error instanceof ContextSummaryError &&
+    error.failure !== "request_failed"
+  ) {
     return error.failure;
   }
   const providerError = findProviderError(error);
@@ -383,8 +401,8 @@ async function prepareSummary(
   // `historyVersion`, so that event is never used.
   const writePrepared = async (
     result:
-      | { outcome: "ready"; summary: string }
-      | { outcome: "failed"; errorType: string },
+      | { outcome: "ready"; summary: string; costUsd?: number }
+      | { outcome: "failed"; errorType: string; costUsd?: number },
   ): Promise<JobOutcome> => {
     const currentVersion = await eventStore.loadCurrentHistoryVersion(
       message.conversationId,
@@ -434,7 +452,7 @@ async function prepareSummary(
   });
 
   const signal = AbortSignal.timeout(remainingMs);
-  let summary: string;
+  let summary: ContextSummary;
   try {
     summary = await runWithConversationPrivacy(
       snapshot.conversationPrivacy,
@@ -472,12 +490,15 @@ async function prepareSummary(
     return await writePrepared({
       outcome: "failed",
       errorType: failureLabel(error, signal),
+      ...(error instanceof ContextSummaryError && error.costUsd !== undefined
+        ? { costUsd: error.costUsd }
+        : undefined),
     });
   }
-  const outcome = await writePrepared({ outcome: "ready", summary });
+  const outcome = await writePrepared({ outcome: "ready", ...summary });
   if (outcome === "ready") {
     setSpanAttributes({
-      "app.compaction.summary_chars": summary.length,
+      "app.compaction.summary_chars": summary.summary.length,
       "app.compaction.ready_ms": Date.now() - request.createdAtMs,
     });
   }

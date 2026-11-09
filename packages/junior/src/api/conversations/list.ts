@@ -10,6 +10,7 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
@@ -22,11 +23,9 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
-  juniorIdentities,
 } from "@/db/schema";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
-import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
@@ -35,7 +34,6 @@ import {
   conversationHasParticipantUser,
   conversationIsMemberRoot,
   conversationIsNotUnsubscribedRoot,
-  viewerConversationMembership,
   type ConversationMember,
 } from "./membership";
 import {
@@ -43,6 +41,7 @@ import {
   selectConversationRecords,
   type ConversationRecordRow,
 } from "./record";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { readFeedThreads } from "./threads";
 import { readUnreadConversationIds, unreadReplySql } from "./unread";
 import { conversationFeedSchema } from "../schema/conversation";
@@ -58,7 +57,10 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { listWaitingConversations } from "@/chat/review-items/store";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
-import { readConversationActivityPreviews } from "./activity-preview";
+import {
+  latestMessageSeqQuery,
+  readConversationActivityPreviews,
+} from "./activity-preview";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -117,12 +119,7 @@ function conversationCodeRepositoryFilter(
     )`,
     or(
       eq(juniorDestinations.visibility, "public"),
-      viewerUserId
-        ? viewerConversationMembership({
-            actorMatch: eq(juniorIdentities.userId, viewerUserId),
-            participantMatch: conversationHasParticipantUser(viewerUserId),
-          })
-        : undefined,
+      viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
     ),
   );
 }
@@ -219,19 +216,28 @@ async function waitingRowsOutsidePage(
   });
 }
 
+/** Feed rows show last activity only as an age in whole minutes. */
+function shownActivityMinute(lastActivityAt: SQLWrapper) {
+  return sql`date_trunc('minute', ${lastActivityAt})`;
+}
+
 const feedTree = alias(juniorConversations, "feed_tree");
 const feedAnnotated = alias(juniorConversations, "feed_annotated");
 
 /**
  * Return a query for a token that changes when the viewer's default feed
  * page can change. It reads the same newest page as the feed, so its cost
- * does not grow with the viewer's history.
+ * does not grow with the viewer's history. The token lists a short token
+ * for each feed-row input as `name:token`, separated by spaces, so the
+ * dashboard can record which inputs moved it.
  *
  * The token holds only what a feed row shows, so a Task's own writes do not
- * move it. Each content write moves its Conversation's `last_activity_at`,
- * so the root's value covers the preview and participants. The row shows
- * only whether a reply is unread, so a scroll that moves the read position
- * does not move the token.
+ * move it. Every Event of a live Turn moves `last_activity_at`, but rows
+ * show it only as an age in whole minutes, so the token holds its minute.
+ * The rows are in feed order, so a move that reorders them moves the token.
+ * The newest Message of each role stands for the preview and participants.
+ * The row shows only whether a reply is unread, so a scroll that moves the
+ * read position does not move the token.
  * Threads and annotations show from the whole tree. Waiting roots outside
  * the page move the Review items token.
  */
@@ -241,31 +247,73 @@ export function conversationFeedVersionQuery(
 ) {
   const pin = juniorConversationParticipants;
   const read = juniorConversationReadPositions;
+  const conversationId = juniorConversations.conversationId;
+  // The fields of each nested Thread row. An archive anywhere in the tree
+  // can hide Threads under it.
+  const tree = db
+    .select({
+      version: sql<string>`concat_ws(':',
+        count(*) filter (where ${feedTree.archivedAt} is not null),
+        string_agg(concat_ws('/',
+          ${feedTree.conversationId}, ${feedTree.title},
+          ${conversationStatusSql(feedTree)},
+          ${shownActivityMinute(feedTree.lastActivityAt)}
+        ), ',' order by ${feedTree.conversationId}) filter (
+          where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
+        )
+      )`,
+    })
+    .from(feedTree)
+    .where(eq(feedTree.rootConversationId, conversationId));
+  const annotations = db
+    .select({
+      version: sql<string>`concat_ws(':', count(*), max(${juniorConversationAnnotations.updatedAt}))`,
+    })
+    .from(juniorConversationAnnotations)
+    .innerJoin(
+      feedAnnotated,
+      eq(
+        feedAnnotated.conversationId,
+        juniorConversationAnnotations.conversationId,
+      ),
+    )
+    .where(eq(feedAnnotated.rootConversationId, conversationId));
+  // Postgres runs the lookups below after the LIMIT, so once for each row
+  // on the page.
   const page = db
     .select({
-      conversationId: juniorConversations.conversationId,
+      conversationId,
       channelName: juniorConversations.channelName,
       lastActivityAt: juniorConversations.lastActivityAt,
-      lastReadSeq: read.lastReadSeq,
       pinnedAt: pin.pinnedAt,
       pinPosition: pin.pinPosition,
       status: conversationStatusSql(juniorConversations).as("status"),
       title: juniorConversations.title,
+      activity: shownActivityMinute(juniorConversations.lastActivityAt).as(
+        "activity",
+      ),
+      assistantSeq:
+        sql<number>`(${latestMessageSeqQuery(db, "assistant", conversationId)})`.as(
+          "assistant_seq",
+        ),
+      userSeq:
+        sql<number>`(${latestMessageSeqQuery(db, "user", conversationId)})`.as(
+          "user_seq",
+        ),
+      unread: unreadReplySql(db, userId, conversationId, read.lastReadSeq).as(
+        "unread",
+      ),
+      threads: sql<string>`(${tree})`.as("threads"),
+      annotations: sql<string>`(${annotations})`.as("annotations"),
     })
     .from(juniorConversations)
     .leftJoin(
       pin,
-      and(
-        eq(pin.rootConversationId, juniorConversations.conversationId),
-        eq(pin.userId, userId),
-      ),
+      and(eq(pin.rootConversationId, conversationId), eq(pin.userId, userId)),
     )
     .leftJoin(
       read,
-      and(
-        eq(read.conversationId, juniorConversations.conversationId),
-        eq(read.userId, userId),
-      ),
+      and(eq(read.conversationId, conversationId), eq(read.userId, userId)),
     )
     .where(
       and(
@@ -279,49 +327,35 @@ export function conversationFeedVersionQuery(
     .orderBy(
       desc(isNotNull(pin.pinnedAt)),
       desc(juniorConversations.lastActivityAt),
-      asc(juniorConversations.conversationId),
+      asc(conversationId),
     )
     .limit(CONVERSATION_FEED_LIMIT)
     .as("feed_page");
-  // The fields of each nested Thread row. An archive anywhere in the tree
-  // can hide Threads under it.
-  const tree = db
-    .select({
-      version: sql<string>`concat_ws(':',
-        count(*) filter (where ${feedTree.archivedAt} is not null),
-        string_agg(concat_ws('/',
-          ${feedTree.conversationId}, ${feedTree.title},
-          ${conversationStatusSql(feedTree)}, ${feedTree.lastActivityAt}
-        ), ',' order by ${feedTree.conversationId}) filter (
-          where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
-        )
-      )`,
-    })
-    .from(feedTree)
-    .where(eq(feedTree.rootConversationId, page.conversationId));
-  const annotations = db
-    .select({
-      version: sql<string>`concat_ws(':', count(*), max(${juniorConversationAnnotations.updatedAt}))`,
-    })
-    .from(juniorConversationAnnotations)
-    .innerJoin(
-      feedAnnotated,
-      eq(
-        feedAnnotated.conversationId,
-        juniorConversationAnnotations.conversationId,
-      ),
-    )
-    .where(eq(feedAnnotated.rootConversationId, page.conversationId));
+  const byRow = (...values: SQLWrapper[]) =>
+    sql`string_agg(concat_ws('@', ${page.conversationId}, ${sql.join(values, sql`, `)}), ',' order by ${page.conversationId})`;
+  // The feed-row inputs of the token, by name. Order holds the page's ids in
+  // feed order. Each other input holds its values by id, so a reorder moves
+  // only order.
+  const inputs = {
+    order: sql`string_agg(${page.conversationId}, ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId})`,
+    pin: byRow(page.pinnedAt, page.pinPosition),
+    title: byRow(page.title, page.channelName),
+    status: byRow(page.status),
+    activity: byRow(page.activity),
+    messages: byRow(page.assistantSeq, page.userSeq),
+    unread: byRow(page.unread),
+    threads: byRow(page.threads),
+    annotations: byRow(page.annotations),
+  };
   return db
     .select({
-      version: sql<string>`md5(coalesce(string_agg(
-        concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition},
-          ${page.title}, ${page.channelName}, ${page.status},
-          ${page.lastActivityAt},
-          ${unreadReplySql(db, userId, page.conversationId, page.lastReadSeq)},
-          (${tree}), (${annotations})),
-        ',' order by ${page.conversationId}
-      ), ''))`,
+      version: sql<string>`concat_ws(' ', ${sql.join(
+        Object.entries(inputs).map(
+          ([name, input]) =>
+            sql`${`${name}:`}::text || left(md5(coalesce(${input}, '')), 8)`,
+        ),
+        sql`, `,
+      )})`,
     })
     .from(page);
 }

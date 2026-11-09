@@ -39,9 +39,11 @@ import {
   conversationReadPositionSchema,
   conversationReadReportSchema,
   conversationUnreadSchema,
+  conversationOutlineSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  boardReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -70,6 +72,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import { mockDemoMp4 } from "./demo-mp4";
+import { readMockConversationOutline } from "./outline";
 import {
   markMockConversationRead,
   setMockConversationReadState,
@@ -79,6 +82,7 @@ import {
   filterMockConversationsByRepository,
   readMockCodeRepository,
 } from "./code-repository";
+import { readMockBoard } from "./board";
 import {
   readMockConversationChildAgents,
   continueMockConversationInSlack,
@@ -172,6 +176,9 @@ export function createMockReportingApi(): Hono<{
     return mockNotificationSettings(parsed.data);
   });
 
+  app.get("/board", () =>
+    jsonResponse(boardReportSchema, readMockBoard(Date.now())),
+  );
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
@@ -375,6 +382,16 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationEventPageSchema, report)
       : errorResponse("Invalid conversation cursor.", 400);
+  });
+  app.get("/conversations/:conversationId/outline", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const outline = readMockConversationOutline(params.data.conversationId);
+    return outline
+      ? jsonResponse(conversationOutlineSchema, outline)
+      : errorResponse("Conversation not found.", 404);
   });
   app.get("/conversations/:conversationId/agents", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -605,8 +622,8 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(conversationAutoArchiveSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
-  // Fixed bodies so dashboard mock can exercise image, video, and file
-  // attachment cards.
+  // Fixed bodies so dashboard mock can exercise image, video, file, and text
+  // preview attachment cards.
   app.get("/conversations/:conversationId/attachments/:attachmentId", (c) => {
     const conversationId = c.req.param("conversationId");
     const attachmentId = c.req.param("attachmentId");
@@ -643,6 +660,18 @@ export function createMockReportingApi(): Hono<{
           "cache-control": "private, no-store",
           "content-disposition": 'attachment; filename="notes.txt"',
           "content-type": "text/plain",
+          "content-length": String(Buffer.byteLength(body)),
+        },
+      });
+    }
+    if (attachmentId === "qa-readme-md") {
+      const body =
+        "# Release notes\n\nThis line wraps\nin the source.\n\n- Preview text files\n- Keep downloads\n\n```ts\nconst ok = true;\n```\n\nRead the [docs][docs].\n\n[docs]: https://example.com/docs\n";
+      return new Response(body, {
+        headers: {
+          "cache-control": "private, no-store",
+          "content-disposition": 'attachment; filename="README.md"',
+          "content-type": "text/markdown",
           "content-length": String(Buffer.byteLength(body)),
         },
       });

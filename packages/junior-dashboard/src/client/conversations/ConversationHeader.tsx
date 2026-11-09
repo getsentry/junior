@@ -24,6 +24,7 @@ import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import type { TranscriptSearchMatch } from "./transcriptSearch";
+import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
 /**
  * Keep the conversation title and frequently used controls in the header.
@@ -46,6 +47,11 @@ export function ConversationHeader(props: {
   forks?: ReactNode;
   /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
+  /**
+   * The Conversation is not created yet. Its actions stay inert until it
+   * exists; the sidebar toggle still works.
+   */
+  pending?: boolean;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   pin: ConversationPinAction;
@@ -77,7 +83,7 @@ export function ConversationHeader(props: {
       !detailsOpen &&
       document.activeElement === document.body
     ) {
-      const trigger = window.matchMedia("(max-width: 767px)").matches
+      const trigger = window.matchMedia(MOBILE_LAYOUT_QUERY).matches
         ? menuButtonRef.current
         : detailsButtonRef.current;
       trigger?.focus({ preventScroll: true });
@@ -194,7 +200,10 @@ export function ConversationHeader(props: {
         <ConversationOverflowMenu buttonRef={menuButtonRef}>
           {(close) => (
             <>
-              {menuActions("mobile", close)}
+              {/* App menu stays usable on mobile, like the sidebar toggle. */}
+              <div className="contents" inert={props.pending}>
+                {menuActions("mobile", close)}
+              </div>
               {openMobileNavigation ? (
                 <Button
                   className="mt-0.5"
@@ -252,7 +261,10 @@ export function ConversationHeader(props: {
               </div>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
+          <div
+            className="flex shrink-0 items-center gap-0.5"
+            inert={props.pending}
+          >
             {props.cost ? (
               <span className="mr-2 text-xs tabular-nums text-dashboard-text-muted">
                 {props.cost}

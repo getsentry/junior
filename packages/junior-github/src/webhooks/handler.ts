@@ -406,11 +406,7 @@ export function createGitHubWebhookRoute(args: {
       });
       const feedbackTarget = pullRequestFeedbackTarget(events);
       const feedbackHasMatch =
-        feedbackTarget && hasMatch
-          ? (await Promise.all(events.map((event) => hasMatch(event)))).some(
-              Boolean,
-            )
-          : false;
+        feedbackTarget && hasMatch ? await hasMatch(events) : false;
       if (feedbackTarget && feedbackHasMatch) {
         try {
           await args.markFeedbackReviewing(feedbackTarget);

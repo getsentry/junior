@@ -17,6 +17,7 @@ import {
   conversationsListPage,
   conversationsOpenOk,
   conversationsRepliesPage,
+  dndInfoOk,
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
   filesInfoOk,
@@ -46,6 +47,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "chat.update",
   "chat.postEphemeral",
   "chat.getPermalink",
+  "chat.unfurl",
   "views.publish",
   "views.open",
   "entity.presentDetails",
@@ -57,6 +59,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "conversations.list",
   "conversations.open",
   "conversations.replies",
+  "dnd.info",
   "canvases.access.set",
   "canvases.create",
   "conversations.canvases.create",
@@ -223,6 +226,7 @@ function defaultSlackApiResponse(
       return { body: chatPostMessageOk() };
     case "chat.delete":
     case "chat.update":
+    case "chat.unfurl":
       return { body: slackOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };
@@ -248,6 +252,8 @@ function defaultSlackApiResponse(
       return { body: conversationsOpenOk() };
     case "conversations.replies":
       return { body: conversationsRepliesPage() };
+    case "dnd.info":
+      return { body: dndInfoOk() };
     case "canvases.access.set":
       return { body: canvasesAccessSetOk() };
     case "canvases.create":

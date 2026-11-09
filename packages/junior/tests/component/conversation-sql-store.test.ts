@@ -6,6 +6,7 @@ import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
+  requestAnotherSlice,
   startConversationWork,
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
@@ -1617,6 +1618,51 @@ ORDER BY metric
       await expect(running).resolves.toEqual({ status: "completed" });
     } finally {
       vi.useRealTimers();
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
+  it("stores a paused execution as paused", async () => {
+    const fixture = await createJuniorSqlFixture();
+
+    try {
+      await disconnectStateAdapter();
+      const state = getStateAdapter();
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      const message = inboundMessage("slice");
+      await appendInboundMessage({
+        message,
+        conversationStore: store,
+        nowMs: 1_000,
+        state,
+      });
+      const lease = await startConversationWork({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        nowMs: 2_000,
+        state,
+      });
+      if (lease.status !== "acquired") {
+        throw new Error("expected a lease");
+      }
+      await requestAnotherSlice({
+        conversationId: CONVERSATION_ID,
+        conversationStore: store,
+        destination: message.destination,
+        leaseToken: lease.leaseToken,
+        nowMs: 3_000,
+        state,
+      });
+
+      const [row] = await fixture.sql
+        .db()
+        .select({ executionStatus: juniorConversations.executionStatus })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(row?.executionStatus).toBe("paused");
+    } finally {
       await disconnectStateAdapter();
       await fixture.close();
     }

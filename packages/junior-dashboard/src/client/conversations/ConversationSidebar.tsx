@@ -53,6 +53,7 @@ import {
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
 import { Button } from "../components/ui/button";
+import { ScrollArea } from "../components/ui/scroll-area";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Tooltip,
@@ -200,7 +201,7 @@ export function ConversationSidebar(props: {
           New conversation
         </Button>
       </div>
-      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <ScrollArea viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -268,7 +269,7 @@ export function ConversationSidebar(props: {
             />
           </PinnedConversationOrder>
         )}
-      </div>
+      </ScrollArea>
     </aside>
   );
 }

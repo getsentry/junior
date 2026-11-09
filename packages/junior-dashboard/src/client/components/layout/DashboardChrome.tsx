@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -11,8 +12,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-/** Replaces the mobile header back link while a page shows a nested view. */
-type MobileHeaderBack = { label: string; onClick(): void };
+import { cn } from "../../styles";
+
+/**
+ * Replaces the mobile header back link while a page shows a nested view, or
+ * a Conversation that has no route yet. `title` names it when the route
+ * cannot. Without `onClick`, back shows but waits.
+ */
+type MobileHeaderBack = { label: string; onClick?(): void; title?: string };
 
 type DashboardChromeContextValue = {
   mobileHeaderBack: MobileHeaderBack | null;
@@ -115,11 +122,13 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
 /**
  * Sticky shell chrome: mobile header, secondary navigation slot, and banner.
  * One bottom border closes the header and page links, so page link
- * underlines sit on it. Banners render below that border. Short desktop
- * windows hide the header, so the border shows only under page links.
+ * underlines sit on it. Banners render below that border. Desktop hides the
+ * header unless it shows the top bar (`desktopTopBar`); without it, the
+ * border shows only under page links.
  */
 export function DashboardChrome(props: {
   banner?: ReactNode;
+  desktopTopBar: boolean;
   header: ReactNode;
 }) {
   const chrome = useContext(DashboardChromeContext);
@@ -128,8 +137,17 @@ export function DashboardChrome(props: {
   }
 
   return (
-    <div className="sticky top-0 z-30 bg-dashboard-bg/95 pt-[env(safe-area-inset-top)]">
-      <div className="border-b border-dashboard-border-strong md:border-b-0 md:has-[[data-secondary-slot]>*]:border-b md:tall:border-b">
+    <div
+      className="sticky top-0 z-30 bg-dashboard-bg/95 pt-[env(safe-area-inset-top)]"
+      data-dashboard-chrome=""
+    >
+      <div
+        className={cn(
+          "border-b border-dashboard-border-strong",
+          !props.desktopTopBar &&
+            "md:border-b-0 md:has-[[data-secondary-slot]>*]:border-b",
+        )}
+      >
         {props.header}
         <div
           className="hidden md:block"
@@ -230,21 +248,29 @@ export function useMobileHeaderBack(): MobileHeaderBack | null {
 
 /**
  * Point the mobile header back control at `onClick` while `label` is set,
- * such as from the event log back to its Conversation.
+ * such as from the event log back to its Conversation. `title` names a
+ * Conversation that has no route yet.
  */
 export function useRegisterMobileHeaderBack(
   label: string | undefined,
-  onClick: () => void,
+  onClick: (() => void) | undefined,
+  title?: string,
 ): void {
   const setBack = useContext(DashboardChromeContext)?.setMobileHeaderBack;
   const onClickRef = useRef(onClick);
   onClickRef.current = onClick;
+  const enabled = Boolean(onClick);
 
-  useEffect(() => {
+  // Before paint, so the header never shows a frame of the old chrome.
+  useLayoutEffect(() => {
     if (!setBack || !label) return;
-    setBack({ label, onClick: () => onClickRef.current() });
+    setBack({
+      label,
+      onClick: enabled ? () => onClickRef.current?.() : undefined,
+      title,
+    });
     return () => setBack(null);
-  }, [label, setBack]);
+  }, [enabled, label, setBack, title]);
 }
 
 /** Mount page navigation into the desktop chrome and mobile drawer. */

@@ -126,6 +126,20 @@ async function mockLongConversation(
     },
   );
   await page.route(
+    `**/api/conversations/${conversationId}/outline`,
+    async (route) => {
+      await route.fulfill({
+        json: {
+          items: events(0, lastSeq).flatMap(({ data, seq }) =>
+            data.type === "message" && data.role === "user"
+              ? [{ seq, text: data.text }]
+              : [],
+          ),
+        },
+      });
+    },
+  );
+  await page.route(
     "**/api/plugins/memory/conversations/*/memories",
     async (route) => {
       await route.fulfill({
@@ -341,7 +355,7 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1920 });
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
-    paged: false,
+    paged: true,
   });
   await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
   const transcript = page.getByLabel("Conversation transcript");
@@ -351,6 +365,8 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
+  // The outline lists every person message, not only the loaded page.
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
   await expect(row(transcript, 1_234)).toHaveCount(0);
 
   const item = outline.getByRole("button", {

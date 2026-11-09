@@ -4,6 +4,7 @@ import {
   NOTIFICATION_TARGET_KEY,
 } from "../src/service-worker";
 import { screenshot } from "./screenshot";
+import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-reporting/fixtures";
 
 test("updates the signed-in user's display name", async ({
   page,
@@ -25,14 +26,17 @@ test("updates the signed-in user's display name", async ({
   ).toBeVisible();
 });
 
-test("saves notification working hours", async ({ page, dashboard }) => {
+test("saves notification working hours and the Slack schedule choice", async ({
+  page,
+  dashboard,
+}) => {
   await page.goto(`${dashboard.baseURL}/settings`);
   await expect(
-    page.getByRole("heading", { name: "Phone notifications" }),
+    page.getByRole("heading", { name: "Push notifications" }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Phone notifications are not set up for this Junior install.",
+      "Push notifications are not set up for this Junior install.",
     ),
   ).toBeVisible();
   await screenshot(page, "settings-notifications");
@@ -41,6 +45,24 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   await expect(saturday).toHaveAttribute("aria-pressed", "false");
   await saturday.click();
   await page.getByLabel("Start").fill("08:30");
+  // Following Slack is on by default. The e2e user has no linked Slack
+  // account, so the hours apply.
+  const followSlack = page.getByRole("checkbox", {
+    name: "Follow my Slack notification schedule",
+  });
+  await expect(followSlack).toBeChecked();
+  await expect(
+    page.getByText(
+      "Junior cannot read your Slack notification schedule, so it uses the hours below.",
+    ),
+  ).toBeVisible();
+  await screenshot(page, "settings-notifications-slack", {
+    target: page
+      .getByRole("heading", { exact: true, name: "Push notifications" })
+      .locator(".."),
+  });
+  await followSlack.click();
+  await expect(followSlack).not.toBeChecked();
   const saved = page.waitForRequest(
     (request) =>
       request.method() === "PUT" &&
@@ -48,6 +70,7 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   );
   await page.getByRole("button", { name: "Save hours" }).click();
   expect((await saved).postDataJSON()).toEqual({
+    followSlack: false,
     workingHoursOnly: true,
     days: [1, 2, 3, 4, 5, 6],
     start: "08:30",
@@ -55,6 +78,113 @@ test("saves notification working hours", async ({ page, dashboard }) => {
   });
   await expect(page.getByText("Hours saved.")).toBeVisible();
   await expect(saturday).toHaveAttribute("aria-pressed", "true");
+});
+
+test("turns on push notifications from a one-time tip", async ({
+  page,
+  dashboard,
+}) => {
+  // Headless Chromium has no push service. Stand in for it, so the tip runs
+  // the real permission, subscribe, and save path.
+  await page.context().grantPermissions(["notifications"]);
+  await page.addInitScript(() => {
+    PushManager.prototype.getSubscription = async () => null;
+    PushManager.prototype.subscribe = async () =>
+      ({
+        toJSON: () => ({
+          endpoint: "https://fcm.googleapis.com/fcm/send/e2e",
+          keys: { auth: "e2e-auth", p256dh: "e2e-p256dh" },
+        }),
+      }) as unknown as PushSubscription;
+  });
+  // The e2e install has no Web Push keys, so return a configured install.
+  await page.route("**/api/notifications", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      json: { ...(await response.json()), publicKey: "test-public-key" },
+      response,
+    });
+  });
+  const subscriptions: unknown[] = [];
+  await page.route("**/api/notifications/subscriptions", async (route) => {
+    subscriptions.push(route.request().postDataJSON());
+    const response = await page.request.get(
+      `${dashboard.baseURL}/api/notifications`,
+    );
+    await route.fulfill({
+      json: {
+        ...(await response.json()),
+        deviceCount: 1,
+        publicKey: "test-public-key",
+      },
+    });
+  });
+  await page.route("**/api/notifications/test", (route) =>
+    route.fulfill({ json: { delivered: 1 } }),
+  );
+  await page.route("**/api/conversations", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        // A fixture Conversation, so the page renders a transcript.
+        conversationId: DASHBOARD_QA_CONVERSATION_ID,
+        messageId: "tip-message",
+        status: "accepted",
+      },
+    });
+  });
+  async function startConversation(message: string) {
+    await page.goto(dashboard.baseURL);
+    await page.getByPlaceholder("Message Junior…").fill(message);
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
+  }
+
+  await startConversation("First question");
+  const tip = page
+    .getByRole("dialog")
+    .filter({ hasText: "Push notifications" });
+  await expect(tip).toContainText(
+    "Get a push notification when Junior replies.",
+  );
+  await screenshot(page, "push-notifications-tip", { view: "desktop" });
+  await tip.getByRole("button", { name: "Turn on" }).click();
+  await expect(tip).toContainText("Push notifications are on");
+  expect(subscriptions).toEqual([
+    {
+      endpoint: "https://fcm.googleapis.com/fcm/send/e2e",
+      keys: { auth: "e2e-auth", p256dh: "e2e-p256dh" },
+    },
+  ]);
+  await screenshot(page, "push-notifications-tip-on", { view: "desktop" });
+  await tip.getByRole("button", { name: "Send a test" }).click();
+  await expect(tip).toContainText("Test sent.");
+  await tip.getByRole("button", { name: "Settings" }).click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/settings#push-notifications`,
+  );
+  // Before the chrome offset, the heading scrolled out of view under it.
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Push notifications" }),
+  ).toBeInViewport();
+
+  // The tip checks this flag before anything else, so a later Conversation
+  // cannot show it again.
+  expect(
+    await page.evaluate(() =>
+      window.localStorage.getItem(
+        "junior:dashboard:push-notifications-tip-shown",
+      ),
+    ),
+  ).toBe("1");
+  await startConversation("Second question");
+  await expect(page.getByText("Second question")).toBeVisible();
+  await expect(
+    page.getByText("Get a push notification when Junior replies."),
+  ).toHaveCount(0);
 });
 
 test("opens a tapped notification that the app did not open", async ({
@@ -167,7 +297,32 @@ test("saves the auto-archive default and wait time", async ({
   await page.getByRole("button", { name: "Archive done now" }).click();
   await expect(page.getByRole("status")).toHaveText("Archived 1 conversation.");
   await screenshot(page, "settings-auto-archive", {
-    target: page.getByRole("heading", { name: "Conversations" }).locator(".."),
+    target: page
+      .getByRole("heading", { exact: true, name: "Conversations" })
+      .locator(".."),
     view: "desktop",
   });
+});
+
+test("links to a settings section", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const heading = page.getByRole("heading", {
+    exact: true,
+    name: "Message box",
+  });
+  const link = page.getByRole("link", { name: "Link to Message box" });
+  // A screenshot resizes the page and drops hover, so show the link by focus.
+  await link.focus();
+  await screenshot(page, "settings-section-link", {
+    target: heading.locator(".."),
+    view: "desktop",
+  });
+  await link.click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#message-box`);
+  await expect(heading).toBeInViewport();
+
+  await page.goto(`${dashboard.baseURL}/settings#conversations`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Conversations" }),
+  ).toBeInViewport();
 });

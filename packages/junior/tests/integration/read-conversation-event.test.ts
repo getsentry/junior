@@ -280,7 +280,7 @@ describe("readConversationEvent", () => {
         modelId: "openai/gpt-5.4",
         piMessages: messages,
       },
-      async () => "Unused.",
+      async () => ({ summary: "Unused." }),
     );
     expect(swap.compacted).toBe(true);
     const cleared = JSON.stringify(swap.piMessages);

@@ -58,7 +58,9 @@ describe("Dashboard Authorization", () => {
     const next = await paused.continue(
       webMessage("Never mind the budget. What is 17 + 25?"),
     );
-    expect(turnStates(next).at(-1)).toBe("succeeded");
+    // The new message supersedes the Turn that waits for sign-in. That Turn
+    // ends without a reply, and the new Turn answers.
+    expect(turnStates(next).sort()).toEqual(["no_reply", "succeeded"]);
     expect(next.replies.at(-1)?.text).toContain("42");
     expect(next.authorizationPrompt).toBeUndefined();
   });

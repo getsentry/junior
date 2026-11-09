@@ -14,7 +14,7 @@ import {
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeReviewItem } from "@/chat/review-items/store";
+import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createSlackSource } from "@sentry/junior-plugin-api";
@@ -52,7 +52,7 @@ const REQUEST = {
   fields: [
     {
       id: "decision",
-      kind: "choice",
+      kind: "choice" as const,
       label: "Decision",
       options: [{ label: "Ship" }, { label: "Wait" }],
     },
@@ -210,11 +210,20 @@ describe("conversation status", () => {
       body: "No action needed.",
       assignees: [webTestActor.email],
     });
-    await addItem(conversationId, {
-      kind: "action",
-      title: "Pick a release name",
+    // addReviewItem assigns a Participant by default. A Slack Actor without
+    // a User still adds an item that no one is assigned to.
+    await insertReviewItem(getDb(), {
+      addedByConversationId: conversationId,
+      assignedToEveryone: false,
+      assigneeUserIds: [],
       body: "No one is asked.",
+      conversationIds: [conversationId],
+      dedupeKey: "unassigned",
+      kind: "action",
+      nowMs: Date.now(),
       request: REQUEST,
+      title: "Pick a release name",
+      visibility: "public",
     });
     await expect(fixture.status(conversationId)).resolves.toBe("idle");
     const before = await fixture.request(detailPath(conversationId));

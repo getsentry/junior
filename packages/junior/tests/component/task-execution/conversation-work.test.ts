@@ -552,7 +552,7 @@ describe("conversation work execution", () => {
         inboundMessageIds: [pendingMessage.inboundMessageId],
         pendingCount: 1,
         pendingMessages: [{ ...pendingMessage, publishExternally: true }],
-        status: "idle",
+        status: "pending",
         updatedAtMs: 1_000,
       },
       lastActivityAtMs: 1_000,
@@ -577,6 +577,40 @@ describe("conversation work execution", () => {
         status: "pending",
       },
     });
+  });
+
+  it("rejects an idle execution that still has pending messages", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const pendingMessage = inboundMessage("m1");
+    const stored = {
+      schemaVersion: 2,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        inboundMessageIds: [pendingMessage.inboundMessageId],
+        pendingCount: 1,
+        pendingMessages: [{ ...pendingMessage, publishExternally: true }],
+        status: "idle",
+        updatedAtMs: 1_000,
+      },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    };
+    await state.set(CONVERSATION_WORK_STATE_KEY, stored);
+
+    await expect(
+      recordConversationActivity({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        nowMs: 2_000,
+        state,
+      }),
+    ).rejects.toThrow("idle cannot have pending messages");
+    await expect(state.get(CONVERSATION_WORK_STATE_KEY)).resolves.toEqual(
+      stored,
+    );
   });
 
   it("keeps failed execution metadata when pending mailbox work remains", async () => {
@@ -1633,6 +1667,30 @@ describe("conversation work execution", () => {
     ]);
   });
 
+  it("gives each message with no known author its own attempt", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    for (const id of ["n1", "n2"]) {
+      await appendInboundMessage({
+        message: inboundMessage(id, { input: { text: id } }),
+        nowMs: 1_000,
+      });
+    }
+    const attempts: string[][] = [];
+    await processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        attempts.push(
+          context.attempt.messages.map((message) => message.inboundMessageId),
+        );
+        await context.attempt.ack();
+        return { status: "completed" };
+      },
+    });
+
+    // Neither message can show that it has the other's Actor.
+    expect(attempts).toEqual([["n1"], ["n2"]]);
+  });
+
   it("resumes a yielded Turn before a newly steered web message", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const webMessage = (id: string, authorId: string) =>
@@ -2321,6 +2379,37 @@ describe("conversation work execution", () => {
       }),
     ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
     expect(queue.sentRecords()).toHaveLength(1);
+  });
+
+  it("prunes a failed conversation from the active index without a wake", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+    // A failed Run that left its active index entry behind.
+    const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
+      execution: Record<string, unknown>;
+    };
+    raw.execution = {
+      ...raw.execution,
+      pendingCount: 0,
+      pendingMessages: [],
+      status: "failed",
+    };
+    await state.set(CONVERSATION_WORK_STATE_KEY, raw);
+
+    await expect(
+      recoverConversationWork({ nowMs: 62_000, queue, state }),
+    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 0 });
+
+    expect(queue.sentRecords()).toEqual([]);
+    await expect(listActiveConversationIds({ state })).resolves.not.toContain(
+      CONVERSATION_ID,
+    );
   });
 
   it("uses fresh queue idempotency keys for repeated heartbeat recovery", async () => {

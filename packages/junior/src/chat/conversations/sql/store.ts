@@ -179,8 +179,8 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove awaiting_resume mapping after every SQL row uses paused
-// and no supported worker writes the legacy status.
+// TODO(dcramer): Remove the awaiting_resume name after the release that stops
+// writing it is the oldest deployed worker. Migration 0089 renamed older rows.
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
@@ -192,11 +192,6 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
-}
-function executionStatusToSql(status: ConversationStatus): ConversationStatus {
-  return (
-    status === "paused" ? "awaiting_resume" : status
-  ) as ConversationStatus;
 }
 
 function destinationFromRow(
@@ -369,6 +364,7 @@ export class SqlStore implements ConversationStore {
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
+    title?: string;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     await this.withConversationMutation(args.parentConversationId, async () => {
@@ -411,6 +407,7 @@ export class SqlStore implements ConversationStore {
             kind: args.kind,
             parentConversationId: args.parentConversationId,
             ...(location ? { location } : undefined),
+            ...(args.title ? { title: args.title } : undefined),
           };
           await this.upsertConversation({
             conversation: child,
@@ -501,6 +498,7 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
@@ -579,6 +577,7 @@ export class SqlStore implements ConversationStore {
       });
       if (args.metrics && args.execution.runId) {
         await replaceConversationMetrics(this.executor, {
+          actorIdentityId: args.actorIdentityId,
           conversationId: args.conversationId,
           runId: args.execution.runId,
           occurredAtMs: args.createdAtMs,
@@ -844,7 +843,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.updatedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.updatedAtMs),
-        executionStatus: executionStatusToSql(conversation.execution.status),
+        executionStatus: conversation.execution.status,
         runId: conversation.execution.runId ?? null,
         lastCheckpointAt:
           conversation.execution.lastCheckpointAtMs === undefined
@@ -904,7 +903,7 @@ export class SqlStore implements ConversationStore {
         `Conversation parent changed for ${conversation.conversationId}`,
       );
     }
-    // Root actors stay in the personal feed even before they author a message.
+    // The root Actor is a Participant before they author a message.
     if (row.actorIdentityId && row.parentConversationId === null) {
       await recordConversationParticipant(this.executor, {
         actorIdentityId: row.actorIdentityId,
