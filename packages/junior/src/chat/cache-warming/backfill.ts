@@ -40,6 +40,13 @@ const CONVERSATION_BATCH_SIZE = 100;
 // The heartbeat gives no deadline. This leaves most of its function time for
 // the gap writes and the other heartbeat work.
 const BACKFILL_BUDGET_MS = 60_000;
+// State lists have no atomic replace, so live recording can append to a
+// segment list while the backfill writes it. Each append over
+// `GLOBAL_GAPS_MAX` drops the oldest entry. The backfill writes at most half
+// the list, so live gaps are dropped only if more than half a list of them
+// arrives during the write. The model reads the list as a histogram, so mixed
+// order does not matter.
+const BACKFILL_GAPS_MAX = GLOBAL_GAPS_MAX / 2;
 
 interface ConversationRow {
   conversationId: string;
@@ -285,9 +292,10 @@ export async function backfillCacheWarmingGaps(args: {
   let segmentCount = 0;
   for (const [segment, gaps] of bySegment) {
     const key = segmentGapsKey(segment);
+    // A list that is not empty has live gaps, or gaps from a run that failed
+    // while it wrote. Both are kept as they are.
     if ((await state.getList(key)).length > 0) continue;
-    // Keep the newest gaps, oldest first, as live recording appends them.
-    const newest = gaps.slice(-GLOBAL_GAPS_MAX);
+    const newest = gaps.slice(-BACKFILL_GAPS_MAX);
     for (const gapMs of newest) {
       await state.appendToList(key, gapMs, {
         maxLength: GLOBAL_GAPS_MAX,
