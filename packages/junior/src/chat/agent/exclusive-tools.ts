@@ -2,10 +2,8 @@ import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-repor
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 
 /**
- * Tools that must be the only tool call in their assistant message.
- *
- * Each one is `modelOnly`. This check sees only direct calls, not calls from
- * a Code Mode script or `executeTool`.
+ * Tools that must be the only tool call in their assistant message. Each one
+ * must be `modelOnly`: this check does not see script or `executeTool` calls.
  */
 const EXCLUSIVE_TOOL_NAMES = [
   "switchWorkspace",
