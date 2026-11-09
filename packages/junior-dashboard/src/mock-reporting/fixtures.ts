@@ -437,9 +437,11 @@ function activeConversation(nowMs: number): ConversationDetailReport {
     ],
     annotations: [
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#42",
         label: "getsentry/payments#42",
+        title: "Retry checkout writes after lock timeouts",
+        displayType: "Pull request",
         objectType: "code_change",
         plugin: "github",
         status: "open",
@@ -1416,9 +1418,11 @@ function longConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 80_000),
       },
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#91",
         label: "getsentry/payments#91",
+        title: "Pin the release train to payments 4.2",
+        displayType: "Pull request",
         objectType: "code_change",
         plugin: "github",
         status: "open",
@@ -1496,9 +1500,11 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
     ],
     annotations: [
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#77",
         label: "getsentry/payments#77",
+        title: "Cache tax rates per checkout session",
+        displayType: "Pull request",
         objectType: "code_change",
         plugin: "github",
         status: "merged",
@@ -1507,9 +1513,11 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         updatedAt: iso(Date.parse(startedAt), 30_000),
       },
       {
-        kind: "resource_link",
+        kind: "object",
         key: "getsentry/payments#61",
         label: "getsentry/payments#61",
+        title: "Checkout p95 regressed after tax lookup change",
+        displayType: "Issue",
         objectType: "task",
         plugin: "github",
         status: "closed",
