@@ -406,7 +406,6 @@ describe("paused turn composition", () => {
     );
     expect(sessionRecord).toMatchObject({
       state: "failed",
-      resumeReason: "timeout",
       sliceId: botConfig.maxSlicesPerTurn,
       errorMessage: expect.stringContaining("execution limit"),
     });

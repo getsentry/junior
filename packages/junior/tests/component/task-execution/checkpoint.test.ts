@@ -1771,6 +1771,112 @@ describe("turn checkpoint", () => {
     expect(logException).not.toHaveBeenCalled();
   });
 
+  it("keeps a stopped or completed turn finished when a late worker saves its result", async () => {
+    const logWarn = vi.fn();
+    vi.doMock("@/chat/logging", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/chat/logging")>();
+      return { ...actual, logWarn };
+    });
+    const { getConversationStore } = await import("@/chat/db");
+    const { saveTurnCheckpoint } =
+      await import("@/chat/task-execution/checkpoint");
+    const {
+      abandonTurnRecord,
+      completeTurnRecord,
+      getTurnRecord,
+      listTurnSummaries,
+      recordTurnSummary,
+      upsertTurnRecord,
+    } = await import("@/chat/task-execution/turn-cursor");
+    const conversationId = "local:late-finish";
+    const committed = [userMessage("needs auth")];
+    const late = [...committed, assistantMessage("late reply", 2)];
+
+    // A stop abandons a Turn that waits for sign-in. Its resumed worker
+    // still finishes later.
+    await upsertTurnRecord({
+      conversationId,
+      piMessages: committed,
+      resumeReason: "auth",
+      turnId: "turn-stopped",
+      sliceId: 1,
+      state: "paused",
+    });
+    await abandonTurnRecord({
+      conversationId,
+      turnId: "turn-stopped",
+      errorMessage: "Turn cancelled",
+    });
+    await expect(
+      saveTurnCheckpoint({
+        mode: "completed",
+        conversationId,
+        turnId: "turn-stopped",
+        messages: late,
+        resultMessageId: "1700000000.009",
+      }),
+    ).resolves.toBeUndefined();
+    await recordTurnSummary({
+      conversationId,
+      turnId: "turn-stopped",
+      sliceId: 1,
+      state: "completed",
+    });
+
+    const stopped = await getTurnRecord(conversationId, "turn-stopped");
+    expect(stopped).toMatchObject({
+      errorMessage: "Turn cancelled",
+      piMessages: committed,
+      state: "abandoned",
+    });
+    expect(stopped?.resultMessageId).toBeUndefined();
+    expect(stopped?.resumeReason).toBeUndefined();
+    expect(
+      (await listTurnSummaries(conversationId)).find(
+        (summary) => summary.turnId === "turn-stopped",
+      ),
+    ).toMatchObject({ state: "abandoned" });
+    expect(logWarn).toHaveBeenCalledWith(
+      "agent.turn.checkpoint.finish_ignored",
+      expect.objectContaining({ "app.turn.state": "abandoned" }),
+    );
+
+    // Recovery completes a Turn whose reply is visible. Its late worker
+    // cannot fail it.
+    const running = await upsertTurnRecord({
+      conversationId,
+      piMessages: committed,
+      turnId: "turn-completed",
+      sliceId: 1,
+      state: "running",
+    });
+    await completeTurnRecord({
+      conversationId,
+      expectedVersion: running.version,
+      resultMessageId: "1700000000.010",
+      turnId: "turn-completed",
+    });
+    await saveTurnCheckpoint({
+      mode: "failed",
+      conversationId,
+      turnId: "turn-completed",
+      messages: late,
+      errorMessage: "Agent turn failed",
+    });
+
+    const completed = await getTurnRecord(conversationId, "turn-completed");
+    expect(completed).toMatchObject({
+      resultMessageId: "1700000000.010",
+      state: "completed",
+    });
+    expect(completed?.errorMessage).toBeUndefined();
+    await expect(
+      getConversationStore().get({ conversationId }),
+    ).resolves.toMatchObject({
+      execution: { runId: "turn-completed", status: "idle" },
+    });
+  });
+
   it("appends after in-place assistant envelope mutations on committed messages", async () => {
     const { saveTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");

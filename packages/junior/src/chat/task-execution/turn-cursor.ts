@@ -117,12 +117,36 @@ function isFinishedTurnState(state: TurnStatus): boolean {
   return state === "completed" || state === "failed" || state === "abandoned";
 }
 
-/** A running or paused write reached a Turn that already finished. */
+/**
+ * The Turn transition rule for every writer. An unfinished Turn can move to
+ * any state. A finished Turn keeps its state: a late write in the same state
+ * can add details, such as a dispatch outcome, but cannot change the state.
+ */
+function canWriteTurnState(from: TurnStatus, to: TurnStatus): boolean {
+  if (!isFinishedTurnState(from) || from === to) return true;
+  // TODO(dcramer): Remove this exception after a paused dispatch Turn resumes
+  // in place. Today recovery fails it because its Conversation has no session
+  // Source, and the dispatch then runs the Turn again and completes it.
+  return from === "failed" && to === "completed";
+}
+
+/** A write in another state reached a Turn that already finished. */
 export class TurnAlreadyFinishedError extends Error {
+  readonly state: TurnStatus;
+
   constructor(turnId: string, state: TurnStatus) {
     super(`Turn ${turnId} already finished as ${state}`);
     this.name = "TurnAlreadyFinishedError";
+    this.state = state;
   }
+}
+
+/** The reason a paused Turn waits, or undefined when the Turn is not paused. */
+export function pausedTurnReason(turn: {
+  resumeReason?: TurnPauseReason;
+  state: TurnStatus;
+}): TurnPauseReason | undefined {
+  return turn.state === "paused" ? turn.resumeReason : undefined;
 }
 
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
@@ -780,7 +804,6 @@ async function updateTurnState(args: {
         dispatchOutcome: args.existing.dispatchOutcome,
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
         historyVersion: parsed.historyVersion,
-        resumeReason: args.existing.resumeReason,
         publishExternally: parsed.publishExternally,
         source: args.existing.source,
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
@@ -794,8 +817,8 @@ async function updateTurnState(args: {
 }
 
 /**
- * Commit stable Pi state and advance the turn cursor. A running or paused
- * write to a completed, failed, or abandoned Turn throws
+ * Commit stable Pi state and advance the turn cursor. A write that would
+ * change the state of a completed, failed, or abandoned Turn throws
  * `TurnAlreadyFinishedError`.
  */
 export async function upsertTurnRecord(args: {
@@ -847,13 +870,9 @@ async function upsertTurnRecordLocked(
     args.conversationId,
     args.turnId,
   );
-  // A late worker that lost its lease must not restart a finished Turn or
-  // commit more history to it.
-  if (
-    existingRecord &&
-    isFinishedTurnState(existingRecord.state) &&
-    !isFinishedTurnState(args.state)
-  ) {
+  // A late worker that lost its lease must not restart or re-finish a
+  // finished Turn, or commit more history to it.
+  if (existingRecord && !canWriteTurnState(existingRecord.state, args.state)) {
     throw new TurnAlreadyFinishedError(args.turnId, existingRecord.state);
   }
   const conversationStore = args.conversationStore ?? getConversationStore();
@@ -988,7 +1007,7 @@ async function upsertTurnRecordLocked(
           args.dispatchOutcome ?? existingRecord?.dispatchOutcome,
         errorMessage: args.errorMessage,
         lastProgressAtMs: args.lastProgressAtMs,
-        resumeReason: args.resumeReason,
+        resumeReason: pausedTurnReason(args),
         publishExternally,
         source: args.source ?? existingRecord?.source,
         resultMessageId:
@@ -1060,7 +1079,15 @@ async function recordTurnSummaryOwned(
   const finishedRecord =
     stored && isFinishedTurnState(stored.state) ? stored : undefined;
   const existing = finishedSummary ?? finishedRecord ?? stored ?? priorSummary;
-  if ((finishedSummary || finishedRecord) && !isFinishedTurnState(args.state)) {
+  // The cursor owns the state of a Turn that has one. A summary-only Turn
+  // uses its last summary.
+  const current = stored ?? priorSummary;
+  if (current && !canWriteTurnState(current.state, args.state)) {
+    return;
+  }
+  // A blocked dispatch writes a failed summary while its cursor stays paused
+  // for sign-in. Running and paused summary writes do not undo that summary.
+  if (finishedSummary && !isFinishedTurnState(args.state)) {
     return;
   }
   const existingDispatchId = existing?.dispatchId;
@@ -1089,7 +1116,7 @@ async function recordTurnSummaryOwned(
     ...definedProps({
       dispatchId: args.dispatchId ?? existingDispatchId,
       dispatchOutcome: args.dispatchOutcome ?? existingDispatchOutcome,
-      resumeReason: args.resumeReason,
+      resumeReason: pausedTurnReason(args),
       resultMessageId: args.resultMessageId ?? existingResultMessageId,
       surface: args.surface ?? existing?.surface,
     }),
@@ -1166,11 +1193,8 @@ export async function abandonTurnRecord(args: {
       const existing = await getTurnRecord(args.conversationId, args.turnId);
       if (
         !existing ||
-        existing.state === "completed" ||
-        existing.state === "failed" ||
-        existing.state === "abandoned" ||
-        (args.onlyIfAuthPaused &&
-          (existing.state !== "paused" || existing.resumeReason !== "auth"))
+        isFinishedTurnState(existing.state) ||
+        (args.onlyIfAuthPaused && pausedTurnReason(existing) !== "auth")
       ) {
         return undefined;
       }
@@ -1199,9 +1223,7 @@ export async function completeTurnRecord(args: {
       const existing = await getTurnRecord(args.conversationId, args.turnId);
       if (
         !existing ||
-        existing.state === "completed" ||
-        existing.state === "failed" ||
-        existing.state === "abandoned" ||
+        isFinishedTurnState(existing.state) ||
         existing.version !== args.expectedVersion
       ) {
         return undefined;
@@ -1231,9 +1253,7 @@ export async function failTurnRecord(args: {
       const existing = await getTurnRecord(args.conversationId, args.turnId);
       if (
         !existing ||
-        existing.state === "completed" ||
-        existing.state === "failed" ||
-        existing.state === "abandoned" ||
+        isFinishedTurnState(existing.state) ||
         existing.version !== args.expectedVersion
       ) {
         return undefined;
