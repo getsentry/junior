@@ -377,18 +377,21 @@ class SqlConversationEventStore implements ConversationEventStore {
   async loadCurrentHistory(
     conversationId: string,
   ): Promise<ConversationEvent[]> {
-    const cursor = await this.readCursor(conversationId);
-    if (cursor.maxHistoryVersion === null) {
-      return [];
-    }
-    const rows = await this.executor
-      .db()
+    const db = this.executor.db();
+    // One statement: the current version and its events come from one snapshot.
+    const currentHistoryVersion = db
+      .select({
+        historyVersion: sql<number>`max(${juniorConversationEvents.historyVersion})`,
+      })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
+    const rows = await db
       .select()
       .from(juniorConversationEvents)
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
-          eq(juniorConversationEvents.historyVersion, cursor.maxHistoryVersion),
+          eq(juniorConversationEvents.historyVersion, currentHistoryVersion),
         ),
       )
       .orderBy(asc(juniorConversationEvents.seq));
