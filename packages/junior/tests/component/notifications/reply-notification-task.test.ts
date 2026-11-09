@@ -2,7 +2,7 @@ import { createECDH, randomBytes, randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import webPush from "web-push";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSource } from "@sentry/junior-plugin-api";
 import {
   createJuniorApi,
@@ -158,6 +158,7 @@ describe("reply notification task", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     for (const [name, value] of savedEnv) {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
@@ -236,6 +237,10 @@ describe("reply notification task", () => {
   });
 
   it("follows the linked Slack notification schedule by default and falls back to the hours", async () => {
+    // Slack answers are cached per user for one minute, so each step below
+    // starts in a new minute.
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 60_000 });
+    const nextMinute = () => vi.setSystemTime(Date.now() + 60_000);
     const api = await viewerApi();
     await resolveActorIdentityId(
       getSqlExecutor(),
@@ -258,22 +263,30 @@ describe("reply notification task", () => {
     };
     const settings = await api("PUT", "/api/notifications/schedule", anyTime);
     expect(settings?.slackPausedNow).toBe(false);
+    await completeDashboardTurn("Slack says you are around.");
+    expect(pushes).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("dnd.info")).toEqual([
+      expect.objectContaining({ params: { user: "U0ALICE" } }),
+    ]);
 
+    nextMinute();
     const nowMs = Date.now();
     queueSlackApiResponse("dnd.info", {
       body: dndInfoOk({ startMs: nowMs - 60_000, endMs: nowMs + 3_600_000 }),
     });
     await completeDashboardTurn("Slack is paused.");
-    expect(pushes).toHaveLength(0);
+    expect(pushes).toHaveLength(1);
 
+    nextMinute();
     // Injected fault: the install has not granted `dnd:read` yet.
     queueSlackApiError("dnd.info", {
       error: "missing_scope",
       needed: "dnd:read",
     });
     await completeDashboardTurn("Slack cannot answer.");
-    expect(pushes).toHaveLength(1);
+    expect(pushes).toHaveLength(2);
 
+    nextMinute();
     // Slack has no Do Not Disturb window, so it overrides the closed hours.
     const closedHours = {
       workingHoursOnly: true,
@@ -283,17 +296,15 @@ describe("reply notification task", () => {
       timezone: "UTC",
     };
     await api("PUT", "/api/notifications/schedule", closedHours);
-    await completeDashboardTurn("Slack says you are around.");
-    expect(pushes).toHaveLength(2);
-    expect(
-      getCapturedSlackApiCalls("dnd.info").map((call) => call.params.user),
-    ).toContain("U0ALICE");
+    await completeDashboardTurn("Slack says you are around again.");
+    expect(pushes).toHaveLength(3);
 
+    nextMinute();
     await api("PUT", "/api/notifications/schedule", {
       ...closedHours,
       followSlack: false,
     });
     await completeDashboardTurn("Slack is ignored.");
-    expect(pushes).toHaveLength(2);
+    expect(pushes).toHaveLength(3);
   });
 });

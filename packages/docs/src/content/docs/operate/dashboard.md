@@ -210,8 +210,8 @@ then the saved user timezone, then `JUNIOR_TIMEZONE`. Calendar working hours
 are not used, because Google Calendar does not make them available.
 
 For a person with a linked Slack account, push notifications follow their
-Slack notification schedule by default. Junior asks Slack before each
-notification and pauses when Slack pauses. A person with no Slack schedule
+Slack notification schedule by default. Junior asks Slack at most one time
+each minute for each person and pauses when Slack pauses. A person with no Slack schedule
 gets notifications at any time. Slack does not show Junior a manual pause,
 only the schedule. To use only the working hours, clear **Follow my Slack
 notification schedule**. Junior uses the working hours when the person has no
