@@ -14,6 +14,7 @@ import {
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { QUIET_MARKER } from "@/chat/no-reply";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import {
@@ -54,7 +55,7 @@ export function createSpawnAgentTool(
       "Delegate when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
       "Do it yourself when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn.",
       `Pick agent_type when one fits; omit it for a fresh general-purpose child with your tools:\n${formatAgentTypes()}`,
-      "After you delegate, do not do the same work yourself. End your turn with a short status. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
+      `After you delegate, do not do the same work yourself. End your turn with one line of status that does not repeat the task. When the reply only says that the work started, end it with exactly ${QUIET_MARKER}: it notifies nobody, and the child's result reaches people when it arrives. Do not mark a reply quiet when it also answers, asks, or reports something, or when it reports a child's result. You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.`,
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
       "A child keeps its type and kind when it receives more work through messageAgent.",
       "Your task text is the child's instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.",

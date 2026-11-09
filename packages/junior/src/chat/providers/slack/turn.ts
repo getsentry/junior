@@ -124,7 +124,11 @@ import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orches
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import {
+  decideReply,
+  getAssistantReplyText,
+} from "@/chat/services/assistant-reply";
+import { isQuietReply } from "@/chat/services/quiet-reply";
 import {
   abandonTurnRecord,
   failTurnRecord,
@@ -426,6 +430,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           }));
 
         const slackMessageTs = getMessageTimestamp(message);
+        const runStartedAtMs = Date.now();
         const turnId =
           options.execution?.turnId ?? buildDeterministicTurnId(message.id);
         let beforeFirstResponsePostCalled = false;
@@ -822,6 +827,18 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           }
           boundaryFailureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(conversationId);
+          // An automation run reports its outcome, so it is never quiet.
+          const decision = agentMessage ? decideReply(agentMessage) : undefined;
+          const quiet =
+            !options.execution?.dispatch &&
+            conversationId !== undefined &&
+            (await isQuietReply({
+              conversationId,
+              eventTurn: false,
+              hasCards: cards.length > 0,
+              marked: decision?.kind === "deliver" && decision.quiet === true,
+              runStartedAtMs,
+            }));
           let slackMessageTs: string[] = [];
           const messageDestinations: Array<{
             destination: Extract<Destination, { platform: "slack" }>;
@@ -851,7 +868,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   })),
                 );
               }
-            } else {
+            } else if (!quiet) {
               slackMessageTs = await sendSlackReply({
                 ...replyTarget,
                 cards,
@@ -889,6 +906,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           const recordedMessageId = recordDeliveredAssistantMessage({
             cards,
             conversation: preparedState.conversation,
+            ...(quiet ? { quiet } : undefined),
             sessionId: turnId,
             source: "slack",
             text,

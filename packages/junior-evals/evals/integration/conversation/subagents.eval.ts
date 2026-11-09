@@ -18,6 +18,9 @@ describe("Child Agents", () => {
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
     expect(conversation.turns).toHaveLength(2);
+    // The status that only says the child started notifies nobody.
+    expect(conversation.turns[0]?.replies).toEqual([]);
+    expect(conversation.quietReplies).toHaveLength(1);
     const resultTurn = conversation.turns[1];
     expect(resultTurn?.status).toBe("succeeded");
     expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([

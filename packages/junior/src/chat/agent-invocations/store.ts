@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
 import { getAgentInvocationIdForResult } from "./ids";
@@ -97,6 +97,30 @@ export async function listAgentInvocationsForConversation(
     )
     .orderBy(asc(juniorAgentInvocations.createdAt));
   return rows.map(invocationFromRow);
+}
+
+/**
+ * Return whether a parent started an agent invocation at or after `sinceMs`
+ * whose result still comes back to it. Only a stop ends an agent invocation
+ * without a result.
+ */
+export async function hasReportingAgentInvocationSince(
+  parentConversationId: string,
+  sinceMs: number,
+): Promise<boolean> {
+  const rows = await getSqlExecutor()
+    .db()
+    .select({ invocationId: juniorAgentInvocations.invocationId })
+    .from(juniorAgentInvocations)
+    .where(
+      and(
+        eq(juniorAgentInvocations.parentConversationId, parentConversationId),
+        gte(juniorAgentInvocations.createdAt, new Date(sinceMs)),
+        ne(juniorAgentInvocations.status, "stopped"),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** Resolve the single invocation that may resume for one child conversation. */
