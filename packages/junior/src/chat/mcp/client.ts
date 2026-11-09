@@ -80,6 +80,9 @@ type HostManagedSessionProvider = OAuthClientProvider & {
   forNewSignIn?: () => OAuthClientProvider;
 };
 
+/** The last error status, and the last response with `WWW-Authenticate`. */
+type ProviderStatus = { status?: number; challenge?: Response };
+
 /** The scope that a `403 insufficient_scope` challenge asks for. */
 function insufficientScope(
   challenge: Response | undefined,
@@ -102,9 +105,8 @@ export class PluginMcpClient {
   private client?: Client;
   private clientPromise?: Promise<Client>;
   private lastAttemptedTransportSessionId?: string;
-  private readonly providerStatusStore = new AsyncLocalStorage<{
-    errorResponse?: Response;
-  }>();
+  private readonly providerStatusStore =
+    new AsyncLocalStorage<ProviderStatus>();
   private readonly fetch: typeof fetch;
   private transport?: StreamableHTTPClientTransport;
   private listedTools?: ListedTool[];
@@ -121,7 +123,12 @@ export class PluginMcpClient {
     this.fetch = fetchWithBoundedOAuthErrorBodies(options.fetch, (response) => {
       const store = this.providerStatusStore.getStore();
       if (store) {
-        store.errorResponse = response;
+        store.status = response.status;
+        // OAuth discovery during a sign-in can 404 after the challenge.
+        // Keep the last response that actually challenged the client.
+        if (response.headers.has("WWW-Authenticate")) {
+          store.challenge = response;
+        }
       }
     });
   }
@@ -287,7 +294,7 @@ export class PluginMcpClient {
     operation: () => Promise<T>,
     phase: McpProviderErrorPhase,
   ): Promise<T> {
-    const store: { errorResponse?: Response } = {};
+    const store: ProviderStatus = {};
     return await this.providerStatusStore.run(store, async () => {
       try {
         return await operation();
@@ -297,12 +304,9 @@ export class PluginMcpClient {
         }
         if (
           error instanceof UnauthorizedError ||
-          (await this.startSignInAfterRejectedRefresh(
-            error,
-            store.errorResponse,
-          ))
+          (await this.startSignInAfterRejectedRefresh(error, store.challenge))
         ) {
-          const scope = insufficientScope(store.errorResponse);
+          const scope = insufficientScope(store.challenge);
           throw new McpAuthorizationRequiredError(
             this.plugin.manifest.name,
             scope === undefined
@@ -316,7 +320,7 @@ export class PluginMcpClient {
           provider: this.plugin.manifest.name,
           missingSession: isMissingSessionError(error) || undefined,
           resourceHost: this.resourceHost,
-          status: store.errorResponse?.status,
+          status: store.status,
         });
       }
     });
