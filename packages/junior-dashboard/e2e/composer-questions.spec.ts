@@ -69,7 +69,7 @@ test("steps through several questions with the keyboard", async ({
   await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
 
   const question = page.getByRole("region", { name: /^Question:/ });
-  await expect(question).toContainText("1 of 3");
+  await expect(question).toContainText("1 of 3", { useInnerText: true });
   await expect(
     question.getByRole("heading", {
       name: "Pick the billing migration window",
@@ -79,22 +79,32 @@ test("steps through several questions with the keyboard", async ({
   await expect(
     question.getByRole("heading", { name: "Choose the first migration batch" }),
   ).toBeVisible();
-  await expect(question).toContainText("2 of 3");
+  await expect(question).toContainText("2 of 3", { useInnerText: true });
   await question.getByRole("checkbox", { name: /invoices/ }).check();
   await question.getByRole("textbox", { name: /On-call owner/ }).fill("Riley");
+  // A step away and back keeps the picks and the text.
+  await question.getByRole("button", { name: "Next question" }).click();
+  await expect(question).toContainText("3 of 3", { useInnerText: true });
+  await question.getByRole("button", { name: "Previous question" }).click();
+  await expect(
+    question.getByRole("checkbox", { name: /invoices/ }),
+  ).toBeChecked();
+  await expect(
+    question.getByRole("textbox", { name: /On-call owner/ }),
+  ).toHaveValue("Riley");
   await screenshot(page, "conversation-question-stepper", {
     lightTheme: true,
     view: "desktop",
   });
   await question.getByRole("button", { name: "Send" }).click();
   // The oldest open question shows next and keeps focus, so keys still work.
-  await expect(question).toContainText("1 of 2");
+  await expect(question).toContainText("1 of 2", { useInnerText: true });
   await expect(question).toBeFocused();
   await page.keyboard.press("2");
   await expect(
     question.getByRole("heading", { name: "Handle the negative invoices" }),
   ).toBeVisible();
-  await expect(question).not.toContainText(/\d of \d/);
+  await expect(question).not.toContainText(/\d of \d/, { useInnerText: true });
   await page.keyboard.press("Escape");
   await expect(question).toHaveCount(0);
   expect(actions).toEqual([
