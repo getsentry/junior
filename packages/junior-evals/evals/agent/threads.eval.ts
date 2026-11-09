@@ -17,7 +17,7 @@ function childId(call: ToolCall): string {
   return (toolOutput(call) as { conversation_id: string }).conversation_id;
 }
 
-// The pick case never names a kind. These cases measure whether Junior picks a
+// The pick cases never name a kind. These cases measure whether Junior picks a
 // Thread for work that people will talk to, and when it archives one.
 describe("Threads", () => {
   test("when people will work through a long effort with Junior directly, start it as a Thread", async ({
@@ -26,6 +26,20 @@ describe("Threads", () => {
     const conversation = await run(
       slackMention(
         "Put a dedicated agent on the Postgres 17 upgrade plan. Priya and I will check in with it directly over the next couple of weeks to steer it. Have it start with a first-pass checklist.",
+      ),
+    );
+
+    const spawned = completedToolCalls("spawnAgent", conversation);
+    expect(spawned.map((call) => spawnInput(call).kind)).toContain("thread");
+  });
+
+  // In Slack, "thread" can also mean a Slack thread, which Junior cannot start.
+  test("when someone in Slack asks for a thread for one work item, start it as a Thread", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "can you create a thread to fix the off-by-one in the audit log pagination cursor and get a PR up?",
       ),
     );
 
