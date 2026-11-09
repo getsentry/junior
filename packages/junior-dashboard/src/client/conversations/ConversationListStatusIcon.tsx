@@ -1,6 +1,7 @@
 import { LockKeyhole } from "lucide-react";
 
 import { Spinner } from "../components/ui/spinner";
+import { cn } from "../styles";
 import type { VisualStatus } from "../types";
 
 /**
@@ -31,6 +32,7 @@ export function ConversationListStatusIcon(props: {
 
 /** Secondary row text for a private, failed, or stopped conversation. */
 export function ConversationStatusText(props: {
+  className?: string;
   isPrivate: boolean;
   status: VisualStatus;
 }) {
@@ -41,7 +43,12 @@ export function ConversationStatusText(props: {
   )
     return null;
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 font-sans text-xs">
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 font-sans text-xs",
+        props.className,
+      )}
+    >
       {props.isPrivate ? (
         <LockKeyhole
           aria-label="Private conversation"

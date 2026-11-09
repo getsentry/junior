@@ -309,10 +309,12 @@ function ConversationCard(props: ConversationCardProps) {
               <ParticipantAvatarStack participants={participants} size="list" />
             </span>
           ) : null}
-          <span className="pointer-events-none relative z-[1]">
-            {/* The tile already shows the lock. */}
-            <ConversationStatusText isPrivate={false} status={status} />
-          </span>
+          {/* The tile already shows the lock. */}
+          <ConversationStatusText
+            className="pointer-events-none relative z-[1]"
+            isPrivate={false}
+            status={status}
+          />
           <time
             className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
             dateTime={activityAt}
