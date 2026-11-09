@@ -87,6 +87,14 @@ describe("findCachePrefixBreaks", () => {
     ]);
   });
 
+  it("accepts a conversation-mode Turn after an Automation run", () => {
+    const run = request(first.messages, {
+      system: [{ type: "text", text: "Automation run." }],
+      tools: [...tools, { name: "finishAutomationRun" }],
+    });
+    expect(findCachePrefixBreaks([run, second])).toEqual([]);
+  });
+
   it("compares requests only within their Conversation", () => {
     const other = request([user("other")], {
       sessionAffinity: "conversation-2",

@@ -5,11 +5,15 @@
  * each message block. A request reads the cache only up to the first block
  * that differs from an earlier request, and writes the rest again. So each
  * agent request of a Conversation must start with every block of the one
- * before it. Cache markers may move. Context compaction is the one expected
- * history rewrite. Its summary requests branch off the prefix: they must
- * extend it, but the next agent request does not extend them.
+ * before it. Cache markers may move. Two rewrites are expected:
+ * - Context compaction replaces the history. Its summary requests branch off
+ *   the prefix: they must extend it, but the next agent request does not
+ *   extend them.
+ * - A person who replies after an Automation run starts a conversation-mode
+ *   Turn, which has another system prompt and tool list.
  */
 import { isContextSummaryRequestText } from "@/chat/agent/context-summary";
+import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { isCompactionSummaryText } from "@/chat/services/context-compaction-marker";
 
 /** The cache-relevant parts of one Anthropic Messages request. */
@@ -113,6 +117,11 @@ function compactedBetween(before: SeenRequest, after: SeenRequest): boolean {
   );
 }
 
+function offersFinishAutomationRun(request: AgentGatewayRequest): boolean {
+  const tools = (request.tools ?? []) as Array<{ name: string }>;
+  return tools.some((tool) => tool.name === FINISH_AUTOMATION_RUN_TOOL_NAME);
+}
+
 function prefixBreak(
   before: SeenRequest,
   after: SeenRequest,
@@ -120,6 +129,9 @@ function prefixBreak(
 ): Omit<CachePrefixBreak, "request"> | undefined {
   const previous = before.request;
   const next = after.request;
+  if (offersFinishAutomationRun(previous) && !offersFinishAutomationRun(next)) {
+    return undefined;
+  }
   if (previous.model !== next.model) {
     return { part: "model", detail: `${previous.model} became ${next.model}` };
   }
