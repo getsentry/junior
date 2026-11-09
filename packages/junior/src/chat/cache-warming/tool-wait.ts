@@ -118,6 +118,7 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
             conversationGapsMs: [],
             globalGapsMs: await state.getList<number>(TOOL_WAIT_GAPS_KEY),
             idleMs: Date.now() - request.startedAtMs,
+            cacheExpiryIdleMs: cacheExpiresAtMs - request.startedAtMs,
             cacheTtlMs: cache.ttlMs,
             prefixTokens,
             cacheReadPrice: request.model.cost.cacheRead,
