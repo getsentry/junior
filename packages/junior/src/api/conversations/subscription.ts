@@ -107,10 +107,9 @@ export async function updateConversationSubscription(
   );
   return await executor.transaction(async () => {
     const db = executor.db();
-    // Lock the root first, like an archive does, so unsubscribes and
-    // archives of one tree run one at a time. `no key update` lets a Turn
-    // in a child add a participant row (a foreign key to the root) without
-    // a wait on this lock.
+    // Lock the root first with the same lock as an archive. Unsubscribes and
+    // archives of one tree then run one at a time, and no child can be added
+    // under the root until this commits.
     const [root] = await db
       .select({
         archivedAt: juniorConversations.archivedAt,
@@ -118,7 +117,7 @@ export async function updateConversationSubscription(
       })
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, rootConversationId))
-      .for("no key update");
+      .for("update");
     if (!root) return undefined;
     const unsubscribedAt = subscribed ? null : new Date();
     // The root actor may not have a participant row yet. The detail ETag
@@ -147,23 +146,26 @@ export async function updateConversationSubscription(
         subscribed,
       };
     }
-    // Lock the unarchived descendants before the subscriber check. A Turn in
-    // a child holds that child's row, so a mention in flight commits first
-    // and the check sees it. A later mention waits, then sees the archive
-    // and restores it. That Turn does not lock the root while the root is
-    // not archived, so it cannot deadlock with this transaction.
+    // Lock every descendant before the subscriber check, in id order, while
+    // the root lock keeps new children out. A Turn in a child holds that
+    // child's row, so a mention or restore in flight commits first, and the
+    // check and the archive below see it. A later mention waits, then sees
+    // the archive and restores it. Archived descendants are locked too,
+    // because a Turn can restore one while this waits.
     const descendants = await db
-      .select({ conversationId: juniorConversations.conversationId })
+      .select({
+        archivedAt: juniorConversations.archivedAt,
+        conversationId: juniorConversations.conversationId,
+      })
       .from(juniorConversations)
       .where(
         and(
           eq(juniorConversations.rootConversationId, rootConversationId),
           ne(juniorConversations.conversationId, rootConversationId),
-          isNull(juniorConversations.archivedAt),
         ),
       )
       .orderBy(juniorConversations.conversationId)
-      .for("no key update");
+      .for("update");
     if (await hasSubscriber(db, rootConversationId)) {
       return { archivedAt: null, subscribed: false };
     }
@@ -171,7 +173,12 @@ export async function updateConversationSubscription(
     // Descendants that are already archived keep their own time.
     await setArchivedAt(
       db,
-      [rootConversationId, ...descendants.map((node) => node.conversationId)],
+      [
+        rootConversationId,
+        ...descendants
+          .filter((node) => !node.archivedAt)
+          .map((node) => node.conversationId),
+      ],
       archivedAt,
     );
     return { archivedAt: archivedAt.toISOString(), subscribed: false };

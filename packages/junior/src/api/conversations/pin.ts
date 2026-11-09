@@ -66,7 +66,7 @@ async function setPin(
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
     .limit(1)
-    .for("no key update");
+    .for("update");
   if (!conversation) throwApiError(404, "Conversation not found.");
   // The viewer passed the access check above, so the root id is safe to name.
   // MCP output has no root field, and the caller needs it to act.
