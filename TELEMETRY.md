@@ -592,7 +592,7 @@ previous Turn when agent history exists.
   is in its own trace. Find its Turn by `gen_ai.conversation.id`.
 - On `plugin.task` `notifyReply`, `app.notification.outcome` is `sent` or
   `skipped`. `app.notification.skip_reason` says why it skipped, such as
-  `outside_hours`, `slack_paused`, or `has_location`. When Junior cannot read
+  `outside_hours`, `slack_paused`, `has_location`, or `quiet`. When Junior cannot read
   a Slack notification schedule, `slack.action.failed` logs the Slack error
   with `app.slack.action` `dnd.info`. A sent task has device counts and
   `app.notification.reply_lag_ms`: the time from the completed Turn to the
