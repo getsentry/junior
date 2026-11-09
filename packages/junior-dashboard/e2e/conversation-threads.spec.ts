@@ -355,6 +355,10 @@ test("shows the breadcrumb, status, and Turn authors of a Thread", async ({
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("Parent agent")).toBeVisible();
   await expect(transcript.getByText("Taylor Chen")).toBeVisible();
+  // A Watch Event of the Thread shows as an Event, not as parent input.
+  await expect(
+    transcript.getByText(/getsentry\/junior#2950 checks failed/),
+  ).toBeVisible();
   await screenshot(page, "conversation-thread-page");
 
   // A nested Thread links each Thread above it by its own title.

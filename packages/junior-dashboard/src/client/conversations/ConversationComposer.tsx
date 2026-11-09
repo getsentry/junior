@@ -17,6 +17,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 import { ImagePlus, Send, Square } from "lucide-react";
 
 import { Button } from "../components/ui/button";
@@ -362,7 +363,10 @@ export const ConversationComposer = memo(function ConversationComposer(
       try {
         await send();
       } catch {
-        // The parent shows the error. The draft stays for a retry.
+        // The parent shows the error. The draft stays for a retry, with
+        // focus, so Enter sends it again.
+        flushSync(() => setHoldPending(false));
+        textareaRef.current?.focus({ preventScroll: true });
         return;
       } finally {
         submittingRef.current = false;
@@ -736,6 +740,17 @@ export function restoreStoredDraftText(draftId: string, text: string): void {
   if (!text.trim()) return;
   const storageKey = draftStorageKey(draftId);
   storeDraft(storageKey, withPrependedText(readStoredDraft(storageKey), text));
+}
+
+/**
+ * Remove the saved draft text of a composer that is gone, to move it to
+ * another composer.
+ */
+export function takeStoredDraftText(draftId: string): string {
+  const storageKey = draftStorageKey(draftId);
+  const { text } = readStoredDraft(storageKey);
+  storeDraft(storageKey, { ...emptyDraft(), text: "" });
+  return text;
 }
 
 function storeDraft(storageKey: string, draft: ConversationDraft): void {

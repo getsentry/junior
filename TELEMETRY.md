@@ -208,14 +208,16 @@ attributes. Nested logs and spans inherit them.
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
 | Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
+| Tool calls ran one at a time         | `agent.tool_batch.started`, `app.sandbox.bash.wait_ms` on span `bash`                                        |
+| Auth signal missed by a command      | `sandbox.egress.auth_signal.missing`, span `bash`                                                            |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `web.search.failed`                            |
 | Model request slow before gateway    | `app.ai.http.*`, `app.ai.event_loop.utilization` on span `gen_ai.chat`                                       |
 | Prompt cache reset between calls     | `app.ai.request.*` hashes, `gen_ai.usage.cache_*` on span `gen_ai.chat`                                      |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
-| Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`                                         |
-| Phone notification missing or late   | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
+| Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`; `app.db.transport`                     |
+| Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
 
 ## Code Mode
 
@@ -257,6 +259,24 @@ Attributes on the `codemode` span:
   a result. `memory` is a `script` failure from the VM heap limit.
 - `gen_ai.tool.call.result.size` is the size of the result the model gets,
   after truncation.
+
+## Tool Batches
+
+`agent.tool_batch.started` logs each assistant message with two or more tool
+calls. Pi runs the calls in parallel, unless one of the tools is
+`sequential`. Then it runs all of them one at a time.
+
+| Attribute                              | Type     | Meaning                                    |
+| -------------------------------------- | -------- | ------------------------------------------ |
+| `app.tool_batch.size`                  | int      | tool calls in the message                  |
+| `app.tool_batch.execution`             | string   | `parallel` or `sequential`                 |
+| `app.tool_batch.tool_names`            | string[] | tool names, in call order                  |
+| `app.tool_batch.sequential_tool_names` | string[] | tools that made the batch run sequentially |
+
+- `app.sandbox.bash.wait_ms` on span `bash` is the time the command waited for
+  earlier bash commands of the same Run.
+- `sandbox.egress.auth_signal.missing` means that the command output has the
+  `junior-auth-required` marker, but the command read no auth signal.
 
 ## Model Requests
 
@@ -553,6 +573,9 @@ previous Turn when agent history exists.
   actions that need no review. Its `gen_ai.chat` children are the reviews.
 - `db.query.text` keeps placeholders. It never has parameter values or SQL
   comments.
+- When no idle Neon pool client is free, a query outside a transaction runs
+  over Neon's HTTP endpoint. Its `db` span has `app.db.transport: http`. A
+  `db` span without the attribute ran on a WebSocket client.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
@@ -567,7 +590,9 @@ previous Turn when agent history exists.
   is in its own trace. Find its Turn by `gen_ai.conversation.id`.
 - On `plugin.task` `notifyReply`, `app.notification.outcome` is `sent` or
   `skipped`. `app.notification.skip_reason` says why it skipped, such as
-  `outside_hours` or `has_location`. A sent task has device counts and
+  `outside_hours`, `slack_paused`, or `has_location`. When Junior cannot read
+  a Slack notification schedule, `slack.action.failed` logs the Slack error
+  with `app.slack.action` `dnd.info`. A sent task has device counts and
   `app.notification.reply_lag_ms`: the time from the completed Turn to the
   end of the pushes.
 - A `notification.push.send` span sends to one browser. `server.address` is

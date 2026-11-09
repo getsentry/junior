@@ -1,4 +1,5 @@
 import type { Identity, User } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
@@ -426,6 +427,70 @@ describe("review item tools", () => {
         body: "Private detail.",
       }),
     ).rejects.toThrow("A public item changes only from a public Conversation");
+  });
+
+  it("assigns the Owner when a Turn without a person asks", async () => {
+    // A dashboard Conversation that Ana started. An event Turn, such as a
+    // watched pull request that merged, has a system Actor.
+    const ana = await user("ana@example.com");
+    await getConversationStore().recordActivity({
+      actor: { email: "ana@example.com" },
+      conversationId: "local:web:owned",
+      destination: { platform: "local", conversationId: "local:web:owned" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "web",
+      visibility: "public",
+    });
+    const eventTurn = (conversationId: string) =>
+      tools({
+        conversationId,
+        resolveActorIdentity: asActor(undefined),
+        source: { kind: "event" } as any,
+      });
+    const ask = {
+      kind: "action",
+      title: "Close the tracking issue?",
+      body: "The pull request merged.",
+      request: REQUEST,
+    };
+
+    const added = await execute(eventTurn("local:web:owned").add, ask);
+    expect(added.item.assignees).toEqual([ana.email]);
+
+    // A private Conversation also takes its Owner, even when the Owner has
+    // no participant row, as when their Identity got its User later.
+    await getConversationStore().recordActivity({
+      actor: { email: "ana@example.com" },
+      conversationId: "local:web:private",
+      destination: { platform: "local", conversationId: "local:web:private" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "web",
+      visibility: "private",
+    });
+    await getDb()
+      .delete(juniorConversationParticipants)
+      .where(
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          "local:web:private",
+        ),
+      );
+    const owned = await execute(eventTurn("local:web:private").add, ask);
+    expect(owned.item).toMatchObject({
+      assignees: [ana.email],
+      visibility: "private",
+    });
+
+    // With no Owner User either, no person would see the item.
+    await conversation("slack:CPUB:1.000001", "CPUB", "public");
+    await expect(
+      execute(eventTurn("slack:CPUB:1.000001").add, ask),
+    ).rejects.toThrow("No person would see this item");
+    const everyone = await execute(eventTurn("slack:CPUB:1.000001").add, {
+      ...ask,
+      assignees: ["everyone"],
+    });
+    expect(everyone.item.assignees).toEqual(["everyone"]);
   });
 
   it("lets an agent close an item once, with a reason", async () => {

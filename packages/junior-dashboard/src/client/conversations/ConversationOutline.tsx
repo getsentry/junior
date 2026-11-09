@@ -6,7 +6,11 @@ import {
   useState,
   type RefObject,
 } from "react";
-import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+import { useQuery } from "@tanstack/react-query";
+import {
+  conversationOutlineSchema,
+  type ConversationReportEvent,
+} from "@sentry/junior/api/schema";
 
 import {
   MessageOutline,
@@ -17,8 +21,10 @@ import {
   MessageOutlinePreviewTitle,
   useMessageOutline,
 } from "../components/ui/message-outline";
+import { fetchDashboardJson } from "../http";
 import {
   conversationOutlineItems,
+  mergeConversationOutlineItems,
   outlineItemAtSeq,
   type ConversationOutlineItem,
 } from "./conversationOutlineItems";
@@ -35,10 +41,13 @@ const JUMP_MARGIN_PX = 12;
  * the message at the top of the transcript viewport. It shows two or more
  * messages only.
  *
- * `onSelect` must make the transcript mount the row of the seq, because the
- * transcript mounts only the rows near the viewport.
+ * The transcript loads only some pages, so the items come from the outline
+ * of the whole Conversation and from the loaded rows. `onSelect` must make
+ * the transcript load and mount the row of the seq, because the transcript
+ * mounts only the rows near the viewport.
  */
 export function ConversationOutline(props: {
+  conversationId: string;
   events: ConversationReportEvent[];
   onSelect(seq: number): void;
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -47,26 +56,34 @@ export function ConversationOutline(props: {
   // The transcript paints first. The outline builds after it, without
   // blocking input.
   const events = useDeferredValue(props.events, NO_EVENTS);
+  const outline = useConversationOutline(props.conversationId).data;
   // Items show text only, so they need no cards or annotations.
   const items = useMemo(
     () =>
-      conversationOutlineItems(transcriptMessagesFromEvents(events, undefined)),
-    [events],
+      mergeConversationOutlineItems(
+        outline,
+        conversationOutlineItems(
+          transcriptMessagesFromEvents(events, undefined),
+        ),
+      ),
+    [events, outline],
   );
   const activeSeq = useActiveOutlineSeq(items, scrollRef);
   const [jumpSeq, setJumpSeq] = useState<number>();
 
+  // A message outside the loaded rows renders after its page loads, so the
+  // jump waits for new events.
   useEffect(() => {
     if (jumpSeq === undefined) return;
-    setJumpSeq(undefined);
     const scroll = scrollRef.current;
     const row = scroll?.querySelector(`[data-transcript-seq="${jumpSeq}"]`);
     if (!scroll || !row) return;
+    setJumpSeq(undefined);
     scroll.scrollTop +=
       row.getBoundingClientRect().top -
       scroll.getBoundingClientRect().top -
       JUMP_MARGIN_PX;
-  }, [jumpSeq, scrollRef]);
+  }, [events, jumpSeq, scrollRef]);
 
   if (items.length < 2) return null;
   return (
@@ -92,6 +109,27 @@ export function ConversationOutline(props: {
       <ConversationOutlinePreview items={items} />
     </MessageOutline>
   );
+}
+
+/**
+ * Read the outline of the whole Conversation once per mount. It does not
+ * poll: messages that arrive later come with the transcript.
+ */
+function useConversationOutline(conversationId: string) {
+  return useQuery({
+    // A new visit reads the outline again, so a cached copy cannot miss
+    // messages that arrived while the reader was away.
+    gcTime: 0,
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        conversationOutlineSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/outline`,
+        signal,
+      ),
+    queryKey: ["conversation", conversationId, "outline"],
+    retry: false,
+    staleTime: Infinity,
+  });
 }
 
 /** Preview the pointed message with the last Junior reply to it. */

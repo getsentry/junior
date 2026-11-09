@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
 
+import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { cn } from "../../styles";
+
+function sectionAnchor(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 /**
  * Keep section headings and fields aligned without nested form cards. The
@@ -22,7 +30,11 @@ export function AutomationFormSection(props: {
       )}
     >
       <div>
-        <h2 className="m-0 font-display text-lg font-medium">{props.title}</h2>
+        <AnchorHeading
+          anchor={sectionAnchor(props.title)}
+          className="m-0 font-display text-lg font-medium"
+          title={props.title}
+        />
         {props.changed ? (
           <p className="mt-1 mb-0 text-xs text-dashboard-accent-text">
             Unsaved changes

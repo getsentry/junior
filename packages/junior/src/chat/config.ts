@@ -125,6 +125,8 @@ export interface ChatConfig {
   bot: BotConfig;
   queue: QueueConfig;
   functionMaxDurationSeconds: number;
+  /** Kill switch for prompt cache warming. Defaults to true. */
+  cacheWarmingEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
   sql: {
@@ -228,7 +230,8 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
-function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
+// Operational kill switches default to on. Only "false" turns them off.
+function parseKillSwitch(name: string, rawValue: string | undefined): boolean {
   const value = toOptionalTrimmed(rawValue)?.toLowerCase();
   if (value === undefined || value === "true") {
     return true;
@@ -236,7 +239,7 @@ function parseConversationWorkEnabled(rawValue: string | undefined): boolean {
   if (value === "false") {
     return false;
   }
-  throw new Error("JUNIOR_CONVERSATION_WORK_ENABLED must be true or false");
+  throw new Error(`${name} must be true or false`);
 }
 
 const DEFAULT_MODEL_ID = resolveGatewayModel("anthropic/claude-opus-5.5").id;
@@ -413,7 +416,12 @@ export function readChatConfig(
     bot: readBotConfig(env, resolvedFunctionMaxDurationSeconds),
     queue: readQueueConfig(env),
     functionMaxDurationSeconds: resolvedFunctionMaxDurationSeconds,
-    conversationWorkEnabled: parseConversationWorkEnabled(
+    cacheWarmingEnabled: parseKillSwitch(
+      "JUNIOR_CACHE_WARMING_ENABLED",
+      env.JUNIOR_CACHE_WARMING_ENABLED,
+    ),
+    conversationWorkEnabled: parseKillSwitch(
+      "JUNIOR_CONVERSATION_WORK_ENABLED",
       env.JUNIOR_CONVERSATION_WORK_ENABLED,
     ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(

@@ -1,5 +1,5 @@
 {
-  "id": "c9c68633-d77c-41cd-b861-8c9955b8ead2",
+  "id": "18db4963-3b83-4524-8556-767eb2da7571",
   "prevId": "7db60329-8998-4795-afab-cb581e81d8d5",
   "version": "7",
   "dialect": "postgresql",
@@ -1922,6 +1922,22 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversation_events_guardian_review_time_idx": {
+          "name": "junior_conversation_events_guardian_review_time_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_conversation_events\".\"type\" = 'guardian_action_reviewed'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_conversation_events_plugin_conversation_idx": {
           "name": "junior_conversation_events_plugin_conversation_idx",
           "columns": [
@@ -2330,28 +2346,6 @@
           ],
           "isUnique": false,
           "where": "\"junior_conversation_participants\".\"auto_archive\"",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_participants_unsubscribed_idx": {
-          "name": "junior_conversation_participants_unsubscribed_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "root_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_conversation_participants\".\"unsubscribed_at\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}

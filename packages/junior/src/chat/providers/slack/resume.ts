@@ -405,7 +405,7 @@ async function resumeSlackTurnInContext(
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   let stopped = false;
   let runResultHandled = false;
-  let assistantMessageDelivered = false;
+  let acceptedReply: { slackTs?: string } | undefined;
   let shouldScheduleCompletedPluginTasks = false;
   let postDeliveryCommitError: unknown;
   const turnLifecycle = getTurnLifecycle();
@@ -469,7 +469,6 @@ async function resumeSlackTurnInContext(
     let deliveryConversation:
       | ReturnType<typeof coerceThreadConversationState>
       | undefined;
-    let acceptedDeliveryId: string | undefined;
     /** Load the resumed conversation once for ordered delivery recording. */
     const getDeliveryConversation = async () => {
       if (deliveryConversation) {
@@ -545,8 +544,7 @@ async function resumeSlackTurnInContext(
         throw error;
       }
       const messageTs = slackMessageTs.at(-1);
-      assistantMessageDelivered = true;
-      acceptedDeliveryId = messageTs;
+      acceptedReply = { slackTs: messageTs };
       const recordedMessageId = recordDeliveredAssistantMessage({
         cards,
         conversation: deliveryState.conversation,
@@ -616,10 +614,10 @@ async function resumeSlackTurnInContext(
       failureCode = "agent_run_failed";
     };
     const deliveryState = await getDeliveryConversation();
-    assistantMessageDelivered = turnHasReply(
-      deliveryState.conversation,
-      sessionId,
-    );
+    // An earlier Run of this Turn may have delivered the reply already.
+    acceptedReply = turnHasReply(deliveryState.conversation, sessionId)
+      ? {}
+      : undefined;
     const run = buildResumedRun(runArgs, status, deliverAssistantMessage);
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
@@ -649,7 +647,6 @@ async function resumeSlackTurnInContext(
       runResultHandled = true;
 
       await status.clear();
-      failureCode = "persistence_failed";
       // Save the completed Turn only after delivery. A remaining write
       // failure must reach this provider instead of completing durable work.
       if (reply.piMessages?.length) {
@@ -666,8 +663,8 @@ async function resumeSlackTurnInContext(
           ...(dispatchErrorMessage
             ? { errorMessage: dispatchErrorMessage }
             : undefined),
-          ...(acceptedDeliveryId
-            ? { resultMessageId: acceptedDeliveryId }
+          ...(acceptedReply?.slackTs
+            ? { resultMessageId: acceptedReply.slackTs }
             : undefined),
           source: run.source,
           actor: resumeActor,
@@ -680,8 +677,8 @@ async function resumeSlackTurnInContext(
           destination: run.destination,
           dispatchId: run.dispatch?.id,
           dispatchOutcome: dispatchResult.outcome,
-          ...(acceptedDeliveryId
-            ? { resultMessageId: acceptedDeliveryId }
+          ...(acceptedReply?.slackTs
+            ? { resultMessageId: acceptedReply.slackTs }
             : undefined),
           turnId: runArgs.turnId,
           sliceId: runArgs.sliceId ?? 1,
@@ -695,7 +692,7 @@ async function resumeSlackTurnInContext(
       if (reply.diagnostics.outcome === "success") {
         shouldScheduleCompletedPluginTasks = true;
         return {
-          outcome: assistantMessageDelivered ? "success" : "no_reply",
+          outcome: acceptedReply ? "success" : "no_reply",
         };
       }
 

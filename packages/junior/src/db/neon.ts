@@ -1,18 +1,153 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  neon,
   Pool,
   type Client,
+  type CustomTypesConfig,
   type PoolClient,
   type QueryResultRow,
 } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
+import { Agent } from "undici";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
+import * as Sentry from "@/chat/sentry";
 
 type QueryClient = Pool | PoolClient | Client;
+
+type PlainQuery = {
+  text: string;
+  values?: unknown[];
+  rowMode?: string;
+  types?: CustomTypesConfig;
+};
+
+/**
+ * Sends a pool query over Neon's SQL-over-HTTP endpoint when no idle
+ * WebSocket client is free.
+ *
+ * pg-pool reuses the newest idle client, so light polling keeps one or two
+ * clients warm and the rest idle out. A parallel read batch then opens about
+ * eight WebSockets, each with a new Postgres session. An HTTP query reuses the
+ * proxy's cached backend connection, so the batch skips that handshake. The
+ * warm path stays on WebSocket. `connect()` and transactions are unchanged.
+ */
+class OverflowPool extends Pool {
+  // pg-pool takes an idle client one tick after `connect()`, so `idleCount`
+  // still includes clients that queued queries already claimed.
+  private pendingAcquires = 0;
+  private readonly webSocketOnly = new AsyncLocalStorage<true>();
+  private readonly sql;
+  private readonly dispatcher: Agent;
+  private readonly statementTimeoutMs: number | false | undefined;
+
+  constructor(args: {
+    connectionString: string;
+    statementTimeoutMs?: number | false;
+    dispatcher: Agent;
+  }) {
+    super({
+      connectionString: args.connectionString,
+      // One function instance serves many requests at once, and they share
+      // this pool. A dashboard page load sends about ten requests, and the
+      // conversation list alone can hold three connections for seconds. With
+      // a smaller pool, the other requests wait for a free connection.
+      max: 10,
+      // The pg default closes a client after 10s idle, which is also the
+      // dashboard poll interval, so most polls and page loads opened new
+      // WebSockets. Idle clients to the Neon pooler hold no Postgres backend.
+      idleTimeoutMillis: 60_000,
+      statement_timeout: args.statementTimeoutMs,
+    });
+    this.sql = neon(args.connectionString, { fullResults: true });
+    this.dispatcher = args.dispatcher;
+    this.statementTimeoutMs = args.statementTimeoutMs;
+  }
+
+  // Loose parameters satisfy every pg `query` overload.
+  override query(input: any, values?: any, callback?: any): any {
+    const query: PlainQuery | undefined =
+      typeof input === "string" ? { text: input } : input;
+    if (
+      callback !== undefined ||
+      typeof values === "function" ||
+      typeof query?.text !== "string" ||
+      "submit" in query
+    ) {
+      return super.query(input, values, callback);
+    }
+    const params: unknown[] = values ?? query.values ?? [];
+    // An empty pool opens its first client inline, as before, so the warm
+    // path stays on WebSocket.
+    if (
+      this.webSocketOnly.getStore() ||
+      this.idleCount > this.pendingAcquires ||
+      this.totalCount === 0
+    ) {
+      return this.queryWebSocket(query, params);
+    }
+    return this.queryHttp(query, params);
+  }
+
+  /** Keep every pool query in `callback` on WebSocket. */
+  async onWebSocket<T>(callback: () => Promise<T>): Promise<T> {
+    return await this.webSocketOnly.run(true, callback);
+  }
+
+  private async queryWebSocket(query: PlainQuery, params: unknown[]) {
+    const client = await this.acquire();
+    try {
+      const result = await client.query({ ...query, values: params });
+      client.release();
+      return result;
+    } catch (error) {
+      // Like pg-pool `query`: drop the client after any query error.
+      client.release(error as Error);
+      throw error;
+    }
+  }
+
+  // pg-pool calls this callback in the same step that removes the client from
+  // `idleCount`. A promise would resume later, and queries in between would
+  // count that client twice.
+  private acquire(): Promise<PoolClient> {
+    this.pendingAcquires++;
+    return new Promise((resolve, reject) => {
+      this.connect((error, client) => {
+        this.pendingAcquires--;
+        if (client) {
+          resolve(client);
+        } else {
+          reject(error);
+        }
+      });
+    });
+  }
+
+  private async queryHttp(query: PlainQuery, params: unknown[]) {
+    const fetchOptions: { dispatcher: Agent; signal?: AbortSignal } = {
+      dispatcher: this.dispatcher,
+    };
+    // The HTTP endpoint has no per-request statement_timeout. This abort ends
+    // the wait. Neon does not say that it cancels the query.
+    if (this.statementTimeoutMs) {
+      fetchOptions.signal = AbortSignal.timeout(this.statementTimeoutMs);
+    }
+    // Nothing retries this request: it can carry an autocommit write.
+    return await Sentry.withScope(async (scope) => {
+      scope.setAttributes({ "app.db.transport": "http" });
+      return await this.sql.query(query.text, params, {
+        arrayMode: query.rowMode === "array",
+        fullResults: true,
+        types: query.types ?? this.options.types,
+        fetchOptions,
+      });
+    });
+  }
+}
 
 /** Neon-backed SQL executor with an owned connection pool lifecycle. */
 export type NeonJuniorSqlExecutor = JuniorSqlExecutor;
@@ -22,10 +157,12 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   private savepointId = 0;
   private isolatedQueryId = 0;
 
-  private readonly pool: Pool;
+  private readonly pool: OverflowPool;
+  private readonly dispatcher: Agent;
 
-  constructor(pool: Pool) {
+  constructor(pool: OverflowPool, dispatcher: Agent) {
     this.pool = pool;
+    this.dispatcher = dispatcher;
   }
 
   db(): JuniorDatabase {
@@ -147,7 +284,9 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
     const lockName = `junior:migrate:${migrationTable}`;
     try {
       await client.query("SELECT pg_advisory_lock(hashtext($1))", [lockName]);
-      return await callback();
+      // DDL such as `CREATE INDEX CONCURRENTLY` can outlast an HTTP request,
+      // and only a WebSocket session's statement_timeout cancels it.
+      return await this.pool.onWebSocket(callback);
     } finally {
       // Ending the session releases the lock without replacing a migration error.
       client.release(true);
@@ -156,6 +295,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
 
   async close(): Promise<void> {
     await this.pool.end();
+    await this.dispatcher.close();
   }
 
   private queryClient(): QueryClient {
@@ -168,23 +308,13 @@ export function createNeonJuniorSqlExecutor(args: {
   connectionString: string;
   statementTimeoutMs?: number | false;
 }): NeonJuniorSqlExecutor {
-  const pool = new Pool({
-    connectionString: args.connectionString,
-    // One function instance serves many requests at once, and they share this
-    // pool. A dashboard page load sends about ten requests, and the
-    // conversation list alone can hold three connections for seconds. With a
-    // smaller pool, the other requests wait for a free connection.
-    max: 10,
-    // The pg default closes a client after 10s idle, which is also the
-    // dashboard poll interval, so most polls and page loads opened new
-    // WebSockets. Idle clients to the Neon pooler hold no Postgres backend.
-    idleTimeoutMillis: 60_000,
-    statement_timeout: args.statementTimeoutMs,
-  });
+  // On HTTP/2, a warm socket carries many overflow queries at once.
+  const dispatcher = new Agent({ allowH2: true });
+  const pool = new OverflowPool({ ...args, dispatcher });
   // An idle client can fail when the server closes it. The pool replaces the
   // client, so report the error instead of crashing the process.
   pool.on("error", (error: Error) => {
     logException(error, "db.pool.client.failed", { "app.db.driver": "neon" });
   });
-  return new NeonExecutor(pool);
+  return new NeonExecutor(pool, dispatcher);
 }

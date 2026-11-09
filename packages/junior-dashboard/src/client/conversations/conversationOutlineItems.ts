@@ -1,3 +1,4 @@
+import type { ConversationOutline } from "@sentry/junior/api/schema";
 import { displayPlainText } from "../display-text/plainText";
 import type { TranscriptViewMessage } from "../types";
 
@@ -30,6 +31,26 @@ export function conversationOutlineItems(
     }
   }
   return items;
+}
+
+/**
+ * Join the outline of the whole Conversation with the items of the loaded
+ * rows, in seq order. A loaded item wins: it has the whole message and the
+ * reply. Loaded items also add messages newer than the outline, because the
+ * outline is read once per visit and live polls bring only the transcript.
+ */
+export function mergeConversationOutlineItems(
+  outline: ConversationOutline | undefined,
+  loaded: readonly ConversationOutlineItem[],
+): ConversationOutlineItem[] {
+  if (!outline?.items.length) return [...loaded];
+  const bySeq = new Map<number, ConversationOutlineItem>();
+  for (const item of outline.items) {
+    const title = displayPlainText(item.text, item.mentions);
+    if (title) bySeq.set(item.seq, { seq: item.seq, title });
+  }
+  for (const item of loaded) bySeq.set(item.seq, item);
+  return [...bySeq.values()].sort((left, right) => left.seq - right.seq);
 }
 
 function messageText(message: TranscriptViewMessage): string {

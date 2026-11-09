@@ -447,6 +447,18 @@ export function conversationsListPage(
   });
 }
 
+/**
+ * Model https://docs.slack.dev/reference/methods/dnd.info/ for a bot token.
+ * Slack returns 1 for both timestamps when Do Not Disturb is off.
+ */
+export function dndInfoOk(window?: { startMs: number; endMs: number }) {
+  return slackOk({
+    dnd_enabled: window !== undefined,
+    next_dnd_start_ts: window ? Math.floor(window.startMs / 1000) : 1,
+    next_dnd_end_ts: window ? Math.floor(window.endMs / 1000) : 1,
+  });
+}
+
 /** Model the user fields from https://docs.slack.dev/reference/methods/users.info/. */
 export function usersInfoOk(
   input: {

@@ -17,8 +17,8 @@ import { FilterGroup } from "../../components/FilterBar";
 import { SearchInput } from "../../components/SearchInput";
 import { NativeSelect } from "../../components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
+import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
 
-const filterMediaQuery = "(min-width: 768px)";
 const stateOptions = [
   { value: "active", label: "Active" },
   { value: "blocked", label: "Blocked" },
@@ -28,13 +28,13 @@ const stateOptions = [
 ];
 
 function subscribeToFilterLayout(onChange: () => void) {
-  const media = window.matchMedia(filterMediaQuery);
+  const media = window.matchMedia(DESKTOP_LAYOUT_QUERY);
   media.addEventListener("change", onChange);
   return () => media.removeEventListener("change", onChange);
 }
 
 function filtersFitPopover() {
-  return window.matchMedia(filterMediaQuery).matches;
+  return window.matchMedia(DESKTOP_LAYOUT_QUERY).matches;
 }
 
 /** Keep URL filters visible while editing them in a popover or mobile sheet. */
