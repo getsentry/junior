@@ -16,7 +16,6 @@ import {
   conversationDisplayTitle,
   formatRelativeTime,
   slackLocationLabel,
-  visualStatusForConversation,
 } from "../../format";
 import type { Conversation } from "../../types";
 
@@ -68,7 +67,7 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
           <ConversationListStatusIcon
             unread={false}
             isPrivate={conversation.visibility === "private"}
-            status={visualStatusForConversation(conversation)}
+            status={conversation.status}
             waitingOnViewer={false}
           />
         </span>

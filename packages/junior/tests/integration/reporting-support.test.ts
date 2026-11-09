@@ -55,7 +55,7 @@ describe("reporting support", () => {
       conversationId,
       displayTitle: expect.any(String),
       surface: "slack",
-      status: "completed",
+      status: "idle",
     });
   });
 

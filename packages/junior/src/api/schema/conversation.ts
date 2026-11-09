@@ -27,11 +27,16 @@ export {
   conversationTurnFailureReasonSchema,
 };
 
+/**
+ * The status of one Conversation's own work. See `TERMINOLOGY.md` and
+ * `conversationStatusSql`, the only place that derives it.
+ */
 export const conversationReportStatusSchema = z.enum([
   "active",
-  "completed",
+  "needs_input",
   "failed",
   "stopped",
+  "idle",
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
@@ -271,8 +276,8 @@ export const conversationSummaryReportSchema = z
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
     pinPosition: z.number().int().optional(),
     /**
-     * True when the conversation is idle and Junior's latest reply that the
-     * transcript shows is after the viewer's read position. Quiet replies do
+     * True when the conversation is not `active` and Junior's latest reply
+     * that the transcript shows is after the viewer's read position. Quiet replies do
      * not count. Opening the conversation does not move the position; reading
      * in it, replying, archiving, or Mark as read does.
      */

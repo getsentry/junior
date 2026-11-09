@@ -21,7 +21,7 @@ function detail(
     lastProgressAt: startedAt,
     lastSeenAt: startedAt,
     startedAt,
-    status: "completed",
+    status: "idle",
     surface: "internal",
     ...overrides,
   };

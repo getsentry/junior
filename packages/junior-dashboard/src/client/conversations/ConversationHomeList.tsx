@@ -6,7 +6,6 @@ import {
   conversationDisplayTitle,
   formatRelativeTime,
   slackLocationLabel,
-  visualStatusForConversation,
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/ui/skeleton";
@@ -229,7 +228,7 @@ function ConversationCard(props: ConversationCardProps) {
       if (archived) props.onArchived(conversation);
     },
   });
-  const status = visualStatusForConversation(conversation);
+  const status = conversation.status;
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
   const participants = conversationParticipants(conversation);

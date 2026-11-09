@@ -1,11 +1,12 @@
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
-import type { ConversationStatus } from "@/chat/conversations/store";
-import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import { getSqlExecutor } from "@/chat/db";
 import {
   juniorAgentBindings,
   juniorAgentInvocations,
@@ -43,7 +44,10 @@ export function isChildAgentSessionStopped(
 }
 
 /** Stored facts of a child Conversation that its listing shows. */
-type ChildConversationFacts = Pick<ChildAgent, "archivedAtMs" | "kind"> & {
+type ChildConversationFacts = Pick<
+  ChildAgent,
+  "archivedAtMs" | "conversationStatus" | "kind"
+> & {
   stoppedAtMs?: number;
 };
 
@@ -100,6 +104,7 @@ function childAgentFromInvocations(
       ? { archivedAtMs: facts.archivedAtMs }
       : undefined),
     childConversationId: latest.childConversationId,
+    conversationStatus: facts.conversationStatus,
     ...(terminal && terminal.status !== "completed"
       ? { errorMessage: terminal.errorMessage }
       : undefined),
@@ -164,6 +169,7 @@ export async function listChildAgents(
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
+      status: conversationStatusSql(juniorConversations),
       stoppedAt: juniorConversations.stoppedAt,
     })
     .from(juniorConversations)
@@ -175,6 +181,7 @@ export async function listChildAgents(
         ...(row.archivedAt
           ? { archivedAtMs: row.archivedAt.getTime() }
           : undefined),
+        conversationStatus: row.status,
         kind: conversationKindFromRow(row) === "thread" ? "thread" : "task",
         ...(row.stoppedAt
           ? { stoppedAtMs: row.stoppedAt.getTime() }
@@ -188,7 +195,10 @@ export async function listChildAgents(
         invocations,
         resultInvocationIds,
         // A child row from before the kind column reads as a Task.
-        factsByChild.get(childConversationId) ?? { kind: "task" },
+        factsByChild.get(childConversationId) ?? {
+          conversationStatus: "idle",
+          kind: "task",
+        },
       ),
     )
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
@@ -275,12 +285,34 @@ export async function listDescendantAgents(
   }));
 }
 
-/** Conversation execution state of the parent of a child agent. */
+/** The status of the parent of a child agent. */
 export type ParentAgent = {
   conversationId: string;
-  status: ConversationStatus;
+  status: ConversationReportStatus;
   updatedAtMs: number;
 };
+
+/** Read the status of one parent Conversation. */
+async function readParentAgent(
+  conversationId: string,
+): Promise<ParentAgent | undefined> {
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({
+      executionUpdatedAt: juniorConversations.executionUpdatedAt,
+      status: conversationStatusSql(juniorConversations),
+      updatedAt: juniorConversations.updatedAt,
+    })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, conversationId));
+  return row
+    ? {
+        conversationId,
+        status: row.status,
+        updatedAtMs: (row.executionUpdatedAt ?? row.updatedAt).getTime(),
+      }
+    : undefined;
+}
 
 /**
  * List the agents that one Conversation can see. A root Conversation sees
@@ -300,24 +332,14 @@ export async function listAgentRelatives(input: {
   const [children, family, parent] = await Promise.all([
     listChildAgents(conversationId),
     parentConversationId ? listChildAgents(parentConversationId) : [],
-    parentConversationId
-      ? getConversationStore().get({ conversationId: parentConversationId })
-      : undefined,
+    parentConversationId ? readParentAgent(parentConversationId) : undefined,
   ]);
   const self = family.find(
     (agent) => agent.childConversationId === conversationId,
   );
   return {
     children,
-    ...(parent
-      ? {
-          parent: {
-            conversationId: parent.conversationId,
-            status: parent.execution.status,
-            updatedAtMs: parent.execution.updatedAtMs ?? parent.updatedAtMs,
-          },
-        }
-      : undefined),
+    ...(parent ? { parent } : undefined),
     ...(self ? { self } : undefined),
     siblings: family.filter(
       (agent) => agent.childConversationId !== conversationId,

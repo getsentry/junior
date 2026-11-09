@@ -91,6 +91,7 @@ export async function readFeedThreads(
       firstHumanMessageText: firstHumanMessageTexts.get(
         conversation.conversationId,
       ),
+      status: row.status,
       ...(row.conversation.usage
         ? { usage: row.conversation.usage }
         : undefined),

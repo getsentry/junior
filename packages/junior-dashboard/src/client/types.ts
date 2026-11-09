@@ -190,7 +190,7 @@ export type Conversation = {
   participants?: ConversationSummaryReport["participants"];
   sentryTraceUrl?: string;
   startedAt: string;
-  status: ConversationSummaryReport["status"];
+  status: ConversationStatus;
   surface: ConversationSummaryReport["surface"];
   traceId?: string;
   isPriority?: boolean;
@@ -221,7 +221,8 @@ export type SystemData = DashboardCoreData & {
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle" | "stopped";
+/** The status of one Conversation's own work, as the API derives it. */
+export type ConversationStatus = ConversationSummaryReport["status"];
 
 export type CodeBlock = {
   code: string;

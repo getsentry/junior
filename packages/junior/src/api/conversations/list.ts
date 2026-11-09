@@ -26,6 +26,7 @@ import {
 } from "@/db/schema";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
@@ -238,12 +239,11 @@ export function conversationFeedVersionQuery(
     .select({
       conversationId: juniorConversations.conversationId,
       channelName: juniorConversations.channelName,
-      executionStatus: juniorConversations.executionStatus,
       lastActivityAt: juniorConversations.lastActivityAt,
       lastReadSeq: read.lastReadSeq,
       pinnedAt: pin.pinnedAt,
       pinPosition: pin.pinPosition,
-      stoppedAt: juniorConversations.stoppedAt,
+      status: conversationStatusSql(juniorConversations).as("status"),
       title: juniorConversations.title,
     })
     .from(juniorConversations)
@@ -285,8 +285,7 @@ export function conversationFeedVersionQuery(
         count(*) filter (where ${feedTree.archivedAt} is not null),
         string_agg(concat_ws('/',
           ${feedTree.conversationId}, ${feedTree.title},
-          ${feedTree.executionStatus}, ${feedTree.stoppedAt},
-          ${feedTree.lastActivityAt}
+          ${conversationStatusSql(feedTree)}, ${feedTree.lastActivityAt}
         ), ',' order by ${feedTree.conversationId}) filter (
           where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
         )
@@ -311,8 +310,8 @@ export function conversationFeedVersionQuery(
     .select({
       version: sql<string>`md5(coalesce(string_agg(
         concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition},
-          ${page.title}, ${page.channelName}, ${page.executionStatus},
-          ${page.stoppedAt}, ${page.lastActivityAt},
+          ${page.title}, ${page.channelName}, ${page.status},
+          ${page.lastActivityAt},
           ${unreadReplySql(db, userId, page.conversationId, page.lastReadSeq)},
           (${tree}), (${annotations})),
         ',' order by ${page.conversationId}
@@ -490,6 +489,7 @@ export async function readConversationFeedFromSql(
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const summary = conversationSummaryFromStoredConversation({
         ...viewerMarksByConversation.get(conversation.conversationId),
+        status: row.status,
         unreadReply: unreadConversationIds.has(conversation.conversationId),
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,

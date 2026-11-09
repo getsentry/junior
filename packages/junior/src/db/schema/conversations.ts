@@ -103,6 +103,12 @@ export const juniorConversations = pgTable(
      * from its parent, clears it.
      */
     stoppedAt: timestamptz("stopped_at"),
+    /**
+     * The Turn whose `turn_failed` event is the latest Turn lifecycle end.
+     * The event append that records a Turn's start or end writes it, so the
+     * status reads a durable value, not the expiring Turn record.
+     */
+    failedTurnId: text("failed_turn_id"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),

@@ -231,7 +231,7 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   await expect(fixture.status(conversationId)).resolves.toBe("active");
   await drain();
   expect(agentRuns).toHaveLength(1);
-  await expect(fixture.status(conversationId)).resolves.toBe("completed");
+  await expect(fixture.status(conversationId)).resolves.toBe("idle");
   await expect(
     getConversationStoppedAtMs(conversationId),
   ).resolves.toBeUndefined();

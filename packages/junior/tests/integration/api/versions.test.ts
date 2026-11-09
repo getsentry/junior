@@ -190,15 +190,17 @@ describe("versions API", () => {
       title: "Approve",
       visibility: "private",
     });
+    // An open item is a status input, so the detail moves too. The queued
+    // input keeps the feed row `active`.
     const withItem = await read();
-    expect(changed(withPin, withItem)).toEqual(["reviewItems"]);
+    expect(changed(withPin, withItem)).toEqual(["conversation", "reviewItems"]);
     await closeReviewItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
       status: "done",
     });
     const closed = await read();
-    expect(changed(withItem, closed)).toEqual(["reviewItems"]);
+    expect(changed(withItem, closed)).toEqual(["conversation", "reviewItems"]);
 
     // A recorded Turn changes the viewer's spend.
     const nowMs = Date.now();

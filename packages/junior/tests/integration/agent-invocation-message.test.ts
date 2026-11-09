@@ -31,7 +31,10 @@ import {
 } from "@/chat/task-execution/store";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { stopChildAgentInvocations } from "@/chat/agent-invocations/stop";
+import {
+  stopChildAgent,
+  stopChildAgentInvocations,
+} from "@/chat/agent-invocations/stop";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { conversationBriefFixture } from "../fixtures/conversation-brief";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
@@ -275,7 +278,7 @@ describe("messageAgent", () => {
           {
             conversation_id: child.childConversationId,
             name: "researcher",
-            status: "pending",
+            status: "active",
             task: "Also check the retry path.",
           },
         ],
@@ -392,10 +395,16 @@ describe("messageAgent", () => {
           status: "completed",
         }),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
-      await stopChildAgentInvocations({
+      await stopChildAgent({
         childConversationId: child.childConversationId,
         parentConversationId: slackParentConversationId,
+        state,
       });
+      const messages = await eventMessages(child.childConversationId);
+      expect(messages).toHaveLength(1);
+      await expect(
+        harness.process(queue.takeMessageFor(child.childConversationId)),
+      ).resolves.toMatchObject({ status: "completed" });
       // The `replaced` result was never reported, so it is not a result.
       const { agents } = (await createSearchAgentsTool({
         conversationId: slackParentConversationId,
@@ -403,11 +412,6 @@ describe("messageAgent", () => {
       expect(agents).toHaveLength(1);
       expect(agents[0]).toMatchObject({ status: "stopped" });
       expect(agents[0]).not.toHaveProperty("last_result");
-      const messages = await eventMessages(child.childConversationId);
-      expect(messages).toHaveLength(1);
-      await expect(
-        harness.process(queue.takeMessageFor(child.childConversationId)),
-      ).resolves.toMatchObject({ status: "completed" });
       await expect(
         getAgentInvocation(
           getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),

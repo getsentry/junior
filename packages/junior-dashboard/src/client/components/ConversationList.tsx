@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router";
 
 import { conversationPath } from "../conversations/conversationRoutes";
-import { formatTime, visualStatusForConversation } from "../format";
+import { formatTime } from "../format";
 import { cn } from "../styles";
-import type { Conversation, VisualStatus } from "../types";
+import type { Conversation, ConversationStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";
 import { ConversationSummary } from "./ConversationSummary";
 import { EmptyTelemetry } from "./EmptyTelemetry";
@@ -51,7 +51,6 @@ function ConversationTableRow(props: {
   search?: string;
   selected?: boolean;
 }) {
-  const visualStatus = visualStatusForConversation(props.conversation);
   const navigate = useNavigate();
   const href = {
     pathname: conversationPath(props.conversation.id),
@@ -60,7 +59,10 @@ function ConversationTableRow(props: {
   const openConversation = () => navigate(href);
   return (
     <div
-      className={conversationRecordClass(visualStatus, props.selected)}
+      className={conversationRecordClass(
+        props.conversation.status,
+        props.selected,
+      )}
       onClick={openConversation}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -81,7 +83,7 @@ function ConversationTableRow(props: {
 }
 
 function conversationRecordClass(
-  status: VisualStatus,
+  status: ConversationStatus,
   selected: boolean | undefined,
 ): string {
   return cn(

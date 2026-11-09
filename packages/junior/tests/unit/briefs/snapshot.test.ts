@@ -16,7 +16,7 @@ const detail: ConversationDetailReport = {
   kind: "root",
   isParticipant: true,
   visibility: "public",
-  status: "completed",
+  status: "idle",
   startedAt: "2026-01-01T00:00:00.000Z",
   lastSeenAt: "2026-01-01T00:00:04.000Z",
   lastProgressAt: "2026-01-01T00:00:04.000Z",

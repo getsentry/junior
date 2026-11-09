@@ -32,11 +32,11 @@ import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
 } from "./event-actor";
-import { juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { encodeHistoryPayload } from "../history-payload";
 import { restoreArchivedPath } from "./conversation-tree";
-import { conversationDetailTouch } from "./detail-version";
+import { conversationDetailTouch, nextDetailVersion } from "./detail-version";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
 
@@ -153,6 +153,24 @@ function messagesSummarizedEventFromRow(
   return { ...event, schemaVersion: 1, data: event.data };
 }
 
+/**
+ * Return the failed Turn that the newest Turn lifecycle event in `events`
+ * leaves: its id after `turn_failed`, null after a Turn starts or completes,
+ * or undefined when `events` has no Turn lifecycle event.
+ */
+function failedTurnIdAfter(
+  events: readonly PersistedConversationEvent[],
+): string | null | undefined {
+  let failedTurnId: string | null | undefined;
+  for (const { data } of events) {
+    if (data.type === "turn_failed") failedTurnId = data.turnId;
+    else if (data.type === "turn_started" || data.type === "turn_completed") {
+      failedTurnId = null;
+    }
+  }
+  return failedTurnId;
+}
+
 class SqlConversationEventStore implements ConversationEventStore {
   private readonly executor: JuniorSqlDatabase;
 
@@ -255,6 +273,13 @@ class SqlConversationEventStore implements ConversationEventStore {
               event.data.inputMessageIds,
             );
           }
+        }
+        const failedTurnId = failedTurnIdAfter(pending);
+        if (failedTurnId !== undefined) {
+          await db
+            .update(juniorConversations)
+            .set({ detailVersion: nextDetailVersion, failedTurnId })
+            .where(eq(juniorConversations.conversationId, conversationId));
         }
         return rows.map((row) => ({
           seq: row.seq,

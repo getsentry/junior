@@ -50,7 +50,7 @@ describe("dashboard canonical-event mock routes", () => {
       lastProgressAt: lastSeenAt,
       lastSeenAt,
       startedAt,
-      status: "completed",
+      status: "idle",
       surface: "slack",
     });
     const summaries = [
@@ -657,7 +657,7 @@ describe("dashboard mock sends", () => {
 
     vi.advanceTimersByTime(2_000);
     const replied = await readDetail(accepted.conversationId);
-    expect(replied.status).toBe("completed");
+    expect(replied.status).toBe("idle");
     expect(messages(replied)).toEqual([
       "user: Draw the release checklist",
       "assistant: Mock reply. No agent ran.\n\n> Draw the release checklist",

@@ -7,6 +7,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { conversationAggregateColumns } from "../conversations/aggregate";
 import type {
   ActorActivityDayReport,
@@ -224,8 +225,6 @@ export async function recentActorRows(email: string) {
       destinationId: juniorDestinations.id,
       durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,
-      executionStatus: juniorConversations.executionStatus,
-      stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       kind: juniorConversations.kind,
@@ -240,6 +239,7 @@ export async function recentActorRows(email: string) {
         string | null
       >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END`,
       source: juniorConversations.source,
+      status: conversationStatusSql(juniorConversations),
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,
       usage: juniorConversations.usage,

@@ -39,6 +39,15 @@ Canonical words for Junior code and docs. One concept, one word.
   Location. A child stores its output and returns it to its parent.
 - **Conversation execution**: mutable operational state (mailbox, worker
   lease, checkpoints, activity status).
+- **Conversation status**: what one Conversation's own work does, derived
+  from runtime state only. `active`: execution is pending, running, or paused.
+  `stopped`: `stopped_at` is set. `failed`: its latest Turn or its work
+  failed. `needs_input`: an open action Review item that it added waits on a
+  person or Everyone. `idle`: anything else; it waits for input. The first
+  that applies wins, in that order. `completed` is a Turn, Agent invocation,
+  or run outcome, never a Conversation status.
+- **Archived**: a flag on a Conversation, shared by everyone. It is not a
+  status, and an archived Conversation keeps its status.
 - **Conversation note**: a core fact on a Conversation, shown to the next Turn
   as runtime context. It starts no Turn, is not a Message, and has no authority.
 - **User**: one person-level record with zero or more linked Identities.

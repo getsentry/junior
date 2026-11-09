@@ -5,10 +5,7 @@ import { Link } from "react-router";
 import { conversationDisplayTitle } from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import type { Conversation } from "../types";
-import {
-  ChildConversationStatusIcon,
-  childConversationStatus,
-} from "./ChildConversationStatus";
+import { ChildConversationStatusIcon } from "./ChildConversationStatus";
 import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
@@ -28,8 +25,6 @@ export const ConversationSidebarThreadRow = memo(
     /** 0 for a Thread directly under a root. */
     depth: number;
     selected: boolean;
-    /** True when an open review item in this Thread waits on the viewer. */
-    waiting: boolean;
   }) {
     const prefetch = usePrefetchConversation(props.conversation.id);
     return (
@@ -43,9 +38,7 @@ export const ConversationSidebarThreadRow = memo(
         )}
         to={conversationPath(props.conversation.id)}
       >
-        <ChildConversationStatusIcon
-          status={childConversationStatus(props.conversation, props.waiting)}
-        />
+        <ChildConversationStatusIcon status={props.conversation.status} />
         <span
           className={cn(
             "min-w-0 truncate font-sans text-sm leading-snug",

@@ -104,21 +104,22 @@ describe("nested agent invocations", () => {
       expect(grandResult).toMatchObject({ parentMailboxStatus: "pending" });
       await enqueueAgentInvocationResult(grandResult, { queue, state });
 
-      // searchAgents shows the state of open work. A `replaced` child still
-      // has work.
-      const listedChild = (childConversationId: string) => ({
+      // searchAgents shows the status of each child's own work. A child
+      // that waits on its own children is idle and has no result yet. The
+      // helper has the grand helper's result queued, so it is active.
+      const listedChild = (childConversationId: string, status: string) => ({
         conversation_id: childConversationId,
         kind: "task",
         relation: "child",
-        status: "pending",
+        status,
         task: slackInvocationInput.input,
         updated_at: expect.any(String),
       });
       await expect(searchAgents(slackParentConversationId)).resolves.toEqual([
-        listedChild(child.childConversationId),
+        listedChild(child.childConversationId, "idle"),
       ]);
       await expect(searchAgents(child.childConversationId)).resolves.toEqual([
-        listedChild(helper.childConversationId),
+        listedChild(helper.childConversationId, "active"),
       ]);
 
       // The result runs on the helper as the Actor that started the tree,
@@ -144,7 +145,7 @@ describe("nested agent invocations", () => {
       ]);
       // An agent invocation that receives a result is not a new task.
       await expect(searchAgents(child.childConversationId)).resolves.toEqual([
-        { ...listedChild(helper.childConversationId), status: "running" },
+        listedChild(helper.childConversationId, "active"),
       ]);
 
       // Each child reports once, from the agent invocation that received the

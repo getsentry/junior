@@ -2,13 +2,9 @@ import { ChevronRight } from "lucide-react";
 import { useContext } from "react";
 import { Link } from "react-router";
 
-import { useWaitingConversations } from "../review-desk/queries";
 import { cn } from "../styles";
 import type { TranscriptViewSubagentPart } from "../types";
-import {
-  ChildConversationStatusPill,
-  childConversationStatus,
-} from "./ChildConversationStatus";
+import { ChildConversationStatusPill } from "./ChildConversationStatus";
 import { formatCompactAge } from "./conversationAge";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath } from "./conversationRoutes";
@@ -27,7 +23,6 @@ export function TranscriptThreadCard(props: {
 }) {
   const id = props.part.childConversationId;
   const thread = useContext(FeedThreads).get(id);
-  const waiting = useWaitingConversations().has(id);
   const prefetch = usePrefetchConversation(id);
   const title =
     thread?.displayTitle ?? props.part.title ?? props.part.task ?? "Thread";
@@ -48,11 +43,7 @@ export function TranscriptThreadCard(props: {
       <span className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-dashboard-text">
         <HighlightText text={title} />
       </span>
-      {thread ? (
-        <ChildConversationStatusPill
-          status={childConversationStatus(thread, waiting)}
-        />
-      ) : null}
+      {thread ? <ChildConversationStatusPill status={thread.status} /> : null}
       {activityAt ? (
         <span className="shrink-0 font-sans text-xs tabular-nums text-dashboard-text-faint">
           {formatCompactAge(activityAt)}

@@ -17,7 +17,7 @@ function thread(
     lastProgressAt: at,
     lastSeenAt: at,
     startedAt: at,
-    status: "completed",
+    status: "idle",
     surface: "internal",
     ...(threads ? { threads } : undefined),
   };

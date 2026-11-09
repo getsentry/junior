@@ -15,7 +15,10 @@ import { type HarnessRun, type TranscriptEvent } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { forkConversationResponseSchema } from "@/api/schema";
+import {
+  forkConversationResponseSchema,
+  type ConversationReportStatus,
+} from "@/api/schema";
 import { createConversationId } from "@/chat/conversations/web-input";
 import { findUserByEmail, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-calls";
@@ -144,6 +147,8 @@ export interface Conversation extends HarnessRun {
   title: string;
   /** Whether the dashboard shows the Conversation as archived after the call. */
   archived: boolean;
+  /** The status that the dashboard shows after the call. */
+  status: ConversationReportStatus;
   /** Slack user ids of the participants that the dashboard lists after the call. */
   participantSlackUserIds: string[];
   /**
@@ -777,6 +782,7 @@ export async function createFixtureAgent(
       threadTitles,
       title: detail.displayTitle,
       archived: Boolean(detail.archivedAt),
+      status: detail.status,
       toolCalls: events.toolCalls,
       turns: events.turns,
     });
@@ -898,6 +904,7 @@ export async function createFixtureAgent(
       threadTitles: [],
       title: detail.displayTitle,
       archived: Boolean(detail.archivedAt),
+      status: detail.status,
       toolCalls: [],
       turns: [],
     });

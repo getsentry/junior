@@ -81,7 +81,7 @@ describe("transcript bottom pinning", () => {
       }),
     );
     const after = transcriptJuniorMessageVersion(
-      activeTurn({ status: "completed" }),
+      activeTurn({ status: "idle" }),
     );
 
     expect(before).toBe("empty");
@@ -101,7 +101,7 @@ describe("transcript bottom pinning", () => {
             },
           },
         ],
-        status: "completed",
+        status: "idle",
       }),
     );
 
@@ -125,7 +125,7 @@ describe("transcript bottom pinning", () => {
             },
           },
         ],
-        status: "completed",
+        status: "idle",
       }),
     );
 
@@ -286,7 +286,7 @@ describe("transcript bottom pinning", () => {
     const before = transcriptBottomVersion(activeTurn());
     const after = transcriptBottomVersion(
       activeTurn({
-        status: "completed",
+        status: "idle",
       }),
     );
 

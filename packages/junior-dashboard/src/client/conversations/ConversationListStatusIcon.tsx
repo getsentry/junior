@@ -2,7 +2,7 @@ import { LockKeyhole } from "lucide-react";
 
 import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
-import type { VisualStatus } from "../types";
+import type { ConversationStatus } from "../types";
 
 /**
  * Render a conversation status marker. "Waiting on you" replaces every other
@@ -11,7 +11,7 @@ import type { VisualStatus } from "../types";
  */
 export function ConversationListStatusIcon(props: {
   isPrivate: boolean;
-  status: VisualStatus;
+  status: ConversationStatus;
   unread: boolean;
   waitingOnViewer: boolean;
 }) {
@@ -46,6 +46,7 @@ export function ConversationListStatusIcon(props: {
         className={cn(
           "size-3 shrink-0",
           props.status === "failed" && "text-rose-300",
+          props.status === "needs_input" && "text-amber-300",
           (props.status === "idle" || props.status === "stopped") &&
             "text-dashboard-text-muted",
         )}
@@ -58,6 +59,16 @@ export function ConversationListStatusIcon(props: {
       <span
         aria-label="Stopped"
         className="size-1.5 shrink-0 bg-dashboard-text-muted"
+        role="img"
+      />
+    );
+  }
+
+  if (props.status === "needs_input") {
+    return (
+      <span
+        aria-label="Needs input"
+        className="size-1.5 shrink-0 rounded-full bg-amber-300"
         role="img"
       />
     );

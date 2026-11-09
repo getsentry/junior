@@ -3,6 +3,7 @@ import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { locationFromRow } from "@/chat/conversations/sql/location";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -13,13 +14,14 @@ import {
 } from "@/db/schema";
 
 /**
- * Select Conversation rows with their Location and Actor names. Callers add
- * the filter, order, and limit.
+ * Select Conversation rows with their status, Location, and Actor names.
+ * Callers add the filter, order, and limit.
  */
 export function selectConversationRecords(db: JuniorDatabase) {
   return db
     .select({
       conversation: juniorConversations,
+      status: conversationStatusSql(juniorConversations),
       location: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -127,6 +129,7 @@ export async function readConversationRecordFromSql(
       conversation: Conversation;
       durationMs: number;
       locationId?: string;
+      status: ConversationRecordRow["status"];
       usage: ConversationRecordRow["conversation"]["usage"];
       rootConversationId: string | null;
     }
@@ -143,6 +146,7 @@ export async function readConversationRecordFromSql(
         ...(row.location?.visibility === "public"
           ? { locationId: row.location.id }
           : undefined),
+        status: row.status,
         usage: row.conversation.usage,
         rootConversationId: row.conversation.rootConversationId,
       }

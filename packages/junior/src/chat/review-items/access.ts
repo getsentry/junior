@@ -99,6 +99,22 @@ export function reviewItemNeedsSomeone(): SQL {
 }
 
 /**
+ * SQL: the Review item waits for a person's input: an open `action` item
+ * assigned to a User or to Everyone. An item with no assignees waits for no
+ * one. The Conversation that added it shows `needs_input`.
+ */
+export function reviewItemNeedsInput(): SQL {
+  return and(
+    eq(juniorReviewItems.status, "open"),
+    eq(juniorReviewItems.kind, "action"),
+    or(
+      eq(juniorReviewItems.assignedToEveryone, true),
+      sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id})`,
+    ),
+  )!;
+}
+
+/**
  * SQL: the Review item is not assigned only to other people. It is assigned
  * to this User, to Everyone, or to no one. This is the assignee rule of
  * `canActOnReviewItem`; keep the two the same.

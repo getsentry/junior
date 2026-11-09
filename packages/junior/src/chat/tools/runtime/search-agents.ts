@@ -1,9 +1,7 @@
 import * as z from "zod";
+import { conversationReportStatusSchema } from "@/api/schema/conversation";
 import type { Actor } from "@/chat/actor";
-import {
-  listAgentRelatives,
-  type ParentAgent,
-} from "@/chat/agent-invocations/list";
+import { listAgentRelatives } from "@/chat/agent-invocations/list";
 import {
   searchTopLevelAgents,
   type TopLevelAgent,
@@ -39,41 +37,6 @@ const AGENT_RELATIONS = [
 ] as const;
 type AgentRelation = (typeof AGENT_RELATIONS)[number];
 
-/**
- * What an agent does now. The words match the Conversation execution
- * status, plus `stopped` after stopAgent.
- */
-const LISTED_AGENT_STATUSES = [
-  "pending",
-  "running",
-  "paused",
-  "idle",
-  "stopped",
-] as const;
-
-type ListedAgentStatus = (typeof LISTED_AGENT_STATUSES)[number];
-
-function childAgentStatus(agent: ChildAgent): ListedAgentStatus {
-  switch (agent.status) {
-    case "pending":
-    case "running":
-    case "paused":
-    case "stopped":
-      return agent.status;
-    case "blocked":
-    case "completed":
-    case "failed":
-      return "idle";
-  }
-}
-
-function conversationAgentStatus(
-  agent: ParentAgent | TopLevelAgent,
-): ListedAgentStatus {
-  // A Conversation whose Turn failed waits for new input.
-  return agent.status === "failed" ? "idle" : agent.status;
-}
-
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
@@ -102,11 +65,9 @@ const listedAgentSchema = z
       .describe(
         "Kind of a child or sibling. thread: people can message it. task: only its parent messages it.",
       ),
-    status: z
-      .enum(LISTED_AGENT_STATUSES)
-      .describe(
-        "What the agent does now. pending: waiting to run. running or paused: working. idle: finished its work and waits for a message. stopped: stopAgent stopped it.",
-      ),
+    status: conversationReportStatusSchema.describe(
+      "Status of the agent's own work. active: it works or waits to run. needs_input: it waits on a person's answer to a Review item. failed: its latest Turn failed. stopped: a person or stopAgent stopped it. idle: it waits for a message.",
+    ),
     last_result: z
       .enum(CHILD_AGENT_RESULTS)
       .optional()
@@ -156,7 +117,7 @@ function listedChildAgent(
     conversation_id: agent.childConversationId,
     ...(agent.agentName ? { name: agent.agentName } : undefined),
     kind: agent.kind,
-    status: childAgentStatus(agent),
+    status: agent.conversationStatus,
     ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
     task: truncate(agent.task, TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
@@ -176,7 +137,7 @@ function listedTopLevelAgent(agent: TopLevelAgent): ListedAgent {
   return {
     relation: "top_level",
     conversation_id: agent.conversationId,
-    status: conversationAgentStatus(agent),
+    status: agent.status,
     ...(agent.title ? { title: agent.title } : undefined),
     ...(agent.summary
       ? { summary: truncate(agent.summary, SUMMARY_MAX_LENGTH) }
@@ -325,7 +286,7 @@ export function createSearchAgentsTool(context: {
               {
                 relation: "parent" as const,
                 conversation_id: parent.conversationId,
-                status: conversationAgentStatus(parent),
+                status: parent.status,
                 updated_at: new Date(parent.updatedAtMs).toISOString(),
               },
             ]

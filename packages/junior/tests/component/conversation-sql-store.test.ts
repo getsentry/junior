@@ -1478,7 +1478,7 @@ ORDER BY metric
     }
   });
 
-  it("maps idle SQL execution status to completed", async () => {
+  it("maps idle SQL execution status to idle", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
@@ -1505,7 +1505,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "completed",
+            status: "idle",
           }),
         ],
       });

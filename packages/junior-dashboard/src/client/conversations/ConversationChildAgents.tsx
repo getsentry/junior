@@ -43,6 +43,7 @@ const statusTones: Partial<Record<string, StatusChipTone>> = {
   completed: "success",
   error: "danger",
   failed: "danger",
+  needs_input: "warning",
   paused: "info",
   running: "info",
 };
