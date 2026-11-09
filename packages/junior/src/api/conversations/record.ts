@@ -1,5 +1,4 @@
 import { eq } from "drizzle-orm";
-import type { SelectedFields } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
@@ -13,36 +12,37 @@ import {
   juniorUsers,
 } from "@/db/schema";
 
+/** The columns of one Conversation record, for `selectConversationRecords`. */
+export const conversationRecordColumns = {
+  conversation: juniorConversations,
+  location: juniorDestinations,
+  identityDisplayName: juniorIdentities.displayName,
+  identityEmail: juniorIdentities.email,
+  identityHandle: juniorIdentities.handle,
+  identityProvider: juniorIdentities.provider,
+  identitySubjectId: juniorIdentities.providerSubjectId,
+  identityTenantId: juniorIdentities.providerTenantId,
+  userDisplayName: juniorUsers.displayName,
+};
+
+/** Left-join conditions from a Conversation to its record tables. */
+export const conversationRecordJoins = {
+  location: eq(juniorDestinations.id, juniorConversations.destinationId),
+  identity: eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+  user: eq(juniorUsers.id, juniorIdentities.userId),
+};
+
 /**
- * Select Conversation rows with their Location and Actor names, plus any
- * `extra` columns. Callers add the filter, order, and limit.
+ * Select Conversation rows with their Location and Actor names. Callers add
+ * the filter, order, and limit.
  */
-export function selectConversationRecords<
-  Extra extends SelectedFields = Record<never, never>,
->(db: JuniorDatabase, extra?: Extra) {
+export function selectConversationRecords(db: JuniorDatabase) {
   return db
-    .select({
-      conversation: juniorConversations,
-      location: juniorDestinations,
-      identityDisplayName: juniorIdentities.displayName,
-      identityEmail: juniorIdentities.email,
-      identityHandle: juniorIdentities.handle,
-      identityProvider: juniorIdentities.provider,
-      identitySubjectId: juniorIdentities.providerSubjectId,
-      identityTenantId: juniorIdentities.providerTenantId,
-      userDisplayName: juniorUsers.displayName,
-      ...(extra as Extra),
-    })
+    .select(conversationRecordColumns)
     .from(juniorConversations)
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
-    .leftJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-    )
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId));
+    .leftJoin(juniorDestinations, conversationRecordJoins.location)
+    .leftJoin(juniorIdentities, conversationRecordJoins.identity)
+    .leftJoin(juniorUsers, conversationRecordJoins.user);
 }
 
 /** One row from `selectConversationRecords`. */

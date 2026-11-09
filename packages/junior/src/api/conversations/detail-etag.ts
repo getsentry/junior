@@ -13,6 +13,8 @@ import {
   juniorConversationParticipants,
   juniorConversationReadPositions,
   juniorConversations,
+  juniorDestinations,
+  juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
 import { JUNIOR_VERSION } from "@/version";
@@ -25,8 +27,9 @@ import {
 } from "./membership";
 import { conversationReadPositionQuery } from "./read-position";
 import {
+  conversationRecordColumns,
   conversationRecordFromRow,
-  selectConversationRecords,
+  conversationRecordJoins,
   type ConversationRecord,
 } from "./record";
 import { unreadReplySql } from "./unread";
@@ -178,45 +181,51 @@ async function readDetailStateRow(conversationId: string, viewer?: User) {
         ),
       )
     : sql`false`;
-  const [row] = await selectConversationRecords(db, {
-    attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
-    autoArchive: juniorConversationParticipants.autoArchive,
-    autoArchiveDefault: detailViewer.autoArchiveDefault,
-    forkIds: sql<string[]>`array${forkIds}`,
-    forkSourceId: forkSource.conversationId,
-    forkSourceTitle: forkSource.title,
-    lastReadSeq: viewer
-      ? sql<
-          number | null
-        >`(${conversationReadPositionQuery(viewer, conversationId)})`
-      : sql<null>`null`,
-    pinnedAt: juniorConversationParticipants.pinnedAt,
-    pinPosition: juniorConversationParticipants.pinPosition,
-    rootConversationId,
-    unreadReply: viewer
-      ? unreadReplySql(
-          db,
-          viewer.id,
-          rootConversationId,
-          sql`(${db
-            .select({ seq: juniorConversationReadPositions.lastReadSeq })
-            .from(juniorConversationReadPositions)
-            .where(
-              and(
-                eq(juniorConversationReadPositions.userId, viewer.id),
-                eq(
-                  juniorConversationReadPositions.conversationId,
-                  rootConversationId,
+  const [row] = await db
+    .select({
+      ...conversationRecordColumns,
+      attachmentsVersion: sql<string>`(${slackAttachmentsVersionQuery(db, conversationId)})`,
+      autoArchive: juniorConversationParticipants.autoArchive,
+      autoArchiveDefault: detailViewer.autoArchiveDefault,
+      forkIds: sql<string[]>`array${forkIds}`,
+      forkSourceId: forkSource.conversationId,
+      forkSourceTitle: forkSource.title,
+      lastReadSeq: viewer
+        ? sql<
+            number | null
+          >`(${conversationReadPositionQuery(viewer, conversationId)})`
+        : sql<null>`null`,
+      pinnedAt: juniorConversationParticipants.pinnedAt,
+      pinPosition: juniorConversationParticipants.pinPosition,
+      rootConversationId,
+      unreadReply: viewer
+        ? unreadReplySql(
+            db,
+            viewer.id,
+            rootConversationId,
+            sql`(${db
+              .select({ seq: juniorConversationReadPositions.lastReadSeq })
+              .from(juniorConversationReadPositions)
+              .where(
+                and(
+                  eq(juniorConversationReadPositions.userId, viewer.id),
+                  eq(
+                    juniorConversationReadPositions.conversationId,
+                    rootConversationId,
+                  ),
                 ),
-              ),
-            )})`,
-        )
-      : sql<boolean>`false`,
-    unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
-    version: sql<
-      string | null
-    >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
-  })
+              )})`,
+          )
+        : sql<boolean>`false`,
+      unsubscribedAt: juniorConversationParticipants.unsubscribedAt,
+      version: sql<
+        string | null
+      >`(${conversationVersionQuery(db, conversationId, viewer?.id)})`,
+    })
+    .from(juniorConversations)
+    .leftJoin(juniorDestinations, conversationRecordJoins.location)
+    .leftJoin(juniorIdentities, conversationRecordJoins.identity)
+    .leftJoin(juniorUsers, conversationRecordJoins.user)
     .leftJoin(
       forkSource,
       eq(
