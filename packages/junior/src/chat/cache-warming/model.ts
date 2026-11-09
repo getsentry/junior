@@ -39,6 +39,13 @@ const GAP_BIN_COUNT = GAP_BIN_EDGES_MS.length;
 /** Gaps a conversation needs before its own gaps replace the global gaps. */
 const BLEND_PSEUDOCOUNT = 20;
 
+/**
+ * Gaps that a decision needs in total. With fewer, one gap sets the return
+ * chance for each Conversation of the segment, such as at launch or after
+ * the gap lists expire.
+ */
+const MIN_GAP_SAMPLES = 20;
+
 /** Below this prefix size, one cache miss costs too little to warm for. */
 export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
 
@@ -196,6 +203,7 @@ export interface WarmupDecision {
     | "prefix_too_small"
     | "no_savings"
     | "horizon"
+    | "few_gaps"
     | "unlikely_return";
   /** Chance of a return in the next TTL. */
   returnProbability: number;
@@ -222,10 +230,9 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const savedPerReturn = input.cacheWritePrice - input.cacheReadPrice;
   const threshold =
     savedPerReturn > 0 ? Math.min(input.cacheReadPrice / savedPerReturn, 1) : 1;
-  const histogram = blendHistograms(
-    histogramOf(input.conversationGapsMs),
-    histogramOf(input.globalGapsMs),
-  );
+  const conversation = histogramOf(input.conversationGapsMs);
+  const global = histogramOf(input.globalGapsMs);
+  const histogram = blendHistograms(conversation, global);
   const probability = returnProbability(
     histogram,
     input.idleMs,
@@ -253,6 +260,9 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   }
   if (input.idleMs >= IDLE_HORIZON_MS) {
     return decision("horizon");
+  }
+  if (conversation.total + global.total < MIN_GAP_SAMPLES) {
+    return decision("few_gaps");
   }
   return decision(perWarmup >= threshold ? "warm" : "unlikely_return");
 }

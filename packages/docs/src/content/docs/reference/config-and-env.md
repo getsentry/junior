@@ -331,8 +331,8 @@ likely to cost less than that write.
   cached prefix must be at least 50K tokens. It does not warm models that use a thinking budget, because the
   budget adds output tokens to each warmup.
 - When a turn ends, Junior stores the last model request in the `StateAdapter`.
-  Junior deletes it when the next turn starts, when warmups stop, or after 55
-  minutes.
+  Junior deletes it when the first model request of the next turn starts, when
+  warmups stop, or after 55 minutes.
 - A delayed queue message sends the same request with a one-token output limit
   before the cache expires. Junior sends the next warmup only while the chance
   that the person replies soon is high enough to pay for it. Junior compares
@@ -343,11 +343,14 @@ likely to cost less than that write.
 - Junior learns that chance from the reply gaps of idle periods. A period with
   no reply in 55 minutes counts as no reply. Junior keeps separate gaps for
   Turns that a person started and Turns that an event or automation started,
-  and for the first, second to third, and later Turns of a Conversation. Until
-  Junior has recorded gaps for a group, it sends no warmups for that group.
+  and for the first, second to third, and later Turns of a Conversation. This
+  applies to the gaps of each Conversation too. Until Junior has recorded 20
+  gaps for a group, it sends no warmups for that group.
 - A warmup that misses the cache ends warming for its idle period and sends a
   Sentry warning. When 10 of the last 20 warmups of a provider miss or fail,
   Junior stops warming for that provider for 24 hours and sends a Sentry error.
+  A failure that the provider says to retry, such as an overload, stops only
+  its own idle period and does not count.
 - `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
   requests and drops warmups that are already in the queue. The default is
   `true`.

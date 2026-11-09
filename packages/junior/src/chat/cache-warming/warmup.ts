@@ -35,6 +35,7 @@ import { getChatConfig } from "@/chat/config";
 import { runWithLogContext } from "@/chat/log-context";
 import { logInfo, logWarn } from "@/chat/logging";
 import { completeText } from "@/chat/core-model";
+import { isProviderRetryError } from "@/chat/services/provider-error";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
 import { captureMessage } from "@/chat/sentry";
@@ -115,9 +116,13 @@ interface ModelRequest {
 const segmentGapsKey = (segment: string) => `${KEY_PREFIX}:gaps:${segment}`;
 const conversationKey = (conversationId: string) =>
   `${KEY_PREFIX}:conversation:${conversationId}`;
-/** Recent reply gaps (ms) of the idle periods of this Conversation. */
-const conversationGapsKey = (conversationId: string) =>
-  `${KEY_PREFIX}:gaps:conversation:${conversationId}`;
+/**
+ * Recent reply gaps (ms) of the idle periods of this Conversation, per
+ * `gapSegment`. A person's quick replies must not set the return chance of an
+ * idle period that a system Turn started.
+ */
+const conversationGapsKey = (conversationId: string, segment: string) =>
+  `${KEY_PREFIX}:gaps:conversation:${conversationId}:${segment}`;
 const snapshotKey = (conversationId: string, generation: string) =>
   `${KEY_PREFIX}:snapshot:${conversationId}:${generation}`;
 /** Warmups that completed in the idle period. */
@@ -257,10 +262,14 @@ async function recordGap(
     maxLength: GLOBAL_GAPS_MAX,
     ttlMs: GLOBAL_GAPS_TTL_MS,
   });
-  await state.appendToList(conversationGapsKey(conversationId), gapMs, {
-    maxLength: CONVERSATION_GAPS_MAX,
-    ttlMs: CONVERSATION_STATE_TTL_MS,
-  });
+  await state.appendToList(
+    conversationGapsKey(conversationId, idle.segment),
+    gapMs,
+    {
+      maxLength: CONVERSATION_GAPS_MAX,
+      ttlMs: CONVERSATION_STATE_TTL_MS,
+    },
+  );
 }
 
 async function startIdlePeriod(
@@ -381,6 +390,26 @@ async function recordModelCall(
   }
 }
 
+// A run's first request ends the idle period of the last Turn. Delete its
+// snapshot when that request starts, so a warmup that comes due during the
+// request sends nothing. `record` ends the idle period when the call is done.
+async function stopIdleWarmups(conversationId: string): Promise<void> {
+  try {
+    const state = await connectedState();
+    const idle = (
+      await state.get<ConversationCacheState>(conversationKey(conversationId))
+    )?.idle;
+    if (idle?.warm) {
+      await state.delete(snapshotKey(conversationId, idle.generation));
+    }
+  } catch (error) {
+    logWarn("cache_warming.idle_period.stop_failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /** Records the model calls of one agent run and schedules cache warmups. */
 export interface CacheWarmingRecorder {
   /**
@@ -406,10 +435,14 @@ export function createCacheWarmingRecorder(
   // After the first call of the run ends the idle period, the next mid-turn
   // calls have nothing to record. This keeps them free of state reads.
   let idleEnded = false;
+  let warmupsStopped: Promise<void> | undefined;
   return {
     wrap:
       (base = streamSimple) =>
       (model, context, options) => {
+        if (!warmupsStopped && getChatConfig().cacheWarmingEnabled) {
+          warmupsStopped = stopIdleWarmups(conversationId);
+        }
         // With warming off, Pi's own retention applies.
         const cacheRetention =
           options?.cacheRetention ??
@@ -433,6 +466,7 @@ export function createCacheWarmingRecorder(
     record: async (message) => {
       const request = lastRequest;
       lastRequest = undefined;
+      await warmupsStopped;
       if (
         !getChatConfig().cacheWarmingEnabled ||
         !request ||
@@ -554,7 +588,7 @@ export async function runCacheWarmup(
       const model = resolveGatewayModel(warm.modelId);
       const decision = decideWarmup({
         conversationGapsMs: await state.getList<number>(
-          conversationGapsKey(conversationId),
+          conversationGapsKey(conversationId, idle.segment),
         ),
         globalGapsMs: await state.getList<number>(segmentGapsKey(idle.segment)),
         idleMs: Date.now() - idle.sinceMs,
@@ -608,8 +642,12 @@ export async function runCacheWarmup(
         sessionId: conversationId,
       }).catch(async (error: unknown) => {
         // A request that the provider rejects fails the same way for each
-        // Conversation. Count it, so the breaker stops these requests.
-        await countOutcome(state, warm.modelId, true);
+        // Conversation. Count it, so the breaker stops these requests. A
+        // retryable error, such as an overload, says nothing about the cache,
+        // so it must not open the breaker for every Conversation.
+        if (!isProviderRetryError(error)) {
+          await countOutcome(state, warm.modelId, true);
+        }
         await stop();
         throw error;
       });

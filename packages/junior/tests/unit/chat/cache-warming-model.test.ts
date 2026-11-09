@@ -71,19 +71,21 @@ describe("decideWarmup", () => {
       conversationGapsMs: [],
       prefixTokens: 200_000,
     };
-    // Only 3 of 100 idle periods got a reply. Without the 97 periods with no
-    // reply, every period would look like a reply after 7 minutes.
-    const replies = gaps(3, 7 * MINUTE);
-
+    // Only 3 of 100 idle periods got a reply. If the 97 periods with no reply
+    // had replies after 7 minutes too, Junior would warm.
     expect(
       decideWarmup({
         ...input,
-        globalGapsMs: [...replies, ...gaps(97, NO_REPLY_GAP_MS)],
+        globalGapsMs: [...gaps(3, 7 * MINUTE), ...gaps(97, NO_REPLY_GAP_MS)],
         idleMs: 4 * MINUTE,
       }),
     ).toMatchObject({ warm: false, reason: "unlikely_return" });
     expect(
-      decideWarmup({ ...input, globalGapsMs: replies, idleMs: 4 * MINUTE }),
+      decideWarmup({
+        ...input,
+        globalGapsMs: gaps(100, 7 * MINUTE),
+        idleMs: 4 * MINUTE,
+      }),
     ).toMatchObject({ warm: true });
     expect(
       decideWarmup({
@@ -193,7 +195,7 @@ describe("decideWarmup", () => {
     ).toMatchObject({ warm: false, reason: "no_savings" });
   });
 
-  it("does not warm a small prefix or without any observed gaps", () => {
+  it("does not warm a small prefix or with too few observed gaps", () => {
     const input = {
       ...prices,
       conversationGapsMs: [],
@@ -209,6 +211,14 @@ describe("decideWarmup", () => {
     ).toMatchObject({ warm: false, reason: "prefix_too_small" });
     expect(
       decideWarmup({ ...input, globalGapsMs: [], prefixTokens: 200_000 }),
-    ).toMatchObject({ warm: false, reason: "unlikely_return" });
+    ).toMatchObject({ warm: false, reason: "few_gaps" });
+    // One gap must not set the return chance of a whole segment.
+    expect(
+      decideWarmup({
+        ...input,
+        globalGapsMs: [6 * MINUTE],
+        prefixTokens: 200_000,
+      }),
+    ).toMatchObject({ warm: false, reason: "few_gaps" });
   });
 });

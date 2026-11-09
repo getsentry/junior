@@ -1,9 +1,11 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { mswServer } from "../../msw/server";
 
 const mocks = vi.hoisted(() => ({
   sendCacheWarmup: vi.fn(async (_message: unknown, _delayMs: number) => {}),
@@ -58,6 +60,15 @@ function scheduledHorizon(): CacheWarmupMessage {
   return message;
 }
 
+function scheduledWarmup(): CacheWarmupMessage {
+  const message = mocks.sendCacheWarmup.mock.calls
+    .map(([sent]) => sent as CacheWarmupMessage)
+    .reverse()
+    .find((sent) => sent.kind === "warmup");
+  if (!message) throw new Error("No warmup was scheduled.");
+  return message;
+}
+
 const segmentGaps = (segment: string) =>
   getStateAdapter().getList<number>(`junior:cache_warming:gaps:${segment}`);
 
@@ -85,6 +96,13 @@ describe("cache warming gap segments", () => {
     expect(await segmentGaps("system:1")).toEqual([NO_REPLY_GAP_MS]);
     expect(await segmentGaps("user:2-3")).toEqual([7 * MINUTE]);
     expect(await segmentGaps("user:1")).toEqual([]);
+    // The Conversation's own gaps are kept per segment too.
+    expect(
+      await segmentGaps(`conversation:${conversationId}:system:1`),
+    ).toEqual([NO_REPLY_GAP_MS]);
+    expect(
+      await segmentGaps(`conversation:${conversationId}:user:2-3`),
+    ).toEqual([7 * MINUTE]);
   });
 
   it("does not record a no-reply gap after a reply recorded the real gap", async () => {
@@ -131,6 +149,73 @@ describe("cache warming gap segments", () => {
       ),
     ).toEqual([]);
     await state.delete("junior:cache_warming:gaps:user:1");
+  });
+
+  it("does not count an overloaded provider as a cache miss", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
+    }
+    mswServer.use(
+      http.post("https://ai-gateway.vercel.sh/v1/messages", () =>
+        HttpResponse.json(
+          {
+            type: "error",
+            error: { type: "overloaded_error", message: "Overloaded" },
+          },
+          { status: 529 },
+        ),
+      ),
+    );
+    mocks.sendCacheWarmup.mockClear();
+    try {
+      await endTurn(true);
+      const warmup = scheduledWarmup();
+      vi.advanceTimersByTime(4 * MINUTE);
+
+      await expect(runCacheWarmup(warmup)).rejects.toThrow("AI provider error");
+      expect(
+        await state.getList<number>(
+          "junior:cache_warming:breaker:anthropic:outcomes",
+        ),
+      ).toEqual([]);
+    } finally {
+      await state.delete("junior:cache_warming:gaps:user:1");
+    }
+  });
+
+  it("sends no warmup while the reply's first request runs", async () => {
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
+    }
+    mocks.sendCacheWarmup.mockClear();
+    try {
+      await endTurn(true);
+      const warmup = scheduledWarmup();
+      // The person replies. The warmup comes due before the model call ends.
+      const reply = createCacheWarmingRecorder(conversationId, true);
+      reply.wrap((() => undefined) as never)(model, context, {});
+      await vi.waitFor(async () => {
+        expect(
+          await state.get(
+            `junior:cache_warming:snapshot:${conversationId}:${warmup.generation}`,
+          ),
+        ).toBeNull();
+      });
+
+      // With the snapshot gone, the warmup returns before any model request.
+      await runCacheWarmup(warmup);
+      await reply.record(finalReply);
+      expect(
+        await state.get(
+          `junior:cache_warming:warmups:${conversationId}:${warmup.generation}`,
+        ),
+      ).toBeNull();
+    } finally {
+      await state.delete("junior:cache_warming:gaps:user:1");
+    }
   });
 
   it("schedules the horizon when the warmup send fails", async () => {
