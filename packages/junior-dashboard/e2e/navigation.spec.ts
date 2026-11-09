@@ -108,7 +108,8 @@ test("switches desktop navigation between adaptive, top bar, and sidebar", async
   ).toHaveAttribute("aria-pressed", "true");
   await navigation.getByRole("button", { name: "Sidebar navigation" }).click();
   await expect(sidebar).toHaveAttribute("data-state", "collapsed");
-  await page.keyboard.press("Escape");
+  // The top bar's menu closes with the top bar.
+  await expect(page.locator("#profile-popover")).toHaveCount(0);
 
   // The choice survives a reload, and the top bar choice ignores height.
   await page.setViewportSize({ width: 1440, height: 900 });
