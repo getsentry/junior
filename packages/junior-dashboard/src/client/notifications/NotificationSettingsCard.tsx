@@ -69,16 +69,18 @@ export function NotificationSettingsCard() {
   const anchor = useRef<HTMLDivElement>(null);
   const { hash } = useLocation();
   useEffect(() => {
-    if (hash === `#${PUSH_NOTIFICATIONS_ANCHOR}`)
-      anchor.current?.scrollIntoView();
+    const card = anchor.current;
+    if (!card || hash !== `#${PUSH_NOTIFICATIONS_ANCHOR}`) return;
+    // The sticky chrome covers the top of the page. Its height changes with
+    // the header, page links, and banner, so measure it.
+    const chrome = document.querySelector("[data-dashboard-chrome]");
+    const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
+    card.style.scrollMarginTop = `${chromeHeight + 24}px`;
+    card.scrollIntoView();
   }, [hash]);
 
   return (
-    <div
-      className="mt-6 scroll-mt-6"
-      id={PUSH_NOTIFICATIONS_ANCHOR}
-      ref={anchor}
-    >
+    <div className="mt-6" id={PUSH_NOTIFICATIONS_ANCHOR} ref={anchor}>
       <Card className="mb-0" padding="md" variant="raised">
         <h2 className="m-0 text-lg font-bold">Push notifications</h2>
         <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">

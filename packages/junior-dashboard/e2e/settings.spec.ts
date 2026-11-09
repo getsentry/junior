@@ -144,8 +144,9 @@ test("turns on push notifications from a one-time tip", async ({
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/settings#push-notifications`,
   );
+  // Before the chrome offset, the heading scrolled out of view under it.
   await expect(
-    page.getByRole("heading", { name: "Push notifications" }),
+    page.getByRole("heading", { exact: true, name: "Push notifications" }),
   ).toBeInViewport();
 
   // The tip checks this flag before anything else, so a later Conversation
