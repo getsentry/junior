@@ -26,30 +26,37 @@ import {
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   streamSimple,
-  type Api,
   type AssistantMessage,
   type Context,
-  type Model,
 } from "@earendil-works/pi-ai/compat";
 import { getChatConfig } from "@/chat/config";
 import { runWithLogContext } from "@/chat/log-context";
 import { logInfo, logWarn } from "@/chat/logging";
-import { completeText } from "@/chat/core-model";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
-import { captureMessage } from "@/chat/sentry";
-import { getStateAdapter } from "@/chat/state/adapter";
+import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
   decideWarmup,
-  warmupFailureCountsAsMiss,
   gapSegment,
   IDLE_HORIZON_MS,
   MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
-  warmupMarginMs,
 } from "./model";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
+import {
+  breakerOpen,
+  CACHE_RETENTION,
+  cachedPrefixTokens,
+  connectedState,
+  KEY_PREFIX,
+  sendWarmup,
+  cacheTtlMs,
+  warmupTiming,
+  warmupTooLate,
+  type ConnectedState,
+  type ModelRequest,
+} from "./request";
+import { createToolWaitWarmer } from "./tool-wait";
 
 // Compress off the event loop, so a large snapshot does not delay other work.
 const zstdCompress = promisify(zstdCompressCallback);
@@ -61,26 +68,11 @@ const SNAPSHOT_ZSTD_PARAMS = {
   params: { [zlibConstants.ZSTD_c_compressionLevel]: 1 },
 };
 
-const KEY_PREFIX = "junior:cache_warming";
 const GLOBAL_GAPS_MAX = 2_000;
 const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
 const CONVERSATION_GAPS_MAX = 50;
 const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
-// A refreshed prefix reads almost all of the stored prefix from the cache.
-const REFRESHED_READ_FRACTION = 0.9;
-// A miss ends only its own idle period. When many recent warmups of one
-// provider miss, its warmup request or cache is likely broken, so warming of
-// that provider stops for every Conversation for a day.
-const BREAKER_OUTCOMES_MAX = 20;
-const BREAKER_MAX_MISSES = 10;
-const BREAKER_OUTCOMES_TTL_MS = 6 * 60 * MINUTE_MS;
-const BREAKER_OPEN_TTL_MS = 24 * 60 * MINUTE_MS;
-// While warming is on, the recorder sets this retention on agent requests, so
-// Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
-// timing use the TTL of this retention (`CACHE_TTL_MS`).
-const CACHE_RETENTION: CacheRetention = "short";
-
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
   modelId: string;
@@ -105,14 +97,6 @@ interface ConversationCacheState {
   idle?: IdlePeriod;
 }
 
-interface ModelRequest {
-  model: Model<Api>;
-  context: Context;
-  reasoning?: ThinkingLevel;
-  cacheRetention?: CacheRetention;
-  startedAtMs: number;
-}
-
 const segmentGapsKey = (segment: string) => `${KEY_PREFIX}:gaps:${segment}`;
 const conversationKey = (conversationId: string) =>
   `${KEY_PREFIX}:conversation:${conversationId}`;
@@ -131,78 +115,6 @@ const warmupsKey = (conversationId: string, generation: string) =>
 /** Set by the first of the reply and the horizon to record the gap. */
 const gapClaimKey = (conversationId: string, generation: string) =>
   `${KEY_PREFIX}:gap_claim:${conversationId}:${generation}`;
-// The breaker is per provider, so a provider whose cache behaves differently
-// than its TTL says cannot stop warming for the others.
-const breakerOutcomesKey = (provider: string) =>
-  `${KEY_PREFIX}:breaker:${provider}:outcomes`;
-const breakerOpenKey = (provider: string) =>
-  `${KEY_PREFIX}:breaker:${provider}:open`;
-const providerOf = (modelId: string) => modelId.split("/")[0] ?? "";
-
-async function connectedState() {
-  const state = getStateAdapter();
-  await state.connect();
-  return state;
-}
-
-type ConnectedState = Awaited<ReturnType<typeof connectedState>>;
-
-// How long the cache of each provider lives after a write or a read. The
-// warmup timing and the reply chance use it. Warming needs a fixed TTL that a
-// read refreshes. Providers without one are not listed and are not warmed.
-//
-// The TTLs come from models.dev (`cache.explicit.ttl` in
-// providers/<provider>/models/*.toml; its api.json does not publish them).
-// Check them again when a provider or model family is added:
-// - https://github.com/anomalyco/models.dev/tree/dev/providers/anthropic/models
-//   Every model lists ["5m", "1h"]. Junior uses the short retention.
-// - https://github.com/anomalyco/models.dev/tree/dev/providers/alibaba/models
-//   Every Qwen model with an explicit cache lists ["5m"].
-// - https://github.com/anomalyco/models.dev/tree/dev/providers/openai/models
-//   GPT-5.6 and later list ["30m"]. Earlier models list ["24h"] or nothing,
-//   and Pi gives them no cache write price, so the price check skips them.
-// The provider docs say that a cache hit resets the TTL:
-// - https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
-// - https://www.alibabacloud.com/help/en/model-studio/context-cache
-// - https://platform.openai.com/docs/guides/prompt-caching ("A 30-minute
-//   read refreshes coverage to at least 30 minutes after that read.")
-// Not listed: MiniMax (no TTL on models.dev).
-const CACHE_TTL_MS: Record<string, number> = {
-  anthropic: 5 * MINUTE_MS,
-  alibaba: 5 * MINUTE_MS,
-  openai: 30 * MINUTE_MS,
-};
-
-// Return the cache TTL of a model that Junior can warm.
-function cacheTtlMs(request: ModelRequest): number | undefined {
-  return supportsWarming(request)
-    ? CACHE_TTL_MS[providerOf(request.model.id)]
-    : undefined;
-}
-
-// Warming pays only when a cache write costs more than a read. Pi adds a
-// thinking budget to the one-token output limit on the Anthropic Messages API
-// for models without adaptive thinking. Then a warmup could cost as much as a
-// short answer, and a smaller budget would miss the cached messages.
-function supportsWarming(request: ModelRequest): boolean {
-  const { model, reasoning } = request;
-  const budgetThinking =
-    reasoning !== undefined &&
-    model.api === "anthropic-messages" &&
-    (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking !==
-      true;
-  return (
-    CACHE_TTL_MS[providerOf(model.id)] !== undefined &&
-    model.cost.cacheRead > 0 &&
-    model.cost.cacheWrite > model.cost.cacheRead &&
-    !budgetThinking &&
-    request.cacheRetention === CACHE_RETENTION
-  );
-}
-
-// A warmup this close to the cache expiry may reach the provider after it.
-const LATE_WARMUP_MS = 10_000;
-
 // Send the warmup that refreshes the cache that a request at
 // `requestStartedAtMs` read or wrote.
 async function scheduleWarmup(
@@ -213,11 +125,12 @@ async function scheduleWarmup(
   requestStartedAtMs: number,
   warm: WarmState,
 ): Promise<void> {
-  const cacheExpiresAtMs = requestStartedAtMs + warm.cacheTtlMs;
-  await sendCacheWarmup(
-    { ...message, cacheExpiresAtMs },
-    cacheExpiresAtMs - warmupMarginMs(warm.prefixTokens) - Date.now(),
+  const { cacheExpiresAtMs, delayMs } = warmupTiming(
+    requestStartedAtMs,
+    warm.prefixTokens,
+    warm.cacheTtlMs,
   );
+  await sendCacheWarmup({ ...message, cacheExpiresAtMs }, delayMs);
 }
 
 // Keep only the tool fields that Pi sends to the provider.
@@ -284,7 +197,7 @@ async function startIdlePeriod(
     segment,
     sinceMs: request.startedAtMs,
   };
-  const prefixTokens = message.usage.cacheRead + message.usage.cacheWrite;
+  const prefixTokens = cachedPrefixTokens(message);
   const ttlMs = cacheTtlMs(request);
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
@@ -420,6 +333,10 @@ export interface CacheWarmingRecorder {
   wrap(base?: StreamFn): StreamFn;
   /** Record the finished assistant message of the last model request. */
   record(message: AssistantMessage): Promise<void>;
+  /** Mark that the tools of the last request returned. */
+  toolsReturned(): void;
+  /** Stop the warmups of this run. Call it when the run ends. */
+  stop(): Promise<void>;
 }
 
 /**
@@ -436,6 +353,7 @@ export function createCacheWarmingRecorder(
   // calls have nothing to record. This keeps them free of state reads.
   let idleEnded = false;
   let warmupsStopped: Promise<void> | undefined;
+  const toolWait = createToolWaitWarmer(conversationId);
   return {
     wrap:
       (base = streamSimple) =>
@@ -443,6 +361,8 @@ export function createCacheWarmingRecorder(
         if (!warmupsStopped && getChatConfig().cacheWarmingEnabled) {
           warmupsStopped = stopIdleWarmups(conversationId);
         }
+        // The tools returned, so this request reads the cache.
+        toolWait.stop();
         // With warming off, Pi's own retention applies.
         const cacheRetention =
           options?.cacheRetention ??
@@ -467,9 +387,18 @@ export function createCacheWarmingRecorder(
       const request = lastRequest;
       lastRequest = undefined;
       await warmupsStopped;
+      if (!getChatConfig().cacheWarmingEnabled || !request) {
+        return;
+      }
+      try {
+        await toolWait.record(request, message);
+      } catch (error) {
+        logWarn("cache_warming.tool_wait.record_failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+      }
       if (
-        !getChatConfig().cacheWarmingEnabled ||
-        !request ||
         message.stopReason === "error" ||
         message.stopReason === "aborted" ||
         (idleEnded && message.stopReason !== "stop")
@@ -486,42 +415,18 @@ export function createCacheWarmingRecorder(
         });
       }
     },
+    toolsReturned: toolWait.toolsReturned,
+    stop: async () => {
+      try {
+        await toolWait.end();
+      } catch (error) {
+        logWarn("cache_warming.tool_wait.record_failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
   };
-}
-
-// Count one warmup outcome. Open the breaker when too many recent warmups
-// missed. Only the call that opens it reports to Sentry.
-async function countOutcome(
-  state: ConnectedState,
-  modelId: string,
-  miss: boolean,
-): Promise<void> {
-  const provider = providerOf(modelId);
-  await state.appendToList(breakerOutcomesKey(provider), miss ? 1 : 0, {
-    maxLength: BREAKER_OUTCOMES_MAX,
-    ttlMs: BREAKER_OUTCOMES_TTL_MS,
-  });
-  if (!miss) return;
-  const outcomes = await state.getList<number>(breakerOutcomesKey(provider));
-  const misses = outcomes.filter((outcome) => outcome === 1).length;
-  if (
-    misses >= BREAKER_MAX_MISSES &&
-    (await state.setIfNotExists(
-      breakerOpenKey(provider),
-      true,
-      BREAKER_OPEN_TTL_MS,
-    ))
-  ) {
-    captureMessage("Cache warming stopped: too many warmups missed the cache", {
-      level: "error",
-      fingerprint: ["cache_warming.breaker.opened", provider],
-      tags: { "gen_ai.request.model": modelId },
-      extra: {
-        "app.cache_warming.misses": misses,
-        "app.cache_warming.outcomes": outcomes.length,
-      },
-    });
-  }
 }
 
 /**
@@ -562,13 +467,14 @@ export async function runCacheWarmup(
       const attributes: Record<string, unknown> = {
         "app.cache_warming.cycle": message.cycle,
         "app.cache_warming.prefix_tokens": warm.prefixTokens,
+        "app.cache_warming.trigger": "idle",
         // Queue delay shows as a smaller time left than the warmup margin.
         "app.cache_warming.cache_ttl_left_ms":
           message.cacheExpiresAtMs - Date.now(),
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
-      if (Date.now() + LATE_WARMUP_MS >= message.cacheExpiresAtMs) {
+      if (warmupTooLate(message.cacheExpiresAtMs)) {
         logInfo("cache_warming.warmup.skipped", {
           ...attributes,
           "app.cache_warming.skip_reason": "cache_expired",
@@ -576,7 +482,7 @@ export async function runCacheWarmup(
         await stop();
         return;
       }
-      if (await state.get<boolean>(breakerOpenKey(providerOf(warm.modelId)))) {
+      if (await breakerOpen(state, warm.modelId)) {
         logInfo("cache_warming.warmup.skipped", {
           ...attributes,
           "app.cache_warming.skip_reason": "breaker_open",
@@ -625,55 +531,23 @@ export async function runCacheWarmup(
         ),
       ) as Context;
       const startedAtMs = Date.now();
-      const { message: result } = await completeText({
+      const warmup = await sendWarmup(state, {
+        conversationId,
         modelId: warm.modelId,
-        system: context.systemPrompt,
-        messages: context.messages,
-        ...(context.tools ? { tools: context.tools } : undefined),
-        ...(warm.reasoning ? { thinkingLevel: warm.reasoning } : undefined),
-        cacheRetention: CACHE_RETENTION,
-        // The output is not used.
-        maxTokens: 1,
-        messageAttributeMode: "metadata",
-        metadata: { conversationId },
-        operation: "cache_warmup",
-        cost: { conversationId },
-        // Use the agent's gateway session, so the warmup reaches the same cache.
-        sessionId: conversationId,
+        context,
+        ...(warm.reasoning ? { reasoning: warm.reasoning } : undefined),
+        prefixTokens: warm.prefixTokens,
       }).catch(async (error: unknown) => {
-        if (warmupFailureCountsAsMiss(error)) {
-          await countOutcome(state, warm.modelId, true);
-        }
         await stop();
         throw error;
       });
-      Object.assign(attributes, {
-        "app.cost.total_usd": result.usage.cost.total,
-        "gen_ai.usage.cache_read.input_tokens": result.usage.cacheRead,
-        "gen_ai.usage.cache_creation.input_tokens": result.usage.cacheWrite,
-      });
-
-      if (
-        result.usage.cacheRead <
-        warm.prefixTokens * REFRESHED_READ_FRACTION
-      ) {
-        // The request did not match the cached prefix, so it wrote a new
-        // cache entry. Stop this idle period and count the miss.
+      Object.assign(attributes, warmup.attributes);
+      if (!warmup.refreshed) {
+        // Stop this idle period. The miss already counts for the breaker.
         logWarn("cache_warming.warmup.failed", attributes);
-        captureMessage("Cache warmup missed the cache", {
-          level: "warning",
-          fingerprint: ["cache_warming.warmup.missed", warm.modelId],
-          tags: { "gen_ai.request.model": warm.modelId },
-          extra: {
-            "app.cache_warming.read_fraction":
-              result.usage.cacheRead / warm.prefixTokens,
-          },
-        });
-        await countOutcome(state, warm.modelId, true);
         await stop();
         return;
       }
-      await countOutcome(state, warm.modelId, false);
       logInfo("cache_warming.warmup.completed", attributes);
 
       await state.set(

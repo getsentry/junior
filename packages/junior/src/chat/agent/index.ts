@@ -1183,6 +1183,7 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
+        cacheWarming.toolsReturned();
         return requireConversationLease("save")
           .then(() => runResume.persistSafeBoundary([...agent!.state.messages]))
           .then(
@@ -1577,6 +1578,7 @@ async function executeAgentRunInPrivacyContext(
       }
     } finally {
       unsubscribe();
+      await cacheWarming.stop();
     }
 
     // The caller saves the completed Turn after this returns.
