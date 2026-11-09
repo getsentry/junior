@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   isWithinNotificationSchedule,
   notificationSettingsSchema,
-  testNotificationResponseSchema,
   type NotificationSchedule,
   type NotificationSettings,
 } from "@sentry/junior/api/schema";
@@ -18,22 +17,23 @@ import { InlineError } from "../components/InlineError";
 import { Card } from "../components/layout/Card";
 import { NativeSelect } from "../components/ui/native-select";
 import { Skeleton } from "../components/ui/skeleton";
-import { del, post, put } from "../http";
+import { del, put } from "../http";
 import {
   currentPushSubscription,
   pushSupport,
   registerDashboardServiceWorker,
-  subscribeThisDevice,
   unsubscribeThisDevice,
 } from "./push";
 import {
   NOTIFICATIONS_PATH,
   notificationSettingsQuery,
   PUSH_NOTIFICATIONS_ANCHOR,
+  pushDeviceQueryKey,
+  sendTestNotification,
+  turnOnThisDevice,
 } from "./queries";
 
 const notificationSettingsQueryKey = notificationSettingsQuery.queryKey;
-const deviceQueryKey = ["dashboard", "notifications", "device"] as const;
 
 const WEEKDAYS = [
   [1, "Mon"],
@@ -120,7 +120,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
   const support = useMemo(() => pushSupport(), []);
   const deviceQuery = useQuery({
     enabled: support === "supported",
-    queryKey: deviceQueryKey,
+    queryKey: pushDeviceQueryKey,
     queryFn: async () => (await currentPushSubscription())?.endpoint ?? null,
   });
   // Install the worker before the user taps "Turn on", so the subscribe call
@@ -134,18 +134,7 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
     queryClient.setQueryData(notificationSettingsQueryKey, next);
 
   const enable = useMutation({
-    mutationFn: async (publicKey: string) => {
-      const subscription = await subscribeThisDevice(publicKey);
-      return await post(
-        notificationSettingsSchema,
-        `${NOTIFICATIONS_PATH}/subscriptions`,
-        subscription,
-      );
-    },
-    onSuccess: (next) => {
-      saveSettings(next);
-      void queryClient.invalidateQueries({ queryKey: deviceQueryKey });
-    },
+    mutationFn: (publicKey: string) => turnOnThisDevice(queryClient, publicKey),
   });
   const disable = useMutation({
     mutationFn: async () => {
@@ -160,13 +149,10 @@ function DeviceSection({ settings }: { settings: NotificationSettings }) {
     },
     onSuccess: (next) => {
       if (next) saveSettings(next);
-      void queryClient.invalidateQueries({ queryKey: deviceQueryKey });
+      void queryClient.invalidateQueries({ queryKey: pushDeviceQueryKey });
     },
   });
-  const test = useMutation({
-    mutationFn: () =>
-      post(testNotificationResponseSchema, `${NOTIFICATIONS_PATH}/test`, {}),
-  });
+  const test = useMutation({ mutationFn: sendTestNotification });
 
   if (!settings.publicKey) {
     return (

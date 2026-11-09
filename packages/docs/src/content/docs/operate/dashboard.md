@@ -195,7 +195,8 @@ thread does not send these notifications. Slack notifies people there.
 
 3. Redeploy. Each person opens **Settings** and selects **Turn on for this
    device**. After a person starts a dashboard Conversation, the dashboard
-   shows a tip with a link to this setting one time in each browser.
+   also shows a tip one time in each browser. The person can turn on
+   notifications from the tip.
 
 On iPhone and iPad, Web Push works only from a Home Screen app. Open the
 dashboard in Safari, select **Share**, then **Add to Home Screen**. Open Junior
