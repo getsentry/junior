@@ -85,7 +85,7 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "Optional short display title for the task. Omit to generate one from the task.",
+            "Optional short display title of the child and its Conversation. Pass one to skip title generation; omit it to generate one from the task.",
           ),
         name: agentNameSchema
           .refine((name) => name !== PARENT_AGENT_TARGET, {

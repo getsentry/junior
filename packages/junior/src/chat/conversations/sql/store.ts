@@ -369,6 +369,7 @@ export class SqlStore implements ConversationStore {
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
+    title?: string;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     await this.withConversationMutation(args.parentConversationId, async () => {
@@ -411,6 +412,7 @@ export class SqlStore implements ConversationStore {
             kind: args.kind,
             parentConversationId: args.parentConversationId,
             ...(location ? { location } : undefined),
+            ...(args.title ? { title: args.title } : undefined),
           };
           await this.upsertConversation({
             conversation: child,
