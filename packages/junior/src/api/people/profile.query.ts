@@ -1,18 +1,8 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { eq, gte, sql } from "drizzle-orm";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
-import {
-  juniorConversationMetrics,
-  juniorConversations,
-  juniorDestinations,
-  juniorIdentities,
-  juniorUsers,
-} from "@/db/schema";
-import {
-  conversationActiveDaysColumn,
-  conversationAggregateColumns,
-} from "../conversations/aggregate";
+import { juniorDestinations } from "@/db/schema";
 import {
   slackLocationLabel,
   summaryFromRow,
@@ -35,25 +25,24 @@ import {
   emptyActivityDay,
   emptyTotals,
   normalizeEmail,
+  personTurns,
   recentActorRows,
-  slackActorColumns,
   statsItems,
-  turnMetricColumns,
-  turnMetricRoot,
-  turnMetricRootJoin,
-  verifiedActorWhere,
+  turnAggregateColumns,
+  turnBucket,
+  turnPersonColumns,
+  turnRoot,
+  turnRootJoin,
 } from "./shared";
 import { trailingUtcHourWindow } from "../reporting-window";
 
 type AggregateRow = {
-  active?: number;
-  conversations?: number;
-  durationMs?: number;
-  failed?: number;
-  tokens?: number | null;
+  active: number;
+  conversations: number;
+  durationMs: number;
+  failed: number;
+  tokens: number | null;
 };
-
-type ConversationTable = typeof juniorConversations | typeof turnMetricRoot;
 
 function emptyProfile(email: string, nowMs: number): ActorProfileReport {
   const end = new Date(nowMs);
@@ -88,15 +77,15 @@ function addAggregate(
     failed: 0,
     label,
   };
-  item.active += row.active ?? 0;
-  item.conversations += row.conversations ?? 0;
-  item.durationMs += row.durationMs ?? 0;
-  item.failed += row.failed ?? 0;
-  if (row.tokens != null) item.tokens = (item.tokens ?? 0) + row.tokens;
+  item.active += row.active;
+  item.conversations += row.conversations;
+  item.durationMs += row.durationMs;
+  item.failed += row.failed;
+  if (row.tokens !== null) item.tokens = (item.tokens ?? 0) + row.tokens;
   map.set(label, item);
 }
 
-function surfaceExpression(table: ConversationTable) {
+function surfaceExpression(table: typeof turnRoot) {
   return sql<string>`CASE
     WHEN ${table.source} IN ('api', 'scheduler', 'slack')
       THEN ${table.source}
@@ -109,7 +98,7 @@ function surfaceExpression(table: ConversationTable) {
   END`;
 }
 
-function channelExpression(table: ConversationTable) {
+function channelExpression(table: typeof turnRoot) {
   return sql<string>`SPLIT_PART(${table.conversationId}, ':', 2)`;
 }
 
@@ -131,32 +120,19 @@ function locationLabel(row: {
 }
 
 function activityBuckets(
-  startedRows: {
-    active: number;
-    conversations: number;
-    date: string;
-    failed: number;
-  }[],
-  turnRows: {
-    costUsd: number | null;
-    date: string;
-    durationMs: number;
-    tokens: number | null;
-  }[],
+  rows: (AggregateRow & { costUsd: number | null; date: string })[],
 ): Map<string, ActorActivityDayReport> {
-  const buckets = new Map<string, ActorActivityDayReport>();
-  for (const row of startedRows) {
-    buckets.set(row.date, { ...emptyActivityDay(row.date), ...row });
-  }
-  for (const row of turnRows) {
-    buckets.set(row.date, {
-      ...(buckets.get(row.date) ?? emptyActivityDay(row.date)),
-      ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
-      durationMs: row.durationMs,
-      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
-    });
-  }
-  return buckets;
+  return new Map(
+    rows.map(({ costUsd, tokens, ...row }) => [
+      row.date,
+      {
+        ...emptyActivityDay(row.date),
+        ...row,
+        ...(costUsd !== null ? { costUsd } : undefined),
+        ...(tokens !== null ? { tokens } : undefined),
+      },
+    ]),
+  );
 }
 
 /** Load one complete person profile while bounding only its recent-conversation list. */
@@ -172,201 +148,61 @@ export async function readPeopleProfileFromSql(
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
-  const where = verifiedActorWhere(normalizedEmail);
-  const surface = surfaceExpression(juniorConversations);
-  const activityDate = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
-  const activityHour = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
-  const metricDate = sql<string>`TO_CHAR(
-    ${juniorConversationMetrics.occurredAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
-  const metricHour = sql<string>`TO_CHAR(
-    ${juniorConversationMetrics.occurredAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
-  const channel = channelExpression(juniorConversations);
-  const turnSurface = surfaceExpression(turnMetricRoot);
-  const turnChannel = channelExpression(turnMetricRoot);
+  const turns = personTurns(normalizedEmail);
+  const aggregate = turnAggregateColumns(turns);
+  const surface = surfaceExpression(turnRoot);
+  const channel = channelExpression(turnRoot);
+  const day = turnBucket(turns, "day");
+  const hour = turnBucket(turns, "hour");
   const hourWindow = trailingUtcHourWindow(nowMs, 7 * 24);
-  // Conversation counts belong to the Actor that started each Conversation.
-  // Spend, duration, and tokens belong to the Actor of each Turn.
-  const { active, conversations, failed } = conversationAggregateColumns();
-  const [
-    totalsRows,
-    turnTotalsRows,
-    dayRows,
-    turnDayRows,
-    hourRows,
-    turnHourRows,
-    locationRows,
-    turnLocationRows,
-    surfaceRows,
-    turnSurfaceRows,
-    recentRows,
-  ] = await Promise.all([
-    getDb()
-      .select({
-        email: juniorUsers.primaryEmailNormalized,
-        fullName: juniorUsers.displayName,
-        ...slackActorColumns(),
-        activeDays: conversationActiveDaysColumn(),
-        active,
-        conversations,
-        failed,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(where)
-      .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
-    getDb()
-      .select({
-        email: juniorUsers.primaryEmailNormalized,
-        fullName: juniorUsers.displayName,
-        ...slackActorColumns(),
-        ...turnMetricColumns,
-      })
-      .from(juniorConversationMetrics)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(where)
-      .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
-    getDb()
-      .select({ date: activityDate, active, conversations, failed })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(and(where, gte(juniorConversations.lastActivityAt, start)))
-      .groupBy(activityDate),
-    getDb()
-      .select({ date: metricDate, ...turnMetricColumns })
-      .from(juniorConversationMetrics)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(and(where, gte(juniorConversationMetrics.occurredAt, start)))
-      .groupBy(metricDate),
-    getDb()
-      .select({ date: activityHour, active, conversations, failed })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
-      )
-      .groupBy(activityHour),
-    getDb()
-      .select({ date: metricHour, ...turnMetricColumns })
-      .from(juniorConversationMetrics)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(where, gte(juniorConversationMetrics.occurredAt, hourWindow.start)),
-      )
-      .groupBy(metricHour),
-    getDb()
-      .select({
-        channel,
-        channelName: juniorConversations.channelName,
-        destinationVisibility: juniorDestinations.visibility,
-        surface,
-        active,
-        conversations,
-        failed,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(where)
-      .groupBy(
-        channel,
-        juniorConversations.channelName,
-        juniorDestinations.visibility,
-        surface,
-      ),
-    getDb()
-      .select({
-        channel: turnChannel,
-        channelName: turnMetricRoot.channelName,
-        destinationVisibility: juniorDestinations.visibility,
-        surface: turnSurface,
-        ...turnMetricColumns,
-      })
-      .from(juniorConversationMetrics)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .innerJoin(turnMetricRoot, turnMetricRootJoin())
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, turnMetricRoot.destinationId),
-      )
-      .where(where)
-      .groupBy(
-        turnChannel,
-        turnMetricRoot.channelName,
-        juniorDestinations.visibility,
-        turnSurface,
-      ),
-    getDb()
-      .select({ surface, active, conversations, failed })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(where)
-      .groupBy(surface),
-    getDb()
-      .select({ surface: turnSurface, ...turnMetricColumns })
-      .from(juniorConversationMetrics)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .innerJoin(turnMetricRoot, turnMetricRootJoin())
-      .where(where)
-      .groupBy(turnSurface),
-    recentActorRows(normalizedEmail),
-  ]);
+  const [totalsRows, dayRows, hourRows, locationRows, surfaceRows, recentRows] =
+    await Promise.all([
+      getDb()
+        .select({ ...turnPersonColumns(turns), ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .groupBy(turns.email, turns.fullName),
+      getDb()
+        .select({ date: day, ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .where(gte(turns.occurredAt, start))
+        .groupBy(day),
+      getDb()
+        .select({ date: hour, ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .where(gte(turns.occurredAt, hourWindow.start))
+        .groupBy(hour),
+      getDb()
+        .select({
+          channel,
+          channelName: turnRoot.channelName,
+          destinationVisibility: juniorDestinations.visibility,
+          surface,
+          ...aggregate,
+        })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .leftJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, turnRoot.destinationId),
+        )
+        .groupBy(
+          channel,
+          turnRoot.channelName,
+          juniorDestinations.visibility,
+          surface,
+        ),
+      getDb()
+        .select({ surface, ...aggregate })
+        .from(turns)
+        .innerJoin(turnRoot, turnRootJoin(turns))
+        .groupBy(surface),
+      recentActorRows(normalizedEmail),
+    ]);
 
-  const startedTotals = totalsRows[0];
-  const turnTotals = turnTotalsRows[0];
-  const person = startedTotals ?? turnTotals;
+  const person = totalsRows[0];
   if (!person) return emptyProfile(normalizedEmail, nowMs);
 
   const actor: ActorIdentity & { email: string } = {
@@ -377,14 +213,14 @@ export async function readPeopleProfileFromSql(
       ? { slackUserName: person.slackUserName }
       : undefined),
   };
-  const days = activityBuckets(dayRows, turnDayRows);
-  const hours = activityBuckets(hourRows, turnHourRows);
+  const days = activityBuckets(dayRows);
+  const hours = activityBuckets(hourRows);
   const locations = new Map<string, ConversationStatsItem>();
-  for (const row of [...locationRows, ...turnLocationRows]) {
+  for (const row of locationRows) {
     addAggregate(locations, locationLabel(row), row);
   }
   const surfaces = new Map<string, ConversationStatsItem>();
-  for (const row of [...surfaceRows, ...turnSurfaceRows]) {
+  for (const row of surfaceRows) {
     addAggregate(
       surfaces,
       surfaceLabel(row.surface as "api" | "internal" | "scheduler" | "slack"),
@@ -428,14 +264,12 @@ export async function readPeopleProfileFromSql(
     source: "conversation_index",
     surfaces: statsItems(surfaces),
     totals: {
-      active: startedTotals?.active ?? 0,
-      activeDays: startedTotals?.activeDays ?? 0,
-      conversations: startedTotals?.conversations ?? 0,
-      durationMs: turnTotals?.durationMs ?? 0,
-      failed: startedTotals?.failed ?? 0,
-      ...(turnTotals && turnTotals.tokens !== null
-        ? { tokens: turnTotals.tokens }
-        : undefined),
+      active: person.active,
+      activeDays: person.activeDays,
+      conversations: person.conversations,
+      durationMs: person.durationMs,
+      failed: person.failed,
+      ...(person.tokens !== null ? { tokens: person.tokens } : undefined),
     },
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),

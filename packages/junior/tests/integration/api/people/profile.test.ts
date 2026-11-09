@@ -21,7 +21,9 @@ import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
+  recordTurn,
   seedDisplayNameBackfill,
   seedPeople,
   turnActorIdentityId,
@@ -170,26 +172,27 @@ describe("people profile API", () => {
           }),
         ]),
       );
+      // Turns in a child count toward its root Conversation, once.
       expect(rootReport).toMatchObject({
         locations: expect.arrayContaining([
           expect.objectContaining({ durationMs: 800, tokens: 8 }),
         ]),
         surfaces: [
           expect.objectContaining({
-            conversations: 2,
+            conversations: 1,
             durationMs: 800,
             tokens: 8,
           }),
         ],
         totals: {
-          conversations: 2,
+          conversations: 1,
           durationMs: 800,
           tokens: 8,
         },
       });
       expect(rootReport.activityDays).toContainEqual(
         expect.objectContaining({
-          conversations: 2,
+          conversations: 1,
           durationMs: 800,
           tokens: 8,
         }),
@@ -200,7 +203,7 @@ describe("people profile API", () => {
           (person) => person.actor.email === "owner@example.com",
         ),
       ).toMatchObject({
-        conversations: 2,
+        conversations: 1,
         durationMs: 800,
         tokens: 8,
       });
@@ -249,6 +252,12 @@ describe("people profile API", () => {
         .update(juniorConversations)
         .set({ rootConversationId })
         .where(eq(juniorConversations.conversationId, malformedConversationId));
+      await recordTurn(fixture, {
+        actor: { email: "malformed@example.com", slackUserId: "U-malformed" },
+        atMs: Date.now(),
+        conversationId: malformedConversationId,
+        runId: "malformed-turn",
+      });
 
       const malformed = await readPeopleProfileFromSql(
         "malformed@example.com",
@@ -377,19 +386,31 @@ describe("people profile API", () => {
 
     try {
       await migrateSchema(fixture.sql);
+      const webActor = {
+        email: "web@example.com",
+        fullName: "Web Example",
+        platform: "web",
+        userId: "web@example.com",
+      } as const;
+      const webConversationId = createConversationId({
+        actorEmail: "web@example.com",
+        idempotencyKey: "web-profile",
+      });
       await recordWebConversationActivity({
-        actor: {
-          email: "web@example.com",
-          fullName: "Web Example",
-          platform: "web",
-          userId: "web@example.com",
-        },
-        conversationId: createConversationId({
-          actorEmail: "web@example.com",
-          idempotencyKey: "web-profile",
-        }),
+        actor: webActor,
+        conversationId: webConversationId,
         conversationStore: store,
         nowMs: Date.parse("2026-06-15T11:00:00.000Z"),
+      });
+
+      await store.recordExecution({
+        actorIdentityId: await resolveActorIdentityId(fixture.sql, webActor),
+        conversationId: webConversationId,
+        createdAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
+        execution: { runId: "web-turn", status: "idle" },
+        lastActivityAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
+        metrics: { durationMs: 0 },
+        updatedAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
       });
 
       const report = await readPeopleProfileFromSql("web@example.com");
@@ -488,9 +509,10 @@ describe("people profile API", () => {
           .values(metrics.slice(offset, offset + 1_000));
       }
 
+      // The seed Conversation has no Turn, so it does not count.
       const report = await readPeopleProfileFromSql("aggregate@example.com");
       expect(report.totals).toMatchObject({
-        conversations: 5_001,
+        conversations: 5_000,
         durationMs: 10_000,
         tokens: 15_000,
       });
@@ -498,14 +520,14 @@ describe("people profile API", () => {
       expect(
         report.activityDays.find((day) => day.date === "2026-06-15"),
       ).toMatchObject({
-        conversations: 5_001,
+        conversations: 5_000,
         durationMs: 10_000,
         tokens: 15_000,
       });
       const directory = await readPeopleListFromSql();
       expect(directory.people).toEqual([
         expect.objectContaining({
-          conversations: 5_001,
+          conversations: 5_000,
           durationMs: 10_000,
           tokens: 15_000,
           actor: expect.objectContaining({

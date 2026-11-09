@@ -297,7 +297,7 @@ Resolved:
 - Automation-run spend leaves personal spend. A system Owner has no User.
 - A human who replies to an automation Conversation gets access as a
   participant, not as Owner.
-- Spend belongs to the Actor of each Turn, not to the Owner.
+- People counts and spend belong to the Actor of each Turn, not to the Owner.
 - A web user's new Messages and Conversations use their sign-in Identity.
   People still groups them with the same User as the old `junior/<email>`
   rows.

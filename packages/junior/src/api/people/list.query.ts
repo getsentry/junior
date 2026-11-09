@@ -1,16 +1,5 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { gte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
-import {
-  juniorConversationMetrics,
-  juniorConversations,
-  juniorIdentities,
-  juniorUsers,
-} from "@/db/schema";
-import {
-  conversationActiveDaysColumn,
-  conversationAggregateColumns,
-  conversationRangeColumns,
-} from "../conversations/aggregate";
 import type {
   ActorDirectoryReport,
   ActorDirectoryWindows,
@@ -20,9 +9,12 @@ import type {
   PeopleActivityDayReport,
 } from "../schema/person";
 import {
-  slackActorColumns,
-  turnMetricColumns,
-  verifiedActorWhere,
+  personTurns,
+  turnAggregateColumns,
+  turnBucket,
+  turnPersonColumns,
+  turnRoot,
+  turnRootJoin,
 } from "./shared";
 import {
   DAY_MS,
@@ -46,17 +38,18 @@ const HOUR_METRIC_LOOKBACK = 48;
 const DIRECTORY_RANGES = [1, 7, 30, 90] as const;
 
 type MetricBucket = {
-  conversations: number;
   costUsd: number;
   durationMs: number;
 };
+
+type Range = (typeof DIRECTORY_RANGES)[number];
 
 function emptyDirectoryDay(date: string): PeopleActivityDayReport {
   return { activePeople: 0, conversations: 0, date };
 }
 
 function emptyBucket(): MetricBucket {
-  return { conversations: 0, costUsd: 0, durationMs: 0 };
+  return { costUsd: 0, durationMs: 0 };
 }
 
 function addUsd(current: number, next: number): number {
@@ -109,7 +102,6 @@ function sumBuckets(
   for (let cursor = startMs; cursor <= endMs; cursor += stepMs) {
     const bucket = buckets.get(keyFor(cursor));
     if (!bucket) continue;
-    total.conversations += bucket.conversations;
     total.costUsd = addUsd(total.costUsd, bucket.costUsd);
     total.durationMs += bucket.durationMs;
   }
@@ -119,7 +111,8 @@ function sumBuckets(
 function rangeWindow(
   buckets: Map<string, MetricBucket>,
   nowMs: number,
-  range: (typeof DIRECTORY_RANGES)[number],
+  range: Range,
+  conversations: number,
 ): ActorWindowMetrics {
   if (range === 1) {
     const current = trailingUtcHourWindow(nowMs, 24);
@@ -140,7 +133,7 @@ function rangeWindow(
       HOUR_MS,
     );
     return {
-      conversations: currentTotals.conversations,
+      conversations,
       costUsd: currentTotals.costUsd,
       durationMs: currentTotals.durationMs,
       priorCostUsd: priorTotals.costUsd,
@@ -165,7 +158,7 @@ function rangeWindow(
     DAY_MS,
   );
   return {
-    conversations: currentTotals.conversations,
+    conversations,
     costUsd: currentTotals.costUsd,
     durationMs: currentTotals.durationMs,
     priorCostUsd: priorTotals.costUsd,
@@ -173,21 +166,29 @@ function rangeWindow(
 }
 
 function buildActorWindows(args: {
+  conversations: Record<Range, number>;
   dayBuckets: Map<string, MetricBucket>;
   hourBuckets: Map<string, MetricBucket>;
   nowMs: number;
 }): ActorDirectoryWindows {
+  const { conversations, dayBuckets, hourBuckets, nowMs } = args;
   return {
-    1: rangeWindow(args.hourBuckets, args.nowMs, 1),
-    7: rangeWindow(args.dayBuckets, args.nowMs, 7),
-    30: rangeWindow(args.dayBuckets, args.nowMs, 30),
-    90: rangeWindow(args.dayBuckets, args.nowMs, 90),
+    1: rangeWindow(hourBuckets, nowMs, 1, conversations[1]),
+    7: rangeWindow(dayBuckets, nowMs, 7, conversations[7]),
+    30: rangeWindow(dayBuckets, nowMs, 30, conversations[30]),
+    90: rangeWindow(dayBuckets, nowMs, 90, conversations[90]),
   };
 }
 
+/** Start of the current period of each directory range. */
+function rangeStart(nowMs: number, range: Range): Date {
+  return range === 1
+    ? trailingUtcHourWindow(nowMs, 24).start
+    : trailingUtcDayWindow(nowMs, range).start;
+}
+
 function metricBuckets(
-  startedRows: { conversations: number; date: string; email: string }[],
-  turnRows: {
+  rows: {
     costUsd: number | null;
     date: string;
     durationMs: number;
@@ -195,36 +196,26 @@ function metricBuckets(
   }[],
 ): Map<string, Map<string, MetricBucket>> {
   const byEmail = new Map<string, Map<string, MetricBucket>>();
-  const bucket = (email: string, date: string) => {
-    const buckets = byEmail.get(email) ?? new Map<string, MetricBucket>();
-    byEmail.set(email, buckets);
-    const current = buckets.get(date) ?? emptyBucket();
-    buckets.set(date, current);
-    return current;
-  };
-  for (const row of startedRows) {
-    bucket(row.email, row.date).conversations = row.conversations;
-  }
-  for (const row of turnRows) {
-    const current = bucket(row.email, row.date);
-    current.costUsd = row.costUsd ?? 0;
-    current.durationMs = row.durationMs;
+  for (const row of rows) {
+    const buckets = byEmail.get(row.email) ?? new Map<string, MetricBucket>();
+    byEmail.set(row.email, buckets);
+    buckets.set(row.date, {
+      costUsd: row.costUsd ?? 0,
+      durationMs: row.durationMs,
+    });
   }
   return byEmail;
 }
 
-/** Load the complete People directory with grouping and metrics owned by SQL. */
+/**
+ * Load the complete People directory with grouping and metrics owned by SQL.
+ *
+ * Every count and total comes from Turns. A person counts a Conversation when
+ * they ran a Turn in it, whoever started it.
+ */
 export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const nowMs = Date.now();
   const { end, start } = trailingUtcDayWindow(nowMs, DIRECTORY_ACTIVITY_DAYS);
-  const activityDate = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
-  const activityHour = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
   const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
   const sixHourWindow = trailingUtcSixHourWindow(nowMs);
   const dayMetricStart = trailingUtcDayWindow(nowMs, DAY_METRIC_LOOKBACK).start;
@@ -233,197 +224,70 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     nowMs,
     HOUR_METRIC_LOOKBACK,
   ).start;
-  const activitySixHour = sql<string>`TO_CHAR(
-    date_trunc('day', ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC')
-      + (FLOOR(EXTRACT(HOUR FROM ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC') / 6) * INTERVAL '6 hours'),
+  const turns = personTurns();
+  const { active, conversations, costUsd, durationMs, failed, tokens } =
+    turnAggregateColumns(turns);
+  const day = turnBucket(turns, "day");
+  const hour = turnBucket(turns, "hour");
+  const sixHour = sql<string>`TO_CHAR(
+    date_trunc('day', ${turns.occurredAt} AT TIME ZONE 'UTC')
+      + (FLOOR(EXTRACT(HOUR FROM ${turns.occurredAt} AT TIME ZONE 'UTC') / 6) * INTERVAL '6 hours'),
     'YYYY-MM-DD"T"HH24'
   )`;
-  const metricDate = sql<string>`TO_CHAR(
-    ${juniorConversationMetrics.occurredAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD'
-  )`;
-  const metricHour = sql<string>`TO_CHAR(
-    ${juniorConversationMetrics.occurredAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
-  const { active, conversations, failed } = conversationAggregateColumns();
-  // Conversation counts belong to the Actor that started each Conversation.
-  // Spend and duration belong to the Actor of each Turn.
-  const startedRows = (start: Date, bucket: typeof activityDate) =>
+  const rangeConversations = (range: Range) =>
+    sql<number>`COUNT(DISTINCT ${turns.rootConversationId}) FILTER (
+      WHERE ${turns.occurredAt} >= ${rangeStart(nowMs, range).toISOString()}::timestamptz
+    )::integer`;
+  const spendRows = (since: Date, bucket: typeof day) =>
+    getDb()
+      .select({ email: turns.email, date: bucket, costUsd, durationMs })
+      .from(turns)
+      .where(gte(turns.occurredAt, since))
+      .groupBy(turns.email, bucket);
+  const activityRows = (since: Date, bucket: typeof day) =>
     getDb()
       .select({
-        email: juniorUsers.primaryEmailNormalized,
-        date: bucket,
+        activePeople: sql<number>`COUNT(DISTINCT ${turns.userId})::int`,
         conversations,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(
-          verifiedActorWhere(),
-          gte(juniorConversations.lastActivityAt, start),
-        ),
-      )
-      .groupBy(juniorUsers.primaryEmailNormalized, bucket);
-  const turnRows = (start: Date, bucket: typeof metricDate) =>
-    getDb()
-      .select({
-        email: juniorUsers.primaryEmailNormalized,
         date: bucket,
-        costUsd: turnMetricColumns.costUsd,
-        durationMs: turnMetricColumns.durationMs,
       })
-      .from(juniorConversationMetrics)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(
-          verifiedActorWhere(),
-          gte(juniorConversationMetrics.occurredAt, start),
-        ),
-      )
-      .groupBy(juniorUsers.primaryEmailNormalized, bucket);
+      .from(turns)
+      .where(gte(turns.occurredAt, since))
+      .groupBy(bucket);
   const [
     rows,
-    turnTotalRows,
-    activityRows,
+    activityDayRows,
     activityHourRows,
     activitySixHourRows,
-    dayStartedRows,
-    hourStartedRows,
-    dayTurnRows,
-    hourTurnRows,
+    daySpendRows,
+    hourSpendRows,
   ] = await Promise.all([
     getDb()
       .select({
-        email: juniorUsers.primaryEmailNormalized,
-        fullName: juniorUsers.displayName,
-        ...slackActorColumns(),
-        activeDays: conversationActiveDaysColumn(),
+        ...turnPersonColumns(turns),
         active,
         conversations,
+        durationMs,
         failed,
-        ...conversationRangeColumns(),
+        tokens,
+        conversations1: rangeConversations(1),
+        conversations7: rangeConversations(7),
+        conversations30: rangeConversations(30),
+        conversations90: rangeConversations(90),
       })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(verifiedActorWhere())
-      .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
-    getDb()
-      .select({
-        email: juniorUsers.primaryEmailNormalized,
-        fullName: juniorUsers.displayName,
-        ...slackActorColumns(),
-        durationMs: turnMetricColumns.durationMs,
-        tokens: turnMetricColumns.tokens,
-        firstSeenAt: sql`MIN(${juniorConversationMetrics.occurredAt})`.mapWith(
-          juniorConversationMetrics.occurredAt,
-        ),
-        lastSeenAt: sql`MAX(${juniorConversationMetrics.occurredAt})`.mapWith(
-          juniorConversationMetrics.occurredAt,
-        ),
-      })
-      .from(juniorConversationMetrics)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(verifiedActorWhere())
-      .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
-    getDb()
-      .select({
-        activePeople: sql<number>`COUNT(DISTINCT ${juniorUsers.id})::int`,
-        conversations: sql<number>`COUNT(*)::int`,
-        date: activityDate,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(
-          verifiedActorWhere(),
-          gte(juniorConversations.lastActivityAt, start),
-        ),
-      )
-      .groupBy(activityDate),
-    getDb()
-      .select({
-        activePeople: sql<number>`COUNT(DISTINCT ${juniorUsers.id})::int`,
-        conversations: sql<number>`COUNT(*)::int`,
-        date: activityHour,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(
-          verifiedActorWhere(),
-          gte(juniorConversations.lastActivityAt, hourWindow.start),
-        ),
-      )
-      .groupBy(activityHour),
-    getDb()
-      .select({
-        activePeople: sql<number>`COUNT(DISTINCT ${juniorUsers.id})::int`,
-        conversations: sql<number>`COUNT(*)::int`,
-        date: activitySixHour,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(
-        and(
-          verifiedActorWhere(),
-          gte(juniorConversations.lastActivityAt, sixHourWindow.start),
-        ),
-      )
-      .groupBy(activitySixHour),
-    startedRows(dayMetricStart, activityDate),
-    startedRows(hourMetricStart, activityHour),
-    turnRows(dayMetricStart, metricDate),
-    turnRows(hourMetricStart, metricHour),
+      .from(turns)
+      .innerJoin(turnRoot, turnRootJoin(turns))
+      .groupBy(turns.email, turns.fullName),
+    activityRows(start, day),
+    activityRows(hourWindow.start, hour),
+    activityRows(sixHourWindow.start, sixHour),
+    spendRows(dayMetricStart, day),
+    spendRows(hourMetricStart, hour),
   ]);
 
-  const dayBucketsByEmail = metricBuckets(dayStartedRows, dayTurnRows);
-  const hourBucketsByEmail = metricBuckets(hourStartedRows, hourTurnRows);
-  const turnTotalsByEmail = new Map(
-    turnTotalRows.map((row) => [row.email, row]),
-  );
-  const startedEmails = new Set(rows.map((row) => row.email));
-  // A person who only ran Turns in other people's Conversations still counts.
-  const turnOnlyRows = turnTotalRows
-    .filter((row) => !startedEmails.has(row.email))
-    .map((row) => ({
-      ...row,
-      active: 0,
-      activeDays: 0,
-      conversations: 0,
-      failed: 0,
-    }));
-
-  const people: ActorSummaryReport[] = [...rows, ...turnOnlyRows].map((row) => {
-    const turnTotals = turnTotalsByEmail.get(row.email);
+  const dayBucketsByEmail = metricBuckets(daySpendRows);
+  const hourBucketsByEmail = metricBuckets(hourSpendRows);
+  const people: ActorSummaryReport[] = rows.map((row) => {
     const actor: ActorIdentity & { email: string } = {
       email: row.email,
       ...(row.fullName ? { fullName: row.fullName } : undefined),
@@ -434,24 +298,28 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
       active: row.active,
       activeDays: row.activeDays,
       conversations: row.conversations,
-      durationMs: turnTotals?.durationMs ?? 0,
+      durationMs: row.durationMs,
       failed: row.failed,
       firstSeenAt: row.firstSeenAt.toISOString(),
       lastSeenAt: row.lastSeenAt.toISOString(),
       actor,
       windows: buildActorWindows({
+        conversations: {
+          1: row.conversations1,
+          7: row.conversations7,
+          30: row.conversations30,
+          90: row.conversations90,
+        },
         dayBuckets: dayBucketsByEmail.get(row.email) ?? new Map(),
         hourBuckets: hourBucketsByEmail.get(row.email) ?? new Map(),
         nowMs,
       }),
-      ...(turnTotals && turnTotals.tokens !== null
-        ? { tokens: turnTotals.tokens }
-        : undefined),
+      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     };
   });
 
   return {
-    activityDays: directoryActivityDays(activityRows, nowMs),
+    activityDays: directoryActivityDays(activityDayRows, nowMs),
     activityHours: directoryActivityHours(activityHourRows, nowMs),
     activitySixHours: directoryActivitySixHours(activitySixHourRows, nowMs),
     generatedAt: new Date(nowMs).toISOString(),

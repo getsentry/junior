@@ -6,7 +6,7 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 import { readPersonalSpendFromSql } from "@/api/people/spend.query";
-import { seedPeople, turnActorIdentityId } from "./fixture";
+import { recordTurn, seedPeople, turnActorIdentityId } from "./fixture";
 
 describe("people list API", () => {
   test("serves the route through its response schema", async () => {
@@ -31,14 +31,22 @@ describe("people list API", () => {
     try {
       await seedPeople(fixture);
       const store = createSqlStore(fixture.sql);
+      const aliceActor = {
+        email: "alice@example.com",
+        fullName: "Alice Example",
+        platform: "slack",
+        slackUserId: "U1",
+        teamId: "T1",
+      } as const;
+      const bobActor = {
+        email: "bob@example.com",
+        fullName: "Bob Example",
+        platform: "slack",
+        slackUserId: "U2",
+        teamId: "T1",
+      } as const;
       await store.recordActivity({
-        actor: {
-          email: "alice@example.com",
-          fullName: "Alice Example",
-          platform: "slack",
-          slackUserId: "U1",
-          teamId: "T1",
-        },
+        actor: aliceActor,
         conversationId: "slack:C1:duplicate-day",
         destination: {
           channelId: "C1",
@@ -49,13 +57,7 @@ describe("people list API", () => {
         source: "slack",
       });
       await store.recordActivity({
-        actor: {
-          email: "bob@example.com",
-          fullName: "Bob Example",
-          platform: "slack",
-          slackUserId: "U2",
-          teamId: "T1",
-        },
+        actor: bobActor,
         conversationId: "slack:C2:shared-day",
         destination: {
           channelId: "C2",
@@ -65,6 +67,17 @@ describe("people list API", () => {
         nowMs: Date.parse("2026-06-12T12:30:00.000Z"),
         source: "slack",
       });
+      for (const [conversationId, actor, at] of [
+        ["slack:C1:duplicate-day", aliceActor, "2026-06-12T12:00:00.000Z"],
+        ["slack:C2:shared-day", bobActor, "2026-06-12T12:30:00.000Z"],
+      ] as const) {
+        await recordTurn(fixture, {
+          actor,
+          atMs: Date.parse(at),
+          conversationId,
+          runId: `turn-${conversationId}`,
+        });
+      }
 
       const report = await readPeopleListFromSql();
 
@@ -183,12 +196,13 @@ describe("people list API", () => {
         durationMs: 1_000,
         windows: { 7: { conversations: 1, costUsd: 0.1 } },
       });
+      // Ben did not start the Conversation, but his Turn counts it for him.
       expect(person("ben@example.com")).toMatchObject({
         actor: { fullName: "Ben Example" },
-        conversations: 0,
+        conversations: 1,
         durationMs: 1_000,
         lastSeenAt: "2026-06-14T11:00:00.000Z",
-        windows: { 7: { conversations: 0, costUsd: 0.3 } },
+        windows: { 7: { conversations: 1, costUsd: 0.3 } },
       });
       const nowMs = Date.now();
       expect(

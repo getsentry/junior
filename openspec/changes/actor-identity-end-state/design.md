@@ -72,8 +72,8 @@ The rules to prove:
   stops this. The data migration clears the old copies.
 - Access already reads the root Owner, not the child's own copy. #2382 uses
   the same rule for visibility.
-- Spend goes to the Actor of each Turn, in a child or a root. A child Task
-  Turn runs as the Actor that started it.
+- People counts and spend go to the Actor of each Turn, in a child or a
+  root. A child Task Turn runs as the Actor that started it.
 - `onBehalfOf` (#2181) is Message provenance. It gives no access, spend, or
   feed rights.
 

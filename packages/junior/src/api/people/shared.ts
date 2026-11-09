@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
 import {
@@ -24,34 +24,131 @@ import {
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
 
-/** Root Conversation of a Turn metric row, for its location and surface. */
-export const turnMetricRoot = alias(juniorConversations, "turn_metric_root");
-
 function turnMetricSum(metric: ConversationMetric) {
   return sql`SUM(${juniorConversationMetrics.value}) FILTER (
     WHERE ${juniorConversationMetrics.metric} = ${metric}
   )`;
 }
 
-/**
- * Sum the Turn metric rows of a person. Spend belongs to the Actor of each
- * Turn, not to the Actor that started the Conversation.
- */
+/** Sum the spend of Turn metric rows read straight from their table. */
 export const turnMetricColumns = {
   costUsd: sql<number | null>`${turnMetricSum("cost_usd")}::double precision`,
-  durationMs: sql<number>`COALESCE(${turnMetricSum("duration_ms")}, 0)::double precision`,
-  tokens: sql<
-    number | null
-  >`${turnMetricSum("total_tokens")}::double precision`,
 };
 
-/** Join each Turn metric row to its Conversation and that Conversation's root. */
-export function turnMetricRootJoin() {
-  return sql`${turnMetricRoot.conversationId} = (
-    SELECT coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})
-    FROM ${juniorConversations}
-    WHERE ${juniorConversations.conversationId} = ${juniorConversationMetrics.conversationId}
-  )`;
+/** Root Conversation of a person's Turn, for status, location, and surface. */
+export const turnRoot = alias(juniorConversations, "person_turn_root");
+
+/**
+ * Read one row per Turn metric of each verified person, with the root
+ * Conversation of the Turn.
+ *
+ * People counts and spend come only from Turns. The Actor that started a
+ * Conversation does not matter here.
+ */
+export function personTurns(email?: string) {
+  return getDb()
+    .select({
+      conversationId:
+        sql<string>`${juniorConversationMetrics.conversationId}`.as(
+          "turn_conversation_id",
+        ),
+      email: sql<string>`${juniorUsers.primaryEmailNormalized}`.as("email"),
+      fullName: juniorUsers.displayName,
+      metric: juniorConversationMetrics.metric,
+      occurredAt: juniorConversationMetrics.occurredAt,
+      rootConversationId: sql<string>`coalesce(
+        ${juniorConversations.rootConversationId},
+        ${juniorConversations.conversationId}
+      )`.as("turn_root_conversation_id"),
+      // Web identities use the email as the subject. Only Slack fills these.
+      slackUserId: sql<
+        string | null
+      >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END`.as(
+        "slack_user_id",
+      ),
+      slackUserName: sql<
+        string | null
+      >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.handle} END`.as(
+        "slack_user_name",
+      ),
+      userId: sql<string>`${juniorUsers.id}`.as("user_id"),
+      value: juniorConversationMetrics.value,
+    })
+    .from(juniorConversationMetrics)
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorConversationMetrics.conversationId,
+      ),
+    )
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
+    )
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(verifiedActorWhere(email))
+    .as("person_turns");
+}
+
+/** Rows from {@link personTurns}. */
+export type PersonTurns = ReturnType<typeof personTurns>;
+
+/** Join a person's Turn rows to the root Conversation of each Turn. */
+export function turnRootJoin(turns: PersonTurns) {
+  return eq(turnRoot.conversationId, turns.rootConversationId);
+}
+
+function turnSum(turns: PersonTurns, metric: ConversationMetric) {
+  return sql`SUM(${turns.value}) FILTER (WHERE ${turns.metric} = ${metric})`;
+}
+
+/**
+ * Aggregate a person's Turn rows. A Conversation counts once for each person
+ * who ran a Turn in it. Child Conversation Turns count for the root.
+ */
+export function turnAggregateColumns(turns: PersonTurns) {
+  const roots = sql`COUNT(DISTINCT ${turns.rootConversationId})`;
+  return {
+    active: sql<number>`${roots} FILTER (
+      WHERE ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
+    )::integer`,
+    conversations: sql<number>`${roots}::integer`,
+    costUsd: sql<
+      number | null
+    >`${turnSum(turns, "cost_usd")}::double precision`,
+    durationMs: sql<number>`COALESCE(${turnSum(turns, "duration_ms")}, 0)::double precision`,
+    // A stopped Conversation reports `stopped`, not `failed`.
+    failed: sql<number>`${roots} FILTER (
+      WHERE ${turnRoot.executionStatus} = 'failed' AND ${turnRoot.stoppedAt} IS NULL
+    )::integer`,
+    tokens: sql<
+      number | null
+    >`${turnSum(turns, "total_tokens")}::double precision`,
+  };
+}
+
+/** Format the UTC day or hour of a person's Turn rows for activity buckets. */
+export function turnBucket(turns: PersonTurns, unit: "day" | "hour") {
+  const format = unit === "day" ? "YYYY-MM-DD" : 'YYYY-MM-DD"T"HH24';
+  return sql<string>`TO_CHAR(${turns.occurredAt} AT TIME ZONE 'UTC', ${sql.raw(`'${format}'`)})`;
+}
+
+/** Select the identity fields and Turn range of a grouped person row. */
+export function turnPersonColumns(turns: PersonTurns) {
+  return {
+    activeDays: sql<number>`COUNT(DISTINCT (${turns.occurredAt} AT TIME ZONE 'UTC')::date)::integer`,
+    email: turns.email,
+    firstSeenAt: sql`MIN(${turns.occurredAt})`.mapWith(
+      juniorConversationMetrics.occurredAt,
+    ),
+    fullName: turns.fullName,
+    lastSeenAt: sql`MAX(${turns.occurredAt})`.mapWith(
+      juniorConversationMetrics.occurredAt,
+    ),
+    slackUserId: sql<string | null>`MAX(${turns.slackUserId})`,
+    slackUserName: sql<string | null>`MAX(${turns.slackUserName})`,
+  };
 }
 
 /** Normalize emails before matching people API rows. */
@@ -159,25 +256,9 @@ export function verifiedActorWhere(email?: string) {
   );
 }
 
-/**
- * Read the Slack user fields for a grouped person row.
- *
- * Web identities use the email as the provider subject, so only Slack
- * identities can supply these fields.
- */
-export function slackActorColumns() {
-  return {
-    slackUserId: sql<
-      string | null
-    >`MAX(CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END)`,
-    slackUserName: sql<
-      string | null
-    >`MAX(CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.handle} END)`,
-  };
-}
-
-/** Read only the recent conversation rows required by a People profile. */
+/** Read the recent Conversations where a person ran a Turn. */
 export async function recentActorRows(email: string) {
+  const turns = personTurns(email);
   return getDb()
     .select({
       channelName: juniorConversations.channelName,
@@ -207,16 +288,21 @@ export async function recentActorRows(email: string) {
       usage: juniorConversations.usage,
     })
     .from(juniorConversations)
-    .innerJoin(
+    .leftJoin(
       juniorIdentities,
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
-    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .leftJoin(
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(verifiedActorWhere(email))
+    .where(
+      inArray(
+        juniorConversations.conversationId,
+        getDb().selectDistinct({ id: turns.conversationId }).from(turns),
+      ),
+    )
     .orderBy(
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
