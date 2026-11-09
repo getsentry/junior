@@ -47,17 +47,21 @@ async function recordActivity(conversationId: string, nowMs: number) {
 
 let nextMessage = 0;
 
-/** Append one Message. A user Message comes from `authorIdentityId`. */
+/**
+ * Append one Message and return its time. A user Message comes from
+ * `authorIdentityId`.
+ */
 async function appendMessage(
   conversationId: string,
   message:
     | { authorIdentityId: string }
     | { quiet?: boolean; role: "assistant" },
-) {
+): Promise<string> {
   const index = nextMessage++;
+  const createdAtMs = 10_000 + index;
   await getConversationEventStore().append(conversationId, [
     {
-      createdAtMs: 10_000 + index,
+      createdAtMs,
       data: {
         messageId: `message-${index}`,
         text: `Message ${index}`,
@@ -71,6 +75,7 @@ async function appendMessage(
       },
     },
   ]);
+  return new Date(createdAtMs).toISOString();
 }
 
 function setUnread(
@@ -157,7 +162,7 @@ describe("conversation unread API", () => {
         })),
       );
     await appendMessage(conversationId, { authorIdentityId: identity!.id }); // 0
-    await appendMessage(conversationId, { role: "assistant" }); // 1
+    const replyAt = await appendMessage(conversationId, { role: "assistant" }); // 1
 
     // Without a read position, the reply after the viewer's own message is
     // new. The release backfills a position for each existing root.
@@ -171,12 +176,21 @@ describe("conversation unread API", () => {
     });
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
 
-    // A quiet reply folds into activity, so it is not new.
+    // A quiet reply folds into activity, so it is not new, and it does not
+    // move the row's last Message.
     await appendMessage(conversationId, { quiet: true, role: "assistant" }); // 2
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: replyAt,
+    });
 
-    await appendMessage(conversationId, { role: "assistant" }); // 3
+    const nextReplyAt = await appendMessage(conversationId, {
+      role: "assistant",
+    }); // 3
     await expect(unread(viewer, conversationId)).resolves.toBe(true);
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: nextReplyAt,
+    });
     // Opening the conversation does not move the read position.
     const detail = await app.request(
       `http://localhost/api/conversations/${conversationId}`,

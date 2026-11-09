@@ -59,7 +59,10 @@ import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { listWaitingConversations } from "@/chat/review-items/store";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { isConversationPriority } from "./priority";
-import { readLastUserMessageAtByConversation } from "./user-message-activity";
+import {
+  readLastMessageAtByConversation,
+  readLastUserMessageAtByConversation,
+} from "./user-message-activity";
 import {
   latestMessageSeqQuery,
   readConversationActivityPreviews,
@@ -462,6 +465,7 @@ export async function readConversationFeedFromSql(
       lastUserMessageAt: lastUserMessageAtByConversation,
     },
     activityPreviewByConversation,
+    lastMessageAtByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     unreadConversationIds,
@@ -495,6 +499,7 @@ export async function readConversationFeedFromSql(
       ),
     })),
     readConversationActivityPreviews(db, conversationIds),
+    readLastMessageAtByConversation(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     filter?.kind === "viewer"
@@ -589,12 +594,16 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
+      const lastMessageAt = lastMessageAtByConversation.get(
+        conversation.conversationId,
+      );
       return {
         ...summary,
         ...work,
         ...(row.awaitingAuthorization
           ? { awaitingAuthorization: true as const }
           : undefined),
+        ...(lastMessageAt ? { lastMessageAt } : undefined),
         ...(threads ? { threads } : undefined),
         ...(participants && participants.length > 0
           ? { participants }

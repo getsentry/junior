@@ -10,7 +10,10 @@ import { Card } from "../../components/layout/Card";
 import { SectionHeader } from "../../components/layout/SectionHeader";
 import { SectionTitle } from "../../components/layout/SectionTitle";
 import { ConversationSidebarAnnotations } from "../../conversations/ConversationMeta";
-import { ConversationListStatusIcon } from "../../conversations/ConversationListStatusIcon";
+import {
+  ConversationListStatusIcon,
+  ConversationStatusText,
+} from "../../conversations/ConversationListStatusIcon";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import {
   conversationDisplayTitle,
@@ -53,6 +56,7 @@ export function RepositorySection(props: {
  */
 export function RecentConversationRow(props: { conversation: Conversation }) {
   const conversation = props.conversation;
+  const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
   const hasAnnotations = Boolean(conversation.sidebarAnnotations?.length);
@@ -67,16 +71,21 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
         <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
           <ConversationListStatusIcon
             unread={false}
-            isPrivate={conversation.visibility === "private"}
-            status={visualStatusForConversation(conversation)}
+            status={status}
             waitingOnViewer={false}
           />
         </span>
         <div className="min-w-0 truncate font-display text-sm text-dashboard-text">
           {title}
         </div>
-        <span className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
-          {formatRelativeTime(conversation.lastSeenAt)}
+        <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
+          <ConversationStatusText
+            isPrivate={conversation.visibility === "private"}
+            status={status}
+          />
+          {formatRelativeTime(
+            conversation.lastMessageAt ?? conversation.lastSeenAt,
+          )}
         </span>
         {/* Keep the meta line at text height so annotation chips do not make
             this row taller than a code change row beside it. */}

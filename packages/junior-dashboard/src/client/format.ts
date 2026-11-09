@@ -895,6 +895,7 @@ export function buildConversations(
       displayTitle: summary.displayTitle,
       id: summary.conversationId,
       isParticipant: summary.isParticipant,
+      lastMessageAt: summary.lastMessageAt,
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,

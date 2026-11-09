@@ -26,6 +26,13 @@ const NOW = {
   timeZone: "America/Los_Angeles",
 };
 
+/** Mark conversations as waiting, all since the same time. */
+function waitingSince(ids: string[]) {
+  return new Map(
+    ids.map((id) => [id, { waitingSince: "2026-08-01T09:00:00-07:00" }]),
+  );
+}
+
 function sectionIds(sections: ReturnType<typeof buildConversationSections>) {
   return sections.map((section) => ({
     conversations: section.conversations.map((item) => item.id),
@@ -48,7 +55,7 @@ describe("conversation activity sections", () => {
         conversation("today-early", "2026-08-03T00:10:00-07:00"),
         conversation("today-late", "2026-08-03T11:45:00-07:00"),
       ],
-      { ...NOW, waitingIds: new Set() },
+      { ...NOW, waiting: new Map() },
     );
 
     expect(sectionIds(sections)).toEqual([
@@ -72,6 +79,8 @@ describe("conversation activity sections", () => {
       },
       conversation("yesterday", "2026-08-02T12:00:00-07:00"),
       conversation("waiting-old", "2026-07-31T12:00:00-07:00"),
+      // Newer activity, but its wait began later.
+      conversation("waiting-new", "2026-08-03T11:30:00-07:00"),
       conversation("saturday", "2026-08-01T12:00:00-07:00"),
       // A Turn parked for authorization leaves the conversation idle.
       {
@@ -79,13 +88,22 @@ describe("conversation activity sections", () => {
         awaitingAuthorization: true,
       },
     ];
+    const waiting = new Map([
+      ["waiting-old", { waitingSince: "2026-08-01T09:00:00-07:00" }],
+      ["waiting-new", { waitingSince: "2026-08-02T09:00:00-07:00" }],
+    ]);
     const sections = buildConversationSections(conversations, {
       ...NOW,
-      waitingIds: new Set(["waiting-old"]),
+      waiting,
     });
 
+    // The longest wait goes first, so new activity does not move the queue.
+    // Rows with no wait start follow, newest first.
     expect(sectionIds(sections)).toEqual([
-      { conversations: ["connecting", "waiting-old"], label: "Needs you" },
+      {
+        conversations: ["waiting-old", "waiting-new", "connecting"],
+        label: "Needs you",
+      },
       { conversations: ["today", "today-unread"], label: "Today" },
       { conversations: ["yesterday"], label: "Yesterday" },
       { conversations: ["saturday"], label: "Previous 7 days" },
@@ -127,7 +145,7 @@ describe("conversation activity sections", () => {
         ),
         conversation("waiting", "2026-08-03T09:00:00-07:00"),
       ],
-      { ...NOW, waitingIds: new Set(["pinned-earlier", "waiting"]) },
+      { ...NOW, waiting: waitingSince(["pinned-earlier", "waiting"]) },
     );
 
     // Pins without a place go first, newest pin first, then the viewer's
@@ -147,6 +165,38 @@ describe("conversation activity sections", () => {
     ]);
   });
 
+  it("sorts and groups by the last Message, not by later tool or status events", () => {
+    const sections = buildConversationSections(
+      [
+        // A tool event moved its activity today; its last Message was
+        // yesterday.
+        {
+          ...conversation("tool-today", "2026-08-03T11:50:00-07:00"),
+          lastMessageAt: "2026-08-02T10:00:00-07:00",
+        },
+        {
+          ...conversation("reply-early", "2026-08-03T11:55:00-07:00"),
+          lastMessageAt: "2026-08-03T08:00:00-07:00",
+        },
+        {
+          ...conversation("reply-late", "2026-08-03T09:00:00-07:00"),
+          lastMessageAt: "2026-08-03T09:00:00-07:00",
+        },
+        // No Message yet: it uses its last activity.
+        conversation("no-message", "2026-08-03T10:00:00-07:00"),
+      ],
+      { ...NOW, waiting: new Map() },
+    );
+
+    expect(sectionIds(sections)).toEqual([
+      {
+        conversations: ["no-message", "reply-late", "reply-early"],
+        label: "Today",
+      },
+      { conversations: ["tool-today"], label: "Yesterday" },
+    ]);
+  });
+
   it("moves pinned, then waiting conversations before paging", () => {
     const feed = ["a", "b", "c", "d", "e"].map((id) =>
       conversation(id, "2026-08-03T12:00:00-07:00"),
@@ -155,7 +205,29 @@ describe("conversation activity sections", () => {
     feed[2] = { ...feed[2]!, unread: true };
 
     expect(
-      pinnedAndWaitingFirst(feed, new Set(["d", "b"])).map((item) => item.id),
+      pinnedAndWaitingFirst(feed, waitingSince(["d", "b"])).map(
+        (item) => item.id,
+      ),
     ).toEqual(["e", "b", "d", "a", "c"]);
+  });
+
+  it("pages waiting conversations in wait order, the rest by last Message", () => {
+    const feed = [
+      conversation("recent", "2026-08-03T11:00:00-07:00"),
+      {
+        ...conversation("tool-only", "2026-08-03T11:30:00-07:00"),
+        lastMessageAt: "2026-08-01T11:00:00-07:00",
+      },
+      conversation("waits-short", "2026-08-03T10:00:00-07:00"),
+      conversation("waits-long", "2026-08-02T10:00:00-07:00"),
+    ];
+    const waiting = new Map([
+      ["waits-short", { waitingSince: "2026-08-03T09:00:00-07:00" }],
+      ["waits-long", { waitingSince: "2026-08-01T09:00:00-07:00" }],
+    ]);
+
+    expect(pinnedAndWaitingFirst(feed, waiting).map((item) => item.id)).toEqual(
+      ["waits-long", "waits-short", "recent", "tool-only"],
+    );
   });
 });
