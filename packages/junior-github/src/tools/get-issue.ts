@@ -101,6 +101,7 @@ export function createGitHubGetIssueTool(ctx: {
       const repo = parseRepo(input.repo);
       const [response, requester] = await Promise.all([
         githubApi(ctx.egress, {
+          followRedirects: true,
           operation: "github.issue.get",
           path: `${repoPath(repo)}/issues/${input.number}`,
         }),

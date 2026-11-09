@@ -20,12 +20,16 @@ export interface GitHubApiResponse {
  * Egress injects credentials, so tools never see a token. `operation` names
  * the provider action for grant selection and diagnostics. Callers own the
  * error mapping, because the status that means bad input differs per route.
+ * `followRedirects` follows GET redirects on the GitHub API host. Set it only
+ * when the caller reads the object identity from the response, because the
+ * redirect target can be in another repository.
  */
 export async function githubApi(
   egress: PluginEgress,
   input: {
     apiVersion?: string;
     body?: unknown;
+    followRedirects?: boolean;
     method?: "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
     operation: string;
     path: string;
@@ -44,6 +48,7 @@ export async function githubApi(
   // GitHub redirects reads of transferred issues and renamed repos to a
   // `/repositories/{id}` path. Follow those hops here, back through egress.
   // Writes are not followed: write policy needs a `/repos/{owner}/{repo}` URL.
+  const follow = input.followRedirects === true && method === "GET";
   for (let hop = 0; ; hop++) {
     response = await egress.fetch({
       provider: "github",
@@ -57,7 +62,7 @@ export async function githubApi(
           : undefined),
       }),
     });
-    const next = method === "GET" ? redirectTarget(response, url) : undefined;
+    const next = follow ? redirectTarget(response, url) : undefined;
     if (!next || hop >= MAX_REDIRECTS) break;
     await response.body?.cancel();
     url = next;
