@@ -17,6 +17,10 @@ import {
   type EventTriggerDescription,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import {
+  automationSkillNameSchema,
+  automationTaskSchema,
+} from "@/chat/automations/task";
 import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z
@@ -57,8 +61,8 @@ const automationSummaryBaseSchema = z.object({
   createdByEmail: z.string().trim().email().optional(),
   destination: automationDestinationSchema,
   id: z.string().min(1),
-  instruction: z.string().min(1),
-  /** People mentioned in the instruction, resolved at read time. */
+  task: automationTaskSchema,
+  /** People mentioned in the task text, resolved at read time. */
   mentions: z.array(actorIdentitySchema).optional(),
   lastConversationId: z.string().min(1).optional(),
   lastRunAt: z.string().datetime().optional(),
@@ -66,7 +70,7 @@ const automationSummaryBaseSchema = z.object({
   ownedByViewer: z.boolean(),
   runs: automationRunWindowsSchema,
   outcomes: z.array(taskOutcomeSchema).max(5),
-  /** Short display title; falls back from instruction when unset. */
+  /** Short display title; falls back from the task when unset. */
   title: z.string().min(1),
   totalRuns: z.number().int().nonnegative(),
 });
@@ -134,6 +138,8 @@ export const automationListQuerySchema = z
       .default("all"),
     creator: z.string().max(300).optional(),
     destination: z.string().max(300).optional(),
+    /** Only Automations that run this skill. */
+    skill: automationSkillNameSchema.optional(),
     sort: z.enum(["newest", "oldest", "title"]).default("newest"),
     page: z.coerce.number().int().min(1).max(1_000_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -244,7 +250,7 @@ export const automationRunListSchema = z
 
 const automationDefinitionFields = {
   title: z.string().nullable(),
-  instruction: z.string(),
+  task: automationTaskSchema,
 };
 
 const automationVersionFields = {
@@ -365,7 +371,7 @@ const automationEditBaseSchema = scheduledAutomationSchema
     id: z.string().min(1),
     revision: automationRevisionSchema,
     title: z.string().nullable(),
-    instruction: z.string(),
+    task: automationTaskSchema,
     credentialMode: z.enum(["system", "creator"]),
     outcomes: z.array(taskOutcomeSchema).max(5),
     /** Creator-only rules apply when false. */

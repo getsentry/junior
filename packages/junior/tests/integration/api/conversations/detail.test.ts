@@ -724,7 +724,10 @@ describe("conversation detail API", () => {
           timezone: "UTC",
         },
         status: "active",
-        task: { text: "Send the weekly project summary" },
+        task: {
+          kind: "instruction",
+          instruction: "Send the weekly project summary",
+        },
         title: "Weekly project summary",
         updatedAtMs: nowMs,
       });

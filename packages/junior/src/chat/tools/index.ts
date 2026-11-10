@@ -92,6 +92,12 @@ function createToolState(): ToolState {
 export type { ToolHooks, ToolRuntimeContext };
 
 export interface CreateToolsOptions {
+  /**
+   * Every discovered skill, for the skill an Automation runs. Unlike the
+   * skills that `loadSkill` gets, it includes skills with
+   * `disable-model-invocation`.
+   */
+  automationSkills?: readonly SkillMetadata[];
   pluginSandbox?: PluginSandbox;
 }
 
@@ -142,7 +148,11 @@ export function createTools(
       canSendFilesToActiveConversation,
     }),
     ...createEventTools(context, eventCatalog),
-    ...createAutomationTools(context, eventCatalog),
+    ...createAutomationTools(
+      context,
+      eventCatalog,
+      options.automationSkills ?? [],
+    ),
     ...createWorkspaceTools(context),
     ...createOperatorTools(context),
     ...createUserCustomizationTools(context),

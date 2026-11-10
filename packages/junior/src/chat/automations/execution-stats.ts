@@ -16,6 +16,10 @@ import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { fallbackShortTitle } from "@/chat/services/short-title";
+import {
+  automationTaskDescription,
+  automationTaskSchema,
+} from "@/chat/automations/task";
 import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorAutomations } from "@/db/schema/automations";
@@ -426,7 +430,7 @@ export async function readAutomationTitlesByConversationId(
   const rows = await getDb()
     .select({
       conversationId: juniorAutomationRuns.conversationId,
-      instruction: juniorAutomations.instruction,
+      task: sql<unknown>`${juniorAutomations.record}->'task'`,
       title: juniorAutomations.title,
     })
     .from(juniorAutomationRuns)
@@ -436,7 +440,12 @@ export async function readAutomationTitlesByConversationId(
     )
     .where(inArray(juniorAutomationRuns.conversationId, untitledIds));
   for (const row of rows) {
-    const title = row.title?.trim() || fallbackShortTitle(row.instruction, "");
+    const title =
+      row.title?.trim() ||
+      fallbackShortTitle(
+        automationTaskDescription(automationTaskSchema.parse(row.task)),
+        "",
+      );
     if (row.conversationId && title) titles.set(row.conversationId, title);
   }
   return titles;
