@@ -62,3 +62,24 @@ Read this first after a sandbox reset or context loss.
   test-architecture. Pre-commit hooks pass in the main worktree.
   Not done in slice 1: language detection and permalinks on excerpts
   (`language`, `url` stay optional; provider permalink can come from slice 2).
+- Slice 2 done: draft PR #3088 (`walkthrough/2-code-change-hooks`, commit
+  af8fc1033), base `walkthrough/1-schema`. GitHub stack #3089 = [#3087, #3088].
+  - Plugin API (`junior-plugin-api/src/code.ts`): `CodeChangeHooks`
+    {readStack, readDiff, readFile}, `CodeChangeReadHookContext` (egress,
+    signal), `codeChangeStackSchema`, `codeChangeDiffSchema`,
+    `CodeChangeStack`, `CodeChangeDiff`. `PluginHooks.codeChanges?`.
+  - Core (`junior/src/chat/plugins/code-change-hooks.ts`):
+    `readPluginCodeChangeStack({provider, repository, number, signal})`,
+    `readPluginCodeChangeDiff({provider, repository, baseSha, headSha, signal})`,
+    `readPluginCodeFile({provider, repository, sha, path, signal})`.
+    System Actor `code-change-read`, no auth prompts. Throws if the provider
+    has no hooks (caller should check first; add a `canReadCodeChanges` when
+    slice 5 needs it — removed from slice 2 as unused).
+  - GitHub (`junior-github/src/code-changes.ts`, `githubCodeChangeHooks`):
+    readDiff uses `/compare/base...head` (exact SHAs); readStack = Stacks API
+    then base-branch walk down+up. Verified on real stack #3058 that
+    `pull_requests` is bottom first. Stacks API may list merged layers
+    (`state` field) — not filtered yet; decide in 4b.
+  - Note: after editing plugin-api, run `pnpm --filter @sentry/junior-plugin-api build`
+    before typechecking dependents (they import from dist).
+  - Repository input is `junior_code_changes.repository.name` = "owner/name".
