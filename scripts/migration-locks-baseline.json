@@ -7,6 +7,7 @@
   "packages/junior/migrations/0012_structured_conversation_events.sql",
   "packages/junior/migrations/0013_conversation_session_source.sql",
   "packages/junior/migrations/0014_source_visibility.sql",
+  "packages/junior/migrations/0016_neat_the_anarchist.sql",
   "packages/junior/migrations/0017_drop_paused_scheduled_tasks.sql",
   "packages/junior/migrations/0020_restrict_task_execution_kinds.sql",
   "packages/junior/migrations/0022_task_execution_status.sql",

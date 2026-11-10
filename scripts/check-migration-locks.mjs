@@ -18,6 +18,10 @@ import { fileURLToPath } from "node:url";
 const BASELINE_PATH = "scripts/migration-locks-baseline.json";
 const CONCURRENT_INDEX_MARKER = "-- junior:concurrent-index";
 const BOUNDED_BACKFILL_MARKER = "-- junior:bounded-backfill:";
+// The one-line statement shape that packages/junior/src/db/concurrent-indexes.ts
+// can build concurrently.
+const CONCURRENT_INDEX_STATEMENT =
+  /^CREATE INDEX "[a-z0-9_]+" ON "[a-z0-9_]+" .+;$/;
 const NAME = String.raw`"?([A-Za-z0-9_]+)"?`;
 const TABLE = String.raw`(?:"?public"?\.)?${NAME}`;
 const VOLATILE_DEFAULT =
@@ -25,11 +29,11 @@ const VOLATILE_DEFAULT =
 
 const RULES = {
   "index-without-concurrent-build": `CREATE INDEX on an existing table blocks writes until the migration commits. Put "${CONCURRENT_INDEX_MARKER}" on the line before it and guard the build (see packages/junior/src/db/concurrent-indexes.ts).`,
+  "unsupported-concurrent-index": `junior upgrade builds only a one-line plain CREATE INDEX "name" ON "table" ... concurrently, so the line after "${CONCURRENT_INDEX_MARKER}" must have that shape.`,
   "concurrently-in-transaction": `CONCURRENTLY cannot run in the migration transaction. Write a plain CREATE INDEX with "${CONCURRENT_INDEX_MARKER}" before it; junior upgrade builds it concurrently.`,
   "constraint-without-not-valid":
     "ADD CONSTRAINT ... FOREIGN KEY or CHECK on an existing table scans it under lock. Add it NOT VALID, then VALIDATE CONSTRAINT in a later migration.",
-  "unique-without-index":
-    "ADD UNIQUE or PRIMARY KEY on an existing table builds its index under an exclusive lock. Build a unique index concurrently first, then add the constraint USING INDEX.",
+  "unique-without-index": `ADD UNIQUE or PRIMARY KEY on an existing table builds its index under an exclusive lock. "${CONCURRENT_INDEX_MARKER}" cannot build a unique index yet, so this needs a change to junior upgrade first.`,
   "column-type-change":
     "ALTER COLUMN ... TYPE on an existing table can rewrite it under an exclusive lock. Add a new column and backfill it instead.",
   "set-not-null":
@@ -43,10 +47,11 @@ function withoutLineComment(line) {
   return line.replace(/--.*$/, "");
 }
 
+/** Tables that the migration creates. IF NOT EXISTS can keep a full table. */
 function createdTables(sql) {
   const tables = new Set();
   const pattern = new RegExp(
-    String.raw`\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?${TABLE}`,
+    String.raw`\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?!IF\s+NOT\s+EXISTS\b)${TABLE}`,
     "gi",
   );
   for (const match of sql.matchAll(pattern)) {
@@ -73,7 +78,11 @@ function indexViolations(lines, newTables) {
     } else if (/\bCREATE\s+(?:UNIQUE\s+)?INDEX\b/i.test(code)) {
       const table = indexPattern.exec(code)?.[1]?.toLowerCase();
       const isNewTable = table !== undefined && newTables.has(table);
-      if (!isNewTable && previousLine !== CONCURRENT_INDEX_MARKER) {
+      if (previousLine === CONCURRENT_INDEX_MARKER) {
+        if (!CONCURRENT_INDEX_STATEMENT.test(line.trim())) {
+          violations.push("unsupported-concurrent-index");
+        }
+      } else if (!isNewTable) {
         violations.push("index-without-concurrent-build");
       }
     }
