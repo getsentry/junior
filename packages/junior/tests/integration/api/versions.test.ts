@@ -254,6 +254,24 @@ describe("versions API", () => {
     const withTaskCost = await read();
     expect(changed(withTurn, withTaskCost)).toEqual(["conversation", "spend"]);
 
+    // A checkpoint rewrites every metric row of its Turn. One that adds
+    // time and tokens but no cost does not move spend.
+    await getConversationStore().recordExecution({
+      actorIdentityId,
+      conversationId: `${OWN}:child`,
+      createdAtMs: nowMs,
+      execution: { runId: "task-turn", status: "idle", updatedAtMs: nowMs + 1 },
+      lastActivityAtMs: nowMs,
+      metrics: {
+        durationMs: 400,
+        usage: { cost: { total: 0.25 }, inputTokens: 900, outputTokens: 90 },
+      },
+      source: "slack",
+      updatedAtMs: nowMs + 1,
+    });
+    const withTaskCheckpoint = await read();
+    expect(changed(withTaskCost, withTaskCheckpoint)).toEqual(["conversation"]);
+
     // Each Event of a live Turn moves the root's last activity. The row
     // shows that as an age in whole minutes, so the feed moves only when
     // the minute changes.
