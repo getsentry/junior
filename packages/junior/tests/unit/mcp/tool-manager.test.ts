@@ -627,6 +627,50 @@ describe("McpToolManager", () => {
     });
   });
 
+  it("records audit events for every successful call when the run asks for it", async () => {
+    const plugin = buildPlugin("demo", { auditTools: ["save_issue"] });
+    listToolsMock.mockResolvedValue(
+      ["ping", "save_issue"].map((name) => ({
+        name,
+        description: name,
+        inputSchema: { type: "object", properties: {} },
+      })),
+    );
+    const records: EmittedLogRecord[] = [];
+    const unregister = registerLogRecordSink((record) => {
+      records.push(record);
+    });
+    const manager = new McpToolManager([plugin], {
+      auditEveryCall: {
+        "app.source.kind": "scheduled_automation",
+        "app.task.id": "auto-1",
+        "app.task.run.id": "run-1",
+      },
+    });
+    try {
+      await manager.activateProvider("demo");
+      const [ping, saveIssue] = manager.getResolvedActiveTools();
+      await ping!.execute({});
+      await saveIssue!.execute({});
+    } finally {
+      unregister();
+      await manager.close();
+    }
+
+    const audits = records.filter(
+      (record) => record.attributes["app.log.audit"] === true,
+    );
+    expect(
+      audits.map((record) => record.attributes["gen_ai.tool.name"]),
+    ).toEqual(["mcp__demo__ping", "mcp__demo__save_issue"]);
+    expect(audits[0]?.attributes).toMatchObject({
+      "app.credential.account": "actor",
+      "app.source.kind": "scheduled_automation",
+      "app.task.id": "auto-1",
+      "app.task.run.id": "run-1",
+    });
+  });
+
   it("hides wrapped tools from discovery but keeps them callable", async () => {
     const plugin = buildPlugin("linear", {
       allowedTools: ["get_issue"],

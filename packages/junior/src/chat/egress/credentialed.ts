@@ -1,3 +1,7 @@
+import {
+  credentialAccount,
+  credentialAuditAttributes,
+} from "@/chat/credentials/audit";
 import { logAudit, logException, logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
@@ -252,16 +256,16 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
  * production.
  */
 function logSandboxEgressUpstreamRequest(input: {
+  credentialContext: SandboxEgressCredentialContext;
   egressId: string;
-  grantAccess?: "read" | "write";
-  grantName: string;
-  grantReason?: string;
+  lease: SandboxEgressCredentialLease;
   provider: string;
   request: Request;
   upstream: Response;
   upstreamUrl: URL;
 }): void {
-  const isWrite = input.grantAccess === "write";
+  const { grant } = input.lease;
+  const isWrite = grant.access === "write";
   if (!isWrite && !shouldLogSandboxEgressInfo()) {
     return;
   }
@@ -269,9 +273,9 @@ function logSandboxEgressUpstreamRequest(input: {
   (isWrite ? logAudit : logInfo)("sandbox.egress.upstream.requested", {
     ...egressAttributes({
       egressId: input.egressId,
-      grantAccess: input.grantAccess,
-      grantName: input.grantName,
-      grantReason: input.grantReason,
+      grantAccess: grant.access,
+      grantName: grant.name,
+      grantReason: grant.reason,
       host: input.upstreamUrl.hostname,
       method: input.request.method,
       path: input.upstreamUrl.pathname,
@@ -279,6 +283,13 @@ function logSandboxEgressUpstreamRequest(input: {
       status: input.upstream.status,
     }),
     ...routingAttributes(input.request, input.upstreamUrl),
+    ...credentialAuditAttributes(input.credentialContext.source),
+    ...grant.auditAttributes,
+    "app.credential.account": credentialAccount(
+      input.lease,
+      input.credentialContext.credentials,
+    ),
+    "app.egress.policy.decision": "allowed",
     "app.sandbox.egress.upstream_ok": input.upstream.ok,
   });
 }
@@ -650,6 +661,8 @@ export async function executeCredentialedEgressRequest(input: {
           status: 403,
         }),
         ...routingAttributes(request, upstreamUrl),
+        ...credentialAuditAttributes(credentialContext.source),
+        "app.egress.policy.decision": "denied",
         "app.sandbox.egress.policy.reason": error.message,
       });
       return policyDeniedResponse(error);
@@ -816,10 +829,9 @@ export async function executeCredentialedEgressRequest(input: {
       });
     }
     logSandboxEgressUpstreamRequest({
+      credentialContext,
       egressId: activeEgressId,
-      grantAccess: lease.grant.access,
-      grantName: lease.grant.name,
-      grantReason: lease.grant.reason,
+      lease,
       provider,
       request,
       upstream,

@@ -304,6 +304,12 @@ export interface McpToolManagerOptions {
   serviceAccountProviderFactory?: (
     plugin: PluginDefinition,
   ) => Promise<OAuthClientProvider | undefined>;
+  /**
+   * Audit every successful tool call, not only the plugin's `audit-tools`,
+   * and add these run attributes. Automation runs set it, so each of their
+   * provider writes is on record.
+   */
+  auditEveryCall?: Record<string, string>;
   fetch?: typeof fetch;
   onAuthorizationRequired?: (
     provider: string,
@@ -647,6 +653,7 @@ export class McpToolManager {
       this.serviceAccountProviders.has(plugin.manifest.name) &&
       serviceAccountAllows(plugin.manifest, { tool: toolName });
     logAudit("mcp.tool_call.completed", {
+      ...this.options.auditEveryCall,
       ...attributes,
       "mcp.method.name": "tools/call",
       "app.plugin.name": plugin.manifest.name,
@@ -729,7 +736,10 @@ export class McpToolManager {
               if ("isError" in result && result.isError) {
                 throw new McpToolError(extractMcpErrorMessage(result));
               }
-              if (plugin.manifest.mcp?.auditTools?.includes(tool.name)) {
+              if (
+                this.options.auditEveryCall ||
+                plugin.manifest.mcp?.auditTools?.includes(tool.name)
+              ) {
                 this.logToolCallAudit(plugin, tool.name, {
                   "gen_ai.tool.name": managedToolName,
                   ...(options?.toolCallId
