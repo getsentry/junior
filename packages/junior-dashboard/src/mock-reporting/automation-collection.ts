@@ -13,10 +13,7 @@ function destination(automation: AutomationSummary) {
 
 /** Apply web collection controls to local preview and browser fixtures. */
 export function mockAutomationCollection(
-  report: Pick<
-    AutomationList,
-    "automations" | "executionDays" | "executionHours" | "executionSixHours"
-  >,
+  report: Pick<AutomationList, "automations">,
   params: URLSearchParams = new URLSearchParams(),
 ): AutomationList {
   const input = automationListQuerySchema.parse(Object.fromEntries(params));

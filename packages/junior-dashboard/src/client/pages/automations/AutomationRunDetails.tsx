@@ -9,6 +9,7 @@ import {
 import { Link, useSearchParams } from "react-router";
 
 import { DetailsPanel } from "../../components/DetailsPanel";
+import { Fact, FactList, FactSection } from "../../components/FactSection";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatusChip } from "../../components/StatusChip";
 import { PageLayout } from "../../components/layout/PageLayout";
@@ -201,109 +202,82 @@ function AutomationRunContent(props: {
         </time>
       </div>
       {run.error ? (
-        <RunSection title="Error">
+        <FactSection title="Error">
           <p className="m-0 whitespace-pre-wrap font-mono text-xs leading-relaxed text-rose-300">
             {run.error}
           </p>
-        </RunSection>
+        </FactSection>
       ) : null}
-      <RunSection title="Run">
-        <dl className={runFactsClass}>
-          <RunFact label="Trigger">
+      <FactSection title="Run">
+        <FactList>
+          <Fact label="Trigger">
             {run.kind === "scheduled" ? "Schedule" : "Event"}
-          </RunFact>
+          </Fact>
           {run.scheduledFor ? (
-            <RunFact label="Scheduled for">
+            <Fact label="Scheduled for">
               {formatAutomationRunTime(run.scheduledFor)}
-            </RunFact>
+            </Fact>
           ) : null}
           {run.startedAt ? (
-            <RunFact label="Started">
+            <Fact label="Started">
               {formatAutomationRunTime(run.startedAt)}
-            </RunFact>
+            </Fact>
           ) : null}
-          <RunFact label="Finished">
+          <Fact label="Finished">
             {formatAutomationRunTime(run.executedAt)}
-          </RunFact>
-          <RunFact label="Duration">
-            {formatRuntime(run.durationMs) || "—"}
-          </RunFact>
-          <RunFact label="Tokens">
+          </Fact>
+          <Fact label="Duration">{formatRuntime(run.durationMs) || "—"}</Fact>
+          <Fact label="Tokens">
             {run.totalTokens === undefined
               ? "—"
               : formatCompactNumber(run.totalTokens)}
-          </RunFact>
-          <RunFact label="Cost">
+          </Fact>
+          <Fact label="Cost">
             {run.costUsd === undefined
               ? "—"
               : formatCostSummary({ total: run.costUsd })}
-          </RunFact>
-        </dl>
-      </RunSection>
-      <RunSection title="Setup">
-        <dl className={runFactsClass}>
+          </Fact>
+        </FactList>
+      </FactSection>
+      <FactSection title="Setup">
+        <FactList>
           {props.showAutomation ? (
-            <RunFact label="Automation">
+            <Fact label="Automation">
               <Link
                 className={dashboardInlineLinkClass}
                 to={automationPath(run.automationId)}
               >
                 {run.automationTitle}
               </Link>
-            </RunFact>
+            </Fact>
           ) : null}
           {run.automationVersion ? (
-            <RunFact label="Version">
+            <Fact label="Version">
               <Link
                 className={dashboardInlineLinkClass}
                 to={`${automationPath(run.automationId, "versions")}?version=${run.automationVersion}`}
               >
                 Version {run.automationVersion}
               </Link>
-            </RunFact>
+            </Fact>
           ) : null}
           {run.credentialMode ? (
-            <RunFact label="Accounts">
+            <Fact label="Accounts">
               {run.credentialMode === "creator"
                 ? "Creator’s connected accounts"
                 : "Junior’s accounts only"}
-            </RunFact>
+            </Fact>
           ) : null}
-          <RunFact label="Run ID">
+          <Fact label="Run ID">
             <span className="font-mono">{run.executionId}</span>
-          </RunFact>
-        </dl>
-      </RunSection>
+          </Fact>
+        </FactList>
+      </FactSection>
       {run.conversationId ? null : (
         <p className="m-0 px-1 text-xs text-dashboard-text-muted">
           No Conversation was recorded for this run.
         </p>
       )}
-    </div>
-  );
-}
-
-// Match the Summary tab cards in conversation details.
-const runFactsClass = "m-0 grid min-w-0 gap-2 text-xs leading-snug";
-
-function RunSection(props: { children: ReactNode; title: string }) {
-  return (
-    <section className="grid min-w-0 gap-2.5 rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel p-3">
-      <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
-        {props.title}
-      </h3>
-      {props.children}
-    </section>
-  );
-}
-
-function RunFact(props: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 items-baseline justify-between gap-4">
-      <dt className="shrink-0 text-dashboard-text-muted">{props.label}</dt>
-      <dd className="m-0 min-w-0 break-words text-right tabular-nums text-dashboard-text">
-        {props.children}
-      </dd>
     </div>
   );
 }

@@ -3742,25 +3742,20 @@ export function readMockLocationDetail(
   };
 }
 
-function mockAutomationExecutionDays(
-  nowMs: number,
-): AutomationList["executionDays"] {
-  return Array.from({ length: 90 }, (_, index) => {
-    const date = new Date(nowMs - (89 - index) * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    const event = index % 11 === 0 ? 1 : 0;
-    const scheduled = index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0;
-    return {
-      costUsd:
-        Math.round(
-          (event * 0.12 + scheduled * 0.08 + (index % 7) * 0.01) * 100,
-        ) / 100,
-      date,
-      event,
-      scheduled,
-    };
-  });
+/** Recent runs for the list strip, oldest first, one per `everyMs`. */
+function mockRecentRuns(
+  results: string,
+  lastAtMs: number,
+  everyMs: number,
+): AutomationSummary["recentRuns"] {
+  const status = { b: "blocked", c: "completed", f: "failed" } as const;
+  return [...results].map((letter, index) => ({
+    durationMs: 30_000 + ((index * 37) % 50) * 1_000,
+    executedAt: new Date(
+      lastAtMs - (results.length - 1 - index) * everyMs,
+    ).toISOString(),
+    status: status[letter as keyof typeof status],
+  }));
 }
 
 function mockTasks(): AutomationSummary[] {
@@ -3787,6 +3782,11 @@ function mockTasks(): AutomationSummary[] {
       credentialMode: "creator",
       ownedByViewer: true,
       costUsd: { 1: 0.42, 7: 1.02, 30: 4.18, 90: 16.4 },
+      recentRuns: mockRecentRuns(
+        "cccccccccccccccfccbc",
+        Date.parse("2026-08-06T16:00:00.000Z"),
+        7 * 86_400_000,
+      ),
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       timezone: "America/Los_Angeles",
       schedule: "Every Monday at 9:00 AM",
@@ -3798,6 +3798,7 @@ function mockTasks(): AutomationSummary[] {
         },
       ],
       title: "Weekly project summary",
+      totalCostUsd: 18.62,
       totalRuns: 48,
     },
     {
@@ -3819,10 +3820,16 @@ function mockTasks(): AutomationSummary[] {
       ownedByViewer: true,
       resource: "Issue · ACME-42",
       costUsd: { 1: 0, 7: 0.12, 30: 0.48, 90: 0.84 },
+      recentRuns: mockRecentRuns(
+        "ccccccc",
+        Date.parse("2026-08-05T18:30:00.000Z"),
+        4 * 86_400_000,
+      ),
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
       outcomes: [],
       title: "Closed issue summary",
+      totalCostUsd: 0.84,
       totalRuns: 7,
       trigger: {
         events: ["issue closed"],
@@ -3851,6 +3858,7 @@ function mockTasks(): AutomationSummary[] {
       ownedByViewer: false,
       resource: "Incident · INC-17",
       costUsd: { 1: 0, 7: 0, 30: 0, 90: 0 },
+      recentRuns: [],
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
       outcomes: [
@@ -3860,6 +3868,7 @@ function mockTasks(): AutomationSummary[] {
         },
       ],
       title: "Incident change alerts",
+      totalCostUsd: 0,
       totalRuns: 0,
       trigger: {
         events: ["incident updated"],
@@ -3872,27 +3881,8 @@ function mockTasks(): AutomationSummary[] {
 }
 
 /** Build mock Tasks list for local dashboard development. */
-export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
-  return mockAutomationCollection({
-    executionDays: mockAutomationExecutionDays(nowMs),
-    executionHours: trailingMetricHours(nowMs, (date) => ({
-      costUsd: 0,
-      date,
-      event: 0,
-      scheduled: 0,
-    })),
-    executionSixHours: sumMockHoursIntoSixHours(
-      nowMs,
-      trailingMetricHours(nowMs, (date) => ({
-        costUsd: 0,
-        date,
-        event: 0,
-        scheduled: 0,
-      })),
-      (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
-    ),
-    automations: mockTasks(),
-  });
+export function readMockAutomationList(): AutomationList {
+  return mockAutomationCollection({ automations: mockTasks() });
 }
 
 function mockStatusDays(
@@ -3905,7 +3895,8 @@ function mockStatusDays(
     const completed = index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0;
     const failed = index % 9 === 0 ? 1 : 0;
     const blocked = index % 13 === 0 ? 1 : 0;
-    return { blocked, completed, date, failed };
+    const costUsd = Math.round((completed + failed) * 0.21 * 100) / 100;
+    return { blocked, completed, costUsd, date, failed };
   });
 }
 
@@ -3922,6 +3913,7 @@ export function readMockAutomationExecutions(
       executionHours: trailingMetricHours(nowMs, (date) => ({
         blocked: 0,
         completed: 0,
+        costUsd: 0,
         date,
         failed: 0,
       })),
@@ -3930,10 +3922,11 @@ export function readMockAutomationExecutions(
         trailingMetricHours(nowMs, (date) => ({
           blocked: 0,
           completed: 0,
+          costUsd: 0,
           date,
           failed: 0,
         })),
-        (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
+        (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
       ),
       executions: [],
       automation: task,
@@ -3999,6 +3992,7 @@ export function readMockAutomationExecutions(
     executionHours: trailingMetricHours(nowMs, (date) => ({
       blocked: 0,
       completed: 0,
+      costUsd: 0,
       date,
       failed: 0,
     })),
@@ -4007,10 +4001,11 @@ export function readMockAutomationExecutions(
       trailingMetricHours(nowMs, (date) => ({
         blocked: 0,
         completed: 0,
+        costUsd: 0,
         date,
         failed: 0,
       })),
-      (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
+      (date) => ({ blocked: 0, completed: 0, costUsd: 0, date, failed: 0 }),
     ),
     executions,
     automation: task,
