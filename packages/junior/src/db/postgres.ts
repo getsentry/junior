@@ -7,6 +7,7 @@ import pg, {
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
+import { forwardInfoMessages } from "./info-messages";
 import { applyMigrations } from "./migrate";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
@@ -162,6 +163,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
 export function createPostgresJuniorSqlExecutor(args: {
   applicationName?: string;
   connectionString: string;
+  onInfo?: (message: string) => void;
   statementTimeoutMs?: number | false;
 }): JuniorSqlExecutor {
   const pool = new Pool({
@@ -177,5 +179,8 @@ export function createPostgresJuniorSqlExecutor(args: {
       "app.db.driver": "postgres",
     });
   });
+  if (args.onInfo) {
+    forwardInfoMessages(pool, args.onInfo);
+  }
   return new PostgresExecutor(pool);
 }
