@@ -363,15 +363,15 @@ export type {
   ListedAutomationVersion,
 } from "./schema/automation";
 export {
-  personReplyGapsQuerySchema,
-  personReplyGapsReportSchema,
-  replyGapSegmentsReportSchema,
-} from "./schema/reply-gaps";
+  personReplyTimesQuerySchema,
+  personReplyTimesReportSchema,
+  replyTimeSegmentsReportSchema,
+} from "./schema/reply-times";
 export type {
-  PersonReplyGapsReport,
-  ReplyGapHistogram,
-  ReplyGapSegmentsReport,
-} from "./schema/reply-gaps";
+  PersonReplyTimesReport,
+  ReplyTimeHistogram,
+  ReplyTimeSegmentsReport,
+} from "./schema/reply-times";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

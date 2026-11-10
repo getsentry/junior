@@ -11,7 +11,7 @@ import type { SystemData } from "../../types";
 import { PluginDetails } from "./PluginDetails";
 import { PluginPanels } from "./PluginPanels";
 import { PluginReports } from "./PluginReports";
-import { ReplyGapSegments } from "./ReplyGapSegments";
+import { ReplyTimeSegments } from "./ReplyTimeSegments";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
 import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
@@ -100,9 +100,9 @@ function OverviewSystemPage(props: {
         loading={props.data.conversationStatsLoading}
         stats={props.data.conversationStats}
       />
-      <ReplyGapSegments
-        error={props.data.replyGapsError}
-        report={props.data.replyGaps}
+      <ReplyTimeSegments
+        error={props.data.replyTimesError}
+        report={props.data.replyTimes}
       />
     </>
   );

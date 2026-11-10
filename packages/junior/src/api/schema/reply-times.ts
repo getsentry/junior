@@ -1,7 +1,7 @@
 import * as z from "zod";
 
-/** Reply gaps in the bins of the cache warming model. */
-export const replyGapHistogramSchema = z
+/** Reply times in the bins of the cache warming model. */
+export const replyTimeHistogramSchema = z
   .object({
     bins: z.array(
       z
@@ -19,7 +19,7 @@ export const replyGapHistogramSchema = z
   .strict();
 
 /** Gap histogram of each cache warming segment, over all Conversations. */
-export const replyGapSegmentsReportSchema = z
+export const replyTimeSegmentsReportSchema = z
   .object({
     generatedAt: z.string().datetime(),
     /** Below this many gaps, the planner does not warm the segment. */
@@ -27,7 +27,7 @@ export const replyGapSegmentsReportSchema = z
     segments: z.array(
       z
         .object({
-          histogram: replyGapHistogramSchema,
+          histogram: replyTimeHistogramSchema,
           segment: z.string().min(1),
         })
         .strict(),
@@ -35,24 +35,26 @@ export const replyGapSegmentsReportSchema = z
   })
   .strict();
 
-/** Time range of the reply gaps on a People profile. */
-export const personReplyGapsQuerySchema = z
+/** Time range of the reply times on a People profile. */
+export const personReplyTimesQuerySchema = z
   .object({
     days: z.enum(["1", "7", "30", "90"]).default("30").transform(Number),
   })
   .strict();
 
-/** Reply gaps that end with an instruction of the profile's person. */
-export const personReplyGapsReportSchema = z
+/** Reply times that end with an instruction of the profile's person. */
+export const personReplyTimesReportSchema = z
   .object({
     days: z.number().int().positive(),
     generatedAt: z.string().datetime(),
-    histogram: replyGapHistogramSchema,
+    histogram: replyTimeHistogramSchema,
   })
   .strict();
 
-export type ReplyGapHistogram = z.infer<typeof replyGapHistogramSchema>;
-export type ReplyGapSegmentsReport = z.infer<
-  typeof replyGapSegmentsReportSchema
+export type ReplyTimeHistogram = z.infer<typeof replyTimeHistogramSchema>;
+export type ReplyTimeSegmentsReport = z.infer<
+  typeof replyTimeSegmentsReportSchema
 >;
-export type PersonReplyGapsReport = z.infer<typeof personReplyGapsReportSchema>;
+export type PersonReplyTimesReport = z.infer<
+  typeof personReplyTimesReportSchema
+>;

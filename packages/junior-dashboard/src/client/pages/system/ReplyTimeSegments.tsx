@@ -1,9 +1,12 @@
-import type { ReplyGapSegmentsReport } from "@sentry/junior/api/schema";
+import type { ReplyTimeSegmentsReport } from "@sentry/junior/api/schema";
 
 import { useState } from "react";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { ChartHeader } from "../../components/charts/ChartHeader";
-import { ReplyGapHistogram } from "../../components/charts/ReplyGapHistogram";
+import {
+  ReplyTimeHistogram,
+  replyTimeSummary,
+} from "../../components/charts/ReplyTimeHistogram";
 import { Card } from "../../components/layout/Card";
 import { StatusChip } from "../../components/StatusChip";
 import {
@@ -18,7 +21,7 @@ import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { formatCompactNumber } from "../../format";
 import { cn } from "../../styles";
 
-type Segment = ReplyGapSegmentsReport["segments"][number];
+type Segment = ReplyTimeSegmentsReport["segments"][number];
 
 // The first part of a segment: who started the Turn, or `archived`.
 const GROUPS = [
@@ -52,9 +55,9 @@ function busiest(segments: Segment[]): string | undefined {
  * Show the gap list that the cache warming planner reads for each segment,
  * one group at a time, with the histogram of the selected segment.
  */
-export function ReplyGapSegments(props: {
+export function ReplyTimeSegments(props: {
   error: boolean;
-  report?: ReplyGapSegmentsReport;
+  report?: ReplyTimeSegmentsReport;
 }) {
   const [group, setGroup] = useState<Group>("user");
   const [selected, setSelected] = useState<string>();
@@ -65,16 +68,17 @@ export function ReplyGapSegments(props: {
   const current =
     segments.find((segment) => segment.segment === selected) ??
     segments.find((segment) => segment.segment === busiest(segments));
+  const currentSummary = current && replyTimeSummary(current.histogram);
 
   return (
     <Card>
       <ChartHeader
         description={
           props.report
-            ? `Time from the end of a Turn to the next request. The planner warms a segment after ${minSamples} gaps.`
+            ? `Time until the next message after a Turn ends, by cache warming segment. The planner warms a segment after ${minSamples} samples.`
             : undefined
         }
-        title="Reply gaps"
+        title="Reply times"
         trailing={
           <ToggleGroup
             aria-label="Segment group"
@@ -93,7 +97,7 @@ export function ReplyGapSegments(props: {
       />
       {!props.report ? (
         <EmptyTelemetry>
-          {props.error ? "Reply gaps failed to load." : "Loading reply gaps."}
+          {props.error ? "Reply times failed to load." : "Loading reply times."}
         </EmptyTelemetry>
       ) : (
         <div className="grid lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
@@ -105,7 +109,7 @@ export function ReplyGapSegments(props: {
                 </TableHead>
                 <TableHead scope="col">Work</TableHead>
                 <TableHead className="text-right" scope="col">
-                  Gaps
+                  Samples
                 </TableHead>
                 <TableHead className="pr-4 text-right sm:pr-5" scope="col">
                   Replied
@@ -172,11 +176,13 @@ export function ReplyGapSegments(props: {
                   </span>
                   <span>
                     {current.histogram.total < minSamples
-                      ? "Too few gaps to warm"
-                      : `${formatCompactNumber(current.histogram.total)} gaps`}
+                      ? "Too few samples to warm"
+                      : currentSummary?.median
+                        ? `Typical reply ${currentSummary.median}`
+                        : "No replies"}
                   </span>
                 </div>
-                <ReplyGapHistogram
+                <ReplyTimeHistogram
                   className="min-h-48 flex-1"
                   histogram={current.histogram}
                 />

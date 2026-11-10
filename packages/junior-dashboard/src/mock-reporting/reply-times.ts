@@ -1,7 +1,7 @@
 import type {
-  PersonReplyGapsReport,
-  ReplyGapHistogram,
-  ReplyGapSegmentsReport,
+  PersonReplyTimesReport,
+  ReplyTimeHistogram,
+  ReplyTimeSegmentsReport,
 } from "@sentry/junior/api/schema";
 import { NOW } from "./fixtures";
 
@@ -34,7 +34,7 @@ function histogram(args: {
   noReply: number;
   peakBin: number;
   replies: number;
-}): ReplyGapHistogram {
+}): ReplyTimeHistogram {
   const weights = BIN_EDGES_MS.map(
     (_, index) => 1 / (1 + (index - args.peakBin) ** 2 / 3),
   );
@@ -80,7 +80,7 @@ const segments: Array<[string, Parameters<typeof histogram>[0]]> = [
 ];
 
 /** Return fixed cache warming gap histograms for each segment. */
-export function readMockReplyGapSegments(): ReplyGapSegmentsReport {
+export function readMockReplyTimeSegments(): ReplyTimeSegmentsReport {
   return {
     generatedAt: NOW,
     minSamples: MIN_SAMPLES,
@@ -91,8 +91,8 @@ export function readMockReplyGapSegments(): ReplyGapSegmentsReport {
   };
 }
 
-/** Return fixed reply gaps for one person's own profile. */
-export function readMockPersonReplyGaps(days: number): PersonReplyGapsReport {
+/** Return fixed reply times for one person's own profile. */
+export function readMockPersonReplyTimes(days: number): PersonReplyTimesReport {
   const scale = days === 1 ? 1 : days === 7 ? 5 : days === 30 ? 18 : 41;
   return {
     days,

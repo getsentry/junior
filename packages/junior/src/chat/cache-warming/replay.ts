@@ -1,7 +1,7 @@
 /**
  * Replay the stored model calls of a Conversation with the rules of live gap
  * recording in `warmup.ts`. The backfill uses it to fill the gap lists, and
- * the People profile uses it to show the reply gaps of one person.
+ * the People profile uses it to show the reply times of one person.
  */
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getSqlExecutor } from "@/chat/db";

@@ -26,8 +26,8 @@ import {
   skillReportsSchema,
   statsReportSchema,
 } from "./api/schema";
-import { readReplyGapSegments } from "./api/reply-gaps";
-import { replyGapSegmentsReportSchema } from "./api/schema/reply-gaps";
+import { readReplyTimeSegments } from "./api/reply-times";
+import { replyTimeSegmentsReportSchema } from "./api/schema/reply-times";
 import { readStatsReport } from "./api/stats";
 import { validateRequest } from "./api/validation";
 import { readVersions } from "./api/versions";
@@ -95,8 +95,8 @@ export function createJuniorApi(
   app.get("/api/stats", async () =>
     jsonResponse(statsReportSchema, await readStatsReport()),
   );
-  app.get("/api/reply-gaps", async () =>
-    jsonResponse(replyGapSegmentsReportSchema, await readReplyGapSegments()),
+  app.get("/api/reply-times", async () =>
+    jsonResponse(replyTimeSegmentsReportSchema, await readReplyTimeSegments()),
   );
   app.get(
     "/api/versions",

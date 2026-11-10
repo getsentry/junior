@@ -55,9 +55,9 @@ import {
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
-  personReplyGapsQuerySchema,
-  personReplyGapsReportSchema,
-  replyGapSegmentsReportSchema,
+  personReplyTimesQuerySchema,
+  personReplyTimesReportSchema,
+  replyTimeSegmentsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemCountSchema,
   reviewItemListSchema,
@@ -124,9 +124,9 @@ import {
   recordMockSend,
 } from "./sends";
 import {
-  readMockPersonReplyGaps,
-  readMockReplyGapSegments,
-} from "./reply-gaps";
+  readMockPersonReplyTimes,
+  readMockReplyTimeSegments,
+} from "./reply-times";
 import { readMockConversationWatches } from "./watches";
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
@@ -226,12 +226,12 @@ export function createMockReportingApi(): Hono<{
       readMockPeoplePluginReports(params.data.email),
     );
   });
-  app.get("/reply-gaps", () =>
-    jsonResponse(replyGapSegmentsReportSchema, readMockReplyGapSegments()),
+  app.get("/reply-times", () =>
+    jsonResponse(replyTimeSegmentsReportSchema, readMockReplyTimeSegments()),
   );
-  app.get("/people/:email/reply-gaps", (c) => {
+  app.get("/people/:email/reply-times", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
-    const query = personReplyGapsQuerySchema.safeParse(c.req.query());
+    const query = personReplyTimesQuerySchema.safeParse(c.req.query());
     if (!params.success || !query.success) {
       return errorResponse("Invalid request.", 400);
     }
@@ -239,10 +239,10 @@ export function createMockReportingApi(): Hono<{
     const viewerEmail = c.get("viewer")?.email.toLowerCase();
     return viewerEmail === params.data.email.toLowerCase()
       ? jsonResponse(
-          personReplyGapsReportSchema,
-          readMockPersonReplyGaps(query.data.days),
+          personReplyTimesReportSchema,
+          readMockPersonReplyTimes(query.data.days),
         )
-      : errorResponse("Reply gaps not found.", 404);
+      : errorResponse("Reply times not found.", 404);
   });
   app.get("/people/:email/code", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());

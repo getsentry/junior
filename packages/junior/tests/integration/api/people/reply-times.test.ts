@@ -6,7 +6,7 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
-import { personReplyGapsReportSchema } from "@/api/schema";
+import { personReplyTimesReportSchema } from "@/api/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { createAgent } from "../../../fixtures/agent";
 import { closeConversationFixture } from "../../../fixtures/conversation";
@@ -56,7 +56,7 @@ async function runTurns(times: number[]) {
   }
 }
 
-async function replyGaps(viewerEmail: string) {
+async function replyTimes(viewerEmail: string) {
   const viewer = await resolveViewerUser(viewerEmail);
   if (!viewer) throw new Error(`missing viewer for ${viewerEmail}`);
   const app = new Hono<{ Variables: JuniorApiVariables }>();
@@ -66,17 +66,17 @@ async function replyGaps(viewerEmail: string) {
   });
   app.route("/", createJuniorApi());
   return await app.request(
-    "http://localhost/api/people/alice%40example.com/reply-gaps?days=1",
+    "http://localhost/api/people/alice%40example.com/reply-times?days=1",
   );
 }
 
-describe("person reply gaps API", () => {
+describe("person reply times API", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await closeConversationFixture();
   });
 
-  it("serves the reply gaps of a person only to that person", async () => {
+  it("serves the reply times of a person only to that person", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     mockTitleModel("Conversation title");
     // Alice replies after 7 minutes, then after 60 minutes, which is past
@@ -84,16 +84,16 @@ describe("person reply gaps API", () => {
     await runTurns([T0, T0 + 7 * MINUTE, T0 + 67 * MINUTE]);
     vi.setSystemTime(T0 + 130 * MINUTE);
 
-    const own = await replyGaps("alice@example.com");
+    const own = await replyTimes("alice@example.com");
     expect(own.status).toBe(200);
-    const report = personReplyGapsReportSchema.parse(await own.json());
+    const report = personReplyTimesReportSchema.parse(await own.json());
     expect(report.histogram).toMatchObject({ noReply: 1, total: 2 });
     expect(report.histogram.bins.filter((bin) => bin.count > 0)).toEqual([
       { startMs: 7 * MINUTE, endMs: 10 * MINUTE, count: 1 },
     ]);
 
-    const other = await replyGaps("bob@example.com");
+    const other = await replyTimes("bob@example.com");
     expect(other.status).toBe(404);
-    expect(await other.json()).toEqual({ error: "Reply gaps not found." });
+    expect(await other.json()).toEqual({ error: "Reply times not found." });
   });
 });

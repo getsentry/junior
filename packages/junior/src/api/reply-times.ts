@@ -6,16 +6,16 @@ import {
 import { segmentGapsKey } from "@/chat/cache-warming/warmup";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
-  replyGapSegmentsReportSchema,
-  type ReplyGapSegmentsReport,
-} from "./schema/reply-gaps";
+  replyTimeSegmentsReportSchema,
+  type ReplyTimeSegmentsReport,
+} from "./schema/reply-times";
 
 /**
  * Read the gap list that the cache warming planner reads for each segment.
  * The lists hold only gap lengths, so the report names no person or
  * Conversation.
  */
-export async function readReplyGapSegments(): Promise<ReplyGapSegmentsReport> {
+export async function readReplyTimeSegments(): Promise<ReplyTimeSegmentsReport> {
   const state = getStateAdapter();
   await state.connect();
   const segments = await Promise.all(
@@ -26,7 +26,7 @@ export async function readReplyGapSegments(): Promise<ReplyGapSegmentsReport> {
       segment,
     })),
   );
-  return replyGapSegmentsReportSchema.parse({
+  return replyTimeSegmentsReportSchema.parse({
     generatedAt: new Date().toISOString(),
     minSamples: MIN_GAP_SAMPLES,
     segments,

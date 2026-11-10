@@ -20,8 +20,8 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  personReplyGapsReportSchema,
-  replyGapSegmentsReportSchema,
+  personReplyTimesReportSchema,
+  replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
@@ -330,15 +330,15 @@ export function useActorCodeData(email: string | undefined) {
   });
 }
 
-/** Fetch the viewer's own reply gaps. The server answers only that person. */
-export function usePersonReplyGapsData(args: { days: number; email: string }) {
+/** Fetch the viewer's own reply times. The server answers only that person. */
+export function usePersonReplyTimesData(args: { days: number; email: string }) {
   return useQuery({
     placeholderData: keepPreviousData,
-    queryKey: ["dashboard", "people", args.email, "reply-gaps", args.days],
+    queryKey: ["dashboard", "people", args.email, "reply-times", args.days],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
-        personReplyGapsReportSchema,
-        `/api/people/${encodeURIComponent(args.email)}/reply-gaps?days=${args.days}`,
+        personReplyTimesReportSchema,
+        `/api/people/${encodeURIComponent(args.email)}/reply-times?days=${args.days}`,
         signal,
       ),
     retry: false,
@@ -441,12 +441,12 @@ export function useSystemData(coreData: DashboardCoreData) {
       ),
     retry: false,
   });
-  const replyGapsQuery = useQuery({
-    queryKey: ["dashboard", "reply-gaps"],
+  const replyTimesQuery = useQuery({
+    queryKey: ["dashboard", "reply-times"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
-        replyGapSegmentsReportSchema,
-        "/api/reply-gaps",
+        replyTimeSegmentsReportSchema,
+        "/api/reply-times",
         signal,
       ),
     retry: false,
@@ -469,10 +469,10 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
-          ...(replyGapsQuery.data
-            ? { replyGaps: replyGapsQuery.data }
+          ...(replyTimesQuery.data
+            ? { replyTimes: replyTimesQuery.data }
             : undefined),
-          replyGapsError: Boolean(replyGapsQuery.error),
+          replyTimesError: Boolean(replyTimesQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,

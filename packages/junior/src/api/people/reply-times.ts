@@ -14,9 +14,9 @@ import type { ConversationKind } from "@/chat/conversations/store";
 import { getSqlExecutor } from "@/chat/db";
 import { findUserByEmail, readActorIdentity } from "@/chat/plugins/viewer";
 import {
-  personReplyGapsReportSchema,
-  type PersonReplyGapsReport,
-} from "../schema/reply-gaps";
+  personReplyTimesReportSchema,
+  type PersonReplyTimesReport,
+} from "../schema/reply-times";
 
 const DAY_MS = 24 * 60 * 60_000;
 // One read replays at most this many of the person's most recent
@@ -52,7 +52,7 @@ async function loadPersonConversations(
 }
 
 /**
- * Read the reply gaps of one person: the gaps of idle periods that ended
+ * Read the reply times of one person: the gaps of idle periods that ended
  * with an instruction of this person. Only the person may read them, so this
  * returns undefined for any other viewer.
  *
@@ -60,11 +60,11 @@ async function loadPersonConversations(
  * warming backfill uses. So they use the same bins as the segment gaps, and
  * the two can be compared.
  */
-export async function readPersonReplyGaps(args: {
+export async function readPersonReplyTimes(args: {
   days: number;
   email: string;
   viewer: User;
-}): Promise<PersonReplyGapsReport | undefined> {
+}): Promise<PersonReplyTimesReport | undefined> {
   const subject = await findUserByEmail(args.email);
   if (!subject || subject.id !== args.viewer.id) return undefined;
   const nowMs = Date.now();
@@ -113,7 +113,7 @@ export async function readPersonReplyGaps(args: {
   const replied = await Promise.all(
     gaps.map((gap) => repliedBySubject(gap.replyActor)),
   );
-  return personReplyGapsReportSchema.parse({
+  return personReplyTimesReportSchema.parse({
     days: args.days,
     generatedAt: new Date(nowMs).toISOString(),
     histogram: gapHistogramReport(

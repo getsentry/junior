@@ -35,7 +35,7 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { ProfileCodeActivity } from "./ProfileCodeActivity";
 import { ProfilePluginReports } from "./ProfilePluginReports";
-import { ProfileReplyGaps } from "./ProfileReplyGaps";
+import { ProfileReplyTimes } from "./ProfileReplyTimes";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -87,7 +87,7 @@ export function Profile(props: {
   pluginReportsError?: boolean;
   pluginReportsLoading?: boolean;
   profile: ActorProfileReport;
-  /** The server returns reply gaps only to the profile's person. */
+  /** The server returns reply times only to the profile's person. */
   viewerIsPerson?: boolean;
 }) {
   const [range, setRange] = useState<TimeRangeDays>(30);
@@ -142,7 +142,7 @@ export function Profile(props: {
       </section>
 
       {props.viewerIsPerson ? (
-        <ProfileReplyGaps email={profile.actor.email} range={range} />
+        <ProfileReplyTimes email={profile.actor.email} range={range} />
       ) : null}
 
       {props.codeError ? (

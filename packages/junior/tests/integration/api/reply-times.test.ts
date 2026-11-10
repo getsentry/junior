@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { createJuniorApi } from "@/api";
-import { replyGapSegmentsReportSchema } from "@/api/schema";
+import { replyTimeSegmentsReportSchema } from "@/api/schema";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 
 const MINUTE = 60_000;
 const KEY = "junior:cache_warming:gaps:user:1:none";
 
-describe("reply gap segments API", () => {
+describe("reply time segments API", () => {
   afterEach(async () => {
     await getStateAdapter().delete(KEY);
     await disconnectStateAdapter();
@@ -21,10 +21,10 @@ describe("reply gap segments API", () => {
     }
 
     const response = await createJuniorApi().request(
-      "http://localhost/api/reply-gaps",
+      "http://localhost/api/reply-times",
     );
     expect(response.status).toBe(200);
-    const report = replyGapSegmentsReportSchema.parse(await response.json());
+    const report = replyTimeSegmentsReportSchema.parse(await response.json());
 
     expect(report.minSamples).toBe(20);
     expect(report.segments).toHaveLength(21);
