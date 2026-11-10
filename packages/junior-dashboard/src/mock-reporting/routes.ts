@@ -55,6 +55,7 @@ import {
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
+  replyTimeSegmentsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemCountSchema,
   reviewItemListSchema,
@@ -120,6 +121,7 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
+import { readMockReplyTimeSegments } from "./reply-times";
 import { readMockConversationWatches } from "./watches";
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
@@ -219,6 +221,9 @@ export function createMockReportingApi(): Hono<{
       readMockPeoplePluginReports(params.data.email),
     );
   });
+  app.get("/reply-times", () =>
+    jsonResponse(replyTimeSegmentsReportSchema, readMockReplyTimeSegments()),
+  );
   app.get("/people/:email/code", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
     if (!params.success) {

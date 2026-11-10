@@ -14,7 +14,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location. Its `kind` is `root`, `thread`, or `task`, and never changes.
+  from Location. Its `kind` is `root`, `automation`, `thread`, or `task`, and
+  never changes. `automation` is a top-level Conversation for an Automation run.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can

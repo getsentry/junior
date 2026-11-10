@@ -179,7 +179,10 @@ export function useConversationMenuItems(
   if (!archived) {
     viewerItems.push({
       // Threads and Tasks use their root's pin.
-      disabled: !participant || conversation?.kind !== "root" || pending.pin,
+      disabled:
+        !participant ||
+        Boolean(conversation?.parentConversationId) ||
+        pending.pin,
       icon: pinned ? PinOff : Pin,
       key: "pin",
       label: pinned ? "Unpin" : "Pin",

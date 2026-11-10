@@ -23,12 +23,14 @@
  * from live idle periods.
  */
 import { performance } from "node:perf_hooks";
+import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getChatConfig } from "@/chat/config";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -117,14 +119,23 @@ interface RecordedGap {
 async function loadConversations(
   windowStartMs: number,
 ): Promise<ConversationRow[]> {
-  return await getSqlExecutor().query<ConversationRow>(
-    `SELECT conversation_id AS "conversationId", kind,
-       parent_conversation_id AS "parentConversationId"
-     FROM junior_conversations
-     WHERE last_activity_at >= $1 AND transcript_purged_at IS NULL
-     ORDER BY last_activity_at DESC, conversation_id`,
-    [new Date(windowStartMs).toISOString()],
-  );
+  return await getDb()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        gte(juniorConversations.lastActivityAt, new Date(windowStartMs)),
+        isNull(juniorConversations.transcriptPurgedAt),
+      ),
+    )
+    .orderBy(
+      desc(juniorConversations.lastActivityAt),
+      juniorConversations.conversationId,
+    );
 }
 
 // Agent history stores each model response as an `assistant_message` and
@@ -133,36 +144,44 @@ async function loadConversations(
 // A fork copies the rows of its source with their old times, so rows from
 // before the Conversation was created are skipped.
 async function loadEvents(conversationIds: string[]): Promise<EventRow[]> {
-  return await getSqlExecutor().query<EventRow>(
-    `SELECT e.conversation_id AS "conversationId", e.type,
-       CASE WHEN e.type = 'user_message' THEN
-         (e.payload->'provenance'->'actor'->>'userId') IS NOT NULL
-       END AS "personInstruction",
-       m.message->>'stopReason' AS "stopReason",
-       m.message->>'timestamp' AS "startedAtMs",
-       e.payload->'usage'->>'cacheRead' AS "cacheRead",
-       e.payload->'usage'->>'cacheWrite' AS "cacheWrite"
-     FROM junior_conversation_events e
-     JOIN junior_conversations c ON c.conversation_id = e.conversation_id
-     CROSS JOIN LATERAL (
-       SELECT CASE
-         WHEN e.type <> 'assistant_message' THEN NULL
-         WHEN e.schema_version >= 2 THEN (e.payload->>'message')::jsonb
-         ELSE e.payload
-       END AS message
-     ) m
-     WHERE e.conversation_id = ANY($1::text[])
-       AND (
-         e.type = 'assistant_message'
-         OR (
-           e.type = 'user_message'
-           AND (e.payload->'provenance'->>'authority') = 'instruction'
-         )
-       )
-       AND e.created_at >= c.created_at
-     ORDER BY e.conversation_id, e.seq`,
-    [conversationIds],
-  );
+  const events = juniorConversationEvents;
+  const isUserMessage = sql`${events.type} = 'user_message'`;
+  const message = sql`CASE
+    WHEN ${events.type} <> 'assistant_message' THEN NULL
+    WHEN ${events.schemaVersion} >= 2 THEN (${events.payload}->>'message')::jsonb
+    ELSE ${events.payload}
+  END`;
+  return await getDb()
+    .select({
+      conversationId: events.conversationId,
+      type: sql<EventRow["type"]>`${events.type}`,
+      personInstruction: sql<
+        boolean | null
+      >`CASE WHEN ${isUserMessage} THEN (${events.payload}->'provenance'->'actor'->>'userId') IS NOT NULL END`,
+      stopReason: sql<string | null>`(${message})->>'stopReason'`,
+      startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
+      cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
+      cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
+    })
+    .from(events)
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, events.conversationId),
+    )
+    .where(
+      and(
+        inArray(events.conversationId, conversationIds),
+        or(
+          eq(events.type, "assistant_message"),
+          and(
+            isUserMessage,
+            sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
+          ),
+        ),
+        gte(events.createdAt, juniorConversations.createdAt),
+      ),
+    )
+    .orderBy(events.conversationId, events.seq);
 }
 
 /**

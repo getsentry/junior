@@ -404,7 +404,7 @@ test("makes an earlier version active from version history", async ({
   );
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1`);
   await page
-    .getByRole("complementary", { name: "Automation status" })
+    .getByRole("complementary", { name: "Automation details" })
     .getByRole("link", { name: "Version 2" })
     .click();
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/versions/);

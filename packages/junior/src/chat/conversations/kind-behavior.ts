@@ -102,11 +102,16 @@ export function turnBehavior(args: {
   automationRun: boolean;
 }): TurnBehavior {
   if (args.automationRun) return AUTOMATION_RUN;
-  if (args.kind === "root") return ROOT;
+  if (isTopLevelKind(args.kind)) return ROOT;
   if (!args.personInput) return AGENT_IN_CHILD;
   if (args.kind === "thread") return PERSON_IN_THREAD;
   // Only an agent writes input to a task.
   throw new Error("A task Conversation cannot have a person's input");
+}
+
+/** Return whether a Conversation of this kind has no parent. */
+export function isTopLevelKind(kind: ConversationKind): boolean {
+  return kind === "root" || kind === "automation";
 }
 
 /** Return whether a person sent input from this Source. */

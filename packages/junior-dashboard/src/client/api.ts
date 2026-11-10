@@ -20,6 +20,7 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
+  replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
@@ -424,6 +425,16 @@ export function useSystemData(coreData: DashboardCoreData) {
       ),
     retry: false,
   });
+  const replyTimesQuery = useQuery({
+    queryKey: ["dashboard", "reply-times"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        replyTimeSegmentsReportSchema,
+        "/api/reply-times",
+        signal,
+      ),
+    retry: false,
+  });
   const skillsQuery = useSkillsData();
   const pluginReportsQuery = usePluginReportsData();
   const dataReady = pluginsQuery.data && skillsQuery.data;
@@ -442,6 +453,10 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
+          ...(replyTimesQuery.data
+            ? { replyTimes: replyTimesQuery.data }
+            : undefined),
+          replyTimesError: Boolean(replyTimesQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,
