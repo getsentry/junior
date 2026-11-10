@@ -397,12 +397,7 @@ export async function wireAgentTools(
   const mcpToolManager = new McpToolManager(
     pluginCatalogRuntime.getMcpProviders(),
     {
-      ...(runSource.kind === "scheduled_automation" ||
-      runSource.kind === "event_automation"
-        ? {
-            auditEveryCall: credentialAuditAttributes(auditSource),
-          }
-        : undefined),
+      auditAttributes: credentialAuditAttributes(auditSource),
       authProviderFactory: mcpAuth.authProviderFactory,
       serviceAccountProviderFactory: mcpAuth.serviceAccountProviderFactory,
       onAuthorizationRequired: (provider, _error, context) =>

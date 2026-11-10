@@ -171,39 +171,13 @@ actor's own connection always wins. Everyone who can talk to Junior can read wha
 service account can read, so give that account only the access that all of
 them may have.
 
-### Audit tools
+### Audit events
 
-List the MCP tools that change provider data in `mcp.audit-tools`. Each tool
-must be in `mcp.allowed-tools` or `mcp.wrapped-tools` when the plugin sets an
-allow-list:
-
-```yaml title="plugin.yaml"
-mcp:
-  url: https://api.my-provider.example/mcp
-  allowed-tools:
-    - search
-    - create-page
-  audit-tools:
-    - create-page
-```
-
-Each successful call to an audit tool emits the `mcp.tool_call.completed`
-audit event. Sentry keeps audit events in production. The event records the
-accountable person, the Conversation, the tool, and the account that made the
-call: `service_account` or `actor`. It does not record the tool arguments. The
-Conversation history keeps them.
-
-An install can change the list in `plugins.ts`:
-
-```ts title="plugins.ts"
-export const plugins = defineJuniorPlugins(["@sentry/junior-notion"], {
-  manifests: {
-    notion: { mcp: { auditTools: ["notion-create-pages"] } },
-  },
-});
-```
-
-Set `auditTools: null` to stop audit events for the plugin.
+Each successful MCP tool call emits the `mcp.tool_call.completed` audit event.
+Sentry keeps audit events in production. The event records the accountable
+person, the Conversation, the run Source, the tool, and the account that made
+the call: `service_account` or `actor`. It does not record the tool arguments.
+The Conversation history keeps them.
 
 ## Runtime dependencies
 

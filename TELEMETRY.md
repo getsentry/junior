@@ -52,9 +52,9 @@ move to the domain below.
   facts, such as `app.github.repository`.
 - `sandbox.egress.policy.denied` is a warning. Junior did not forward the
   request.
-- `mcp.tool_call.completed` is an audit event for each successful call to a
-  tool in a plugin's `mcp.audit-tools`, and for every successful call in an
-  Automation run. `app.credential.account` is `service_account` or `actor`.
+- `mcp.tool_call.completed` is an audit event for each successful MCP tool
+  call. `app.credential.account` is `service_account` or `actor`.
+  `mcp.tool_call.failed` is a warning with the same run Source facts.
 
 ## Query Recipes
 
@@ -181,7 +181,7 @@ fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.account,app.
 sort=-timestamp
 ```
 
-MCP audit tool calls, with the account that made them.
+MCP tool calls, with the account that made them.
 
 ```text
 dataset=logs query='app.log.audit:true event.name:mcp.tool_call.completed'
