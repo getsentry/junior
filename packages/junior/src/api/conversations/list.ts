@@ -54,6 +54,7 @@ import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { listWaitingConversations } from "@/chat/review-items/store";
+import { readAwaitingAuthorizationRootIds } from "@/chat/conversations/sql/authorization-wait";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import {
@@ -447,6 +448,7 @@ export async function readConversationFeedFromSql(
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     unreadConversationIds,
+    awaitingAuthorizationIds,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationViewerMarks(
@@ -482,6 +484,7 @@ export async function readConversationFeedFromSql(
     filter?.kind === "viewer"
       ? readUnreadConversationIds(db, conversationIds, filter.userId)
       : new Set<string>(),
+    readAwaitingAuthorizationRootIds(db, conversationIds, new Date(nowMs)),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
@@ -574,6 +577,9 @@ export async function readConversationFeedFromSql(
       return {
         ...summary,
         ...work,
+        ...(awaitingAuthorizationIds.has(conversation.conversationId)
+          ? { awaitingAuthorization: true as const }
+          : undefined),
         ...(threads ? { threads } : undefined),
         ...(participants && participants.length > 0
           ? { participants }

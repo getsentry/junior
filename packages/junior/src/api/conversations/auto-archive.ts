@@ -11,6 +11,8 @@
  *   message arrived after it finished
  * - the root and every child conversation are idle
  * - no open Review item on it waits on a person
+ * - the root and every child conversation do not wait on a person to finish
+ *   an authorization
  * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
  *   period
@@ -35,6 +37,7 @@ import {
   isNull,
   lte,
   ne,
+  not,
   or,
   sql,
   type SQL,
@@ -48,6 +51,7 @@ import {
 } from "@/chat/plugins/unfinished-work";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
+import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
 import {
   juniorConversationParticipants,
@@ -232,6 +236,14 @@ function archivableRow(run: ArchiveRun) {
       : undefined,
     treeIsQuiet(runCutoff(run)),
     notWaitingOnAnyone(),
+    // A Turn parked for authorization leaves the tree idle and quiet.
+    not(
+      treeAwaitsAuthorization(
+        getDb(),
+        juniorConversationParticipants.rootConversationId,
+        run.now,
+      ),
+    ),
   );
 }
 
