@@ -28,6 +28,7 @@ function output(overrides: Record<string, unknown> = {}) {
         type: "bug_fix",
         slot: "cause",
         caption: "Tokens expire after 8 hours.",
+        body: "Every Task that runs longer fails.",
         view: { show: ["client", "api", "c-a"] },
         evidence: [
           { kind: "hunk", hunkId: "h-fix", lines: { start: 1, end: 4 } },
@@ -60,11 +61,11 @@ describe("findWalkthroughProblems", () => {
             type: "bug_fix",
             slot: "cause",
             caption: "Tokens expire after 8 hours.",
+            body: "Every Task that runs longer fails.",
             evidence: [
               {
                 kind: "source",
                 sourceId: "sentry-issue",
-                text: "41 failures.",
               },
             ],
           },
@@ -89,6 +90,7 @@ describe("findWalkthroughProblems", () => {
           type: "migration",
           slot: "cause",
           caption: "Wrong slot.",
+          body: "Prose.",
           evidence: [{ kind: "hunk", hunkId: "h-fix" }],
         },
       ],

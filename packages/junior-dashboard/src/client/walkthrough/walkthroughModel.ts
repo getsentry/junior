@@ -8,6 +8,7 @@ import type {
 
 export type WalkthroughUpdate = WalkthroughDocument["updates"][number];
 export type WalkthroughUpdateItem = WalkthroughUpdate["items"][number];
+type WalkthroughLayer = WalkthroughDocument["layers"][number];
 
 /** One place the reader can stand: an old chapter or an update item. */
 export type WalkthroughStep =
@@ -24,9 +25,13 @@ export type ReviewDecision = {
   id: string;
   question: string;
   prs: number[];
+  /** The step that shows this decision. */
+  stepKey: string;
+  /** What the question is about, when the question alone does not say. */
+  context?: string;
   /** Update item that answers earlier "change" feedback on this decision. */
   answeredBy?: WalkthroughUpdateItem;
-  location?: string;
+  location?: { label: string; url?: string };
 };
 
 export type AnswerMap = Record<
@@ -96,6 +101,25 @@ export function latestUpdate(
   return document.updates.at(-1);
 }
 
+/** The chapter a step belongs to. An update item belongs to the one it touches. */
+export function stepChapter(
+  document: WalkthroughDocument,
+  step: WalkthroughStep,
+): WalkthroughChapter | undefined {
+  return step.kind === "chapter"
+    ? step.chapter
+    : document.content.chapters.find((c) => c.id === step.item.touches);
+}
+
+/** The heading a step shows: the slot of its chapter. */
+export function stepTitle(
+  document: WalkthroughDocument,
+  step: WalkthroughStep,
+): string {
+  const chapter = stepChapter(document, step);
+  return chapter ? (slotLabels[chapter.slot] ?? chapter.slot) : step.key;
+}
+
 /** Steps for the full story, or only for what changed since the last visit. */
 export function walkthroughSteps(
   document: WalkthroughDocument,
@@ -124,6 +148,51 @@ export function walkthroughSteps(
   }));
 }
 
+/** Change types in story order. A ship check is not a type of change. */
+export function changeTypes(
+  document: WalkthroughDocument,
+): WalkthroughChapter["type"][] {
+  return [
+    ...new Set(
+      document.content.chapters
+        .map((c) => c.type)
+        .filter((type) => type !== "ship_check"),
+    ),
+  ];
+}
+
+const skippedLabels: Record<
+  WalkthroughDocument["skipped"][number]["reason"],
+  [string, string]
+> = {
+  generated: ["generated file", "generated files"],
+  lockfile: ["lockfile", "lockfiles"],
+  moved: ["moved file", "moved files"],
+  rename: ["renamed file", "renamed files"],
+  whitespace: ["whitespace-only file", "whitespace-only files"],
+};
+
+/**
+ * Size of the change in one line, such as "+38 −6 in 4 files · 1 generated
+ * file not shown".
+ */
+export function sizeSummary(document: WalkthroughDocument): string {
+  const total = document.layers.reduce(
+    (sum, layer) => ({
+      additions: sum.additions + layer.additions,
+      deletions: sum.deletions + layer.deletions,
+      files: sum.files + layer.files,
+    }),
+    { additions: 0, deletions: 0, files: 0 },
+  );
+  const size = `+${total.additions} −${total.deletions} in ${total.files} file${total.files === 1 ? "" : "s"}`;
+  if (!document.skipped.length) return size;
+  const skipped = document.skipped
+    .map((s) => `${s.files} ${skippedLabels[s.reason][s.files === 1 ? 0 : 1]}`)
+    .join(", ");
+  return `${size} · ${skipped} not shown`;
+}
+
 /**
  * Every decision across the lineage. An update item that answers feedback
  * adds a confirm decision, so the reader closes the loop.
@@ -144,19 +213,30 @@ export function reviewDecisions(
         id: decision.id,
         question: decision.question,
         prs: decisionPrs(document, hunks, evidence, chapter.evidence),
+        stepKey: `chapter:${chapter.id}`,
         answeredBy: items.find((item) => item.answers === decision.id),
-        location: evidenceLocation(evidence, hunks),
+        // Feedback lands next to code. A decision about prose uses the
+        // chapter's first code.
+        location:
+          evidenceLocation(evidence, hunks) ??
+          evidenceLocation(
+            chapter.evidence.find((e) => e.kind === "hunk"),
+            hunks,
+          ),
       });
     }
   }
   for (const item of items) {
     const prs = decisionPrs(document, hunks, undefined, item.evidence);
+    const location = evidenceLocation(item.evidence[0], hunks);
     if (item.answers) {
       decisions.push({
         id: confirmDecisionId(item.id),
         question: "Does this answer your feedback?",
+        context: item.caption,
         prs,
-        location: evidenceLocation(item.evidence[0], hunks),
+        stepKey: `item:${item.id}`,
+        location,
       });
     }
     for (const decision of item.decisions) {
@@ -164,7 +244,8 @@ export function reviewDecisions(
         id: decision.id,
         question: decision.question,
         prs,
-        location: evidenceLocation(item.evidence[0], hunks),
+        stepKey: `item:${item.id}`,
+        location,
       });
     }
   }
@@ -181,52 +262,72 @@ export type LayerStatus =
   | { kind: "changes"; count: number }
   | { kind: "open"; count: number };
 
+/** Decisions that still count for a layer. Answered feedback drops out. */
+export function liveDecisions(
+  pr: number,
+  decisions: readonly ReviewDecision[],
+): ReviewDecision[] {
+  return decisions.filter((d) => d.prs.includes(pr) && !d.answeredBy);
+}
+
 /** A layer is ready when every live decision on it is accepted. */
 export function layerStatus(
   pr: number,
   decisions: readonly ReviewDecision[],
   answers: AnswerMap,
 ): LayerStatus {
-  const live = decisions.filter(
-    (decision) => decision.prs.includes(pr) && !decision.answeredBy,
-  );
+  const live = liveDecisions(pr, decisions);
   const changes = live.filter((d) => answers[d.id]?.value === "change").length;
   if (changes) return { kind: "changes", count: changes };
   const open = live.filter((d) => !answers[d.id]).length;
   return open ? { kind: "open", count: open } : { kind: "ready" };
 }
 
-/** Feedback that is still open, as Markdown for a GitHub review. */
-export function feedbackMarkdown(
-  decisions: readonly ReviewDecision[],
-  answers: AnswerMap,
-): string {
-  return openFeedback(decisions, answers)
-    .map(({ decision, note }) => {
-      const where = [
-        decision.prs.map((pr) => `#${pr}`).join(", "),
-        decision.location,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-      return [
-        `**${where}**`,
-        `> ${decision.question}`,
+/**
+ * One layer's review as GitHub Markdown. It pastes into the "Review changes"
+ * box. A permalink on its own line renders as a code snippet on GitHub.
+ */
+export function reviewMarkdown(args: {
+  answers: AnswerMap;
+  comment: string;
+  decisions: readonly ReviewDecision[];
+  layer: WalkthroughLayer;
+}): string {
+  const live = liveDecisions(args.layer.pr, args.decisions);
+  const changes = live.filter((d) => args.answers[d.id]?.value === "change");
+  const accepted = live.filter((d) => args.answers[d.id]?.value === "accept");
+  const sections: string[] = [];
+  if (args.comment.trim()) sections.push(args.comment.trim());
+  if (changes.length) {
+    sections.push(
+      [
+        "**Please change**",
+        ...changes.map((d, index) =>
+          [
+            `${index + 1}. ${d.location ? `\`${d.location.label}\`: ` : ""}${args.answers[d.id]?.note ?? d.question}`,
+            args.answers[d.id]?.note ? `   > ${d.question}` : undefined,
+            d.location?.url ? `\n   ${d.location.url}` : undefined,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        ),
+      ].join("\n\n"),
+    );
+  }
+  if (accepted.length) {
+    sections.push(
+      [
+        `<details><summary>Checked and fine (${accepted.length})</summary>`,
         "",
-        note || "Please change this.",
-      ].join("\n");
-    })
-    .join("\n\n");
-}
-
-/** "Change" answers that no update item has answered yet. */
-export function openFeedback(
-  decisions: readonly ReviewDecision[],
-  answers: AnswerMap,
-): { decision: ReviewDecision; note?: string }[] {
-  return decisions
-    .filter((d) => answers[d.id]?.value === "change" && !d.answeredBy)
-    .map((decision) => ({ decision, note: answers[decision.id]?.note }));
+        ...accepted.map(
+          (d) => `- ${d.context ? `${d.context} ` : ""}${d.question}`,
+        ),
+        "",
+        "</details>",
+      ].join("\n"),
+    );
+  }
+  return sections.join("\n\n");
 }
 
 /**
@@ -248,12 +349,14 @@ function decisionPrs(
 function evidenceLocation(
   evidence: WalkthroughEvidence | undefined,
   hunks: ReadonlyMap<string, WalkthroughHunk>,
-): string | undefined {
+): ReviewDecision["location"] {
   if (evidence?.kind !== "hunk") return undefined;
   const hunk = hunks.get(evidence.hunkId);
   if (!hunk) return undefined;
-  const line = hunk.lines.find((l) => l.kind !== "context");
+  const line =
+    hunk.lines.find((l) => l.kind === "add") ??
+    hunk.lines.find((l) => l.kind === "remove");
   const number = line?.newLine ?? line?.oldLine;
-  const file = hunk.path.split("/").at(-1);
-  return number ? `${file}:${number}` : file;
+  const file = hunk.path.split("/").at(-1) ?? hunk.path;
+  return { label: number ? `${file}:${number}` : file, url: hunk.url };
 }

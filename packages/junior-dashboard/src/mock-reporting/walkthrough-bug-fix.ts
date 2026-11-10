@@ -1,10 +1,11 @@
 import type { WalkthroughDocument } from "@sentry/junior/api/schema";
+import { withMockPermalinks } from "./walkthrough-permalinks";
 
 const file = "packages/junior/src/chat/automations/run-lock.ts";
 
 /** A fixed single-PR bug fix on its first review, for the Walkthrough prototype. */
 export function readMockBugFixWalkthrough(): WalkthroughDocument {
-  return {
+  return withMockPermalinks({
     schemaVersion: 1,
     versionId: "wt_bf_v1",
     contentVersionId: "wt_bf_v1",
@@ -18,6 +19,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
         baseSha: "0d4f7aa",
         additions: 38,
         deletions: 6,
+        files: 4,
       },
     ],
     hunks: [
@@ -169,6 +171,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           type: "bug_fix",
           slot: "broken",
           caption: "After a deploy, some scheduled automations run twice.",
+          body: "Sentry shows the duplicates, and they all start within 90 seconds of a deploy. The person who asked for this PR saw the 9:00 standup digest post twice.",
           view: {
             show: [
               "scheduler",
@@ -190,12 +193,10 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
             {
               kind: "source",
               sourceId: "sentry-dupes",
-              text: "212 duplicate runs in 7 days, all near a deploy.",
             },
             {
               kind: "source",
               sourceId: "brief-report",
-              text: "The standup digest posted twice.",
             },
           ],
           decisions: [],
@@ -207,6 +208,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "cause",
           caption:
             "The lock key includes the deployment id. Two deployments take two different locks.",
+          body: "During a rollout, the old and the new deployment both get the same scheduler tick. The lock key below includes the deployment id, so each deployment takes its own lock and both run.",
           view: {
             show: [
               "scheduler",
@@ -242,6 +244,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "fix",
           caption:
             "Key the lock by automation and scheduled time. This fixes the cause, not the symptom.",
+          body: "The key is now the automation id plus the scheduled time. Both deployments compute the same key, so only the first one takes the lock.",
           view: {
             show: [
               "scheduler",
@@ -269,12 +272,12 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "side_effects",
           caption:
             "“Run now” uses the same lock. Two clicks in one minute now run once.",
+          body: "Two other paths use this lock. “Run now” rounds its time to the minute, so fast repeat clicks merge. Old locks keep the old key format until they expire.",
           evidence: [
             { kind: "hunk", hunkId: "run-now" },
             {
               kind: "source",
               sourceId: "brief-lock-ttl",
-              text: "The first deploy after merge can still double-run once.",
             },
           ],
           decisions: [
@@ -301,6 +304,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "proof",
           caption:
             "A new test runs one tick on two deployments. It fails before the fix and passes after.",
+          body: "The new test sends one tick through two deployments and expects one run. Junior ran it on the base commit, where it fails, and on this PR, where it passes.",
           evidence: [
             { kind: "check", checkId: "regression" },
             { kind: "hunk", hunkId: "test" },
@@ -314,11 +318,11 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "how_well_know",
           caption:
             "Duplicate runs should drop to 0 within a day of the first deploy.",
+          body: "The Sentry issue in “What broke” counts duplicate runs. After the first full deploy with this PR, it should get no new events.",
           evidence: [
             {
               kind: "source",
               sourceId: "sentry-dupes",
-              text: "Watch this issue. Target: no new events.",
             },
           ],
           decisions: [],
@@ -337,5 +341,5 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
       costUsd: 0.31,
       createdAt: "2026-11-10T07:05:00.000Z",
     },
-  };
+  });
 }

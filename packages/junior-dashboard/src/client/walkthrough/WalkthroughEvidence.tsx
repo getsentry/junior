@@ -13,10 +13,10 @@ const sourceLabels: Record<
   WalkthroughDocument["sources"][number]["kind"],
   string
 > = {
-  brief_decision: "Brief decision",
-  brief_fact: "Brief",
-  pr_body: "PR description",
-  sentry: "Sentry",
+  brief_decision: "Decision in the Brief",
+  brief_fact: "From the Brief",
+  pr_body: "From the PR description",
+  sentry: "From Sentry",
 };
 
 /** Render one piece of evidence. Code comes from the stored diff, never the model. */
@@ -24,7 +24,6 @@ export function WalkthroughEvidence(props: {
   document: WalkthroughDocument;
   evidence: Evidence;
   hunks: ReadonlyMap<string, WalkthroughHunk>;
-  tag?: string;
 }) {
   const { evidence } = props;
   if (evidence.kind === "hunk") {
@@ -46,7 +45,6 @@ export function WalkthroughEvidence(props: {
               href={`${layer.url}/files`}
             >
               #{hunk.pr}
-              {props.tag ? ` · ${props.tag}` : ""}
             </OutboundLink>
           ) : null}
         </figcaption>
@@ -104,12 +102,9 @@ export function WalkthroughEvidence(props: {
             </>
           ) : null}
         </span>
-        <span className="text-sm text-dashboard-text">
-          <DisplayText inline text={evidence.text} />
-        </span>
-        {source && source.text !== evidence.text ? (
-          <span className="text-xs text-dashboard-text-faint">
-            <DisplayText inline text={`“${source.text}”`} />
+        {source ? (
+          <span className="text-sm text-dashboard-text">
+            <DisplayText inline text={source.text} />
           </span>
         ) : null}
       </div>

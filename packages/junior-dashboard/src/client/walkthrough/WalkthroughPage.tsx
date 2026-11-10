@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useParams } from "react-router";
 import type { WalkthroughReport } from "@sentry/junior/api/schema";
@@ -9,20 +9,25 @@ import { PageRouteLoading } from "../components/PageRouteLoading";
 import { PageHeader } from "../components/layout/PageHeader";
 import { PageLayout } from "../components/layout/PageLayout";
 import { Button } from "../components/ui/button";
+import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
+import { QuickQuestionSelectionButton } from "../conversations/QuickQuestion";
 import {
-  WalkthroughAskPanel,
-  WalkthroughFeedbackPanel,
-  type WalkthroughAsk,
-} from "./WalkthroughAsidePanels";
+  WalkthroughQuestions,
+  type WalkthroughQuestion,
+} from "./WalkthroughQuestions";
 import { WalkthroughRail } from "./WalkthroughRail";
+import { WalkthroughReview } from "./WalkthroughReview";
 import { WalkthroughStepView } from "./WalkthroughStepView";
 import { prototypeAnswer } from "./prototypeAnswers";
 import {
+  changeTypes,
   hunkIndex,
   latestUpdate,
   reviewDecisions,
-  slotLabels,
+  sizeSummary,
+  stepTitle,
+  typeLabels,
   walkthroughSteps,
   type AnswerMap,
 } from "./walkthroughModel";
@@ -48,10 +53,10 @@ export function WalkthroughPage() {
       </PageLayout>
     );
   }
-  return <WalkthroughReview report={query.data} />;
+  return <WalkthroughView report={query.data} />;
 }
 
-function WalkthroughReview(props: { report: WalkthroughReport }) {
+function WalkthroughView(props: { report: WalkthroughReport }) {
   const { document } = props.report;
   const update = latestUpdate(document);
   const hasUnseenUpdate = Boolean(
@@ -75,8 +80,12 @@ function WalkthroughReview(props: { report: WalkthroughReport }) {
       ]),
     ),
   );
-  const [approved, setApproved] = useState<ReadonlySet<number>>(new Set());
-  const [asks, setAsks] = useState<WalkthroughAsk[]>([]);
+  const [side, setSide] = useState<"questions" | "review" | undefined>(
+    "review",
+  );
+  const [questions, setQuestions] = useState<WalkthroughQuestion[]>([]);
+  const [quote, setQuote] = useState<{ quote: string; stepKey: string }>();
+  const mainRef = useRef<HTMLElement>(null);
 
   const index = Math.max(
     0,
@@ -90,31 +99,35 @@ function WalkthroughReview(props: { report: WalkthroughReport }) {
   }, [steps, activeKey]);
 
   useEffect(() => {
-    const pending = asks.filter((ask) => !ask.answer);
-    if (!pending.length) return;
+    if (!questions.some((q) => q.answer === undefined)) return;
     // The prototype answers from fixed text. The real one runs a read-only Turn.
     const timer = window.setTimeout(() => {
-      setAsks((current) =>
-        current.map((ask) =>
-          ask.answer ? ask : { ...ask, answer: prototypeAnswer(ask.question) },
+      setQuestions((current) =>
+        current.map((q) =>
+          q.answer === undefined
+            ? { ...q, answer: prototypeAnswer(q.text) }
+            : q,
         ),
       );
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [asks]);
+  }, [questions]);
 
   if (!step) return null;
 
-  const stepLabel =
-    step.kind === "chapter"
-      ? (slotLabels[step.chapter.slot] ?? step.chapter.slot)
-      : step.item.caption;
-  const ask = (question: string) =>
-    setAsks((current) => [
+  const title = stepTitle(document, step);
+  const anchor =
+    quote?.stepKey === step.key
+      ? { quote: quote.quote, stepKey: step.key, stepTitle: title }
+      : { stepKey: step.key, stepTitle: title };
+  const ask = async (text: string) => {
+    setQuestions((current) => [
       ...current,
-      { id: current.length + 1, question, stepKey: step.key, stepLabel },
+      { ...anchor, id: crypto.randomUUID(), text },
     ]);
-  // Asks and banners can point into the other mode, so switch to it first.
+    setQuote(undefined);
+  };
+  // Links can point into the other mode, so switch to it first.
   const openStep = (key: string) => {
     const inUpdate = walkthroughSteps(document, "update").some(
       (s) => s.key === key,
@@ -123,61 +136,79 @@ function WalkthroughReview(props: { report: WalkthroughReport }) {
       setMode(inUpdate && update ? "update" : "story");
     setActiveKey(key);
   };
+  const types = changeTypes(document).map((type) => typeLabels[type]);
 
   return (
     <PageLayout className="max-w-screen-2xl">
       <PageHeader
         actions={
-          update ? (
-            <div className="flex items-center gap-1 rounded-md border border-dashboard-border-subtle p-0.5">
-              <ModeButton
-                active={mode === "update"}
-                onClick={() => setMode("update")}
-              >
-                Update {document.updates.length} · {update.pushes} pushes
-              </ModeButton>
-              <ModeButton
-                active={mode === "story"}
-                onClick={() => setMode("story")}
-              >
-                Full story
-              </ModeButton>
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {update ? (
+              <div className="flex items-center gap-1 rounded-md border border-dashboard-border-subtle p-0.5">
+                <ModeButton
+                  active={mode === "update"}
+                  onClick={() => setMode("update")}
+                >
+                  Update {document.updates.length} · {update.pushes} pushes
+                </ModeButton>
+                <ModeButton
+                  active={mode === "story"}
+                  onClick={() => setMode("story")}
+                >
+                  Full story
+                </ModeButton>
+              </div>
+            ) : null}
+            {side !== "review" ? (
+              <Button onClick={() => setSide("review")} type="button">
+                Your review
+              </Button>
+            ) : null}
+          </div>
         }
-        description={document.content.intent}
+        description={
+          <span className="grid gap-1.5">
+            <DisplayText inline text={document.content.intent} />
+            <span className="text-xs text-dashboard-text-muted">
+              {types.join(", ")} · {sizeSummary(document)}
+            </span>
+          </span>
+        }
         documentTitle={`Walkthrough · ${document.content.title}`}
         title={document.content.title}
       />
-      <div className="grid gap-8 lg:grid-cols-[16rem_minmax(0,1fr)_20rem]">
+      <div
+        className={cn(
+          "grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)]",
+          side && "xl:grid-cols-[15rem_minmax(0,1fr)_24rem]",
+        )}
+      >
         <WalkthroughRail
           activeKey={step.key}
-          answers={answers}
-          approved={approved}
-          decisions={decisions}
           document={document}
-          hunks={hunks}
-          onApprove={(pr) =>
-            setApproved((current) => new Set([...current, pr]))
-          }
           onSelect={setActiveKey}
           steps={steps}
         />
-        <main className="grid min-w-0 content-start gap-6">
+        <main className="grid min-w-0 content-start gap-6" ref={mainRef}>
           <WalkthroughStepView
             answers={answers}
             decisions={decisions}
             document={document}
             hunks={hunks}
+            index={index}
             onAnswer={(decisionId, value, note) =>
               setAnswers((current) => ({
                 ...current,
                 [decisionId]: { value, note },
               }))
             }
-            onAsk={ask}
+            onAsk={(question) => {
+              setSide("questions");
+              if (question) void ask(question);
+            }}
             onOpenStep={openStep}
             step={step}
+            total={steps.length}
           />
           <div className="flex items-center justify-between border-t border-dashboard-border-subtle pt-4">
             <Button
@@ -189,9 +220,6 @@ function WalkthroughReview(props: { report: WalkthroughReport }) {
               <ArrowLeft aria-hidden="true" className="size-4" />
               Back
             </Button>
-            <span className="text-xs text-dashboard-text-faint">
-              {index + 1} of {steps.length}
-            </span>
             <Button
               disabled={index === steps.length - 1}
               onClick={() => setActiveKey(steps[index + 1]?.key ?? step.key)}
@@ -201,15 +229,6 @@ function WalkthroughReview(props: { report: WalkthroughReport }) {
               <ArrowRight aria-hidden="true" className="size-4" />
             </Button>
           </div>
-        </main>
-        <aside className="grid content-start gap-8">
-          <WalkthroughAskPanel
-            activeKey={step.key}
-            asks={asks}
-            onAsk={ask}
-            onOpen={openStep}
-          />
-          <WalkthroughFeedbackPanel answers={answers} decisions={decisions} />
           <p className="m-0 text-xs text-dashboard-text-faint">
             {document.meta.modelId.split("/").at(-1)}
             {document.meta.costUsd !== undefined
@@ -217,7 +236,37 @@ function WalkthroughReview(props: { report: WalkthroughReport }) {
               : ""}
             {" · "}Brief v{document.meta.briefVersion}
           </p>
-        </aside>
+          <QuickQuestionSelectionButton
+            onAsk={(selection) => {
+              setQuote({ quote: selection.quote, stepKey: step.key });
+              setSide("questions");
+            }}
+            rootRef={mainRef}
+          />
+        </main>
+        {side ? (
+          <div className="grid min-h-0 xl:sticky xl:top-4 xl:h-[min(calc(100dvh-2rem),46rem)]">
+            {side === "questions" ? (
+              <WalkthroughQuestions
+                anchor={anchor}
+                onClose={() => setSide("review")}
+                onOpenStep={openStep}
+                onSubmit={ask}
+                questions={questions}
+                suggestions={step.kind === "chapter" ? step.chapter.asks : []}
+                walkthroughId={document.versionId}
+              />
+            ) : (
+              <WalkthroughReview
+                answers={answers}
+                decisions={decisions}
+                document={document}
+                onClose={() => setSide(undefined)}
+                onOpenStep={openStep}
+              />
+            )}
+          </div>
+        ) : null}
       </div>
     </PageLayout>
   );

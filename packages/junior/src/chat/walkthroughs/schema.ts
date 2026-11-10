@@ -105,7 +105,6 @@ const evidenceSchema = z.discriminatedUnion("kind", [
       kind: z.literal("source"),
       /** Id of a Brief fact, Brief decision, PR body line, or Sentry link. */
       sourceId: z.string().min(1),
-      text: caption,
     })
     .strict(),
   z
@@ -138,9 +137,16 @@ const decisionSchema = z
   })
   .strict();
 
+/**
+ * Short prose under the caption. It tells a reader with no context what the
+ * evidence below shows. Two or three sentences, not a wall of text.
+ */
+const bodySchema = z.string().trim().min(1).max(360);
+
 const chapterBase = {
   id: idSchema,
   caption,
+  body: bodySchema,
   view: diagramViewSchema.optional(),
   evidence: z.array(evidenceSchema).max(4).default([]),
   decisions: z.array(decisionSchema).max(3).default([]),
@@ -211,6 +217,7 @@ export const walkthroughUpdateOutputSchema = z
             /** Decision id with "change" feedback that this item answers. */
             answers: idSchema.optional(),
             caption,
+            body: bodySchema,
             evidence: z.array(evidenceSchema).min(1).max(3),
             decisions: z.array(decisionSchema).max(2).default([]),
           })
@@ -240,6 +247,8 @@ export const walkthroughHunkSchema = z
     pr: z.number().int().positive(),
     path: z.string().min(1),
     language: z.string().min(1).optional(),
+    /** Provider permalink to the first changed line, at its commit. */
+    url: z.string().url().optional(),
     lines: z.array(diffLineSchema).min(1),
   })
   .strict();
@@ -264,6 +273,7 @@ export const walkthroughDocumentSchema = z
             baseSha: shaSchema,
             additions: z.number().int().nonnegative(),
             deletions: z.number().int().nonnegative(),
+            files: z.number().int().nonnegative(),
           })
           .strict(),
       )

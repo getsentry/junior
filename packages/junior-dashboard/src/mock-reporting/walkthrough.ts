@@ -1,11 +1,12 @@
 import type { WalkthroughDocument } from "@sentry/junior/api/schema";
+import { withMockPermalinks } from "./walkthrough-permalinks";
 
 const repo = "getsentry/junior";
 const prUrl = (pr: number) => `https://github.com/${repo}/pull/${pr}`;
 
 /** A fixed three-layer stack with one update, for the Walkthrough prototype. */
 export function readMockWalkthrough(): WalkthroughDocument {
-  return {
+  return withMockPermalinks({
     schemaVersion: 1,
     versionId: "wt_v2",
     parentVersionId: "wt_v1",
@@ -20,6 +21,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
         baseSha: "77c0e12",
         additions: 48,
         deletions: 12,
+        files: 2,
       },
       {
         pr: 3102,
@@ -29,6 +31,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
         baseSha: "a1f9c03",
         additions: 132,
         deletions: 20,
+        files: 4,
       },
       {
         pr: 3103,
@@ -38,6 +41,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
         baseSha: "c4d2e88",
         additions: 0,
         deletions: 0,
+        files: 21,
       },
     ],
     hunks: [
@@ -224,6 +228,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
           type: "feature",
           slot: "how_it_works",
           caption: "A Task calls GitHub with a stored user token.",
+          body: "A Task gets the user's GitHub token from the token store and sends it with each call to GitHub. Nothing changes here yet. This is the path that the next steps change.",
           view: {
             show: ["task", "client", "api", "store", "t-c", "c-a", "c-s"],
             highlight: ["t-c", "c-a", "c-s"],
@@ -240,6 +245,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
           slot: "gap",
           caption:
             "Tokens expire after 8 hours, and long Tasks fail with them.",
+          body: "GitHub user tokens expire after 8 hours. A Task that runs longer gets a 401 and fails. Sentry shows 41 such failures in 2 weeks.",
           view: {
             show: ["task", "client", "api", "store", "t-c", "c-a", "c-s"],
             highlight: ["api"],
@@ -250,12 +256,10 @@ export function readMockWalkthrough(): WalkthroughDocument {
             {
               kind: "source",
               sourceId: "sentry-401",
-              text: "41 failed Tasks in 2 weeks.",
             },
             {
               kind: "source",
               sourceId: "brief-intent",
-              text: "Reported by the person who asked for this stack.",
             },
           ],
           decisions: [],
@@ -266,6 +270,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
           type: "feature",
           slot: "change",
           caption: "On a 401, refresh the token, save it, and try once more.",
+          body: "When GitHub answers 401, the client refreshes the token, saves it, and sends the same call once more. The same PR also raises the retry count for every call.",
           view: {
             show: [
               "task",
@@ -311,12 +316,12 @@ export function readMockWalkthrough(): WalkthroughDocument {
           slot: "safe_to_run",
           caption:
             "It deletes every row in legacy_tokens. That can't be undone.",
+          body: "The migration adds the refresh_tokens table. It also deletes every row in legacy_tokens, and there is no backup.",
           evidence: [
             { kind: "hunk", hunkId: "3101-sql" },
             {
               kind: "source",
               sourceId: "brief-legacy",
-              text: "Junior assumed nothing reads legacy_tokens.",
             },
           ],
           decisions: [
@@ -335,11 +340,11 @@ export function readMockWalkthrough(): WalkthroughDocument {
           type: "ship_check",
           slot: "how_well_know",
           caption: "Tests can't prove this works. Production will.",
+          body: "Tests use a fake GitHub, so they can't show that real refreshes work. Production can: the 401 failures in Sentry should stop.",
           evidence: [
             {
               kind: "source",
               sourceId: "sentry-401",
-              text: "Target: 0 Tasks failing with a 401.",
             },
             {
               kind: "hunk",
@@ -372,6 +377,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             touches: "safe-to-run",
             answers: "delete",
             caption: "legacy_tokens is now renamed, not deleted.",
+            body: "The migration now renames legacy_tokens to legacy_tokens_backup instead of deleting its rows. You can drop the backup in a later release.",
             evidence: [{ kind: "hunk", hunkId: "3101-sql-backup" }],
             decisions: [],
           },
@@ -380,6 +386,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             touches: "how-well-know",
             answers: "metric",
             caption: "Failed refreshes now have a metric.",
+            body: "A failed refresh now increments github.token.refresh_failed, so you can alert on it.",
             evidence: [{ kind: "hunk", hunkId: "3102-metric" }],
             decisions: [],
           },
@@ -387,6 +394,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             id: "jitter",
             touches: "change",
             caption: "Retries now wait up to 250 ms longer, at random.",
+            body: "Each retry now waits a random 0 to 250 ms longer. This spreads out retries when many Tasks fail at once.",
             evidence: [{ kind: "hunk", hunkId: "3102-jitter" }],
             decisions: [
               {
@@ -409,5 +417,5 @@ export function readMockWalkthrough(): WalkthroughDocument {
       costUsd: 0.81,
       createdAt: "2026-11-10T05:40:00.000Z",
     },
-  };
+  });
 }
