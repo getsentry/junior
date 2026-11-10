@@ -1,13 +1,13 @@
 /**
  * Concurrent index builds for pending Drizzle migrations.
  *
- * Drizzle applies every pending migration in one transaction, so a plain
- * `CREATE INDEX` in a migration blocks writes to its table until the whole
- * batch commits. A migration marks an index statement that must not block
- * writes with `-- junior:concurrent-index` on the line before it. Before the
- * transactional migrate, `junior upgrade` builds each marked index of a
- * pending migration with `CREATE INDEX CONCURRENTLY`. The migration still
- * guards its own build, so it then finds the index and skips the build.
+ * Each migration runs in one transaction, so a plain `CREATE INDEX` in a
+ * migration blocks writes to its table until the migration commits. A
+ * migration marks an index statement that must not block writes with
+ * `-- junior:concurrent-index` on the line before it. Just before a pending
+ * migration runs, `junior upgrade` builds each of its marked indexes with
+ * `CREATE INDEX CONCURRENTLY`. The migration still guards its own build, so
+ * it then finds the index and skips the build.
  */
 import type { MigrationMeta } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "./db";
@@ -101,7 +101,7 @@ async function buildConcurrentIndex(
     `SELECT to_regclass($1) IS NOT NULL AS "exists"`,
     [index.table],
   );
-  // A table that a pending migration creates is new and empty, so the
+  // A table that this migration creates is new and empty, so the
   // transactional migration builds its indexes without a long lock.
   if (!table?.exists) {
     return;
@@ -110,12 +110,12 @@ async function buildConcurrentIndex(
   try {
     expected = await expectedDefinition(executor, index);
   } catch (error) {
-    // A pending migration adds a column that the index uses. A concurrent
-    // build cannot run before that migration, and gives no benefit after
-    // it: its ADD COLUMN already blocks writes to the table until the
-    // migration batch commits. The migration's own build then scans only
-    // the rows that already exist. If the column is missing for another
-    // reason, that build fails with the same error.
+    // Earlier migrations have committed, so this migration adds a column
+    // that the index uses. Its ADD COLUMN already blocks writes to the table
+    // until it commits, so a concurrent build gives no benefit. The
+    // migration's own build adds only a scan of the existing rows to that
+    // block. If the column is missing for another reason, that build fails
+    // with the same error.
     if (isPostgresErrorCode(error, UNDEFINED_COLUMN)) {
       return;
     }
@@ -128,6 +128,15 @@ async function buildConcurrentIndex(
     state = undefined;
   }
   if (!state) {
+    const [heap] = await executor.query<{ empty: boolean }>(
+      `SELECT pg_relation_size(to_regclass($1)) = 0 AS empty`,
+      [index.table],
+    );
+    // A table that never stored a row, such as one that an earlier migration
+    // of a fresh install created, gets its index at once in the migration.
+    if (heap?.empty) {
+      return;
+    }
     await executor.execute(
       index.statement.replace(/^CREATE INDEX /, "CREATE INDEX CONCURRENTLY "),
     );
@@ -141,20 +150,15 @@ async function buildConcurrentIndex(
 }
 
 /**
- * Build the marked indexes of pending migrations before the transactional
- * migrate, so that the migrate does not block writes to existing tables.
- * Call it while the migration lock is held.
+ * Build the marked indexes of one pending migration before its transaction,
+ * so that the migration does not block writes to existing tables. Call it
+ * while the migration lock is held, after earlier migrations have committed.
  */
-export async function buildPendingConcurrentIndexes(
+export async function buildConcurrentIndexes(
   executor: JuniorSqlMigrationExecutor,
-  migrations: readonly MigrationMeta[],
-  appliedAt: number | undefined,
+  migration: MigrationMeta,
 ): Promise<void> {
-  const pending = migrations.filter(
-    (migration) =>
-      appliedAt === undefined || migration.folderMillis > appliedAt,
-  );
-  for (const index of pending.flatMap(markedIndexes)) {
+  for (const index of markedIndexes(migration)) {
     await buildConcurrentIndex(executor, index);
   }
 }

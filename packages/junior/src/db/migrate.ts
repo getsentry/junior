@@ -1,4 +1,5 @@
 import { readMigrationFiles, type MigrationConfig } from "drizzle-orm/migrator";
+import { buildConcurrentIndexes } from "./concurrent-indexes";
 import type { JuniorSqlMigrationExecutor } from "./db";
 import { logWarn } from "@/chat/logging";
 
@@ -51,7 +52,8 @@ async function retryOnLockTimeout(
  * (drizzle-orm#3249), so locks from earlier migrations stay held while later
  * migrations wait for theirs. That can deadlock with live traffic. This keeps
  * Drizzle's journal table and skip rule, so existing databases are unaffected.
- * A migration that waits too long for a lock rolls back and runs again.
+ * Before each migration, its marked indexes are built concurrently. A
+ * migration that waits too long for a lock rolls back and runs again.
  */
 export async function applyMigrations(
   executor: JuniorSqlMigrationExecutor,
@@ -72,6 +74,7 @@ export async function applyMigrations(
     if (migration.folderMillis <= appliedAt) {
       continue;
     }
+    await buildConcurrentIndexes(executor, migration);
     await retryOnLockTimeout(String(migration.folderMillis), async () => {
       await executor.transaction(async () => {
         await executor.execute(`SET LOCAL lock_timeout = ${LOCK_TIMEOUT_MS}`);
