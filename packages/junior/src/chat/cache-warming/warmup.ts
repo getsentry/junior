@@ -40,6 +40,8 @@ import {
   MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
+  parentGapSegment,
+  segmentNeedsParent,
   type GapSegmentInput,
   type WorkState,
 } from "./model";
@@ -82,6 +84,8 @@ const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 interface WarmState {
   /** The `gapSegment` that this period records its gap in. */
   segment: string;
+  /** The `parentGapSegment` that a thin `segment` leans on. */
+  parentSegment?: string;
   workState: WorkState;
   archived: boolean;
   modelId: string;
@@ -237,10 +241,13 @@ async function startIdlePeriod(
     snapshot,
     IDLE_HORIZON_MS,
   );
+  const segmentInput = { ...turn, ...segmentState };
+  const parentSegment = parentGapSegment(segmentInput);
   return {
     ...idle,
     warm: {
-      segment: gapSegment({ ...turn, ...segmentState }),
+      segment: gapSegment(segmentInput),
+      ...(parentSegment ? { parentSegment } : undefined),
       ...segmentState,
       modelId: request.model.id,
       prefixTokens,
@@ -520,11 +527,22 @@ export async function runCacheWarmup(
       }
 
       const model = resolveGatewayModel(warm.modelId);
+      const globalGapsMs = await state.getList<number>(
+        segmentGapsKey(warm.segment),
+      );
       const decision = decideWarmup({
         conversationGapsMs: await state.getList<number>(
           conversationGapsKey(conversationId, warm.segment),
         ),
-        globalGapsMs: await state.getList<number>(segmentGapsKey(warm.segment)),
+        globalGapsMs,
+        // Only a thin segment reads its parent's list.
+        ...(warm.parentSegment && segmentNeedsParent(globalGapsMs.length)
+          ? {
+              parentGapsMs: await state.getList<number>(
+                segmentGapsKey(warm.parentSegment),
+              ),
+            }
+          : undefined),
         idleMs: Date.now() - idle.sinceMs,
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,
@@ -537,6 +555,7 @@ export async function runCacheWarmup(
       attributes["app.cache_warming.returns_per_warmup"] =
         decision.returnsPerWarmup;
       attributes["app.cache_warming.threshold"] = decision.threshold;
+      attributes["app.cache_warming.parent_prior"] = decision.parentPrior;
       if (!decision.warm) {
         await skip(decision.reason);
         return;
