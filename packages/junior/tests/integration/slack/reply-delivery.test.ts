@@ -1,9 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
+  type CapturedSlackApiCall,
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+
+function markdownBody(call: CapturedSlackApiCall): string {
+  const [block] = call.params.blocks as Array<{ type: string; text: string }>;
+  expect(block?.type).toBe("markdown");
+  return block?.text ?? "";
+}
 
 describe("sendSlackReply", () => {
   beforeEach(() => {
@@ -57,6 +64,61 @@ describe("sendSlackReply", () => {
         }),
       }),
     ]);
+  });
+
+  it("posts a markdown table with contiguous rows", async () => {
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: [
+        "7 rows were billed twice:",
+        "| Org | Billed |",
+        "|---|---|",
+        "| 405346 | $89.34 |",
+        "| 4512136079409152 | $34.32 |",
+        "What this means",
+      ].join("\n"),
+      threadTs: "1700000000.000100",
+    });
+
+    const [post] = getCapturedSlackApiCalls("chat.postMessage");
+    expect(post && markdownBody(post)).toBe(
+      [
+        "7 rows were billed twice:",
+        "",
+        "| Org | Billed |",
+        "|---|---|",
+        "| 405346 | $89.34 |",
+        "| 4512136079409152 | $34.32 |",
+        "",
+        "What this means",
+      ].join("\n"),
+    );
+  });
+
+  it("starts every chunked post of a table with its header rows", async () => {
+    const header = "| Shard | Tests | Time |\n|---|---|---|";
+    const rows = Array.from(
+      { length: 120 },
+      (_, i) => `| shard-${i} | ${1800 + i} tests | ${300 + i}s |`,
+    );
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: ["x".repeat(3_000), header, ...rows].join("\n"),
+      threadTs: "1700000000.000100",
+    });
+
+    const posts =
+      getCapturedSlackApiCalls("chat.postMessage").map(markdownBody);
+    expect(posts.some((text) => text.endsWith("|---|---|---|"))).toBe(false);
+    const tables = posts.filter((text) => text.includes("| shard-"));
+    expect(tables.length).toBeGreaterThan(1);
+    for (const text of tables) {
+      expect(text.startsWith(`${header}\n`)).toBe(true);
+      expect(text).not.toMatch(/\|\n\n\|/);
+    }
+    expect(tables.join("\n").match(/\| shard-/g)).toHaveLength(rows.length);
   });
 
   it("returns every posted message timestamp for chunked replies", async () => {

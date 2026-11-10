@@ -70,7 +70,7 @@ describe("Output Contract", () => {
     );
   });
 
-  test("when asked to compare two options, use bullets instead of a markdown table", async ({
+  test("when asked to compare two options, use a well-formed table or bullets", async ({
     run,
   }) => {
     const conversation = await run(
@@ -83,11 +83,11 @@ describe("Output Contract", () => {
       rubric({
         pass: [
           "The assistant posts one reply that compares REST and GraphQL across caching, over-fetching, and tooling maturity.",
-          "The comparison is expressed through bullets or bolded labels with short explanations, not a table.",
+          "The comparison is a Markdown table or bullets with short explanations. A table has one header row, a dashed delimiter row, and one row per dimension, with no blank lines between rows.",
         ],
         fail: [
-          "Do not render the comparison as a markdown table with pipe (`|`) column separators and dashed header rows.",
-          "Do not include a row like `| REST | GraphQL |` or similar pipe-delimited structures.",
+          "Do not put the table inside a fenced code block.",
+          "Do not write a table with more than four columns or with cells longer than one short sentence.",
         ],
       }),
     );
