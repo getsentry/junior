@@ -125,7 +125,7 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
  */
 export function DashboardChrome(props: {
   banner?: ReactNode;
-  /** Desktop controls above the page links, such as the hidden pane's. */
+  /** Desktop controls before the page links, such as the hidden pane's. */
   desktopControls?: ReactNode;
   header: ReactNode;
 }) {
@@ -141,16 +141,20 @@ export function DashboardChrome(props: {
     >
       <div className="border-b border-dashboard-border-strong md:border-b-0 md:has-[[data-secondary-slot]>*]:border-b">
         {props.header}
-        {props.desktopControls ? (
-          <div className="hidden h-12 items-center pl-6 md:flex md:empty:hidden">
-            {props.desktopControls}
-          </div>
-        ) : null}
-        <div
-          className="hidden md:block"
-          data-secondary-slot=""
-          ref={chrome.secondarySlotRef}
-        />
+        {/* One 48px row on desktop: the hidden pane's controls, then the page
+            links, so hiding the pane does not add a row. */}
+        <div className="md:flex md:items-center">
+          {props.desktopControls ? (
+            <div className="hidden h-12 shrink-0 items-center pl-6 md:flex md:empty:hidden">
+              {props.desktopControls}
+            </div>
+          ) : null}
+          <div
+            className="hidden min-w-0 md:block md:flex-1"
+            data-secondary-slot=""
+            ref={chrome.secondarySlotRef}
+          />
+        </div>
       </div>
       {props.banner}
     </div>
