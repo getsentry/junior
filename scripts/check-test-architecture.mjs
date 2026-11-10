@@ -17,6 +17,7 @@ const EMPTY_DATABASE_TESTS = new Set([
   "packages/junior/tests/component/scheduled-automations-sql.test.ts",
   "packages/junior/tests/integration/concurrent-index-migrations.test.ts",
   "packages/junior/tests/integration/conversation-sql.test.ts",
+  "packages/junior/tests/integration/migration-info-messages.test.ts",
   "packages/junior/tests/integration/workspace-snapshot-migration.test.ts",
 ]);
 
@@ -32,6 +33,7 @@ const ISOLATED_EVAL_ROOTS = [
   "packages/junior-evals/evals/guardian/",
 ];
 const AGENT_TEST_BASELINE_PATH = "scripts/test-architecture-baseline.json";
+const SOURCE_ROOTS = ["packages/junior/src"];
 
 const RULES = [
   {
@@ -128,6 +130,67 @@ const AGENT_TEST_RULES = [
   },
 ];
 
+// A kind or person-Source branch outside `kind-behavior.ts`.
+const KIND_BRANCH_PATTERNS = [
+  // Conversation kind compared to a value, in either order.
+  /\b[\w$]*[kK]ind\s*(?:===|!==)\s*["'](?:root|thread|task|automation)["']/g,
+  /["'](?:root|thread|task|automation)["']\s*(?:===|!==)\s*(?:[\w$]+\??\.)*[\w$]*[kK]ind\b/g,
+  // A person Source check. Narrowing a Source union to use the narrowed
+  // Source, such as `source.kind === "slack" ? source.threadTs`, is not one.
+  /\bsource(?:\.kind)?\s*(?:===|!==)\s*["'](?:slack|web)["'](?!\s*(?:\?|&&)\s*(?:\{\s*\.\.\.)?(?:[\w$]+\??\.)*source\b)/g,
+  /\bswitch\s*\(\s*(?:[\w$]+\??\.)*source\.kind\s*\)/g,
+  // Reading the Automation result flag. Its declaration and writes are not.
+  /\bdeclaresResult\b(?!\s*\??:)/g,
+];
+
+// A field of the parent edge or the Agent invocation read as a condition.
+const EDGE_FIELD_PATTERN =
+  /\b(?:parentConversationId|parentToolCallId|agentInvocationId)\b/g;
+const EDGE_CONDITION_BEFORE =
+  /(?:\bif\s*\(|!|&&|\|\||===|!==|==|!=)\s*(?:[\w$]+\??\.)*$/;
+const EDGE_CONDITION_AFTER = /^\s*(?:\?(?![.?:])|&&|\|\||===|!==|==|!=)/;
+
+/** Remove comments, so prose that names a field is not counted. */
+function stripComments(contents) {
+  return contents.replace(/\/\*[\s\S]*?\*\/|(?<![:"'`\w])\/\/.*$/gm, "");
+}
+
+/** Count kind, parent-edge, and person-Source branches in one file. */
+function countKindBranches(file) {
+  const code = stripComments(file.contents);
+  let count = 0;
+  for (const pattern of KIND_BRANCH_PATTERNS) {
+    count += countMatches(code, pattern);
+  }
+  for (const match of code.matchAll(EDGE_FIELD_PATTERN)) {
+    const before = code.slice(Math.max(0, match.index - 120), match.index);
+    const after = code.slice(match.index + match[0].length);
+    if (
+      EDGE_CONDITION_BEFORE.test(before) ||
+      EDGE_CONDITION_AFTER.test(after.slice(0, 8))
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Rules for runtime source. Conversation kind and the person who opened a
+ * Turn decide behavior only in `kind-behavior.ts`. The baseline lists the
+ * legacy sites that still branch.
+ */
+export const SOURCE_RULES = [
+  {
+    id: "kind-behavior",
+    message:
+      "branch on Conversation kind, the parent edge, the Agent invocation, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
+    pathPrefix: "packages/junior/src/",
+    exclude: ["packages/junior/src/chat/conversations/kind-behavior.ts"],
+    count: countKindBranches,
+  },
+];
+
 const IMPORT_PATTERN =
   /\bimport\s+(type\s+)?(?:[^"';]*?\s+from\s+)?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -163,6 +226,7 @@ function allowedAgentTestImport(filePath, source, typeOnly) {
 
 function agentRuleApplies(rule, filePath) {
   if (filePath.startsWith(AGENT_FIXTURE_ROOT)) return false;
+  if (rule.exclude?.includes(filePath)) return false;
   if (rule.pathPrefix && !filePath.startsWith(rule.pathPrefix)) return false;
   if (
     rule.pathPrefix === AGENT_EVALS_ROOT &&
@@ -173,10 +237,10 @@ function agentRuleApplies(rule, filePath) {
   return true;
 }
 
-/** Count agent test contract violations by rule and file. */
-export function collectAgentTestViolations(files) {
+/** Count baseline rule violations by rule and file. */
+export function collectAgentTestViolations(files, rules = AGENT_TEST_RULES) {
   const violations = {};
-  for (const rule of AGENT_TEST_RULES) {
+  for (const rule of rules) {
     const byFile = {};
     for (const file of files) {
       if (!agentRuleApplies(rule, file.path)) continue;
@@ -194,10 +258,14 @@ export function collectAgentTestViolations(files) {
  * Report agent test contract violations above the baseline. A baseline entry
  * that is now too high must be lowered, so each list only gets shorter.
  */
-export function checkAgentTestArchitecture(files, baseline) {
+export function checkAgentTestArchitecture(
+  files,
+  baseline,
+  rules = AGENT_TEST_RULES,
+) {
   const errors = [];
-  const violations = collectAgentTestViolations(files);
-  for (const rule of AGENT_TEST_RULES) {
+  const violations = collectAgentTestViolations(files, rules);
+  for (const rule of rules) {
     const actualByFile = violations[rule.id];
     const allowedByFile = baseline[rule.id] ?? {};
     for (const [filePath, actual] of Object.entries(actualByFile)) {
@@ -324,14 +392,20 @@ function collectTests(root, testRoots = TEST_ROOTS) {
 function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
+  const baseline = JSON.parse(
+    fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
+  );
   const errors = [
     ...checkIntegrationTestArchitecture(collectTests(root)),
     ...checkDatabaseTestFixtures(collectTests(root, DATABASE_TEST_ROOTS)),
     ...checkAgentTestArchitecture(
       collectSourceFiles(root, AGENT_TEST_ROOTS),
-      JSON.parse(
-        fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
-      ),
+      baseline,
+    ),
+    ...checkAgentTestArchitecture(
+      collectSourceFiles(root, SOURCE_ROOTS),
+      baseline,
+      SOURCE_RULES,
     ),
   ];
   if (errors.length === 0) {
@@ -342,7 +416,7 @@ function main() {
     [
       "Test architecture check failed:",
       ...errors,
-      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
+      `Fix the code to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
     ].join("\n"),
   );
   process.exitCode = 1;

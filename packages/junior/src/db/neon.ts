@@ -11,6 +11,7 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import { Agent } from "undici";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
+import { forwardInfoMessages } from "./info-messages";
 import { applyMigrations } from "./migrate";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
@@ -331,15 +332,22 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
 /** Create the shared Neon-backed Junior SQL executor. */
 export function createNeonJuniorSqlExecutor(args: {
   connectionString: string;
+  onInfo?: (message: string) => void;
   statementTimeoutMs?: number | false;
 }): NeonJuniorSqlExecutor {
+  const { onInfo, ...poolArgs } = args;
   // On HTTP/2, a warm socket carries many overflow queries at once.
   const dispatcher = new Agent({ allowH2: true });
-  const pool = new OverflowPool({ ...args, dispatcher });
+  const pool = new OverflowPool({ ...poolArgs, dispatcher });
   // An idle client can fail when the server closes it. The pool replaces the
   // client, so report the error instead of crashing the process.
   pool.on("error", (error: Error) => {
     logException(error, "db.pool.client.failed", { "app.db.driver": "neon" });
   });
+  // Messages from SQL-over-HTTP queries do not arrive. Migrations run in a
+  // transaction on a WebSocket client, so their messages do.
+  if (onInfo) {
+    forwardInfoMessages(pool, onInfo);
+  }
   return new NeonExecutor(pool, dispatcher);
 }

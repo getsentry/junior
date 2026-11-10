@@ -7,6 +7,7 @@
  * `conversation:by-activity` supports legacy SQL import only; SQL owns durable
  * conversation metadata in configured runtime.
  */
+import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
@@ -1854,10 +1855,6 @@ export async function ackMessages(args: {
   });
 }
 
-function isHumanFacingMessage(message: InboundMessage): boolean {
-  return message.source === "web" || message.source === "slack";
-}
-
 async function readConversationStop(
   state: StateAdapter,
   conversationId: string,
@@ -1906,7 +1903,7 @@ export async function stopConversationWork(args: {
     const runId = current.execution.runId ?? randomUUID();
     const pendingMessages = current.execution.pendingMessages.filter(
       (message) =>
-        isHumanFacingMessage(message) &&
+        isPersonInput(message.source) &&
         (args.sentAtOrBeforeMs === undefined ||
           message.createdAtMs <= args.sentAtOrBeforeMs),
     );
@@ -2016,7 +2013,7 @@ export async function cancelHumanFacingPendingMessages(args: {
       const isInSnapshot =
         args.receivedBeforeMs === undefined ||
         message.receivedAtMs <= args.receivedBeforeMs;
-      if (isHumanFacingMessage(message) && isRequested && isInSnapshot) {
+      if (isPersonInput(message.source) && isRequested && isInSnapshot) {
         cancelledInboundMessageIds.push(message.inboundMessageId);
         cancelledMessages.push(message);
         continue;

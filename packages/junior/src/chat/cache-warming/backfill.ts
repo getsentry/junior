@@ -17,10 +17,10 @@
  * Conversation had when an idle period started. So it fills only the
  * segments of Conversations that are not archived and have work state
  * `none`, which most Conversations have. The `open` and `done` segments and
- * the `archived:*` segments stay empty until live gaps arrive. With fewer
- * than `MIN_GAP_SAMPLES` gaps, `decideWarmup` returns `few_gaps` and Junior
- * sends no warmup. The idle period still records its gap, so the segment
- * fills from live idle periods.
+ * the `archived:*` segments stay empty until live gaps arrive. Until then,
+ * `decideWarmup` leans on their `parentGapSegment`, a `none` segment that
+ * this fills. Each idle period still records its gap, so the segment fills
+ * from live idle periods.
  */
 import { performance } from "node:perf_hooks";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";

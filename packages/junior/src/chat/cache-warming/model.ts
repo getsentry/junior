@@ -38,13 +38,20 @@ const GAP_BIN_EDGES_MS: readonly number[] = [
 ];
 const GAP_BIN_COUNT = GAP_BIN_EDGES_MS.length;
 
-/** Gaps a conversation needs before its own gaps replace the global gaps. */
+/**
+ * Gaps that a list needs before it replaces the list it leans on: the
+ * Conversation's gaps replace its segment's gaps, and a segment's gaps
+ * replace its parent segment's gaps (`parentGapSegment`). A new or rare
+ * segment starts with its parent's return chances, so it can warm before it
+ * has gaps of its own.
+ */
 const BLEND_PSEUDOCOUNT = 20;
 
 /**
- * Gaps that a decision needs in total. With fewer, one gap sets the return
- * chance for each Conversation of the segment, such as at launch or after
- * the gap lists expire.
+ * Gaps that a decision needs in total, from the Conversation, its segment,
+ * and a thin segment's parent. With fewer, one gap sets the return chance for
+ * each Conversation of the segment, such as at launch or after the gap lists
+ * expire.
  */
 export const MIN_GAP_SAMPLES = 20;
 
@@ -94,22 +101,20 @@ function histogramOf(gapsMs: readonly number[]): GapHistogram {
   return { counts, total: gapsMs.length };
 }
 
-// A conversation with few gaps leans on the global gaps. Each conversation
-// gap moves the weight by 1/BLEND_PSEUDOCOUNT. The two histograms are mixed as
-// shares, so the much larger global list does not hide the conversation gaps.
-function blendHistograms(
-  conversation: GapHistogram,
-  global: GapHistogram,
-): GapHistogram {
-  if (conversation.total === 0 || global.total === 0) {
-    return conversation.total === 0 ? global : conversation;
+// A list with few gaps leans on a larger prior list: a Conversation on its
+// segment, or a thin segment on its parent. Each own gap moves the weight by
+// 1/BLEND_PSEUDOCOUNT. The two histograms are mixed as shares, so a much
+// larger prior list does not hide the own gaps.
+function blendHistograms(own: GapHistogram, prior: GapHistogram): GapHistogram {
+  if (own.total === 0 || prior.total === 0) {
+    return own.total === 0 ? prior : own;
   }
-  const weight = Math.min(conversation.total / BLEND_PSEUDOCOUNT, 1);
+  const weight = Math.min(own.total / BLEND_PSEUDOCOUNT, 1);
   return {
-    counts: conversation.counts.map(
+    counts: own.counts.map(
       (count, index) =>
-        (weight * count) / conversation.total +
-        ((1 - weight) * global.counts[index]!) / global.total,
+        (weight * count) / own.total +
+        ((1 - weight) * prior.counts[index]!) / prior.total,
     ),
     total: 1,
   };
@@ -246,6 +251,21 @@ export function gapHistogramReport(gapsMs: readonly number[]): {
   };
 }
 
+/**
+ * Segment whose gaps a thin segment leans on: the `none` segment with the
+ * same Actor and Turn depth. The backfill and most traffic keep the `none`
+ * segments full. A `none` segment that is not archived has no parent.
+ */
+export function parentGapSegment(input: GapSegmentInput): string | undefined {
+  if (!input.archived && input.workState === "none") return undefined;
+  return gapSegment({ ...input, workState: "none", archived: false });
+}
+
+/** Whether a segment has too few gaps to stand without its parent. */
+export function segmentNeedsParent(segmentGaps: number): boolean {
+  return segmentGaps < BLEND_PSEUDOCOUNT;
+}
+
 /** Inputs for one warmup decision. Prices use one unit, such as $/MTok. */
 export interface WarmupDecisionInput {
   /**
@@ -258,6 +278,11 @@ export interface WarmupDecisionInput {
    * conversations, recorded the same way.
    */
   globalGapsMs: readonly number[];
+  /**
+   * Gaps of the `parentGapSegment`. They count only while the segment is
+   * thin (`segmentNeedsParent`).
+   */
+  parentGapsMs?: readonly number[];
   /** Time since the cached request started. */
   idleMs: number;
   /**
@@ -287,6 +312,8 @@ export interface WarmupDecision {
   /** Best returns per warmup over the plans that `decideWarmup` compares. */
   returnsPerWarmup: number;
   threshold: number;
+  /** The parent segment's gaps filled in for a thin segment. */
+  parentPrior: boolean;
 }
 
 /**
@@ -309,7 +336,14 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     savedPerReturn > 0 ? Math.min(input.cacheReadPrice / savedPerReturn, 1) : 1;
   const conversation = histogramOf(input.conversationGapsMs);
   const global = histogramOf(input.globalGapsMs);
-  const histogram = blendHistograms(conversation, global);
+  const parent =
+    input.parentGapsMs && segmentNeedsParent(global.total)
+      ? histogramOf(input.parentGapsMs)
+      : undefined;
+  const histogram = blendHistograms(
+    conversation,
+    parent ? blendHistograms(global, parent) : global,
+  );
   const probability = returnProbability(
     histogram,
     input.idleMs,
@@ -327,6 +361,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     returnProbability: probability,
     returnsPerWarmup: perWarmup,
     threshold,
+    parentPrior: (parent?.total ?? 0) > 0,
   });
   if (input.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return decision("prefix_too_small");
@@ -337,7 +372,10 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   if (input.idleMs >= IDLE_HORIZON_MS) {
     return decision("horizon");
   }
-  if (conversation.total + global.total < MIN_GAP_SAMPLES) {
+  if (
+    conversation.total + global.total + (parent?.total ?? 0) <
+    MIN_GAP_SAMPLES
+  ) {
     return decision("few_gaps");
   }
   return decision(perWarmup >= threshold ? "warm" : "unlikely_return");

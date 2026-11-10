@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.292.0
+
+### New Features ✨
+
+- (dashboard) Load more home conversations on scroll by @betegon with @sentry-junior in [#3073](https://github.com/getsentry/junior/pull/3073)
+
+### Bug Fixes 🐛
+
+- (identities) Repair Slack Identities linked by dashboard posts by @BYK with @sentry-junior in [#3072](https://github.com/getsentry/junior/pull/3072)
+
+### Internal Changes 🔧
+
+- (conversations) Share one filter for listed Conversations by @thomasjiangcy with @sentry-junior in [#3071](https://github.com/getsentry/junior/pull/3071)
+
+## 0.291.0
+
+Migrations now avoid prolonged lock waits, flag risky SQL earlier, preserve authorization visibility, explain failures, improve dashboards, and accept marked-index lint breakpoints.
+
+### New Features ✨
+
+- (db) Bound migration lock waits and reject migrations that block the app by @BYK with @sentry-junior in [#3070](https://github.com/getsentry/junior/pull/3070)
+
+### Bug Fixes 🐛
+
+Authorization waits stay visible, command failures reveal causes, dashboards handle crowded statuses, and migration linting accepts marked-index breakpoints.
+
+#### Conversations
+
+- Keep conversations that wait on an authorization out of auto-archive by @BYK with @sentry-junior in [#3063](https://github.com/getsentry/junior/pull/3063)
+- Save the root Actor Identity only on the first write by @szokeasaurusrex with @sentry-junior in [#3066](https://github.com/getsentry/junior/pull/3066)
+
+#### Other
+
+- (cli) Print the error cause when a junior command fails by @mwarkentin with @sentry-junior in [#3069](https://github.com/getsentry/junior/pull/3069)
+- (dashboard) Cap status icons in linked work chips by @BYK with @sentry-junior in [#3064](https://github.com/getsentry/junior/pull/3064)
+- (lint) Accept a statement breakpoint after a marked index by @sentry-junior in [#3074](https://github.com/getsentry/junior/pull/3074)
+
 ## 0.290.0
 
 ### Bug Fixes 🐛

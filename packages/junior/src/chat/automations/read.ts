@@ -18,6 +18,7 @@ import {
 } from "./collection";
 import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
+import { automationTaskDescription, automationTaskSchema } from "./task";
 import {
   emptyAutomationRunWindows,
   readAutomationExecutionByConversationId,
@@ -263,8 +264,8 @@ function scheduledAutomationSummary(
     task.status === "active"
       ? (task.runNowAtMs ?? task.nextRunAtMs)
       : undefined;
-  const instruction = displayText(
-    task.task.text,
+  const description = displayText(
+    automationTaskDescription(task.task),
     "Untitled scheduled automation",
   );
   return {
@@ -279,7 +280,7 @@ function scheduledAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction,
+    task: task.task,
     kind: "scheduled",
     ...executionSummaryFields(stats),
     ...(nextRunAtMs !== undefined
@@ -294,7 +295,7 @@ function scheduledAutomationSummary(
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
-      instruction,
+      description,
       "Untitled scheduled automation",
     ),
   };
@@ -307,7 +308,7 @@ function eventAutomationSummary(
   stats: AutomationExecutionSummary | undefined,
   creator: CreatorProfile | undefined,
 ): AutomationSummary {
-  const instruction = task.task.text;
+  const description = automationTaskDescription(task.task);
   const catalog = getEventCatalog();
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
@@ -321,7 +322,7 @@ function eventAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    instruction,
+    task: task.task,
     kind: "event",
     ...executionSummaryFields(stats),
     ownedByViewer,
@@ -333,7 +334,7 @@ function eventAutomationSummary(
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(
       task.title,
-      instruction,
+      description,
       "Untitled event automation",
     ),
     status: task.status === "deleted" ? "active" : task.status,
@@ -676,7 +677,7 @@ export async function readViewerAutomationRuns(
       `${task.kind}:${task.id}`,
       taskDisplayTitle(
         task.title ?? undefined,
-        task.instruction,
+        automationTaskDescription(automationTaskSchema.parse(task.task)),
         `Untitled ${task.kind} automation`,
       ),
     );
@@ -684,7 +685,7 @@ export async function readViewerAutomationRuns(
   }
   for (const task of deletedScheduled) {
     const instruction = displayText(
-      task.task.text,
+      automationTaskDescription(task.task),
       "Untitled scheduled automation",
     );
     addDeletedAutomationRun(
@@ -703,7 +704,7 @@ export async function readViewerAutomationRuns(
   }
   for (const task of deletedEvent) {
     const instruction = displayText(
-      task.task.text,
+      automationTaskDescription(task.task),
       "Untitled event automation",
     );
     addDeletedAutomationRun(
@@ -859,7 +860,7 @@ export async function readConversationSourceTask(args: {
   );
   if (candidate.kind === "scheduled") {
     const instruction = displayText(
-      candidate.task.task.text,
+      automationTaskDescription(candidate.task.task),
       "Untitled scheduled automation",
     );
     const schedule = candidate.task.schedule.description.trim();
@@ -878,7 +879,7 @@ export async function readConversationSourceTask(args: {
     };
   }
   const instruction = displayText(
-    candidate.task.task.text,
+    automationTaskDescription(candidate.task.task),
     "Untitled event automation",
   );
   const { events, label } = candidate.task.trigger;

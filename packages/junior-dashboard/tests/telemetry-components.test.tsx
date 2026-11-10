@@ -1655,7 +1655,13 @@ describe("dashboard canonical-event components", () => {
   it("renders system metrics and capability inventories", () => {
     const data = systemData();
     data.plugins = [plugin("github")];
-    data.skills = [{ name: "triage", pluginProvider: "github" }];
+    data.skills = [
+      {
+        name: "triage",
+        description: "Triage issues.",
+        pluginProvider: "github",
+      },
+    ];
 
     const systemHtml = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/system"]}>
@@ -1722,7 +1728,11 @@ describe("dashboard canonical-event components", () => {
       plugin("scheduler", {}),
     ];
     data.skills = [
-      { name: "scheduled-automations", pluginProvider: "scheduler" },
+      {
+        name: "scheduled-automations",
+        description: "Manage scheduled automations.",
+        pluginProvider: "scheduler",
+      },
     ];
     data.pluginReports!.reports = [
       {

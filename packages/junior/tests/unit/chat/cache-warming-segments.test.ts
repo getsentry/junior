@@ -9,6 +9,7 @@ import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { mockTitleModel } from "../../fixtures/title-model";
 
 const mocks = vi.hoisted(() => ({
   sendCacheWarmup: vi.fn(async (_message: unknown, _delayMs: number) => {}),
@@ -27,6 +28,7 @@ const conversationId = "local:test:cache-warming-segments";
 // Only this Conversation has plugin work, so the other cases keep `none`.
 const workConversationId = "local:test:cache-warming-segments-work";
 const childConversationId = `${workConversationId}:child`;
+const openWorkConversationId = "local:test:cache-warming-segments-open";
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
 const context: Context = {
   systemPrompt: "Answer the question.",
@@ -86,6 +88,7 @@ describe("cache warming gap segments", () => {
       conversationId,
       workConversationId,
       childConversationId,
+      openWorkConversationId,
     ]) {
       await getStateAdapter().delete(`junior:cache_warming:conversation:${id}`);
     }
@@ -186,6 +189,63 @@ describe("cache warming gap segments", () => {
     expect(await segmentGaps("archived:open")).toEqual([3 * MINUTE]);
     expect(await segmentGaps("archived:none")).toEqual([2 * MINUTE]);
     expect(await segmentGaps("system:2-3:open")).toEqual([]);
+  });
+
+  it("warms a segment with no gaps of its own with the gaps of its parent", async () => {
+    const state = getStateAdapter();
+    await createApp({
+      dashboard: { disabled: true },
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "open-work",
+            displayName: "Open work",
+            description: "Cache warming parent prior test plugin",
+          },
+          hooks: {
+            unfinishedWork: () => ({
+              assignedConversationIds: [openWorkConversationId],
+              conversationIds: [openWorkConversationId],
+              finishedWorkAtByConversationId: {},
+            }),
+          },
+        }),
+      ]),
+    });
+    await getConversationStore().recordActivity({
+      conversationId: openWorkConversationId,
+      destination: {
+        platform: "local",
+        conversationId: openWorkConversationId,
+      },
+      source: "internal",
+    });
+    // People reply after 8 minutes in the `none` segment. The `open`
+    // segment has no gaps yet.
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mocks.sendCacheWarmup.mockClear();
+    try {
+      // The model service answers the warmup with fixed text.
+      const warmupRequests: unknown[] = [];
+      mockTitleModel("", {
+        onRequest: (request) => warmupRequests.push(request),
+      });
+      await endTurn(true, openWorkConversationId);
+      await runCacheWarmup(scheduledWarmup());
+
+      expect(await segmentGaps("user:1:open")).toEqual([]);
+      // Without the parent's gaps, the empty segment would skip the warmup.
+      expect(warmupRequests).toHaveLength(1);
+    } finally {
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      // The warmup counted an outcome for the provider breaker.
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
   });
 
   it("does not record a no-reply gap after a reply recorded the real gap", async () => {

@@ -18,11 +18,14 @@ import {
 import { createGitHubTools } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
+import { botLoginFromEmail } from "./webhooks/ownership.js";
+import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestCommitPages,
+  searchOpenPullRequestMergeability,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
 } from "./webhooks/installation-requests.js";
@@ -313,6 +316,25 @@ export function githubPlugin(
       formatMarkdown({ text }) {
         return linkifyGitHubReferences(text);
       },
+      async heartbeat(ctx) {
+        await runGitHubConflictChecks({
+          db: ctx.db as GitHubDb,
+          events: ctx.events,
+          log: ctx.log,
+          now: new Date(ctx.nowMs),
+          search: async (input) => {
+            const login = botLoginFromEmail(requireEnv(botEmailEnv));
+            if (!login) {
+              throw new Error(`${botEmailEnv} is not a GitHub bot address`);
+            }
+            return await searchOpenPullRequestMergeability(
+              { appIdEnv, installationIdEnv, privateKeyEnv },
+              { ...input, author: `app/${login.replace(/\[bot\]$/, "")}` },
+            );
+          },
+          state: ctx.state,
+        });
+      },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
         const [
@@ -374,6 +396,7 @@ export function githubPlugin(
             privateKeyEnv,
             events: ctx.events,
             reviewItems: ctx.reviewItems,
+            state: ctx.state,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

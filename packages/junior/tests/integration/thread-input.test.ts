@@ -269,11 +269,11 @@ describe("Thread input", () => {
         agentInvocationId: expect.any(String),
       });
       // The person's Turn uses the Thread's own Destination and Location,
-      // copies of its root's, and cannot start or message child agents.
+      // copies of its root's. Tool wiring reads its agent tools from
+      // `turnBehavior`.
       expect(personRun).toMatchObject({
         actor: webTestActor,
         destination: slackDestination,
-        disabledFeatures: ["subagents"],
         // Not a Slack run: only a root delivers to its Location.
         surface: "api",
       });

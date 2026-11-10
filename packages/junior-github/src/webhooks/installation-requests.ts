@@ -73,6 +73,37 @@ export async function loadPullRequest(
   );
 }
 
+/**
+ * Read one page of a repository's open pull requests by one author, with
+ * their mergeability, through GraphQL search and a read-only token.
+ */
+export async function searchOpenPullRequestMergeability(
+  env: GitHubInstallationEnv,
+  input: { after?: string; author: string; repositoryFullName: string },
+): Promise<unknown> {
+  const { name } = splitRepository(
+    input.repositoryFullName,
+    "pull request mergeability",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      query:
+        "query($query: String!, $after: String) { search(query: $query, type: ISSUE, first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { ... on PullRequest { number state mergeable headRefOid baseRefName url } } } }",
+      variables: {
+        after: input.after ?? null,
+        query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
+      },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
 /** Add the "reviewing" reaction to one pull request feedback comment. */
 export async function markPullRequestFeedbackReviewing(
   env: GitHubInstallationEnv,

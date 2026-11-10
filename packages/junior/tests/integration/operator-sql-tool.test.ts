@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
@@ -7,12 +8,19 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
+
 const CONVERSATION_ID = "local:operator:current";
 
 function context(
   conversationPrivacy: ToolRuntimeContext["conversationPrivacy"],
 ): ToolRuntimeContext {
   return {
+    turnTools: rootTurnTools,
     conversationId: CONVERSATION_ID,
     conversationPrivacy,
     destination: { platform: "local", conversationId: CONVERSATION_ID },

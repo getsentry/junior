@@ -5,6 +5,11 @@ import {
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
 import { renderTaskInput } from "@/chat/task-input";
+import { automationTaskText } from "@/chat/automations/task";
+import {
+  findAutomationSkill,
+  missingAutomationSkillReason,
+} from "@/chat/automations/skill";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
@@ -43,7 +48,8 @@ function singleLineMetadataValue(value: string): string {
 function buildDispatchInput(task: ScheduledAutomation): string {
   return renderTaskInput({
     creator: slackMention(task.createdBy.slackUserId),
-    instructions: task.task.text,
+    instructions: automationTaskText(task.task),
+    ...(task.task.kind === "skill" ? { skill: task.task.skill } : undefined),
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
   });
 }
@@ -53,9 +59,6 @@ function buildDispatchMetadata(args: {
   run: ScheduledRun;
   task: ScheduledAutomation;
 }): Record<string, string> {
-  if (!args.task.task.text?.trim()) {
-    throw new Error("Scheduled automation text is required");
-  }
   return {
     runId: args.run.id,
     schedule: singleLineMetadataValue(args.task.schedule.description),
@@ -344,16 +347,11 @@ export async function runScheduledAutomationHeartbeat(args: {
       continue;
     }
 
-    let metadata: Record<string, string>;
-    try {
-      metadata = buildDispatchMetadata({ nowMs: args.nowMs, run, task });
-    } catch (error) {
+    const skill = task.task.kind === "skill" ? task.task.skill : undefined;
+    if (skill && !(await findAutomationSkill(skill))) {
       await finishClaimedRun({
         db,
-        errorMessage:
-          error instanceof Error
-            ? `Scheduled automation dispatch metadata could not be built: ${error.message}`
-            : "Scheduled automation dispatch metadata could not be built.",
+        errorMessage: missingAutomationSkillReason(skill),
         nowMs: args.nowMs,
         run,
         status: "blocked",
@@ -382,7 +380,8 @@ export async function runScheduledAutomationHeartbeat(args: {
           destination: task.destination,
           destinationVisibility: task.conversationAccess.visibility,
           input: buildDispatchInput(task),
-          metadata,
+          ...(skill ? { skill } : undefined),
+          metadata: buildDispatchMetadata({ nowMs: args.nowMs, run, task }),
           replyAttribution: automationReplyAttribution(task.title),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },

@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm";
 import { conversationAnnotationInputSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
+import { listedConversation } from "@/chat/conversations/sql/listed";
 import type {
   ConversationKind,
   ConversationStatus,
@@ -114,9 +115,8 @@ async function readViewerTrees(userId: string, nowMs: number) {
     .where(
       and(
         conversationIsMemberRoot({ userId }),
-        isNull(juniorConversations.parentConversationId),
+        listedConversation(),
         isNull(juniorConversations.archivedAt),
-        isNull(juniorConversations.quickQuestionAt),
         gte(
           juniorConversations.lastActivityAt,
           new Date(nowMs - ACTIVE_WINDOW_MS),

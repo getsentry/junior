@@ -1,3 +1,4 @@
+import { automationTaskDescription } from "@/chat/automations/task";
 import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
@@ -54,7 +55,7 @@ export async function notifyAutomationBlocked(
       const title =
         task.title ??
         fallbackShortTitle(
-          task.task.text,
+          automationTaskDescription(task.task),
           ref.kind === "scheduled"
             ? "Scheduled automation"
             : "Event automation",

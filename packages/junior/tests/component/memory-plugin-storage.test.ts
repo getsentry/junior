@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import path from "node:path";
 import { readdirSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +34,12 @@ import {
   defineJuniorPlugin,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
 
 const NEON = vi.hoisted(() => ({
   sql: undefined as
@@ -169,6 +176,7 @@ function memoryToolsFor(args: {
     userId: args.userId,
   };
   return getPluginTools({
+    turnTools: rootTurnTools,
     actor,
     conversationId: args.conversationId,
     destination: {
@@ -484,6 +492,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         user: { id: viewer.user.id },
       });
       const webTools = getPluginTools({
+        turnTools: rootTurnTools,
         actor: webActor,
         conversationId: webConversationId,
         destination: { platform: "local", conversationId: webConversationId },
@@ -575,6 +584,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         resolveActorIdentity: () => readActorIdentity(actor),
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
         userText: "remember memory plugin facts",
+        turnTools: rootTurnTools,
       };
       const tools = getPluginTools({ ...turnContext, source });
 
