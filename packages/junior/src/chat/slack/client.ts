@@ -82,6 +82,11 @@ interface SlackRetryContext {
    * post).
    */
   idempotent?: boolean;
+  /**
+   * Error codes that the caller handles as success, such as `already_reacted`.
+   * They still throw, but they do not log `slack.action.failed`.
+   */
+  expectedErrorCodes?: readonly SlackActionErrorCode[];
   /** Extra attributes forwarded onto the per-attempt Sentry span. */
   spanAttributes?: Record<string, string | number | boolean>;
 }
@@ -546,6 +551,9 @@ export async function withSlackRetries<T>(
         attempt >= maxAttempts ||
         remainingDelayBudgetMs <= 0
       ) {
+        if (context.expectedErrorCodes?.includes(mapped.code)) {
+          throw mapped;
+        }
         logWarn("slack.action.failed", {
           ...baseLogAttributes,
           ...(mapped.errorData
