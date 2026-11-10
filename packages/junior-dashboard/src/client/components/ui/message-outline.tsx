@@ -228,8 +228,17 @@ function MessageOutlineItem({
 function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
   const { listRef, previewIndex } = useMessageOutline();
   if (previewIndex === undefined) return null;
-  const offset =
-    previewIndex * ITEM_PX + ITEM_PX / 2 - (listRef.current?.scrollTop ?? 0);
+  const list = listRef.current;
+  const offset = previewIndex * ITEM_PX + ITEM_PX / 2 - (list?.scrollTop ?? 0);
+  // The card centers on its item but stays inside the outline, so a card at
+  // the first or last item does not make the page around it scroll.
+  const wrapper = list?.offsetParent;
+  let translate = `calc(${offset}px - 50%)`;
+  if (wrapper instanceof HTMLElement && wrapper.parentElement) {
+    const top = -wrapper.offsetTop;
+    const bottom = top + wrapper.parentElement.clientHeight;
+    translate = `clamp(${top}px, ${translate}, calc(${bottom}px - 100%))`;
+  }
   return (
     <div
       aria-hidden="true"
@@ -239,7 +248,7 @@ function MessageOutlinePreview({ className, ...props }: ComponentProps<"div">) {
         "pointer-events-none absolute top-0 left-full ml-2 grid w-72 origin-left gap-1.5 rounded-xl border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3.5 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-[translate,scale,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] starting:scale-[0.97] starting:opacity-0 motion-reduce:transition-[opacity] motion-reduce:starting:scale-100",
         className,
       )}
-      style={{ translate: `0 calc(${offset}px - 50%)` }}
+      style={{ translate: `0 ${translate}` }}
       {...props}
     />
   );

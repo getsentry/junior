@@ -394,6 +394,9 @@ test("points at the outline item under a still pointer while the list scrolls", 
     name: "Conversation outline",
   });
   await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  // The list scrolls to the active item near its end, so a wheel up has
+  // room to scroll.
+  await expect(outline.locator("button[aria-current]")).toBeInViewport();
   await outline.getByRole("list").hover({ position: { x: 4, y: 200 } });
   const pointed = outline.locator("button[data-highlighted]");
   const title = page.locator('[data-slot="message-outline-preview-title"]');
