@@ -5,15 +5,19 @@ import { fileURLToPath } from "node:url";
 /**
  * Migration lock check.
  *
- * `junior upgrade` runs every pending Drizzle migration in one transaction
- * against the live database, so a statement that holds a strong lock while
- * it scans or rewrites a table blocks the app until the batch commits. This
+ * `junior upgrade` runs each pending migration in a transaction against the
+ * live database, so a statement that holds a strong lock while it scans or
+ * rewrites a table blocks the app until the migration commits. This
  * check rejects those statements on tables that the same migration did not
- * create. Shipped migrations already ran, so the baseline exempts them.
+ * create. `junior upgrade` also bounds each lock wait (see
+ * packages/junior/src/db/migrate.ts), so a statement that only
+ * needs its lock for an instant, such as ADD COLUMN, passes here. Shipped
+ * migrations already ran, so the baseline exempts them.
  */
 
 const BASELINE_PATH = "scripts/migration-locks-baseline.json";
 const CONCURRENT_INDEX_MARKER = "-- junior:concurrent-index";
+const BOUNDED_BACKFILL_MARKER = "-- junior:bounded-backfill:";
 const NAME = String.raw`"?([A-Za-z0-9_]+)"?`;
 const TABLE = String.raw`(?:"?public"?\.)?${NAME}`;
 const VOLATILE_DEFAULT =
@@ -32,6 +36,7 @@ const RULES = {
     "SET NOT NULL on an existing table scans it under an exclusive lock. Add a NOT VALID CHECK (column IS NOT NULL), validate it in a later migration, then set NOT NULL.",
   "volatile-default":
     "ADD COLUMN with a volatile DEFAULT rewrites the table under an exclusive lock. Add the column without a default, then backfill it.",
+  "unbounded-backfill": `UPDATE or DELETE on an existing table locks every row it changes until the migration commits, and app writes to those rows wait. Keep it to a small or idle set of rows, and say why on the line before it: "${BOUNDED_BACKFILL_MARKER} <reason>".`,
 };
 
 function withoutLineComment(line) {
@@ -71,6 +76,32 @@ function indexViolations(lines, newTables) {
       if (!isNewTable && previousLine !== CONCURRENT_INDEX_MARKER) {
         violations.push("index-without-concurrent-build");
       }
+    }
+    if (line.trim()) {
+      previousLine = line.trim();
+    }
+  }
+  return violations;
+}
+
+function backfillViolations(lines, newTables) {
+  const violations = [];
+  const backfillPattern = new RegExp(
+    String.raw`^\s*(?:UPDATE|DELETE\s+FROM)\s+(?:ONLY\s+)?${TABLE}`,
+    "i",
+  );
+  let previousLine = "";
+  for (const line of lines) {
+    const table = backfillPattern.exec(line)?.[1]?.toLowerCase();
+    if (
+      table !== undefined &&
+      !newTables.has(table) &&
+      !(
+        previousLine.startsWith(BOUNDED_BACKFILL_MARKER) &&
+        previousLine.slice(BOUNDED_BACKFILL_MARKER.length).trim()
+      )
+    ) {
+      violations.push("unbounded-backfill");
     }
     if (line.trim()) {
       previousLine = line.trim();
@@ -137,6 +168,7 @@ export function migrationLockViolations(sql) {
   return [
     ...indexViolations(lines, newTables),
     ...alterTableViolations(lines, newTables),
+    ...backfillViolations(lines, newTables),
   ];
 }
 

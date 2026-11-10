@@ -21,6 +21,9 @@ test("accepts statements that do not block an existing table", () => {
     '    CREATE INDEX "items_owner_idx" ON "items" USING btree ("owner_id");',
     "  END IF;",
     "END $$;",
+    'UPDATE "new_items" SET "owner_id" = NULL;',
+    "-- junior:bounded-backfill: only rows from the retired importer, which no longer writes",
+    'UPDATE "items" SET "kind" = \'a\' WHERE "kind" IS NULL;',
   ].join("\n");
   assert.deepEqual(migrationLockViolations(sql), []);
 });
@@ -34,6 +37,9 @@ test("rejects statements that lock an existing table while they scan or rewrite 
     'ALTER TABLE "items" ALTER COLUMN "size" SET DATA TYPE bigint;--> statement-breakpoint',
     'ALTER TABLE "items" ALTER COLUMN "owner_id" SET NOT NULL;--> statement-breakpoint',
     'ALTER TABLE "items" ADD COLUMN "token" uuid DEFAULT gen_random_uuid();',
+    'UPDATE "items" SET "kind" = \'a\';',
+    "-- junior:bounded-backfill:",
+    'DELETE FROM "items" WHERE "kind" IS NULL;',
   ].join("\n");
   assert.deepEqual(migrationLockViolations(sql), [
     "index-without-concurrent-build",
@@ -43,6 +49,8 @@ test("rejects statements that lock an existing table while they scan or rewrite 
     "column-type-change",
     "set-not-null",
     "volatile-default",
+    "unbounded-backfill",
+    "unbounded-backfill",
   ]);
 });
 
