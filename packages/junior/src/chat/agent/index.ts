@@ -928,8 +928,12 @@ async function executeAgentRunInPrivacyContext(
       }
       try {
         await requireConversationLease("reply");
+        // Read from the Turn start, not the slice start: the call can be in an
+        // earlier slice of this Turn, before a yield, timeout, or auth pause.
         const progress = readProgressReply(
-          agent!.state.messages.slice(runResume.beforeMessageCount),
+          agent!.state.messages.slice(
+            runResume.turnStartMessageIndex ?? runResume.beforeMessageCount,
+          ),
         );
         await delivery(message, progress ? { progress } : undefined);
         acceptedToolFreeAssistant = true;

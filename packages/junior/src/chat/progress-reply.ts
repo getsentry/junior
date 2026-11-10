@@ -9,7 +9,7 @@ import {
 export const PROGRESS_REPLY_TOOL_NAME = "markProgressReply";
 
 /**
- * True when the new messages of one run hold a successful progress-reply
+ * True when the messages of the current Turn hold a successful progress-reply
  * call. Do not pass the whole history: a call from an earlier Turn must not
  * mark this one.
  */
