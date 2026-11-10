@@ -23,6 +23,7 @@ const CONCURRENT_INDEX_MARKER = "-- junior:concurrent-index";
 const BOUNDED_BACKFILL_MARKER = "-- junior:bounded-backfill:";
 // The one-line statement shape that packages/junior/src/db/concurrent-indexes.ts
 // can build concurrently.
+const STATEMENT_BREAKPOINT = "--> statement-breakpoint";
 const CONCURRENT_INDEX_STATEMENT =
   /^CREATE INDEX "[a-z0-9_]+" ON "[a-z0-9_]+" .+;$/;
 const VOLATILE_FUNCTIONS = new Set([
@@ -196,7 +197,12 @@ export async function migrationLockViolations(sql) {
     if (node.IndexStmt && isExisting(node.IndexStmt.relation)) {
       if (lineBefore(line) !== CONCURRENT_INDEX_MARKER) {
         violations.push("index-without-concurrent-build");
-      } else if (!CONCURRENT_INDEX_STATEMENT.test(lines[line - 1].trim())) {
+      } else if (
+        !CONCURRENT_INDEX_STATEMENT.test(
+          // Drizzle removes the breakpoint before junior upgrade reads the line.
+          lines[line - 1].replace(STATEMENT_BREAKPOINT, "").trim(),
+        )
+      ) {
         violations.push("unsupported-concurrent-index");
       }
     }

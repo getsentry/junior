@@ -20,6 +20,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { parseStoredBrief } from "@/chat/briefs/schema";
 import { treeHasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
+import { listedConversation } from "@/chat/conversations/sql/listed";
 import type { ConversationStatus } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import {
@@ -69,14 +70,12 @@ export async function searchTopLevelAgents(args: {
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
   const searchVector = sql`to_tsvector('english', ${briefs.searchText})`;
   const conditions: (SQL | undefined)[] = [
-    isNull(juniorConversations.parentConversationId),
+    listedConversation(),
     // Only valid roots, so `limit` counts only real results.
     eq(
       juniorConversations.rootConversationId,
       juniorConversations.conversationId,
     ),
-    // An unkept Quick question is a private side thread.
-    isNull(juniorConversations.quickQuestionAt),
     isNull(juniorConversations.transcriptPurgedAt),
     ne(juniorConversations.conversationId, requesterConversationId),
     eq(juniorDestinations.visibility, "public"),
