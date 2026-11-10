@@ -4,6 +4,9 @@ import { formatCliFailure } from "./failure";
 import { runCli } from "./run";
 import type { JuniorPluginSet } from "../plugins";
 
+// bin/junior.mjs loads this module and formats its own failures with this.
+export { formatCliFailure } from "./failure";
+
 const SENTRY_FLUSH_TIMEOUT_MS = 2_000;
 
 async function flushSentry(): Promise<void> {
