@@ -15,7 +15,7 @@ import {
   PageContentSkeleton,
   type PageContentSkeletonVariant,
 } from "./components/PageContentSkeleton";
-import { ProfileMenu } from "./components/ProfileMenu";
+import { ProfileMenu, SpendSummary } from "./components/ProfileMenu";
 import {
   DashboardChrome,
   DashboardChromeProvider,
@@ -324,6 +324,11 @@ export function DashboardShell() {
               spend={personalSpendQuery.data}
               pages={profileNavItems}
             />
+          ) : undefined
+        }
+        spend={
+          loggedIn ? (
+            <SpendSummary labelled spend={personalSpendQuery.data} />
           ) : undefined
         }
         workspaceActive={workspace}

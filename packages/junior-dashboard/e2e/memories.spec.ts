@@ -10,8 +10,7 @@ test("opens a registered plugin page from the profile menu", async ({
 
   await page
     .getByRole("button", {
-      name: "Open profile menu for Dashboard User",
-      exact: true,
+      name: /^Open profile menu for Dashboard User\./,
     })
     .click();
   const memoriesLink = page

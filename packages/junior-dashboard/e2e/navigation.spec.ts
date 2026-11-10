@@ -1,6 +1,8 @@
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
+const SPEND_LABEL = "Personal model spend: 7 days $0.46, 30 days $0.46";
+
 test("shows the primary destinations at the top of every desktop pane", async ({
   page,
   dashboard,
@@ -39,12 +41,15 @@ test("shows the primary destinations at the top of every desktop pane", async ({
   await expect(
     primary.getByRole("link", { name: "Automations" }),
   ).toHaveAttribute("aria-current", "page");
-  await expect(
-    page.getByRole("button", {
-      name: "Open profile menu for Dashboard User",
-      exact: true,
-    }),
-  ).toBeVisible();
+  // The profile row keeps the running spend totals in view.
+  const profile = page.getByRole("button", {
+    name: /^Open profile menu for Dashboard User\./,
+  });
+  await expect(profile).toHaveAccessibleName(
+    `Open profile menu for Dashboard User. ${SPEND_LABEL}.`,
+  );
+  await expect(profile).toContainText("7d$0.46");
+  await expect(profile).toContainText("30d$0.46");
   await screenshot(page, "navigation-pane-automations", { view: "desktop" });
 });
 
@@ -62,6 +67,14 @@ test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("button", { name: "Go to conversation" }),
   ).toBeVisible();
+  // The header keeps the spend totals where it has room for them.
+  const spend = page.getByRole("group", { name: SPEND_LABEL, exact: true });
+  await expect(spend).toBeVisible();
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await expect(spend).toBeHidden();
+  await expect(show).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(spend).toBeVisible();
 
   // The choice survives a reload and a move to another page.
   await page.reload();

@@ -574,8 +574,7 @@ test("shows personal spend and groups profile and session actions", async ({
 
   const primary = page.getByRole("navigation", { name: "Primary" });
   const trigger = page.getByRole("button", {
-    name: "Open profile menu for Dashboard User",
-    exact: true,
+    name: /^Open profile menu for Dashboard User\./,
   });
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
