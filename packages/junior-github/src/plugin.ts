@@ -15,6 +15,7 @@ import {
   normalizePermissions,
   readGrantPermissions,
 } from "./permissions.js";
+import { githubCodeChangeHooks } from "./code-changes.js";
 import { createGitHubTools } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
@@ -265,6 +266,7 @@ export function githubPlugin(
       ],
     },
     hooks: {
+      codeChanges: githubCodeChangeHooks,
       async conversationTitleContext(ctx) {
         return await loadGitHubConversationTitleContext({
           config: ctx.config,

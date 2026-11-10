@@ -1,3 +1,4 @@
+import type { CodeChangeHooks } from "./code";
 import type { PluginContext } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type {
@@ -69,6 +70,8 @@ export interface ConversationTitleContextHookContext extends PluginContext {
 }
 
 export interface PluginHooks {
+  /** Read code changes, their diffs, and files for host features. */
+  codeChanges?: CodeChangeHooks;
   /**
    * Return short facts that help name a new Conversation, such as
    * `owner/repo#123: Issue title` for a linked issue. Junior shows these facts
