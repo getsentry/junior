@@ -351,7 +351,6 @@ export type {
   AutomationEdit,
   AutomationUpdate,
   AutomationExecution,
-  AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,

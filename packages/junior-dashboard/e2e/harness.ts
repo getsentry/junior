@@ -402,6 +402,8 @@ export async function mockDashboardApis(
         kind === "scheduled"
           ? "Weekly project summary"
           : "Closed issue summary",
+      recentRuns: [],
+      totalCostUsd: kind === "scheduled" ? 18.62 : 0.84,
       totalRuns: kind === "scheduled" ? 48 : 7,
       ...(kind === "scheduled"
         ? {
@@ -428,6 +430,7 @@ export async function mockDashboardApis(
       return {
         blocked: index % 13 === 0 ? 1 : 0,
         completed: index % 4 === 0 ? 2 : index % 2 === 0 ? 1 : 0,
+        costUsd: index % 2 === 0 ? 0.21 : 0,
         date,
         failed: index % 9 === 0 ? 1 : 0,
       };

@@ -1,8 +1,7 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, exists, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
-  AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
@@ -22,8 +21,6 @@ import { automationTaskDescription, automationTaskSchema } from "./task";
 import {
   emptyAutomationRunWindows,
   readAutomationExecutionByConversationId,
-  readAutomationExecutionDays,
-  readAutomationExecutionHours,
   readAutomationExecutions,
   readAutomationExecutionStatusDays,
   readAutomationExecutionStatusHours,
@@ -61,7 +58,6 @@ import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { parseScheduledAutomationRow } from "@/chat/scheduled-automations/tasks";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import {
-  juniorAutomationRuns,
   juniorAutomations,
   juniorDestinations,
   juniorIdentities,
@@ -243,7 +239,9 @@ function executionSummaryFields(stats: AutomationExecutionSummary | undefined) {
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
       : undefined),
     costUsd: stats?.costUsd ?? emptyAutomationRunWindows(),
+    recentRuns: stats?.recentRuns ?? [],
     runs: stats?.runs ?? emptyAutomationRunWindows(),
+    totalCostUsd: stats?.totalCostUsd ?? 0,
     totalRuns: stats?.totalRuns ?? 0,
   };
 }
@@ -453,25 +451,10 @@ async function automationSummaryForCandidate(
   );
 }
 
-function emptyAutomationExecutionDay(date: string): AutomationExecutionDay {
-  return { costUsd: 0, date, event: 0, scheduled: 0 };
-}
-
 function emptyAutomationExecutionStatusDay(
   date: string,
 ): AutomationExecutionStatusDay {
-  return { blocked: 0, completed: 0, date, failed: 0 };
-}
-
-function automationExecutionSixHours(
-  hours: readonly AutomationExecutionDay[],
-  nowMs = Date.now(),
-): AutomationExecutionDay[] {
-  return sumUtcHoursIntoSixHours({
-    empty: emptyAutomationExecutionDay,
-    hours,
-    nowMs,
-  });
+  return { blocked: 0, completed: 0, costUsd: 0, date, failed: 0 };
 }
 
 function automationExecutionStatusSixHours(
@@ -543,18 +526,7 @@ export async function readViewerAutomations(
       destinations.get(destinationKey(candidate.task.destination))
         ?.visibility === "public",
   );
-  const collection = viewerAutomationCollection(user);
-  const access = exists(
-    getDb()
-      .select({ id: collection.id })
-      .from(collection)
-      .where(eq(collection.id, juniorAutomationRuns.automationId)),
-  );
-  const [executionDays, executionHours, stats] = await Promise.all([
-    readAutomationExecutionDays(90, { access }),
-    readAutomationExecutionHours(7 * 24, { access }),
-    readAutomationExecutionSummaries(ids),
-  ]);
+  const stats = await readAutomationExecutionSummaries(ids);
   const automations = visible.map((candidate): AutomationSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -586,9 +558,6 @@ export async function readViewerAutomations(
     );
   });
   return {
-    executionDays,
-    executionHours,
-    executionSixHours: automationExecutionSixHours(executionHours),
     automations,
     ...page,
   };

@@ -382,9 +382,6 @@ describe("Automations API", () => {
       );
       expect(response.status).toBe(200);
       expect(automationListSchema.parse(await response.json())).toEqual({
-        executionDays: expect.any(Array),
-        executionHours: expect.any(Array),
-        executionSixHours: expect.any(Array),
         automations: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
@@ -456,11 +453,25 @@ describe("Automations API", () => {
               [scheduledRun1AtMs, 0.18],
               [scheduledRun2AtMs, 0.42],
             ),
+            // The list strip gets the newest runs, oldest first.
+            recentRuns: [
+              {
+                durationMs: 18_000,
+                executedAt: new Date(scheduledRun1AtMs).toISOString(),
+                status: "completed",
+              },
+              {
+                durationMs: 42_000,
+                executedAt: new Date(scheduledRun2AtMs).toISOString(),
+                status: "failed",
+              },
+            ],
             runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
             schedule: "Schedule unavailable",
             timezone: "UTC",
             status: "active",
             title: "Post the daily digest.",
+            totalCostUsd: 0.6,
             totalRuns: 2,
           }),
         ],
@@ -589,6 +600,8 @@ describe("Automations API", () => {
       ).toEqual({
         blocked: 0,
         completed: 1,
+        // Daily cost sums every run of the day, failed runs included.
+        costUsd: 0.6,
         date: scheduledRunDay,
         failed: 1,
       });
@@ -626,16 +639,8 @@ describe("Automations API", () => {
       const crowdedList = automationListSchema.parse(
         await crowdedResponse.json(),
       );
-      expect(crowdedList.executionDays).toHaveLength(90);
       expect(crowdedList.automations).toHaveLength(25);
       expect(crowdedList.total).toBe(505);
-      // Neither the foreign workspace run nor private work contributes to charts.
-      expect(
-        crowdedList.executionDays.reduce(
-          (sum, day) => sum + day.event + day.scheduled,
-          0,
-        ),
-      ).toBe(2);
       expect(crowdedList.counts).toEqual({
         all: 505,
         mine: 2,
@@ -797,7 +802,6 @@ describe("Automations API", () => {
       const privateList = automationListSchema.parse(
         await privateResponse.json(),
       );
-      expect(privateList.executionDays).toHaveLength(90);
       expect(privateList.counts).toEqual({
         all: 2,
         mine: 2,
