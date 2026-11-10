@@ -7,6 +7,7 @@ import {
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
+import { GLOBAL_GAPS_TTL_MS } from "@/chat/cache-warming/warmup";
 import {
   agentInstructionProvenance,
   contextProvenance,
@@ -104,7 +105,7 @@ describe("cache warming gap backfill", () => {
     await closeConversationFixture();
   });
 
-  it("fills each empty gap list once from the stored Turns", async () => {
+  it("fills each empty gap list from the stored Turns", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     mockTitleModel("Conversation title");
     // Live recording already has a gap for later Turns of people. The
@@ -157,6 +158,14 @@ describe("cache warming gap backfill", () => {
     await getStateAdapter().delete("junior:cache_warming:gaps:user:1:none");
     await heartbeat(T0 + 131 * MINUTE);
     expect(await gaps("user:1:none")).toEqual([]);
+
+    // The completed run expires after the gap list TTL, so a later heartbeat
+    // checks for empty lists again.
+    const doneKey = "junior:cache_warming:backfill:work_state";
+    vi.setSystemTime(T0 + 130 * MINUTE + GLOBAL_GAPS_TTL_MS - MINUTE);
+    expect(await getStateAdapter().get(doneKey)).toBe("done");
+    vi.setSystemTime(T0 + 130 * MINUTE + GLOBAL_GAPS_TTL_MS);
+    expect(await getStateAdapter().get(doneKey)).toBeNull();
   });
 
   it("keeps the Actor that started a Turn when a person steers it", async () => {
