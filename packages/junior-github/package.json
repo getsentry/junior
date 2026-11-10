@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-github",
-  "version": "0.288.0",
+  "version": "0.290.0",
   "private": false,
   "publishConfig": {
     "access": "public"

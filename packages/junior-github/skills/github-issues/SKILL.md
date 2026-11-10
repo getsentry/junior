@@ -97,7 +97,7 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 - Use `github_commentOnIssue` to comment on an issue.
 - Use `gh` commands from [references/api-surface.md](references/api-surface.md) for labels, assignees, and issue lists.
 - For issue listing or other read-only inspection, prefer `--json` output so empty results still produce deterministic stdout.
-- Check duplicates silently before creating a new issue. Do not mention this check in the final reply unless a duplicate blocks creation.
+- Check duplicates silently before creating a new issue. Do not mention this check in the final response unless a duplicate blocks creation.
 
 ### 6. Report result
 

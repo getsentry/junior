@@ -65,8 +65,7 @@ and needs separate validation.
 
 Messages sent from the composer or a Quick question do not run the agent. The
 mock shows a working Turn for 2 seconds, then a fixed reply. Sent messages
-stay until the dev server restarts. Dictation returns fixed text and calls no
-model.
+stay until the dev server restarts.
 
 The root dev command owns local auth-disabled defaults and the production-like
 Nitro preset. If it fails to start, diagnose or report the dev runner failure;

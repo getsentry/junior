@@ -8,10 +8,10 @@ import {
   type QueryResultRow,
 } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import { Agent } from "undici";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
+import { applyMigrations } from "./migrate";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
 import * as Sentry from "@/chat/sentry";
@@ -24,6 +24,8 @@ type PlainQuery = {
   rowMode?: string;
   types?: CustomTypesConfig;
 };
+
+const POOL_MAX = 10;
 
 /**
  * Sends a pool query over Neon's SQL-over-HTTP endpoint when no idle
@@ -55,7 +57,7 @@ class OverflowPool extends Pool {
       // this pool. A dashboard page load sends about ten requests, and the
       // conversation list alone can hold three connections for seconds. With
       // a smaller pool, the other requests wait for a free connection.
-      max: 10,
+      max: POOL_MAX,
       // The pg default closes a client after 10s idle, which is also the
       // dashboard poll interval, so most polls and page loads opened new
       // WebSockets. Idle clients to the Neon pooler hold no Postgres backend.
@@ -89,7 +91,33 @@ class OverflowPool extends Pool {
     ) {
       return this.queryWebSocket(query, params);
     }
+    this.growInBackground();
     return this.queryHttp(query, params);
+  }
+
+  // A new WebSocket client costs about as much as an HTTP query on its own,
+  // and much more when a batch opens several at once. So the overflowed query
+  // stays on HTTP, and a new client opens for the next batch. Idle clients
+  // still close on the idle timeout.
+  private growInBackground() {
+    // Wait until pg-pool hands over the clients that queued queries claimed,
+    // so `idleCount` is exact. With no idle client and room under `max`,
+    // `connect()` opens a client at once and counts it in `totalCount`, so
+    // checks that follow stay within `max`.
+    setImmediate(() => {
+      if (this.ending || this.idleCount > 0 || this.totalCount >= POOL_MAX) {
+        return;
+      }
+      this.connect((error, client) => {
+        if (client) {
+          client.release();
+          return;
+        }
+        logException(error, "db.pool.client.connect_failed", {
+          "app.db.driver": "neon",
+        });
+      });
+    });
   }
 
   /** Keep every pool query in `callback` on WebSocket. */
@@ -207,10 +235,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(
-      drizzle(this.queryClient(), { schema: juniorSqlSchema }),
-      config,
-    );
+    await applyMigrations(this, config);
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {

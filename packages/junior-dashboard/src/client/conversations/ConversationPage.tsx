@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
@@ -17,6 +16,7 @@ import type {
 
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
+import { useDetailsDefaultOpen } from "./conversationSidebarLayout";
 import {
   applyPendingArchiveUpdate,
   useArchiveConversation,
@@ -25,6 +25,7 @@ import {
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
+import { useConversationDelivery } from "./useConversationDelivery";
 import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
@@ -39,7 +40,7 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
-  requestsReplyFocus,
+  readReplyFocus,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
@@ -72,7 +73,6 @@ import {
   type TurnContextPanel,
   type TurnContextSelection,
 } from "./TranscriptTurnContextView";
-import { cn } from "../styles";
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
 import {
@@ -99,7 +99,11 @@ import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
-import { ChatLayout } from "./ChatLayout";
+import {
+  ChatLayout,
+  TranscriptColumn,
+  transcriptScrollClassName,
+} from "./ChatLayout";
 import type { ConversationComposerHandle } from "./ConversationComposer";
 import { ConversationOutline } from "./ConversationOutline";
 import {
@@ -133,14 +137,6 @@ import type {
 
 export { liveModelId } from "./ConversationMeta";
 
-const detailsDefaultOpenQuery = "(min-width: 1440px)";
-
-function subscribeToDetailsLayout(onChange: () => void) {
-  const media = window.matchMedia(detailsDefaultOpenQuery);
-  media.addEventListener("change", onChange);
-  return () => media.removeEventListener("change", onChange);
-}
-
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
@@ -153,11 +149,7 @@ export function ConversationPage(props: {
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
-  const detailsDefaultOpen = useSyncExternalStore(
-    subscribeToDetailsLayout,
-    () => window.matchMedia(detailsDefaultOpenQuery).matches,
-    () => false,
-  );
+  const detailsDefaultOpen = useDetailsDefaultOpen();
   const pageRef = useRef<HTMLDivElement>(null);
   const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -313,6 +305,8 @@ export function ConversationPage(props: {
   };
   const pin = usePinConversation(conversationId);
   const subscription = useConversationSubscription(conversationId);
+  const delivery = useConversationDelivery(conversationId);
+  const deliveryPaused = detail.data?.deliveryPaused;
   const markUnread = useMarkConversationUnread(conversationId);
   const markRead = useMarkConversationRead(conversationId);
   // Focus or a click in the composer counts as reading, like transcript input.
@@ -402,18 +396,20 @@ export function ConversationPage(props: {
     conversationDisplayTitle(conversation);
   useDocumentTitle(detail.data || conversation ? title : undefined);
   // A Task takes input only from its parent agent, and it runs without
-  // interactive auth, so it has no approval to show.
+  // interactive auth, so it has no approval to show. Anyone can join a public
+  // Conversation by posting in it (`canAddConversationMessages` in the API).
   const canReply =
     view === "rich" &&
-    detail.data?.isParticipant &&
+    (detail.data?.isParticipant || detail.data?.visibility === "public") &&
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
   const location = useLocation();
   const [replyFocusDoneKey, setReplyFocusDoneKey] = useState<string>();
+  const replyFocus = readReplyFocus(location.state);
   const replyFocusRequest =
-    requestsReplyFocus(location.state) && location.key !== replyFocusDoneKey
-      ? location.key
+    replyFocus && location.key !== replyFocusDoneKey
+      ? { draftFrom: replyFocus.draftFrom, key: location.key }
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
@@ -668,6 +664,16 @@ export function ConversationPage(props: {
                   : undefined
               }
               cost={conversationCost(conversation, conversationDetail, "below")}
+              delivery={
+                deliveryPaused === undefined
+                  ? undefined
+                  : {
+                      disabled: delivery.isPending,
+                      error: Boolean(delivery.error),
+                      onClick: () => delivery.mutate(!deliveryPaused),
+                      paused: deliveryPaused,
+                    }
+              }
               detailsOpen={showDetails}
               onDetailsClick={() => {
                 if (eventOpen) setSelectedEventSeq(undefined);
@@ -802,81 +808,72 @@ export function ConversationPage(props: {
           scrollMinTall
           scrollAriaLabel="Conversation transcript"
           scrollRef={scrollRef}
-          scrollClassName={cn(
-            "thin-scrollbar",
-            view !== "raw" && "px-4 pb-4 md:px-7 md:pb-6",
-          )}
+          scrollClassName={
+            view === "raw" ? "thin-scrollbar" : transcriptScrollClassName
+          }
           scroll={
-            <section className="min-w-0">
-              <div
-                className={
-                  view === "raw"
-                    ? "w-full"
-                    : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7"
-                }
-              >
-                {transcriptPending ? (
-                  view === "raw" ? (
-                    <ConversationEventLogLoading />
-                  ) : (
-                    <TranscriptLoading />
-                  )
-                ) : detail.error && !detail.data ? (
-                  <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-                    {detail.error.message}
-                  </Card>
+            <TranscriptColumn full={view === "raw"}>
+              {transcriptPending ? (
+                view === "raw" ? (
+                  <ConversationEventLogLoading />
                 ) : (
-                  <>
-                    {detail.error ? (
-                      <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                        Transcript refresh failed. Showing the latest available
-                        data.
-                      </div>
-                    ) : null}
-                    <ConversationMemoryContext value={memoryState}>
-                      <ConversationCatchUpContext value={catchUp}>
-                        <Transcript
-                          hasPreviousPage={history.hasPreviousPage}
-                          historyError={history.historyError}
-                          historyVersion={history.historyVersion}
-                          lastReadSeq={detail.data?.readPosition?.lastReadSeq}
-                          live={live}
-                          loadingPreviousPage={history.isLoadingPreviousPage}
-                          newerHistory={history.newer}
-                          onLoadPreviousPage={history.loadPreviousPage}
-                          onRead={holdShown ? undefined : markRead}
-                          readEngaged={composerEngaged}
-                          onSelectedEventSeqChange={setSelectedEventSeq}
-                          // Sends and the thinking row belong after the latest event.
-                          pendingMessages={
-                            history.newer ? undefined : detail.inlineMessages
-                          }
-                          pinRequestVersion={pinRequestVersion}
-                          revealSeq={revealSeq}
-                          responding={
-                            !detail.error &&
-                            !history.newer &&
-                            conversationIsResponding(detail.data)
-                          }
-                          onOpenSubagentTranscript={onOpenSubagentTranscript}
-                          search={search}
-                          onSearchChange={setSearch}
-                          searchMatch={searchMatch.index}
-                          onSearchMatches={searchMatch.setMatches}
-                          selectedEventSeq={selectedEventSeq}
-                          startAtLink={startAtLink}
-                          startAtUnread={startAtUnread}
-                          transcript={transcript}
-                          turnContextPanel={turnContextPanel}
-                          unread={holdShown ? undefined : readAtOpen.unread}
-                          view={view}
-                        />
-                      </ConversationCatchUpContext>
-                    </ConversationMemoryContext>
-                  </>
-                )}
-              </div>
-            </section>
+                  <TranscriptLoading />
+                )
+              ) : detail.error && !detail.data ? (
+                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                  {detail.error.message}
+                </Card>
+              ) : (
+                <>
+                  {detail.error ? (
+                    <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                      Transcript refresh failed. Showing the latest available
+                      data.
+                    </div>
+                  ) : null}
+                  <ConversationMemoryContext value={memoryState}>
+                    <ConversationCatchUpContext value={catchUp}>
+                      <Transcript
+                        hasPreviousPage={history.hasPreviousPage}
+                        historyError={history.historyError}
+                        historyVersion={history.historyVersion}
+                        lastReadSeq={detail.data?.readPosition?.lastReadSeq}
+                        live={live}
+                        loadingPreviousPage={history.isLoadingPreviousPage}
+                        newerHistory={history.newer}
+                        onLoadPreviousPage={history.loadPreviousPage}
+                        onRead={holdShown ? undefined : markRead}
+                        readEngaged={composerEngaged}
+                        onSelectedEventSeqChange={setSelectedEventSeq}
+                        // Sends and the thinking row belong after the latest event.
+                        pendingMessages={
+                          history.newer ? undefined : detail.inlineMessages
+                        }
+                        pinRequestVersion={pinRequestVersion}
+                        revealSeq={revealSeq}
+                        responding={
+                          !detail.error &&
+                          !history.newer &&
+                          conversationIsResponding(detail.data)
+                        }
+                        onOpenSubagentTranscript={onOpenSubagentTranscript}
+                        search={search}
+                        onSearchChange={setSearch}
+                        searchMatch={searchMatch.index}
+                        onSearchMatches={searchMatch.setMatches}
+                        selectedEventSeq={selectedEventSeq}
+                        startAtLink={startAtLink}
+                        startAtUnread={startAtUnread}
+                        transcript={transcript}
+                        turnContextPanel={turnContextPanel}
+                        unread={holdShown ? undefined : readAtOpen.unread}
+                        view={view}
+                      />
+                    </ConversationCatchUpContext>
+                  </ConversationMemoryContext>
+                </>
+              )}
+            </TranscriptColumn>
           }
           dock={
             canReply ? (

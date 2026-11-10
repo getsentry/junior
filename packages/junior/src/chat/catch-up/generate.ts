@@ -15,7 +15,7 @@ Rules:
 - Use only facts in the input. Do not invent names, ids, numbers, outcomes, or links.
 - Do not repeat what the Brief already says unless it changed.
 - Never say that a code change was merged, closed, deployed, or released unless a row says so.
-- Ignore Junior runtime mechanics, context tags, and markers such as [[NO_REPLY]].
+- Ignore Junior runtime mechanics and context tags.
 - Address the reader as "you".
 - When a row asks the reader a question, asks them to review, approve, or decide something, or waits on them, add one last line that starts with "Needs you:" and says what. Otherwise, do not add that line.
 - Plain text only. No headings, lists, or Markdown.`;

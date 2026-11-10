@@ -23,7 +23,6 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
-  juniorIdentities,
 } from "@/db/schema";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
@@ -35,7 +34,6 @@ import {
   conversationHasParticipantUser,
   conversationIsMemberRoot,
   conversationIsNotUnsubscribedRoot,
-  viewerConversationMembership,
   type ConversationMember,
 } from "./membership";
 import {
@@ -120,12 +118,7 @@ function conversationCodeRepositoryFilter(
     )`,
     or(
       eq(juniorDestinations.visibility, "public"),
-      viewerUserId
-        ? viewerConversationMembership({
-            actorMatch: eq(juniorIdentities.userId, viewerUserId),
-            participantMatch: conversationHasParticipantUser(viewerUserId),
-          })
-        : undefined,
+      viewerUserId ? conversationHasParticipantUser(viewerUserId) : undefined,
     ),
   );
 }
@@ -233,7 +226,9 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
 /**
  * Return a query for a token that changes when the viewer's default feed
  * page can change. It reads the same newest page as the feed, so its cost
- * does not grow with the viewer's history.
+ * does not grow with the viewer's history. The token lists a short token
+ * for each feed-row input as `name:token`, separated by spaces, so the
+ * dashboard can record which inputs moved it.
  *
  * The token holds only what a feed row shows, so a Task's own writes do not
  * move it. Every Event of a live Turn moves `last_activity_at`, but rows
@@ -251,49 +246,7 @@ export function conversationFeedVersionQuery(
 ) {
   const pin = juniorConversationParticipants;
   const read = juniorConversationReadPositions;
-  const page = db
-    .select({
-      conversationId: juniorConversations.conversationId,
-      channelName: juniorConversations.channelName,
-      executionStatus: juniorConversations.executionStatus,
-      lastActivityAt: juniorConversations.lastActivityAt,
-      lastReadSeq: read.lastReadSeq,
-      pinnedAt: pin.pinnedAt,
-      pinPosition: pin.pinPosition,
-      stoppedAt: juniorConversations.stoppedAt,
-      title: juniorConversations.title,
-    })
-    .from(juniorConversations)
-    .leftJoin(
-      pin,
-      and(
-        eq(pin.rootConversationId, juniorConversations.conversationId),
-        eq(pin.userId, userId),
-      ),
-    )
-    .leftJoin(
-      read,
-      and(
-        eq(read.conversationId, juniorConversations.conversationId),
-        eq(read.userId, userId),
-      ),
-    )
-    .where(
-      and(
-        isNull(juniorConversations.parentConversationId),
-        isNull(juniorConversations.quickQuestionAt),
-        conversationFeedMembershipFilter("active", { kind: "viewer", userId }),
-      ),
-    )
-    // The feed's order. The joined pin replaces its per-row pin lookup, which
-    // makes the plan cost high enough to start JIT compilation.
-    .orderBy(
-      desc(isNotNull(pin.pinnedAt)),
-      desc(juniorConversations.lastActivityAt),
-      asc(juniorConversations.conversationId),
-    )
-    .limit(CONVERSATION_FEED_LIMIT)
-    .as("feed_page");
+  const conversationId = juniorConversations.conversationId;
   // The fields of each nested Thread row. An archive anywhere in the tree
   // can hide Threads under it.
   const tree = db
@@ -310,7 +263,7 @@ export function conversationFeedVersionQuery(
       )`,
     })
     .from(feedTree)
-    .where(eq(feedTree.rootConversationId, page.conversationId));
+    .where(eq(feedTree.rootConversationId, conversationId));
   const annotations = db
     .select({
       version: sql<string>`concat_ws(':', count(*), max(${juniorConversationAnnotations.updatedAt}))`,
@@ -323,19 +276,86 @@ export function conversationFeedVersionQuery(
         juniorConversationAnnotations.conversationId,
       ),
     )
-    .where(eq(feedAnnotated.rootConversationId, page.conversationId));
+    .where(eq(feedAnnotated.rootConversationId, conversationId));
+  // Postgres runs the lookups below after the LIMIT, so once for each row
+  // on the page.
+  const page = db
+    .select({
+      conversationId,
+      channelName: juniorConversations.channelName,
+      executionStatus: juniorConversations.executionStatus,
+      lastActivityAt: juniorConversations.lastActivityAt,
+      pinnedAt: pin.pinnedAt,
+      pinPosition: pin.pinPosition,
+      stoppedAt: juniorConversations.stoppedAt,
+      title: juniorConversations.title,
+      activity: shownActivityMinute(juniorConversations.lastActivityAt).as(
+        "activity",
+      ),
+      assistantSeq:
+        sql<number>`(${latestMessageSeqQuery(db, "assistant", conversationId)})`.as(
+          "assistant_seq",
+        ),
+      userSeq:
+        sql<number>`(${latestMessageSeqQuery(db, "user", conversationId)})`.as(
+          "user_seq",
+        ),
+      unread: unreadReplySql(db, userId, conversationId, read.lastReadSeq).as(
+        "unread",
+      ),
+      threads: sql<string>`(${tree})`.as("threads"),
+      annotations: sql<string>`(${annotations})`.as("annotations"),
+    })
+    .from(juniorConversations)
+    .leftJoin(
+      pin,
+      and(eq(pin.rootConversationId, conversationId), eq(pin.userId, userId)),
+    )
+    .leftJoin(
+      read,
+      and(eq(read.conversationId, conversationId), eq(read.userId, userId)),
+    )
+    .where(
+      and(
+        isNull(juniorConversations.parentConversationId),
+        isNull(juniorConversations.quickQuestionAt),
+        conversationFeedMembershipFilter("active", { kind: "viewer", userId }),
+      ),
+    )
+    // The feed's order. The joined pin replaces its per-row pin lookup, which
+    // makes the plan cost high enough to start JIT compilation.
+    .orderBy(
+      desc(isNotNull(pin.pinnedAt)),
+      desc(juniorConversations.lastActivityAt),
+      asc(conversationId),
+    )
+    .limit(CONVERSATION_FEED_LIMIT)
+    .as("feed_page");
+  const byRow = (...values: SQLWrapper[]) =>
+    sql`string_agg(concat_ws('@', ${page.conversationId}, ${sql.join(values, sql`, `)}), ',' order by ${page.conversationId})`;
+  // The feed-row inputs of the token, by name. Order holds the page's ids in
+  // feed order. Each other input holds its values by id, so a reorder moves
+  // only order.
+  const inputs = {
+    order: sql`string_agg(${page.conversationId}, ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId})`,
+    pin: byRow(page.pinnedAt, page.pinPosition),
+    title: byRow(page.title, page.channelName),
+    status: byRow(page.executionStatus, page.stoppedAt),
+    activity: byRow(page.activity),
+    messages: byRow(page.assistantSeq, page.userSeq),
+    unread: byRow(page.unread),
+    threads: byRow(page.threads),
+    annotations: byRow(page.annotations),
+  };
   return db
     .select({
-      version: sql<string>`md5(coalesce(string_agg(
-        concat_ws('@', ${page.conversationId}, ${page.pinnedAt}, ${page.pinPosition},
-          ${page.title}, ${page.channelName}, ${page.executionStatus},
-          ${page.stoppedAt}, ${shownActivityMinute(page.lastActivityAt)},
-          (${latestMessageSeqQuery(db, "assistant", page.conversationId)}),
-          (${latestMessageSeqQuery(db, "user", page.conversationId)}),
-          ${unreadReplySql(db, userId, page.conversationId, page.lastReadSeq)},
-          (${tree}), (${annotations})),
-        ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId}
-      ), ''))`,
+      version: sql<string>`concat_ws(' ', ${sql.join(
+        Object.entries(inputs).map(
+          ([name, input]) =>
+            sql`${`${name}:`}::text || left(md5(coalesce(${input}, '')), 8)`,
+        ),
+        sql`, `,
+      )})`,
     })
     .from(page);
 }

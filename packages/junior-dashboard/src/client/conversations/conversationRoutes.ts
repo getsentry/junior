@@ -19,17 +19,33 @@ export function conversationPath(
   return search ? `${path}?${search}` : path;
 }
 
-/** Navigation state that asks the opened Conversation to focus its reply box. */
+/**
+ * Navigation state that asks the opened Conversation to focus its reply box.
+ * `draftFrom` names the draft of a composer the reader typed in before the
+ * page opened. The reply box takes its text.
+ */
+export type ReplyFocusState = { draftFrom?: string; focusReply: true };
+
+/** Ask the opened Conversation to focus its reply box. */
 export const FOCUS_REPLY_STATE = { focusReply: true } as const;
 
-/** True when navigation state asks the Conversation to focus its reply box. */
-export function requestsReplyFocus(state: unknown): boolean {
-  return (
-    typeof state === "object" &&
-    state !== null &&
-    "focusReply" in state &&
-    state.focusReply === true
-  );
+/** Read the reply focus that navigation state asks for, if any. */
+export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
+  if (
+    typeof state !== "object" ||
+    state === null ||
+    !("focusReply" in state) ||
+    state.focusReply !== true
+  ) {
+    return undefined;
+  }
+  return {
+    draftFrom:
+      "draftFrom" in state && typeof state.draftFrom === "string"
+        ? state.draftFrom
+        : undefined,
+    focusReply: true,
+  };
 }
 
 /** Dashboard home route. Legacy `/conversations/new` redirects here. */

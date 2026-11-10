@@ -1,18 +1,15 @@
 import { Boxes, KeyRound, Sparkles } from "lucide-react";
 
 import { Card } from "../../components/layout/Card";
+import { anchorTitleId } from "../../components/layout/AnchorHeading";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import type { SystemPlugin } from "./SystemPlugins";
 
 /** Render non-reporting plugin metadata. */
 export function PluginDetails(props: { plugin: SystemPlugin }) {
   return (
-    <section aria-labelledby="plugin-details-heading" className="grid gap-3">
-      <SectionIntro
-        className="px-1"
-        id="plugin-details-heading"
-        title="Details"
-      />
+    <section aria-labelledby={anchorTitleId("details")} className="grid gap-3">
+      <SectionIntro className="px-1" anchor="details" title="Details" />
       <Card>
         <div className="grid grid-cols-1 gap-px bg-dashboard-fill-hover sm:grid-cols-3">
           <Detail icon={Boxes} label="Identifier" value={props.plugin.name} />

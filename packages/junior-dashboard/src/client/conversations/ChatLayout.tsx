@@ -2,6 +2,33 @@ import type { ReactNode, Ref } from "react";
 
 import { cn } from "../styles";
 
+/** Scroll region padding that goes with `TranscriptColumn`. */
+export const transcriptScrollClassName =
+  "thin-scrollbar px-4 pb-4 md:px-7 md:pb-6";
+
+/**
+ * Center a transcript in the `ChatLayout` scroll region. `full` gives the
+ * event log the whole width.
+ */
+export function TranscriptColumn(props: {
+  children: ReactNode;
+  className?: string;
+  full?: boolean;
+}) {
+  return (
+    <section className="min-w-0">
+      <div
+        className={cn(
+          props.full ? "w-full" : "mx-auto w-full max-w-[52.5rem] pt-5 md:pt-7",
+          props.className,
+        )}
+      >
+        {props.children}
+      </div>
+    </section>
+  );
+}
+
 /**
  * Own the conversation chat frame: one scroll region above one dock.
  *

@@ -15,6 +15,7 @@ import {
   TranscriptSearchToggle,
   type ConversationArchiveAction,
   type ConversationContinueInSlackAction,
+  type ConversationDeliveryAction,
   type ConversationPinAction,
   type ConversationReadAction,
   type ConversationSubscriptionAction,
@@ -39,6 +40,7 @@ export function ConversationHeader(props: {
   archive: ConversationArchiveAction;
   conversationId: string;
   continueInSlack?: ConversationContinueInSlackAction;
+  delivery?: ConversationDeliveryAction;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
   cost?: ReactNode;
   detailsOpen: boolean;
@@ -47,6 +49,11 @@ export function ConversationHeader(props: {
   forks?: ReactNode;
   /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
+  /**
+   * The Conversation is not created yet. Its actions stay inert until it
+   * exists; the sidebar toggle still works.
+   */
+  pending?: boolean;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   pin: ConversationPinAction;
@@ -125,6 +132,7 @@ export function ConversationHeader(props: {
           },
         }
       }
+      delivery={props.delivery}
       pin={props.pin}
       read={props.read}
       subscription={props.subscription}
@@ -186,6 +194,7 @@ export function ConversationHeader(props: {
     props.pin.error ||
     props.read.error ||
     props.subscription.error ||
+    props.delivery?.error ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -195,7 +204,10 @@ export function ConversationHeader(props: {
         <ConversationOverflowMenu buttonRef={menuButtonRef}>
           {(close) => (
             <>
-              {menuActions("mobile", close)}
+              {/* App menu stays usable on mobile, like the sidebar toggle. */}
+              <div className="contents" inert={props.pending}>
+                {menuActions("mobile", close)}
+              </div>
               {openMobileNavigation ? (
                 <Button
                   className="mt-0.5"
@@ -253,7 +265,10 @@ export function ConversationHeader(props: {
               </div>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-0.5">
+          <div
+            className="flex shrink-0 items-center gap-0.5"
+            inert={props.pending}
+          >
             {props.cost ? (
               <span className="mr-2 text-xs tabular-nums text-dashboard-text-muted">
                 {props.cost}
@@ -321,6 +336,11 @@ export function ConversationHeader(props: {
         {props.subscription.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update subscription.
+          </div>
+        ) : null}
+        {props.delivery?.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not change Slack updates.
           </div>
         ) : null}
       </header>

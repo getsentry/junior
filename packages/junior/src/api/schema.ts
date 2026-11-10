@@ -145,6 +145,14 @@ export type {
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
 export {
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
+} from "./schema/conversation-delivery";
+export type {
+  ConversationDeliveryBody,
+  ConversationDeliveryResponse,
+} from "./schema/conversation-delivery";
+export {
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
@@ -294,7 +302,6 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
-export { transcriptionSchema } from "./schema/transcription";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,

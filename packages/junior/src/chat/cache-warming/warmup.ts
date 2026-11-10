@@ -30,8 +30,7 @@ import {
   type Context,
 } from "@earendil-works/pi-ai/compat";
 import { getChatConfig } from "@/chat/config";
-import { runWithLogContext } from "@/chat/log-context";
-import { logInfo, logWarn } from "@/chat/logging";
+import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
@@ -41,6 +40,8 @@ import {
   MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
+  type GapSegmentInput,
+  type WorkState,
 } from "./model";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 import {
@@ -57,6 +58,7 @@ import {
   type ModelRequest,
 } from "./request";
 import { createToolWaitWarmer } from "./tool-wait";
+import { readSegmentState } from "./work-state";
 
 // Compress off the event loop, so a large snapshot does not delay other work.
 const zstdCompress = promisify(zstdCompressCallback);
@@ -78,6 +80,10 @@ export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
+  /** The `gapSegment` that this period records its gap in. */
+  segment: string;
+  workState: WorkState;
+  archived: boolean;
   modelId: string;
   prefixTokens: number;
   cacheTtlMs: number;
@@ -86,8 +92,6 @@ interface WarmState {
 
 interface IdlePeriod {
   generation: string;
-  /** The `gapSegment` that this period records its gap in. */
-  segment: string;
   /** Start of the request that ended the turn. */
   sinceMs: number;
   /** Only periods that could be warmed record gaps. */
@@ -120,6 +124,11 @@ const warmupsKey = (conversationId: string, generation: string) =>
 /** Set by the first of the reply and the horizon to record the gap. */
 const gapClaimKey = (conversationId: string, generation: string) =>
   `${KEY_PREFIX}:gap_claim:${conversationId}:${generation}`;
+const segmentAttributes = (warm: WarmState) => ({
+  "app.cache_warming.work_state": warm.workState,
+  "app.cache_warming.archived": warm.archived,
+});
+
 // Send the warmup that refreshes the cache that a request at
 // `requestStartedAtMs` read or wrote.
 async function scheduleWarmup(
@@ -132,7 +141,6 @@ async function scheduleWarmup(
 ): Promise<void> {
   const { cacheExpiresAtMs, delayMs } = warmupTiming(
     requestStartedAtMs,
-    warm.prefixTokens,
     warm.cacheTtlMs,
   );
   await sendCacheWarmup({ ...message, cacheExpiresAtMs }, delayMs);
@@ -165,23 +173,24 @@ function snapshotContext(context: Context): Context {
 async function recordGap(
   state: ConnectedState,
   conversationId: string,
-  idle: IdlePeriod,
+  generation: string,
+  warm: WarmState,
   gapMs: number,
 ): Promise<void> {
   const claimed = await state.setIfNotExists(
-    gapClaimKey(conversationId, idle.generation),
+    gapClaimKey(conversationId, generation),
     true,
     CONVERSATION_STATE_TTL_MS,
   );
   if (!claimed) {
     return;
   }
-  await state.appendToList(segmentGapsKey(idle.segment), gapMs, {
+  await state.appendToList(segmentGapsKey(warm.segment), gapMs, {
     maxLength: GLOBAL_GAPS_MAX,
     ttlMs: GLOBAL_GAPS_TTL_MS,
   });
   await state.appendToList(
-    conversationGapsKey(conversationId, idle.segment),
+    conversationGapsKey(conversationId, warm.segment),
     gapMs,
     {
       maxLength: CONVERSATION_GAPS_MAX,
@@ -195,11 +204,10 @@ async function startIdlePeriod(
   conversationId: string,
   request: ModelRequest,
   message: AssistantMessage,
-  segment: string,
+  turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
 ): Promise<IdlePeriod> {
   const idle: IdlePeriod = {
     generation: randomUUID(),
-    segment,
     sinceMs: request.startedAtMs,
   };
   const prefixTokens = cachedPrefixTokens(message);
@@ -221,6 +229,9 @@ async function startIdlePeriod(
     });
     return idle;
   }
+  // Read here, not on each model call: only a period that Junior can warm
+  // records a gap.
+  const segmentState = await readSegmentState(conversationId, Date.now());
   await state.set(
     snapshotKey(conversationId, idle.generation),
     snapshot,
@@ -229,6 +240,8 @@ async function startIdlePeriod(
   return {
     ...idle,
     warm: {
+      segment: gapSegment({ ...turn, ...segmentState }),
+      ...segmentState,
       modelId: request.model.id,
       prefixTokens,
       cacheTtlMs: ttlMs,
@@ -251,7 +264,7 @@ async function recordModelCall(
   if (idle?.warm) {
     const gapMs = request.startedAtMs - idle.sinceMs;
     if (gapMs > 0) {
-      await recordGap(state, conversationId, idle, gapMs);
+      await recordGap(state, conversationId, idle.generation, idle.warm, gapMs);
     }
     await state.delete(snapshotKey(conversationId, idle.generation));
     const warmups =
@@ -262,6 +275,7 @@ async function recordModelCall(
         "app.cache_warming.gap_ms": gapMs,
         "app.cache_warming.prefix_tokens": idle.warm.prefixTokens,
         "app.cache_warming.warmup_count": warmups,
+        ...segmentAttributes(idle.warm),
         "gen_ai.usage.cache_read.input_tokens": message.usage.cacheRead,
         "gen_ai.usage.cache_creation.input_tokens": message.usage.cacheWrite,
       });
@@ -275,13 +289,10 @@ async function recordModelCall(
     message.stopReason === "stop"
       ? {
           endedTurns: endedTurns + 1,
-          idle: await startIdlePeriod(
-            state,
-            conversationId,
-            request,
-            message,
-            gapSegment(userActor, endedTurns),
-          ),
+          idle: await startIdlePeriod(state, conversationId, request, message, {
+            userActor,
+            endedTurns,
+          }),
         }
       : { endedTurns };
   if (!idle && !next.idle) {
@@ -456,7 +467,7 @@ export async function runCacheWarmup(
 
   if (message.kind === "horizon") {
     await stop();
-    await recordGap(state, conversationId, idle, NO_REPLY_GAP_MS);
+    await recordGap(state, conversationId, generation, warm, NO_REPLY_GAP_MS);
     return;
   }
   const warmups =
@@ -465,43 +476,55 @@ export async function runCacheWarmup(
     return;
   }
 
-  await runWithLogContext(
+  const attributes: Record<string, unknown> = {
+    "app.cache_warming.cycle": message.cycle,
+    "app.cache_warming.prefix_tokens": warm.prefixTokens,
+    "app.cache_warming.trigger": "idle",
+    ...segmentAttributes(warm),
+    // Queue delay shows as a smaller time left than the warmup margin.
+    "app.cache_warming.cache_ttl_left_ms":
+      message.cacheExpiresAtMs - Date.now(),
+  };
+  await withSpan(
+    "cache_warming.warmup",
+    "cache_warming.warmup",
     { conversationId, modelId: warm.modelId },
-    {},
-    async () => {
-      const attributes: Record<string, unknown> = {
-        "app.cache_warming.cycle": message.cycle,
-        "app.cache_warming.prefix_tokens": warm.prefixTokens,
-        "app.cache_warming.trigger": "idle",
-        // Queue delay shows as a smaller time left than the warmup margin.
-        "app.cache_warming.cache_ttl_left_ms":
-          message.cacheExpiresAtMs - Date.now(),
+    async (setSpanAttributes) => {
+      const setOutcome = (
+        outcome: string,
+        extra: Record<string, unknown> = {},
+      ) =>
+        setSpanAttributes({
+          ...attributes,
+          ...extra,
+          "app.cache_warming.outcome": outcome,
+        });
+      const skip = async (reason: string) => {
+        const skipReason = { "app.cache_warming.skip_reason": reason };
+        logInfo("cache_warming.warmup.skipped", {
+          ...attributes,
+          ...skipReason,
+        });
+        setOutcome("skipped", skipReason);
+        await stop();
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
       if (warmupTooLate(message.cacheExpiresAtMs)) {
-        logInfo("cache_warming.warmup.skipped", {
-          ...attributes,
-          "app.cache_warming.skip_reason": "cache_expired",
-        });
-        await stop();
+        await skip("cache_expired");
         return;
       }
       if (await breakerOpen(state, warm.modelId)) {
-        logInfo("cache_warming.warmup.skipped", {
-          ...attributes,
-          "app.cache_warming.skip_reason": "breaker_open",
-        });
-        await stop();
+        await skip("breaker_open");
         return;
       }
 
       const model = resolveGatewayModel(warm.modelId);
       const decision = decideWarmup({
         conversationGapsMs: await state.getList<number>(
-          conversationGapsKey(conversationId, idle.segment),
+          conversationGapsKey(conversationId, warm.segment),
         ),
-        globalGapsMs: await state.getList<number>(segmentGapsKey(idle.segment)),
+        globalGapsMs: await state.getList<number>(segmentGapsKey(warm.segment)),
         idleMs: Date.now() - idle.sinceMs,
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,
@@ -515,11 +538,7 @@ export async function runCacheWarmup(
         decision.returnsPerWarmup;
       attributes["app.cache_warming.threshold"] = decision.threshold;
       if (!decision.warm) {
-        logInfo("cache_warming.warmup.skipped", {
-          ...attributes,
-          "app.cache_warming.skip_reason": decision.reason,
-        });
-        await stop();
+        await skip(decision.reason);
         return;
       }
 
@@ -528,6 +547,7 @@ export async function runCacheWarmup(
         snapshotKey(conversationId, generation),
       );
       if (!snapshot) {
+        setOutcome("skipped", { "app.cache_warming.skip_reason": "stopped" });
         return;
       }
       const context = JSON.parse(
@@ -543,6 +563,7 @@ export async function runCacheWarmup(
         ...(warm.reasoning ? { reasoning: warm.reasoning } : undefined),
         prefixTokens: warm.prefixTokens,
       }).catch(async (error: unknown) => {
+        setOutcome("failed");
         await stop();
         throw error;
       });
@@ -550,10 +571,12 @@ export async function runCacheWarmup(
       if (!warmup.refreshed) {
         // Stop this idle period. The miss already counts for the breaker.
         logWarn("cache_warming.warmup.failed", attributes);
+        setOutcome("missed");
         await stop();
         return;
       }
       logInfo("cache_warming.warmup.completed", attributes);
+      setOutcome("completed");
 
       await state.set(
         warmupsKey(conversationId, generation),
@@ -575,5 +598,6 @@ export async function runCacheWarmup(
         );
       }
     },
+    attributes,
   );
 }

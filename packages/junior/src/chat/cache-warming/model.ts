@@ -77,14 +77,6 @@ export function warmupFailureCountsAsMiss(error: unknown): boolean {
 /** Gap that Junior records for an idle period with no reply in the horizon. */
 export const NO_REPLY_GAP_MS = 24 * 60 * MINUTE_MS;
 
-// Warmup margin values from Lore. 0.27 ms per token gives a prefix of about
-// 164K tokens 44 seconds more, which matches the warmup round trip and TTL
-// jitter that Lore saw on large prefixes. The cap applies from about 333K
-// tokens, so the largest margin is 135 seconds.
-const BASE_WARMUP_MARGIN_MS = 45_000;
-const MARGIN_PER_PREFIX_TOKEN_MS = 0.27;
-const MAX_SIZE_MARGIN_MS = 90_000;
-
 interface GapHistogram {
   counts: number[];
   total: number;
@@ -154,20 +146,30 @@ function returnProbability(
 }
 
 /**
- * Return how long before cache expiry to send a warmup. The warmup refreshes
- * the cache only if the provider reads the whole prefix before it expires. A
- * larger prefix takes longer to send and read, and its cache blocks were
- * written at slightly different times. So the margin grows with the prefix up
- * to a fixed cap.
+ * How long before cache expiry Junior sends a warmup. A warmup reads each
+ * cache block of the prefix in one request, so the provider refreshes all
+ * blocks together. A margin that grows with the prefix size gains nothing.
+ * The margin covers only the queue delay and the time of the warmup request.
  */
-export function warmupMarginMs(prefixTokens: number): number {
-  return (
-    BASE_WARMUP_MARGIN_MS +
-    Math.min(
-      Math.max(0, prefixTokens) * MARGIN_PER_PREFIX_TOKEN_MS,
-      MAX_SIZE_MARGIN_MS,
-    )
-  );
+export const WARMUP_MARGIN_MS = 45_000;
+
+/**
+ * Plugin work of a Conversation when its idle period starts. `open`: a plugin
+ * reports unfinished work, so an event, such as a CI result, can still come.
+ * `done`: all reported work finished and no person wrote after it finished.
+ * `none`: no reported work, a person wrote after it finished, or a plugin
+ * hook failed.
+ */
+export type WorkState = "open" | "done" | "none";
+
+/** What Junior knows about a Conversation when its idle period starts. */
+export interface GapSegmentInput {
+  /** A person started the Turn that ended. */
+  userActor: boolean;
+  /** Turns of the Conversation that ended before this one. */
+  endedTurns: number;
+  workState: WorkState;
+  archived: boolean;
 }
 
 /**
@@ -176,10 +178,17 @@ export function warmupMarginMs(prefixTokens: number): number {
  * Turns that no person started rarely get a quick reply. In 30 days of
  * production data, segments by these two keys saved more than one histogram.
  * Local time of day did not improve the result, so it is not a key.
+ *
+ * The work state lets the histograms learn how often anything returns after
+ * the work is done. An event does not restore an archived Conversation, so
+ * most returns to one are events, not people. Its segment has only the work
+ * state, which keeps the number of segments small.
  */
-export function gapSegment(userActor: boolean, endedTurns: number): string {
-  const depth = endedTurns === 0 ? "1" : endedTurns < 3 ? "2-3" : "4+";
-  return `${userActor ? "user" : "system"}:${depth}`;
+export function gapSegment(input: GapSegmentInput): string {
+  if (input.archived) return `archived:${input.workState}`;
+  const depth =
+    input.endedTurns === 0 ? "1" : input.endedTurns < 3 ? "2-3" : "4+";
+  return `${input.userActor ? "user" : "system"}:${depth}:${input.workState}`;
 }
 
 /** Inputs for one warmup decision. Prices use one unit, such as $/MTok. */
@@ -256,7 +265,6 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     input.idleMs,
     input.cacheExpiryIdleMs,
     input.cacheTtlMs,
-    input.prefixTokens,
   );
   const decision = (reason: WarmupDecision["reason"]): WarmupDecision => ({
     warm: reason === "warm",
@@ -290,10 +298,9 @@ function returnsPerWarmup(
   idleMs: number,
   cacheExpiryIdleMs: number,
   ttlMs: number,
-  prefixTokens: number,
 ): number {
   const now = survival(histogram, idleMs);
-  const intervalMs = ttlMs - warmupMarginMs(prefixTokens);
+  const intervalMs = ttlMs - WARMUP_MARGIN_MS;
   if (now < 0.001 || intervalMs <= 0) return 0;
   const leftAtExpiry = survival(
     histogram,

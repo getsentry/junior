@@ -80,6 +80,7 @@ import {
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import {
   FINISH_AUTOMATION_RUN_TOOL_NAME,
   readAutomationResult,
@@ -1090,11 +1091,12 @@ async function executeAgentRunInPrivacyContext(
           timedOutResult || projectedResult !== result
             ? projectedResult
             : undefined;
-        // A declared Automation result or blocked report is the last step of
-        // the run.
+        // A declared Automation result, blocked report, or no-reply is the
+        // last step of the run.
         if (
           (toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME ||
-            toolCall.name === REPORT_BLOCKED_TOOL_NAME) &&
+            toolCall.name === REPORT_BLOCKED_TOOL_NAME ||
+            toolCall.name === NO_REPLY_TOOL_NAME) &&
           !isError &&
           !override
         ) {
@@ -1127,7 +1129,7 @@ async function executeAgentRunInPrivacyContext(
                   nextTurn.context,
                 );
               const pendingMessages = await drainSteeringMessages();
-              // Pi also runs this hook after the final reply. Another model
+              // Pi also runs this hook after the final response. Another model
               // call follows only after tool results or steering. Compaction
               // here would drop the delivered reply and start a retry. A
               // background request does not change history, so it still runs.

@@ -26,6 +26,7 @@ export function SkillInventory(props: { skills: SkillReport[] }) {
               registered.
             </>
           }
+          anchor="skills"
           title="Skills"
         />
         <div className="grid min-w-[12rem] grid-cols-2 overflow-hidden rounded-lg border border-dashboard-border bg-dashboard-overlay-soft max-sm:w-full max-sm:min-w-0">

@@ -88,14 +88,14 @@ export function TextAttachmentPreview(props: {
       }
       closeLabel={`Close ${filename}`}
       header={
-        <div className="min-w-0">
+        <div className="min-w-0 [overflow-wrap:anywhere]">
           <h2
-            className="m-0 truncate font-mono text-sm font-semibold text-dashboard-text"
+            className="m-0 font-mono text-sm font-semibold text-dashboard-text"
             id={titleId}
           >
             {filename}
           </h2>
-          <div className="truncate font-mono text-xs text-dashboard-text-muted">
+          <div className="font-mono text-xs text-dashboard-text-muted">
             {props.meta}
           </div>
         </div>

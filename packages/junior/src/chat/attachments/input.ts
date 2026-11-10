@@ -5,22 +5,17 @@ import * as z from "zod";
 export const MAX_INPUT_IMAGE_BYTES = 3 * 1024 * 1024;
 export const MAX_INPUT_IMAGES = 3;
 
-/** Base64 file bytes in a JSON request body, up to `maxBytes` once decoded. */
-export function base64DataSchema(maxBytes: number) {
-  return z
-    .string()
-    .min(4)
-    .max((maxBytes * 4) / 3)
-    .regex(/^[A-Za-z0-9+/]*={0,2}$/)
-    .refine((data) => data.length % 4 === 0);
-}
-
 /** Image bytes accepted with a web message, never stored in its mailbox row. */
 export const inputImageSchema = z
   .object({
     filename: z.string().trim().min(1).max(255),
     contentType: z.enum(INPUT_IMAGE_TYPES),
-    data: base64DataSchema(MAX_INPUT_IMAGE_BYTES),
+    data: z
+      .string()
+      .min(4)
+      .max((MAX_INPUT_IMAGE_BYTES * 4) / 3)
+      .regex(/^[A-Za-z0-9+/]*={0,2}$/)
+      .refine((data) => data.length % 4 === 0),
   })
   .strict();
 

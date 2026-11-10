@@ -3,6 +3,7 @@ import {
   readMessageAttachments,
   type MessageAttachment,
 } from "@/chat/attachments/input";
+import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -50,7 +51,7 @@ import {
 } from "@/chat/runtime/turn";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
-import { decideReply } from "@/chat/services/assistant-reply";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { botConfig } from "@/chat/config";
 import {
   latestConversationMessageSeq,
@@ -596,15 +597,11 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
+          options?: { quiet?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
-          const decision = agentMessage ? decideReply(agentMessage) : undefined;
           const replyText =
-            typeof value === "string"
-              ? value
-              : decision?.kind === "deliver"
-                ? decision.text
-                : undefined;
+            typeof value === "string" ? value : getAssistantReplyText(value);
           if (!replyText?.trim()) {
             return;
           }
@@ -613,12 +610,15 @@ export function createConversationTurnWorker(
           // Only Event Turns may be quiet: a person who asked always gets the
           // reply. A card means someone must look, so it always delivers.
           const quiet =
-            decision?.kind === "deliver" &&
-            decision.quiet === true &&
-            isEventTurn &&
-            cards.length === 0;
+            options?.quiet === true && isEventTurn && cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
-          if (deliverToProvider && !quiet) {
+          // Read the pause at reply time: a person can pause Delivery while
+          // this Turn runs.
+          if (
+            deliverToProvider &&
+            !quiet &&
+            !(await isConversationDeliveryPaused(context.conversationId))
+          ) {
             if (!conversationLocation || !deliverMessage) {
               throw new Error(
                 `Conversation ${context.conversationId} cannot deliver to its Location`,
@@ -779,6 +779,11 @@ export function createConversationTurnWorker(
               modelFailureEventId = finalized.eventId;
               if (reply.diagnostics.outcome !== "success") {
                 await deliverAssistantMessage(reply.text);
+              } else if (reply.noReply?.note && isEventTurn) {
+                // The note of a no-reply Event Turn is its Quiet message.
+                await deliverAssistantMessage(reply.noReply.note, {
+                  quiet: true,
+                });
               }
 
               const completedState = buildDeliveredTurnStatePatch({

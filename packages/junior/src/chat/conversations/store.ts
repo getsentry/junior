@@ -106,6 +106,8 @@ export interface Conversation {
   transcriptPurgedAtMs?: number;
   /** When a person stopped this Conversation. Unset when it is not stopped. */
   stoppedAtMs?: number;
+  /** Set while a root's Event Turn replies stay out of its Location. */
+  deliveryPausedAtMs?: number;
   /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }
@@ -195,6 +197,8 @@ export interface ConversationStore {
    * Conversation metric fields cache totals for existing readers.
    */
   recordExecution(args: {
+    /** Identity of the Turn Actor. Its metric rows record it. */
+    actorIdentityId?: string;
     channelName?: string;
     conversationId: string;
     /** When this Run started. */

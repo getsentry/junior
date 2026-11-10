@@ -2,17 +2,14 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
-  juniorConversations,
+  juniorConversationMetrics,
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationUsageCostExpr } from "../conversations/aggregate";
 import type { PersonalSpendReport } from "../schema/person";
 import {
   normalizeEmail,
-  peopleTreeAggregateColumns,
-  peopleTreeConversation,
-  peopleTreeMetricsJoin,
+  turnMetricColumns,
   verifiedActorWhere,
 } from "./shared";
 
@@ -34,56 +31,42 @@ function spendWindow(nowMs: number) {
   return { end, sevenDayStart, thirtyDayStart };
 }
 
-/** Match the viewer's own Conversations with activity in the spend window. */
+/** Match the viewer's own Turn metric rows in the spend window. */
 function viewerWindowWhere(email: string, nowMs: number) {
   const normalizedEmail = normalizeEmail(email);
   const { end, thirtyDayStart } = spendWindow(nowMs);
   return normalizedEmail
     ? and(
         verifiedActorWhere(normalizedEmail),
-        gte(juniorConversations.lastActivityAt, thirtyDayStart),
-        lte(juniorConversations.lastActivityAt, end),
+        gte(juniorConversationMetrics.occurredAt, thirtyDayStart),
+        lte(juniorConversationMetrics.occurredAt, end),
       )
     : sql`false`;
 }
 
 /** Return a query for one viewer's model spend for each UTC day in the window. */
-function personalSpendDaysQuery(
-  db: JuniorDatabase,
-  email: string,
-  nowMs: number,
-) {
-  const activityDate = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+function personalSpendDaysQuery(email: string, nowMs: number) {
+  const date = sql<string>`TO_CHAR(
+    ${juniorConversationMetrics.occurredAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
   )`;
-  return db
-    .select({
-      costUsd: peopleTreeAggregateColumns.costUsd,
-      date: activityDate,
-    })
-    .from(juniorConversations)
+  return getDb()
+    .select({ costUsd: turnMetricColumns.costUsd, date })
+    .from(juniorConversationMetrics)
     .innerJoin(
       juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+      eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
     )
     .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .leftJoin(peopleTreeConversation, peopleTreeMetricsJoin())
     .where(viewerWindowWhere(email, nowMs))
-    .groupBy(activityDate);
+    .groupBy(date);
 }
 
 /**
  * Return a query for a change marker of one viewer's spend window.
  *
- * It reads only the viewer's own rows, without the tree join of the spend
- * read, so it costs about as much as a count. It sums each row's own cost
- * and the UTC day of its last activity, so a recorded cost, or a
- * Conversation that moves to a new day, moves it. Other writes do not. A
- * Task that another person's Turn started under the viewer's root is not
- * the viewer's row, so its cost shows on the next spend read: a page load,
- * a tab focus, or the viewer's next own cost. The window start moves it at
- * UTC midnight.
+ * It reads the same Turn metric rows as the spend read. A new or replaced
+ * row moves it, and the window start moves it at UTC midnight.
  */
 export function personalSpendVersionQuery(
   db: JuniorDatabase,
@@ -96,14 +79,14 @@ export function personalSpendVersionQuery(
       version: sql<string>`concat_ws(':',
         ${thirtyDayStart.toISOString().slice(0, 10)}::text,
         count(*),
-        sum(${conversationUsageCostExpr(juniorConversations.usage)}),
-        sum(extract(epoch from date_trunc('day', ${juniorConversations.lastActivityAt} at time zone 'UTC')))
+        sum(${juniorConversationMetrics.value}),
+        max(${juniorConversationMetrics.updatedAt})
       )`,
     })
-    .from(juniorConversations)
+    .from(juniorConversationMetrics)
     .innerJoin(
       juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+      eq(juniorIdentities.id, juniorConversationMetrics.actorIdentityId),
     )
     .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .where(viewerWindowWhere(email, nowMs));
@@ -115,7 +98,7 @@ export async function readPersonalSpendFromSql(
   nowMs = Date.now(),
 ): Promise<PersonalSpendReport> {
   const { end, sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
-  const rows = await personalSpendDaysQuery(getDb(), email, nowMs);
+  const rows = await personalSpendDaysQuery(email, nowMs);
 
   const sevenDayStartDate = sevenDayStart.toISOString().slice(0, 10);
   let sevenDaysUsd = 0;

@@ -1,5 +1,84 @@
 # Changelog
 
+## 0.290.0
+
+### Bug Fixes 🐛
+
+- (db) Run each pending migration in its own transaction by @thomasjiangcy with @sentry-junior in [#3067](https://github.com/getsentry/junior/pull/3067)
+
+### Internal Changes 🔧
+
+- (cache-warming) Use a flat 45 second warmup margin by @BYK with @sentry-junior in [#3061](https://github.com/getsentry/junior/pull/3061)
+
+## 0.289.0
+
+Users gain safer agent controls, clearer dashboards, improved mobile and messaging behavior, faster data handling, and must remove retired dictation settings.
+
+### New Features ✨
+
+Agent runs gain structured no-reply controls, cache warming observability, shareable dashboard navigation, and Slack thread automation matching.
+
+#### Agent
+
+- Replace no-reply markers with a noReply tool by @dcramer with @sentry-junior in [#3039](https://github.com/getsentry/junior/pull/3039)
+- Steer discrete work items and thread requests to Threads by @dcramer with @sentry-junior in [#3038](https://github.com/getsentry/junior/pull/3038)
+
+#### Cache Warming
+
+- Segment reply gaps by plugin work and archive state by @BYK with @sentry-junior in [#3041](https://github.com/getsentry/junior/pull/3041)
+- Add warmup and backfill spans by @BYK with @sentry-junior in [#3029](https://github.com/getsentry/junior/pull/3029)
+
+#### Dashboard
+
+- Add link anchors to dashboard sections by @BYK with @sentry-junior in [#3012](https://github.com/getsentry/junior/pull/3012)
+- Show a new Conversation at once on send from home by @betegon with @sentry-junior in [#2847](https://github.com/getsentry/junior/pull/2847)
+
+#### Other
+
+- (automations) Let Slack channel-message automations opt into thread replies by @mwarkentin with @sentry-junior in [#3056](https://github.com/getsentry/junior/pull/3056)
+- Detach a conversation from Slack in the dashboard menu and API by @dcramer with @sentry-junior in [#3050](https://github.com/getsentry/junior/pull/3050)
+
+### Bug Fixes 🐛
+
+Mobile dashboard interactions improve, while conversation posting, GitHub redirects, notifications, review ownership, and Slack input attribution follow safer rules.
+
+#### Dashboard
+
+- Fix drawer header layout on phones by @thomasjiangcy with @sentry-junior in [#3053](https://github.com/getsentry/junior/pull/3053)
+- Show Conversation chrome on mobile while a home send is pending by @betegon with @sentry-junior in [#3022](https://github.com/getsentry/junior/pull/3022)
+
+#### Other
+
+- (agents) Show a child's Event input as an Event row by @BYK with @sentry-junior in [#3014](https://github.com/getsentry/junior/pull/3014)
+- (conversations) Let signed-in people join public conversations from the dashboard by @BYK with @sentry-junior in [#3045](https://github.com/getsentry/junior/pull/3045)
+- (github) Follow GitHub API redirects for transferred issues by @BYK with @sentry-junior in [#3048](https://github.com/getsentry/junior/pull/3048)
+- (notifications) Skip push notifications for quiet and no-reply Turns by @BYK with @sentry-junior in [#3033](https://github.com/getsentry/junior/pull/3033)
+- (review-items) Assign the Owner when a Turn without a person asks by @BYK with @sentry-junior in [#3015](https://github.com/getsentry/junior/pull/3015)
+- (slack) Keep each Turn to one Actor and Source by @dcramer with @sentry-junior in [#2965](https://github.com/getsentry/junior/pull/2965)
+
+### Internal Changes 🔧
+
+Feed and mobile layouts improve alongside participant-based access, faster database overflow handling, actor metrics, and consolidated Slack lifecycle code.
+
+#### Dashboard
+
+- Record which feed-row input moves the feed token by @BYK with @sentry-junior in [#3024](https://github.com/getsentry/junior/pull/3024)
+- Dock the composer and compact the cards on the mobile home by @betegon with @sentry-junior in [#2755](https://github.com/getsentry/junior/pull/2755)
+- Share the transcript column and details default by @betegon with @sentry-junior in [#2947](https://github.com/getsentry/junior/pull/2947)
+
+#### Other
+
+- (api) Keep the active feed plan driven by member roots by @BYK with @sentry-junior in [#2996](https://github.com/getsentry/junior/pull/2996)
+- (conversations) Replace the Conversation Owner with Participants by @dcramer with @sentry-junior in [#3021](https://github.com/getsentry/junior/pull/3021)
+- (db) Grow the Neon pool after a query overflows to HTTP by @BYK with @sentry-junior in [#3025](https://github.com/getsentry/junior/pull/3025)
+- (docs) Use "final response" for the message that ends a Turn by @dcramer with @sentry-junior in [#3054](https://github.com/getsentry/junior/pull/3054)
+- (people) Attribute spend to the Turn Actor by @dcramer with @sentry-junior in [#3023](https://github.com/getsentry/junior/pull/3023)
+- (slack) Replace the Slack reply flags with one run state by @sentry-junior in [#2958](https://github.com/getsentry/junior/pull/2958)
+
+### Other
+
+- revert: Remove dashboard dictation (#2853) by @betegon with @sentry-junior in [#3019](https://github.com/getsentry/junior/pull/3019)
+
 ## 0.288.0
 
 Users get faster caching, richer dashboards, clearer conversation history, better notifications, more reliable workspace access, and streamlined delivery, database use, automation, and task execution.

@@ -454,7 +454,7 @@ describe("Watches", () => {
       rubric({
         pass: [
           "A reply says Alice owns the deployment.",
-          "The user's direct instruction is the focus of the final reply.",
+          "The user's direct instruction is the focus of the final response.",
         ],
         fail: [
           "Do not ignore or contradict the user's instruction in order to continue handling the GitHub notification.",

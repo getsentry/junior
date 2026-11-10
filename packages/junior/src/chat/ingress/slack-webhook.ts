@@ -9,6 +9,7 @@ import {
 import { unfurlDashboardConversationLinks } from "./slack-conversation-unfurl";
 import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
+import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
@@ -385,7 +386,8 @@ async function routeParsedMessage(args: {
         ? "subscribed"
         : undefined;
   if (!route) {
-    // A new top-level message can run Event automations for this channel.
+    // A new channel message or thread reply can run Event automations for
+    // this channel.
     // Use only `message`: Slack also sends `app_mention` for a mention in code.
     const channelMessage =
       args.event.type === "message" && args.event.channel && args.event.ts
@@ -464,6 +466,11 @@ async function routeParsedMessage(args: {
       },
     });
     return;
+  }
+
+  // A mention in the thread attaches a detached Conversation again.
+  if (route === "mention") {
+    await resumeConversationDelivery(conversationId);
   }
 
   // Keep non-mention thread messages as Conversation history without waking a

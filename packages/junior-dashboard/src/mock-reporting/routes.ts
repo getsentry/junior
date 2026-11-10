@@ -16,6 +16,8 @@ import {
   archiveConversationResponseSchema,
   pinConversationBodySchema,
   pinConversationResponseSchema,
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
   markConversationUnreadBodySchema,
@@ -68,7 +70,6 @@ import {
   DEFAULT_NOTIFICATION_SCHEDULE,
   notificationScheduleSchema,
   notificationSettingsSchema,
-  transcriptionSchema,
   type NotificationSchedule,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
@@ -106,6 +107,7 @@ import {
   readMockAutomationList,
   setMockConversationArchived,
   setMockConversationPinned,
+  setMockConversationDeliveryPaused,
   setMockConversationSubscribed,
   setMockPinOrder,
   setMockConversationTitle,
@@ -280,15 +282,6 @@ export function createMockReportingApi(): Hono<{
       conversations: [...conversations.values()].filter((conversation) =>
         conversation.displayTitle.toLowerCase().includes(search),
       ),
-    });
-  });
-  // Dictation gets fixed text instead of a model call, after a short wait so
-  // the transcribing state shows.
-  app.post("/transcriptions", async (c) => {
-    if (!c.get("viewer")) return errorResponse("Sign in to dictate.", 401);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    return jsonResponse(transcriptionSchema, {
-      text: "Can you check why the deploy failed and post a summary here?",
     });
   });
   // Sends get a fixed reply instead of an agent run. See `./sends`.
@@ -562,6 +555,23 @@ export function createMockReportingApi(): Hono<{
     return result
       ? jsonResponse(conversationSubscriptionResponseSchema, result)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/delivery", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = conversationDeliveryBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationDeliveryPaused(
+      params.data.conversationId,
+      body.data.paused,
+    );
+    if (!result) return errorResponse("Conversation not found.", 404);
+    if ("error" in result) return errorResponse(result.error, 409);
+    return jsonResponse(conversationDeliveryResponseSchema, result);
   });
   app.patch("/conversations/:conversationId/unread", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

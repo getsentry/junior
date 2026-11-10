@@ -51,7 +51,7 @@ type OwnedAutomation =
   | { kind: "scheduled"; task: ScheduledAutomation }
   | { kind: "event"; task: StoredEventAutomation };
 
-/** Owners and public Destination readers can manage. Others get not found. */
+/** Creators and public Destination readers can manage. Others get not found. */
 async function requireEditableAutomation(
   user: User,
   id: string,

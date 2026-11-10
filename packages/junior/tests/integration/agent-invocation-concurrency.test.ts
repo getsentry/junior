@@ -34,6 +34,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
+import { loadMessageEvents } from "../fixtures/agent-invocations";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
@@ -603,6 +604,19 @@ describe("agent invocation identity and concurrency", () => {
           namespace: "junior",
         },
       });
+      // The child transcript shows the timer input as an Event, as on a root.
+      await expect(
+        loadMessageEvents(child.childConversationId),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          meta: expect.objectContaining({
+            agentInvocationId: timerRun.runId,
+            eventNamespace: "junior",
+            eventType: "timer.fired",
+          }),
+          role: "user",
+        }),
+      );
       // Its result is saved on its own agent invocation for the parent.
       await expect(getAgentInvocation(timerRun.runId!)).resolves.toMatchObject({
         agentName: "watcher",

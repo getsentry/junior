@@ -2,7 +2,7 @@
  * Automation run result.
  *
  * A Scheduled automation or Event automation run ends with one declared
- * result. The run does not deliver its final assistant text. The work owner
+ * result. The run does not deliver its final response. The work owner
  * reads the declared result and applies the stored outcomes.
  */
 import * as z from "zod";
@@ -47,7 +47,7 @@ type RunDispatch =
   | undefined;
 
 /**
- * Return whether the runtime delivers the final assistant text of a run. It
+ * Return whether the runtime delivers the final response of a run. It
  * does not for a dispatch with no outcomes. It does not for an Automation
  * run, which posts only its declared message, after the run.
  */
@@ -58,7 +58,7 @@ export function deliversFinalText(dispatch: RunDispatch): boolean {
 /**
  * Return whether the runtime may post a failure reply or a status notice,
  * such as an auth prompt, for a run outside `finishedRunReply`. The rule is
- * the same as for final text. A chat Turn may post, also in a thread that an
+ * the same as for a final response. A chat Turn may post, also in a thread that an
  * Automation Conversation owns. A dispatch with no outcomes posts nothing. An
  * Automation run posts only a declared message; its failed execution shows on
  * the Automation.

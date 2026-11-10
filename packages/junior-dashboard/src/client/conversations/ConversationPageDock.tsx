@@ -3,7 +3,10 @@ import { useMemo, useRef, type Ref } from "react";
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
 import { committedMessageIds } from "./conversationOutbox";
-import { ConversationReplyFooter } from "./ConversationReplyFooter";
+import {
+  ConversationReplyFooter,
+  type ReplyFocusRequest,
+} from "./ConversationReplyFooter";
 import { conversationIsResponding } from "./transcript";
 import { latestReviewItemId } from "../review-desk/reviewItemFormat";
 
@@ -11,7 +14,7 @@ import { latestReviewItemId } from "../review-desk/reviewItemFormat";
 export function ConversationPageDock(props: {
   conversationId: string;
   detail: ConversationData;
-  focusRequest?: string;
+  focusRequest?: ReplyFocusRequest;
   /** True when newer transcript pages are not loaded. */
   hasNewerPage: boolean;
   live: boolean;

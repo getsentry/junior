@@ -447,7 +447,7 @@ it("saves plugin object results once per reply, leaves background updates silent
           name: "executeTool",
           arguments: { tool_name: "objects_save", arguments: {} },
         },
-        { type: "text", text: "[[NO_REPLY]]" },
+        { type: "toolCall", name: "noReply", arguments: {} },
       ]),
     );
     await harness.continue({

@@ -703,22 +703,22 @@ export function actorLabel(
   return email ?? fullName ?? slackUserName ?? actor?.slackUserId;
 }
 
-/** Derive the conversation owner label from structured actor identity. */
+/** Derive the label of the root Actor, the person who started the conversation. */
 export function conversationActorLabel(
   conversation: Conversation | undefined,
 ): string | undefined {
   return actorLabel(conversation?.actorIdentity);
 }
 
-/** Format the owner and permalink id line shared by conversation rows and headers. */
+/** Format the root Actor and permalink id line shared by conversation rows and headers. */
 export function conversationIdentityMeta(
   conversation: Conversation | undefined,
   conversationId: string | undefined,
 ): string {
   const id = conversationId ?? conversation?.id;
-  const owner = conversationActorLabel(conversation);
-  if (!id) return owner ?? "";
-  return owner ? `${owner} · ${id}` : id;
+  const actor = conversationActorLabel(conversation);
+  if (!id) return actor ?? "";
+  return actor ? `${actor} · ${id}` : id;
 }
 
 /** Convert Slack channel ids and names into user-facing location labels. */

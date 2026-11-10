@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { automationResultSchema } from "@/chat/automation-result";
-import { isNoReplyMarker } from "@/chat/no-reply";
+import { isLegacyNoReplyMarker } from "@/chat/no-reply";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -61,9 +61,11 @@ export function createFinishAutomationRunTool(options: {
             : `${input.result} requires a non-empty reason.`,
         );
       }
-      // A message that is only the old no-reply marker posts nothing.
+      // Saved instructions from before declared results can still ask for
+      // the old no-reply marker. A message that is only that marker posts
+      // nothing.
       return parsed.data.result === "send_message" &&
-        isNoReplyMarker(parsed.data.message)
+        isLegacyNoReplyMarker(parsed.data.message)
         ? {
             result: "no_action" as const,
             reason: "The message was the no-reply marker.",
