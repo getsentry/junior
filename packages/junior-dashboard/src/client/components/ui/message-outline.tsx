@@ -156,6 +156,13 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
           movePointer(undefined);
         }
       }}
+      onFocus={(event) => {
+        // Keyboard focus points at its item until the pointer moves, so
+        // the scroll that shows the item does not point at the pointer.
+        if (event.target.matches(":focus-visible")) {
+          pointerYRef.current = undefined;
+        }
+      }}
       onPointerLeave={() => {
         pointerYRef.current = undefined;
         movePointer(undefined);
