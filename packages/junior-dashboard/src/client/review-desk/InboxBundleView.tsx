@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Clock3 } from "lucide-react";
+import { ArrowUpRight, Check, Clock3, Pin, PinOff } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
@@ -55,6 +55,30 @@ function BundleItem(props: {
 }
 
 /**
+ * Each inbox row is a card. An open one lifts out of the stream, as in
+ * Google Inbox: more room above and below, and a deeper shadow.
+ */
+export function inboxCardClass(expanded: boolean): string {
+  return cn(
+    "min-w-0 list-none rounded-xl border transition-[margin,box-shadow,background-color] duration-200",
+    expanded
+      ? "my-4 border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-[0_18px_44px_-14px_rgb(0_0_0/0.75),0_4px_14px_-6px_rgb(0_0_0/0.5)] light:shadow-[0_18px_44px_-14px_rgb(15_15_30/0.28),0_4px_14px_-6px_rgb(15_15_30/0.16)] md:-mx-2"
+      : "border-dashboard-border bg-dashboard-surface-panel shadow-[0_1px_2px_rgb(0_0_0/0.4)] light:shadow-[0_1px_3px_rgb(15_15_30/0.08)]",
+  );
+}
+
+/** The button that heads an inbox row and expands it in place. */
+export function inboxRowButtonClass(
+  active: boolean,
+  expanded: boolean,
+): string {
+  return cn(
+    "grid w-full min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)_auto] items-start gap-x-3 rounded-xl border-0 bg-transparent px-4 py-3 text-left font-sans text-inherit transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+    active && !expanded && "bg-dashboard-fill-soft",
+  );
+}
+
+/**
  * One inbox bundle: the Review items of one Conversation. Collapsed, it
  * shows the Conversation, the newest ask, and why it is here. Expanded in
  * place, it shows the end of the Conversation and each item with its
@@ -70,38 +94,40 @@ export function InboxBundleView(props: {
   onSnooze(choice: SnoozeChoice): void;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
+  onPin(): void;
+  pinned: boolean;
   snoozeMenuOpen: boolean;
   /** The Conversation title, when it is known. */
   title?: string;
+  /**
+   * A row for one item: the item title leads, and the Conversation title
+   * follows unless the bundle is that Conversation.
+   */
+  itemRow?: { showConversation: boolean };
 }) {
   const { bundle } = props;
   const { newest } = bundle;
-  const title =
+  const conversationTitle =
     props.title ?? (newest.automationId ? "Automation" : newest.title);
+  const title = props.itemRow ? newest.title : conversationTitle;
+  const subline = props.itemRow
+    ? props.itemRow.showConversation
+      ? conversationTitle
+      : undefined
+    : newest.title;
   const count = bundle.items.length;
   const reason = inboxBundleReason(bundle);
   const canDone = bundle.items.some(
     (item) => item.status === "open" && item.canAct,
   );
-  const regionId = `inbox-bundle-${bundle.conversationId}`;
+  const regionId = `inbox-bundle-${bundle.key}`;
   return (
-    <li
-      className={cn(
-        "min-w-0 list-none rounded-xl transition-colors",
-        props.expanded
-          ? "my-3 border border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-sm"
-          : "border border-transparent",
-      )}
-      onFocus={props.onActivate}
-    >
+    <li className={inboxCardClass(props.expanded)} onFocus={props.onActivate}>
       <button
         aria-controls={regionId}
         aria-expanded={props.expanded}
-        className={cn(
-          "grid w-full min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)_auto] items-start gap-x-3 rounded-xl border-0 bg-transparent px-4 py-3 text-left font-sans text-inherit transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-          props.active && !props.expanded && "bg-dashboard-fill-soft",
-        )}
-        data-inbox-bundle={bundle.conversationId}
+        className={inboxRowButtonClass(props.active, props.expanded)}
+        data-inbox-bundle={bundle.key}
         onClick={props.onToggle}
         tabIndex={props.active ? 0 : -1}
         type="button"
@@ -118,7 +144,7 @@ export function InboxBundleView(props: {
         <span className="grid min-w-0 gap-0.5">
           <span
             className={cn(
-              "truncate text-sm leading-snug",
+              "min-w-0 truncate text-sm leading-snug",
               bundle.needsYou
                 ? "font-semibold text-dashboard-text"
                 : "font-medium text-dashboard-text-muted",
@@ -126,25 +152,38 @@ export function InboxBundleView(props: {
           >
             {title}
           </span>
-          <span className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight">
-            <span className="min-w-0 truncate text-dashboard-text">
-              {newest.title}
+          {subline || reason ? (
+            <span className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight">
+              {subline ? (
+                <span className="min-w-0 truncate text-dashboard-text">
+                  {subline}
+                </span>
+              ) : null}
+              {reason ? (
+                <span className="shrink-0 text-dashboard-text-muted">
+                  {subline ? "· " : ""}
+                  {reason}
+                </span>
+              ) : null}
             </span>
-            {reason ? (
-              <span className="shrink-0 text-dashboard-text-muted">
-                · {reason}
-              </span>
-            ) : null}
-          </span>
+          ) : null}
         </span>
-        <span className="pt-0.5 text-xs tabular-nums text-dashboard-text-faint">
+        <span className="flex items-center gap-1.5 pt-0.5 text-xs tabular-nums text-dashboard-text-faint">
+          {props.pinned ? (
+            <Pin
+              aria-label="Pinned"
+              className="size-3.5 text-dashboard-accent-text"
+              role="img"
+            />
+          ) : null}
+          {/* The newest item's time, which also picks the time section. */}
           {formatRelativeTime(bundle.waitingSince)}
         </span>
       </button>
       {props.expanded ? (
         <div
           className="grid min-w-0 gap-4 px-4 pb-4 md:px-6"
-          data-inbox-answer={bundle.conversationId}
+          data-inbox-answer={bundle.key}
           id={regionId}
           role="region"
           aria-label={`${title}: review items`}
@@ -162,6 +201,19 @@ export function InboxBundleView(props: {
                 <Key>e</Key>
               </Button>
             ) : null}
+            <Button
+              aria-pressed={props.pinned}
+              onClick={props.onPin}
+              variant="quiet"
+            >
+              {props.pinned ? (
+                <PinOff aria-hidden="true" size={15} />
+              ) : (
+                <Pin aria-hidden="true" size={15} />
+              )}
+              {props.pinned ? "Unpin" : "Pin"}
+              <Key>p</Key>
+            </Button>
             <Button
               aria-expanded={props.snoozeMenuOpen}
               onClick={() => props.onSnoozeMenu(!props.snoozeMenuOpen)}
@@ -195,7 +247,7 @@ export function InboxBundleView(props: {
               })}
             >
               Open conversation
-              <ArrowRight aria-hidden="true" size={14} />
+              <ArrowUpRight aria-hidden="true" size={14} />
               <Key>o</Key>
             </Link>
           </div>

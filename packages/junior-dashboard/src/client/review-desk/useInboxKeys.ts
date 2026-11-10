@@ -7,6 +7,7 @@ export type InboxKeyActions = {
   toggle(): void;
   done(): void;
   snoozeMenu(): void;
+  pin(): void;
   /** Pick snooze choice `index` while the snooze menu is open. */
   snoozeChoice(index: number): boolean;
   escape(): boolean;
@@ -19,7 +20,7 @@ const INTERACTIVE = `${EDITABLE}, a, button, [role='radio'], [role='checkbox']`;
 
 /**
  * Bind the inbox triage keys, as in Gmail and Linear: j/k move, Enter opens,
- * e done, h snooze, o opens the Conversation, r replies. Keys do nothing
+ * e done, h snooze, p pin, o opens the Conversation, r replies. Keys do nothing
  * while a text field has focus, so typing an answer is safe.
  */
 export function useInboxKeys(actions: InboxKeyActions): void {
@@ -50,6 +51,9 @@ export function useInboxKeys(actions: InboxKeyActions): void {
             return true;
           case "h":
             run.snoozeMenu();
+            return true;
+          case "p":
+            run.pin();
             return true;
           case "o":
             run.open();

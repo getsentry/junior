@@ -127,6 +127,11 @@ export function answerLine(
  * the bundle into the queue; other bundles are FYI and sort after it.
  */
 export type InboxBundle = {
+  /**
+   * Names the row: the Conversation id for a Conversation bundle, or the
+   * item id for a row that shows one item.
+   */
+  key: string;
   /** The Conversation that added the items. */
   conversationId: string;
   /** Items in inbox order: questions first, then the oldest. */
@@ -151,7 +156,7 @@ function inboxOrder(a: ReviewItemPayload, b: ReviewItemPayload): number {
  * an open action item assigned to them, not to Everyone. A plugin ask, such
  * as `Ready to merge · #42`, is an action item with no `request`.
  */
-function itemNeedsViewer(item: ReviewItemPayload): boolean {
+export function itemNeedsViewer(item: ReviewItemPayload): boolean {
   return (
     item.status === "open" &&
     item.kind === "action" &&
@@ -187,6 +192,7 @@ export function inboxBundles(
     return {
       conversationId,
       items: sorted,
+      key: conversationId,
       newest,
       needsYou: waiting.length > 0,
       waitingSince: new Date(since).toISOString(),
