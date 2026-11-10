@@ -595,6 +595,51 @@ test.describe("stable conversation list", () => {
     await expect(pill).toHaveCount(0);
   });
 
+  test("holds the order for a pointer on the list edge through the first load", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    let releaseFeed!: () => void;
+    const feedGate = new Promise<void>((resolve) => (releaseFeed = resolve));
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        await feedGate;
+        await route.fallback();
+      },
+    );
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    // The pointer comes to rest on the list's side padding while its rows
+    // load.
+    const box = await page
+      .locator('[data-slot="scroll-area"]')
+      .first()
+      .boundingBox();
+    if (!box) throw new Error("The conversation list has no box.");
+    await page.mouse.move(box.x + 4, box.y + 120);
+    releaseFeed();
+    await expect(
+      sidebar.getByRole("link", { name: /Checkout latency triage/ }),
+    ).toBeVisible();
+
+    setWaiting(true);
+    await expect(page.getByRole("button", { name: "1 updated" })).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(
+      await sidebarSectionOf(
+        page.locator('[role="navigation"][aria-label="Your conversations"]'),
+        /Checkout latency triage/,
+      ),
+    ).not.toMatch(/^Needs you/);
+  });
+
   test("holds the home list order under the pointer", async ({
     page,
     dashboard,

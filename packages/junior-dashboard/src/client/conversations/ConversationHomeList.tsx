@@ -63,20 +63,8 @@ export function ConversationHomeList(props: {
     [showActionError],
   );
 
-  if (props.loading && props.conversations.length === 0) {
-    return <ConversationHomeListLoading label="Loading conversations" />;
-  }
-
-  if (props.conversations.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
-        <EmptyTelemetry>
-          {props.emptyLabel ?? "No conversations match this view."}
-        </EmptyTelemetry>
-      </div>
-    );
-  }
-
+  // The list stays mounted through the first load, so a pointer that rests
+  // on it then still holds the order.
   return (
     <ConversationSectionList
       conversations={props.conversations}
@@ -86,22 +74,36 @@ export function ConversationHomeList(props: {
       timeZone={props.timeZone}
       waitingConversations={props.waitingConversations}
     >
-      {({ releaseHold, sections }) => (
-        <div aria-label="Your conversations" className="grid gap-5" role="list">
-          {sections.map((section) => (
-            <ConversationCardSection
-              collapsed={collapsedKeys.has(section.key)}
-              key={section.key}
-              onArchiveError={showArchiveError}
-              onArchived={showArchived}
-              onRowAction={releaseHold}
-              onToggle={() => toggleSection(section.key)}
-              waitingConversations={props.waitingConversations}
-              section={section}
-            />
-          ))}
-        </div>
-      )}
+      {({ releaseHold, sections }) =>
+        props.loading && props.conversations.length === 0 ? (
+          <ConversationHomeListLoading label="Loading conversations" />
+        ) : props.conversations.length === 0 ? (
+          <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
+            <EmptyTelemetry>
+              {props.emptyLabel ?? "No conversations match this view."}
+            </EmptyTelemetry>
+          </div>
+        ) : (
+          <div
+            aria-label="Your conversations"
+            className="grid gap-5"
+            role="list"
+          >
+            {sections.map((section) => (
+              <ConversationCardSection
+                collapsed={collapsedKeys.has(section.key)}
+                key={section.key}
+                onArchiveError={showArchiveError}
+                onArchived={showArchived}
+                onRowAction={releaseHold}
+                onToggle={() => toggleSection(section.key)}
+                waitingConversations={props.waitingConversations}
+                section={section}
+              />
+            ))}
+          </div>
+        )
+      }
     </ConversationSectionList>
   );
 }

@@ -164,23 +164,30 @@ export function ConversationSidebar(props: {
           New conversation
         </Button>
       </div>
-      <ScrollArea viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        {props.error ? (
-          <div className="p-2">
-            <EmptyTelemetry>{props.error}</EmptyTelemetry>
-          </div>
-        ) : props.loading && props.conversations.length === 0 ? (
-          <ConversationRowsLoading />
-        ) : (
-          <ConversationSectionList
-            conversations={props.conversations}
-            loading={props.loading}
-            onReorderError={handleReorderError}
-            onReorderPins={props.onReorderPins}
-            timeZone={props.timeZone}
-            waitingConversations={props.waitingConversations}
+      {/* The list wraps the always-shown scroll area, so a pointer that
+          rests on it through the first load, or on its padding or
+          scrollbar, still holds the order. */}
+      <ConversationSectionList
+        className="relative min-h-0"
+        conversations={props.conversations}
+        loading={props.loading}
+        onReorderError={handleReorderError}
+        onReorderPins={props.onReorderPins}
+        timeZone={props.timeZone}
+        waitingConversations={props.waitingConversations}
+      >
+        {({ releaseHold, sections }) => (
+          <ScrollArea
+            className="h-full"
+            viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
-            {({ releaseHold, sections }) => (
+            {props.error ? (
+              <div className="p-2">
+                <EmptyTelemetry>{props.error}</EmptyTelemetry>
+              </div>
+            ) : props.loading && props.conversations.length === 0 ? (
+              <ConversationRowsLoading />
+            ) : (
               <ConversationSidebarEntries
                 collapsedKeys={collapsedKeys}
                 expandedThreadRoots={expandedThreadRoots}
@@ -230,9 +237,9 @@ export function ConversationSidebar(props: {
                 }
               />
             )}
-          </ConversationSectionList>
+          </ScrollArea>
         )}
-      </ScrollArea>
+      </ConversationSectionList>
     </aside>
   );
 }
