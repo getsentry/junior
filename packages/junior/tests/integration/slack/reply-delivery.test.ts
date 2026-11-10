@@ -121,6 +121,24 @@ describe("sendSlackReply", () => {
     expect(tables.join("\n").match(/\| shard-/g)).toHaveLength(rows.length);
   });
 
+  it("keeps two tables apart when a post ends between them", async () => {
+    const first = "| A | B |\n|---|---|\n| a1 | b1 |";
+    const second = `| ${"C".repeat(200)} | D |\n|---|---|\n| c1 | d1 |`;
+    // The 4,000-character budget ends inside the second table's header row,
+    // so the post splits at the blank line between the tables.
+    const prose = "x".repeat(3_900 - 2 - first.length);
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: `${prose}\n\n${first}\n\n${second}`,
+      threadTs: "1700000000.000100",
+    });
+
+    const posts =
+      getCapturedSlackApiCalls("chat.postMessage").map(markdownBody);
+    expect(posts).toEqual([`${prose}\n\n${first}`, second]);
+  });
+
   it("returns every posted message timestamp for chunked replies", async () => {
     const messageTs = await sendSlackReply({
       channelId: "C123",

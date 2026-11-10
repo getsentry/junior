@@ -79,11 +79,18 @@ function takePrefix(
  * when one table is longer than a post.
  */
 function splitOutsideTable(
+  text: string,
   prefix: string,
   rest: string,
 ): { chunk: string; rest: string } {
   const lines = prefix.split("\n");
-  if (!isTableRow(lines.at(-1) ?? "") || !isTableRow(rest)) {
+  // A blank line between the split rows means two tables, not one.
+  const gap = text.slice(prefix.length, text.length - rest.length);
+  if (
+    !isTableRow(lines.at(-1) ?? "") ||
+    !isTableRow(rest) ||
+    /\n\s*\n/.test(gap)
+  ) {
     return { chunk: prefix, rest };
   }
 
@@ -109,7 +116,7 @@ function takeChunk(text: string): { chunk: string; rest: string } {
   let { prefix, rest } = takePrefix(text, MAX_INLINE_CHARS);
   let carryover = getFenceContinuation(prefix);
   if (!carryover) {
-    return splitOutsideTable(prefix, rest);
+    return splitOutsideTable(text, prefix, rest);
   }
 
   ({ prefix, rest } = takePrefix(
