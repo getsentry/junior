@@ -5,9 +5,8 @@ import {
   gapHistogramReport,
 } from "@/chat/cache-warming/model";
 import {
-  loadReplayEvents,
+  loadReplayEventBatches,
   replayConversation,
-  type ReplayEvent,
 } from "@/chat/cache-warming/replay";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
@@ -74,18 +73,10 @@ export async function readPersonReplyTimes(args: {
     startMs,
   );
   // An idle period that ends in the range can start before it.
-  const rows = conversations.length
-    ? await loadReplayEvents(
-        conversations.map((row) => row.conversationId),
-        startMs - IDLE_HORIZON_MS,
-      )
-    : [];
-  const events = new Map<string, ReplayEvent[]>();
-  for (const row of rows) {
-    const list = events.get(row.conversationId) ?? [];
-    list.push(row);
-    events.set(row.conversationId, list);
-  }
+  const { canceledBatches, events } = await loadReplayEventBatches(
+    conversations.map((row) => row.conversationId),
+    { sinceMs: startMs - IDLE_HORIZON_MS },
+  );
   const gaps = conversations.flatMap((conversation) =>
     replayConversation(
       conversationKindFromRow(conversation),
@@ -119,5 +110,6 @@ export async function readPersonReplyTimes(args: {
     histogram: gapHistogramReport(
       gaps.filter((_, index) => replied[index]).map((gap) => gap.gapMs),
     ),
+    partial: canceledBatches > 0,
   });
 }

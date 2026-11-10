@@ -26,7 +26,7 @@ export function ProfileReplyTimes(props: {
     email: props.email,
   });
   if (!query.data) return null;
-  const { histogram } = query.data;
+  const { histogram, partial } = query.data;
   const summary = replyTimeSummary(histogram);
   return (
     <section
@@ -35,7 +35,7 @@ export function ProfileReplyTimes(props: {
     >
       <SectionIntro
         anchor="reply-times"
-        description={`How long you take to send your next message after Junior answers, in the ${timeRangeDetail(props.range)}. Only you see this.`}
+        description={`How long you take to send your next message after Junior answers, in the ${timeRangeDetail(props.range)}. Only you see this.${partial ? " Some Conversations had too much history to read, so they are left out." : ""}`}
         title="Your reply times"
       />
       <Card>

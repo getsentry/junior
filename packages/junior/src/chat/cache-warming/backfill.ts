@@ -32,10 +32,8 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { MINUTE_MS } from "./model";
 import {
   historySegment,
-  loadReplayEvents,
+  loadReplayEventBatches,
   replayConversation,
-  type ReplayEvent,
-  type ReplayGap,
 } from "./replay";
 import { GLOBAL_GAPS_MAX, GLOBAL_GAPS_TTL_MS, segmentGapsKey } from "./warmup";
 
@@ -45,11 +43,6 @@ const BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
-// Each batch is one query, and the SQL statement timeout applies to it. Small
-// batches keep each query short and let the budget check run often.
-const CONVERSATION_BATCH_SIZE = 10;
-// Postgres `query_canceled`: the statement timeout stopped the query.
-const QUERY_CANCELED = "57014";
 // The heartbeat gives no deadline. This leaves most of its function time for
 // the gap writes and the other heartbeat work.
 const BACKFILL_BUDGET_MS = 60_000;
@@ -90,16 +83,6 @@ async function loadConversations(
   );
 }
 
-function isQueryCanceled(error: unknown): boolean {
-  let current: unknown = error;
-  for (let depth = 0; current && depth < 6; depth += 1) {
-    if (typeof current !== "object") return false;
-    if ((current as { code?: unknown }).code === QUERY_CANCELED) return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
-}
-
 // Stop before the next batch when the budget is used. The budget uses the
 // monotonic clock, not `nowMs`.
 async function collectGaps(
@@ -114,42 +97,20 @@ async function collectGaps(
   const startedAt = performance.now();
   const windowStartMs = nowMs - GLOBAL_GAPS_TTL_MS;
   const conversations = await loadConversations(windowStartMs);
-  const recorded: ReplayGap[] = [];
-  let scanned = 0;
-  let canceledBatches = 0;
-  let budgetExceeded = false;
-  for (let i = 0; i < conversations.length; i += CONVERSATION_BATCH_SIZE) {
-    if (i > 0 && performance.now() - startedAt >= budgetMs) {
-      budgetExceeded = true;
-      break;
-    }
-    const batch = conversations.slice(i, i + CONVERSATION_BATCH_SIZE);
-    let rows: ReplayEvent[];
-    try {
-      rows = await loadReplayEvents(batch.map((row) => row.conversationId));
-    } catch (error) {
-      // A batch with too much history for one query is skipped. The budget
-      // check still stops the scan in time.
-      if (!isQueryCanceled(error)) throw error;
-      canceledBatches += 1;
-      continue;
-    }
-    const events = new Map<string, ReplayEvent[]>();
-    for (const event of rows) {
-      const list = events.get(event.conversationId) ?? [];
-      list.push(event);
-      events.set(event.conversationId, list);
-    }
-    for (const conversation of batch) {
-      const gaps = replayConversation(
-        conversationKindFromRow(conversation),
-        events.get(conversation.conversationId) ?? [],
-        nowMs,
-      );
-      recorded.push(...gaps.filter((gap) => gap.sinceMs >= windowStartMs));
-    }
-    scanned += batch.length;
-  }
+  // A skipped batch or a stop leaves Conversations without events, and
+  // they replay to no gaps.
+  const { canceledBatches, events, scanned, stopped } =
+    await loadReplayEventBatches(
+      conversations.map((row) => row.conversationId),
+      { shouldStop: () => performance.now() - startedAt >= budgetMs },
+    );
+  const recorded = conversations.flatMap((conversation) =>
+    replayConversation(
+      conversationKindFromRow(conversation),
+      events.get(conversation.conversationId) ?? [],
+      nowMs,
+    ).filter((gap) => gap.sinceMs >= windowStartMs),
+  );
   recorded.sort((a, b) => a.sinceMs - b.sinceMs);
   const bySegment = new Map<string, number[]>();
   for (const gap of recorded) {
@@ -161,7 +122,7 @@ async function collectGaps(
     bySegment,
     scanned,
     canceledBatches,
-    budgetExceeded,
+    budgetExceeded: stopped,
   };
 }
 

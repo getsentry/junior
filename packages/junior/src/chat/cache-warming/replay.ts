@@ -13,6 +13,12 @@ import {
 } from "./model";
 import { CONVERSATION_STATE_TTL_MS } from "./warmup";
 
+// Each batch is one query, and the SQL statement timeout applies to it. Small
+// batches keep each query short and let callers stop between batches.
+const REPLAY_BATCH_SIZE = 10;
+// Postgres `query_canceled`: the statement timeout stopped the query.
+const QUERY_CANCELED = "57014";
+
 /**
  * Segment of a stored idle period. History does not tell the plugin work
  * state or the archive state that the Conversation had then.
@@ -71,7 +77,7 @@ export interface ReplayGap {
  * fork copies the rows of its source with their old times, so rows from
  * before the Conversation was created are skipped.
  */
-export async function loadReplayEvents(
+async function loadReplayEvents(
   conversationIds: string[],
   sinceMs?: number,
 ): Promise<ReplayEvent[]> {
@@ -112,6 +118,57 @@ export async function loadReplayEvents(
       sinceMs === undefined ? null : new Date(sinceMs).toISOString(),
     ],
   );
+}
+
+function isQueryCanceled(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current && depth < 6; depth += 1) {
+    if (typeof current !== "object") return false;
+    if ((current as { code?: unknown }).code === QUERY_CANCELED) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * Load the replay events of these Conversations in small batches, by
+ * Conversation. A Conversation can have too much history for one query, so a
+ * batch that the statement timeout cancels is skipped and counted.
+ * `shouldStop` runs before each batch after the first.
+ */
+export async function loadReplayEventBatches(
+  conversationIds: string[],
+  options: { shouldStop?: () => boolean; sinceMs?: number } = {},
+): Promise<{
+  canceledBatches: number;
+  events: Map<string, ReplayEvent[]>;
+  scanned: number;
+  stopped: boolean;
+}> {
+  const events = new Map<string, ReplayEvent[]>();
+  let canceledBatches = 0;
+  let scanned = 0;
+  for (let i = 0; i < conversationIds.length; i += REPLAY_BATCH_SIZE) {
+    if (i > 0 && options.shouldStop?.()) {
+      return { canceledBatches, events, scanned, stopped: true };
+    }
+    const batch = conversationIds.slice(i, i + REPLAY_BATCH_SIZE);
+    let rows: ReplayEvent[];
+    try {
+      rows = await loadReplayEvents(batch, options.sinceMs);
+    } catch (error) {
+      if (!isQueryCanceled(error)) throw error;
+      canceledBatches += 1;
+      continue;
+    }
+    for (const row of rows) {
+      const list = events.get(row.conversationId) ?? [];
+      list.push(row);
+      events.set(row.conversationId, list);
+    }
+    scanned += batch.length;
+  }
+  return { canceledBatches, events, scanned, stopped: false };
 }
 
 /**

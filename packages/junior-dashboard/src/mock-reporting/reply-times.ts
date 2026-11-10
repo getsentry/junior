@@ -102,5 +102,6 @@ export function readMockPersonReplyTimes(days: number): PersonReplyTimesReport {
       peakBin: 7,
       replies: 9 * scale,
     }),
+    partial: false,
   };
 }

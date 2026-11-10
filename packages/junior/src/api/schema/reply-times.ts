@@ -48,6 +48,8 @@ export const personReplyTimesReportSchema = z
     days: z.number().int().positive(),
     generatedAt: z.string().datetime(),
     histogram: replyTimeHistogramSchema,
+    /** Some Conversations had too much history to read in time. */
+    partial: z.boolean(),
   })
   .strict();
 
