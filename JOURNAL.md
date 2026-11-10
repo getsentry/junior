@@ -130,3 +130,27 @@ Read this first after a sandbox reset or context loss.
     bodies + cited messages; checkIds empty), validateWalkthrough → problems
     as ToolInputError so the model retries; else build document + excerpts and
     completeWalkthroughVersion(context.attachmentStorage, ...).
+- Slice 4a code done and pushed: branch `walkthrough/4a-generation-tool`
+  commit 04cf3f312 (base `walkthrough/3-storage`). NO PR YET.
+  - Files: `chat/walkthroughs/submit-tool.ts` (createSubmitWalkthroughTool,
+    SUBMIT_WALKTHROUGH_TOOL_NAME, types WalkthroughGeneration{versionId,
+    provider, repository, layers[], sourceConversationId?, modelId},
+    WalkthroughGenerationLayer), `skills/walkthrough/SKILL.md`,
+    AgentRun/ToolRuntimeContext.walkthroughGeneration, chat/agent/tools.ts
+    pass-through, chat/tools/index.ts registration.
+  - Renamed model-facing keys to snake_case: `not_covered`, `check_id`
+    (tool-key-casing:check). The UI (slice 5) must read these names. The
+    update schema still has camelCase keys — fix in slice 8 when it becomes
+    a tool input.
+  - Lint gotchas: no "Junior" in model-read descriptions (ast-grep
+    no-hardcoded-bot-name-in-model-text); tests must not call setPlugins —
+    use `createApp({ plugins: defineJuniorPlugins([...]) })` from "@/app".
+    The pre-push hook runs the full lint set; read /tmp/push.log on failure.
+  - Test parses input with walkthroughOutputSchema before tool.execute
+    (execute does not apply zod defaults when called directly).
+  - Open question for 4b: generation Conversation visibility decides what
+    source Conversations it can read (assertCanReadConversationEvents uses
+    the requester Conversation's reach). Private source + public generation
+    → unreadable.
+  - BLOCKED on Thomas: PR creation for 4a was held because deferring the
+    cost runs to 4b changes the agreed plan. Asked via review item.
