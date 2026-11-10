@@ -9,10 +9,6 @@ loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 
 process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
 process.env.JUNIOR_SECRET = "junior-test-secret";
-// `test-old` lets tests read values from a key that is not active.
-process.env.JUNIOR_ENCRYPTION_KEYS =
-  "test:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI,test-old:yzdMjBLutb3SqjtwO1Lm3Cr2wN7FSGG8tzlRjvJc8Xg";
-process.env.JUNIOR_ENCRYPTION_KEY_ID = "test";
 process.env.JUNIOR_STATE_ADAPTER = "memory";
 process.env.JUNIOR_ATTACHMENT_STORAGE_PROVIDER = "memory";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:test:${process.pid}`;

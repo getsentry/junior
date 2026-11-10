@@ -65,6 +65,8 @@ export type DashboardE2eServer = {
  */
 export async function resetDashboardMockState(): Promise<void> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env.JUNIOR_ENCRYPTION_KEYS ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
   const { resetMockDashboardState } = await import("../dist/app.js");
   resetMockDashboardState();
 }
@@ -107,6 +109,8 @@ export async function startDashboardE2eServer(
   options: { basePath?: string } = {},
 ): Promise<DashboardE2eServer> {
   process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
+  process.env.JUNIOR_ENCRYPTION_KEYS ??=
+    "e2e:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
   const { createDashboardApp } = await import("../dist/app.js");
   const app = createDashboardApp({
     allowedDomains: ["example.com"],

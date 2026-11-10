@@ -468,6 +468,8 @@ jobs:
       - run: pnpm --filter @sentry/junior-example build
         env:
           DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+          # Fixed CI-only key. The build loads config, which requires one.
+          JUNIOR_ENCRYPTION_KEYS: ci:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI
           JUNIOR_SKIP_SNAPSHOT: "1"
           REDIS_URL: redis://localhost:6379
 
