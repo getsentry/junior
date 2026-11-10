@@ -1,6 +1,8 @@
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadModule, parse, parsePlPgSQL } from "libpg-query";
+import pLimit from "p-limit";
 
 /**
  * Migration lock check.
@@ -8,8 +10,9 @@ import { fileURLToPath } from "node:url";
  * `junior upgrade` runs each pending migration in a transaction against the
  * live database, so a statement that holds a strong lock while it scans or
  * rewrites a table blocks the app until the migration commits. This
- * check rejects those statements on tables that the same migration did not
- * create. `junior upgrade` also bounds each lock wait (see
+ * check parses each migration with the Postgres parser, including the SQL in
+ * DO blocks, and rejects those statements on tables that the same migration
+ * did not create. `junior upgrade` also bounds each lock wait (see
  * packages/junior/src/db/migrate.ts), so a statement that only
  * needs its lock for an instant, such as ADD COLUMN, passes here. Shipped
  * migrations already ran, so the baseline exempts them.
@@ -22,10 +25,14 @@ const BOUNDED_BACKFILL_MARKER = "-- junior:bounded-backfill:";
 // can build concurrently.
 const CONCURRENT_INDEX_STATEMENT =
   /^CREATE INDEX "[a-z0-9_]+" ON "[a-z0-9_]+" .+;$/;
-const NAME = String.raw`"?([A-Za-z0-9_]+)"?`;
-const TABLE = String.raw`(?:"?public"?\.)?${NAME}`;
-const VOLATILE_DEFAULT =
-  /\bADD\s+COLUMN\b[^,]*\bDEFAULT\s+\(?\s*(?:gen_random_uuid|uuid_generate_v4|random|clock_timestamp|timeofday)\s*\(/i;
+const VOLATILE_FUNCTIONS = new Set([
+  "gen_random_uuid",
+  "uuid_generate_v4",
+  "random",
+  "clock_timestamp",
+  "timeofday",
+]);
+const FILE_CONCURRENCY = 8;
 
 const RULES = {
   "index-without-concurrent-build": `CREATE INDEX on an existing table blocks writes until the migration commits. Put "${CONCURRENT_INDEX_MARKER}" on the line before it and guard the build (see packages/junior/src/db/concurrent-indexes.ts).`,
@@ -43,156 +50,195 @@ const RULES = {
   "unbounded-backfill": `UPDATE or DELETE on an existing table locks every row it changes until the migration commits, and app writes to those rows wait. Keep it to a small or idle set of rows, and say why on the line before it: "${BOUNDED_BACKFILL_MARKER} <reason>".`,
 };
 
-function withoutLineComment(line) {
-  return line.replace(/--.*$/, "");
-}
+const loaded = loadModule();
 
-/** Tables that the migration creates. IF NOT EXISTS can keep a full table. */
-function createdTables(sql) {
-  const tables = new Set();
-  const pattern = new RegExp(
-    String.raw`\bCREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?!IF\s+NOT\s+EXISTS\b)${TABLE}`,
-    "gi",
-  );
-  for (const match of sql.matchAll(pattern)) {
-    tables.add(match[1].toLowerCase());
-  }
-  return tables;
-}
-
-function indexViolations(lines, newTables) {
-  const violations = [];
-  const indexPattern = new RegExp(
-    String.raw`\bCREATE\s+(?:UNIQUE\s+)?INDEX\b[^;]*?\bON\s+(?:ONLY\s+)?${TABLE}`,
-    "i",
-  );
-  let previousLine = "";
-  for (const line of lines) {
-    const code = withoutLineComment(line);
-    if (
-      /\b(?:(?:CREATE\s+(?:UNIQUE\s+)?|DROP\s+)INDEX|REINDEX\b[^;]*?)\s+CONCURRENTLY\b/i.test(
-        code,
-      )
-    ) {
-      violations.push("concurrently-in-transaction");
-    } else if (/\bCREATE\s+(?:UNIQUE\s+)?INDEX\b/i.test(code)) {
-      const table = indexPattern.exec(code)?.[1]?.toLowerCase();
-      const isNewTable = table !== undefined && newTables.has(table);
-      if (previousLine === CONCURRENT_INDEX_MARKER) {
-        if (!CONCURRENT_INDEX_STATEMENT.test(line.trim())) {
-          violations.push("unsupported-concurrent-index");
-        }
-      } else if (!isNewTable) {
-        violations.push("index-without-concurrent-build");
-      }
-    }
-    if (line.trim()) {
-      previousLine = line.trim();
+/** Line number (1-based) of a byte offset in the UTF-8 source. */
+function lineAt(bytes, offset) {
+  let line = 1;
+  for (let index = 0; index < offset; index += 1) {
+    if (bytes[index] === 0x0a) {
+      line += 1;
     }
   }
-  return violations;
+  return line;
 }
 
-function backfillViolations(lines, newTables) {
-  const violations = [];
-  const backfillPattern = new RegExp(
-    String.raw`^\s*(?:UPDATE|DELETE\s+FROM)\s+(?:ONLY\s+)?${TABLE}`,
-    "i",
-  );
-  let previousLine = "";
-  for (const line of lines) {
-    const table = backfillPattern.exec(line)?.[1]?.toLowerCase();
-    if (
-      table !== undefined &&
-      !newTables.has(table) &&
-      !(
-        previousLine.startsWith(BOUNDED_BACKFILL_MARKER) &&
-        previousLine.slice(BOUNDED_BACKFILL_MARKER.length).trim()
-      )
-    ) {
-      violations.push("unbounded-backfill");
+function collectExecSql(node, found) {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      collectExecSql(item, found);
     }
-    if (line.trim()) {
-      previousLine = line.trim();
-    }
+    return;
   }
-  return violations;
+  if (node === null || typeof node !== "object") {
+    return;
+  }
+  const execSql = node.PLpgSQL_stmt_execsql;
+  if (execSql !== undefined) {
+    found.push({
+      query: execSql.sqlstmt.PLpgSQL_expr.query,
+      lineno: execSql.lineno,
+    });
+  }
+  for (const value of Object.values(node)) {
+    collectExecSql(value, found);
+  }
 }
 
-function alterTableViolations(lines, newTables) {
-  const violations = [];
-  const alterPattern = new RegExp(
-    String.raw`\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?${TABLE}`,
-    "i",
-  );
-  // A statement can sit inside a DO block, after other PL/pgSQL code.
-  const fragments = lines.map(withoutLineComment).join("\n").split(";");
-  for (const fragment of fragments) {
-    const match = alterPattern.exec(fragment);
-    const table = match?.[1]?.toLowerCase();
-    if (!match || table === undefined || newTables.has(table)) {
+/**
+ * Parse a migration into its statements with their source lines, including
+ * the SQL statements inside DO blocks.
+ */
+async function parsedStatements(sql) {
+  await loaded;
+  const bytes = Buffer.from(sql);
+  const statements = [];
+  for (const raw of (await parse(sql)).stmts) {
+    const start = raw.stmt_location ?? 0;
+    const line = lineAt(bytes, start);
+    if (raw.stmt.DoStmt === undefined) {
+      statements.push({ node: raw.stmt, line });
       continue;
     }
-    const statement = fragment.slice(match.index);
-    if (
-      /\bADD\s+CONSTRAINT\b[\s\S]*\b(?:FOREIGN\s+KEY|CHECK)\b/i.test(
-        statement,
-      ) &&
-      !/\bNOT\s+VALID\b/i.test(statement)
-    ) {
-      violations.push("constraint-without-not-valid");
-    }
-    if (
-      /\bADD\s+(?:CONSTRAINT\s+\S+\s+)?(?:UNIQUE|PRIMARY\s+KEY)\b/i.test(
-        statement,
-      ) &&
-      !/\bUSING\s+INDEX\b/i.test(statement)
-    ) {
-      violations.push("unique-without-index");
-    }
-    if (
-      new RegExp(
-        String.raw`\bALTER\s+COLUMN\s+${NAME}\s+(?:SET\s+DATA\s+)?TYPE\b`,
-        "i",
-      ).test(statement)
-    ) {
-      violations.push("column-type-change");
-    }
-    if (
-      new RegExp(
-        String.raw`\bALTER\s+COLUMN\s+${NAME}\s+SET\s+NOT\s+NULL\b`,
-        "i",
-      ).test(statement)
-    ) {
-      violations.push("set-not-null");
-    }
-    if (VOLATILE_DEFAULT.test(statement)) {
-      violations.push("volatile-default");
+    const end = raw.stmt_len ? start + raw.stmt_len : bytes.length;
+    const text = bytes.subarray(start, end).toString();
+    // PL/pgSQL line 1 is the line that opens the body with $$, $tag$, or a quote.
+    const bodyLine =
+      line + text.slice(0, text.search(/\$\w*\$|'/)).split("\n").length - 1;
+    const embedded = [];
+    collectExecSql(await parsePlPgSQL(`${text};`), embedded);
+    for (const { query, lineno } of embedded) {
+      for (const inner of (await parse(query)).stmts) {
+        statements.push({ node: inner.stmt, line: bodyLine + lineno - 1 });
+      }
     }
   }
-  return violations;
+  return statements;
 }
 
-/** List the lock rules that one migration's SQL breaks, by rule id. */
-export function migrationLockViolations(sql) {
-  const lines = sql.replaceAll("--> statement-breakpoint", "\n").split("\n");
-  const newTables = createdTables(lines.map(withoutLineComment).join("\n"));
-  return [
-    ...indexViolations(lines, newTables),
-    ...alterTableViolations(lines, newTables),
-    ...backfillViolations(lines, newTables),
-  ];
+function constraintViolation(constraint) {
+  if (
+    (constraint.contype === "CONSTR_FOREIGN" ||
+      constraint.contype === "CONSTR_CHECK") &&
+    !constraint.skip_validation
+  ) {
+    return "constraint-without-not-valid";
+  }
+  if (
+    (constraint.contype === "CONSTR_UNIQUE" ||
+      constraint.contype === "CONSTR_PRIMARY") &&
+    constraint.indexname === undefined
+  ) {
+    return "unique-without-index";
+  }
+  if (
+    constraint.contype === "CONSTR_DEFAULT" &&
+    VOLATILE_FUNCTIONS.has(
+      constraint.raw_expr?.FuncCall?.funcname?.at(-1)?.String?.sval,
+    )
+  ) {
+    return "volatile-default";
+  }
+  return undefined;
+}
+
+function alterTableViolations(command) {
+  switch (command.subtype) {
+    case "AT_AddConstraint":
+      return [constraintViolation(command.def.Constraint)];
+    case "AT_AddColumn":
+      return (command.def.ColumnDef.constraints ?? []).map((constraint) =>
+        constraintViolation(constraint.Constraint),
+      );
+    case "AT_AlterColumnType":
+      return ["column-type-change"];
+    case "AT_SetNotNull":
+      return ["set-not-null"];
+    default:
+      return [];
+  }
+}
+
+function isConcurrent(node) {
+  return Boolean(
+    node.IndexStmt?.concurrent ||
+    node.DropStmt?.concurrent ||
+    node.ReindexStmt?.params?.some(
+      (param) => param.DefElem.defname === "concurrently",
+    ),
+  );
+}
+
+/** Return the lock rule ids that a migration's SQL breaks. */
+export async function migrationLockViolations(sql) {
+  const lines = sql.split("\n");
+  const statements = await parsedStatements(sql);
+  const lineBefore = (line) =>
+    lines
+      .slice(0, line - 1)
+      .findLast((text) => text.trim() !== "")
+      ?.trim() ?? "";
+  // IF NOT EXISTS can keep an existing table with all its rows.
+  const newTables = new Set(
+    statements
+      .map(({ node }) => node.CreateStmt)
+      .filter((create) => create !== undefined && !create.if_not_exists)
+      .map((create) => create.relation.relname),
+  );
+  const isExisting = (relation) =>
+    relation !== undefined && !newTables.has(relation.relname);
+  const violations = [];
+  for (const { node, line } of statements) {
+    if (isConcurrent(node)) {
+      violations.push("concurrently-in-transaction");
+      continue;
+    }
+    if (node.IndexStmt && isExisting(node.IndexStmt.relation)) {
+      if (lineBefore(line) !== CONCURRENT_INDEX_MARKER) {
+        violations.push("index-without-concurrent-build");
+      } else if (!CONCURRENT_INDEX_STATEMENT.test(lines[line - 1].trim())) {
+        violations.push("unsupported-concurrent-index");
+      }
+    }
+    if (node.AlterTableStmt && isExisting(node.AlterTableStmt.relation)) {
+      for (const command of node.AlterTableStmt.cmds) {
+        violations.push(...alterTableViolations(command.AlterTableCmd));
+      }
+    }
+    const backfill = node.UpdateStmt ?? node.DeleteStmt;
+    const before = lineBefore(line);
+    const hasBackfillReason =
+      before.startsWith(BOUNDED_BACKFILL_MARKER) &&
+      before.slice(BOUNDED_BACKFILL_MARKER.length).trim() !== "";
+    if (isExisting(backfill?.relation) && !hasBackfillReason) {
+      violations.push("unbounded-backfill");
+    }
+  }
+  return [...new Set(violations.filter(Boolean))];
 }
 
 /**
  * Report lock rule violations in migration files. A baseline file may break
  * rules because it already ran; it must still break at least one.
  */
-export function checkMigrationLocks(files, baseline) {
+export async function checkMigrationLocks(files, baseline) {
+  const limit = pLimit(FILE_CONCURRENCY);
+  const results = await Promise.all(
+    files.map(([filePath, sql]) =>
+      limit(async () => {
+        try {
+          return [filePath, await migrationLockViolations(sql)];
+        } catch (error) {
+          throw new Error(`${filePath}: cannot parse migration`, {
+            cause: error,
+          });
+        }
+      }),
+    ),
+  );
   const errors = [];
   const exempt = new Set(baseline);
-  for (const [filePath, sql] of files) {
-    const ruleIds = [...new Set(migrationLockViolations(sql))];
+  for (const [filePath, ruleIds] of results) {
     if (exempt.has(filePath)) {
       if (ruleIds.length === 0) {
         errors.push(
@@ -216,34 +262,49 @@ export function checkMigrationLocks(files, baseline) {
   return errors;
 }
 
-function migrationFiles(root) {
+async function migrationFiles(root) {
   const packagesDirectory = path.join(root, "packages");
-  return fs
-    .readdirSync(packagesDirectory, { withFileTypes: true })
+  const packages = await fs.readdir(packagesDirectory, { withFileTypes: true });
+  const directories = packages
     .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join("packages", entry.name, "migrations"))
-    .filter((directory) => fs.existsSync(path.join(root, directory)))
-    .flatMap((directory) =>
-      fs
-        .readdirSync(path.join(root, directory))
-        .filter((file) => /^\d{4}_.+\.sql$/.test(file))
-        .sort()
-        .map((file) => path.join(directory, file)),
+    .map((entry) => path.join("packages", entry.name, "migrations"));
+  const filePaths = (
+    await Promise.all(
+      directories.map(async (directory) => {
+        const names = await fs
+          .readdir(path.join(root, directory))
+          .catch((error) => {
+            if (error.code === "ENOENT") {
+              return [];
+            }
+            throw error;
+          });
+        return names
+          .filter((file) => /^\d{4}_.+\.sql$/.test(file))
+          .sort()
+          .map((file) => path.join(directory, file));
+      }),
     )
-    .map((filePath) => [
-      filePath,
-      fs.readFileSync(path.join(root, filePath), "utf8"),
-    ]);
+  ).flat();
+  const limit = pLimit(FILE_CONCURRENCY);
+  return Promise.all(
+    filePaths.map((filePath) =>
+      limit(async () => [
+        filePath,
+        await fs.readFile(path.join(root, filePath), "utf8"),
+      ]),
+    ),
+  );
 }
 
-function main() {
+async function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
-  const files = migrationFiles(root);
-  const baseline = JSON.parse(
-    fs.readFileSync(path.join(root, BASELINE_PATH), "utf8"),
-  );
-  const errors = checkMigrationLocks(files, baseline);
+  const [files, baselineText] = await Promise.all([
+    migrationFiles(root),
+    fs.readFile(path.join(root, BASELINE_PATH), "utf8"),
+  ]);
+  const errors = await checkMigrationLocks(files, JSON.parse(baselineText));
   if (errors.length === 0) {
     console.log(`Migration lock check passed for ${files.length} migrations.`);
     return;
@@ -253,5 +314,5 @@ function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }
