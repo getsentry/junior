@@ -1,5 +1,5 @@
 import { Link as LinkIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 import { cn } from "../../styles";
@@ -7,6 +7,71 @@ import { cn } from "../../styles";
 // Space between the sticky chrome and the heading. It also clears the card
 // padding above a card heading.
 const SCROLL_GAP_PX = 40;
+
+/**
+ * How far below the viewport top a followed heading lands: under the sticky
+ * chrome, plus a gap. The chrome's height changes with the header, page
+ * links, and banner, so measure it.
+ */
+function anchorScrollMargin(): number {
+  const chrome = document.querySelector("[data-dashboard-chrome]");
+  return (chrome?.getBoundingClientRect().height ?? 0) + SCROLL_GAP_PX;
+}
+
+/**
+ * Track which of `anchors` the reader is in: the last heading that has
+ * scrolled up to where a followed link puts it, else the first. A hash that
+ * names one marks it at once. At the end of the page, where short sections
+ * cannot reach that line, the hash's section wins if it shows, else the last.
+ */
+export function useCurrentAnchor(
+  anchors: readonly string[],
+): string | undefined {
+  const { hash } = useLocation();
+  const [current, setCurrent] = useState<string>();
+  const ids = anchors.join(" ");
+  useEffect(() => {
+    if (!ids) return;
+    const list = ids.split(" ");
+    const target = hash.slice(1);
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const line = anchorScrollMargin() + 1;
+      const page = document.scrollingElement;
+      const atEnd =
+        page !== null &&
+        page.scrollHeight > window.innerHeight &&
+        window.scrollY + window.innerHeight >= page.scrollHeight - 2;
+      let next: string | undefined;
+      for (const id of list) {
+        const top = document.getElementById(id)?.getBoundingClientRect().top;
+        if (top === undefined) continue;
+        if (next === undefined || top <= line) next = id;
+        if (atEnd && id === target && top < window.innerHeight) {
+          setCurrent(id);
+          return;
+        }
+        if (atEnd) next = id;
+      }
+      setCurrent(next);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    if (list.includes(target)) setCurrent(target);
+    schedule();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [hash, ids]);
+  // Before the headings mount, the page opens at its first section.
+  return ids ? (current ?? anchors[0]) : undefined;
+}
 
 /** Id of the title text, for `aria-labelledby` on the section. */
 export function anchorTitleId(anchor: string): string {
@@ -29,11 +94,8 @@ export function AnchorHeading(props: {
     if (hash !== `#${props.anchor}`) return;
     const heading = document.getElementById(props.anchor);
     if (!heading) return;
-    // The sticky chrome covers the top of the page. Its height changes with
-    // the header, page links, and banner, so measure it.
-    const chrome = document.querySelector("[data-dashboard-chrome]");
-    const chromeHeight = chrome?.getBoundingClientRect().height ?? 0;
-    heading.style.scrollMarginTop = `${chromeHeight + SCROLL_GAP_PX}px`;
+    // The sticky chrome covers the top of the page.
+    heading.style.scrollMarginTop = `${anchorScrollMargin()}px`;
     heading.scrollIntoView();
     // `key` changes when someone follows the same anchor again.
   }, [hash, key, props.anchor]);

@@ -18,7 +18,10 @@ import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
 import { OutboundLink } from "../components/OutboundLink";
 
-type ConversationBriefReport = NonNullable<ConversationDetailReport["brief"]>;
+/** A Conversation's current Brief. */
+export type ConversationBriefReport = NonNullable<
+  ConversationDetailReport["brief"]
+>;
 
 type BriefContent = ConversationBriefReport["content"];
 
@@ -33,6 +36,31 @@ const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
     in_progress: "accent",
     partial: "warning",
   };
+
+type OutcomeStatus = BriefContent["outcome"]["status"];
+
+/** Name a Brief outcome, such as "In progress". */
+export function briefOutcomeLabel(status: OutcomeStatus): string {
+  const label = displayLabel(status);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Show a Brief outcome as a quiet chip, such as "• Blocked". */
+export function BriefOutcomeChip(props: {
+  className?: string;
+  size?: "compact" | "default";
+  status: OutcomeStatus;
+}) {
+  return (
+    <StatusChip
+      className={props.className}
+      size={props.size ?? "compact"}
+      tone={outcomeTones[props.status]}
+    >
+      {displayLabel(props.status)}
+    </StatusChip>
+  );
+}
 
 /** Show a summary in details, or the durable Brief when a transcript expires. */
 export function ConversationBrief(props: {

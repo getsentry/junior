@@ -72,7 +72,6 @@ export function ConversationHomeList(props: {
       onReorderError={handleReorderError}
       onReorderPins={props.onReorderPins}
       timeZone={props.timeZone}
-      waitingConversations={props.waitingConversations}
     >
       {({ releaseHold, sections }) =>
         props.loading && props.conversations.length === 0 ? (

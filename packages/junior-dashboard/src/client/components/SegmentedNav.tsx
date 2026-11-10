@@ -92,7 +92,7 @@ export function SegmentedNav(props: {
   ariaLabel: string;
   fill?: boolean;
   items: readonly SegmentedNavItem[];
-  /** Match the 48px page header row, so labels share the pane's top centre line. */
+  /** Match the header row (`h-header`), so labels share the pane's top centre line. */
   toolbar?: boolean;
 }) {
   const { pathname } = useLocation();
@@ -143,7 +143,7 @@ export function SegmentedNav(props: {
       isActive
         ? "text-dashboard-text after:bg-dashboard-text-solid"
         : "text-dashboard-text-muted hover:text-dashboard-text",
-      props.toolbar ? "h-12" : "h-10",
+      props.toolbar ? "h-header" : "h-10",
       props.fill ? "min-w-max flex-[1_0_0]" : "shrink-0",
     );
 

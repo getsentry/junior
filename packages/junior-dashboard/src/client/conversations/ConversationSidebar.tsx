@@ -1,7 +1,12 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import {
+  ConversationCast,
+  useConversationDensity,
+} from "./conversationDensity";
+import {
   Archive,
   ArchiveRestore,
+  ArrowRight,
   Pin,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
@@ -30,12 +35,12 @@ import {
 } from "../format";
 import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
-import { SIDEBAR_ROW_GRID_CLASS } from "../components/layout/sidebarGrid";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import { WaitingChip } from "./WaitingChip";
 import type { ConversationSection } from "./conversationSections";
 import { ConversationSectionList } from "./ConversationSectionList";
+import { displayPlainText } from "../display-text/plainText";
 import { ConversationStatusText } from "./ConversationListStatusIcon";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
@@ -83,6 +88,14 @@ type ConversationSidebarEntry =
       kind: "thread-toggle";
       rootId: string;
     };
+
+const NEEDS_YOU_INBOX_PATH = "/review?filter=needs-you&group=conversation";
+
+// Denser than the pane chrome, like a Slack or Linear sidebar: 8px row
+// padding in a 6px list inset. Labels start 36px into the list; section
+// labels, waiting chips, and thread rows indent to that edge.
+const LIST_ROW_GRID_CLASS =
+  "grid grid-cols-[1rem_minmax(0,1fr)_auto] gap-x-3 px-2";
 
 const ROW_ACTION_BUTTON_CLASS =
   "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
@@ -155,13 +168,13 @@ export function ConversationSidebar(props: {
         onReorderError={handleReorderError}
         onReorderPins={props.onReorderPins}
         timeZone={props.timeZone}
-        waitingConversations={props.waitingConversations}
       >
         {({ releaseHold, sections }) => (
           <ScrollArea
             className="h-full"
-            viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+            viewportClassName="px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
+            <NeedsYouLink count={props.waitingConversations.size} />
             {props.error ? (
               <div className="p-2">
                 <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -178,7 +191,7 @@ export function ConversationSidebar(props: {
                 renderItem={(entry) =>
                   entry.kind === "section" ? (
                     <ConversationSectionHeading
-                      className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
+                      className={cn("px-2 pb-1", entry.first ? "pt-1" : "pt-3")}
                       collapsed={entry.collapsed}
                       count={entry.count}
                       label={entry.label}
@@ -272,6 +285,26 @@ function ConversationRowsLoading() {
   );
 }
 
+/**
+ * Lead the list with the count of Conversations that wait on the viewer. It
+ * opens the Inbox on their Review items, grouped by Conversation. The rows
+ * stay in place and carry the Needs you marker.
+ */
+function NeedsYouLink(props: { count: number }) {
+  if (props.count === 0) return null;
+  return (
+    <Link
+      className="mx-0.5 mt-1 mb-1 flex items-center justify-between gap-2 rounded-lg bg-dashboard-accent/10 px-2 py-1.5 font-sans text-xs font-semibold text-dashboard-accent-text no-underline transition-colors hover:bg-dashboard-accent/15 focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      to={NEEDS_YOU_INBOX_PATH}
+    >
+      {props.count === 1
+        ? "1 conversation needs you"
+        : `${props.count} conversations need you`}
+      <ArrowRight aria-hidden="true" size={13} />
+    </Link>
+  );
+}
+
 /** Draw placeholder rows in the sidebar row geometry. Callers own the status text. */
 export function ConversationRowSkeletons() {
   return (
@@ -279,7 +312,7 @@ export function ConversationRowSkeletons() {
       <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 10 }, (_, index) => (
         <div
-          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[2.5rem] pr-3"
+          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[2.25rem] pr-2"
           key={index}
         >
           <Skeleton
@@ -426,9 +459,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
+  const [density] = useConversationDensity();
+  const comfortable = density === "comfortable";
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const unread = Boolean(props.conversation.unread);
   const emphasized = unread || Boolean(props.waiting);
+  const preview = props.conversation.activityPreview;
+  const secondLine = preview
+    ? displayPlainText(preview.text, preview.mentions)
+    : undefined;
   const drag = props.drag;
   // Unread tracks idle conversations only.
   const canMarkUnread = isIdleConversation(props.conversation);
@@ -481,8 +520,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           aria-current={props.selected ? "page" : undefined}
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            SIDEBAR_ROW_GRID_CLASS,
-            "min-w-0 items-center rounded-lg py-1.5 text-inherit no-underline md:min-h-8 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+            LIST_ROW_GRID_CLASS,
+            "min-w-0 items-center rounded-lg py-1.5 comfortable:py-2.5 text-inherit no-underline md:min-h-8 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
             participant && `max-sm:pr-10 ${ROW_ACTIONS_FADE_CLASS}`,
             // A long press opens the row menu or drags a pin, not the iOS
             // link callout.
@@ -501,23 +540,57 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
               />
             ) : null}
           </span>
+          {comfortable ? (
+            <span className="grid min-w-0 gap-1 py-0.5">
+              <span
+                className={cn(
+                  // The title fills its grid column, so the fade reaches only a
+                  // title that does not fit, in place of an ellipsis.
+                  "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
+                  emphasized
+                    ? "font-semibold"
+                    : props.selected && "font-medium",
+                  emphasized || props.selected || status === "active"
+                    ? "text-dashboard-text"
+                    : "text-dashboard-text-muted",
+                )}
+              >
+                {title}
+              </span>
+              {/* The newest message, as on the phone list. */}
+              {secondLine ? (
+                <span className="line-clamp-2 font-sans text-xs leading-snug text-dashboard-text-muted">
+                  {secondLine}
+                </span>
+              ) : null}
+              <ConversationCast conversation={props.conversation} />
+            </span>
+          ) : (
+            <span
+              className={cn(
+                // The title fills its grid column, so the fade reaches only a
+                // title that does not fit, in place of an ellipsis.
+                "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
+                emphasized ? "font-semibold" : props.selected && "font-medium",
+                emphasized || props.selected || status === "active"
+                  ? "text-dashboard-text"
+                  : "text-dashboard-text-muted",
+              )}
+            >
+              {title}
+            </span>
+          )}
           <span
             className={cn(
-              // The title fills its grid column, so the fade reaches only a
-              // title that does not fit, in place of an ellipsis.
-              "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
-              emphasized ? "font-semibold" : props.selected && "font-medium",
-              emphasized || props.selected || status === "active"
-                ? "text-dashboard-text"
-                : "text-dashboard-text-muted",
+              "flex items-center gap-1.5",
+              comfortable && "self-start pt-0.5",
             )}
           >
-            {title}
+            <ConversationRowState
+              conversation={props.conversation}
+              status={status}
+            />
           </span>
-          <ConversationRowState
-            conversation={props.conversation}
-            status={status}
-          />
         </Link>
         {canToggleRead ? (
           <Tooltip>
@@ -525,7 +598,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
               render={
                 <button
                   aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
-                  className="group/read absolute top-1 left-2 z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
+                  className="group/read absolute top-1 left-1 z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
                   disabled={markUnread.isPending}
                   onClick={() => setUnread(!unread)}
                   type="button"

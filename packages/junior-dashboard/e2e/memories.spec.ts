@@ -70,7 +70,7 @@ test("opens a registered plugin page from the profile menu", async ({
     }),
   ).toBeVisible();
   await page
-    .getByRole("navigation", { name: "Memory navigation" })
+    .getByRole("navigation", { exact: true, name: "Memories" })
     .getByRole("link", { name: "Memories" })
     .click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/memories/library`);
@@ -106,7 +106,7 @@ test("opens memory details beside the library", async ({ page, dashboard }) => {
   await expect(memory).toBeFocused();
   await expect(
     page
-      .getByRole("navigation", { name: "Memory navigation" })
+      .getByRole("navigation", { exact: true, name: "Memories" })
       .getByRole("link", { name: "Memories" }),
   ).toHaveAttribute("aria-current", "page");
 
@@ -237,7 +237,8 @@ test("searches, paginates, and forgets plugin page records", async ({
   await page.goto(`${dashboard.baseURL}/memories`);
   await expect.poll(() => dashboardRequestCount).toBe(1);
   const memoryNavigation = page.getByRole("navigation", {
-    name: "Memory navigation",
+    exact: true,
+    name: "Memories",
   });
   await memoryNavigation.getByRole("link", { name: "Memories" }).click();
   await expect(

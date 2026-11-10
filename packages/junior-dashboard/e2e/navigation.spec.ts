@@ -107,3 +107,40 @@ test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
     page.getByRole("navigation", { name: "Your conversations" }),
   ).toBeVisible();
 });
+
+test("reopens each tab where the reader left it", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${dashboard.baseURL}/automations/runs`);
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  const tab = (name: string) =>
+    primary.getByRole("link", { exact: true, name });
+
+  await tab("Conversations").click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await tab("Automations").click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/runs`);
+  // A press on the tab that shows goes back to its top level.
+  await tab("Automations").click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+
+  // The pane's search bar opens the command palette.
+  await page.getByRole("button", { name: /^Search/ }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Go to conversation" }),
+  ).toBeVisible();
+});
+
+test("keeps the density choice", async ({ page, dashboard }) => {
+  const root = page.locator("html");
+  await page.goto(dashboard.baseURL);
+  await expect(root).toHaveAttribute("data-density", "compact");
+
+  await page.getByRole("button", { name: /Open profile menu/ }).click();
+  await page.getByRole("button", { name: "Comfortable density" }).click();
+  await expect(root).toHaveAttribute("data-density", "comfortable");
+  await page.reload();
+  await expect(root).toHaveAttribute("data-density", "comfortable");
+});

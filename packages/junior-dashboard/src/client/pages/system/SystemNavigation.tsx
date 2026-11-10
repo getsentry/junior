@@ -4,7 +4,8 @@ import { matchPath } from "react-router";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 import { systemPluginsPath } from "./SystemPlugins";
 
-const systemNavigationItems = [
+/** The System pages, for the in-page links and the pane list. */
+export const systemNavigationItems = [
   { end: true, label: "Overview", to: "/system" },
   { label: "People", to: "/system/people" },
   { label: "Locations", to: "/system/locations" },
@@ -29,6 +30,7 @@ export function SystemNavigation(props: {
       ariaLabel="System navigation"
       className={props.className}
       items={systemNavigationItems}
+      listedInPane
     >
       {props.children}
     </SecondaryNavigation>

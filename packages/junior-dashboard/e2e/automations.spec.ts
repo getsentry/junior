@@ -108,10 +108,14 @@ test("opens scheduled and event automations in the native Automations view", asy
   const active = page.getByRole("region", { name: "Active" });
   await expect(active.getByRole("listitem")).toHaveCount(2);
   await screenshot(page, "automations");
-  const weeklySummary = page.getByText("Weekly project summary", {
-    exact: true,
-  });
-  const issueSummary = page.getByText("Closed issue summary", { exact: true });
+  const weeklySummary = page
+    .getByRole("main")
+    .getByText("Weekly project summary", {
+      exact: true,
+    });
+  const issueSummary = page
+    .getByRole("main")
+    .getByText("Closed issue summary", { exact: true });
   await page.getByLabel("Search automations").fill("closed issue");
   await expect(weeklySummary).not.toBeVisible();
   await expect(issueSummary).toBeVisible();
@@ -245,7 +249,9 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page).toHaveURL(/[?&]type=event(?:&|$)/);
   await expect(weeklySummary).not.toBeVisible();
   await expect(issueSummary).toBeVisible();
-  await expect(page.getByText("Incident change alerts")).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText("Incident change alerts"),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Actions: Incident change alerts" }),
   ).toHaveCount(0);
@@ -274,7 +280,9 @@ test("opens scheduled and event automations in the native Automations view", asy
     "href",
     "/people/avery%40sentry.io",
   );
-  await expect(page.getByText("Memory system")).not.toBeVisible();
+  await expect(
+    page.getByRole("main").getByText("Memory system"),
+  ).not.toBeVisible();
   await creatorLink.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
@@ -292,9 +300,11 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     name: "Recent runs",
     exact: true,
   });
-  const weeklySummary = page.getByText("Weekly project summary", {
-    exact: true,
-  });
+  const weeklySummary = page
+    .getByRole("main")
+    .getByText("Weekly project summary", {
+      exact: true,
+    });
   const openWeekly = page.getByRole("link", {
     name: "Open automation: Weekly project summary",
   });

@@ -2,7 +2,7 @@ import { getDashboardAgentName } from "../../agentName";
 import { CopyButton } from "../../components/CopyButton";
 import { AnchorHeading } from "../../components/layout/AnchorHeading";
 import { dashboardInlineLinkClass } from "../../styles";
-import { SettingsPageLayout } from "./SettingsPageLayout";
+import { SettingsSection } from "./SettingsPageLayout";
 import { OutboundLink } from "../../components/OutboundLink";
 
 const MCP_DOCS_URL = "https://junior.sentry.dev/operate/mcp-server/";
@@ -36,7 +36,7 @@ function ConfigBlock(props: { anchor: string; label: string; value: string }) {
 }
 
 /** Show the MCP server URL and client config for this deployment. */
-export function McpSettingsPage() {
+export function McpSettings() {
   // The dashboard redirects to its canonical origin, which also serves MCP.
   const url = new URL("/api/mcp", window.location.origin).toString();
   const name = mcpServerName();
@@ -47,7 +47,8 @@ export function McpSettingsPage() {
   );
 
   return (
-    <SettingsPageLayout
+    <SettingsSection
+      anchor="mcp"
       description={
         <>
           Connect Claude Code or another MCP client to list your{" "}
@@ -78,6 +79,6 @@ export function McpSettingsPage() {
         </OutboundLink>
         .
       </p>
-    </SettingsPageLayout>
+    </SettingsSection>
   );
 }

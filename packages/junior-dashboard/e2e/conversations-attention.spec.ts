@@ -111,11 +111,12 @@ async function sidebarSectionOf(
 }
 
 /**
- * Serve versions and waiting conversations that a test can change, so the
- * feed poll picks up who waits.
+ * Serve versions and a feed that a test can change, so the feed poll picks
+ * up an old last Message on the waiting conversation, which moves it to a
+ * section of its own.
  */
-async function mockChangingWaiting(page: Page) {
-  let waiting = false;
+async function mockChangingActivity(page: Page) {
+  let movedAt: string | undefined;
   const versions = {
     conversations: "feed-1",
     reviewItems: "review-1",
@@ -124,30 +125,32 @@ async function mockChangingWaiting(page: Page) {
   await page.route("**/api/versions*", (route) =>
     route.fulfill({ json: versions }),
   );
-  await page.route("**/api/review-items/waiting-conversations", (route) =>
-    route.fulfill({
-      json: {
-        conversations: waiting
-          ? [
-              {
-                conversationId: WAITING_CONVERSATION_ID,
-                items: [{ title: reviewItem.title }],
-                waitingSince: reviewItem.createdAt,
-              },
-            ]
-          : [],
-      },
-    }),
+  await page.route(
+    (url) => url.pathname === "/api/conversations",
+    async (route) => {
+      const response = await route.fetch();
+      const feed = (await response.json()) as {
+        conversations: { conversationId: string; lastMessageAt?: string }[];
+      };
+      if (movedAt) {
+        for (const conversation of feed.conversations) {
+          if (conversation.conversationId === WAITING_CONVERSATION_ID) {
+            conversation.lastMessageAt = movedAt;
+          }
+        }
+      }
+      await route.fulfill({ json: feed, response });
+    },
   );
-  /** Change who waits, and move the token the poll reads. */
+  /** Move the row to January 2020 or back, and move the poll token. */
   return (next: boolean) => {
-    waiting = next;
-    versions.reviewItems = `review-${next ? 2 : 3}`;
+    movedAt = next ? "2020-01-01T00:00:00.000Z" : undefined;
+    versions.conversations = `feed-${next ? 2 : 3}-${Date.now()}`;
   };
 }
 
 test.describe("conversation sections", () => {
-  test("puts waiting conversations in Needs you first", async ({
+  test("marks waiting conversations and links to them in the Inbox", async ({
     page,
     dashboard,
   }) => {
@@ -157,29 +160,34 @@ test.describe("conversation sections", () => {
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
-    const attention = sidebar.getByRole("button", { name: "Needs you" });
     const waitingRow = sidebar.getByRole("link", {
       name: /Checkout latency triage/,
     });
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
-    await expect(sidebar.getByRole("link").first()).toHaveAccessibleName(
-      /Checkout latency triage/,
-    );
+    // A waiting row keeps its place in its time section, with a marker.
     await expect(
       waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
+    await expect(sidebar.getByText("Needs you", { exact: true })).toBeVisible();
+    const section = await sidebarSectionOf(sidebar, /Checkout latency triage/);
+    expect(section).toMatch(/^\w/);
+    await expect(
+      page.getByRole("link", { name: /^\d+ conversations? needs? you$/ }),
+    ).toHaveAttribute("href", "/review?filter=needs-you&group=conversation");
     await screenshot(page, "conversations-needs-you");
 
-    await attention.click();
-    await expect(attention).toHaveAttribute("aria-expanded", "false");
+    const heading = sidebar.locator("button[aria-expanded]", {
+      hasText: section!,
+    });
+    await heading.click();
+    await expect(heading).toHaveAttribute("aria-expanded", "false");
     await expect(waitingRow).toHaveCount(0);
     await screenshot(page, "conversations-sections-collapsed");
 
     await page.reload();
-    await expect(attention).toHaveAttribute("aria-expanded", "false");
+    await expect(heading).toHaveAttribute("aria-expanded", "false");
     await expect(waitingRow).toHaveCount(0);
 
-    await attention.click();
+    await heading.click();
     await expect(waitingRow).toBeVisible();
   });
 
@@ -197,7 +205,8 @@ test.describe("conversation sections", () => {
     const activeRows = sidebar.getByRole("link", {
       name: /Investigate checkout latency/,
     });
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
+    await expect(activeRows).toBeVisible();
+    await expect(sidebar.getByRole("button").first()).not.toHaveText(/^Pinned/);
 
     // Pin from the row's hover action in the sidebar.
     const pinRequest = page.waitForRequest(
@@ -211,7 +220,7 @@ test.describe("conversation sections", () => {
     expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
     await expect(sidebar.getByRole("button").first()).toHaveText(/^Pinned/);
-    // Pinned wins over Needs you, so the row shows only in Pinned.
+    // The row shows only in Pinned.
     await expect(activeRows).toHaveCount(1);
     await expect
       .poll(() => sidebarSectionOf(sidebar, /Investigate checkout latency/))
@@ -239,7 +248,7 @@ test.describe("conversation sections", () => {
     await expect(
       page.getByRole("button", { name: "Pin", exact: true }),
     ).toBeVisible();
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
+    await expect(sidebar.getByRole("button").first()).not.toHaveText(/^Pinned/);
   });
 
   test("keeps an unread conversation in its place until marked read", async ({
@@ -261,9 +270,8 @@ test.describe("conversation sections", () => {
       sidebarSectionOf(sidebar, /Closed issue summary/);
     await expect(finishedRow).toBeVisible();
     await expect(unreadDot).toHaveCount(0);
-    // Unread does not move a row: only a Review item that waits on the
-    // viewer puts it in Needs you.
-    await expect.poll(finishedSection).toMatch(/^(?!Needs you)./);
+    // Unread does not move a row.
+    await expect.poll(finishedSection).toMatch(/^\w/);
     const home = await finishedSection();
 
     const unreadRequest = page.waitForRequest(
@@ -452,7 +460,6 @@ test.describe("conversation sections", () => {
       name: /Investigate checkout latency/,
     });
     const chip = sidebar.getByRole("link", { name: /Ready to merge · #42/ });
-    await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
     await expect(
       waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
@@ -510,11 +517,6 @@ test.describe("conversation sections", () => {
     await details
       .getByRole("button", { name: "Close conversation details" })
       .click();
-
-    const attention = sidebar.getByRole("button", { name: "Needs you" });
-    await attention.click();
-    await expect(attention).toHaveAttribute("aria-expanded", "false");
-    await expect(waitingRow).toHaveCount(0);
   });
 });
 
@@ -525,7 +527,7 @@ test.describe("stable conversation list", () => {
   }) => {
     // Real versions poll interval.
     test.setTimeout(60_000);
-    const setWaiting = await mockChangingWaiting(page);
+    const setOld = await mockChangingActivity(page);
     await page.goto(dashboard.baseURL);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -541,17 +543,14 @@ test.describe("stable conversation list", () => {
       );
     const pill = page.getByRole("button", { name: "1 updated" });
     await expect(waitingRow).toBeVisible();
-    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
+    await expect.poll(rowSection).toMatch(/^(?!.*2020$)/);
 
-    // While the pointer is on the list, the row keeps its place. Its marker
-    // still updates, and the pill offers the new order.
+    // While the pointer is on the list, the row keeps its place, and the
+    // pill offers the new order.
     await waitingRow.hover();
-    setWaiting(true);
+    setOld(true);
     await expect(pill).toBeVisible({ timeout: 15_000 });
-    await expect(
-      waitingRow.getByRole("img", { name: "Waiting on you" }),
-    ).toBeVisible();
-    expect(await rowSection()).not.toMatch(/^Needs you/);
+    expect(await rowSection()).not.toMatch(/2020$/);
     await screenshot(page, "conversations-list-held", {
       lightTheme: true,
       view: "desktop",
@@ -561,7 +560,7 @@ test.describe("stable conversation list", () => {
     await waitingRow.click({ button: "right" });
     await page.getByRole("menu").hover();
     await expect(pill).toBeVisible();
-    expect(await rowSection()).not.toMatch(/^Needs you/);
+    expect(await rowSection()).not.toMatch(/2020$/);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
 
@@ -570,28 +569,26 @@ test.describe("stable conversation list", () => {
     await page.mouse.move(1_200, 500);
     await pill.focus();
     await page.keyboard.press("Enter");
-    await expect.poll(rowSection).toMatch(/^Needs you/);
-    setWaiting(false);
-    await expect
-      .poll(rowSection, { timeout: 15_000 })
-      .toMatch(/^(?!Needs you)/);
+    await expect.poll(rowSection).toMatch(/2020$/);
+    setOld(false);
+    await expect.poll(rowSection, { timeout: 15_000 }).toMatch(/^(?!.*2020$)/);
     await expect(pill).toHaveCount(0);
 
     // Hold again, then apply with a click.
     await waitingRow.hover();
-    setWaiting(true);
+    setOld(true);
     await expect(pill).toBeVisible({ timeout: 15_000 });
     await pill.click();
-    await expect.poll(rowSection).toMatch(/^Needs you/);
+    await expect.poll(rowSection).toMatch(/2020$/);
     await expect(pill).toHaveCount(0);
 
     // Leaving the list, pointer and focus both, applies the new order.
-    setWaiting(false);
+    setOld(false);
     await expect(pill).toBeVisible({ timeout: 15_000 });
-    expect(await rowSection()).toMatch(/^Needs you/);
+    expect(await rowSection()).toMatch(/2020$/);
     await page.mouse.move(1_200, 500);
     await page.evaluate(() => (document.activeElement as HTMLElement).blur());
-    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
+    await expect.poll(rowSection).toMatch(/^(?!.*2020$)/);
     await expect(pill).toHaveCount(0);
   });
 
@@ -601,7 +598,7 @@ test.describe("stable conversation list", () => {
   }) => {
     // Real versions poll interval.
     test.setTimeout(60_000);
-    const setWaiting = await mockChangingWaiting(page);
+    const setOld = await mockChangingActivity(page);
     let releaseFeed!: () => void;
     const feedGate = new Promise<void>((resolve) => (releaseFeed = resolve));
     await page.route(
@@ -626,7 +623,7 @@ test.describe("stable conversation list", () => {
       sidebar.getByRole("link", { name: /Checkout latency triage/ }),
     ).toBeVisible();
 
-    setWaiting(true);
+    setOld(true);
     await expect(page.getByRole("button", { name: "1 updated" })).toBeVisible({
       timeout: 15_000,
     });
@@ -635,7 +632,7 @@ test.describe("stable conversation list", () => {
         page.locator('[role="navigation"][aria-label="Your conversations"]'),
         /Checkout latency triage/,
       ),
-    ).not.toMatch(/^Needs you/);
+    ).not.toMatch(/2020$/);
   });
 
   test("holds the home list order under the pointer", async ({
@@ -644,26 +641,26 @@ test.describe("stable conversation list", () => {
   }) => {
     // Real versions poll interval.
     test.setTimeout(60_000);
-    const setWaiting = await mockChangingWaiting(page);
+    const setOld = await mockChangingActivity(page);
     // A narrow window with a mouse shows the home list, not the sidebar.
     await page.setViewportSize({ width: 700, height: 900 });
     await page.goto(dashboard.baseURL);
     const card = page.getByRole("link", {
       name: "Open Checkout latency triage",
     });
-    const inNeedsYou = page
-      .locator("section:has(#conversation-section-needs-you)")
+    const in2020 = page
+      .locator('section:has([id^="conversation-section-month-2020-"])')
       .getByRole("link", { name: "Open Checkout latency triage" });
     const pill = page.getByRole("button", { name: "1 updated" });
     await expect(card).toBeVisible();
-    await expect(inNeedsYou).toHaveCount(0);
+    await expect(in2020).toHaveCount(0);
 
     await card.hover();
-    setWaiting(true);
+    setOld(true);
     await expect(pill).toBeVisible({ timeout: 15_000 });
-    await expect(inNeedsYou).toHaveCount(0);
+    await expect(in2020).toHaveCount(0);
     await pill.click();
-    await expect(inNeedsYou).toBeVisible();
+    await expect(in2020).toBeVisible();
     await expect(pill).toHaveCount(0);
   });
 });

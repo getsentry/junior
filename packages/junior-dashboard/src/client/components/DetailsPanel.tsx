@@ -111,9 +111,10 @@ export function DetailsPanel(props: {
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
     >
       {/* Same height and centre line as the conversation header beside it:
-          a 48px row above a 1px border. The title starts on the body's text
-          edge, and the close icon ends 24px in, like the header's last icon. */}
-      <header className="flex min-h-[calc(3rem+1px)] items-center justify-between gap-3 border-b border-dashboard-border py-1.5 pl-5 pr-4">
+          the header row above a 1px border. The title starts on the body's
+          text edge, and the close icon ends 24px in, like the header's last
+          icon. */}
+      <header className="box-content flex h-header items-center justify-between gap-3 border-b border-dashboard-border pl-5 pr-4">
         <div className="min-w-0 flex-1">{props.title}</div>
         {/* Keep actions beside close, so they do not move with the title width. */}
         <div className="flex shrink-0 items-center gap-1">

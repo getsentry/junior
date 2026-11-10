@@ -44,7 +44,7 @@ import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
-import { pinnedAndWaitingFirst } from "./conversationSections";
+import { pinnedFirst } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
@@ -57,7 +57,11 @@ import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import { useSidebarFits } from "./conversationSidebarLayout";
-import { ListPane, PaneCollapsedControls } from "../components/layout/PaneNav";
+import {
+  ListPane,
+  PaneCollapsedControls,
+  usePaneTabValue,
+} from "../components/layout/PaneNav";
 
 const CONVERSATION_PAGE_SIZE = 20;
 
@@ -70,7 +74,8 @@ export function ConversationWorkspace(props: {
   detail: ConversationData;
 }) {
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_PAGE_SIZE);
-  const [query, setQuery] = useState("");
+  // The tab keeps its search while another tab shows.
+  const [query, setQuery] = usePaneTabValue("conversations:search");
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
   const { showArchiveError, showArchived } = useConversationActionToasts();
@@ -127,8 +132,8 @@ export function ConversationWorkspace(props: {
   // The feed holds every row. The home list shows them a batch at a time
   // and shows the next batch when the reader scrolls near its end.
   const orderedConversations = useMemo(
-    () => pinnedAndWaitingFirst(conversations, waitingConversations),
-    [conversations, waitingConversations],
+    () => pinnedFirst(conversations),
+    [conversations],
   );
   const visibleConversations = useMemo(
     () => orderedConversations.slice(0, visibleCount),
@@ -253,7 +258,7 @@ export function ConversationWorkspace(props: {
       )}
     >
       {sidebarFits ? (
-        <div className="flex h-12 items-center pl-6">
+        <div className="flex h-header items-center pl-6">
           <PaneCollapsedControls />
         </div>
       ) : (
@@ -323,7 +328,10 @@ export function ConversationWorkspace(props: {
       {/* The pane hides itself while the reader hides it, and keeps the
           list mounted so its scroll position stays. */}
       {sidebarFits ? (
-        <ListPane onNewConversation={openCreate}>
+        <ListPane
+          newAction={{ label: "New conversation", onClick: openCreate }}
+          tab="conversations"
+        >
           <ConversationSidebar
             conversations={conversations}
             error={feed.error?.message}

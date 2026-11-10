@@ -186,7 +186,7 @@ test("opens conversation details beside the chat", async ({
   ).toBeVisible();
 
   await expect(
-    page.getByRole("link", { name: "Conversations" }),
+    page.getByRole("link", { exact: true, name: "Conversations" }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 

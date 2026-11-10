@@ -177,11 +177,6 @@ const waitingConversationsQuery = {
   retry: false,
 };
 
-/** Whether the first read of the waiting Conversations has finished. */
-export function useWaitingConversationsSettled(): boolean {
-  return !useQuery(waitingConversationsQuery).isPending;
-}
-
 /**
  * Return the Conversations that wait on the viewer, by Conversation id: each
  * has a linked open action item assigned to the viewer. An agent's action

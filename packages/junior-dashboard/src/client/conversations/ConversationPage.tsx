@@ -703,6 +703,7 @@ export function ConversationPage(props: {
           header={
             <ConversationHeader
               agentTree={conversationDetail?.agentTree}
+              brief={conversationDetail?.brief}
               contextTags={conversationContextTags(conversation)}
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}

@@ -27,7 +27,10 @@ import { NotificationSettingsCard } from "../../notifications/NotificationSettin
 import { DashboardApiError, fetchDashboardJson, patch, put } from "../../http";
 import type { DashboardCoreData } from "../../types";
 import { AutoArchiveSettings } from "./AutoArchiveSettings";
-import { SettingsPageLayout } from "./SettingsPageLayout";
+import { ConnectionsSettings } from "./ConnectionsSettings";
+import { McpSettings } from "./McpSettings";
+import { PersonalTokensSettings } from "./PersonalTokensSettings";
+import { SettingsPageLayout, SettingsSection } from "./SettingsPageLayout";
 
 const dashboardCoreQueryKey = ["dashboard", "core"] as const;
 const userCustomizationQueryKey = ["dashboard", "user-customization"] as const;
@@ -37,8 +40,23 @@ type SettingsPageProps = {
   identity: DashboardIdentity;
 };
 
-/** Let the signed-in user manage their dashboard profile. */
+/**
+ * Show every Settings section on one page. The pane lists the sections and
+ * links to each with its `#anchor`.
+ */
 export function SettingsPage({ identity }: SettingsPageProps) {
+  return (
+    <SettingsPageLayout>
+      <GeneralSettings identity={identity} />
+      <PersonalTokensSettings />
+      <ConnectionsSettings />
+      <McpSettings />
+    </SettingsPageLayout>
+  );
+}
+
+/** Let the signed-in user manage their dashboard profile. */
+function GeneralSettings({ identity }: SettingsPageProps) {
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState(identity.user.name ?? "");
   useEffect(() => {
@@ -69,7 +87,8 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   }
 
   return (
-    <SettingsPageLayout
+    <SettingsSection
+      anchor="general"
       description="Manage your profile and preferences."
       title="General"
     >
@@ -118,7 +137,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
       <AutoArchiveSettings identity={identity} />
       <NotificationSettingsCard />
       <CustomizationForm />
-    </SettingsPageLayout>
+    </SettingsSection>
   );
 }
 

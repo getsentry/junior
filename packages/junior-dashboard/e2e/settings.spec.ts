@@ -13,7 +13,9 @@ test("updates the signed-in user's display name", async ({
   await page.goto(dashboard.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(
+    page.getByRole("main").getByRole("heading", { name: "Settings" }),
+  ).toBeVisible();
   await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
   await screenshot(page, "settings", { view: "desktop" });
 
@@ -325,4 +327,37 @@ test("links to a settings section", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { exact: true, name: "Conversations" }),
   ).toBeInViewport();
+});
+
+test("marks the Settings section in view in the pane", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const sections = page.getByRole("navigation", { name: "Settings" });
+  const section = (name: string) =>
+    sections.getByRole("link", { exact: true, name });
+
+  await expect(section("General")).toHaveAttribute("aria-current", "location");
+
+  await section("Identities").click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
+  await expect(section("Identities")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  await expect(section("General")).not.toHaveAttribute("aria-current");
+
+  // Scrolling back up moves the mark to the section in view.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(section("General")).toHaveAttribute("aria-current", "location");
+  await expect(section("Identities")).not.toHaveAttribute("aria-current");
+  await page
+    .getByRole("heading", { exact: true, name: "API Tokens" })
+    .evaluate((heading) => heading.scrollIntoView());
+  await expect(section("API Tokens")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
 });

@@ -141,11 +141,11 @@ export function DashboardChrome(props: {
     >
       <div className="border-b border-dashboard-border-strong md:border-b-0 md:has-[[data-secondary-slot]>*]:border-b">
         {props.header}
-        {/* One 48px row on desktop: the hidden pane's controls, then the page
-            links, so hiding the pane does not add a row. */}
+        {/* One header row on desktop: the hidden pane's controls, then the
+            page links, so hiding the pane does not add a row. */}
         <div className="md:flex md:items-center">
           {props.desktopControls ? (
-            <div className="hidden h-12 shrink-0 items-center pl-6 md:flex md:empty:hidden">
+            <div className="hidden h-header shrink-0 items-center pl-6 md:flex md:empty:hidden">
               {props.desktopControls}
             </div>
           ) : null}

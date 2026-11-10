@@ -31,6 +31,13 @@
    * text-2xs is reserved for compact badges and chart annotations.
    * Use text-xs or larger for body copy, controls, subtext, and standalone metadata.
    */
+  /*
+   * Header row height (`h-header`) for every column: the pane's logo row, page
+   * links, the conversation title and Brief, and side panels. Each column
+   * draws a 1px rule under the row, so the rules meet on one line.
+   */
+  --spacing-header: 3.5rem;
+
   --text-2xs: 0.75rem; /* 12px — compact badges and chart annotations */
   --text-2xs--line-height: 1.15;
   --text-xs: 0.8125rem; /* 13px — labels, badges, meta, table headers */
@@ -276,6 +283,9 @@
 
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+/* Comfortable density: roomier rows, bundles, and transcript spacing. The
+   root carries `data-density` from the viewer's profile menu choice. */
+@custom-variant comfortable (&:where([data-density="comfortable"] *));
 
 /* Desktop windows tall enough for roomier conversation chrome. Shorter
    windows, such as most laptops, keep it compact so the transcript gets the

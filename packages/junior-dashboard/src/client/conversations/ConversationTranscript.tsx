@@ -83,6 +83,7 @@ import { useVirtualRows } from "./virtualRows";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
+import { useConversationDensity } from "./conversationDensity";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -466,6 +467,7 @@ function TranscriptEntryList(
     },
 ) {
   const search = useTranscriptSearch();
+  const comfortable = useConversationDensity()[0] === "comfortable";
   const activityKeys = useRef(new Map<string, string>());
   const [openRows] = useState(() => new Map<string, boolean>());
   const replyRatings = useTranscriptReplyRatings();
@@ -585,9 +587,10 @@ function TranscriptEntryList(
       : rowIndexForSeq(rows, props.revealSeq);
   const virtualizer = useVirtualRows({
     count: rows.length,
-    defaultSize: defaultTranscriptRowSize,
+    defaultSize: (sizeClass) =>
+      defaultTranscriptRowSize(sizeClass, comfortable),
     // The gap between rows, like the gap of the transcript stack.
-    gap: 4,
+    gap: comfortable ? 12 : 4,
     getItemKey: (index) => rows[index]!.key,
     keptIndexes: [
       anchorKey === undefined ? undefined : indexByKey.get(anchorKey),

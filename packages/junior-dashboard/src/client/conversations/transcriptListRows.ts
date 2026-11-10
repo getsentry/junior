@@ -252,8 +252,24 @@ export function transcriptRowSizeClass(row: TranscriptListRow): string {
     : entry.kind;
 }
 
-/** Guess the height of a row of a size class before any of them measure. */
-export function defaultTranscriptRowSize(sizeClass: string): number {
+/** Comfortable rows pad 10px above and below, not 6px, like `TranscriptRow`. */
+const COMFORTABLE_ROW_EXTRA_PX = 8;
+
+/**
+ * Guess the height of a row of a size class before any of them measure.
+ * Comfortable density pads each row more, so the guess grows with it.
+ */
+export function defaultTranscriptRowSize(
+  sizeClass: string,
+  comfortable: boolean,
+): number {
+  return (
+    baseTranscriptRowSize(sizeClass) +
+    (comfortable ? COMFORTABLE_ROW_EXTRA_PX : 0)
+  );
+}
+
+function baseTranscriptRowSize(sizeClass: string): number {
   if (sizeClass === "unread_marker") return 32;
   if (sizeClass === "activity") return 36;
   if (sizeClass === "tasks") return 36;

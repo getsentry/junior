@@ -92,9 +92,9 @@ export function ReviewItemView(props: {
     <ChatLayout
       header={
         <header className="border-b border-dashboard-border bg-dashboard-bg">
-          {/* Desktop: one 48px row, like the conversation header. The title
+          {/* Desktop: one header row, like the conversation header. The title
               starts 24px in and the details button ends 24px from the edge. */}
-          <div className="hidden h-12 min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
+          <div className="hidden h-header min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
                 {item.title}

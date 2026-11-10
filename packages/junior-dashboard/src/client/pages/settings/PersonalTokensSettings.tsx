@@ -12,12 +12,12 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
-import { SettingsPageLayout } from "./SettingsPageLayout";
+import { SettingsSection } from "./SettingsPageLayout";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 
 /** Create and revoke personal API tokens for local clients. */
-export function PersonalTokensPage() {
+export function PersonalTokensSettings() {
   const queryClient = useQueryClient();
   const createTokenStarted = useRef(false);
   const [name, setName] = useState("Local agent");
@@ -99,7 +99,8 @@ export function PersonalTokensPage() {
       : undefined);
 
   return (
-    <SettingsPageLayout
+    <SettingsSection
+      anchor="api-tokens"
       description={
         <>
           Use a token to read {getDashboardAgentName()} APIs from a local agent
@@ -195,6 +196,6 @@ export function PersonalTokensPage() {
           </ul>
         )}
       </Card>
-    </SettingsPageLayout>
+    </SettingsSection>
   );
 }

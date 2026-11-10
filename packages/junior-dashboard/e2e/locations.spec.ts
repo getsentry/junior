@@ -31,7 +31,7 @@ test("explores location activity", async ({ page, dashboard }) => {
   ).toHaveValue("conversations");
   await expect(
     page
-      .getByLabel("System navigation")
+      .getByRole("navigation", { exact: true, name: "System" })
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
   await screenshot(page, "locations");
@@ -50,7 +50,7 @@ test("opens one public location", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(
     page
-      .getByLabel("System navigation")
+      .getByRole("navigation", { exact: true, name: "System" })
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
   await screenshot(page, "location-detail");

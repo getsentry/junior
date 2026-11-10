@@ -12,7 +12,7 @@ import { getDashboardAgentName } from "../../agentName";
 import { Button } from "../../components/ui/button";
 import { InlineError } from "../../components/InlineError";
 import { Card } from "../../components/layout/Card";
-import { SettingsPageLayout } from "./SettingsPageLayout";
+import { SettingsSection } from "./SettingsPageLayout";
 import { OutboundLink } from "../../components/OutboundLink";
 
 type Connection = z.infer<typeof connectionSchema>;
@@ -24,7 +24,7 @@ function connectionPath(provider: string): string {
 }
 
 /** Connect and disconnect the viewer's plugin accounts. */
-export function ConnectionsPage() {
+export function ConnectionsSettings() {
   const queryClient = useQueryClient();
   const connectionsQuery = useQuery({
     queryKey: connectionsQueryKey,
@@ -94,7 +94,8 @@ export function ConnectionsPage() {
         : undefined;
 
   return (
-    <SettingsPageLayout
+    <SettingsSection
+      anchor="identities"
       description={
         <>
           Connect an account so {getDashboardAgentName()} can act as you in
@@ -192,6 +193,6 @@ export function ConnectionsPage() {
           )}
         </Card>
       )}
-    </SettingsPageLayout>
+    </SettingsSection>
   );
 }
