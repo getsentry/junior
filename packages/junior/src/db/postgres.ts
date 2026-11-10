@@ -5,9 +5,9 @@ import pg, {
   type QueryResultRow,
 } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
+import { applyMigrations } from "./migrate";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
 
@@ -68,10 +68,7 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(
-      drizzle(this.queryClient(), { schema: juniorSqlSchema }),
-      config,
-    );
+    await applyMigrations(this, config);
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
