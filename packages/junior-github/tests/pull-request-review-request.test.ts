@@ -44,10 +44,13 @@ function signedRequest(body: Record<string, unknown>, eventName: string) {
 }
 
 const pullRequest = {
+  created_at: "2026-07-01T12:00:00Z",
   html_url: PULL_URL,
   id: 1001,
+  merged: false,
   number: 946,
   title: "Add the review desk ask",
+  updated_at: "2026-07-01T12:00:00Z",
   user: { login: "sentry-junior[bot]" },
 };
 
@@ -244,6 +247,59 @@ describe("review requested ask", () => {
         kind: "close",
       });
       expect(calls).toHaveLength(4);
+
+      // Closing ends the ask. GitHub sends no new request on reopen, so the
+      // reopen adds the ask again from the reviewers still requested.
+      await webhook.handler(
+        signedRequest(
+          {
+            action: "closed",
+            pull_request: {
+              ...pullRequest,
+              closed_at: "2026-07-02T12:00:00Z",
+              state: "closed",
+            },
+          },
+          "pull_request",
+        ),
+      );
+      expect(calls.at(-1)).toEqual({
+        input: {
+          dedupeKey: DEDUPE_KEY,
+          reason: "The pull request closed without merging.",
+          status: "dismissed",
+        },
+        kind: "close",
+      });
+      await webhook.handler(
+        signedRequest(
+          {
+            action: "reopened",
+            pull_request: {
+              ...pullRequest,
+              requested_reviewers: [{ login: "someone-else" }],
+              state: "open",
+            },
+          },
+          "pull_request",
+        ),
+      );
+      expect(calls).toHaveLength(5);
+      await webhook.handler(
+        signedRequest(
+          {
+            action: "reopened",
+            pull_request: {
+              ...pullRequest,
+              requested_reviewers: [{ login: "Requester" }],
+              state: "open",
+            },
+          },
+          "pull_request",
+        ),
+      );
+      expect(calls.at(-1)).toEqual(ask);
+      expect(calls).toHaveLength(6);
     } finally {
       await fixture.close();
     }

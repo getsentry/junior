@@ -5,8 +5,10 @@
  * asked Junior to open, the ask goes to the Conversation where they asked.
  * It is assigned to them only when they are in that Conversation, and it
  * waits on them. It closes when they submit a review, when the request is
- * removed, or when the pull request closes. GitHub sends each of these
- * facts in the webhook, so the ask needs no GitHub read and no saved state.
+ * removed, or when the pull request closes. Reopening the pull request adds
+ * it again while their request is still open, because GitHub does not send
+ * a new request for it. GitHub sends each of these facts in the webhook, so
+ * the ask needs no GitHub read and no saved state.
  *
  * Only the requester can get the ask. Junior maps a GitHub login to a person
  * only through the requester's linked GitHub account, and other pull
@@ -23,11 +25,18 @@ import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.j
 const login = z.object({ login: z.string().min(1) });
 
 const pullRequestEventSchema = z.object({
-  action: z.enum(["closed", "review_request_removed", "review_requested"]),
+  action: z.enum([
+    "closed",
+    "reopened",
+    "review_request_removed",
+    "review_requested",
+  ]),
   pull_request: z.object({
     html_url: z.string().url(),
     merged: z.boolean().optional(),
     number: z.number().int().positive(),
+    // The people whose review is still requested. Teams are listed apart.
+    requested_reviewers: z.array(login).optional(),
     title: z.string(),
   }),
   repository: z.object({ full_name: z.string().min(1) }),
@@ -45,7 +54,7 @@ const reviewEventSchema = z.object({
 type ReviewRequestChange =
   | {
       kind: "requested";
-      reviewer: string;
+      reviewers: string[];
       title: string;
       url: string;
     }
@@ -86,6 +95,21 @@ function reviewRequestChange(
     number: pull.number,
     repository: parsed.data.repository.full_name,
   };
+  if (action === "reopened") {
+    const reviewers = (pull.requested_reviewers ?? []).map(
+      (person) => person.login,
+    );
+    if (reviewers.length === 0) return undefined;
+    return {
+      ...target,
+      change: {
+        kind: "requested",
+        reviewers,
+        title: pull.title,
+        url: pull.html_url,
+      },
+    };
+  }
   if (action !== "closed" && !reviewer) {
     // A team request names no person, and Junior cannot tell who is on it.
     return undefined;
@@ -95,7 +119,7 @@ function reviewRequestChange(
       ...target,
       change: {
         kind: "requested",
-        reviewer,
+        reviewers: [reviewer],
         title: pull.title,
         url: pull.html_url,
       },
@@ -156,10 +180,19 @@ export async function syncGitHubPullRequestReviewRequest(args: {
     const name = `${repository}#${number}`;
     const dedupeKey = `pull-request-review-requested:${name.toLowerCase()}`;
     const items = args.reviewItems.forConversation(opener.conversationId);
-    // A change about one reviewer matters only when it is the requester.
-    if (change.reviewer !== undefined) {
+    // A change about named reviewers matters only when the requester is one.
+    const reviewers =
+      change.kind === "requested"
+        ? change.reviewers
+        : change.reviewer === undefined
+          ? undefined
+          : [change.reviewer];
+    if (reviewers !== undefined) {
       const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
-      if (!requesterLogin || !sameLogin(change.reviewer, requesterLogin)) {
+      if (
+        !requesterLogin ||
+        !reviewers.some((reviewer) => sameLogin(reviewer, requesterLogin))
+      ) {
         return;
       }
     }
