@@ -34,11 +34,12 @@ import {
 const TOOL_WAIT_GAPS_KEY = `${KEY_PREFIX}:gaps:tool_wait`;
 const TOOL_WAIT_GAPS_MAX = 2_000;
 const TOOL_WAIT_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
-// The first warmup runs at least 165 seconds after the request (the shortest
-// TTL, 5 minutes, minus the largest margin). The return chance at time t uses only the gaps longer
-// than t, and the histogram bin that holds 165 seconds starts at 2 minutes.
-// So shorter waits do not change a decision, and are not recorded. This
-// keeps the many short tool calls free of state writes.
+// The first warmup runs at least 255 seconds after the request (the shortest
+// TTL, 5 minutes, minus the margin). The return chance at time t uses only
+// the gaps longer than the start of the histogram bin that holds t, which is
+// 4 minutes for 255 seconds. So waits under 2 minutes do not change a
+// decision, and are not recorded. This keeps the many short tool calls free
+// of state writes.
 const MIN_RECORDED_TOOL_WAIT_MS = 2 * MINUTE_MS;
 
 /** Warm the prompt cache of one agent run while its tools run. */
@@ -83,7 +84,6 @@ export function createToolWaitWarmer(conversationId: string): ToolWaitWarmer {
     const current = generation;
     const { cacheExpiresAtMs, delayMs } = warmupTiming(
       refreshedAtMs,
-      cache.prefixTokens,
       cache.ttlMs,
     );
     timer = setTimeout(
