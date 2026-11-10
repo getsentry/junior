@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.292.0
+
+### New Features ✨
+
+- (dashboard) Load more home conversations on scroll by @betegon with @sentry-junior in [#3073](https://github.com/getsentry/junior/pull/3073)
+
+### Bug Fixes 🐛
+
+- (identities) Repair Slack Identities linked by dashboard posts by @BYK with @sentry-junior in [#3072](https://github.com/getsentry/junior/pull/3072)
+
+### Internal Changes 🔧
+
+- (conversations) Share one filter for listed Conversations by @thomasjiangcy with @sentry-junior in [#3071](https://github.com/getsentry/junior/pull/3071)
+
 ## 0.291.0
 
 Migrations now avoid prolonged lock waits, flag risky SQL earlier, preserve authorization visibility, explain failures, improve dashboards, and accept marked-index lint breakpoints.
