@@ -9,6 +9,7 @@ import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
 import {
+  AGENT_INVOCATION_KINDS,
   AGENT_INVOCATION_MAILBOX_STATUSES,
   AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
   AGENT_INVOCATION_STATUSES,
@@ -60,6 +61,7 @@ const agentInvocationBaseSchema = z
     destination: destinationSchema,
     input: exactStringSchema,
     invocationId: exactStringSchema,
+    kind: z.enum(AGENT_INVOCATION_KINDS),
     mailboxStatus: agentInvocationMailboxStatusSchema,
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),

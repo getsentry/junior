@@ -22,6 +22,7 @@ import {
   invocationFromRow,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  parentMailboxWrite,
 } from "./store";
 import type { TerminalAgentInvocation } from "./types";
 
@@ -160,7 +161,7 @@ async function skipUnreadResults(
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "skipped", updatedAt: new Date(nowMs) })
+    .set({ ...parentMailboxWrite("skipped"), updatedAt: new Date(nowMs) })
     .where(
       and(
         eq(juniorAgentInvocations.parentConversationId, conversationId),
@@ -353,7 +354,7 @@ async function stopLockedAgentInvocationTree(
     .update(juniorAgentInvocations)
     .set({
       errorMessage: "Stopped by the parent conversation",
-      parentMailboxStatus: "skipped",
+      ...parentMailboxWrite("skipped"),
       result: null,
       status: "stopped",
       terminalAt: now,
@@ -371,7 +372,7 @@ async function stopLockedAgentInvocationTree(
     .returning();
   await db
     .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "skipped", updatedAt: now })
+    .set({ ...parentMailboxWrite("skipped"), updatedAt: now })
     .where(
       or(
         // A result sent to the tree would start new work there.

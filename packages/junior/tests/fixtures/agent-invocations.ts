@@ -9,7 +9,9 @@ import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { resultDeliveryFor } from "@/chat/agent-invocations/statuses";
+import { juniorAgentInvocations } from "@/db/schema";
 import {
   getConversationWorkState,
   hasConversationStop,
@@ -57,8 +59,40 @@ export const slackInvocationInput = {
   parentConversationId: slackParentConversationId,
 };
 
-export async function prepareParentConversation() {
+/**
+ * Each write of `parent_mailbox_status` must also write `result_delivery`,
+ * so every scenario checks both columns, and `kind`, before it closes.
+ */
+function createCheckedSqlFixture() {
   const fixture = createConfiguredJuniorSqlFixture();
+  return {
+    ...fixture,
+    close: async () => {
+      try {
+        const rows = await getSqlExecutor()
+          .db()
+          .select()
+          .from(juniorAgentInvocations);
+        expect(
+          rows.map((row) => [row.invocationId, row.kind, row.resultDelivery]),
+        ).toEqual(
+          rows.map((row) => [
+            row.invocationId,
+            row.parentToolCallId === null ? "own_work" : "parent_task",
+            row.parentMailboxStatus
+              ? resultDeliveryFor(row.parentMailboxStatus)
+              : null,
+          ]),
+        );
+      } finally {
+        await fixture.close();
+      }
+    },
+  };
+}
+
+export async function prepareParentConversation() {
+  const fixture = createCheckedSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
   await conversationStore.recordActivity({
@@ -71,7 +105,7 @@ export async function prepareParentConversation() {
 }
 
 export async function prepareSlackParentConversation() {
-  const fixture = createConfiguredJuniorSqlFixture();
+  const fixture = createCheckedSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
   await conversationStore.recordActivity({

@@ -3,6 +3,10 @@ import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
 import { getAgentInvocationIdForResult } from "./ids";
 import {
+  type AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
+  resultDeliveryFor,
+} from "./statuses";
+import {
   agentInvocationSchema,
   type AgentInvocation,
   type AgentInvocationStatus,
@@ -27,6 +31,19 @@ export const NON_TERMINAL_AGENT_INVOCATION_STATUSES = [
   "paused",
 ] as const satisfies readonly AgentInvocationStatus[];
 
+/**
+ * Values for one write of `parent_mailbox_status`. Each write also stores
+ * the matching `result_delivery`.
+ */
+export function parentMailboxWrite(
+  status: (typeof AGENT_INVOCATION_PARENT_MAILBOX_STATUSES)[number],
+) {
+  return {
+    parentMailboxStatus: status,
+    resultDelivery: resultDeliveryFor(status),
+  };
+}
+
 /** Parse one agent invocation row. */
 export function invocationFromRow(
   row: typeof juniorAgentInvocations.$inferSelect,
@@ -47,6 +64,7 @@ export function invocationFromRow(
     invocationId: row.invocationId,
     mailboxStatus: row.mailboxStatus,
     parentConversationId: row.parentConversationId,
+    kind: row.kind,
     ...(row.parentMailboxStatus
       ? { parentMailboxStatus: row.parentMailboxStatus }
       : undefined),
@@ -268,7 +286,7 @@ export async function reportReplacedAgentInvocation(
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "pending", updatedAt: new Date(nowMs) })
+    .set({ ...parentMailboxWrite("pending"), updatedAt: new Date(nowMs) })
     .where(
       and(
         eq(juniorAgentInvocations.invocationId, invocationId),
@@ -286,7 +304,7 @@ export async function markAgentInvocationParentMailboxAppended(
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "appended", updatedAt: new Date(nowMs) })
+    .set({ ...parentMailboxWrite("appended"), updatedAt: new Date(nowMs) })
     .where(
       and(
         eq(juniorAgentInvocations.invocationId, invocationId),
@@ -391,7 +409,7 @@ export async function completeAgentInvocation(
       status: args.status,
       result: args.status === "completed" ? args.result : null,
       errorMessage: args.status === "completed" ? null : args.errorMessage,
-      parentMailboxStatus,
+      ...parentMailboxWrite(parentMailboxStatus),
       terminalAt: new Date(nowMs),
       updatedAt: new Date(nowMs),
     })
@@ -422,7 +440,7 @@ export async function markAgentInvocationSteered(
     .set({
       status: "completed",
       result: "",
-      parentMailboxStatus: "steered",
+      ...parentMailboxWrite("steered"),
       terminalAt: new Date(nowMs),
       updatedAt: new Date(nowMs),
     })

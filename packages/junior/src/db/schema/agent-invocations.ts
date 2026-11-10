@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   jsonb,
@@ -17,6 +18,8 @@ import type {
   AGENT_INVOCATION_MAILBOX_STATUSES,
   AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
   AGENT_INVOCATION_STATUSES,
+  AgentInvocationKind,
+  AgentInvocationResultDelivery,
 } from "@/chat/agent-invocations/statuses";
 
 export const juniorAgentBindings = pgTable(
@@ -72,6 +75,13 @@ export const juniorAgentInvocations = pgTable(
     // The parent `spawnAgent` or `messageAgent` tool call. Null for
     // runtime-started invocations.
     parentToolCallId: text("parent_tool_call_id"),
+    // Postgres derives it, so it is right for rows that any runtime writes.
+    kind: text("kind")
+      .$type<AgentInvocationKind>()
+      .notNull()
+      .generatedAlwaysAs(
+        sql`CASE WHEN parent_tool_call_id IS NULL THEN 'own_work' ELSE 'parent_task' END`,
+      ),
     status: text("status")
       .$type<(typeof AGENT_INVOCATION_STATUSES)[number]>()
       .notNull(),
@@ -81,6 +91,10 @@ export const juniorAgentInvocations = pgTable(
     parentMailboxStatus: text("parent_mailbox_status").$type<
       (typeof AGENT_INVOCATION_PARENT_MAILBOX_STATUSES)[number]
     >(),
+    // Each write of `parent_mailbox_status` also writes this column. See
+    // `RESULT_DELIVERY_STATES`.
+    resultDelivery:
+      text("result_delivery").$type<AgentInvocationResultDelivery>(),
     result: text("result"),
     errorMessage: text("error_message"),
     createdAt: timestamptz("created_at").notNull(),
