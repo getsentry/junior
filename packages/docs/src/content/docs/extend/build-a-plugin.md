@@ -315,7 +315,6 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                                                                               |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
-| `jobs`                   | Register plugin jobs. A route or a job schedules one with `ctx.jobs.schedule(...)` to run later, outside any Conversation.                                                                   |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
 
 When a hook, tool, or task belongs to a Conversation, Junior records the cost
@@ -463,7 +462,8 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 `heartbeat(ctx)` is for plugins that need server-side background work.
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
-agent task, and `ctx.agent.get(...)` to reconcile that dispatch later.
+agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
+`ctx.events` to publish events, as from a plugin route.
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
@@ -498,61 +498,6 @@ that created them. Plugins can dispatch only to validated Slack destinations
 and receive projection records, not raw runtime state. Pass `title` to name
 the dispatch Conversation. When you omit it, Junior generates one from
 `input`.
-
-Use `jobs` for work that must run later, such as a debounced check after a
-webhook. Register a job by name. Routes and jobs schedule it with
-`ctx.jobs.schedule(...)`:
-
-```ts title="index.ts"
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-
-export function myProviderPlugin() {
-  return defineJuniorPlugin({
-    manifest: {
-      name: "my-provider",
-      description: "My provider integration",
-    },
-    jobs: {
-      checkRepository: {
-        async run(ctx) {
-          const { repo } = ctx.payload as { repo: string };
-          ctx.log.info("Checking repository", { repo });
-        },
-      },
-    },
-    hooks: {
-      routes(ctx) {
-        return [
-          {
-            method: "POST",
-            path: "/api/webhooks/my-provider",
-            async handler(request) {
-              const { repo } = (await request.json()) as { repo: string };
-              const bucket = Math.floor(Date.now() / 120_000);
-              await ctx.jobs.schedule({
-                delayMs: 120_000,
-                key: `${repo}:${bucket}`,
-                name: "checkRepository",
-                payload: { repo },
-              });
-              return new Response("Accepted", { status: 202 });
-            },
-          },
-        ];
-      },
-    },
-  });
-}
-```
-
-- `delayMs` is at most 30 minutes.
-- When an earlier job has the same name and `key`, Junior drops the new one.
-  The queue remembers a key for up to an hour, also after the job ran. Put a
-  time bucket in the key to run at most one job per bucket.
-- The payload must survive JSON.
-- A job that throws runs again, up to three times in total.
-- A job gets `ctx.events` to publish the plugin's events, and `ctx.jobs` to
-  schedule more jobs.
 
 ## Validate
 

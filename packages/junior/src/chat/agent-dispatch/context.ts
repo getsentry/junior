@@ -1,5 +1,6 @@
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
+  EventPublisher,
   HeartbeatHookContext,
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
@@ -90,6 +91,8 @@ async function dispatch(args: {
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  /** Already bound to the plugin. */
+  events: EventPublisher;
   nowMs: number;
   plugin: string | PluginRegistration;
 }): HeartbeatHookContext {
@@ -102,6 +105,7 @@ export function createHeartbeatContext(args: {
     nowMs: args.nowMs,
     db: getDb(),
     embedder: createPluginEmbedder(pluginName),
+    events: args.events,
     state: createPluginState(pluginName),
     log: createPluginLogger(pluginName),
     agent: {

@@ -4,7 +4,6 @@ import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
-import { PLUGIN_JOB_QUEUE_TOPIC } from "@/chat/plugins/job-queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
@@ -14,7 +13,6 @@ import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
-  JUNIOR_PLUGIN_JOB_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
@@ -136,15 +134,6 @@ describe("juniorNitro plugin modules", () => {
         {
           type: "queue/v2beta",
           topic: PLUGIN_TASK_QUEUE_TOPIC,
-        },
-      ],
-    });
-    expect(vercel.functionRules?.[JUNIOR_PLUGIN_JOB_CALLBACK_ROUTE]).toEqual({
-      maxDuration: 300,
-      experimentalTriggers: [
-        {
-          type: "queue/v2beta",
-          topic: PLUGIN_JOB_QUEUE_TOPIC,
         },
       ],
     });

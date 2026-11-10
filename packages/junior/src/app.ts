@@ -74,7 +74,6 @@ import {
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
-  JUNIOR_PLUGIN_JOB_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
@@ -97,11 +96,6 @@ import {
   registerVercelPluginTaskDevConsumer,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
-import {
-  createVercelPluginJobCallback,
-  pluginJobQueueConsumer,
-  registerVercelPluginJobDevConsumer,
-} from "@/chat/plugins/job-queue";
 import { processPluginTask } from "@/chat/plugins/task-runner";
 import {
   cacheWarmupQueueConsumer,
@@ -832,7 +826,6 @@ export async function createApp(
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
-    registerVercelPluginJobDevConsumer(events);
     registerVercelWorkspaceSnapshotJobDevConsumer();
     registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
@@ -846,13 +839,6 @@ export async function createApp(
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
     pluginTaskPOST ??= createVercelPluginTaskCallback();
     return pluginTaskPOST(c.req.raw);
-  });
-  let pluginJobPOST:
-    | ReturnType<typeof createVercelPluginJobCallback>
-    | undefined;
-  app.post(JUNIOR_PLUGIN_JOB_CALLBACK_ROUTE, (c) => {
-    pluginJobPOST ??= createVercelPluginJobCallback(events);
-    return pluginJobPOST(c.req.raw);
   });
   let workspaceSnapshotJobPOST:
     | ReturnType<typeof createVercelWorkspaceSnapshotJobCallback>
@@ -877,7 +863,10 @@ export async function createApp(
   });
 
   app.get("/api/internal/heartbeat", (c) => {
-    return heartbeatGET(c.req.raw, waitUntil, { conversationWorkQueue });
+    return heartbeatGET(c.req.raw, waitUntil, {
+      conversationWorkQueue,
+      events,
+    });
   });
 
   app.get("/api/internal/retention", (c) => {
@@ -904,7 +893,6 @@ export async function createApp(
         [
           conversationWorkQueueConsumer(getConversationWorkOptions()),
           pluginTaskQueueConsumer(),
-          pluginJobQueueConsumer(events),
           workspaceSnapshotJobQueueConsumer(),
           cacheWarmupQueueConsumer(),
           backgroundCompactionQueueConsumer(),

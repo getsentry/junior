@@ -13,7 +13,6 @@ import {
   type RuntimePluginModule,
 } from "@/build/virtual-config";
 import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
-import { PLUGIN_JOB_QUEUE_TOPIC } from "@/chat/plugins/job-queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
 import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
@@ -25,7 +24,6 @@ import {
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
-  JUNIOR_PLUGIN_JOB_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
@@ -225,7 +223,6 @@ function configureVercelDeployment(
   };
   addQueueTrigger(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, queueTopic);
   addQueueTrigger(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, PLUGIN_TASK_QUEUE_TOPIC);
-  addQueueTrigger(JUNIOR_PLUGIN_JOB_CALLBACK_ROUTE, PLUGIN_JOB_QUEUE_TOPIC);
   addQueueTrigger(
     JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
     WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
