@@ -458,24 +458,6 @@ export type PaneNewAction = { label: string } & (
   | { onClick?: undefined; to: string }
 );
 
-/**
- * New in a phone list header, where there is no pane. The pane shows
- * `NewBar` instead.
- */
-export function NewButton(props: { action: PaneNewAction }) {
-  const navigate = useNavigate();
-  return (
-    <button
-      className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border-0 bg-dashboard-accent px-3.5 font-sans text-sm font-semibold text-dashboard-text-inverse transition-colors hover:bg-dashboard-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-      onClick={() => runNewAction(props.action, navigate)}
-      type="button"
-    >
-      <Plus aria-hidden="true" className="size-4" strokeWidth={2.4} />
-      {props.action.label}
-    </button>
-  );
-}
-
 function runNewAction(
   action: PaneNewAction,
   navigate: ReturnType<typeof useNavigate>,

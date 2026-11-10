@@ -105,7 +105,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(
     attention.getByRole("link", { name: "Change trigger", exact: true }),
   ).toHaveAttribute("href", "/automations/event-2/edit");
-  const active = page.getByRole("region", { name: "Active" });
+  const active = page.getByRole("main").getByRole("region", { name: "Active" });
   await expect(active.getByRole("listitem")).toHaveCount(2);
   await screenshot(page, "automations");
   const weeklySummary = page
@@ -309,7 +309,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     name: "Open automation: Weekly project summary",
   });
   const backToList = page.getByRole("link", { name: "Back to automations" });
-  const active = page.getByRole("region", { name: "Active" });
+  const active = page.getByRole("main").getByRole("region", { name: "Active" });
   const deleteButton = page
     .getByRole("group", { name: "Automation actions" })
     .getByRole("button", { name: "Delete automation", exact: true });

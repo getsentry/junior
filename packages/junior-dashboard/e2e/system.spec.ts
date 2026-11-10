@@ -33,7 +33,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/system`);
 
   await expect(
-    page.getByRole("heading", { name: "System", exact: true }),
+    page
+      .getByRole("main")
+      .getByRole("heading", { name: "System", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();

@@ -1,6 +1,5 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
-import { useLocalStorage } from "@uidotdev/usehooks";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Bot, Rows2, Rows3 } from "lucide-react";
 
 import { useDashboardCoreData } from "../api";
@@ -16,14 +15,52 @@ import type { Conversation } from "../types";
 type ConversationDensity = "comfortable" | "compact";
 
 const DENSITY_STORAGE_KEY = "junior:density";
+const DENSITY_CHANGE_EVENT = "junior:density-change";
+
+function readDensity(): ConversationDensity {
+  try {
+    return window.localStorage.getItem(DENSITY_STORAGE_KEY) === "comfortable"
+      ? "comfortable"
+      : "compact";
+  } catch {
+    return "compact";
+  }
+}
+
+function subscribeDensity(onChange: () => void): () => void {
+  window.addEventListener(DENSITY_CHANGE_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(DENSITY_CHANGE_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function saveDensity(density: ConversationDensity): void {
+  try {
+    window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
+  } catch {
+    // Storage is blocked, so the dashboard stays compact.
+    return;
+  }
+  window.dispatchEvent(new Event(DENSITY_CHANGE_EVENT));
+}
 
 /**
  * The viewer's density, kept in this browser. Rows and the
  * transcript follow it: components read it here, and CSS reads the root's
  * `data-density` through the `comfortable:` variant.
  */
-export function useConversationDensity() {
-  return useLocalStorage<ConversationDensity>(DENSITY_STORAGE_KEY, "compact");
+export function useConversationDensity(): [
+  ConversationDensity,
+  (density: ConversationDensity) => void,
+] {
+  const density = useSyncExternalStore(
+    subscribeDensity,
+    readDensity,
+    () => "compact" as const,
+  );
+  return [density, saveDensity];
 }
 
 /** Mirror the density on the root, for the `comfortable:` CSS variant. */
