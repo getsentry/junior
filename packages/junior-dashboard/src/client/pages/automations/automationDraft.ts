@@ -1,6 +1,7 @@
 import type {
   AutomationEdit,
   AutomationScheduleIntent,
+  AutomationTask,
   AutomationUpdate,
 } from "@sentry/junior/api/schema";
 
@@ -21,15 +22,17 @@ export type AutomationScheduleDraft =
       timing: { type: "at"; date: string; time: string };
     };
 
+/**
+ * Form state of the task. Text stays as typed. An empty skill is skill mode
+ * before a skill is chosen, and empty context means no context.
+ */
+export type AutomationTaskDraft =
+  | { kind: "instruction"; instruction: string }
+  | { kind: "skill"; skill: string; context: string };
+
 export type AutomationDraft = {
   title: string;
-  /** The instruction, or the optional context of a skill. */
-  instruction: string;
-  /**
-   * Null is instruction mode. An empty string is skill mode before a skill is
-   * chosen; saving rejects it.
-   */
-  skill: string | null;
+  task: AutomationTaskDraft;
   credentialMode: AutomationEdit["credentialMode"];
   outcomes: NonNullable<AutomationUpdate["outcomes"]>;
   schedule?: AutomationScheduleDraft;
@@ -40,11 +43,27 @@ export type AutomationDraft = {
 export function createAutomationDraft(value: AutomationEdit): AutomationDraft {
   return {
     title: value.title ?? "",
-    instruction: value.instruction,
-    skill: value.skill ?? null,
+    task: taskDraft(value.task),
     credentialMode: value.credentialMode,
     outcomes: value.outcomes,
     trigger: value.kind === "event" ? value.trigger : undefined,
+  };
+}
+
+/** Edit a saved task. */
+export function taskDraft(task: AutomationTask): AutomationTaskDraft {
+  return task.kind === "instruction"
+    ? task
+    : { kind: "skill", skill: task.skill, context: task.context ?? "" };
+}
+
+/** The task that saving the form sends. Blank context is no context. */
+export function draftTask(task: AutomationTaskDraft): AutomationTask {
+  if (task.kind === "instruction") return task;
+  return {
+    kind: "skill",
+    skill: task.skill,
+    ...(task.context.trim() ? { context: task.context } : undefined),
   };
 }
 
@@ -93,16 +112,21 @@ export function scheduleDraft(
   };
 }
 
+/** Draft fields that differ from the saved Automation, as the API takes them. */
+export type AutomationDraftChanges = Partial<
+  Omit<AutomationDraft, "task"> & { task: AutomationTask }
+>;
+
 /** Keep metadata edits from replacing unchanged triggers or outcomes. */
 export function automationDraftChanges(
   original: AutomationEdit,
   draft: AutomationDraft,
-): Partial<AutomationDraft> {
-  const changes: Partial<AutomationDraft> = {};
+): AutomationDraftChanges {
+  const changes: AutomationDraftChanges = {};
   if (draft.title !== (original.title ?? "")) changes.title = draft.title;
-  if (draft.instruction !== original.instruction)
-    changes.instruction = draft.instruction;
-  if (draft.skill !== (original.skill ?? null)) changes.skill = draft.skill;
+  const task = draftTask(draft.task);
+  if (JSON.stringify(task) !== JSON.stringify(original.task))
+    changes.task = task;
   if (draft.credentialMode !== original.credentialMode)
     changes.credentialMode = draft.credentialMode;
   if (JSON.stringify(draft.outcomes) !== JSON.stringify(original.outcomes))

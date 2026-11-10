@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   automationEditSchema,
   type AutomationSummary,
+  type AutomationTask,
   type AutomationVersionList,
   type ListedAutomationVersion,
 } from "@sentry/junior/api/schema";
@@ -330,8 +331,8 @@ function VersionCompare(props: {
             <dd className="m-0 min-w-0 text-sm leading-relaxed break-words">
               {isChanged && previous && key === "instruction" ? (
                 <LineDiff
-                  after={version.definition.instruction}
-                  before={previous.definition.instruction}
+                  after={taskValues(version.definition.task).instruction}
+                  before={taskValues(previous.definition.task).instruction}
                 />
               ) : isChanged && previous ? (
                 <div className="grid gap-2">
@@ -361,22 +362,20 @@ function fieldValue(
   version: ListedAutomationVersion,
 ): ReactNode {
   const { definition } = version;
+  const task = taskValues(definition.task);
   switch (key) {
     case "title":
       return definition.title ?? "First line of the instruction";
     case "skill":
-      return definition.skill ? (
-        <span className="font-mono">{definition.skill}</span>
+      return task.skill ? (
+        <span className="font-mono">{task.skill}</span>
       ) : (
         "No skill"
       );
     case "instruction":
-      if (!definition.instruction) return "No context";
+      if (!task.instruction) return "No context";
       return (
-        <DisplayText
-          mentions={automation.mentions}
-          text={definition.instruction}
-        />
+        <DisplayText mentions={automation.mentions} text={task.instruction} />
       );
     case "when":
       if (version.kind === "scheduled") {
@@ -518,8 +517,14 @@ function changedFields(
   previous: ListedAutomationVersion,
   version: ListedAutomationVersion,
 ): VersionField[] {
-  const before: Record<string, unknown> = previous.definition;
-  const after: Record<string, unknown> = version.definition;
+  const before: Record<string, unknown> = {
+    ...previous.definition,
+    ...taskValues(previous.definition.task),
+  };
+  const after: Record<string, unknown> = {
+    ...version.definition,
+    ...taskValues(version.definition.task),
+  };
   const differs = (key: string) =>
     JSON.stringify(before[key]) !== JSON.stringify(after[key]);
   return VERSION_FIELDS.flatMap(({ key }) =>
@@ -527,4 +532,14 @@ function changedFields(
       ? [key]
       : [],
   );
+}
+
+/** The values of the Skill and What to do rows. Skill context is the text. */
+function taskValues(task: AutomationTask): {
+  skill?: string;
+  instruction: string;
+} {
+  return task.kind === "skill"
+    ? { skill: task.skill, instruction: task.context ?? "" }
+    : { instruction: task.instruction };
 }

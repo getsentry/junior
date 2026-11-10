@@ -6,14 +6,9 @@ import {
 import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
-import { automationSkillNameSchema } from "./task";
+import { automationTaskSchema, automationTaskTextSchema } from "./task";
 
 export const automationTitleSchema = z.string().trim().min(1).max(60);
-/**
- * The instruction, or the context of a skill. Context can be empty, so the
- * edit rules, not this schema, require an instruction or a skill.
- */
-export const automationInstructionSchema = z.string().trim().max(4000);
 
 /**
  * Instruction input for agent tools. The run does not see the request, so the
@@ -21,15 +16,19 @@ export const automationInstructionSchema = z.string().trim().max(4000);
  * creator". It names every other person with their mention.
  */
 export const automationInstructionToolSchema =
-  automationInstructionSchema.describe(
-    'Work to perform when the Automation runs. With a skill, only the context that the skill does not already have, such as a repo, a threshold, or who to tag; empty is fine. The run does not see this conversation, so words like "this channel" or "here" will mean nothing then. Write the exact target instead, such as a channel mention or a link. Call the person who created the Automation "the Automation creator", not "me"; each run knows who that is. Name every other person with their Slack mention, such as <@U123>, including a requester who did not create the Automation. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
+  automationTaskTextSchema.describe(
+    'Work to perform when the Automation runs. The run does not see this conversation, so words like "this channel" or "here" will mean nothing then. Write the exact target instead, such as a channel mention or a link. Call the person who created the Automation "the Automation creator", not "me"; each run knows who that is. Name every other person with their Slack mention, such as <@U123>, including a requester who did not create the Automation. Preserve the user\'s scope, targets, and constraints. Do not add permissions or side effects the user did not request.',
   );
+
+/** Context input for agent tools. It follows the same rules as an instruction. */
+export const automationContextToolSchema = automationTaskTextSchema.describe(
+  'What a skill run needs beyond the skill, such as a repo, a threshold, or who to tag. Follow the same rules as an instruction: write exact targets, call the creator "the Automation creator", and name other people with their Slack mention.',
+);
 
 export const automationEditFieldsSchema = z.object({
   title: automationTitleSchema.optional(),
-  instruction: automationInstructionSchema.optional(),
-  /** A skill name selects skill mode. Null switches to instruction mode. */
-  skill: automationSkillNameSchema.nullable().optional(),
+  /** Replaces the whole task, so a mode switch drops the other mode's text. */
+  task: automationTaskSchema.optional(),
   credentialMode: z.enum(["system", "creator"]).optional(),
   // A retained outcome can be kept or reordered, but cannot grant a new Destination.
   outcomes: z

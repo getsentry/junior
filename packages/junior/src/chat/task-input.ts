@@ -186,8 +186,8 @@ function externalTextTag(
  * The job comes before Event data. Empty optional fields are omitted.
  */
 export function renderTaskInput(args: {
-  /** Stored task instruction, or subscription intent. Skill context can be empty. */
-  instructions: string;
+  /** Stored task instruction or skill context, or subscription intent. */
+  instructions?: string;
   /** Skill that an Automation in skill mode runs. The run loads it from the dispatch. */
   skill?: string;
   /** Stored automation outcomes. Watches omit this and reply in the Conversation. */
@@ -215,7 +215,7 @@ export function renderTaskInput(args: {
   externalTextMaxLength?: number;
   trustedSummaryMaxLength?: number;
 }): string {
-  const instructions = args.instructions.trim();
+  const instructions = args.instructions?.trim() ?? "";
   if (!instructions && !args.skill) {
     throw new Error("Task instructions are required");
   }

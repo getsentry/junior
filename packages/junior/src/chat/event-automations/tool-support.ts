@@ -26,7 +26,10 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { destinationFilterValue } from "@/chat/automations/creator";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
-import { automationTaskDescription } from "@/chat/automations/task";
+import {
+  automationTaskDescription,
+  automationTaskSchema,
+} from "@/chat/automations/task";
 
 /** Model-facing shape of one event automation. */
 export const compactEventAutomationResultSchema = z
@@ -37,8 +40,7 @@ export const compactEventAutomationResultSchema = z
     status_reason: z.string().nullable(),
     title: z.string().min(1).nullable(),
     dashboard_url: z.string().url().nullable(),
-    instruction: z.string(),
-    skill: z.string().nullable(),
+    task: automationTaskSchema,
     trigger: z
       .object({
         namespace: z.string().min(1),
@@ -227,8 +229,7 @@ export function compactEventAutomation(
     status_reason: task.statusReason ?? null,
     title: task.title?.trim() || null,
     dashboard_url: getDashboardTaskLink(task.id) ?? null,
-    instruction: task.task.text,
-    skill: task.task.skill ?? null,
+    task: task.task,
     trigger: {
       namespace: task.trigger.namespace,
       identifier: task.trigger.identifier ?? null,

@@ -93,7 +93,10 @@ test("edits an Automation in place, preserves list state, and protects the draft
     {
       kind: "scheduled",
       revision: "a".repeat(64),
-      instruction: "Review the weekly changes and link the relevant issues.",
+      task: {
+        kind: "instruction",
+        instruction: "Review the weekly changes and link the relevant issues.",
+      },
     },
   ]);
 });
@@ -144,8 +147,10 @@ test("runs a skill with optional context instead of an instruction", async ({
   const yourChanges = page.getByRole("complementary", {
     name: "Your changes",
   });
-  await expect(yourChanges).toContainText("New: release-check");
-  await expect(yourChanges).toContainText("Additional context");
+  await expect(yourChanges).toContainText("What to run");
+  await expect(yourChanges).toContainText(
+    "New: release-check · Only check getsentry/junior.",
+  );
   await screenshot(page, "automation-skill-editor");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(
@@ -155,13 +160,19 @@ test("runs a skill with optional context instead of an instruction", async ({
     {
       kind: "scheduled",
       revision: "a".repeat(64),
-      instruction: "Only check getsentry/junior.",
-      skill: "release-check",
+      task: {
+        kind: "skill",
+        skill: "release-check",
+        context: "Only check getsentry/junior.",
+      },
     },
   ]);
 
   // A saved skill that is gone stays selected and says why runs block.
-  state.value = { ...state.value, skill: "removed-check", instruction: "" };
+  state.value = {
+    ...state.value,
+    task: { kind: "skill", skill: "removed-check" },
+  };
   await page.goto(`${dashboard.baseURL}/automations/scheduled-1/edit`);
   await expect(
     page.getByText(
@@ -246,7 +257,10 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
     {
       kind: "event",
       revision: "c".repeat(64),
-      instruction: "Summarize the issue and include a link.",
+      task: {
+        kind: "instruction",
+        instruction: "Summarize the issue and include a link.",
+      },
       trigger: {
         namespace: "github",
         resourceType: "issue",
@@ -327,7 +341,10 @@ test("public non-creators edit settings without creator credentials", async ({
     {
       kind: "event",
       revision: "a".repeat(64),
-      instruction: "Notify responders and link the incident timeline.",
+      task: {
+        kind: "instruction",
+        instruction: "Notify responders and link the incident timeline.",
+      },
     },
   ]);
 });
@@ -339,7 +356,7 @@ test("makes an earlier version active from version history", async ({
   const editor = await mockAutomationEditor(page, "scheduled");
   const definition = {
     title: editor.value.title,
-    instruction: editor.value.instruction,
+    task: editor.value.task,
     credentialMode: editor.value.credentialMode,
     destination: editor.value.destination,
     outcomes: editor.value.outcomes,
@@ -352,7 +369,10 @@ test("makes an earlier version active from version history", async ({
       version: 2,
       createdAt: "2026-08-04T16:00:00.000Z",
       editedBy: { slackUserId: "U456", fullName: "Avery Chen" },
-      definition: { ...definition, instruction: "Post a shorter summary" },
+      definition: {
+        ...definition,
+        task: { kind: "instruction", instruction: "Post a shorter summary" },
+      },
     },
     {
       kind: "scheduled",

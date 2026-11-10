@@ -19,8 +19,9 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import type { AutomationDestination } from "./creator";
 import type { TaskCandidate } from "./read";
-import { automationSkillNameSchema } from "./task";
+import { automationSkillNameSchema, type AutomationTask } from "./task";
 import type { SkillMetadata } from "@/chat/skills";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const automationResultSchema = z.discriminatedUnion("type", [
   compactTaskResultSchema,
@@ -90,6 +91,57 @@ export function automationSkillToolSchema(skills: readonly SkillMetadata[]) {
   return automationSkillNameSchema.describe(
     `Skill that each run invokes instead of a written instruction. Any installed skill works, including manual-only ones. Installed skills: ${names.length > 0 ? names.join(", ") : "none"}.`,
   );
+}
+
+/** Flat task fields of the Automation tools. */
+type TaskToolFields = {
+  instruction?: string;
+  skill?: string;
+  /** Null clears the context. Only an update can send it. */
+  context?: string | null;
+};
+
+/** Map the task fields of a new Automation to its task. */
+export function newAutomationTask(input: TaskToolFields): AutomationTask {
+  const task = editedAutomationTask(undefined, input);
+  if (!task) throw new ToolInputError("Set instruction or skill.");
+  return task;
+}
+
+/**
+ * Map the task fields of an update to the saved task, or undefined when they
+ * change nothing. `instruction` switches to an instruction. `skill` switches
+ * to a skill and keeps the current context. `context` needs skill mode.
+ */
+export function editedAutomationTask(
+  current: AutomationTask | undefined,
+  input: TaskToolFields,
+): AutomationTask | undefined {
+  const { instruction, skill, context } = input;
+  if (instruction !== undefined && skill !== undefined)
+    throw new ToolInputError("Set instruction or skill, not both.");
+  if (instruction !== undefined) {
+    if (context !== undefined)
+      throw new ToolInputError(
+        "Context goes only with a skill. Put everything in the instruction.",
+      );
+    return { kind: "instruction", instruction };
+  }
+  const kept = current?.kind === "skill" ? current : undefined;
+  const nextSkill = skill ?? kept?.skill;
+  if (nextSkill === undefined) {
+    if (context === undefined) return undefined;
+    throw new ToolInputError(
+      "Context goes only with a skill. Set skill, or change the instruction instead.",
+    );
+  }
+  if (skill === undefined && context === undefined) return undefined;
+  const nextContext = context === undefined ? kept?.context : context;
+  return {
+    kind: "skill",
+    skill: nextSkill,
+    ...(nextContext ? { context: nextContext } : undefined),
+  };
 }
 
 /** Automation trigger input after parsing. */

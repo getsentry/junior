@@ -72,24 +72,21 @@ export function AutomationOverview(props: {
 function AutomationSettings(props: { automation: AutomationSummary }) {
   const { automation } = props;
   const creator = automation.ownedByViewer ? "you" : automation.createdBy;
+  const { task } = automation;
+  const text = task.kind === "skill" ? task.context : task.instruction;
   return (
     <div className="min-w-0 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
       <AutomationFormSection title="What to do">
-        {automation.skill ? (
+        {task.kind === "skill" ? (
           <p className="m-0 text-sm text-dashboard-text-muted">
             Runs the{" "}
-            <span className="font-mono text-dashboard-text">
-              {automation.skill}
-            </span>{" "}
-            skill{automation.instruction ? " with this context:" : "."}
+            <span className="font-mono text-dashboard-text">{task.skill}</span>{" "}
+            skill{task.context ? " with this context:" : "."}
           </p>
         ) : null}
-        {automation.instruction ? (
+        {text ? (
           <div className="text-base leading-relaxed [overflow-wrap:anywhere]">
-            <DisplayText
-              mentions={automation.mentions ?? []}
-              text={automation.instruction}
-            />
+            <DisplayText mentions={automation.mentions ?? []} text={text} />
           </div>
         ) : null}
       </AutomationFormSection>

@@ -1,6 +1,7 @@
 import type {
   AutomationEdit,
   AutomationSummary,
+  AutomationTask,
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/layout/Card";
@@ -10,14 +11,14 @@ import {
   createAutomationDraft,
   scheduleDraft,
   type AutomationDraft,
+  type AutomationDraftChanges as DraftChanges,
   type AutomationScheduleDraft,
 } from "./automationDraft";
 
 /** In form order, so the list reads top to bottom like the form. */
 const CHANGE_LABELS: Record<keyof AutomationDraft, string> = {
   title: "Title",
-  skill: "Skill",
-  instruction: "Instruction",
+  task: "Instruction",
   schedule: "Schedule",
   trigger: "Trigger",
   outcomes: "Where results go",
@@ -29,7 +30,7 @@ const CHANGE_LABELS: Record<keyof AutomationDraft, string> = {
  * It sits beside the form on wide screens and below it on small screens.
  */
 export function AutomationDraftChanges(props: {
-  changes: Partial<AutomationDraft>;
+  changes: DraftChanges;
   disabled: boolean;
   onUndo(key: keyof AutomationDraft): void;
   original: AutomationEdit;
@@ -38,17 +39,14 @@ export function AutomationDraftChanges(props: {
   const keys = (Object.keys(CHANGE_LABELS) as (keyof AutomationDraft)[]).filter(
     (key) => props.changes[key] !== undefined,
   );
-  const saved = savedDraft(props.original);
-  const skillMode =
-    props.changes.skill !== undefined
-      ? props.changes.skill !== null
-      : saved.skill !== null;
+  const saved = savedValues(props.original);
+  const task = props.changes.task ?? saved.task;
   const changeLabel = (key: keyof AutomationDraft) =>
-    key === "instruction" && skillMode
-      ? "Additional context"
+    key === "task" && props.changes.task
+      ? taskChangeLabel(saved.task, props.changes.task)
       : CHANGE_LABELS[key];
-  const label = (draft: Partial<AutomationDraft>, key: keyof AutomationDraft) =>
-    draftValueLabel(draft, key, props.summary, skillMode);
+  const label = (values: DraftChanges, key: keyof AutomationDraft) =>
+    draftValueLabel(values, key, props.summary, task.kind === "skill");
   return (
     <aside
       aria-label="Your changes"
@@ -99,16 +97,33 @@ export function AutomationDraftChanges(props: {
   );
 }
 
-/** The saved values in draft form, including the saved schedule. */
-function savedDraft(original: AutomationEdit): AutomationDraft {
-  const draft = createAutomationDraft(original);
+/** The saved values in change form, including the saved schedule. */
+function savedValues(
+  original: AutomationEdit,
+): DraftChanges & { task: AutomationTask } {
+  const draft = { ...createAutomationDraft(original), task: original.task };
   return original.kind === "scheduled"
     ? { ...draft, schedule: scheduleDraft(original) }
     : draft;
 }
 
+/** Name the part of the task that changed. */
+function taskChangeLabel(saved: AutomationTask, next: AutomationTask): string {
+  if (saved.kind !== next.kind) return "What to run";
+  if (saved.kind === "instruction" || next.kind === "instruction")
+    return "Instruction";
+  if (saved.skill === next.skill) return "Additional context";
+  return saved.context === next.context ? "Skill" : "Skill and context";
+}
+
+function taskLabel(task: AutomationTask): string {
+  if (task.kind === "instruction") return task.instruction || "Empty";
+  const skill = task.skill || "No skill chosen";
+  return task.context ? `${skill} · ${task.context}` : skill;
+}
+
 function draftValueLabel(
-  draft: Partial<AutomationDraft>,
+  draft: DraftChanges,
   key: keyof AutomationDraft,
   summary: AutomationSummary,
   skillMode: boolean,
@@ -119,12 +134,8 @@ function draftValueLabel(
         draft.title ||
         (skillMode ? "Named after the skill" : "First line of the instruction")
       );
-    case "skill":
-      return draft.skill === null
-        ? "Instruction"
-        : draft.skill || "No skill chosen";
-    case "instruction":
-      return draft.instruction || (skillMode ? "None" : "Empty");
+    case "task":
+      return draft.task ? taskLabel(draft.task) : "Not set";
     case "credentialMode":
       return draft.credentialMode === "creator"
         ? summary.ownedByViewer

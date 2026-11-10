@@ -15,9 +15,9 @@ import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/typ
  * One row per Automation of either kind. `record` holds the fields that have
  * no column. Each write also copies the nested fields that queries filter or
  * search on into columns: `team_id`, `channel_id`, `creator_slack_user_id`,
- * `instruction`, and the event trigger `namespace` and `identifier`.
- * `instruction` holds the task description, which names the skill in skill
- * mode, so search and title fallback find it. An event trigger with no
+ * the task `instruction` or `skill`, and the event trigger `namespace` and
+ * `identifier`. Exactly one of `instruction` and `skill` is set, by the task
+ * kind. A skill's context is only in `record`. An event trigger with no
  * identifier runs for every resource of its namespace, so its `identifier` is
  * null. The match index finds those rows with `identifier is null`.
  */
@@ -39,7 +39,10 @@ export const juniorAutomations = pgTable(
     /** Why a run blocked this Automation, until its creator resumes it. */
     statusReason: text("status_reason"),
     title: text("title"),
-    instruction: text("instruction").notNull(),
+    /** The instruction of an instruction task. Null for a skill task. */
+    instruction: text("instruction"),
+    /** The skill of a skill task. Null for an instruction task. */
+    skill: text("skill"),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     nextRunAtMs: bigint("next_run_at_ms", { mode: "number" }),
     runNowAtMs: bigint("run_now_at_ms", { mode: "number" }),
@@ -57,6 +60,10 @@ export const juniorAutomations = pgTable(
     check(
       "junior_automations_status_check",
       sql`${table.status} in ('active', 'blocked', 'paused', 'completed', 'deleted')`,
+    ),
+    check(
+      "junior_automations_task_check",
+      sql`(${table.instruction} is null) <> (${table.skill} is null)`,
     ),
     check(
       "junior_automations_record_check",
@@ -84,6 +91,9 @@ export const juniorAutomations = pgTable(
       .where(
         sql`${table.status} = 'active' AND ${table.nextRunAtMs} IS NOT NULL`,
       ),
+    index("junior_automations_skill_idx")
+      .on(table.skill, table.createdAtMs, table.id)
+      .where(sql`${table.status} <> 'deleted' AND ${table.skill} IS NOT NULL`),
     index("junior_automations_match_idx")
       .on(table.namespace, table.identifier, table.createdAtMs, table.id)
       .where(sql`${table.status} <> 'deleted'`),

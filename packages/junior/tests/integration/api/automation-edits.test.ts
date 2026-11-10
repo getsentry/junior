@@ -1,3 +1,4 @@
+import { automationTaskText } from "@/chat/automations/task";
 import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -116,58 +117,56 @@ describe("Automation edit API", () => {
       const unknown = await patch({
         kind: "scheduled",
         revision: initial.revision,
-        skill: "unknown-check",
+        task: { kind: "skill", skill: "unknown-check" },
       });
       expect(unknown.status).toBe(400);
       expect(await unknown.json()).toMatchObject({
         fields: {
-          skill: [
+          "task.skill": [
             "The skill unknown-check is not installed. Choose an installed skill.",
           ],
         },
       });
 
       // A skill needs no context. A manual-only skill can be chosen too.
+      const skillTask = { kind: "skill", skill: "release-check" } as const;
       const edited = await patch({
         kind: "scheduled",
         revision: initial.revision,
-        skill: "release-check",
-        instruction: "",
+        task: skillTask,
       });
       expect(edited.status).toBe(200);
       const saved = automationEditSchema.parse(await edited.json());
-      expect(saved).toMatchObject({ skill: "release-check", instruction: "" });
+      expect(saved.task).toEqual(skillTask);
       const summary = await app.request(url);
-      expect(await summary.json()).toMatchObject({
-        skill: "release-check",
-        instruction: "",
-      });
+      expect(await summary.json()).toMatchObject({ task: skillTask });
       const versions = automationVersionListSchema.parse(
         await (await app.request(`${url}/versions`)).json(),
       ).versions;
-      expect(versions[0]?.definition).toMatchObject({
-        skill: "release-check",
-        instruction: "",
-      });
+      expect(versions[0]?.definition.task).toEqual(skillTask);
 
-      // Leaving skill mode needs an instruction.
-      const empty = await patch({
-        kind: "scheduled",
-        revision: saved.revision,
-        skill: null,
-      });
-      expect(empty.status).toBe(400);
-      expect(await empty.json()).toMatchObject({
-        fields: { instruction: ["Write an instruction or choose a skill."] },
-      });
+      // The API rejects blank context and an empty instruction.
+      for (const task of [
+        { kind: "skill", skill: "release-check", context: " " },
+        { kind: "instruction", instruction: "" },
+      ]) {
+        const invalid = await patch({
+          kind: "scheduled",
+          revision: saved.revision,
+          task,
+        });
+        expect(invalid.status).toBe(400);
+      }
       const restored = await patch({
         kind: "scheduled",
         revision: saved.revision,
-        skill: null,
-        instruction: originalInstruction,
+        task: { kind: "instruction", instruction: originalInstruction },
       });
       expect(restored.status).toBe(200);
-      expect(await restored.json()).not.toHaveProperty("skill");
+      expect((await restored.json()).task).toEqual({
+        kind: "instruction",
+        instruction: originalInstruction,
+      });
     } finally {
       await removeSkills();
       await fixture.close();
@@ -188,14 +187,20 @@ describe("Automation edit API", () => {
         const edited = await patch({
           kind,
           revision: initial.revision,
-          instruction: "Post the revised digest.",
+          task: {
+            kind: "instruction",
+            instruction: "Post the revised digest.",
+          },
         });
         expect(edited.status).toBe(200);
         const saved = automationEditSchema.parse(await edited.json());
         expect(saved).toMatchObject({
           ...initial,
           revision: expect.any(String),
-          instruction: "Post the revised digest.",
+          task: {
+            kind: "instruction",
+            instruction: "Post the revised digest.",
+          },
         });
         expect(saved.revision).not.toBe(initial.revision);
 
@@ -236,7 +241,10 @@ describe("Automation edit API", () => {
         const fromSlack = await read();
         expect(fromSlack).toMatchObject({
           title: "Title from Slack",
-          instruction: "Edited again from Slack.",
+          task: {
+            kind: "instruction",
+            instruction: "Edited again from Slack.",
+          },
           credentialMode: "creator",
           outcomes: initial.outcomes,
         });
@@ -293,7 +301,7 @@ describe("Automation edit API", () => {
           versions.map(({ version, editedBy, definition }) => [
             version,
             editedBy?.slackUserId,
-            definition.instruction,
+            automationTaskText(definition.task),
             definition.title,
             definition.credentialMode,
           ]),
@@ -329,7 +337,7 @@ describe("Automation edit API", () => {
         expect(automationEditSchema.parse(await restored.json())).toMatchObject(
           {
             title: "My custom title",
-            instruction: originalInstruction,
+            task: { kind: "instruction", instruction: originalInstruction },
             credentialMode: "creator",
             outcomes: initial.outcomes,
           },
@@ -358,13 +366,17 @@ describe("Automation edit API", () => {
         );
         expect(readerView.ownedByViewer).toBe(false);
         const readerEdit = await patch(
-          { kind, revision: readerView.revision, instruction: "Reader edit." },
+          {
+            kind,
+            revision: readerView.revision,
+            task: { kind: "instruction", instruction: "Reader edit." },
+          },
           "reader@example.com",
         );
         expect(readerEdit.status).toBe(200);
         const readerSaved = automationEditSchema.parse(await readerEdit.json());
         expect(readerSaved).toMatchObject({
-          instruction: "Reader edit.",
+          task: { kind: "instruction", instruction: "Reader edit." },
           credentialMode: "system",
           ownedByViewer: false,
         });
@@ -453,11 +465,14 @@ describe("Automation edit API", () => {
             })
           ).status,
         ).toBe(401);
-        const invalid = await patch({ ...input, instruction: " " });
+        const invalid = await patch({
+          ...input,
+          task: { kind: "instruction", instruction: " " },
+        });
         expect(invalid.status).toBe(400);
         expect(await invalid.json()).toMatchObject({
           code: "invalid_edit",
-          fields: { instruction: expect.any(Array) },
+          fields: { "task.instruction": expect.any(Array) },
         });
         const newDestination = await patch({
           ...input,

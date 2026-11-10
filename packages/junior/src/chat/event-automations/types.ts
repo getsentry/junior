@@ -7,10 +7,7 @@ import {
   taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import {
-  automationTaskSchema,
-  hasAutomationWork,
-} from "@/chat/automations/task";
+import { automationTaskSchema } from "@/chat/automations/task";
 
 /** Keep indexed event-automation selectors within PostgreSQL B-tree entry limits. */
 export const EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH = 300;
@@ -77,9 +74,7 @@ export const eventAutomationSchema = z
     destinationVisibility: destinationVisibilitySchema,
     /** Explicit visible effects after successful work. An empty list is silent. */
     outcomes: z.array(eventAutomationOutcomeSchema).max(5),
-    task: automationTaskSchema.refine(hasAutomationWork, {
-      message: "Set an instruction or a skill.",
-    }),
+    task: automationTaskSchema,
     trigger: eventAutomationTriggerSchema,
   })
   .strict();

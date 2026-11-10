@@ -1,6 +1,7 @@
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
+import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
@@ -208,6 +209,30 @@ describe("event automation blocking", () => {
         "The skill unknown-check is not installed.",
       );
       const { automation } = await create("release-check");
+      const tools = automationToolContext(context());
+      const update = (input: Record<string, unknown>) =>
+        execute(createUpdateAutomationTool(tools, getEventCatalog()), {
+          automation_id: automation.id,
+          ...input,
+        });
+      const search = (skill: string) =>
+        execute(createSearchAutomationsTool(tools, getEventCatalog()), {
+          skill,
+        }) as Promise<{
+          automations: Array<{ id: string; task: unknown }>;
+        }>;
+      await update({ context: "Only check getsentry/junior." });
+      expect((await search("release-check")).automations).toMatchObject([
+        {
+          id: automation.id,
+          task: {
+            kind: "skill",
+            skill: "release-check",
+            context: "Only check getsentry/junior.",
+          },
+        },
+      ]);
+      expect((await search("other-check")).automations).toEqual([]);
       const db = fixture.sql.db();
       const read = async () => (await getEventAutomation(db, automation.id))!;
       const ingest = (eventKey: string) =>
@@ -234,25 +259,23 @@ describe("event automation blocking", () => {
       });
       expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
 
-      // A null skill switches the Automation to an instruction.
-      await execute(
-        createUpdateAutomationTool(
-          automationToolContext(context()),
-          getEventCatalog(),
-        ),
-        {
-          automation_id: automation.id,
-          skill: null,
-          instruction: "Add the release-train label.",
-          status: "active",
-        },
-      );
+      // An instruction replaces the skill and its context.
+      await update({
+        instruction: "Add the release-train label.",
+        status: "active",
+      });
       const resumed = await read();
       expect(resumed).toMatchObject({
         status: "active",
-        task: { text: "Add the release-train label." },
+        task: {
+          kind: "instruction",
+          instruction: "Add the release-train label.",
+        },
       });
       expect(resumed.task).not.toHaveProperty("skill");
+      await expect(update({ context: "Only main." })).rejects.toThrow(
+        "Context goes only with a skill.",
+      );
       expect(await ingest("github:skill-3")).toEqual({ dispatched: 1 });
     } finally {
       await removeSkills?.();

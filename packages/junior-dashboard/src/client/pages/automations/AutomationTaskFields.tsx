@@ -14,7 +14,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { systemPluginPath } from "../system/SystemPlugins";
 import { AutomationSkillPicker } from "./AutomationSkillPicker";
-import type { AutomationDraft } from "./automationDraft";
+import { taskDraft, type AutomationTaskDraft } from "./automationDraft";
 
 type InputState = {
   "aria-invalid"?: true;
@@ -23,21 +23,22 @@ type InputState = {
 
 /**
  * Edit what an Automation runs: a written instruction, or a skill with
- * optional context. Switching modes restores the saved text of that mode.
+ * optional context. Switching modes restores the saved task of that mode.
  */
 export function AutomationTaskFields(props: {
-  draft: Pick<AutomationDraft, "instruction" | "skill">;
+  task: AutomationTaskDraft;
   original: AutomationEdit;
   disabled: boolean;
   fieldError(key: string): string | undefined;
   inputState(key: string): InputState;
-  onChange(value: Partial<AutomationDraft>): void;
+  onChange(task: AutomationTaskDraft): void;
 }) {
-  const { draft, original } = props;
+  const { task, original } = props;
   // Keep the context field open while its text is cleared.
-  const [contextOpen, setContextOpen] = useState(draft.instruction !== "");
+  const [contextOpen, setContextOpen] = useState(
+    task.kind === "skill" && task.context !== "",
+  );
   const skills = useSkillsData().data;
-  const skillMode = draft.skill !== null;
   return (
     <>
       <Field>
@@ -47,17 +48,20 @@ export function AutomationTaskFields(props: {
         <ToggleGroup
           aria-labelledby="run-label"
           disabled={props.disabled}
-          value={[skillMode ? "skill" : "instruction"]}
+          value={[task.kind]}
           onValueChange={([next]) => {
-            if (!next || next === (skillMode ? "skill" : "instruction")) return;
-            const savedSkillMode = original.skill !== undefined;
-            const instruction =
-              (next === "skill") === savedSkillMode ? original.instruction : "";
-            setContextOpen(instruction !== "");
-            props.onChange({
-              skill: next === "skill" ? (original.skill ?? "") : null,
-              instruction,
-            });
+            if (next !== "instruction" && next !== "skill") return;
+            if (next === task.kind) return;
+            const restored: AutomationTaskDraft =
+              next === original.task.kind
+                ? taskDraft(original.task)
+                : next === "skill"
+                  ? { kind: "skill", skill: "", context: "" }
+                  : { kind: "instruction", instruction: "" };
+            setContextOpen(
+              restored.kind === "skill" && restored.context !== "",
+            );
+            props.onChange(restored);
           }}
           className="w-fit rounded-md border border-dashboard-border-emphasis p-0.5"
         >
@@ -65,30 +69,32 @@ export function AutomationTaskFields(props: {
           <ToggleGroupItem value="skill">Skill</ToggleGroupItem>
         </ToggleGroup>
       </Field>
-      {skillMode ? (
+      {task.kind === "skill" ? (
         <SkillFields
           {...props}
-          skill={draft.skill ?? ""}
+          task={task}
           skills={skills}
-          contextOpen={contextOpen || draft.instruction !== ""}
+          contextOpen={contextOpen || task.context !== ""}
           onContextOpen={setContextOpen}
         />
       ) : (
         <Field>
-          <FieldLabel htmlFor="instruction">Instruction</FieldLabel>
+          <FieldLabel htmlFor="task.instruction">Instruction</FieldLabel>
           <Textarea
-            id="instruction"
+            id="task.instruction"
             rows={8}
-            value={draft.instruction}
-            onChange={(e) => props.onChange({ instruction: e.target.value })}
-            {...props.inputState("instruction")}
+            value={task.instruction}
+            onChange={(e) =>
+              props.onChange({ ...task, instruction: e.target.value })
+            }
+            {...props.inputState("task.instruction")}
             className="resize-y text-base leading-relaxed sm:text-sm"
           />
           <p className="m-0 text-right text-xs text-dashboard-text-muted">
-            {draft.instruction.length.toLocaleString()} / 4,000
+            {task.instruction.length.toLocaleString()} / 4,000
           </p>
-          <FieldError id="instruction-error">
-            {props.fieldError("instruction")}
+          <FieldError id="task.instruction-error">
+            {props.fieldError("task.instruction")}
           </FieldError>
         </Field>
       )}
@@ -97,36 +103,36 @@ export function AutomationTaskFields(props: {
 }
 
 function SkillFields(props: {
-  draft: Pick<AutomationDraft, "instruction">;
-  skill: string;
+  task: Extract<AutomationTaskDraft, { kind: "skill" }>;
   skills: readonly SkillReport[] | undefined;
   contextOpen: boolean;
   fieldError(key: string): string | undefined;
   inputState(key: string): InputState;
-  onChange(value: Partial<AutomationDraft>): void;
+  onChange(task: AutomationTaskDraft): void;
   onContextOpen(open: boolean): void;
 }) {
-  const selected = props.skills?.find((skill) => skill.name === props.skill);
+  const { task } = props;
+  const selected = props.skills?.find((skill) => skill.name === task.skill);
   // Wait for the skill list before calling a saved skill missing.
-  const missing = Boolean(props.skill && props.skills && !selected);
+  const missing = Boolean(task.skill && props.skills && !selected);
   const skillError =
-    props.fieldError("skill") ??
+    props.fieldError("task.skill") ??
     (missing
-      ? `The skill ${props.skill} is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.`
+      ? `The skill ${task.skill} is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.`
       : undefined);
   return (
     <>
       <Field>
-        <FieldLabel htmlFor="skill">Skill</FieldLabel>
+        <FieldLabel htmlFor="task.skill">Skill</FieldLabel>
         <AutomationSkillPicker
-          id="skill"
-          value={props.skill}
+          id="task.skill"
+          value={task.skill}
           skills={props.skills ?? []}
           invalid={Boolean(skillError)}
-          describedBy={skillError ? "skill-error" : "skill-hint"}
-          onChange={(skill) => props.onChange({ skill })}
+          describedBy={skillError ? "task.skill-error" : "skill-hint"}
+          onChange={(skill) => props.onChange({ ...task, skill })}
         />
-        <FieldError id="skill-error">{skillError}</FieldError>
+        <FieldError id="task.skill-error">{skillError}</FieldError>
         <FieldDescription
           id="skill-hint"
           className="flex flex-wrap items-center justify-between gap-2"
@@ -149,11 +155,11 @@ function SkillFields(props: {
       {props.contextOpen ? (
         <Field>
           <div className="flex items-center justify-between gap-3">
-            <FieldLabel htmlFor="instruction">Additional context</FieldLabel>
+            <FieldLabel htmlFor="task.context">Additional context</FieldLabel>
             <Button
               variant="quiet"
               onClick={() => {
-                props.onChange({ instruction: "" });
+                props.onChange({ ...task, context: "" });
                 props.onContextOpen(false);
               }}
             >
@@ -161,14 +167,16 @@ function SkillFields(props: {
             </Button>
           </div>
           <Textarea
-            id="instruction"
+            id="task.context"
             rows={4}
             // The person just asked to add context.
-            autoFocus={props.draft.instruction === ""}
-            value={props.draft.instruction}
+            autoFocus={task.context === ""}
+            value={task.context}
             placeholder="What this automation needs beyond the skill, such as a repo, a threshold, or who to tag."
-            onChange={(e) => props.onChange({ instruction: e.target.value })}
-            {...props.inputState("instruction")}
+            onChange={(e) =>
+              props.onChange({ ...task, context: e.target.value })
+            }
+            {...props.inputState("task.context")}
             className="resize-y text-base leading-relaxed sm:text-sm"
           />
           <div className="flex items-start justify-between gap-3">
@@ -176,11 +184,11 @@ function SkillFields(props: {
               Junior gets this with the skill on every run.
             </FieldDescription>
             <p className="m-0 shrink-0 text-xs text-dashboard-text-muted">
-              {props.draft.instruction.length.toLocaleString()} / 4,000
+              {task.context.length.toLocaleString()} / 4,000
             </p>
           </div>
-          <FieldError id="instruction-error">
-            {props.fieldError("instruction")}
+          <FieldError id="task.context-error">
+            {props.fieldError("task.context")}
           </FieldError>
         </Field>
       ) : (

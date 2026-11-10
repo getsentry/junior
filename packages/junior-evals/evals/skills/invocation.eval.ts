@@ -39,8 +39,11 @@ describe("Skills", () => {
       destination: slackChannel(),
       due: true,
       once: true,
-      skill: "weather-lookup",
-      task: "Report the weather in Vienna.",
+      task: {
+        kind: "skill",
+        skill: "weather-lookup",
+        context: "Report the weather in Vienna.",
+      },
     });
 
     const delivery = await run(heartbeat());

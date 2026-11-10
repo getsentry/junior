@@ -6,7 +6,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { findAutomationSkill } from "./skill";
-import { hasAutomationWork, type AutomationTask } from "./task";
+import type { AutomationTask } from "./task";
 
 export class AutomationEditError extends ToolInputError {
   readonly field: string | undefined;
@@ -35,52 +35,30 @@ export function requireCredentialStart(
   );
 }
 
-/** Build the task that an edit saves. A null skill switches to instruction mode. */
-function editedTask(
-  current: AutomationTask,
-  input: AutomationEditFields,
-): AutomationTask {
-  const skill =
-    input.skill === null ? undefined : (input.skill ?? current.skill);
-  return {
-    text: input.instruction ?? current.text,
-    ...(skill ? { skill } : undefined),
-  };
-}
-
 /** Return true when an edit changes what a run does. */
 export function changesAutomationTask(
   current: AutomationTask,
   input: AutomationEditFields,
 ): boolean {
-  return !isDeepStrictEqual(editedTask(current, input), current);
+  return input.task !== undefined && !isDeepStrictEqual(input.task, current);
 }
 
 /**
- * Require an instruction or a skill, and require a newly selected skill to be
- * installed. A kept skill that is gone stays, so other fields can still be
- * saved; its runs block until someone picks another skill.
+ * Require a newly selected skill to be installed. A kept skill that is gone
+ * stays, so other fields can still be saved; its runs block until someone
+ * picks another skill.
  */
-export async function requireAutomationTask(
+export async function requireAutomationSkill(
   task: AutomationTask,
-  previousSkill: string | undefined,
+  current: AutomationTask | undefined,
 ): Promise<void> {
-  if (!hasAutomationWork(task)) {
-    throw new AutomationEditError(
-      "Write an instruction or choose a skill.",
-      "instruction",
-    );
-  }
-  if (
-    task.skill &&
-    task.skill !== previousSkill &&
-    !(await findAutomationSkill(task.skill))
-  ) {
-    throw new AutomationEditError(
-      `The skill ${task.skill} is not installed. Choose an installed skill.`,
-      "skill",
-    );
-  }
+  if (task.kind !== "skill") return;
+  if (current?.kind === "skill" && current.skill === task.skill) return;
+  if (await findAutomationSkill(task.skill)) return;
+  throw new AutomationEditError(
+    `The skill ${task.skill} is not installed. Choose an installed skill.`,
+    "task.skill",
+  );
 }
 
 /**
@@ -135,8 +113,8 @@ export async function editAutomationFields(
       }
     }
   }
-  const task = editedTask(current.task, input);
-  await requireAutomationTask(task, current.task.skill);
+  const task = input.task ?? current.task;
+  await requireAutomationSkill(task, current.task);
   const changesOutcomes = !isDeepStrictEqual(outcomes, current.outcomes);
   return {
     title: input.title ?? current.title,

@@ -15,6 +15,7 @@ import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
 import { createEventAutomation } from "@/chat/event-automations/store";
 import { createWatch } from "@/chat/events/store";
+import type { AutomationTask } from "@/chat/automations/task";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { createPluginEmbedder } from "@/chat/plugins/model";
@@ -169,9 +170,8 @@ export async function insertScheduledAutomation(args: {
    * An empty list stores no outcomes, so a successful run posts nothing.
    */
   sendTo?: SlackChannel[];
-  /** Skill that each run invokes. `task` is then its optional context. */
-  skill?: string;
-  task: string;
+  /** An instruction, or the task of a skill run. */
+  task: string | AutomationTask;
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
   const identity = await insertSlackIdentity(author);
@@ -214,10 +214,10 @@ export async function insertScheduledAutomation(args: {
           timezone: "America/Los_Angeles",
         },
     status: "active",
-    task: {
-      text: args.task,
-      ...(args.skill ? { skill: args.skill } : undefined),
-    },
+    task:
+      typeof args.task === "string"
+        ? { kind: "instruction", instruction: args.task }
+        : args.task,
     updatedAtMs: nowMs - 60_000,
   };
   await insertCreationThread(args.destination);
@@ -253,7 +253,7 @@ export async function insertEventAutomation(args: {
     destination: args.destination,
     destinationVisibility: "public",
     outcomes: [{ action: "send_message", destination: args.destination }],
-    task: { text: args.task },
+    task: { kind: "instruction", instruction: args.task },
     trigger: args.trigger,
   });
   return { id };

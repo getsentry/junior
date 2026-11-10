@@ -4,6 +4,7 @@
  * Each matching automation is independently idempotent. Aggregate failures propagate
  * so the provider can retry the original delivery.
  */
+import { automationTaskText } from "@/chat/automations/task";
 import { slackMention } from "@/chat/slack/mrkdwn";
 import { createHash } from "node:crypto";
 import {
@@ -69,8 +70,8 @@ function eventInput(
     event: event.eventType,
     source: event.namespace,
     creator: slackMention(task.createdBy.slackUserId),
-    instructions: task.task.text,
-    skill: task.task.skill,
+    instructions: automationTaskText(task.task),
+    ...(task.task.kind === "skill" ? { skill: task.task.skill } : undefined),
     outcomes,
     guidance,
     trustedSummary: event.trustedSummary,
@@ -114,7 +115,7 @@ export async function ingestEventAutomations(
   const errors: unknown[] = [];
   for (const task of tasks) {
     try {
-      const { skill } = task.task;
+      const skill = task.task.kind === "skill" ? task.task.skill : undefined;
       if (skill && !(await findAutomationSkill(skill))) {
         const reason = missingAutomationSkillReason(skill);
         if (await blockEventAutomation(db, task.id, reason)) {

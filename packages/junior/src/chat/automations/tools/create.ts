@@ -4,10 +4,14 @@ import {
   type TaskOutcomeInput,
 } from "@/chat/task-outcomes-schema";
 import * as z from "zod";
-import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
-import { requireAutomationTask } from "@/chat/automations/edit-rules";
+import {
+  automationContextToolSchema,
+  automationInstructionToolSchema,
+} from "@/chat/automations/edit-schema";
+import { requireAutomationSkill } from "@/chat/automations/edit-rules";
 import {
   automationTaskDescription,
+  automationTaskText,
   type AutomationTask,
 } from "@/chat/automations/task";
 import type { SkillMetadata } from "@/chat/skills";
@@ -25,6 +29,7 @@ import {
   automationToolResult,
   automationToolResultSchema,
   automationTriggerSchema,
+  newAutomationTask,
   triggerKind,
   type AutomationTriggerInput,
 } from "@/chat/automations/tool-support";
@@ -206,11 +211,12 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      'Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. Its outcomes set where its messages go. Use trigger type "schedule" for one-time or recurring work. Use trigger type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs the instruction for every matching event. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.',
+      'Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. Its outcomes set where its messages go. Use trigger type "schedule" for one-time or recurring work. Use trigger type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event. Set instruction for written work, or skill to run an installed skill, with context only when the skill needs more. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.',
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema.nullable().optional(),
         skill: automationSkillToolSchema(skills).nullable().optional(),
+        context: automationContextToolSchema.nullable().optional(),
         title: z
           .string()
           .trim()
@@ -242,6 +248,7 @@ export function createAutomationTool(
       const input = args as {
         instruction?: string | null;
         skill?: string | null;
+        context?: string | null;
         title?: string | null;
         trigger: z.input<typeof trigger>;
         outcomes?: TaskOutcomeInput[];
@@ -256,6 +263,9 @@ export function createAutomationTool(
       }
       if (prepared.skill == null) {
         delete prepared.skill;
+      }
+      if (prepared.context == null) {
+        delete prepared.context;
       }
       if (
         prepared.credential_mode === "creator" ||
@@ -272,15 +282,20 @@ export function createAutomationTool(
       const caller = await requireToolCaller(context);
       const creator = requireToolCreator(caller, destination, kind);
       const { createdBy } = creator;
-      const task: AutomationTask = {
-        text: input.instruction ?? "",
-        ...(input.skill ? { skill: input.skill } : undefined),
-      };
-      await requireAutomationTask(task, undefined);
-      requireInstructionReferences(task.text, {
-        creator: createdBy,
-        destinationChannelId: destination.channelId,
+      // prepareArguments removed the nulls.
+      const task = newAutomationTask({
+        instruction: input.instruction ?? undefined,
+        skill: input.skill ?? undefined,
+        context: input.context ?? undefined,
       });
+      await requireAutomationSkill(task, undefined);
+      const text = automationTaskText(task);
+      if (text) {
+        requireInstructionReferences(text, {
+          creator: createdBy,
+          destinationChannelId: destination.channelId,
+        });
+      }
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(

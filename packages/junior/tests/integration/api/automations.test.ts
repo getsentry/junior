@@ -178,7 +178,7 @@ describe("Automations API", () => {
           timezone: "UTC",
         },
         status: "active",
-        task: { text: "" },
+        task: { kind: "instruction", instruction: "Post the daily digest." },
         updatedAtMs: nowMs,
       };
       await saveScheduledAutomation(fixture.sql.db(), scheduledAutomation);
@@ -193,7 +193,10 @@ describe("Automations API", () => {
           platform: "slack",
           teamId: "T123",
         },
-        task: { text: "Post the public incident digest for <@U456>." },
+        task: {
+          kind: "instruction",
+          instruction: "Post the public incident digest for <@U456>.",
+        },
         updatedAtMs: nowMs + 2,
       });
       await createEventAutomation(fixture.sql.db(), {
@@ -209,7 +212,10 @@ describe("Automations API", () => {
         },
         destinationVisibility: "public",
         outcomes: [],
-        task: { text: "Summarize the closed issue." },
+        task: {
+          kind: "instruction",
+          instruction: "Summarize the closed issue.",
+        },
         trigger: {
           events: ["issue.closed"],
           match: { action: ["closed", "resolved"] },
@@ -232,7 +238,10 @@ describe("Automations API", () => {
         },
         destinationVisibility: "public",
         outcomes: [],
-        task: { text: "Notify responders when the incident changes." },
+        task: {
+          kind: "instruction",
+          instruction: "Notify responders when the incident changes.",
+        },
         trigger: {
           events: ["incident.updated"],
           identifier: "INC-17",
@@ -254,7 +263,10 @@ describe("Automations API", () => {
         },
         destinationVisibility: "private",
         outcomes: [],
-        task: { text: "This private task must stay hidden." },
+        task: {
+          kind: "instruction",
+          instruction: "This private task must stay hidden.",
+        },
         trigger: {
           events: ["incident.updated"],
           identifier: "INC-PRIVATE",
@@ -431,7 +443,10 @@ describe("Automations API", () => {
               label: "#project-updates",
             }),
             id: "sched_tasks_api",
-            instruction: "Untitled scheduled automation",
+            task: {
+              kind: "instruction",
+              instruction: "Post the daily digest.",
+            },
             kind: "scheduled",
             lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
@@ -445,7 +460,7 @@ describe("Automations API", () => {
             schedule: "Schedule unavailable",
             timezone: "UTC",
             status: "active",
-            title: "Untitled scheduled automation",
+            title: "Post the daily digest.",
             totalRuns: 2,
           }),
         ],
@@ -499,7 +514,7 @@ describe("Automations API", () => {
             kind: "scheduled",
             status: "failed",
             automationId: "sched_tasks_api",
-            automationTitle: "Untitled scheduled automation",
+            automationTitle: "Post the daily digest.",
             totalTokens: 1_200,
           }),
           expect.objectContaining({
@@ -597,7 +612,10 @@ describe("Automations API", () => {
             platform: "slack",
             teamId: "T123",
           },
-          task: { text: `Public crowding task ${index}.` },
+          task: {
+            kind: "instruction",
+            instruction: `Public crowding task ${index}.`,
+          },
           updatedAtMs: nowMs + 1_000 + index,
         });
       }
@@ -673,8 +691,11 @@ describe("Automations API", () => {
         "sched_tasks_api",
       );
       expect(
-        (await list("q=crowding&sort=title")).automations[0]?.instruction,
-      ).toBe("Public crowding task 0.");
+        (await list("q=crowding&sort=title")).automations[0]?.task,
+      ).toEqual({
+        kind: "instruction",
+        instruction: "Public crowding task 0.",
+      });
       expect((await list("page=1000")).page).toBe(21);
       const direct = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/automations/sched_tasks_api",
@@ -726,9 +747,30 @@ describe("Automations API", () => {
       await saveScheduledAutomation(fixture.sql.db(), {
         ...scheduledAutomation,
         title: "Manual title",
-        task: { text: "Unique instruction phrase" },
+        task: { kind: "instruction", instruction: "Unique instruction phrase" },
       });
       expect((await list("q=unique%20instruction")).total).toBe(1);
+      await saveScheduledAutomation(fixture.sql.db(), {
+        ...scheduledAutomation,
+        id: "sched_skill_api",
+        task: {
+          kind: "skill",
+          skill: "release-check",
+          context: "Only check getsentry/junior.",
+        },
+      });
+      expect(
+        (await list("skill=release-check")).automations.map((task) => task.id),
+      ).toEqual(["sched_skill_api"]);
+      expect((await list("skill=release-check&type=event")).total).toBe(0);
+      expect((await list("skill=release")).total).toBe(0);
+      expect(
+        (await list("q=release-check")).automations.map((task) => task.id),
+      ).toEqual(["sched_skill_api"]);
+      await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/automations/sched_skill_api",
+        { method: "DELETE" },
+      );
 
       await conversationStore.recordActivity({
         conversationId: "slack:C456:tasks-api-private",

@@ -1,3 +1,4 @@
+import { automationTaskText } from "@/chat/automations/task";
 import {
   and,
   asc,
@@ -200,8 +201,8 @@ function taskDedupeFingerprint(task: ScheduledAutomation): string {
         : null,
       timezone: task.schedule.timezone,
     },
-    task: normalizedText(task.task.text),
-    skill: task.task.skill ?? null,
+    task: normalizedText(automationTaskText(task.task)),
+    skill: task.task.kind === "skill" ? task.task.skill : null,
   });
 }
 

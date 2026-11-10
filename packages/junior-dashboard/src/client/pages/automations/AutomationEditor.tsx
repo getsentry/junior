@@ -23,6 +23,7 @@ import { AutomationOutcomeFields } from "./AutomationOutcomeFields";
 import { AutomationTaskFields } from "./AutomationTaskFields";
 import {
   automationDraftChanges,
+  taskDraft,
   createAutomationDraft,
   scheduleDraft,
   type AutomationDraft,
@@ -100,7 +101,11 @@ export function AutomationEditor(props: {
     if (!latest) return;
     setDraft(
       keepChanges
-        ? { ...createAutomationDraft(latest), ...changes }
+        ? {
+            ...createAutomationDraft(latest),
+            ...changes,
+            task: changes.task ? draft.task : taskDraft(latest.task),
+          }
         : createAutomationDraft(latest),
     );
     setOriginal(latest);
@@ -133,8 +138,7 @@ export function AutomationEditor(props: {
   const dropsCreatorCredentials =
     !owned &&
     original.credentialMode === "creator" &&
-    (changes.instruction !== undefined ||
-      changes.skill !== undefined ||
+    (changes.task !== undefined ||
       changes[triggerField] !== undefined ||
       changes.outcomes !== undefined);
   const triggerError = fieldError(triggerField);
@@ -149,13 +153,18 @@ export function AutomationEditor(props: {
       onSubmit={(event) => {
         event.preventDefault();
         if (save.isPending || conflict || !dirty) return;
-        // The schema allows empty text, because a skill needs no context.
         const taskError: Record<string, string[]> | undefined =
-          draft.skill === ""
-            ? { skill: ["Choose a skill."] }
-            : draft.skill === null && !draft.instruction.trim()
-              ? { instruction: ["Write an instruction or choose a skill."] }
-              : undefined;
+          draft.task.kind === "skill"
+            ? draft.task.skill
+              ? undefined
+              : { "task.skill": ["Choose a skill."] }
+            : draft.task.instruction.trim()
+              ? undefined
+              : {
+                  "task.instruction": [
+                    "Write an instruction or choose a skill.",
+                  ],
+                };
         if (taskError) {
           setFields(taskError);
           focusError();
@@ -276,14 +285,10 @@ export function AutomationEditor(props: {
           className="min-w-0 [&>section:first-of-type]:border-t-0 [&>section:first-of-type]:pt-0"
         >
           <AutomationFormSection
-            changed={
-              changes.title !== undefined ||
-              changes.instruction !== undefined ||
-              changes.skill !== undefined
-            }
+            changed={changes.title !== undefined || changes.task !== undefined}
             title="What to do"
             detail={
-              draft.skill === null
+              draft.task.kind === "instruction"
                 ? "Give Junior a clear instruction and a name you can find later."
                 : "Pick a skill for Junior to run. Add context only when this automation needs more than the skill does."
             }
@@ -301,12 +306,12 @@ export function AutomationEditor(props: {
               <FieldError id="title-error">{fieldError("title")}</FieldError>
             </Field>
             <AutomationTaskFields
-              draft={draft}
+              task={draft.task}
               original={original}
               disabled={save.isPending}
               fieldError={fieldError}
               inputState={inputState}
-              onChange={change}
+              onChange={(task) => change({ task })}
             />
           </AutomationFormSection>
           <AutomationFormSection

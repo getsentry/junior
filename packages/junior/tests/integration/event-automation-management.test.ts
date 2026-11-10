@@ -143,7 +143,10 @@ describe("event automation management", () => {
     ).toMatchObject({
       credentialMode: "system",
       status: "paused",
-      task: { text: "Change a public task from another channel." },
+      task: {
+        kind: "instruction",
+        instruction: "Change a public task from another channel.",
+      },
     });
     await update({ status: "active" });
     // Setting the current status again changes nothing.
@@ -185,7 +188,10 @@ describe("event automation management", () => {
     expect(
       await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
-      task: { text: "Address the requested changes." },
+      task: {
+        kind: "instruction",
+        instruction: "Address the requested changes.",
+      },
     });
   });
 
@@ -315,7 +321,10 @@ describe("event automation management", () => {
       await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "system",
-      task: { text: "Only summarize the requested changes." },
+      task: {
+        kind: "instruction",
+        instruction: "Only summarize the requested changes.",
+      },
     });
   });
 
@@ -393,14 +402,20 @@ describe("event automation management", () => {
     );
     expect(recreated.automation).toMatchObject({
       id: created.automation.id,
-      instruction: "Summarize the requested changes after delete.",
+      task: {
+        kind: "instruction",
+        instruction: "Summarize the requested changes after delete.",
+      },
     });
     await expect(
       getEventAutomation(fixture.sql.db(), created.automation.id),
     ).resolves.toMatchObject({
       id: created.automation.id,
       status: "active",
-      task: { text: "Summarize the requested changes after delete." },
+      task: {
+        kind: "instruction",
+        instruction: "Summarize the requested changes after delete.",
+      },
     });
   });
 });

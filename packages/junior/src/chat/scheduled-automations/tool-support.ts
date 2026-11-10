@@ -12,7 +12,10 @@ import type {
   ScheduledAutomationConversationAccess,
 } from "./types";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
-import { automationTaskDescription } from "@/chat/automations/task";
+import {
+  automationTaskDescription,
+  automationTaskSchema,
+} from "@/chat/automations/task";
 
 /** Model-facing shape of one scheduled automation. */
 export const compactTaskResultSchema = z
@@ -25,8 +28,7 @@ export const compactTaskResultSchema = z
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
     original_request: z.string().nullable(),
-    instruction: z.string(),
-    skill: z.string().nullable(),
+    task: automationTaskSchema,
     schedule: z.string(),
     timezone: z.string(),
     // Uses the keys of the schedule input, so the model can pass the
@@ -106,8 +108,7 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
     created_at: new Date(task.createdAtMs).toISOString(),
     updated_at: new Date(task.updatedAtMs).toISOString(),
     original_request: task.originalRequest ?? null,
-    instruction: task.task.text,
-    skill: task.task.skill ?? null,
+    task: task.task,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
     recurrence: task.schedule.recurrence

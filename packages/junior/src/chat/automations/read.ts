@@ -18,7 +18,7 @@ import {
 } from "./collection";
 import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
-import { automationTaskDescription, type AutomationTask } from "./task";
+import { automationTaskDescription, automationTaskSchema } from "./task";
 import {
   emptyAutomationRunWindows,
   readAutomationExecutionByConversationId,
@@ -170,16 +170,6 @@ function displayText(value: string, fallback: string): string {
   return value.trim() || fallback;
 }
 
-/**
- * Summary task fields. In instruction mode, `instruction` is the description
- * with its fallback. In skill mode, it is the context, which can be empty.
- */
-function taskFields(task: AutomationTask, description: string) {
-  return task.skill
-    ? { instruction: task.text, skill: task.skill }
-    : { instruction: description };
-}
-
 function taskDisplayTitle(
   title: string | undefined,
   instruction: string,
@@ -290,7 +280,7 @@ function scheduledAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    ...taskFields(task.task, description),
+    task: task.task,
     kind: "scheduled",
     ...executionSummaryFields(stats),
     ...(nextRunAtMs !== undefined
@@ -332,7 +322,7 @@ function eventAutomationSummary(
       visibility: destination.visibility,
     },
     id: task.id,
-    ...taskFields(task.task, description),
+    task: task.task,
     kind: "event",
     ...executionSummaryFields(stats),
     ownedByViewer,
@@ -687,7 +677,7 @@ export async function readViewerAutomationRuns(
       `${task.kind}:${task.id}`,
       taskDisplayTitle(
         task.title ?? undefined,
-        task.instruction,
+        automationTaskDescription(automationTaskSchema.parse(task.task)),
         `Untitled ${task.kind} automation`,
       ),
     );

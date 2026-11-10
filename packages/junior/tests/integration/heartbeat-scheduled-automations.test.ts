@@ -93,7 +93,8 @@ function createTask(
     },
     status: "active",
     task: {
-      text: "Post a digest. Summarize the latest state.",
+      kind: "instruction",
+      instruction: "Post a digest. Summarize the latest state.",
     },
     updatedAtMs: nextRunAtMs,
     ...overrides,
@@ -178,7 +179,9 @@ describe("scheduled automation heartbeat", () => {
           timezone: "UTC",
         },
         task: {
-          text: "Post a digest for the Automation creator. Summarize the latest state.",
+          kind: "instruction",
+          instruction:
+            "Post a digest for the Automation creator. Summarize the latest state.",
         },
       }),
     );
@@ -421,8 +424,9 @@ describe("scheduled automation heartbeat", () => {
         db,
         createTask({
           task: {
+            kind: "skill",
             skill: "manual-digest",
-            text: "Only cover getsentry/junior.",
+            context: "Only cover getsentry/junior.",
           },
         }),
       );
@@ -452,7 +456,7 @@ describe("scheduled automation heartbeat", () => {
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(
       db,
-      createTask({ task: { skill: "removed-digest", text: "" } }),
+      createTask({ task: { kind: "skill", skill: "removed-digest" } }),
     );
 
     await runAuthorizedHeartbeat();
@@ -472,68 +476,6 @@ describe("scheduled automation heartbeat", () => {
     expect(conversationWorkQueue.sentRecords()).toHaveLength(0);
     // The creator hears that the Automation is blocked.
     expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
-  }, 30_000);
-
-  it("blocks malformed scheduled automations without stopping the core heartbeat", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
-    global.fetch = fetchMock as typeof fetch;
-    const db = scheduledAutomationDb();
-    await saveScheduledAutomation(db, {
-      ...createTask(),
-      id: "sched_plugin_malformed",
-      task: { text: "" },
-    });
-    const waitUntil = createWaitUntilCollector();
-    const request = new Request(
-      "https://example.invalid/api/internal/heartbeat",
-      {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      },
-    );
-    const response = await testHeartbeat(request, waitUntil.fn);
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
-
-    await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
-    ).resolves.toMatchObject({
-      status: "blocked",
-      errorMessage: expect.stringContaining(
-        "Scheduled automation dispatch metadata could not be built",
-      ),
-    });
-    const blockedTask = await readScheduledAutomation(
-      db,
-      "sched_plugin_malformed",
-    );
-    expect(blockedTask).toMatchObject({
-      status: "blocked",
-      statusReason: expect.stringContaining(
-        "Scheduled automation dispatch metadata could not be built",
-      ),
-    });
-    // A block before dispatch tells the creator too.
-    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
-    await saveScheduledAutomation(db, {
-      ...blockedTask!,
-      nextRunAtMs: TEST_RUN_AT_MS,
-      status: "active",
-      statusReason: undefined,
-      task: { text: "Post the recovered digest." },
-      updatedAtMs: TEST_NOW_MS + 1,
-    });
-    const retryWaitUntil = createWaitUntilCollector();
-    await testHeartbeat(request, retryWaitUntil.fn);
-    await retryWaitUntil.flush();
-    await expect(
-      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
-    ).resolves.toMatchObject({
-      status: "running",
-      dispatchId: expect.any(String),
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
   }, 30_000);
 
   it("skips old recurring occurrences and advances to the next future run", async () => {

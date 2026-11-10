@@ -1,5 +1,5 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
-import { automationTaskDescription } from "@/chat/automations/task";
+import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
@@ -94,7 +94,7 @@ async function upsertScheduledAutomation(
     createdAtMs,
     creatorIdentityId,
     creatorSlackUserId: record.createdBy.slackUserId,
-    instruction: automationTaskDescription(record.task),
+    ...automationTaskColumns(record.task),
     nextRunAtMs: nextRunAtMs ?? null,
     record,
     runNowAtMs: runNowAtMs ?? null,
