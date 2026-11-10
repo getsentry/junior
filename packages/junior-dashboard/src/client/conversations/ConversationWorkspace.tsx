@@ -163,8 +163,12 @@ export function ConversationWorkspace(props: {
     [orderedConversations, visibleCount],
   );
   const hiddenCount = orderedConversations.length - visibleConversations.length;
+  const homeList = useRef<HTMLDivElement>(null);
+  // A new search starts at the top. Otherwise the shorter list leaves the
+  // loader row in view, and it loads more before the results arrive.
   useEffect(() => {
     setVisibleCount(CONVERSATION_PAGE_SIZE);
+    homeList.current?.scrollTo({ top: 0 });
   }, [search]);
   const loadMoreRef = useAutoLoadHistoryPage({
     edge: "bottom",
@@ -298,7 +302,10 @@ export function ConversationWorkspace(props: {
       ) : (
         // The top space is inside the content, not the scroller's padding,
         // so the sticky section labels meet the page header.
-        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 sm:px-6">
+        <div
+          className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 sm:px-6"
+          ref={homeList}
+        >
           <section aria-label="Conversations" className="grid gap-3 pt-4">
             <SearchInput
               className="w-full sm:ml-auto sm:w-72"
