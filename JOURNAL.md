@@ -154,3 +154,18 @@ Read this first after a sandbox reset or context loss.
     → unreadable.
   - BLOCKED on Thomas: PR creation for 4a was held because deferring the
     cost runs to 4b changes the agreed plan. Asked via review item.
+- Events after 4a push:
+  - #3087 CI: `test / plugins` failed on a 5s timeout in
+    junior-github `tests/webhook-outcomes.test.ts`. #3087 does not touch
+    junior-github; the test passes locally. Treated as flaky; reran failed
+    jobs of run 42845810763.
+  - #3059 (dcramer, "Route per-kind behavior through turnBehavior") MERGED.
+    `chat/conversations/kind-behavior.ts` `turnBehavior({kind, personInput,
+    automationRun})` now owns per-kind tool access (`tools.reportBlocked`
+    etc.), and a test-architecture rule rejects new kind / parent-edge /
+    person-Source branches outside it. The reportBlocked precedent I copied
+    is now `turnTools.reportBlocked`.
+  - Impact: slices 1–3 still merge cleanly into main. 4a conflicts in
+    chat/agent/tools.ts, chat/tools/index.ts, chat/tools/types.ts and its
+    gate should move into turnBehavior (e.g. a `submitWalkthrough` tool flag,
+    and later a `walkthrough` kind). Rework 4a on top of main before its PR.
