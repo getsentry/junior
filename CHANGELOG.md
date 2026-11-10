@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.293.0
+
+Junior users get clearer automation control, steadier dashboard behavior, richer integrations, accurate activity data, and a required Sentry CLI setup.
+
+### New Features ✨
+
+Automations gain monitoring, skill-based tasks, richer GitHub triggers, conflict checks, and smarter cache warming.
+
+#### Automations
+
+- Attention-first Automations landing and details page by @dcramer with @sentry-junior in [#3098](https://github.com/getsentry/junior/pull/3098)
+- Run a skill instead of a written instruction by @dcramer with @sentry-junior in [#3096](https://github.com/getsentry/junior/pull/3096)
+
+#### Github
+
+- Filter issue.updated by change, label, and sender by @dingsdax with @sentry-junior in [#3083](https://github.com/getsentry/junior/pull/3083)
+- Check for merge conflicts after a push to the base branch by @BYK with @sentry-junior in [#3013](https://github.com/getsentry/junior/pull/3013)
+- Publish issue.updated for issue edits, labels, assignees, and milestones by @dcramer with @sentry-junior in [#2621](https://github.com/getsentry/junior/pull/2621)
+
+#### Other
+
+- (cache-warming) Give thin gap segments a parent prior by @BYK with @sentry-junior in [#3095](https://github.com/getsentry/junior/pull/3095)
+
+### Bug Fixes 🐛
+
+Dashboard interactions, Slack selection, skill parsing, linting, and telemetry now behave more predictably.
+
+#### Dashboard
+
+- Point at the outline item under a still pointer on scroll by @betegon with @sentry-junior in [#3068](https://github.com/getsentry/junior/pull/3068)
+- Submit Continue in Slack on Enter and show the Slack mark by @BYK with @sentry-junior in [#3078](https://github.com/getsentry/junior/pull/3078)
+
+#### Other
+
+- (github) Use namespace zod import in issue-update webhook by @dcramer with @sentry-junior in [#3092](https://github.com/getsentry/junior/pull/3092)
+- (skills) Make $name the canonical skill reference by @dcramer with @sentry-junior in [#3094](https://github.com/getsentry/junior/pull/3094)
+- (telemetry) Record tool batches on the invoke_agent span by @thomasjiangcy with @sentry-junior in [#3086](https://github.com/getsentry/junior/pull/3086)
+
+### Internal Changes 🔧
+
+Dashboard activity and spend stay accurate, conversation behavior is centralized, pools remain available, and Sentry setup moves to the CLI.
+
+#### Dashboard
+
+- Move the spend token only on cost by @BYK with @sentry-junior in [#3080](https://github.com/getsentry/junior/pull/3080)
+- Skip the activity of running rows in the feed token by @BYK with @sentry-junior in [#3093](https://github.com/getsentry/junior/pull/3093)
+
+#### Other
+
+- (conversations) Route per-kind behavior through turnBehavior by @dcramer with @sentry-junior in [#3059](https://github.com/getsentry/junior/pull/3059)
+- (db) Reopen a Neon pool client when the last one closes by @BYK with @sentry-junior in [#3082](https://github.com/getsentry/junior/pull/3082)
+- (mcp) Use the Sentry CLI stdio server for Sentry MCP by @dcramer with @sentry-junior in [#3097](https://github.com/getsentry/junior/pull/3097)
+
 ## 0.292.0
 
 ### New Features ✨
