@@ -31,6 +31,7 @@ import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
 import { OutboundLink } from "../components/OutboundLink";
+import { SlackMark } from "./SlackMark";
 
 export type ConversationArchiveAction = {
   archived: boolean;
@@ -138,7 +139,9 @@ export function ConversationHeaderActions(props: {
           label="Continue in Slack"
           onClick={props.continueInSlack.onClick}
         >
-          <MessageSquareShare aria-hidden="true" size={16} strokeWidth={2} />
+          <span aria-hidden="true" className="inline-flex">
+            <SlackMark className="size-4" />
+          </span>
         </MenuActionButton>
       ) : null}
       {props.delivery ? (
