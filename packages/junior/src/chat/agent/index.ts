@@ -1129,7 +1129,7 @@ async function executeAgentRunInPrivacyContext(
                   nextTurn.context,
                 );
               const pendingMessages = await drainSteeringMessages();
-              // Pi also runs this hook after the final reply. Another model
+              // Pi also runs this hook after the final response. Another model
               // call follows only after tool results or steering. Compaction
               // here would drop the delivered reply and start a retry. A
               // background request does not change history, so it still runs.

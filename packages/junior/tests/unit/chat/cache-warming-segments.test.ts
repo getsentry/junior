@@ -50,7 +50,7 @@ const finalReply: AssistantMessage = {
   timestamp: 1,
 };
 
-// Run one Turn that ends with a final reply, like one agent run does.
+// Run one Turn that ends with a final response, like one agent run does.
 async function endTurn(userActor: boolean, id = conversationId) {
   const recorder = createCacheWarmingRecorder(id, userActor);
   recorder.wrap((() => undefined) as never)(model, context, {});

@@ -119,7 +119,7 @@ describe("Lifecycle and Resilience", () => {
     },
   );
 
-  test("when the final reply puts the context over the compaction limit, reply once without compacting", async ({
+  test("when the final response puts the context over the compaction limit, reply once without compacting", async ({
     agent,
   }) => {
     // An 8,000 token context window sets the compaction limit at 7,200 tokens
@@ -210,7 +210,7 @@ describe("Lifecycle and Resilience", () => {
       RubricJudge,
       rubric({
         pass: [
-          "The final reply reports that the remote release status is shipped.",
+          "The final response reports that the remote release status is shipped.",
           "The assistant continues after the interrupted push and bases the answer on the observed remote state.",
         ],
         fail: [

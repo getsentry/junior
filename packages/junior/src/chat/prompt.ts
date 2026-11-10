@@ -485,8 +485,8 @@ function buildDispatchSection(
   const deliveryLines = params.declaresResult
     ? []
     : [
-        "- dispatch.delivery: the runtime delivers the final answer to the destination",
-        "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
+        "- dispatch.delivery: the runtime delivers the final response to the destination",
+        "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final response",
       ];
   return renderTag("dispatch", [
     "- dispatch.execution: execute the dispatched input now",

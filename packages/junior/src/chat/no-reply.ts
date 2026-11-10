@@ -43,7 +43,7 @@ export function readNoReply(messages: readonly unknown[]): NoReply | undefined {
 }
 
 // Stored history from before `noReply` ends some Turns with these markers,
-// and a model that reads that history can copy one as its whole final text.
+// and a model that reads that history can copy one as its whole final response.
 const LEGACY_NO_REPLY_MARKERS: readonly string[] = [
   "[[NO_REPLY]]",
   "[[QUIET]]",
