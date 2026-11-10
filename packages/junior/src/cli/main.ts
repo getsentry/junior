@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import { loadCliEnvFiles } from "./env";
+import { formatCliFailure } from "./failure";
 import { runCli } from "./run";
 import type { JuniorPluginSet } from "../plugins";
 
@@ -115,8 +116,7 @@ function isDirectCliEntry(): boolean {
 if (isDirectCliEntry()) {
   runMain(process.argv.slice(2)).catch((error) => {
     void (async () => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`junior command failed: ${message}`);
+      console.error(`junior command failed: ${formatCliFailure(error)}`);
       await flushSentry();
       process.exit(1);
     })();
