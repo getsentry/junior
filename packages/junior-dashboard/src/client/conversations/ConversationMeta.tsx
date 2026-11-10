@@ -261,7 +261,9 @@ function FittingIcons(props: {
     const observer = new ResizeObserver(measure);
     observer.observe(row);
     return () => observer.disconnect();
-  }, [total]);
+    // Run again when `shown` changes: the +N that mounts takes width, and
+    // this pass counts it before paint. The observer would run after paint.
+  }, [shown, total]);
 
   return (
     <>
