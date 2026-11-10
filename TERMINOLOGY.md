@@ -42,8 +42,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Conversation status**: what one Conversation's own work does, derived
   from runtime state only. `active`: execution is pending, running, or paused.
   `stopped`: `stopped_at` is set. `failed`: its latest Turn or its work
-  failed. `needs_input`: an open action Review item that it added waits on a
-  person or Everyone. `idle`: anything else; it waits for input. The first
+  failed. `needs_input`: it added an open action Review item, whoever the
+  item is assigned to. `idle`: anything else; it waits for input. The first
   that applies wins, in that order. `completed` is a Turn, Agent invocation,
   or run outcome, never a Conversation status.
 - **Archived**: a flag on a Conversation, shared by everyone. It is not a

@@ -28,7 +28,7 @@ Each conversation has one status. It comes from what Junior runs, never from the
 | `active`      | A turn runs or waits to start.                                                         |
 | `stopped`     | A person or a parent agent stopped it.                                                 |
 | `failed`      | Its latest turn failed.                                                                |
-| `needs_input` | A Review item that it added waits on a person's answer.                                |
+| `needs_input` | An action Review item that it added waits for an answer.                               |
 | `idle`        | It waits for a message. A turn that waits for sign-in or ends in a question is `idle`. |
 
 When more than one applies, the first in the table wins. Archive does not change the status.

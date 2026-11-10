@@ -198,7 +198,7 @@ describe("conversation status", () => {
     await expect(fixture.status(conversationId)).resolves.toBe("active");
   });
 
-  it("needs input only while an open action item that it added waits on someone", async () => {
+  it("needs input while an open action item that it added is open", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
       fixture.conversationStore,
@@ -210,13 +210,19 @@ describe("conversation status", () => {
       body: "No action needed.",
       assignees: [webTestActor.email],
     });
+    await expect(fixture.status(conversationId)).resolves.toBe("idle");
+    const before = await fixture.request(detailPath(conversationId));
+    const version = before.headers.get(CONVERSATION_DETAIL_VERSION_HEADER);
+    expect(version).toBeTruthy();
+
     // addReviewItem assigns a Participant by default. A Slack Actor without
-    // a User still adds an item that no one is assigned to.
-    await insertReviewItem(getDb(), {
+    // a User adds an item that no one is assigned to, and anyone in the
+    // thread can answer it.
+    const unassigned = await insertReviewItem(getDb(), {
       addedByConversationId: conversationId,
       assignedToEveryone: false,
       assigneeUserIds: [],
-      body: "No one is asked.",
+      body: "Anyone in the thread can answer.",
       conversationIds: [conversationId],
       dedupeKey: "unassigned",
       kind: "action",
@@ -224,15 +230,6 @@ describe("conversation status", () => {
       request: REQUEST,
       title: "Pick a release name",
       visibility: "public",
-    });
-    await expect(fixture.status(conversationId)).resolves.toBe("idle");
-    const before = await fixture.request(detailPath(conversationId));
-    const version = before.headers.get(CONVERSATION_DETAIL_VERSION_HEADER);
-    expect(version).toBeTruthy();
-
-    const everyone = await addItem(conversationId, {
-      ...ACTION_ITEM,
-      assignees: ["everyone"],
     });
     // Only the item changed, and a poll with the old version reloads.
     const polled = await fixture.request(detailPath(conversationId), {
@@ -242,7 +239,18 @@ describe("conversation status", () => {
     expect(
       conversationDetailReportSchema.parse(await polled.json()).status,
     ).toBe("needs_input");
+    await closeReviewItem(getDb(), {
+      id: unassigned!.id,
+      nowMs: Date.now(),
+      status: "dismissed",
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("idle");
 
+    const everyone = await addItem(conversationId, {
+      ...ACTION_ITEM,
+      assignees: ["everyone"],
+    });
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await closeReviewItem(getDb(), {
       id: everyone,
       nowMs: Date.now(),

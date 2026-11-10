@@ -99,18 +99,16 @@ export function reviewItemNeedsSomeone(): SQL {
 }
 
 /**
- * SQL: the Review item waits for a person's input: an open `action` item
- * assigned to a User or to Everyone. An item with no assignees waits for no
- * one. The Conversation that added it shows `needs_input`.
+ * SQL: the Review item waits for a person's input: an open `action` item,
+ * whoever it is assigned to. An item with no assignees still waits for
+ * anyone who can answer it. The Conversation that added it shows
+ * `needs_input`. `junior_review_items_open_action_added_by_idx` has this
+ * predicate.
  */
 export function reviewItemNeedsInput(): SQL {
   return and(
     eq(juniorReviewItems.status, "open"),
     eq(juniorReviewItems.kind, "action"),
-    or(
-      eq(juniorReviewItems.assignedToEveryone, true),
-      sql`exists (select 1 from ${juniorReviewItemAssignees} where ${juniorReviewItemAssignees.itemId} = ${juniorReviewItems.id})`,
-    ),
   )!;
 }
 

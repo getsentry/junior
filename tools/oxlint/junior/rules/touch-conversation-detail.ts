@@ -3,8 +3,7 @@ import { defineRule } from "@oxlint/plugins";
 import type { Context, ESTree } from "@oxlint/plugins";
 
 // Tables that the Conversation detail report reads. Keep this list in sync
-// with `readConversationDetail`. The status reads Review items and their
-// assignees.
+// with `readConversationDetail`. The status reads Review items.
 const detailTables = new Set([
   "juniorAttachments",
   "juniorConversationAnnotations",
@@ -12,7 +11,6 @@ const detailTables = new Set([
   "juniorConversationEvents",
   "juniorConversationParticipants",
   "juniorConversations",
-  "juniorReviewItemAssignees",
   "juniorReviewItems",
 ]);
 const detailTableNames = [
@@ -22,7 +20,6 @@ const detailTableNames = [
   "junior_conversation_events",
   "junior_conversation_participants",
   "junior_conversations",
-  "junior_review_item_assignees",
   "junior_review_items",
 ];
 const writeMethods = new Set(["delete", "insert", "update"]);
