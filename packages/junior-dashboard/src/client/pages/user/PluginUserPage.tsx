@@ -13,7 +13,7 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { PageRouteLoading } from "../../components/PageRouteLoading";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { Card } from "../../components/layout/Card";
@@ -26,6 +26,9 @@ import {
   type PluginUserPageRecord,
   type PluginUserPageRecordAction,
 } from "./pluginUserPageData";
+
+// Loading and loaded states share one column, so the header keeps its width.
+const pageColumnClass = "grid w-full max-w-3xl min-w-0 gap-6";
 
 /** Render the memory library for its first-class permalink route. */
 export function MemoryPermalinkRoute(props: { pages: PluginUserPageLink[] }) {
@@ -85,18 +88,24 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
 
   if (!query.data && !query.error) {
     return (
-      <PageRouteLoading
-        description={props.page.description}
-        label={`Loading ${props.page.label}`}
-        title={props.page.label}
-        variant="list"
-      />
+      <PageLayout>
+        <section className={pageColumnClass}>
+          <PageHeader
+            description={props.page.description}
+            title={props.page.label}
+          />
+          <PageContentSkeleton
+            label={`Loading ${props.page.label}`}
+            variant="list"
+          />
+        </section>
+      </PageLayout>
     );
   }
 
   return (
     <PageLayout>
-      <section className="grid w-full max-w-3xl min-w-0 gap-6">
+      <section className={pageColumnClass}>
         <PageHeader
           description={props.page.description}
           title={props.page.label}

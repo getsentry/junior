@@ -3,7 +3,7 @@ import {
   timeRangeDetail,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
-import { systemPluginsPath } from "./SystemPlugins";
+import { normalizeSystemPath, systemPluginsPath } from "./SystemPlugins";
 
 type SystemPageHeader = { description: string; title: string };
 
@@ -62,7 +62,8 @@ export function workspacesHeader(): SystemPageHeader {
 }
 
 /** Header text for a `/system/*` route that is still loading. */
-export function systemRouteLoadingHeader(pathname: string): SystemPageHeader {
+export function systemRouteLoadingHeader(path: string): SystemPageHeader {
+  const pathname = normalizeSystemPath(path);
   if (pathname === systemPluginsPath) return systemPluginsHeader();
   if (pathname.startsWith(`${systemPluginsPath}/`)) {
     return systemPluginLoadingHeader();
