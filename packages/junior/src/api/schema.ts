@@ -28,6 +28,23 @@ export {
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
 export { boardReportSchema } from "./schema/board";
+export { walkthroughReportSchema } from "./schema/walkthrough";
+export type {
+  WalkthroughAnswer,
+  WalkthroughReport,
+} from "./schema/walkthrough";
+export {
+  WALKTHROUGH_TEMPLATES,
+  walkthroughDocumentSchema,
+} from "../chat/walkthroughs/schema";
+export type {
+  WalkthroughChangeType,
+  WalkthroughChapter,
+  WalkthroughDecision,
+  WalkthroughDocument,
+  WalkthroughEvidence,
+  WalkthroughHunk,
+} from "../chat/walkthroughs/schema";
 export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";

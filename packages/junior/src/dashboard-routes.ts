@@ -199,6 +199,7 @@ function dashboardHostRoutePaths(
     `${pagePath("plugins")}/*`,
     pagePath("settings"),
     `${pagePath("settings")}/*`,
+    `${pagePath("walkthroughs")}/*`,
   ];
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 
@@ -247,6 +248,7 @@ function dashboardHostRoutePaths(
     "/api/service-accounts/*",
     "/api/workspaces",
     "/api/workspaces/*",
+    "/api/walkthroughs/*",
     "/api/config",
     "/api/me",
     ...authenticatedRoutes.map((route) => route.path),

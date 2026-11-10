@@ -117,6 +117,10 @@ export function dashboardPagePaths(
       nested: true,
       path: basePath === "/" ? "/plugins" : `${basePath}/plugins`,
     },
+    {
+      nested: true,
+      path: basePath === "/" ? "/walkthroughs" : `${basePath}/walkthroughs`,
+    },
   ];
 }
 

@@ -7,6 +7,7 @@ import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   boardReportSchema,
+  walkthroughReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
@@ -145,6 +146,21 @@ export function useBoardData() {
     queryKey: ["dashboard", "board"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(boardReportSchema, "/api/board", signal),
+    retry: false,
+  });
+}
+
+/** Fetch one Walkthrough version and the viewer's review state. */
+export function useWalkthroughData(walkthroughId: string | undefined) {
+  return useQuery({
+    enabled: Boolean(walkthroughId),
+    queryKey: ["dashboard", "walkthrough", walkthroughId],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        walkthroughReportSchema,
+        `/api/walkthroughs/${encodeURIComponent(walkthroughId ?? "")}`,
+        signal,
+      ),
     retry: false,
   });
 }

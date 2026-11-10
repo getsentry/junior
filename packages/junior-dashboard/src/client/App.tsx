@@ -75,6 +75,11 @@ const BoardPage = lazy(() =>
     default: module.BoardPage,
   })),
 );
+const WalkthroughPage = lazy(() =>
+  import("./walkthrough/WalkthroughPage").then((module) => ({
+    default: module.WalkthroughPage,
+  })),
+);
 const CodePage = lazy(() =>
   import("./pages/code/CodePage").then((module) => ({
     default: module.CodePage,
@@ -576,6 +581,11 @@ export function DashboardShell() {
             />
             {/* The Board is an experiment, so no navigation links to it. */}
             <Route element={<BoardPage />} path="/board" />
+            {/* Walkthroughs are a prototype, so no navigation links to them. */}
+            <Route
+              element={<WalkthroughPage />}
+              path="/walkthroughs/:walkthroughId"
+            />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route
