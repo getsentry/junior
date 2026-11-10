@@ -126,6 +126,47 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
       }
     });
 
+    it("retries a migration whose table lock wait times out", async () => {
+      const fixture = await createEmptyJuniorPostgresFixture();
+      const reader = createPostgresJuniorSqlExecutor({
+        connectionString: fixture.connectionString,
+      });
+      const dir = await mkdtemp(join(tmpdir(), "junior-lock-timeout-"));
+      const roots = [{ dir, pluginName: PLUGIN_NAME }];
+
+      try {
+        await writeMigrations(dir, [{ sql: CREATE_ITEMS, tag: "0000_items" }]);
+        await migratePluginSchemas(fixture.sql, roots);
+        await writeMigrations(dir, [
+          { sql: CREATE_ITEMS, tag: "0000_items" },
+          {
+            sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "paused_at" timestamptz;`,
+            tag: "0001_items_paused_at",
+          },
+        ]);
+        let readStarted!: () => void;
+        const readOpen = new Promise<void>((resolve) => {
+          readStarted = resolve;
+        });
+        // This read outlasts the lock timeout, so the first attempt fails.
+        const openRead = reader.transaction(async () => {
+          await reader.query(`SELECT * FROM "concurrent_index_items"`);
+          readStarted();
+          await new Promise((resolve) => setTimeout(resolve, 6_000));
+        });
+        await readOpen;
+
+        await expect(
+          migratePluginSchemas(fixture.sql, roots),
+        ).resolves.toMatchObject({ migrated: 1 });
+        await openRead;
+      } finally {
+        await reader.close();
+        await fixture.close();
+        await rm(dir, { force: true, recursive: true });
+      }
+    });
+
     it("rebuilds an interrupted build and rejects an index that differs", async () => {
       const fixture = await createEmptyJuniorPostgresFixture();
       const pending = await createItemsWithPendingIndex(fixture.sql);

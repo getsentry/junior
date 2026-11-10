@@ -8,6 +8,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
+import { migrateWithLockTimeout } from "./migration-lock-timeout";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
 
@@ -68,9 +69,11 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(
-      drizzle(this.queryClient(), { schema: juniorSqlSchema }),
-      config,
+    await migrateWithLockTimeout(
+      () => this.pool.connect(),
+      async (client) => {
+        await migrate(drizzle(client, { schema: juniorSqlSchema }), config);
+      },
     );
   }
 
