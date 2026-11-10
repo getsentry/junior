@@ -433,7 +433,7 @@ describe("conversation auto-archive API", () => {
     const nowMs = Date.now();
     const hour = 60 * 60 * 1000;
     const connectingId = "local:test:archive-auth-connecting";
-    // A child agent asked for the connection.
+    // A person's message in a Thread asked for the connection.
     const childConnectingId = "local:test:archive-auth-child-connecting";
     const connectedId = "local:test:archive-auth-connected";
     // The connect link expired before anyone used it.
@@ -451,7 +451,7 @@ describe("conversation auto-archive API", () => {
     }
     await getConversationStore().createChild({
       childConversationId: `${childConnectingId}:child`,
-      kind: "task",
+      kind: "thread",
       nowMs: nowMs - 3 * hour,
       parentConversationId: childConnectingId,
     });
