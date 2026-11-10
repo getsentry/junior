@@ -53,7 +53,7 @@ const BLEND_PSEUDOCOUNT = 20;
  * each Conversation of the segment, such as at launch or after the gap lists
  * expire.
  */
-const MIN_GAP_SAMPLES = 20;
+export const MIN_GAP_SAMPLES = 20;
 
 /** Below this prefix size, one cache miss costs too little to warm for. */
 export const MIN_WARMUP_PREFIX_TOKENS = 50_000;
@@ -194,6 +194,51 @@ export function gapSegment(input: GapSegmentInput): string {
   const depth =
     input.endedTurns === 0 ? "1" : input.endedTurns < 3 ? "2-3" : "4+";
   return `${input.userActor ? "user" : "system"}:${depth}:${input.workState}`;
+}
+
+/** Each segment that `gapSegment` returns, in display order. */
+export const GAP_SEGMENTS: readonly string[] = [
+  ...[true, false].flatMap((userActor) =>
+    [0, 1, 3].flatMap((endedTurns) =>
+      (["open", "done", "none"] as const).map((workState) =>
+        gapSegment({ userActor, endedTurns, workState, archived: false }),
+      ),
+    ),
+  ),
+  ...(["open", "done", "none"] as const).map((workState) =>
+    gapSegment({ userActor: false, endedTurns: 0, workState, archived: true }),
+  ),
+];
+
+/**
+ * Count gaps in the bins that `decideWarmup` uses, for reports. A gap at or
+ * after `IDLE_HORIZON_MS` is a no-reply gap, as the recorder stores it. The
+ * bins after the horizon never get a gap, so they are left out.
+ */
+export function gapHistogramReport(gapsMs: readonly number[]): {
+  /** Gaps from `startMs` to before `endMs`. */
+  bins: Array<{ startMs: number; endMs: number; count: number }>;
+  noReply: number;
+  total: number;
+} {
+  const { counts } = histogramOf(
+    gapsMs.filter((gapMs) => gapMs < IDLE_HORIZON_MS),
+  );
+  const bins: Array<{ startMs: number; endMs: number; count: number }> = [];
+  for (const [index, endMs] of GAP_BIN_EDGES_MS.entries()) {
+    const startMs = index > 0 ? GAP_BIN_EDGES_MS[index - 1]! : 0;
+    if (startMs >= IDLE_HORIZON_MS) break;
+    bins.push({
+      startMs,
+      endMs: Math.min(endMs, IDLE_HORIZON_MS),
+      count: counts[index]!,
+    });
+  }
+  return {
+    bins,
+    noReply: gapsMs.filter((gapMs) => gapMs >= IDLE_HORIZON_MS).length,
+    total: gapsMs.length,
+  };
 }
 
 /**
