@@ -82,12 +82,24 @@ WITH "damaged" AS (
     AND "root"."parent_conversation_id" IS NULL
 )
 -- Put the Identity back to its state before the link. Slack gave it no
--- email, so a later Slack Turn cannot link it again.
+-- email, so a later Slack Turn cannot link it again. The same write copied
+-- the poster's name when Slack gave none. The next Slack Turn of the
+-- Identity saves its own name again.
 UPDATE "junior_identities" AS "i"
 SET "user_id" = NULL,
   "email" = NULL,
   "email_normalized" = NULL,
   "email_verified" = false,
+  "display_name" = CASE
+    WHEN EXISTS (
+      SELECT 1
+      FROM "junior_identities" AS "web"
+      WHERE "web"."user_id" = "d"."user_id"
+        AND "web"."provider" = 'junior'
+        AND "web"."display_name" = "i"."display_name"
+    ) THEN NULL
+    ELSE "i"."display_name"
+  END,
   "updated_at" = now()
 FROM "damaged" AS "d"
 WHERE "i"."id" = "d"."identity_id";
