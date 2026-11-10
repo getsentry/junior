@@ -60,6 +60,7 @@ const dispatchActorSchema = z
 const dispatchRecordSchema = z
   .object({
     actor: dispatchActorSchema,
+    authorizationProvider: nonEmptyExactStringSchema.optional(),
     createdAtMs: z.number().finite(),
     credentialSubject: credentialSubjectSchema.optional(),
     destination: destinationSchema,
@@ -452,8 +453,9 @@ async function recordEventAutomationExecution(
 export async function markDispatchBlocked(
   id: string,
   errorMessage: string,
-  resultMessageTs?: string,
+  options?: { authorizationProvider?: string; resultMessageTs?: string },
 ): Promise<DispatchRecord | undefined> {
+  const { authorizationProvider, resultMessageTs } = options ?? {};
   const previous = await getDispatchRecord(id);
   const eventAutomationId = previous?.metadata?.["eventAutomationId"];
   if (
@@ -463,6 +465,7 @@ export async function markDispatchBlocked(
     (await blockEventAutomation(getDb(), eventAutomationId, errorMessage))
   ) {
     await notifyAutomationBlocked({
+      authorizationProvider,
       automationId: eventAutomationId,
       dispatchId: id,
       kind: "event",
@@ -475,6 +478,7 @@ export async function markDispatchBlocked(
       : {
           ...record,
           errorMessage,
+          ...(authorizationProvider ? { authorizationProvider } : undefined),
           ...(resultMessageTs ? { resultMessageTs } : undefined),
           status: "blocked",
         },
