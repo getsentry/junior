@@ -20,6 +20,8 @@ import {
   definedValues,
   gitHubDoneBy,
   gitHubEventKey,
+  gitHubSenderData,
+  gitHubSenderSchema,
   nonBlank,
   providerTime,
   pullRequestTargets,
@@ -286,13 +288,6 @@ const gitHubUserSchema = z.object({
   login: z.string().nullish(),
 });
 
-/**
- * The user who sent a webhook. GitHub authenticates this user, so on a comment
- * or review it is the author. Match on the numeric id; logins can be renamed
- * and reused.
- */
-const senderSchema = z.object({ id: z.number(), login: z.string().min(1) });
-
 const commentSchema = z.object({
   body: z.string(),
   id: z.number(),
@@ -312,15 +307,14 @@ const commentAuthorDataSchema = z.object({
  */
 function commentAuthorData(input: {
   botEmail: string | undefined;
-  sender: z.output<typeof senderSchema> | undefined;
+  sender: z.output<typeof gitHubSenderSchema> | undefined;
   text: string | null | undefined;
 }) {
   return {
     mentionsBot: input.botEmail
       ? mentionsBotLogin(input.text ?? "", input.botEmail)
       : undefined,
-    senderId: input.sender?.id,
-    senderLogin: input.sender?.login,
+    ...gitHubSenderData(input.sender),
   };
 }
 
@@ -399,7 +393,7 @@ const issueCommentWebhookSchema = z.object({
     user: gitHubUserSchema.nullish(),
   }),
   repository: repositorySchema,
-  sender: senderSchema.optional(),
+  sender: gitHubSenderSchema.optional(),
 });
 
 /** Normalize a newly created issue or pull request comment. */
@@ -529,7 +523,7 @@ const pullRequestReviewCommentWebhookSchema = z.object({
   comment: commentSchema,
   pull_request: pullRequestSchema,
   repository: repositorySchema,
-  sender: senderSchema.optional(),
+  sender: gitHubSenderSchema.optional(),
 });
 
 /** Normalize a newly created inline pull request review comment. */
@@ -581,7 +575,7 @@ const pullRequestReviewWebhookSchema = z.object({
     state: z.string(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
-  sender: senderSchema.optional(),
+  sender: gitHubSenderSchema.optional(),
 });
 
 /** Normalize a submitted pull request review into its review-state event. */

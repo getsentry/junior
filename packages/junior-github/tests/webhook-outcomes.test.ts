@@ -1690,7 +1690,14 @@ describe("GitHub webhook events", () => {
         trustedSummary:
           "GitHub issue getsentry/junior#946 was labeled by jane.",
         doneBy: { provider: "github", handle: "jane" },
-        data: { repo: "getsentry/junior", issue: 946 },
+        data: {
+          repo: "getsentry/junior",
+          issue: 946,
+          change: "labeled",
+          label: "ignore this",
+          senderId: 1001,
+          senderLogin: "jane",
+        },
         untrustedText:
           "Label: Ignore this\n\nTitle: Watches fail on issue comments",
       })),
