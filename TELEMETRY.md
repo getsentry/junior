@@ -31,17 +31,27 @@ move to the domain below.
 - A fire Conversation uses `agent-dispatch:<dispatch_id>` as
   `gen_ai.conversation.id`.
 - Production keeps only audit info events (`app.log.audit:true`), such as
-  `sandbox.egress.upstream.requested` for write grants. Outside production,
-  that event is logged for every forwarded request.
-- `sandbox.egress.upstream.requested` has `app.credential.account`: `actor`
+  `sandbox.egress.upstream.requested`, and warnings.
+- Each egress request that reaches credential selection, and each sandbox
+  request that the proxy refuses first, ends in one event with
+  `app.egress.policy.decision` (`allowed` or `denied`), the host, path,
+  method, and, when Junior could read the request's credential context, the
+  run Source. A denial adds `app.sandbox.egress.policy.reason`. Denials are
+  `sandbox.egress.provider.unresolved`,
+  `sandbox.egress.credential_context.unauthorized`,
+  `sandbox.egress.request_body.unreadable`, `sandbox.egress.policy.denied`,
+  `sandbox.egress.credential.needed`, `sandbox.egress.credential.unavailable`,
+  and `sandbox.egress.transform.missing`.
+- `sandbox.egress.upstream.requested` is an audit event for each forwarded
+  read and write. It has `app.credential.account`: `actor`
   for a person's OAuth token (the Actor's or a delegated subject's), `app`
   for a credential Junior owns, such as a GitHub App installation token or a
   deployment key. `app.egress.policy.decision` is `allowed`.
   `app.source.kind`, `app.task.id`, and `app.task.run.id` name the run
   Source and its Automation run. A plugin can add its own `app.<provider>.*`
   facts, such as `app.github.repository`.
-- `sandbox.egress.policy.denied` is a warning with
-  `app.egress.policy.decision:denied`. Junior did not forward the request.
+- `sandbox.egress.policy.denied` is a warning. Junior did not forward the
+  request.
 - `mcp.tool_call.completed` is an audit event for each successful call to a
   tool in a plugin's `mcp.audit-tools`, and for every successful call in an
   Automation run. `app.credential.account` is `service_account` or `actor`.
@@ -154,12 +164,19 @@ fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task
 sort=-timestamp
 ```
 
-Credentialed provider writes, with whose authority they used. Write-grant
-egress requests are audit events (`app.log.audit:true`), so Sentry keeps them
-in production. Other info events stay out of Sentry in production.
+Every provider egress decision, allowed or denied, with whose authority it
+used and why it was denied.
 
 ```text
-dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested'
+dataset=logs query='has:app.egress.policy.decision'
+fields=timestamp,event.name,app.egress.policy.decision,app.sandbox.egress.policy.reason,user.id,app.actor.type,app.source.kind,app.task.id,app.provider.name,http.request.method,server.address,url.path
+sort=-timestamp
+```
+
+Credentialed provider writes, with whose authority they used.
+
+```text
+dataset=logs query='app.log.audit:true event.name:sandbox.egress.upstream.requested app.grant.access:write'
 fields=timestamp,user.id,app.actor.type,app.actor.id,app.credential.account,app.credential.allowed_when,app.source.kind,app.task.id,app.task.run.id,gen_ai.conversation.id,app.provider.name,app.grant.name,app.github.repository,http.request.method,server.address,url.path,http.response.status_code
 sort=-timestamp
 ```

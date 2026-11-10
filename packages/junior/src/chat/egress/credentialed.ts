@@ -2,7 +2,7 @@ import {
   credentialAccount,
   credentialAuditAttributes,
 } from "@/chat/credentials/audit";
-import { logAudit, logException, logInfo, logWarn } from "@/chat/logging";
+import { logAudit, logException, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
@@ -151,16 +151,20 @@ function policyDeniedResponse(error: EgressPolicyDenied): Response {
   );
 }
 
-function shouldLogSandboxEgressInfo(): boolean {
-  const environment = (
-    process.env.SENTRY_ENVIRONMENT ??
-    process.env.VERCEL_ENV ??
-    process.env.NODE_ENV ??
-    ""
-  )
-    .trim()
-    .toLowerCase();
-  return environment !== "production";
+/**
+ * Name the egress decision on every outcome event, so one query over
+ * `app.egress.policy.decision` gives the full trail for a request.
+ */
+export function egressDecisionAttributes(
+  decision: "allowed" | "denied",
+  reason?: string,
+): Record<string, string> {
+  return reason
+    ? {
+        "app.egress.policy.decision": decision,
+        "app.sandbox.egress.policy.reason": reason,
+      }
+    : { "app.egress.policy.decision": decision };
 }
 
 function egressAttributes(input: {
@@ -251,9 +255,8 @@ function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
 }
 
 /**
- * Record one forwarded provider request. Write-grant requests are audit
- * events, so they reach Sentry in production. Other requests log only outside
- * production.
+ * Record one forwarded provider request as an audit event, so Sentry keeps
+ * reads and writes in production.
  */
 function logSandboxEgressUpstreamRequest(input: {
   credentialContext: SandboxEgressCredentialContext;
@@ -265,12 +268,7 @@ function logSandboxEgressUpstreamRequest(input: {
   upstreamUrl: URL;
 }): void {
   const { grant } = input.lease;
-  const isWrite = grant.access === "write";
-  if (!isWrite && !shouldLogSandboxEgressInfo()) {
-    return;
-  }
-
-  (isWrite ? logAudit : logInfo)("sandbox.egress.upstream.requested", {
+  logAudit("sandbox.egress.upstream.requested", {
     ...egressAttributes({
       egressId: input.egressId,
       grantAccess: grant.access,
@@ -289,7 +287,7 @@ function logSandboxEgressUpstreamRequest(input: {
       input.lease,
       input.credentialContext.credentials,
     ),
-    "app.egress.policy.decision": "allowed",
+    ...egressDecisionAttributes("allowed"),
     "app.sandbox.egress.upstream_ok": input.upstream.ok,
   });
 }
@@ -625,6 +623,8 @@ export async function executeCredentialedEgressRequest(input: {
           status: 500,
         }),
         ...routingAttributes(request, upstreamUrl),
+        ...credentialAuditAttributes(credentialContext.source),
+        ...egressDecisionAttributes("denied", "request body is unreadable"),
       }),
     );
   }
@@ -662,8 +662,7 @@ export async function executeCredentialedEgressRequest(input: {
         }),
         ...routingAttributes(request, upstreamUrl),
         ...credentialAuditAttributes(credentialContext.source),
-        "app.egress.policy.decision": "denied",
-        "app.sandbox.egress.policy.reason": error.message,
+        ...egressDecisionAttributes("denied", error.message),
       });
       return policyDeniedResponse(error);
     }
@@ -717,6 +716,8 @@ export async function executeCredentialedEgressRequest(input: {
             status: 401,
           }),
           ...routingAttributes(request, upstreamUrl),
+          ...credentialAuditAttributes(credentialContext.source),
+          ...egressDecisionAttributes("denied", error.message),
         },
       );
       return authRequiredResponse({
@@ -749,6 +750,11 @@ export async function executeCredentialedEgressRequest(input: {
   if (!hasSandboxEgressLeaseTransformForHost(lease, upstreamUrl.hostname)) {
     logWarn("sandbox.egress.transform.missing", {
       ...attributes(lease, 403),
+      ...credentialAuditAttributes(credentialContext.source),
+      ...egressDecisionAttributes(
+        "denied",
+        "credential lease does not cover forwarded host",
+      ),
       "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
         (transform) => transform.domain,
       ),
