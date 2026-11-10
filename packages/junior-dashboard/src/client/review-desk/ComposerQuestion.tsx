@@ -60,7 +60,31 @@ export function useComposerQuestions(conversationId: string) {
   // The questions are known only when every page is in. Before that, a
   // question on a later page would dock after the focus went elsewhere.
   const morePages = hasNextPage && !failed;
-  return { pending: query.isPending || stale || morePages, questions };
+  const { refetch } = query;
+  const retry = useCallback(() => void refetch(), [refetch]);
+  return {
+    // A failed page hides the questions on it and after it.
+    loadFailed: !stale && (failed || (query.isError && !query.data)),
+    pending: query.isPending || stale || morePages,
+    questions,
+    retry,
+  };
+}
+
+/** Say that some open questions did not load, with a way to try again. */
+export function ComposerQuestionsLoadError(props: { onRetry(): void }) {
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <InlineError className="w-auto">Some questions did not load.</InlineError>
+      <Button
+        className="h-7 px-2 text-xs"
+        onClick={props.onRetry}
+        variant="quiet"
+      >
+        Try again
+      </Button>
+    </div>
+  );
 }
 
 function actionError(error: unknown): string {

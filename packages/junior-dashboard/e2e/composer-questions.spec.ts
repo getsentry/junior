@@ -371,6 +371,44 @@ test("a question open on load does not mark its record while later pages load", 
   expect(marks).toBe(0);
 });
 
+test("a page of questions that fails to load says so and loads again", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  // The question sits on a second page, and that page fails once.
+  let secondPageFailed = false;
+  await page.route(
+    (url) =>
+      url.pathname === "/api/review-items" &&
+      url.searchParams.get("conversationId") === ONE_QUESTION_ID,
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (!url.searchParams.has("cursor")) {
+        return route.fulfill({
+          json: { items: [], nextCursor: "page-2" },
+        });
+      }
+      if (!secondPageFailed) {
+        secondPageFailed = true;
+        return route.fulfill({ json: { error: "Busy." }, status: 503 });
+      }
+      // The second page holds what the mock server lists on its first.
+      url.searchParams.delete("cursor");
+      const response = await route.fetch({ url: url.toString() });
+      await route.fulfill({ json: await response.json() });
+    },
+  );
+  await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
+  const question = page.getByRole("region", { name: /^Question:/ });
+  await expect(page.getByText("Some questions did not load.")).toBeVisible();
+  await expect(question).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(question).toBeVisible();
+  await expect(page.getByText("Some questions did not load.")).toHaveCount(0);
+});
+
 test("a typed message answers the question", async ({ dashboard, page }) => {
   await page.setViewportSize(desktop);
   await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);

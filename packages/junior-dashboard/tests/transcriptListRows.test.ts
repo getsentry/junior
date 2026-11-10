@@ -172,4 +172,24 @@ describe("transcriptListRows", () => {
       { keys: ["7:tool:0"], kind: "entry", seq: 6 },
     ]);
   });
+
+  it("puts the New marker before a moved ask that is unread", () => {
+    const rows = transcriptListRows({
+      entries: [
+        messageEntry(1, "user"),
+        messageEntry(2),
+        toolEntry(3, "addReviewItem"),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+      unread: { afterSeq: 2, throughSeq: 3 },
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["2:message:0"], kind: "entry", seq: 2 },
+      { keys: undefined, kind: "unread_marker", seq: undefined },
+      { keys: ["3:tool:0"], kind: "entry", seq: 2 },
+    ]);
+  });
 });

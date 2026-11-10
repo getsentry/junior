@@ -78,11 +78,16 @@ export function transcriptListRows(input: {
     rows.push(row);
   };
   // The reader sees why Junior asks before the question. A moved row keeps
-  // the seq of the row before it, so the rows stay in seq order.
+  // the seq of the row before it, so the rows stay in seq order. An unread
+  // ask still gets the marker before it.
   let asks: RenderedTranscriptEntry[] = [];
   const pushAsks = () => {
     for (const ask of asks) {
       if (!matches(ask)) continue;
+      if (markerPending && ask.seq !== undefined && ask.seq >= markerSeq!) {
+        markerPending = false;
+        rows.push({ kind: "unread_marker", key: UNREAD_MARKER_KEY });
+      }
       pushRow({
         kind: "entry",
         entry: ask,

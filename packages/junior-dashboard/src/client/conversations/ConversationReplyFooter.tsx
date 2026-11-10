@@ -17,6 +17,7 @@ import type {
 import { useDashboardCoreData } from "../api";
 import {
   ComposerQuestion,
+  ComposerQuestionsLoadError,
   useComposerQuestions,
   type ComposerQuestionAnswers,
 } from "../review-desk/ComposerQuestion";
@@ -99,9 +100,12 @@ function ReplyFooter(props: {
   // Open questions dock above the message box, and Send sends their picks
   // before the typed message. The server then closes the open questions
   // that the message answers.
-  const { pending: questionsPending, questions } = useComposerQuestions(
-    props.conversationId,
-  );
+  const {
+    loadFailed: questionsLoadFailed,
+    pending: questionsPending,
+    questions,
+    retry: retryQuestions,
+  } = useComposerQuestions(props.conversationId);
   // The questions that docked when the Conversation opened do not move the
   // transcript. It opens at the latest message or the "New" marker.
   const openedWithRef = useRef<{ conversationId: string; ids: Set<string> }>(
@@ -411,6 +415,9 @@ function ReplyFooter(props: {
             questions={questions}
             ref={questionRef}
           />
+          {questionsLoadFailed ? (
+            <ComposerQuestionsLoadError onRetry={retryQuestions} />
+          ) : null}
           {unsentAnswers.dialog}
         </>
       }
