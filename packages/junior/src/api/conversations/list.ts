@@ -15,6 +15,7 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
+import { listedConversation } from "@/chat/conversations/sql/listed";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
@@ -147,9 +148,7 @@ async function conversationRows(
   return selectConversationRecords(db)
     .where(
       and(
-        isNull(juniorConversations.parentConversationId),
-        // An unkept Quick question is a private side thread.
-        isNull(juniorConversations.quickQuestionAt),
+        listedConversation(),
         conversationFeedMembershipFilter(status, filter),
         conversationIds
           ? inArray(juniorConversations.conversationId, conversationIds)
@@ -317,8 +316,7 @@ export function conversationFeedVersionQuery(
     )
     .where(
       and(
-        isNull(juniorConversations.parentConversationId),
-        isNull(juniorConversations.quickQuestionAt),
+        listedConversation(),
         conversationFeedMembershipFilter("active", { kind: "viewer", userId }),
       ),
     )
