@@ -910,6 +910,7 @@ export function buildConversations(
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
       unfinishedWork: summary.unfinishedWork,
+      awaitingAuthorization: summary.awaitingAuthorization,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));

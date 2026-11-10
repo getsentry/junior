@@ -86,7 +86,6 @@ function memoryHeartbeatContext(args: {
     },
     db: memoryDb(args.fixture),
     embedder: args.embedder,
-    events: { publish: vi.fn() },
     log: noopLogger,
     nowMs: args.nowMs,
     plugin: { name: "memory" },

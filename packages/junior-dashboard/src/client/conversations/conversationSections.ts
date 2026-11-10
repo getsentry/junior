@@ -65,8 +65,8 @@ export function buildConversationSections(
 
 /**
  * True when the conversation waits on a person: its id is in `attentionIds`,
- * or it has unfinished work, such as an open pull request, while Junior is
- * not running in it.
+ * a Turn waits on a person to finish an authorization, or it has unfinished
+ * work, such as an open pull request, while Junior is not running in it.
  */
 function needsAttention(
   conversation: Conversation,
@@ -74,6 +74,7 @@ function needsAttention(
 ): boolean {
   return (
     attentionIds.has(conversation.id) ||
+    conversation.awaitingAuthorization === true ||
     (conversation.unfinishedWork === true && conversation.status !== "active")
   );
 }

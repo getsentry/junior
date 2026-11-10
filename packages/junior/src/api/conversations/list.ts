@@ -23,6 +23,8 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
+  juniorIdentities,
+  juniorUsers,
 } from "@/db/schema";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
@@ -38,8 +40,8 @@ import {
 } from "./membership";
 import {
   conversationFromRecordRow,
-  selectConversationRecords,
-  type ConversationRecordRow,
+  conversationRecordColumns,
+  conversationRecordJoins,
 } from "./record";
 import { readFeedThreads } from "./threads";
 import { readUnreadConversationIds, unreadReplySql } from "./unread";
@@ -54,6 +56,7 @@ import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { listWaitingConversations } from "@/chat/review-items/store";
+import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import {
@@ -144,7 +147,18 @@ async function conversationRows(
     status: "active" | "archived" | "all";
   },
 ) {
-  return selectConversationRecords(db)
+  return db
+    .select({
+      ...conversationRecordColumns,
+      // The feed row read shows the wait, so it needs no query of its own.
+      awaitingAuthorization: treeAwaitsAuthorization(
+        juniorConversations.conversationId,
+      ),
+    })
+    .from(juniorConversations)
+    .leftJoin(juniorDestinations, conversationRecordJoins.location)
+    .leftJoin(juniorIdentities, conversationRecordJoins.identity)
+    .leftJoin(juniorUsers, conversationRecordJoins.user)
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
@@ -191,6 +205,8 @@ async function conversationRows(
     .limit(limit);
 }
 
+type FeedRow = Awaited<ReturnType<typeof conversationRows>>[number];
+
 /**
  * Read the viewer's active conversations that wait on them but fall outside
  * the newest page. Needs attention shows every conversation that waits on the
@@ -199,8 +215,8 @@ async function conversationRows(
 async function waitingRowsOutsidePage(
   db: JuniorDatabase,
   filter: ConversationFeedMembership & { kind: "viewer" },
-  page: ConversationRecordRow[],
-): Promise<ConversationRecordRow[]> {
+  page: FeedRow[],
+): Promise<FeedRow[]> {
   const loaded = new Set(page.map((row) => row.conversation.conversationId));
   const missing = (await listWaitingConversations(db, filter.userId))
     .map((waiting) => waiting.conversationId)
@@ -574,6 +590,9 @@ export async function readConversationFeedFromSql(
       return {
         ...summary,
         ...work,
+        ...(row.awaitingAuthorization
+          ? { awaitingAuthorization: true as const }
+          : undefined),
         ...(threads ? { threads } : undefined),
         ...(participants && participants.length > 0
           ? { participants }

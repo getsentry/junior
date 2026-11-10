@@ -63,6 +63,7 @@ import {
   createPluginReranker,
 } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
+import { createPluginJobScheduler } from "@/chat/plugins/job-queue";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
@@ -471,6 +472,18 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
       if (typeof task.run !== "function") {
         throw new Error(
           `Plugin task "${taskName}" from plugin "${name}" must define a run function`,
+        );
+      }
+    }
+    for (const [jobName, job] of Object.entries(plugin.jobs ?? {})) {
+      if (!PLUGIN_TASK_NAME_RE.test(jobName)) {
+        throw new Error(
+          `Plugin job "${jobName}" from plugin "${name}" must be a camelCase identifier`,
+        );
+      }
+      if (typeof job.run !== "function") {
+        throw new Error(
+          `Plugin job "${jobName}" from plugin "${name}" must define a run function`,
         );
       }
     }
@@ -1078,7 +1091,7 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
-      state: createPluginState(pluginName),
+      jobs: createPluginJobScheduler(plugin),
       reviewItems: {
         forConversation: (conversationId) =>
           createPluginReviewItems({

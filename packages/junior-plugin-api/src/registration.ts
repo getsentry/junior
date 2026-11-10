@@ -4,6 +4,7 @@ import {
   type PluginConversationEventDefinition,
 } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
+import type { PluginJobs } from "./jobs";
 import type { PluginManifest } from "./manifest";
 import type { PluginTasks } from "./tasks";
 import type { PluginUserPageDefinition } from "./user-pages";
@@ -20,6 +21,8 @@ export type PluginRegistrationInput = {
   cli?: PluginCliDefinition;
   conversationEvents?: PluginConversationEventDefinition[];
   hooks?: PluginHooks;
+  /** Jobs that the plugin schedules with `ctx.jobs`. */
+  jobs?: PluginJobs;
   manifest: PluginManifest;
   model?: PluginModelConfig;
   packageName?: string;

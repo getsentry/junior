@@ -1,11 +1,6 @@
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
-import {
-  createPluginEventPublisher,
-  getPlugins,
-  type AppEventPublisher,
-} from "@/chat/plugins/agent-hooks";
-import { createEventAppPublisher } from "@/chat/events/app-publisher";
+import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
@@ -59,7 +54,6 @@ async function runWithTimeout<T>(
 /** Run plugin heartbeat hooks with bounded per-invocation work. */
 export async function runPluginHeartbeats(args: {
   conversationWorkQueue: ConversationWorkQueue;
-  events: AppEventPublisher;
   limit?: number;
   nowMs: number;
 }): Promise<void> {
@@ -80,7 +74,6 @@ export async function runPluginHeartbeats(args: {
           heartbeat(
             createHeartbeatContext({
               conversationWorkQueue: args.conversationWorkQueue,
-              events: createPluginEventPublisher(plugin, args.events),
               plugin,
               nowMs: args.nowMs,
             }),
@@ -194,14 +187,9 @@ export async function recoverPendingAgentInvocationResults(args: {
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue;
-  /** The app's event publisher. */
-  events?: AppEventPublisher;
   nowMs: number;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
-  const events =
-    args.events ??
-    createEventAppPublisher({ conversationWork: () => ({ queue }) });
   // Runs before result recovery, so an invocation that this ends is sent to
   // its parent in the same heartbeat.
   await recoverConversationWork({
@@ -242,7 +230,6 @@ export async function runHeartbeat(args: {
   }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,
-    events,
     nowMs: args.nowMs,
   });
   try {
