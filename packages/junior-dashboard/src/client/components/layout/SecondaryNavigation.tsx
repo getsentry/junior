@@ -39,7 +39,11 @@ export function SecondaryNavigation(props: {
       <SecondaryNavigationPortal
         desktop={
           <div className={cn(dashboardContainerClass, "min-w-0 px-4 md:px-8")}>
-            <SegmentedNav ariaLabel={props.ariaLabel} items={props.items} />
+            <SegmentedNav
+              ariaLabel={props.ariaLabel}
+              items={props.items}
+              toolbar
+            />
           </div>
         }
         mobile={

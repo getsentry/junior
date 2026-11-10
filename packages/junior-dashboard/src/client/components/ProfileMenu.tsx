@@ -11,6 +11,7 @@ import type { PersonalSpendReport } from "@sentry/junior/api/schema";
 
 import { formatCostSummary, peoplePath } from "../format";
 import { cn, dashboardInteractiveTextClass } from "../styles";
+import { SIDEBAR_ROW_GRID_CLASS } from "./layout/sidebarGrid";
 import type { Identity } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
@@ -52,15 +53,18 @@ function initials(name: string | null | undefined, email: string): string {
 /** Show the viewer's photo, with initials while it loads or when there is none. */
 function ProfileAvatar({
   className,
+  size,
   user,
 }: {
   className?: string;
+  size?: "sm";
   user: Identity["user"];
 }) {
   return (
     <Avatar
       aria-hidden="true"
       className={cn("border-0 shadow-black/40", className)}
+      size={size}
     >
       <AvatarImage alt="User avatar" src={user.avatarUrl} />
       <AvatarFallback className="font-bold tracking-wide">
@@ -372,13 +376,20 @@ export function ProfileMenu({
       <PopoverTrigger
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. ${personalSpendLabel(spend)}.`}
         className={cn(
-          "flex h-12 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1.5 text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          // The sidebar row grid: the avatar on the icon axis, the name on
+          // the label edge, the chevron on the right content edge.
+          SIDEBAR_ROW_GRID_CLASS,
+          "h-12 w-full min-w-0 cursor-pointer items-center rounded-lg border-0 bg-transparent text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           open && "bg-dashboard-fill-hover",
         )}
         {...hoverTrigger}
       >
-        <ProfileAvatar user={identity.user} />
-        <span className="grid min-w-0 flex-1 gap-0.5">
+        <ProfileAvatar
+          className="justify-self-center"
+          size="sm"
+          user={identity.user}
+        />
+        <span className="grid min-w-0 gap-0.5">
           <span className="truncate font-medium leading-tight">{name}</span>
           <SpendSummary spend={spend} />
         </span>

@@ -142,7 +142,7 @@ export function DashboardChrome(props: {
       <div className="border-b border-dashboard-border-strong md:border-b-0 md:has-[[data-secondary-slot]>*]:border-b">
         {props.header}
         {props.desktopControls ? (
-          <div className="hidden px-1 pt-2 md:flex md:empty:hidden">
+          <div className="hidden h-12 items-center pl-6 md:flex md:empty:hidden">
             {props.desktopControls}
           </div>
         ) : null}

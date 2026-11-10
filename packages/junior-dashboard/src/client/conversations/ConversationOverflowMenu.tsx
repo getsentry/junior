@@ -58,7 +58,7 @@ export function ConversationOverflowMenu(props: {
         pressed={open}
         tooltipDisabled={open}
       >
-        <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
+        <Ellipsis aria-hidden="true" size={16} strokeWidth={1.9} />
       </HeaderIconButton>
       {open ? (
         <div className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl">

@@ -208,7 +208,8 @@ export function HeaderIconButton(props: {
             aria-label={props.label}
             aria-pressed={props.pressed}
             className={cn(
-              "text-dashboard-text-muted",
+              // One toolbar control size: 32px, rounded like sidebar rows.
+              "size-8 rounded-lg text-dashboard-text-muted",
               props.pressed && "bg-dashboard-fill-strong text-dashboard-text",
             )}
             onClick={props.onClick}

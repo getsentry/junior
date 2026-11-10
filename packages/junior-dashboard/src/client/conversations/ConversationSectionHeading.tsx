@@ -4,7 +4,7 @@ import { cn } from "../styles";
 
 /**
  * Render a conversation section label that collapses its rows. The chevron
- * takes the same 0.875rem glyph column and gap as sidebar rows, so the label
+ * takes the same 1rem glyph column and gap as sidebar rows (`sidebarGrid`), so the label
  * starts on the row title edge.
  */
 export function ConversationSectionHeading(props: {
@@ -25,7 +25,7 @@ export function ConversationSectionHeading(props: {
     >
       <button
         aria-expanded={!props.collapsed}
-        className="grid cursor-pointer grid-cols-[0.875rem_auto] items-center gap-x-2 rounded-sm border-0 bg-transparent p-0 font-[inherit] text-inherit transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+        className="grid cursor-pointer grid-cols-[1rem_auto] items-center gap-x-3 rounded-sm border-0 bg-transparent p-0 font-[inherit] text-inherit transition-colors hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
         onClick={props.onToggle}
         type="button"
       >
