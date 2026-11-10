@@ -107,7 +107,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     )
     .map((output) => output.text)
     .join("\n\n");
-  // A tool-call tail is not a no-reply. Only the tool, or a final text that
+  // A tool-call tail is not a no-reply. Only the tool, or a final response that
   // is only a legacy marker, is.
   const terminalTexts = terminalAssistantMessages.map((message) =>
     sanitizeAssistantText(extractAssistantText(message)),

@@ -186,7 +186,7 @@ const SLACK_ACTION_RULES = [
  * find the cause goes in `<evidence>`.
  */
 const FAILURE_REPORTING_RULES = [
-  "- Keep raw tool payloads and internal routing metadata out of the final answer.",
+  "- Keep raw tool payloads and internal routing metadata out of the final response.",
 ];
 
 /**
