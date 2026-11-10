@@ -6,6 +6,7 @@ import type {
 import {
   inboxBundles,
   itemNeedsViewer,
+  reviewItemStatusLabel,
   type InboxBundle,
 } from "./reviewItemFormat";
 
@@ -138,6 +139,48 @@ function pullRequestState(item: ReviewItemPayload): string {
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
 }
 
+/**
+ * What one item is, as its row says: Question, Approval, the pull request
+ * state that a plugin ask names, or FYI. A closed item says how it closed.
+ */
+function inboxItemKind(item: ReviewItemPayload): string {
+  if (item.status !== "open") return reviewItemStatusLabel(item);
+  if (item.kind === "notice") return "FYI";
+  if (item.request) return "Question";
+  const state = pullRequestState(item);
+  return state === "Other" ? "Approval" : state;
+}
+
+const COUNTED_KINDS: Record<string, string> = {
+  Approval: "approvals",
+  Question: "questions",
+};
+
+/**
+ * Say in one short line what a row holds, after the newest item's title. A
+ * row counts its kinds, as in `2 questions · Review requested · FYI`. The
+ * newest item does not count when its title already starts with its kind,
+ * as in `Ready to merge · #42`.
+ */
+export function inboxRowReason(bundle: InboxBundle): string | undefined {
+  const counts = new Map<string, number>();
+  for (const item of bundle.items) {
+    const kind = inboxItemKind(item);
+    if (item === bundle.newest && item.title.startsWith(kind)) continue;
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  if (counts.size === 0) return undefined;
+  if (bundle.items.length === 1) return [...counts.keys()][0];
+  return [...counts]
+    .map(([kind, count]) => {
+      const plural = COUNTED_KINDS[kind];
+      if (plural)
+        return `${count} ${count === 1 ? kind.toLowerCase() : plural}`;
+      return count === 1 || kind === "FYI" ? kind : `${kind} (${count})`;
+    })
+    .join(" · ");
+}
+
 /** Item kinds in a Conversation bundle, in stream order. */
 const ITEM_KINDS = ["Decisions", "Pull requests", "Asks", "Notices"] as const;
 
@@ -189,7 +232,7 @@ function byConversation(
 
 /**
  * Group the rows of a bundle the way its filter reads best. All leads with
- * what needs the viewer, longest wait first, then Today, This week, and
+ * what waits on the viewer (To do), longest wait first, then Today, This week, and
  * Earlier. Pull requests group by state, decisions and the needs-you view by
  * Conversation, and one Conversation by item kind. Empty groups drop out.
  */
@@ -205,8 +248,8 @@ export function viewSections(
     view === "all"
       ? [
           {
-            key: "needs",
-            label: "Needs you",
+            key: "todo",
+            label: "To do",
             rows: rows.filter((row) => row.needsYou),
           },
           ...TIME_SECTIONS.map((section) => ({
@@ -269,24 +312,21 @@ export function automationSections(
 }
 
 /**
- * What a sweep would mark done in some rows, and what it leaves. A sweep
- * clears notices and FYI items only. Items that wait on the viewer stay,
- * and so do pinned items. Automations are not Review items, so a sweep
- * never sees them.
+ * What a sweep would mark done in some rows. A sweep clears notices and FYI
+ * items only. Items that wait on the viewer stay, and so do pinned items.
+ * Automations are not Review items, so a sweep never sees them.
  */
 export function sweepOf(
   rows: readonly InboxBundle[],
   isPinned: (item: ReviewItemPayload) => boolean,
-): { clear: ReviewItemPayload[]; needYou: number } {
-  const items = rows.flatMap((row) => row.items);
-  return {
-    clear: items.filter(
+): ReviewItemPayload[] {
+  return rows
+    .flatMap((row) => row.items)
+    .filter(
       (item) =>
         item.status === "open" &&
         item.canAct &&
         !itemNeedsViewer(item) &&
         !isPinned(item),
-    ),
-    needYou: items.filter(itemNeedsViewer).length,
-  };
+    );
 }

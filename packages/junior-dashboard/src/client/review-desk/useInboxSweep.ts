@@ -49,7 +49,7 @@ export function useInboxSweep() {
     // The cleanup runs once, when the inbox unmounts.
   }, [queryClient]);
 
-  const sweep = (items: ReviewItemPayload[], stay: number) => {
+  const sweep = (items: ReviewItemPayload[]) => {
     if (items.length === 0) return;
     const id = `inbox-sweep-${items[0]!.id}-${items.length}`;
     const ids = items.map((item) => item.id);
@@ -72,10 +72,7 @@ export function useInboxSweep() {
     };
     add({
       actionProps: { children: "Undo", onClick: undo },
-      description:
-        stay > 0
-          ? `${stay} that need${stay === 1 ? "s" : ""} you stay${stay === 1 ? "s" : ""}.`
-          : undefined,
+      description: "Questions and approvals stay.",
       id,
       timeout: UNDO_MS,
       title: `Cleared ${items.length} item${items.length === 1 ? "" : "s"}`,
