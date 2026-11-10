@@ -1,85 +1,120 @@
 -- Before #3066, a dashboard post into a Slack thread copied the poster's
 -- email onto the thread starter's Slack Identity when Slack had returned no
 -- email for the starter. The copied email linked that Identity to the
--- poster's User, and the link made the poster a Participant of every root
--- that the Identity started.
+-- poster's User. The link made the poster a Participant of every root that
+-- the Identity started or sent a Turn in.
+--
+-- Evidence: a Slack instruction stores the Actor from the Slack profile in
+-- `provenance.actor`. Slack is the only source that may give a Slack Identity
+-- its email, so an instruction with the Identity's Slack user and email
+-- proves that email. Nothing else proves it.
 --
 -- A candidate is a Slack user Identity when all of these are true:
--- - It has a User and a verified email.
+-- - It has a User and a verified email, and no evidence proves that email.
 -- - The User's web Identity, with that same email, wrote an event in a
 --   Conversation of a root that the Slack Identity started.
--- - No instruction that the Slack Identity sent in its own roots carries that
---   email in its Slack Actor. That Actor has the email from the Slack profile,
---   and Slack is the only source that may give a Slack Identity its email.
 --
 -- Slack emails are unique in a workspace, so one User has at most one
--- correct Slack Identity in each team. Repair a candidate only when exactly
--- one other Slack Identity of its User in its team stays linked. Leave every
--- other candidate as it is: the data cannot tell the victim of a poster with
--- no Slack Identity from a person whose own link came through this path.
+-- correct Slack Identity in each team. Repair a candidate only when evidence
+-- proves exactly one other Slack Identity of its User in its team. Leave
+-- every other candidate as it is. Without that proof, the data cannot tell a
+-- victim from a person whose own link came through this path, or whose
+-- events retention removed.
 --
 -- One statement repairs every table, so each part reads the same rows.
-WITH "candidates" AS (
+-- junior:bounded-backfill: changes only rows of damaged Identities, their Users, and the roots they started or sent Turns in. #3065 found few of these.
+WITH "slack_evidence" AS (
+  SELECT DISTINCT
+    "e"."payload"->'provenance'->'actor'->>'userId' AS "subject",
+    lower(btrim("e"."payload"->'provenance'->'actor'->>'email')) AS "email"
+  FROM "junior_conversation_events" AS "e"
+  WHERE "e"."type" = 'user_message'
+    AND "e"."payload"->'provenance'->>'authority' = 'instruction'
+    AND "e"."payload"->'provenance'->'actor'->>'platform' = 'slack'
+    AND "e"."payload"->'provenance'->'actor'->>'email' IS NOT NULL
+),
+"proven" AS (
+  SELECT "slack"."id", "slack"."user_id", "slack"."provider_tenant_id"
+  FROM "junior_identities" AS "slack"
+  INNER JOIN "slack_evidence" AS "ev"
+    ON "ev"."subject" = "slack"."provider_subject_id"
+    AND "ev"."email" = "slack"."email_normalized"
+  WHERE "slack"."kind" = 'user'
+    AND "slack"."provider" = 'slack'
+    AND "slack"."user_id" IS NOT NULL
+),
+"web_posts" AS (
+  SELECT DISTINCT "web"."user_id", "web"."email_normalized",
+    coalesce("c"."root_conversation_id", "c"."conversation_id") AS "root_id"
+  FROM "junior_identities" AS "web"
+  INNER JOIN "junior_conversation_events" AS "posted"
+    ON "posted"."actor_identity_id" = "web"."id"
+  INNER JOIN "junior_conversations" AS "c"
+    ON "c"."conversation_id" = "posted"."conversation_id"
+  WHERE "web"."kind" = 'user'
+    AND "web"."provider" = 'junior'
+    AND "web"."user_id" IS NOT NULL
+),
+"candidates" AS (
   SELECT DISTINCT "slack"."id" AS "identity_id", "slack"."user_id",
     "slack"."provider_tenant_id"
   FROM "junior_identities" AS "slack"
   INNER JOIN "junior_conversations" AS "root"
     ON "root"."actor_identity_id" = "slack"."id"
     AND "root"."parent_conversation_id" IS NULL
-  INNER JOIN "junior_conversations" AS "c"
-    ON "c"."root_conversation_id" = "root"."conversation_id"
-    OR "c"."conversation_id" = "root"."conversation_id"
-  INNER JOIN "junior_conversation_events" AS "posted"
-    ON "posted"."conversation_id" = "c"."conversation_id"
-  INNER JOIN "junior_identities" AS "web"
-    ON "web"."id" = "posted"."actor_identity_id"
+  INNER JOIN "web_posts" AS "w"
+    ON "w"."root_id" = "root"."conversation_id"
+    AND "w"."user_id" = "slack"."user_id"
+    AND "w"."email_normalized" = "slack"."email_normalized"
   WHERE "slack"."kind" = 'user'
     AND "slack"."provider" = 'slack'
     AND "slack"."user_id" IS NOT NULL
     AND "slack"."email_verified"
-    AND "web"."kind" = 'user'
-    AND "web"."provider" = 'junior'
-    AND "web"."user_id" = "slack"."user_id"
-    AND "web"."email_normalized" = "slack"."email_normalized"
-    AND NOT EXISTS (
-      SELECT 1
-      FROM "junior_conversations" AS "own_root"
-      INNER JOIN "junior_conversations" AS "own_c"
-        ON "own_c"."root_conversation_id" = "own_root"."conversation_id"
-        OR "own_c"."conversation_id" = "own_root"."conversation_id"
-      INNER JOIN "junior_conversation_events" AS "own"
-        ON "own"."conversation_id" = "own_c"."conversation_id"
-      WHERE "own_root"."actor_identity_id" = "slack"."id"
-        AND "own_root"."parent_conversation_id" IS NULL
-        AND "own"."type" = 'user_message'
-        AND "own"."payload"->'provenance'->>'authority' = 'instruction'
-        AND "own"."payload"->'provenance'->'actor'->>'platform' = 'slack'
-        AND "own"."payload"->'provenance'->'actor'->>'userId' = "slack"."provider_subject_id"
-        AND lower(btrim("own"."payload"->'provenance'->'actor'->>'email')) = "slack"."email_normalized"
-    )
+    AND "slack"."id" NOT IN (SELECT "id" FROM "proven")
 ),
 "damaged" AS (
   SELECT "candidate"."identity_id", "candidate"."user_id"
   FROM "candidates" AS "candidate"
   WHERE (
     SELECT count(*)
-    FROM "junior_identities" AS "kept"
-    WHERE "kept"."kind" = 'user'
-      AND "kept"."provider" = 'slack'
-      AND "kept"."user_id" = "candidate"."user_id"
+    FROM "proven" AS "kept"
+    WHERE "kept"."user_id" = "candidate"."user_id"
       AND "kept"."provider_tenant_id" = "candidate"."provider_tenant_id"
-      AND "kept"."id" NOT IN (SELECT "identity_id" FROM "candidates")
   ) = 1
 ),
--- Remove the Participant rows that the link added. Keep a row when the User
--- wrote in that root through another of their Identities.
+-- Roots where the link made the poster a Participant: roots that the damaged
+-- Identity started, and roots where it sent a Turn.
+"affected_roots" AS (
+  SELECT "d"."user_id", "root"."conversation_id" AS "root_id"
+  FROM "damaged" AS "d"
+  INNER JOIN "junior_conversations" AS "root"
+    ON "root"."actor_identity_id" = "d"."identity_id"
+    AND "root"."parent_conversation_id" IS NULL
+  UNION
+  SELECT "d"."user_id",
+    coalesce("c"."root_conversation_id", "c"."conversation_id") AS "root_id"
+  FROM "damaged" AS "d"
+  INNER JOIN "junior_conversation_events" AS "e"
+    ON "e"."actor_identity_id" = "d"."identity_id"
+  INNER JOIN "junior_conversations" AS "c"
+    ON "c"."conversation_id" = "e"."conversation_id"
+),
+-- Keep a row when the User started the root or wrote in it through an
+-- Identity that is not damaged.
 "removed_participants" AS (
   DELETE FROM "junior_conversation_participants" AS "p"
-  USING "damaged" AS "d", "junior_conversations" AS "root"
-  WHERE "p"."user_id" = "d"."user_id"
-    AND "p"."root_conversation_id" = "root"."conversation_id"
-    AND "root"."actor_identity_id" = "d"."identity_id"
-    AND "root"."parent_conversation_id" IS NULL
+  USING "affected_roots" AS "a"
+  WHERE "p"."user_id" = "a"."user_id"
+    AND "p"."root_conversation_id" = "a"."root_id"
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "junior_conversations" AS "root"
+      INNER JOIN "junior_identities" AS "starter"
+        ON "starter"."id" = "root"."actor_identity_id"
+      WHERE "root"."conversation_id" = "a"."root_id"
+        AND "starter"."user_id" = "a"."user_id"
+        AND "starter"."id" NOT IN (SELECT "identity_id" FROM "damaged")
+    )
     AND NOT EXISTS (
       SELECT 1
       FROM "junior_conversations" AS "c"
@@ -87,9 +122,8 @@ WITH "candidates" AS (
         ON "e"."conversation_id" = "c"."conversation_id"
       INNER JOIN "junior_identities" AS "author"
         ON "author"."id" = "e"."actor_identity_id"
-      WHERE ("c"."root_conversation_id" = "root"."conversation_id"
-          OR "c"."conversation_id" = "root"."conversation_id")
-        AND "author"."user_id" = "d"."user_id"
+      WHERE coalesce("c"."root_conversation_id", "c"."conversation_id") = "a"."root_id"
+        AND "author"."user_id" = "a"."user_id"
         AND "author"."id" NOT IN (SELECT "identity_id" FROM "damaged")
     )
 ),
@@ -117,9 +151,7 @@ WITH "candidates" AS (
 "touched_roots" AS (
   UPDATE "junior_conversations" AS "root"
   SET "detail_version" = "root"."detail_version" + 1
-  FROM "damaged" AS "d"
-  WHERE "root"."actor_identity_id" = "d"."identity_id"
-    AND "root"."parent_conversation_id" IS NULL
+  WHERE "root"."conversation_id" IN (SELECT "root_id" FROM "affected_roots")
 )
 -- Put the Identity back to its state before the link. Slack gave it no
 -- email, so a later Slack Turn cannot link it again. The same write copied
