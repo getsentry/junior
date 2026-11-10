@@ -14,6 +14,7 @@ import {
 } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/ui/skeleton";
+import { Spinner } from "../components/ui/spinner";
 import {
   conversationParticipants,
   ParticipantAvatarStack,
@@ -310,16 +311,27 @@ function ConversationCard(props: ConversationCardProps) {
               <ParticipantAvatarStack participants={participants} size="list" />
             </span>
           ) : null}
-          <time
-            className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
-            dateTime={conversation.lastSeenAt}
-            title={formatTime(conversation.lastSeenAt, {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}
-          >
-            {formatActivityDay(conversation.lastSeenAt)}
-          </time>
+          {status === "active" ? (
+            // Like the sidebar row: a running row shows that it runs, not
+            // when its last Event came, so the feed token can skip it.
+            <span className="pointer-events-none relative z-[1] flex min-w-14 justify-end">
+              <Spinner
+                aria-label="Running"
+                className="size-3.5 text-dashboard-text-muted"
+              />
+            </span>
+          ) : (
+            <time
+              className="pointer-events-none relative z-[1] min-w-14 whitespace-nowrap text-right font-sans text-xs tabular-nums text-dashboard-text-muted"
+              dateTime={conversation.lastSeenAt}
+              title={formatTime(conversation.lastSeenAt, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            >
+              {formatActivityDay(conversation.lastSeenAt)}
+            </time>
+          )}
           <button
             aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
             className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
