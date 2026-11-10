@@ -1660,6 +1660,62 @@ describe("GitHub webhook events", () => {
         data: { repo: "getsentry/junior", issue: 946 },
       },
     ]);
+
+    const botEmail = "41898282+junior-test[bot]@users.noreply.github.com";
+    const issueUpdate = (body: Record<string, unknown>) =>
+      normalizeGitHubEvents({
+        body: {
+          repository: { full_name: "getsentry/junior" },
+          issue: {
+            number: 946,
+            title: "Watches fail on issue comments",
+            updated_at: "2026-08-02T12:00:00.000Z",
+          },
+          sender: { id: 1001, login: "jane" },
+          ...body,
+        },
+        botEmail,
+        deliveryId: "delivery-issue-updated",
+        eventName: "issues",
+      });
+
+    expect(
+      issueUpdate({ action: "labeled", label: { name: "Ignore this" } }),
+    ).toEqual(
+      ["getsentry/junior#946", "getsentry/junior"].map((identifier) => ({
+        eventKey: "github:delivery-issue-updated:issue.updated",
+        eventType: "issue.updated",
+        occurredAtMs: Date.parse("2026-08-02T12:00:00.000Z"),
+        identifier,
+        trustedSummary:
+          "GitHub issue getsentry/junior#946 was labeled by jane.",
+        doneBy: { provider: "github", handle: "jane" },
+        data: { repo: "getsentry/junior", issue: 946 },
+        untrustedText:
+          "Label: Ignore this\n\nTitle: Watches fail on issue comments",
+      })),
+    );
+    expect(
+      issueUpdate({
+        action: "edited",
+        changes: { body: { from: "old" }, title: { from: "Old" } },
+      })[0]?.trustedSummary,
+    ).toBe(
+      "GitHub issue getsentry/junior#946 was edited (title, body) by jane.",
+    );
+    expect(
+      issueUpdate({ action: "assigned", assignee: { login: "bob" } })[0]
+        ?.trustedSummary,
+    ).toBe("GitHub issue getsentry/junior#946 was assigned to bob by jane.");
+    // Junior's own issue updates do not wake its Watches.
+    expect(
+      issueUpdate({
+        action: "labeled",
+        label: { name: "bug" },
+        sender: { id: 41898282, login: "junior-test[bot]" },
+      }),
+    ).toEqual([]);
+    expect(issueUpdate({ action: "pinned" })).toEqual([]);
   });
 });
 
