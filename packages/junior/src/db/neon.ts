@@ -63,11 +63,15 @@ class OverflowPool extends Pool {
       // dashboard poll interval, so most polls and page loads opened new
       // WebSockets. Idle clients to the Neon pooler hold no Postgres backend.
       idleTimeoutMillis: 60_000,
+      // Keeps the client that `reconnectWhenEmpty()` opens. Alone, `min` does
+      // not keep a client open after a burst.
+      min: 1,
       statement_timeout: args.statementTimeoutMs,
     });
     this.sql = neon(args.connectionString, { fullResults: true });
     this.dispatcher = args.dispatcher;
     this.statementTimeoutMs = args.statementTimeoutMs;
+    this.on("remove", () => this.reconnectWhenEmpty());
   }
 
   // Loose parameters satisfy every pg `query` overload.
@@ -109,14 +113,34 @@ class OverflowPool extends Pool {
       if (this.ending || this.idleCount > 0 || this.totalCount >= POOL_MAX) {
         return;
       }
-      this.connect((error, client) => {
-        if (client) {
-          client.release();
-          return;
-        }
-        logException(error, "db.pool.client.connect_failed", {
-          "app.db.driver": "neon",
-        });
+      this.openClient();
+    });
+  }
+
+  // pg-pool `min` keeps a client only when it is released into a pool that
+  // already holds `min` clients or fewer. Its idle timer does not check
+  // `min` again, so clients released while the pool was larger all close.
+  // Open one client when the last one closes. It is released into a pool of
+  // one, so it stays open. A failed connect does not emit `remove`, so it
+  // makes only one attempt.
+  private reconnectWhenEmpty() {
+    // After pg-pool serves queued queries, which can open a client.
+    setImmediate(() => {
+      if (this.ending || this.totalCount > 0) {
+        return;
+      }
+      this.openClient();
+    });
+  }
+
+  private openClient() {
+    this.connect((error, client) => {
+      if (client) {
+        client.release();
+        return;
+      }
+      logException(error, "db.pool.client.connect_failed", {
+        "app.db.driver": "neon",
       });
     });
   }
