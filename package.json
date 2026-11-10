@@ -17,7 +17,7 @@
     "lint:fix": "pnpm --filter @sentry/junior lint:fix",
     "file-length:check": "node --test scripts/check-file-length.test.mjs && node scripts/check-file-length.mjs",
     "migration-metadata:check": "node --test scripts/check-drizzle-migrations.test.mjs && node scripts/check-drizzle-migrations.mjs",
-    "migration-locks:check": "node --test scripts/check-migration-backfills.test.mjs && node scripts/check-migration-backfills.mjs && squawk --reporter gcc 'packages/*/migrations/*.sql'",
+    "migration-locks:check": "node --test scripts/check-migration-locks.test.mjs && node scripts/check-migration-locks.mjs && squawk --reporter gcc 'packages/*/migrations/*.sql'",
     "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts",
     "test-architecture:check": "node --test scripts/check-test-architecture.test.mjs && node scripts/check-test-architecture.mjs",
     "dashboard-style:check": "node --test scripts/check-dashboard-styles.test.mjs && node scripts/check-dashboard-styles.mjs",

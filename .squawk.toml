@@ -1,7 +1,7 @@
 # Squawk lints migrations for statements that lock a table while they scan,
 # rewrite, or build. `junior upgrade` runs each migration in a transaction
 # with a lock_timeout (packages/junior/src/db/migrate.ts).
-# scripts/check-migration-backfills.mjs checks UPDATE and DELETE.
+# scripts/check-migration-locks.mjs checks backfills and DO blocks.
 pg_version = "17"
 assume_in_transaction = true
 excluded_rules = [

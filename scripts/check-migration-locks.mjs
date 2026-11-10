@@ -4,20 +4,30 @@ import { fileURLToPath } from "node:url";
 import { loadModule, parse, parsePlPgSQL } from "libpg-query";
 
 /**
- * Migration backfill check.
+ * Migration lock checks that squawk (`.squawk.toml`) cannot do.
  *
  * `junior upgrade` runs each pending migration in a transaction against the
- * live database. An UPDATE or DELETE on an existing table locks every row it
- * changes until the migration commits, and app writes to those rows wait.
- * Squawk (`.squawk.toml`) checks the statements that lock a whole table; it
- * has no rule for this, so this check parses each migration, including the
- * SQL in DO blocks, and requires a reason on the line before each backfill.
- * Shipped migrations already ran, so the baseline exempts them.
+ * live database. Squawk checks the statements that lock a whole table, but it
+ * has no rule for row-locking backfills, and it does not read SQL inside DO
+ * blocks (sbdchd/squawk#411). This check parses each migration with the
+ * Postgres parser, including the SQL in DO blocks. Shipped migrations already
+ * ran, so the baseline exempts them.
  */
 
-const BASELINE_PATH = "scripts/migration-backfills-baseline.json";
+const BASELINE_PATH = "scripts/migration-locks-baseline.json";
 const BOUNDED_BACKFILL_MARKER = "-- junior:bounded-backfill:";
-const RULE = `UPDATE or DELETE on an existing table locks every row it changes until the migration commits, and app writes to those rows wait. Keep it to a small or idle set of rows, and say why on the line before it: "${BOUNDED_BACKFILL_MARKER} <reason>".`;
+const RULES = {
+  "unbounded-backfill": `UPDATE or DELETE on an existing table locks every row it changes until the migration commits, and app writes to those rows wait. Keep it to a small or idle set of rows, and say why on the line before it: "${BOUNDED_BACKFILL_MARKER} <reason>".`,
+  "ddl-in-do-block":
+    "Squawk cannot check SQL inside a DO block. Put the statement at the top level of the migration.",
+};
+// DO block statements that squawk has no lock rule for.
+const DO_BLOCK_STATEMENTS = new Set([
+  "SelectStmt",
+  "InsertStmt",
+  "UpdateStmt",
+  "DeleteStmt",
+]);
 
 const loaded = loadModule();
 
@@ -66,7 +76,7 @@ async function parsedStatements(sql) {
     const start = raw.stmt_location ?? 0;
     const line = lineAt(bytes, start);
     if (raw.stmt.DoStmt === undefined) {
-      statements.push({ node: raw.stmt, line });
+      statements.push({ node: raw.stmt, line, inDoBlock: false });
       continue;
     }
     const end = raw.stmt_len ? start + raw.stmt_len : bytes.length;
@@ -78,15 +88,19 @@ async function parsedStatements(sql) {
     collectExecSql(await parsePlPgSQL(`${text};`), embedded);
     for (const { query, lineno } of embedded) {
       for (const inner of (await parse(query)).stmts) {
-        statements.push({ node: inner.stmt, line: bodyLine + lineno - 1 });
+        statements.push({
+          node: inner.stmt,
+          line: bodyLine + lineno - 1,
+          inDoBlock: true,
+        });
       }
     }
   }
   return statements;
 }
 
-/** Return whether a migration has an UPDATE or DELETE on an existing table without a reason. */
-export async function hasUnboundedBackfill(sql) {
+/** Return the lock rule ids that a migration's SQL breaks. */
+export async function migrationLockViolations(sql) {
   const lines = sql.split("\n");
   const statements = await parsedStatements(sql);
   // IF NOT EXISTS can keep an existing table with all its rows.
@@ -96,43 +110,54 @@ export async function hasUnboundedBackfill(sql) {
       .filter((create) => create !== undefined && !create.if_not_exists)
       .map((create) => create.relation.relname),
   );
-  return statements.some(({ node, line }) => {
+  const violations = new Set();
+  for (const { node, line, inDoBlock } of statements) {
+    if (inDoBlock && !DO_BLOCK_STATEMENTS.has(Object.keys(node)[0])) {
+      violations.add("ddl-in-do-block");
+    }
     const relation = (node.UpdateStmt ?? node.DeleteStmt)?.relation;
     if (relation === undefined || newTables.has(relation.relname)) {
-      return false;
+      continue;
     }
     const before =
       lines
         .slice(0, line - 1)
         .findLast((text) => text.trim() !== "")
         ?.trim() ?? "";
-    return !(
-      before.startsWith(BOUNDED_BACKFILL_MARKER) &&
-      before.slice(BOUNDED_BACKFILL_MARKER.length).trim() !== ""
-    );
-  });
+    if (
+      !before.startsWith(BOUNDED_BACKFILL_MARKER) ||
+      before.slice(BOUNDED_BACKFILL_MARKER.length).trim() === ""
+    ) {
+      violations.add("unbounded-backfill");
+    }
+  }
+  return [...violations];
 }
 
 /**
- * Report unbounded backfills in migration files. A baseline file may have
- * one because it already ran; it must still have one.
+ * Report lock rule violations in migration files. A baseline file may break
+ * rules because it already ran; it must still break at least one.
  */
-export async function checkMigrationBackfills(files, baseline) {
+export async function checkMigrationLocks(files, baseline) {
   const errors = [];
   const exempt = new Set(baseline);
   for (const [filePath, sql] of files) {
-    let unbounded;
+    let ruleIds;
     try {
-      unbounded = await hasUnboundedBackfill(sql);
+      ruleIds = await migrationLockViolations(sql);
     } catch (error) {
       throw new Error(`${filePath}: cannot parse migration`, { cause: error });
     }
-    if (exempt.has(filePath) && !unbounded) {
-      errors.push(
-        `${filePath}: has no unbounded backfill; remove it from ${BASELINE_PATH}`,
-      );
-    } else if (!exempt.has(filePath) && unbounded) {
-      errors.push(`${filePath}: unbounded-backfill: ${RULE}`);
+    if (exempt.has(filePath)) {
+      if (ruleIds.length === 0) {
+        errors.push(
+          `${filePath}: breaks no lock rule; remove it from ${BASELINE_PATH}`,
+        );
+      }
+      continue;
+    }
+    for (const ruleId of ruleIds) {
+      errors.push(`${filePath}: ${ruleId}: ${RULES[ruleId]}`);
     }
   }
   const filePaths = new Set(files.map(([filePath]) => filePath));
@@ -161,9 +186,14 @@ async function migrationFiles(root) {
         }
         throw error;
       });
-    for (const name of names.filter((file) => /^\d{4}_.+\.sql$/.test(file)).sort()) {
+    for (const name of names
+      .filter((file) => /^\d{4}_.+\.sql$/.test(file))
+      .sort()) {
       const filePath = path.join(directory, name);
-      files.push([filePath, await fs.readFile(path.join(root, filePath), "utf8")]);
+      files.push([
+        filePath,
+        await fs.readFile(path.join(root, filePath), "utf8"),
+      ]);
     }
   }
   return files;
@@ -176,12 +206,12 @@ async function main() {
     migrationFiles(root),
     fs.readFile(path.join(root, BASELINE_PATH), "utf8"),
   ]);
-  const errors = await checkMigrationBackfills(files, JSON.parse(baselineText));
+  const errors = await checkMigrationLocks(files, JSON.parse(baselineText));
   if (errors.length === 0) {
-    console.log(`Migration backfill check passed for ${files.length} migrations.`);
+    console.log(`Migration lock check passed for ${files.length} migrations.`);
     return;
   }
-  console.error(["Migration backfill check failed:", ...errors].join("\n"));
+  console.error(["Migration lock check failed:", ...errors].join("\n"));
   process.exitCode = 1;
 }
 

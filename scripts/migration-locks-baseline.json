@@ -23,6 +23,7 @@
   "packages/junior/migrations/0087_child_location.sql",
   "packages/junior/migrations/0089_conversation_paused_status.sql",
   "packages/junior/migrations/0092_turn_metric_actor.sql",
+  "packages/junior/migrations/0096_automation_task_kind.sql",
   "packages/junior-github/migrations/0004_marvelous_toad_men.sql",
   "packages/junior-memory/migrations/0003_public_slack_workspace_memory.sql",
   "packages/junior-memory/migrations/0004_gigantic_celestials.sql",
