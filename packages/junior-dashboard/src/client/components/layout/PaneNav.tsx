@@ -30,6 +30,7 @@ import {
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
 import { cn } from "../../styles";
+import { SIDEBAR_ROW_GRID_CLASS } from "./sidebarGrid";
 import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
@@ -45,10 +46,13 @@ const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 const PANE_EDGE_CLASS =
   "border-r border-dashboard-border bg-dashboard-surface-panel";
 
-// Rows stay lighter than the conversation titles below them. The 0.875rem
-// icon column lines their labels up with those titles.
-const ROW_CLASS =
-  "grid h-9 w-full min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border-0 px-3 text-left font-sans text-sm font-normal no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 [&_svg]:size-4 [&_svg]:justify-self-center";
+// Rows use the pane grid (`SIDEBAR_ROW_GRID_CLASS`), so icons, the logo, and
+// the avatar share one centre axis and every label starts on the
+// conversation title edge.
+const ROW_CLASS = cn(
+  SIDEBAR_ROW_GRID_CLASS,
+  "h-8 w-full min-w-0 items-center rounded-lg border-0 text-left font-sans text-sm font-normal no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 [&_svg]:size-4",
+);
 
 const IDLE_ROW_CLASS =
   "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text";
@@ -198,7 +202,7 @@ function PaneToggle(props: { open: boolean }) {
       ref={ref}
       shortcut={PANE_TOGGLE_SHORTCUT}
     >
-      <PanelLeft aria-hidden="true" size={15} strokeWidth={2} />
+      <PanelLeft aria-hidden="true" size={16} strokeWidth={1.9} />
     </HeaderIconButton>
   );
 }
@@ -212,7 +216,7 @@ function PaneSearch() {
       onClick={pane.onSearch}
       shortcut={COMMAND_PALETTE_SHORTCUT}
     >
-      <Search aria-hidden="true" size={15} strokeWidth={2} />
+      <Search aria-hidden="true" size={16} strokeWidth={1.9} />
     </HeaderIconButton>
   );
 }
@@ -226,11 +230,13 @@ export function PaneCollapsedControls() {
   const pane = usePaneNav();
   if (pane.open) return null;
   return (
-    <div className="hidden items-center gap-0.5 md:flex">
+    // `-ml-2` puts the toggle's icon on the pane's icon axis, 24px from the
+    // edge, as the page title starts there without these controls.
+    <div className="-ml-2 hidden items-center gap-1 md:flex">
       <PaneToggle open={false} />
       <PaneSearch />
       {pane.spend ? (
-        <div className="mr-3 ml-2 hidden lg:flex">{pane.spend}</div>
+        <div className="mr-2 ml-2 hidden lg:flex">{pane.spend}</div>
       ) : null}
     </div>
   );
@@ -256,7 +262,7 @@ function PaneRow(props: {
       <Icon aria-hidden="true" strokeWidth={1.9} />
       <span className="truncate">{props.label}</span>
       {props.count ? (
-        <span className="rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
+        <span className="grid h-5 min-w-5 place-items-center rounded-md bg-dashboard-accent px-1 text-2xs font-semibold tabular-nums text-dashboard-text-inverse">
           {props.count > 99 ? "99+" : props.count.toLocaleString("en-US")}
         </span>
       ) : null}
@@ -288,23 +294,25 @@ function PaneNavHeader(props: { onNewConversation?(): void }) {
   return (
     <div
       className={cn(
-        "grid gap-0.5 border-b border-b-dashboard-border-subtle px-3 pb-2 max-md:hidden",
+        "grid gap-0.5 border-b border-b-dashboard-border-subtle px-3 pb-3 max-md:hidden",
         PANE_EDGE_CLASS,
       )}
     >
-      {/* Same height as the page headers, so the row reads as their start. */}
-      <div className="flex h-12 items-center justify-between gap-2">
+      {/* Same height and centre line as the page headers. The logo sits on
+          the icon axis and the name on the label edge. The buttons end on
+          the right content edge, 24px in, like row dates and counts. */}
+      <div className={cn(SIDEBAR_ROW_GRID_CLASS, "h-12 items-center pr-1")}>
         <Link
           aria-label={`${name} home`}
-          className="flex min-w-0 items-center gap-1.5 rounded-lg text-inherit no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+          className="col-span-2 grid min-w-0 grid-cols-subgrid items-center rounded-lg text-inherit no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
           to="/"
         >
-          <JuniorLogo />
+          <JuniorLogo size="sm" />
           <span className="truncate font-sans text-sm font-semibold">
             {name}
           </span>
         </Link>
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-1">
           <PaneSearch />
           <PaneToggle open />
         </div>

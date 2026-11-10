@@ -245,7 +245,7 @@ export function ConversationWorkspace(props: {
       )}
     >
       {sidebarFits ? (
-        <div className="flex h-12 items-center px-1">
+        <div className="flex h-12 items-center pl-6">
           <PaneCollapsedControls />
         </div>
       ) : (

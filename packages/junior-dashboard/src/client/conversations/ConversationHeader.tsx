@@ -259,10 +259,12 @@ export function ConversationHeader(props: {
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden h-12 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
-          <div className="flex min-w-0 items-center gap-1.5">
+        {/* The title starts 24px in, the inset of the pane's icons. The last
+            button's icon ends 24px from the edge, like the details close. */}
+        <div className="hidden h-12 min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
+          <div className="flex min-w-0 items-center gap-2">
             {props.sidebarToggle ? (
-              <div className="shrink-0">{props.sidebarToggle}</div>
+              <div className="shrink-0 empty:hidden">{props.sidebarToggle}</div>
             ) : null}
             {props.agentTree ? (
               <ConversationBreadcrumb current={title} nodes={props.agentTree} />
@@ -281,7 +283,7 @@ export function ConversationHeader(props: {
             ) : null}
           </div>
           <div
-            className="flex shrink-0 items-center gap-0.5"
+            className="flex shrink-0 items-center gap-1"
             inert={props.pending}
           >
             {props.cost ? (
@@ -299,7 +301,7 @@ export function ConversationHeader(props: {
                 label="Conversation details"
                 onClick={props.onDetailsClick}
               >
-                <PanelRight aria-hidden="true" size={15} strokeWidth={2} />
+                <PanelRight aria-hidden="true" size={16} strokeWidth={1.9} />
               </HeaderIconButton>
             )}
           </div>

@@ -48,7 +48,7 @@ function InboxRow(props: {
         )}
         to={props.to}
       >
-        <div className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] items-start gap-x-2">
+        <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-3">
           <span
             aria-hidden="true"
             className={cn(
@@ -184,7 +184,8 @@ export function ReviewDeskSidebar(props: {
 
   return (
     <aside className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
-      <div className="px-5 py-3">
+      {/* The heading starts on the pane's icon edge, 24px in. */}
+      <div className="px-6 py-3">
         <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
           Inbox
         </h2>

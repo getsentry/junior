@@ -30,6 +30,7 @@ import {
 } from "../format";
 import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
+import { SIDEBAR_ROW_GRID_CLASS } from "../components/layout/sidebarGrid";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import { WaitingChip } from "./WaitingChip";
@@ -317,7 +318,7 @@ export function ConversationRowSkeletons() {
       <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 10 }, (_, index) => (
         <div
-          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[2.125rem] pr-3"
+          className="flex items-center justify-between gap-3 rounded-lg py-2 pl-[2.5rem] pr-3"
           key={index}
         >
           <Skeleton
@@ -498,7 +499,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           aria-current={props.selected ? "page" : undefined}
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
+            SIDEBAR_ROW_GRID_CLASS,
+            "min-w-0 items-center rounded-lg py-1.5 text-inherit no-underline md:min-h-8 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
             ROW_ACTIONS_FADE_CLASS,
             // A long press opens the row menu or drags a pin, not the iOS
             // link callout.
@@ -541,7 +543,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
               render={
                 <button
                   aria-label={`Mark ${title} as ${unread ? "read" : "unread"}`}
-                  className="group/read absolute top-1 left-[0.4375rem] z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
+                  className="group/read absolute top-1 left-2 z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
                   disabled={markUnread.isPending}
                   onClick={() => setUnread(!unread)}
                   type="button"
