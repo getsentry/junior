@@ -9,6 +9,12 @@ const answers: Record<string, string> = {
     "In refresh_tokens, added by #3101. The ciphertext column is encrypted with the app key, like other user tokens.",
   "Why not use a longer-lived token?":
     "GitHub App user tokens always expire after 8 hours. The Brief says this was checked with the person who asked.",
+  "Which automations are affected?":
+    "Any scheduled automation whose tick lands during a rollout. The 212 Sentry events come from 31 automations. Hourly ones are hit most.",
+  "Why was the deployment id in the key?":
+    "It came from #2611, which stopped a stuck lock from blocking every later deploy. The 10-minute TTL now covers that case.",
+  "What else calls withRunLock?":
+    "Only the scheduler and Run now. rg finds no other callers. Event automations use their own idempotency key.",
   "What still references legacy_tokens?":
     "Nothing in this repo. rg finds no reads since #2870. Another service could still read it. Junior can't check that.",
 };

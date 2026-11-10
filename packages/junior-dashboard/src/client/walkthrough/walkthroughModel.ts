@@ -143,14 +143,14 @@ export function reviewDecisions(
       decisions.push({
         id: decision.id,
         question: decision.question,
-        prs: evidencePrs(evidence ? [evidence] : chapter.evidence, hunks),
+        prs: decisionPrs(document, hunks, evidence, chapter.evidence),
         answeredBy: items.find((item) => item.answers === decision.id),
         location: evidenceLocation(evidence, hunks),
       });
     }
   }
   for (const item of items) {
-    const prs = evidencePrs(item.evidence, hunks);
+    const prs = decisionPrs(document, hunks, undefined, item.evidence);
     if (item.answers) {
       decisions.push({
         id: confirmDecisionId(item.id),
@@ -227,6 +227,22 @@ export function openFeedback(
   return decisions
     .filter((d) => answers[d.id]?.value === "change" && !d.answeredBy)
     .map((decision) => ({ decision, note: answers[decision.id]?.note }));
+}
+
+/**
+ * Layers a decision blocks: its own evidence, else its chapter's code, else
+ * every layer. A decision with no code still has to be answered.
+ */
+function decisionPrs(
+  document: WalkthroughDocument,
+  hunks: ReadonlyMap<string, WalkthroughHunk>,
+  evidence: WalkthroughEvidence | undefined,
+  chapterEvidence: readonly WalkthroughEvidence[],
+): number[] {
+  const own = evidence ? evidencePrs([evidence], hunks) : [];
+  if (own.length) return own;
+  const chapter = evidencePrs(chapterEvidence, hunks);
+  return chapter.length ? chapter : document.layers.map((layer) => layer.pr);
 }
 
 function evidenceLocation(

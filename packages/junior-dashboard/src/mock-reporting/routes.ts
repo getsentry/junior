@@ -87,6 +87,7 @@ import {
 } from "./code-repository";
 import { readMockBoard } from "./board";
 import { readMockWalkthrough } from "./walkthrough";
+import { readMockBugFixWalkthrough } from "./walkthrough-bug-fix";
 import {
   readMockConversationChildAgents,
   continueMockConversationInSlack,
@@ -184,28 +185,34 @@ export function createMockReportingApi(): Hono<{
   app.get("/board", () =>
     jsonResponse(boardReportSchema, readMockBoard(Date.now())),
   );
-  // The Walkthrough prototype has one fixed stack. The viewer answered the
-  // first version, so the page opens on Update 1.
-  app.get("/walkthroughs/:walkthroughId", () =>
-    jsonResponse(walkthroughReportSchema, {
-      document: readMockWalkthrough(),
-      answers: [
-        { versionId: "wt_v1", decisionId: "retries", value: "accept" },
-        {
-          versionId: "wt_v1",
-          decisionId: "delete",
-          value: "change",
-          note: "Keep a backup of legacy_tokens for one release.",
-        },
-        {
-          versionId: "wt_v1",
-          decisionId: "metric",
-          value: "change",
-          note: "Count failed refreshes, so we can alert on them.",
-        },
-      ],
-      seenVersionId: "wt_v1",
-    }),
+  // Walkthrough prototype: "new" is a single PR on its first review. Any other
+  // id is a stack whose first version the viewer answered, so it opens on
+  // Update 1.
+  app.get("/walkthroughs/:walkthroughId", (c) =>
+    c.req.param("walkthroughId") === "new"
+      ? jsonResponse(walkthroughReportSchema, {
+          document: readMockBugFixWalkthrough(),
+          answers: [],
+        })
+      : jsonResponse(walkthroughReportSchema, {
+          document: readMockWalkthrough(),
+          answers: [
+            { versionId: "wt_v1", decisionId: "retries", value: "accept" },
+            {
+              versionId: "wt_v1",
+              decisionId: "delete",
+              value: "change",
+              note: "Keep a backup of legacy_tokens for one release.",
+            },
+            {
+              versionId: "wt_v1",
+              decisionId: "metric",
+              value: "change",
+              note: "Count failed refreshes, so we can alert on them.",
+            },
+          ],
+          seenVersionId: "wt_v1",
+        }),
   );
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),

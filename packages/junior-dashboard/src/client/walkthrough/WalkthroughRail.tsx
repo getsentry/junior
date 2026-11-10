@@ -51,7 +51,7 @@ export function WalkthroughRail(props: {
     <nav aria-label="Walkthrough" className="grid content-start gap-6">
       <section className="grid gap-2">
         <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
-          Stack of {layers.length}
+          {layers.length === 1 ? "Pull request" : `Stack of ${layers.length}`}
         </h3>
         <ol className="m-0 grid list-none gap-2 p-0">
           {layers.map((layer) => {

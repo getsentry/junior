@@ -7,9 +7,9 @@ type DiagramView = NonNullable<
   WalkthroughDocument["content"]["chapters"][number]["view"]
 >;
 
-const COLUMN_WIDTH = 210;
-const ROW_HEIGHT = 104;
-const NODE_WIDTH = 150;
+const COLUMN_WIDTH = 172;
+const ROW_HEIGHT = 96;
+const NODE_WIDTH = 136;
 const NODE_HEIGHT = 44;
 const PAD = 12;
 
