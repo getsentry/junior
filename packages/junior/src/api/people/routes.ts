@@ -12,6 +12,10 @@ import {
   personalSpendReportSchema,
 } from "../schema/person";
 import { codePersonReportSchema } from "../schema/code";
+import {
+  personReplyGapsQuerySchema,
+  personReplyGapsReportSchema,
+} from "../schema/reply-gaps";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -19,6 +23,7 @@ import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
+import { readPersonReplyGaps } from "./reply-gaps";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 // A versioned photo path never changes its bytes. `private` keeps photos out
@@ -89,6 +94,30 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
         pluginOperationalReportFeedSchema,
         await readPeoplePluginReports({ email, viewer }),
       );
+    },
+  );
+
+  app.get(
+    "/:email/reply-gaps",
+    requireViewer,
+    validateRequest("param", personParamsSchema, "Invalid route parameters."),
+    validateRequest(
+      "query",
+      personReplyGapsQuerySchema,
+      "Invalid query parameters.",
+    ),
+    async (context) => {
+      const { email } = context.req.valid("param");
+      const { days } = context.req.valid("query");
+      const report = await readPersonReplyGaps({
+        days,
+        email,
+        viewer: context.get("viewer"),
+      });
+      // Only the person reads their reply gaps. Any other viewer gets the
+      // answer for a person that does not exist.
+      if (!report) throwApiError(404, "Reply gaps not found.");
+      return jsonResponse(personReplyGapsReportSchema, report);
     },
   );
 

@@ -20,6 +20,8 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
+  personReplyGapsReportSchema,
+  replyGapSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
@@ -328,6 +330,21 @@ export function useActorCodeData(email: string | undefined) {
   });
 }
 
+/** Fetch the viewer's own reply gaps. The server answers only that person. */
+export function usePersonReplyGapsData(args: { days: number; email: string }) {
+  return useQuery({
+    placeholderData: keepPreviousData,
+    queryKey: ["dashboard", "people", args.email, "reply-gaps", args.days],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        personReplyGapsReportSchema,
+        `/api/people/${encodeURIComponent(args.email)}/reply-gaps?days=${args.days}`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
 /**
  * Fetch the authenticated viewer's rolling model spend. The versions poll
  * refreshes it when it changes.
@@ -424,6 +441,16 @@ export function useSystemData(coreData: DashboardCoreData) {
       ),
     retry: false,
   });
+  const replyGapsQuery = useQuery({
+    queryKey: ["dashboard", "reply-gaps"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        replyGapSegmentsReportSchema,
+        "/api/reply-gaps",
+        signal,
+      ),
+    retry: false,
+  });
   const skillsQuery = useSkillsData();
   const pluginReportsQuery = usePluginReportsData();
   const dataReady = pluginsQuery.data && skillsQuery.data;
@@ -442,6 +469,10 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
+          ...(replyGapsQuery.data
+            ? { replyGaps: replyGapsQuery.data }
+            : undefined),
+          replyGapsError: Boolean(replyGapsQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,

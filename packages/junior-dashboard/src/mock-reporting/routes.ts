@@ -55,6 +55,9 @@ import {
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
+  personReplyGapsQuerySchema,
+  personReplyGapsReportSchema,
+  replyGapSegmentsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemCountSchema,
   reviewItemListSchema,
@@ -120,6 +123,10 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
+import {
+  readMockPersonReplyGaps,
+  readMockReplyGapSegments,
+} from "./reply-gaps";
 import { readMockConversationWatches } from "./watches";
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
@@ -218,6 +225,24 @@ export function createMockReportingApi(): Hono<{
       pluginOperationalReportFeedSchema,
       readMockPeoplePluginReports(params.data.email),
     );
+  });
+  app.get("/reply-gaps", () =>
+    jsonResponse(replyGapSegmentsReportSchema, readMockReplyGapSegments()),
+  );
+  app.get("/people/:email/reply-gaps", (c) => {
+    const params = personParamsSchema.safeParse(c.req.param());
+    const query = personReplyGapsQuerySchema.safeParse(c.req.query());
+    if (!params.success || !query.success) {
+      return errorResponse("Invalid request.", 400);
+    }
+    // Like the core route, only the profile's person reads their gaps.
+    const viewerEmail = c.get("viewer")?.email.toLowerCase();
+    return viewerEmail === params.data.email.toLowerCase()
+      ? jsonResponse(
+          personReplyGapsReportSchema,
+          readMockPersonReplyGaps(query.data.days),
+        )
+      : errorResponse("Reply gaps not found.", 404);
   });
   app.get("/people/:email/code", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());

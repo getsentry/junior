@@ -362,6 +362,16 @@ export type {
   AutomationVersionList,
   ListedAutomationVersion,
 } from "./schema/automation";
+export {
+  personReplyGapsQuerySchema,
+  personReplyGapsReportSchema,
+  replyGapSegmentsReportSchema,
+} from "./schema/reply-gaps";
+export type {
+  PersonReplyGapsReport,
+  ReplyGapHistogram,
+  ReplyGapSegmentsReport,
+} from "./schema/reply-gaps";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

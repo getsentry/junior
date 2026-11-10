@@ -12,6 +12,7 @@ import type {
   ActorIdentity,
   ConversationReportMessageEvent,
   ConversationStatsReport,
+  ReplyGapSegmentsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -220,6 +221,8 @@ export type SystemData = DashboardCoreData & {
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
   plugins: Plugin[];
+  replyGaps?: ReplyGapSegmentsReport;
+  replyGapsError: boolean;
   skills: SkillReport[];
 };
 

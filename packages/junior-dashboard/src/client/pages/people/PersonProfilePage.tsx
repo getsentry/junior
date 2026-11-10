@@ -13,6 +13,7 @@ import {
   useActorCodeData,
   useActorPluginReportsData,
   useActorProfileData,
+  useDashboardCoreData,
 } from "../../api";
 import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
@@ -34,6 +35,7 @@ import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
 import { ProfileCodeActivity } from "./ProfileCodeActivity";
 import { ProfilePluginReports } from "./ProfilePluginReports";
+import { ProfileReplyGaps } from "./ProfileReplyGaps";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
@@ -47,6 +49,7 @@ export function PersonProfilePage() {
   const query = useActorProfileData(email);
   const pluginReportsQuery = useActorPluginReportsData(email);
   const codeQuery = useActorCodeData(email);
+  const core = useDashboardCoreData();
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
@@ -61,6 +64,10 @@ export function PersonProfilePage() {
           pluginReportsError={Boolean(pluginReportsQuery.error)}
           pluginReportsLoading={pluginReportsQuery.isPending}
           profile={query.data}
+          viewerIsPerson={
+            core.data?.me.user.email.toLowerCase() ===
+            query.data.actor.email.toLowerCase()
+          }
         />
       ) : (
         <Card padding="md">
@@ -80,6 +87,8 @@ export function Profile(props: {
   pluginReportsError?: boolean;
   pluginReportsLoading?: boolean;
   profile: ActorProfileReport;
+  /** The server returns reply gaps only to the profile's person. */
+  viewerIsPerson?: boolean;
 }) {
   const [range, setRange] = useState<TimeRangeDays>(30);
   const profile = props.profile;
@@ -131,6 +140,10 @@ export function Profile(props: {
           })}
         />
       </section>
+
+      {props.viewerIsPerson ? (
+        <ProfileReplyGaps email={profile.actor.email} range={range} />
+      ) : null}
 
       {props.codeError ? (
         <Card className="border-amber-300/10 bg-amber-300/[0.025]" padding="sm">
