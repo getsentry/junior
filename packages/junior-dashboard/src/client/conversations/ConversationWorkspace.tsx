@@ -21,6 +21,7 @@ import {
 } from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { composerDockClass } from "./ComposerDock";
+import { HomeSummary } from "./HomeSummary";
 import { ConversationHomeList } from "./ConversationHomeList";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
@@ -518,6 +519,7 @@ function NewConversationView(props: {
           props.onSubmit(message, idempotencyKey, visibility, images)
         }
       />
+      {props.docked ? null : <HomeSummary />}
     </section>
   );
 }

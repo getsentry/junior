@@ -3544,11 +3544,51 @@ export function readMockPeopleCode(
   );
   if (!person) return undefined;
   const overview = readMockCodeOverview();
+  // Two weeks of merges and several open changes, so the home summary shows
+  // a weekly delta and a stale change.
+  const merges = [0, 1, 0, 1, 0, 1, 0, 1, 0, 2, 0, 1, 1, 0];
+  const activityDays = overview.activityDays.map((day, index) => ({
+    ...day,
+    merged: merges[index - (overview.activityDays.length - merges.length)] ?? 0,
+  }));
+  const daysAgo = (days: number) =>
+    new Date(NOW_MS - days * 86_400_000).toISOString();
+  const openChange = (
+    number: number,
+    repository: string,
+    title: string,
+    days: number,
+  ) => ({
+    id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+    number,
+    openedAt: daysAgo(days),
+    provider: "github",
+    repository,
+    state: "open" as const,
+    title,
+    url: `https://github.com/${repository}/pull/${number}`,
+  });
   return {
-    activityDays: overview.activityDays,
-    changes: overview.changes,
+    activityDays,
+    changes: [
+      openChange(
+        2440,
+        "getsentry/junior",
+        "Show your week on the home page",
+        0,
+      ),
+      openChange(42, "getsentry/payments", "Reduce checkout latency", 3),
+      openChange(
+        2391,
+        "getsentry/junior",
+        "Retry Slack uploads after a rate limit",
+        9,
+      ),
+      openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12),
+      ...overview.changes.filter((change) => change.state !== "open"),
+    ],
     generatedAt: overview.generatedAt,
-    summary: overview.summary,
+    summary: { ...overview.summary, open: 4 },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
   };
