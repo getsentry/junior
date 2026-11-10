@@ -10,6 +10,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
     versionId: "wt_bf_v1",
     contentVersionId: "wt_bf_v1",
     repository: "getsentry/junior",
+    conversationId: "slack:CQA123:1770003600.000200",
     layers: [
       {
         pr: 3150,
@@ -147,7 +148,8 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
       {
         id: "brief-lock-ttl",
         kind: "brief_decision",
-        text: "Assumed: old locks expire after 10 minutes, so a deploy during the rollout can still double-run once.",
+        text: "Old locks expire after 10 minutes, so a deploy during the rollout can still double-run once.",
+        decisionKind: "assumed",
       },
     ],
     content: {

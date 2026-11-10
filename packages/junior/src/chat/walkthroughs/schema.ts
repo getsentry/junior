@@ -263,6 +263,8 @@ export const walkthroughDocumentSchema = z
     /** The version whose full generation wrote `content`. */
     contentVersionId: z.string().min(1),
     repository: sentence(200),
+    /** The Conversation that made the PR. Brief sources link to it. */
+    conversationId: z.string().min(1).optional(),
     layers: z
       .array(
         z
@@ -314,6 +316,8 @@ export const walkthroughDocumentSchema = z
           id: z.string().min(1),
           kind: z.enum(["brief_fact", "brief_decision", "pr_body", "sentry"]),
           text: z.string().min(1).max(400),
+          /** The Brief decision's own kind. Only `brief_decision` has it. */
+          decisionKind: z.enum(["stated", "confirmed", "assumed"]).optional(),
           url: z.string().url().optional(),
         })
         .strict(),

@@ -145,7 +145,11 @@ export function WalkthroughStepView(props: {
             scope={step.key}
             text={body}
           />
-          <ReferenceList refs={refs} scope={step.key} />
+          <ReferenceList
+            conversationId={document.conversationId}
+            refs={refs}
+            scope={step.key}
+          />
         </div>
         {view ? (
           <WalkthroughDiagram diagram={document.content.diagram} view={view} />

@@ -1,4 +1,5 @@
 import { CircleCheck, CircleDashed, CircleX } from "lucide-react";
+import { Link } from "react-router";
 import type {
   WalkthroughDocument,
   WalkthroughEvidence as Evidence,
@@ -11,15 +12,18 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 
 type Source = WalkthroughDocument["sources"][number];
 type Check = WalkthroughDocument["checks"][number];
 
+// A reviewer may never have opened the Conversation, so Brief lines name it,
+// not the Brief.
 const sourceLabels: Record<Source["kind"], string> = {
-  brief_decision: "Brief",
-  brief_fact: "Brief",
+  brief_decision: "Conversation",
+  brief_fact: "Conversation",
   pr_body: "PR description",
   sentry: "Sentry",
 };
@@ -68,7 +72,10 @@ function fileName(path: string): string {
 function referenceLabel(ref: CitedEvidence): string {
   if (ref.kind === "hunk") return fileName(ref.hunk.path);
   if (ref.kind === "check") return ref.check.label;
-  return `${sourceLabels[ref.source.kind]}: ${ref.source.text}`;
+  const kind = ref.source.decisionKind
+    ? ` · ${decisionKindLabels[ref.source.decisionKind]}`
+    : "";
+  return `${sourceLabels[ref.source.kind]}${kind}: ${ref.source.text}`;
 }
 
 function scrollToReference(id: string) {
@@ -135,8 +142,19 @@ export function CitedProse(props: {
   );
 }
 
+const decisionKindLabels: Record<
+  NonNullable<Source["decisionKind"]>,
+  string
+> = {
+  assumed: "Assumed",
+  confirmed: "Confirmed",
+  stated: "Stated",
+};
+
 /** Sources the prose cites, as numbered footnotes. */
 export function ReferenceList(props: {
+  /** The Conversation that made the PR. Brief lines link to it. */
+  conversationId?: string;
   refs: readonly CitedEvidence[];
   scope: string;
 }) {
@@ -158,8 +176,25 @@ export function ReferenceList(props: {
           <ReferenceNumber n={ref.n} />
           <span>
             <span className="text-dashboard-text-muted">
-              {sourceLabels[ref.source.kind]}
+              {ref.source.kind.startsWith("brief_") && props.conversationId ? (
+                <Link
+                  className="text-dashboard-text-muted underline decoration-dashboard-border-heavy underline-offset-2 hover:text-dashboard-text"
+                  to={conversationPath(props.conversationId)}
+                >
+                  {sourceLabels[ref.source.kind]}
+                </Link>
+              ) : (
+                sourceLabels[ref.source.kind]
+              )}
               {" · "}
+              {ref.source.decisionKind === "assumed" ? (
+                <span className="text-amber-300 light:text-amber-700">
+                  {decisionKindLabels[ref.source.decisionKind]}
+                  {" · "}
+                </span>
+              ) : ref.source.decisionKind ? (
+                `${decisionKindLabels[ref.source.decisionKind]} · `
+              ) : null}
             </span>
             <DisplayText inline text={ref.source.text} />
             {ref.source.url ? (

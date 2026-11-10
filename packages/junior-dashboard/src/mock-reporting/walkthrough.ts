@@ -12,6 +12,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
     parentVersionId: "wt_v1",
     contentVersionId: "wt_v1",
     repository: repo,
+    conversationId: "slack:CQA123:1770003600.000200",
     layers: [
       {
         pr: 3101,
@@ -196,7 +197,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
       {
         id: "brief-legacy",
         kind: "brief_decision",
-        text: "Assumed: nothing reads legacy_tokens since #2870.",
+        text: "Nothing reads legacy_tokens since #2870.",
+        decisionKind: "assumed",
       },
     ],
     content: {
