@@ -2012,12 +2012,83 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("marks pull request comments before publishing their events", async () => {
+  it.each([
+    {
+      name: "a conversation comment",
+      eventName: "issue_comment",
+      body: {
+        action: "created",
+        repository: { full_name: "getsentry/junior" },
+        issue: {
+          number: 946,
+          pull_request: { url: "https://api.github.com/pulls/946" },
+        },
+        comment: {
+          body: "please revise",
+          id: 101,
+          user: { login: "reviewer" },
+        },
+      },
+      target: { commentId: 101, commentKind: "conversation" },
+      publishedCount: 2,
+    },
+    {
+      // An approval with a body is also sent as review.commented, but the
+      // review body gets one reaction.
+      name: "an approval with a body",
+      eventName: "pull_request_review",
+      body: {
+        action: "submitted",
+        repository: { full_name: "getsentry/junior" },
+        pull_request: { number: 946 },
+        review: {
+          body: "fine, but dedupe the tests",
+          id: 303,
+          state: "APPROVED",
+          user: { login: "reviewer" },
+        },
+      },
+      target: { commentId: 303, commentKind: "review_body" },
+      publishedCount: 4,
+    },
+  ])(
+    "marks $name before publishing its events",
+    async ({ body, eventName, publishedCount, target }) => {
+      const fixture = await createGitHubFixture();
+      const published: EventInput[] = [];
+      const markFeedbackReviewing = vi.fn(async () => {
+        expect(published).toEqual([]);
+      });
+      try {
+        const route = webhookRoute(
+          fixture,
+          published,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          markFeedbackReviewing,
+        );
+        const response = await route.handler(signedRequest(body, eventName));
+
+        expect(response.status).toBe(202);
+        expect(markFeedbackReviewing).toHaveBeenCalledTimes(1);
+        expect(markFeedbackReviewing).toHaveBeenCalledWith({
+          ...target,
+          pullRequest: 946,
+          repo: "getsentry/junior",
+        });
+        expect(published).toHaveLength(publishedCount);
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it("does not mark a review without a body", async () => {
     const fixture = await createGitHubFixture();
     const published: EventInput[] = [];
-    const markFeedbackReviewing = vi.fn(async () => {
-      expect(published).toEqual([]);
-    });
+    const markFeedbackReviewing = vi.fn(async () => {});
     try {
       const route = webhookRoute(
         fixture,
@@ -2031,28 +2102,22 @@ describe("GitHub-owned pull request outcomes", () => {
       const response = await route.handler(
         signedRequest(
           {
-            action: "created",
+            action: "submitted",
             repository: { full_name: "getsentry/junior" },
-            issue: {
-              number: 946,
-              pull_request: { url: "https://api.github.com/pulls/946" },
-            },
-            comment: {
-              body: "please revise",
-              id: 101,
+            pull_request: { number: 946 },
+            review: {
+              body: "",
+              id: 304,
+              state: "APPROVED",
               user: { login: "reviewer" },
             },
           },
-          "issue_comment",
+          "pull_request_review",
         ),
       );
 
       expect(response.status).toBe(202);
-      expect(markFeedbackReviewing).toHaveBeenCalledWith({
-        commentId: 101,
-        commentKind: "conversation",
-        repo: "getsentry/junior",
-      });
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
       expect(published).toHaveLength(2);
     } finally {
       await fixture.close();

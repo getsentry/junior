@@ -340,7 +340,7 @@ const pullRequestEventDataSchema = commentAuthorDataSchema
     openerEmail: z.string().min(1).optional(),
     openerUsername: z.string().min(1).optional(),
     commentId: z.number().optional(),
-    commentKind: z.enum(["conversation", "review"]).optional(),
+    commentKind: z.enum(["conversation", "review", "review_body"]).optional(),
   })
   .strict();
 
@@ -572,6 +572,9 @@ const pullRequestReviewWebhookSchema = z.object({
   repository: repositorySchema,
   review: z.object({
     body: z.string().optional().nullable(),
+    // Only the feedback reaction needs the id, so a review without one is
+    // still delivered.
+    id: z.number().optional(),
     state: z.string(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
@@ -617,7 +620,12 @@ function normalizePullRequestReviewEvent(
           : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
     ...gitHubDoneBy(reviewer),
     data: pullRequestEventData({
-      comment: commentAuthorData({ botEmail, sender, text: review.body }),
+      comment: {
+        ...(review.id !== undefined && nonBlank(review.body)
+          ? { commentId: review.id, commentKind: "review_body" as const }
+          : undefined),
+        ...commentAuthorData({ botEmail, sender, text: review.body }),
+      },
       pullRequest,
       repo,
     }),

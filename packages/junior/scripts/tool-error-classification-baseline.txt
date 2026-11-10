@@ -28,6 +28,7 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction lookup failed with HTTP ${listResponse.status}: ${githubErrorMessage(listPayload)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction removal failed with HTTP ${deleteResponse.status}: ${githubErrorMessage(deleteResponse.body)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub reaction creation failed with HTTP ${createResponse.status}: ${githubErrorMessage(createPayload)}`, );
+packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub ${input.operationName} failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`, );
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error(message);
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error("GitHub comment did not name its issue or pull request.");
 packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error( `GitHub pull request lookup failed with HTTP ${pullResponse.status}: ${githubErrorMessage(pullPayload)}`, );

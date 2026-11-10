@@ -115,22 +115,26 @@ function webhookInstallationId(body: unknown): number | undefined {
 /** The pull request comment data that the feedback reaction needs. */
 const feedbackTargetSchema = z.object({
   commentId: z.number(),
-  commentKind: z.enum(["conversation", "review"]),
+  commentKind: z.enum(["conversation", "review", "review_body"]),
+  pullRequest: z.number(),
   repo: z.string().min(1),
 });
 type FeedbackTarget = z.output<typeof feedbackTargetSchema>;
 
-/** Return comment-level pull request feedback that the webhook can mark. */
+/**
+ * Return pull request feedback that the webhook can mark. Only comments and
+ * reviews with a body set `commentId`. An approval with a body is also sent
+ * as `review.commented`, and the first match marks it once.
+ */
 function pullRequestFeedbackTarget(
   events: EventInput[],
 ): FeedbackTarget | undefined {
-  const event = events.find(
-    (candidate) =>
-      candidate.eventType === "pull_request.comment.created" ||
-      candidate.eventType === "pull_request.review_comment.created",
-  );
-  const parsed = feedbackTargetSchema.safeParse(event?.data);
-  return parsed.success ? parsed.data : undefined;
+  for (const event of events) {
+    if (!event.eventType.startsWith("pull_request.")) continue;
+    const parsed = feedbackTargetSchema.safeParse(event.data);
+    if (parsed.success) return parsed.data;
+  }
+  return undefined;
 }
 
 function githubCodeChange(

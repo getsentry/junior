@@ -242,6 +242,109 @@ describe("updatePullRequestFeedback", () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
+  it("replaces Junior's prior status reaction on a review body through GraphQL", async () => {
+    const { fetch, tool } = toolContext([
+      response({ user: { id: BOT_USER_ID } }),
+      response({ id: 303, node_id: "PRR_303" }),
+      response({
+        data: {
+          node: {
+            reactionGroups: [
+              { content: "EYES", viewerHasReacted: true },
+              { content: "HEART", viewerHasReacted: true },
+              { content: "THUMBS_UP", viewerHasReacted: false },
+            ],
+          },
+        },
+      }),
+      response({
+        data: { removeReaction: { reaction: { content: "EYES" } } },
+      }),
+      response({
+        data: { addReaction: { reaction: { databaseId: 404 } } },
+      }),
+    ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          comment_kind: "review_body",
+          comment_id: 303,
+          pull_request: 7,
+          status: "addressed",
+        },
+        { toolCallId: "mark-review-body" },
+      ),
+    ).resolves.toEqual({
+      target: "updatePullRequestFeedback",
+      repo: "getsentry/junior",
+      comment_id: 303,
+      status: "addressed",
+      reaction_id: 404,
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(5);
+    const pullRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    expect(pullRequest.url).toContain("/repos/getsentry/junior/pulls/7");
+    const reviewRequest = fetch.mock.calls[1]?.[0]?.request as Request;
+    expect(reviewRequest.url).toContain(
+      "/repos/getsentry/junior/pulls/7/reviews/303",
+    );
+    // Only Junior's EYES state reaction is removed, not its HEART.
+    expect(fetch.mock.calls[3]?.[0]).toMatchObject({
+      operation: "github.pull.review-reaction.update:getsentry/junior",
+    });
+    const removeRequest = fetch.mock.calls[3]?.[0]?.request as Request;
+    await expect(removeRequest.json()).resolves.toMatchObject({
+      operationName: "RemoveReviewReaction",
+      variables: { content: "EYES", subjectId: "PRR_303" },
+    });
+    const addRequest = fetch.mock.calls[4]?.[0]?.request as Request;
+    await expect(addRequest.json()).resolves.toMatchObject({
+      operationName: "AddReviewReaction",
+      variables: { content: "THUMBS_UP", subjectId: "PRR_303" },
+    });
+  });
+
+  it.each([
+    {
+      name: "without a pull request number",
+      input: {},
+      responses: [],
+      error: "pull_request is required",
+      calls: 0,
+    },
+    {
+      name: "on a pull request that the bot did not author",
+      input: { pull_request: 7 },
+      responses: [response({ user: { id: HUMAN_USER_ID } })],
+      error:
+        "only set feedback status on comments on pull requests it authored",
+      calls: 1,
+    },
+  ])(
+    "refuses review body feedback $name",
+    async ({ calls, error, input, responses }) => {
+      const { fetch, tool } = toolContext(responses);
+
+      await expect(
+        tool.execute?.(
+          {
+            repo: "getsentry/junior",
+            comment_kind: "review_body",
+            comment_id: 303,
+            status: "declined",
+            ...input,
+          },
+          { toolCallId: "review-body-refused" },
+        ),
+      ).rejects.toThrow(error);
+
+      expect(fetch).toHaveBeenCalledTimes(calls);
+    },
+  );
+
   it("does not expose the webhook-owned reviewing state", async () => {
     const { fetch, tool } = toolContext([]);
 

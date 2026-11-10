@@ -36,6 +36,10 @@ const STACK_CHECK =
 const STACK_CONFLICT_STEPS =
   "run `gh stack rebase`, resolve each conflict so that both changes stay intact, stage the files, and run `gh stack rebase --continue`. Run the checks again, run `gh stack push`, and confirm that each open pull request in the stack can merge. Report the files that had conflicts.";
 
+/** Feedback status for a review body, which sets comment_id only when it has text. */
+const REVIEW_BODY_FEEDBACK =
+  'When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".';
+
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
 > = {
@@ -43,8 +47,9 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
     "Fix only failures that the pull request causes. Do not skip, disable, or weaken a check to make it pass.",
   // An approval with a body also arrives as review.commented in the same
   // Turn, so this guidance must not tell the agent to hold off on that body.
-  "pull_request.review.approved":
-    "When the approval includes actionable feedback, address it like any other review feedback.",
+  "pull_request.review.approved": `When the approval includes actionable feedback, address it like any other review feedback. ${REVIEW_BODY_FEEDBACK}`,
+  "pull_request.review.changes_requested": REVIEW_BODY_FEEDBACK,
+  "pull_request.review.commented": REVIEW_BODY_FEEDBACK,
   "pull_request.comment.created":
     'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".',
   "pull_request.review_comment.created":

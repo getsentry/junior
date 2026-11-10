@@ -11,8 +11,11 @@ import {
   issueInstallationToken,
 } from "../credential-support.js";
 import {
+  ADD_REVIEW_REACTION_MUTATION,
   pullRequestCommentReactionsPath,
   pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
+  pullRequestReviewReactionContent,
 } from "../tools/update-pull-request-feedback.js";
 
 /** Environment variable names for the GitHub App installation. */
@@ -104,12 +107,18 @@ export async function searchOpenPullRequestMergeability(
   });
 }
 
-/** Add the "reviewing" reaction to one pull request feedback comment. */
+const reviewSchema = z.object({ node_id: z.string().min(1) });
+const graphqlResultSchema = z.object({
+  errors: z.array(z.unknown()).optional(),
+});
+
+/** Add the "reviewing" reaction to one pull request comment or review body. */
 export async function markPullRequestFeedbackReviewing(
   env: GitHubInstallationEnv,
   target: {
     commentId: number;
-    commentKind: "conversation" | "review";
+    commentKind: "conversation" | "review" | "review_body";
+    pullRequest: number;
     repo: string;
   },
 ): Promise<void> {
@@ -118,6 +127,39 @@ export async function markPullRequestFeedbackReviewing(
     ...env,
     repositories: [name],
   });
+  if (target.commentKind === "review_body") {
+    // A review body has no REST reactions endpoint, so react to its node.
+    const review = reviewSchema.parse(
+      await githubRequest(
+        "https://api.github.com",
+        pullRequestReviewPath({
+          owner,
+          name,
+          pullRequest: target.pullRequest,
+          reviewId: target.commentId,
+        }),
+        { token: token.token },
+      ),
+    );
+    const result = graphqlResultSchema.parse(
+      await githubRequest("https://api.github.com", "/graphql", {
+        body: {
+          operationName: "AddReviewReaction",
+          query: ADD_REVIEW_REACTION_MUTATION,
+          variables: {
+            content: pullRequestReviewReactionContent("reviewing"),
+            subjectId: review.node_id,
+          },
+        },
+        method: "POST",
+        token: token.token,
+      }),
+    );
+    if (result.errors?.length) {
+      throw new Error("GitHub review reaction failed");
+    }
+    return;
+  }
   await githubRequest(
     "https://api.github.com",
     pullRequestCommentReactionsPath({
