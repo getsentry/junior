@@ -168,10 +168,25 @@ export function transcriptListRows(input: {
   return rows;
 }
 
+function askedItemId(entry: RenderedTranscriptEntry): string | undefined {
+  return entry.kind === "tool"
+    ? reviewItemIdFromToolCall(entry.part)
+    : undefined;
+}
+
 function isAskEntry(entry: RenderedTranscriptEntry): boolean {
-  return (
-    entry.kind === "tool" && reviewItemIdFromToolCall(entry.part) !== undefined
+  return askedItemId(entry) !== undefined;
+}
+
+/** Find the row that records the question Junior asked with a Review item. */
+export function askRowIndex(
+  rows: readonly TranscriptListRow[],
+  itemId: string,
+): number | undefined {
+  const index = rows.findIndex(
+    (row) => row.kind === "entry" && askedItemId(row.entry) === itemId,
   );
+  return index < 0 ? undefined : index;
 }
 
 function lastRowSeq(rows: readonly TranscriptListRow[]): number | undefined {

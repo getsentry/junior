@@ -11,6 +11,7 @@ import type {
   ConversationDetailReport,
   ConversationPendingMessagesReport,
   InputImage,
+  ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { useDashboardCoreData } from "../api";
@@ -64,6 +65,11 @@ function ReplyFooter(props: {
   focusRequest?: ReplyFocusRequest;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
+  /**
+   * Show the transcript row of a docked question. `arrived` means it docked
+   * by itself, not by a step or an answer of the reader.
+   */
+  onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
@@ -95,6 +101,30 @@ function ReplyFooter(props: {
   // that the message answers.
   const { pending: questionsPending, questions } = useComposerQuestions(
     props.conversationId,
+  );
+  // The questions that docked when the Conversation opened do not move the
+  // transcript. It opens at the latest message or the "New" marker.
+  const openedWithRef = useRef<{ conversationId: string; ids: Set<string> }>(
+    undefined,
+  );
+  if (
+    !questionsPending &&
+    openedWithRef.current?.conversationId !== props.conversationId
+  ) {
+    openedWithRef.current = {
+      conversationId: props.conversationId,
+      ids: new Set(questions.map((question) => question.id)),
+    };
+  }
+  const { onShowQuestion } = props;
+  const showQuestion = useCallback(
+    (item: ReviewItemPayload, byReader: boolean) => {
+      if (byReader) onShowQuestion?.(item, false);
+      else if (!openedWithRef.current?.ids.has(item.id)) {
+        onShowQuestion?.(item, true);
+      }
+    },
+    [onShowQuestion],
   );
   const questionRef = useRef<HTMLElement>(null);
   const questionAnswersRef = useRef<ComposerQuestionAnswers>(null);
@@ -371,6 +401,7 @@ function ReplyFooter(props: {
             answersRef={questionAnswersRef}
             focusMessageBox={focusMessageBox}
             onAnswersChange={setHasQuestionAnswers}
+            onShow={showQuestion}
             questions={questions}
             ref={questionRef}
           />

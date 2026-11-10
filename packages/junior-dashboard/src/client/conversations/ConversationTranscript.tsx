@@ -1,5 +1,7 @@
 import {
+  createContext,
   memo,
+  use,
   useCallback,
   useEffect,
   useMemo,
@@ -69,6 +71,7 @@ import {
   TranscriptUnreadMarker,
 } from "./TranscriptRows";
 import {
+  askRowIndex,
   defaultTranscriptRowSize,
   rowIndexForSeq,
   transcriptListRows,
@@ -96,6 +99,28 @@ type TranscriptStructuredEventEntry = Extract<
 type TranscriptReasoningEntry = Extract<TranscriptEntry, { kind: "reasoning" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
 type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
+
+/** How long the row of a shown question stays marked. */
+const ASK_HIGHLIGHT_MS = 1_600;
+
+/**
+ * Show the transcript row of a question that Junior asked. `version`
+ * changes on each request, so the same question can show again. `arrived`
+ * means the question came by itself, not by an action of the reader.
+ */
+export type TranscriptAskReveal = {
+  arrived: boolean;
+  itemId: string;
+  version: number;
+};
+
+/** The current ask request, and the scroll owner that shows its row. */
+export const TranscriptAskRevealContext = createContext<
+  | (TranscriptAskReveal & {
+      showRow(row: Element, options: { arrived: boolean }): boolean;
+    })
+  | undefined
+>(undefined);
 
 function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
   return (
@@ -429,8 +454,8 @@ type TranscriptEntryRenderers = {
  * Render transcript entries as list rows. Only the rows near the viewport
  * mount. These rows also stay mounted, because the scroll owner and the
  * page find them in the DOM: the row that holds the reader's place, the
- * "New" marker and the row after it, the rows around `revealSeq`, and the
- * current search match.
+ * "New" marker and the row after it, the rows around `revealSeq`, the
+ * current search match, and the row of a shown question.
  */
 function TranscriptEntryList(
   props: TranscriptEntryRenderers &
@@ -500,6 +525,46 @@ function TranscriptEntryList(
       ?.querySelector(`[data-index="${current}"]`)
       ?.scrollIntoView({ block: "center" });
   }, [indexByKey, match, matchCount, onMatches, rows, searchQuery]);
+  // The row of a shown question stays mounted, so it can scroll into view
+  // and get its mark. A search can drop the row. Then nothing moves.
+  const askReveal = use(TranscriptAskRevealContext);
+  const askItemId = askReveal?.itemId;
+  const askIndex = useMemo(
+    () => (askItemId === undefined ? undefined : askRowIndex(rows, askItemId)),
+    [askItemId, rows],
+  );
+  const shownAskVersion = useRef<number>(undefined);
+  const askHighlight = useRef<{ record: Element; timer: number }>(undefined);
+  useEffect(() => {
+    if (
+      !askReveal ||
+      askIndex === undefined ||
+      shownAskVersion.current === askReveal.version
+    ) {
+      return;
+    }
+    shownAskVersion.current = askReveal.version;
+    const row = listRef.current?.querySelector(`[data-index="${askIndex}"]`);
+    if (!row || !askReveal.showRow(row, { arrived: askReveal.arrived })) {
+      return;
+    }
+    const record = row.querySelector("[data-review-item-ask]");
+    if (!record) return;
+    const previous = askHighlight.current;
+    if (previous) {
+      window.clearTimeout(previous.timer);
+      previous.record.removeAttribute("data-highlighted");
+    }
+    record.setAttribute("data-highlighted", "");
+    askHighlight.current = {
+      record,
+      timer: window.setTimeout(() => {
+        record.removeAttribute("data-highlighted");
+        askHighlight.current = undefined;
+      }, ASK_HIGHLIGHT_MS),
+    };
+  }, [askIndex, askReveal]);
+  useEffect(() => () => window.clearTimeout(askHighlight.current?.timer), []);
   const anchorKey = props.scrollAnchorKey?.();
   const markerIndex = indexByKey.get(UNREAD_MARKER_KEY);
   // A memory row can sit at its event or on the message before it.
@@ -522,6 +587,7 @@ function TranscriptEntryList(
       revealIndex,
       revealIndex === undefined ? undefined : revealIndex - 1,
       matchCount === 0 ? undefined : match,
+      askIndex,
     ],
     listRef,
     sizeClass: (index) => transcriptRowSizeClass(rows[index]!),

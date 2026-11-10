@@ -112,9 +112,11 @@ export function ReviewItemAskRow(props: {
   const verb = item.kind === "action" ? "Asked" : "Added";
   const outcome = askOutcome(item);
   return (
+    // The transcript marks the row for a moment when its question docks.
     <section
       aria-label={`${verb} ${item.title}`}
-      className="flex min-w-0 max-w-[37.5rem] flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel px-3 py-2 font-sans text-sm"
+      className="flex min-w-0 max-w-[37.5rem] flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-dashboard-border bg-dashboard-surface-panel px-3 py-2 font-sans text-sm transition-shadow duration-300 motion-reduce:transition-none data-highlighted:ring-2 data-highlighted:ring-violet-300/50"
+      data-review-item-ask={item.id}
     >
       <Inbox
         aria-hidden="true"

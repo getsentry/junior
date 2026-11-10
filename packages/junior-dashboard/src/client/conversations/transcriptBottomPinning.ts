@@ -43,6 +43,13 @@ type BottomPinResult = {
   contentRef: RefCallback<HTMLDivElement>;
   hasPendingUpdate: boolean;
   jumpToBottom: () => void;
+  /**
+   * Show a mounted row. A row that the reader asks for moves to the middle
+   * of the viewport. A row that `arrived` by itself moves only into view,
+   * and only while the reader follows the latest. Returns false when the
+   * row does not show.
+   */
+  showRow: (row: Element, options: { arrived: boolean }) => boolean;
   /** The `data-scroll-anchor` key of the row that holds the reader's place. */
   scrollAnchorKey: () => string | undefined;
   showJumpToLatest: boolean;
@@ -503,6 +510,43 @@ export function usePinnedTranscriptBottom(input: {
     [setFollowingIntent],
   );
 
+  const showRow = useCallback(
+    (row: Element, options: { arrived: boolean }): boolean => {
+      const root = scrollRootFor(contentElementRef.current);
+      if (!root) return false;
+      // A reader who scrolled away reads something else. Do not move it.
+      if (options.arrived && !followingRef.current) return false;
+      const bounds = viewportBounds(root);
+      const rect = row.getBoundingClientRect();
+      const offset = options.arrived
+        ? Math.max(0, rect.bottom - bounds.bottom)
+        : rect.top -
+          bounds.top -
+          (bounds.bottom - bounds.top - rect.height) / 2;
+      if (Math.abs(offset) < 1) return true;
+      // The reader goes to the row, so the latest must not pull them back.
+      if (offset < 0) leaveBottom();
+      const behavior = preferredExplicitScrollBehavior();
+      setScrollTop(
+        root,
+        Math.max(0, scrollSnapshot(root).scrollTop + offset),
+        behavior,
+      );
+      // A layout change must not restore the place that the reader left.
+      // A smooth scroll remembers each new place on its scroll events.
+      if (behavior === "smooth") {
+        scrollAnchorRef.current = null;
+        return true;
+      }
+      const snapshot = scrollSnapshot(root);
+      previousScrollTopRef.current = snapshot.scrollTop;
+      restoredScrollTopRef.current = snapshot.scrollTop;
+      rememberPlace();
+      return true;
+    },
+    [leaveBottom, rememberPlace],
+  );
+
   /** Scroll to the "New" marker, if the transcript has one. */
   const openAtUnreadMarker = useCallback((): boolean => {
     const content = contentElementRef.current;
@@ -770,6 +814,7 @@ export function usePinnedTranscriptBottom(input: {
       hasPendingUpdate,
       jumpToBottom,
       scrollAnchorKey,
+      showRow,
       showJumpToLatest: shouldShowJumpToLatest({
         enabled: input.enabled,
         endsAtLatest: input.endsAtLatest,
@@ -788,6 +833,7 @@ export function usePinnedTranscriptBottom(input: {
       jumpToBottom,
       openedAtUnread,
       scrollAnchorKey,
+      showRow,
     ],
   );
 }

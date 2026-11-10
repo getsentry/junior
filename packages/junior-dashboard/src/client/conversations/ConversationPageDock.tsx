@@ -1,4 +1,5 @@
 import { useMemo, useRef, type Ref } from "react";
+import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
@@ -19,6 +20,7 @@ export function ConversationPageDock(props: {
   live: boolean;
   onFocusRequestDone(key: string): void;
   onPinRequest(): void;
+  onShowQuestion(item: ReviewItemPayload, arrived: boolean): void;
   ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
 }) {
   const { detail } = props;
@@ -44,6 +46,7 @@ export function ConversationPageDock(props: {
       focusRequest={props.focusRequest}
       onFocusRequestDone={props.onFocusRequestDone}
       onPinRequest={props.onPinRequest}
+      onShowQuestion={props.onShowQuestion}
       pendingAuthorization={detail.pendingAuthorization}
       // Keep the cancel watermark off props. Live polls refresh generatedAt
       // every 2s; a prop would bust footer memo while the reader types.
