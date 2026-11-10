@@ -729,11 +729,15 @@ async function selectGitHubGrant(
     ctx.request.bodyText,
   );
   if (hostMutationRepository) {
-    return grantForAccess(
-      "write",
-      "github.installation-write",
-      "installation-write",
-    );
+    return {
+      ...grantForAccess(
+        "write",
+        "github.installation-write",
+        "installation-write",
+      ),
+      // GraphQL URLs name no repository; the host operation does.
+      auditAttributes: { "app.github.repository": hostMutationRepository },
+    };
   }
 
   const graphqlAccess = githubGraphqlAccess(
