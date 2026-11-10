@@ -30,7 +30,7 @@ import {
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { AGENT_INVOCATION_STATUSES } from "./statuses";
-import { listAgentInvocationsForConversation } from "./store";
+import { isParentTask, listAgentInvocationsForConversation } from "./store";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -109,7 +109,7 @@ async function parentTaskInvocationIds(
   );
   return new Set(
     invocations.flatMap((invocation) =>
-      invocation.parentToolCallId ? [invocation.invocationId] : [],
+      isParentTask(invocation) ? [invocation.invocationId] : [],
     ),
   );
 }

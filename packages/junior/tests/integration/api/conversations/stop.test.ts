@@ -7,10 +7,7 @@ import { listChildAgents } from "@/chat/agent-invocations/list";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { getAgentInvocationResultMessageId } from "@/chat/agent-invocations/ids";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-} from "@/chat/agent-invocations/store";
+import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { stopConversationTurnResponseSchema } from "@/api/schema";
 import {
@@ -51,6 +48,7 @@ import {
   deferred,
 } from "../../../fixtures/conversation-work";
 import { signedInViewer } from "../../../fixtures/user";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
 
 function stopRequest(
   fixture: ConversationFixture,
@@ -206,9 +204,9 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    const doneResult = (await completeAgentInvocation({
+    const doneResult = (await finishAgentInvocation({
       invocationId: done.invocationId,
-      result: "Child fact: 42.",
+      closingReport: "Child fact: 42.",
       status: "completed",
     })) as TerminalAgentInvocation;
     await enqueueAgentInvocationResult(doneResult, { queue, state });
@@ -249,7 +247,6 @@ describe("conversation stop API", () => {
     // A stop keeps a result that the parent already read. The child's
     // session still ends, so no watch or queued input starts it again.
     await expect(getAgentInvocation(done.invocationId)).resolves.toMatchObject({
-      parentMailboxStatus: "appended",
       status: "completed",
     });
     await expect(
@@ -333,7 +330,6 @@ describe("conversation stop API", () => {
     await expect(getAgentInvocation(child.invocationId)).resolves.toMatchObject(
       {
         errorMessage: "Agent invocation was stopped",
-        parentMailboxStatus: "appended",
         status: "stopped",
       },
     );
@@ -343,7 +339,6 @@ describe("conversation stop API", () => {
     await expect(
       getAgentInvocation(helper.invocationId),
     ).resolves.toMatchObject({
-      parentMailboxStatus: "skipped",
       status: "stopped",
     });
     // The stop ends the sessions of the child and the agents below it, but
@@ -418,9 +413,9 @@ describe("conversation stop API", () => {
       queue,
       state,
     });
-    const result = (await completeAgentInvocation({
+    const result = (await finishAgentInvocation({
       invocationId: child.invocationId,
-      result: "Child fact: 42.",
+      closingReport: "Child fact: 42.",
       status: "completed",
     })) as TerminalAgentInvocation;
     await enqueueAgentInvocationResult(result, { queue, state });
@@ -519,9 +514,9 @@ describe("conversation stop API", () => {
       idempotencyKey: "missed-spawn-grandchild",
       parentConversationId: child.invocation.childConversationId,
     });
-    await completeAgentInvocation({
+    await finishAgentInvocation({
       invocationId: missed.invocationId,
-      result: "Missed fact: 42.",
+      closingReport: "Missed fact: 42.",
       status: "completed",
     });
     clock.mockReturnValue(clock() + 1_000);
@@ -567,6 +562,7 @@ describe("conversation stop API", () => {
       ...invocationInput,
       idempotencyKey: "late-root-read-child",
       parentConversationId: created.conversationId,
+      parentToolCallId: "call-read-child",
     });
     const lease = await startConversationWork({
       conversationId: created.conversationId,
@@ -575,9 +571,9 @@ describe("conversation stop API", () => {
     });
     if (lease.status !== "acquired") throw new Error("Expected work lease");
     await enqueueAgentInvocationResult(
-      (await completeAgentInvocation({
+      (await finishAgentInvocation({
         invocationId: read.invocationId,
-        result: "Read fact: 42.",
+        closingReport: "Read fact: 42.",
         status: "completed",
       })) as TerminalAgentInvocation,
       { queue, state },
@@ -624,7 +620,6 @@ describe("conversation stop API", () => {
     ).resolves.toBeDefined();
     // The late cascade keeps the result that the root already read.
     await expect(getAgentInvocation(read.invocationId)).resolves.toMatchObject({
-      parentMailboxStatus: "appended",
       status: "completed",
     });
     await expect(

@@ -218,6 +218,7 @@ attributes. Nested logs and spans inherit them.
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`            |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text` or `db.query.summary`; `app.db.transport`                     |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.push.send`                              |
+| Child agent sent no report           | `agent.turn.reply_gate.*`                                                                                    |
 
 ## Code Mode
 
@@ -624,6 +625,28 @@ previous Turn when agent history exists.
 
 - `app.thread_messages.trimmed` is set in Turn preparation, only when the
   loaded Messages pass the trim threshold. Trimming makes no model call.
+
+## Child Agent Reports
+
+A child's final response is not sent to the parent. Only `messageAgent` to
+`parent` reaches it. After a turn-limit stop, the final response is sent as a
+report, and the reply gate does not run. The reply gate checks the Run when
+it ended with a final response, without `messageAgent` to `parent`,
+`noReply`, or `reportBlocked` after the latest task. It adds one reminder for
+each task, and the Run continues.
+
+- `agent.turn.reply_gate.remind` (warn): the gate added the reminder.
+- `agent.turn.reply_gate.reported`: the Run replied after the reminder.
+- `agent.turn.reply_gate.missing` (warn): the Run ended with a final
+  response again. A parent task gets a "no report" result. Own work sends
+  nothing.
+
+Reminder outcomes.
+
+```text
+dataset=logs query='event.name:agent.turn.reply_gate.*'
+fields=event.name,count()
+```
 
 ## Invariants
 

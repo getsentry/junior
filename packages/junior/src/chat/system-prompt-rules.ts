@@ -8,6 +8,8 @@
  */
 import type { Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { MESSAGE_AGENT_TOOL_NAME } from "@/chat/agent-invocations/report";
+import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 
@@ -39,7 +41,7 @@ const TASK_EXECUTION_RULES = [
 const AGENT_INPUT_RULES = [
   "- An `<agent-result>` reports a child agent that you started. Act on its `status`. `completed`: use the result to continue the work in this conversation, and do not repeat work that the child agent already did. `failed`: if you still need this work, use messageAgent to ask the same child agent to try again, or tell the user what is blocked. `stopped`: the child agent was stopped on purpose; do not start this work again unless the user asks. `blocked`: the child agent did not finish because something is missing. If you can give it, send it to the child agent with messageAgent. If only a person can give it, such as user approval, do not ask in plain text: add one action item with `addReviewItem` that names the exact action. Make its `dedupe_key` from the child conversation and the blocked action, so a repeat block updates the same item. After the user answers in this conversation, use messageAgent to pass the approval on to the child agent, name the exact action, and tell it to try again. Otherwise tell the user what is missing.",
   "- `waiting_on` on an `<agent-result>` names child agents that you started that have not reported yet. Their results arrive later. Unless this result is useful to the user alone, wait for them before you report.",
-  '- An `<agent-message source="child_agent">` comes from a child agent that can still be working; its result arrives later. If it needs an answer, use messageAgent.',
+  '- An `<agent-message source="child_agent">` comes from a child agent that can still be working, such as on events from its own watches. If it needs an answer, use messageAgent.',
   '- A child agent calls people by their Slack mention. When your reply is to a person that a child agent names, write to them as "you", and do not also name them in the third person.',
   '- An `<agent-message source="top_level_agent">` comes from another top-level agent. This conversation is not its child agent, so it does not report to that agent. To answer, use messageAgent with `to` set to its `conversation_id`.',
 ];
@@ -59,13 +61,15 @@ const AUTOMATION_RUN_RULES = [
 
 /**
  * Block 2, `<child-agent-run>`: the job rules for a run that a parent agent
- * started. No person reads the run, and its final text is its result.
+ * started. No person reads the run. A child's final response is not sent to
+ * the parent; only `messageAgent` to `parent` reaches it. This is the one
+ * home of that rule; task inputs and the report reminder point to it.
  */
 const CHILD_AGENT_RUN_RULES = [
-  "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. The parent agent reads your final reply; no person reads this run.",
+  "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. No person reads this run.",
   "- Do the work now. Do not ask questions, ask for approval, or offer options.",
-  `- Your final text reply goes to the parent as finished work. When the task cannot be finished, end the run with \`${REPORT_BLOCKED_TOOL_NAME}\` instead.`,
-  "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
+  `- Your final response is not sent to your parent agent. Only \`${MESSAGE_AGENT_TOOL_NAME}\` to \`${PARENT_AGENT_TARGET}\` reaches it. Use it to report the finished work, or a finding or decision that the parent or a person needs. When nothing needs the parent, such as a routine bot comment or a fix that you pushed, end the run with \`${NO_REPLY_TOOL_NAME}\` and put the outcome in its \`note\`. For a task from the parent, that note is your report. When the task cannot be finished, end the run with \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
+  "- Your report is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
 ];
 
 /**
@@ -200,12 +204,12 @@ const AUTOMATION_FAILURE_REPORTING_RULES = [
 ];
 
 /**
- * Block 6, `<failure-reporting>` for child agent runs. A text reply is finished
+ * Block 6, `<failure-reporting>` for child agent runs. A report is finished
  * work, so a failure that stops the task goes in the blocked report.
  */
 const CHILD_AGENT_FAILURE_REPORTING_RULES = [
-  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in a text reply.`,
-  "- Keep raw tool payloads and internal routing metadata out of the final reply.",
+  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in a report.`,
+  "- Keep raw tool payloads and internal routing metadata out of your report.",
 ];
 
 /** Block 6 `<output>` line for every mode: how to report finished work. */
@@ -316,10 +320,9 @@ function buildOutputSection(platform: Platform, mode: PromptMode): string {
   if (mode === "child_agent") {
     return [
       `<output format="markdown">`,
-      "- Start with the result, not internal process narration.",
-      RESULT_REPORTING_RULE,
-      "- Use concise Markdown: short paragraphs, bullets, links, and fenced code blocks.",
-      "- Reply with text only when the task is finished.",
+      "- Start each report with the result, not internal process narration.",
+      "- Cards that tools return do not reach the parent agent. Put what the parent needs in your report.",
+      "- Use concise Markdown in reports: short paragraphs, bullets, links, and fenced code blocks.",
       "</output>",
     ].join("\n");
   }

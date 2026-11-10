@@ -5,6 +5,7 @@ import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
+  eventBatchLabel,
   eventBatchMessageMeta,
   isEventMailboxMetadata,
   renderEventBatchInputs,
@@ -26,6 +27,7 @@ import type {
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
 import { createAgentInvocationFromLatest } from "./create";
+import type { SendAgentResult } from "./finish";
 import {
   getAgentInvocationIdForEvents,
   getAgentInvocationIdForMessage,
@@ -35,10 +37,12 @@ import {
 import {
   getAgentInvocation,
   getLatestAgentInvocationForConversation,
-  isTerminalAgentInvocation,
-  markAgentInvocationParentMailboxAppended,
+  isParentTask,
 } from "./store";
-import { isWatchEvent } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  isWatchEvent,
+} from "@/chat/conversations/session-stop";
 import { renderUntrustedTag } from "@/chat/input-tags";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { listUnreportedSiblingAgents } from "./list";
@@ -56,11 +60,15 @@ import {
   enqueueAgentInvocation,
   resolveAgentInvocationId,
 } from "./work";
+import {
+  AGENT_INVOCATION_RESULT_MAX_LENGTH,
+  renderTaskError,
+  renderTaskResult,
+} from "./report";
 
 const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
 // can pause for input or auth instead of failing (#881).
-const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
 /** Event type of a message that a child agent sends to its parent. */
 const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
 
@@ -104,6 +112,21 @@ function trustedSummary(
 }
 
 /**
+ * Render what one terminal agent invocation tells its parent. A parent task
+ * sends its report log, and its error before that. A row that a runtime
+ * without a report log wrote holds its text already.
+ */
+function resultText(invocation: TerminalAgentInvocation): string {
+  const completed = invocation.status === "completed";
+  if (invocation.reportLog === undefined || !isParentTask(invocation)) {
+    return completed ? invocation.result : invocation.errorMessage;
+  }
+  return completed
+    ? renderTaskResult(invocation.reportLog)
+    : renderTaskError(invocation.errorMessage, invocation.reportLog);
+}
+
+/**
  * Render the parent agent input for one terminal agent invocation as one
  * `<agent-result>`. A child agent wrote the output, so it is escaped data.
  * `status` and `waiting_on` are runtime facts. The system prompt says what to
@@ -113,11 +136,7 @@ function renderResultInput(
   invocation: TerminalAgentInvocation,
   openSiblings: readonly ChildAgent[],
 ): string {
-  const output = (
-    invocation.status === "completed"
-      ? invocation.result
-      : invocation.errorMessage
-  )
+  const output = resultText(invocation)
     .trim()
     .slice(0, AGENT_INVOCATION_RESULT_MAX_LENGTH);
   return renderUntrustedTag(
@@ -181,7 +200,8 @@ function buildResultInboundMessage(
 
 /**
  * Append one terminal agent invocation result to the parent mailbox and wake
- * the parent. Repeat calls are safe.
+ * the parent. `finishAgentInvocation` calls it before it saves the terminal
+ * status. Repeat calls are safe: the inbox drops a message id that it has.
  *
  * Results do not go through `admitAutomatedTurn`, so the automated-turn limit
  * never drops them. Result Turns still count toward that limit.
@@ -196,9 +216,6 @@ export async function enqueueAgentInvocationResult(
     state?: StateAdapter;
   },
 ): Promise<void> {
-  if (invocation.parentMailboxStatus !== "pending") {
-    return;
-  }
   const nowMs = options.nowMs ?? Date.now();
   const openSiblings = await listUnreportedSiblingAgents(
     invocation.parentConversationId,
@@ -210,10 +227,6 @@ export async function enqueueAgentInvocationResult(
     queueDelayMs: EVENT_WAIT_MS,
     state: options.state,
   });
-  await markAgentInvocationParentMailboxAppended(
-    invocation.invocationId,
-    nowMs,
-  );
 }
 
 function childAgentLabel(invocation: AgentInvocation): string {
@@ -285,7 +298,12 @@ export async function enqueueAgentMessageToParent(args: {
   });
 }
 
-type ChildAgentInput = { invocationId: string; kind: "message" | "result" };
+type ChildAgentInput = {
+  invocationId: string;
+  kind: "message" | "result";
+  /** The result reports a stop that the child's own worker saw. */
+  stopped?: true;
+};
 
 /**
  * Read the agent invocation that one result or message Event refers to: the
@@ -302,29 +320,39 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
   if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
     return { invocationId: metadata.event.identifier, kind: "message" };
   }
-  return isAgentInvocationResultEventType(metadata.event.eventType)
-    ? { invocationId: metadata.event.identifier, kind: "result" }
-    : undefined;
+  if (!isAgentInvocationResultEventType(metadata.event.eventType)) {
+    return undefined;
+  }
+  return {
+    invocationId: metadata.event.identifier,
+    kind: "result",
+    ...(metadata.event.eventType === agentInvocationResultEventType("stopped")
+      ? { stopped: true }
+      : undefined),
+  };
 }
 
 /**
- * Return whether a stop after this result was sent skipped it, so it starts no
- * work. A message that a child sent before its stop is still delivered.
+ * Return whether a stop of the child after this result was sent skipped it,
+ * so it starts no work. A message that a child sent before its stop is still
+ * delivered, and so is the report of a person's stop of the child.
  */
-function isSkippedAgentResult(
+async function isSkippedAgentResult(
   input: ChildAgentInput,
   invocation: AgentInvocation,
-): boolean {
+): Promise<boolean> {
   return (
     input.kind === "result" &&
-    isTerminalAgentInvocation(invocation) &&
-    invocation.parentMailboxStatus === "skipped"
+    !input.stopped &&
+    (await getConversationStoppedAtMs(invocation.childConversationId)) !==
+      undefined
   );
 }
 
 /**
  * Read the agent invocation of one result or message and check that it
- * belongs to a child of the Conversation that received it.
+ * belongs to a child of the Conversation that received it. A result is sent
+ * before its agent invocation saves its end, so the row can still be open.
  */
 async function getChildAgentInputInvocation(
   message: InboundMessage,
@@ -333,7 +361,6 @@ async function getChildAgentInputInvocation(
   const invocation = await getAgentInvocation(input.invocationId);
   if (
     !invocation ||
-    (input.kind === "result" && !isTerminalAgentInvocation(invocation)) ||
     invocation.parentConversationId !== message.conversationId
   ) {
     throw new Error(
@@ -369,13 +396,12 @@ async function startAgentInvocationsForChildInput(
     return undefined;
   }
   // A stopped child takes no new work, even from input sent before the stop.
-  // A tree stop leaves a `replaced` agent invocation with its finished status
-  // and marks it `skipped`, so that also means stopped. Watch Events start
-  // work once a person or the parent ended the stop of the child.
+  // Watch Events start work once a person or the parent ended the stop of
+  // the child.
   if (
     (latest.status === "stopped" ||
-      (isTerminalAgentInvocation(latest) &&
-        latest.parentMailboxStatus === "skipped")) &&
+      (await getConversationStoppedAtMs(context.conversationId)) !==
+        undefined) &&
     // The session stop already saved every Watch Event of a stopped
     // Conversation, so these reach a child that is no longer stopped.
     (isAgentInput || !messages.every(isWatchEvent))
@@ -398,7 +424,9 @@ async function startAgentInvocationsForChildInput(
       input: renderEventBatchInputs(
         messages,
         await eventReviewItemInputs(messages),
+        { replyTo: "parent" },
       ).join("\n\n"),
+      inputLabel: eventBatchLabel(messages),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
       ),
@@ -422,11 +450,12 @@ async function startAgentInvocationsForChildInput(
   for (const [index, message] of messages.entries()) {
     const input = inputs[index]!;
     const source = await getChildAgentInputInvocation(message, input);
-    if (isSkippedAgentResult(input, source)) {
+    if (await isSkippedAgentResult(input, source)) {
       continue;
     }
     const invocation = await createAgentInvocationFromLatest({
       input: message.input.text.trim(),
+      inputLabel: `${input.kind === "result" ? "Result" : "Message"} from ${childAgentLabel(source).toLowerCase()}${source.title ? `: ${source.title}` : ""}`,
       invocationId:
         input.kind === "result"
           ? getAgentInvocationIdForResult(source.invocationId)
@@ -451,13 +480,23 @@ async function startAgentInvocationsForChildInput(
 export function createChildConversationWorker(
   agentRunner: AgentRunner,
   options: {
-    enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
     maxAgentDepth?: number;
     queue: ConversationWorkQueue;
+    sendResult?: SendAgentResult;
     state?: StateAdapter;
   },
 ) {
-  const invocationWorker = createAgentInvocationWorker(agentRunner, options);
+  const invocationWorker = createAgentInvocationWorker(agentRunner, {
+    ...options,
+    enqueueMessage: async (sender, messageKey, text) =>
+      await enqueueAgentMessageToParent({
+        messageKey,
+        queue: options.queue,
+        sender,
+        state: options.state,
+        text,
+      }),
+  });
   return async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
@@ -501,7 +540,7 @@ export async function withAgentInvocationResultActors(
         entry.message,
         input,
       );
-      return isSkippedAgentResult(input, invocation)
+      return (await isSkippedAgentResult(input, invocation))
         ? undefined
         : { ...entry, actor: invocation.actor };
     }),

@@ -390,11 +390,16 @@ it("saves a stopped child's timers until a person writes to its root", async () 
   await runTimerWatchHeartbeat({ nowMs: clock(), queue });
   clock.mockReturnValue(clock() + 120_000);
   await drain();
-  expect(
-    agentRuns
-      .filter((run) => run.conversationId === child.childConversationId)
-      .map((run) => run.source.kind),
-  ).toEqual(["event"]);
+  const childRuns = agentRuns.filter(
+    (run) => run.conversationId === child.childConversationId,
+  );
+  expect(childRuns.map((run) => run.source.kind)).toEqual(["event"]);
+  // A child's timer Turn replies to its parent, so it gets the child reply
+  // contract.
+  expect(childRuns[0]!.instruction.text).toContain(
+    "Report as your child agent rules say",
+  );
+  expect(childRuns[0]!.instruction.text).not.toContain("Then reply");
 
   // A person's stop of only the child stays in effect when a person writes
   // to the root, because the root itself was not stopped.

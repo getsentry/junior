@@ -7,7 +7,7 @@ import {
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
-import { test, type ToolCall } from "@junior-evals/fixture/test";
+import { test, type RunAgent, type ToolCall } from "@junior-evals/fixture/test";
 
 // The shared GitHub HTTP fixture serves this PR with one failed check.
 const pullRequest = "getsentry/junior#691";
@@ -23,6 +23,35 @@ const repositoryRef = {
   name: repository.name,
   url: "https://api.github.com/repos/getsentry/junior",
 };
+
+/**
+ * Start a child Thread that maintains the PR, and add the Watch that Junior
+ * adds after it opens a pull request. The Thread then gets the PR events.
+ */
+async function startPullRequestThread(run: RunAgent, events: string[]) {
+  const conversation = await run(
+    slackMention(
+      `Use spawnAgent to start one Thread (kind "thread") named "pr-thread" with the task "Maintain ${pullRequest}. Report READY now. A watch on the PR sends you its events later."`,
+    ),
+  );
+  const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+    (call) => toolOutput(call) as { conversation_id?: string },
+  );
+  expect(
+    spawned?.conversation_id,
+    "No child Thread: this run does not test its PR events",
+  ).toEqual(expect.any(String));
+  await insertWatch({
+    conversation: { conversationId: spawned!.conversation_id! },
+    events,
+    identifier: pullRequest,
+    intent:
+      "Maintain pull requests Junior creates. For actionable review feedback or failed checks, inspect the evidence, make scoped fixes, verify them, and push. When a reviewer submits a review, notify the person who asked for the pull request by @-mentioning their Slack user ID, with the reviewer, the review outcome, and the pull request link. Otherwise stay silent.",
+    label: `GitHub PR ${pullRequest}`,
+    resourceType: "pull_request",
+  });
+  return await conversation.child(spawned!.conversation_id!);
+}
 
 function checkSuiteWebhook(conclusion: "failure" | "success") {
   return githubWebhook("check_suite", {
@@ -427,6 +456,65 @@ describe("Watches", () => {
 
     expect(delivery.replies).toHaveLength(1);
     expect(delivery.replies[0]?.text).not.toMatch(/octo-requester/i);
+  });
+
+  test("when a bot comments on the PR of a child Thread, the Thread ends with noReply", async ({
+    run,
+  }) => {
+    const thread = await startPullRequestThread(run, [
+      "pull_request.comment.created",
+    ]);
+
+    // A preview deploy bot comments. Nothing needs a change or a person.
+    const delivery = await thread.continue(
+      githubWebhook("issue_comment", {
+        action: "created",
+        comment: {
+          body: "[vc]: #preview\n**The latest updates on your projects.**\n| Name | Status | Preview |\n| junior-docs | Ready | [Visit Preview](https://junior-docs-git-fix.vercel.app) |",
+          id: 9_001,
+          user: { login: "vercel[bot]", type: "Bot" },
+        },
+        issue: {
+          number: 691,
+          pull_request: {
+            url: "https://api.github.com/repos/getsentry/junior/pulls/691",
+          },
+        },
+        repository,
+        sender: { id: 35_613_825, login: "vercel[bot]", type: "Bot" },
+      }),
+    );
+
+    expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
+    expect(completedToolCalls("messageAgent", delivery)).toEqual([]);
+  });
+
+  test("when the PR of a child Thread is approved, the Thread reports it to its parent", async ({
+    run,
+  }) => {
+    const thread = await startPullRequestThread(run, [
+      "pull_request.review.approved",
+    ]);
+
+    const delivery = await thread.continue(
+      githubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 691 },
+        repository,
+        review: {
+          body: "Looks good.",
+          state: "approved",
+          user: { login: "octo-reviewer" },
+        },
+      }),
+    );
+
+    // A child's final response is not sent to the parent, so the report is
+    // a messageAgent call to the parent.
+    const reports = completedToolCalls("messageAgent", delivery).filter(
+      (call) => (call.input as { to?: string } | undefined)?.to === "parent",
+    );
+    expect(reports).toHaveLength(1);
   });
 
   test("when directly mentioned during a watch delivery, answer the mention in its own turn", async ({

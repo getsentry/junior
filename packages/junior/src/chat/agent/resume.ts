@@ -106,6 +106,7 @@ export function createResumeState(args: ResumeStateArgs) {
   let cumulativeToolCallCount =
     args.checkpoint.record?.cumulativeToolCallCount ?? 0;
   let turnLimitWrappedUp = args.checkpoint.record?.turnLimitWrappedUp ?? false;
+  let replyReminderTaskId = args.checkpoint.record?.replyReminderTaskId;
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
@@ -128,6 +129,7 @@ export function createResumeState(args: ResumeStateArgs) {
     credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
     ...(turnLimitWrappedUp ? { turnLimitWrappedUp } : undefined),
+    ...(replyReminderTaskId ? { replyReminderTaskId } : undefined),
     destination: args.destination,
     dispatchId: args.dispatchId,
     source: args.runSource,
@@ -166,6 +168,17 @@ export function createResumeState(args: ResumeStateArgs) {
     /** Save the wrap-up so later slices stop instead of wrapping up again. */
     markTurnLimitWrappedUp(): void {
       turnLimitWrappedUp = true;
+    },
+    /** Latest task that got its reply gate reminder. */
+    get replyReminderTaskId(): string | undefined {
+      return replyReminderTaskId;
+    },
+    /**
+     * Save the reminder for one task, so a compaction or a later slice cannot
+     * repeat it, and a later steered task gets its own.
+     */
+    markReplyReminded(taskId: string): void {
+      replyReminderTaskId = taskId;
     },
     /** Charge one tool call to the durable turn total and return the total. */
     countToolCall(): number {

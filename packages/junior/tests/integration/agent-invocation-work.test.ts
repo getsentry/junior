@@ -1,24 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as z from "zod";
-import { createApp, defineJuniorPlugins } from "@/app";
-import type { PiMessage } from "@/chat/pi/messages";
-import {
-  createAgentInvocation,
-  createAgentInvocationForMessage,
-} from "@/chat/agent-invocations/create";
+import { createApp } from "@/app";
 import {
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/ids";
 import {
-  completeAgentInvocation,
   getActiveAgentInvocationForConversation,
   getAgentInvocation,
-  markAgentInvocationPaused,
-  markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
-import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
+import {
+  enqueueAgentInvocationResult,
+  withAgentInvocationResultActors,
+} from "@/chat/agent-invocations/result";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
@@ -28,35 +23,20 @@ import {
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import {
-  createAndEnqueueAgentInvocation,
-  enqueueAgentInvocation,
-} from "@/chat/agent-invocations/work";
+import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { loadProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
-import { contextProvenance } from "@/chat/conversations/provenance";
+import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  getTurnRecord,
-  upsertTurnRecord,
-} from "@/chat/task-execution/turn-cursor";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import { context, execute } from "../fixtures/event-automations";
-import {
-  createModelAgentRunner,
-  neverRunAgentRunner,
-} from "../fixtures/agent-runner";
+import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import {
-  createEventSource,
-  defineJuniorPlugin,
-  definePluginTool,
-  pluginToolOutputSchema,
-} from "@sentry/junior-plugin-api";
+import { createEventSource } from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
-  destination,
   invocationInput,
   parentConversationId,
   slackDestination,
@@ -67,7 +47,18 @@ import {
   loadMessageEvents,
   loadTurnEvents,
   loadSubagentEvents,
+  queueParentTask,
+  reportToParent,
+  upkeepPlugins,
 } from "../fixtures/agent-invocations";
+// The parent task that waits behind own work ends with this note.
+const nextTaskReply = {
+  type: "toolCall" as const,
+  name: "noReply",
+  arguments: { note: "Checked the next PR." },
+};
+const nextTaskResult =
+  /status="completed">\n[\s\S]*\nChecked the next PR\.\n<\/agent-result>$/;
 
 describe("agent invocation conversation work", () => {
   afterEach(async () => {
@@ -79,16 +70,21 @@ describe("agent invocation conversation work", () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
+    // The child reports with messageAgent. Its final response stays in its
+    // own history.
     const agentRunner = createModelAgentRunner(
       createModelStream([
         {
-          type: "text",
-          text: "Durable child result",
+          type: "toolCall",
+          name: "messageAgent",
+          arguments: { to: "parent", text: "Durable child result" },
           onRequest: () => {
             observedVisibility = getCurrentConversationPrivacy();
           },
         },
+        { type: "text", text: "Durable child result" },
       ]),
+      { queue: () => queue },
     );
     const run = vi.spyOn(agentRunner, "run");
     const {
@@ -101,6 +97,7 @@ describe("agent invocation conversation work", () => {
         {
           ...slackInvocationInput,
           idempotencyKey: "execute-1",
+          parentToolCallId: "spawn-call",
         },
         {
           conversationStore,
@@ -149,8 +146,7 @@ describe("agent invocation conversation work", () => {
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
         mailboxStatus: "appended",
-        parentMailboxStatus: "appended",
-        result: "Durable child result",
+        reportLog: [expect.objectContaining({ text: "Durable child result" })],
         status: "completed",
         terminalAtMs: expect.any(Number),
       });
@@ -238,7 +234,7 @@ describe("agent invocation conversation work", () => {
         }),
       ).rejects.toThrow("does not belong to");
       const completed = await getAgentInvocation(created.invocationId);
-      await completeAgentInvocation({
+      await finishAgentInvocation({
         errorMessage: "late conflicting failure",
         invocationId: created.invocationId,
         nowMs: Date.now() + 1_000,
@@ -307,11 +303,10 @@ describe("agent invocation conversation work", () => {
         // Prompt mode and reportBlocked read this field.
         agentInvocationId: created.invocationId,
         conversationId: created.childConversationId,
-        // No parent agent call started it, so its input is not an
-        // instruction.
+        // A parent agent call started it, so its input is an instruction.
         instruction: {
-          provenance: contextProvenance,
-          text: slackInvocationInput.input,
+          provenance: agentInstructionProvenance,
+          text: expect.stringContaining(slackInvocationInput.input),
         },
         disabledFeatures: ["interactive-auth", "subagents"],
         reasoning: "medium",
@@ -335,113 +330,353 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("makes a child private when its root's channel goes private", async () => {
-    const { conversationStore, fixture } =
-      await prepareSlackParentConversation();
-    try {
-      const created = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "private-1",
-      });
-      const childBefore = await conversationStore.get({
-        conversationId: created.childConversationId,
-      });
-      expect(childBefore).toMatchObject({ visibility: "public" });
-
-      // Only the root records the new visibility. The child shares its
-      // Destination row, so its own row does not change. A child Run reads
-      // this visibility, as the test above shows.
-      await conversationStore.recordActivity({
-        conversationId: slackParentConversationId,
-        destination: slackDestination,
-        nowMs: 3_000,
-        source: "slack",
-        visibility: "private",
-      });
-      await expect(
-        conversationStore.get({ conversationId: created.childConversationId }),
-      ).resolves.toEqual({ ...childBefore, visibility: "private" });
-    } finally {
-      await fixture.close();
-    }
-  });
-
   const blockedMissing = "Approval to open the PR. Ask the user.";
+  const success = { outcome: "success", type: "turn_completed" };
+  // A child reports with a tool. Its final response stays in its history. A
+  // parent task gets one result with its reports. The child's own work, such
+  // as a Watch Event Run, sends only its messages, failures, and blocks.
   it.each([
     {
-      name: "failed",
-      output: { type: "error" as const, errorMessage: "model unavailable" },
+      // An open parent task on the same child reports only its own Run, so
+      // a failure or block of the child's own work still reports on its own.
+      name: "failed own work with an open parent task",
+      openParentTask: true,
+      outputs: [
+        { type: "error" as const, errorMessage: "model unavailable" },
+        nextTaskReply,
+      ],
       invocation: { errorMessage: "model unavailable", status: "failed" },
       terminal: { failureCode: "model_execution_failed", type: "turn_failed" },
       subagentOutcome: "error",
+      parentInputs: [/^<agent-result [^>]*status="failed">/, nextTaskResult],
     },
     {
       // A blocked report is a result, not a model failure.
-      name: "blocked",
-      output: {
-        type: "toolCall" as const,
-        name: "reportBlocked",
-        arguments: { missing: blockedMissing },
-      },
+      name: "blocked own work with an open parent task",
+      openParentTask: true,
+      outputs: [
+        {
+          type: "toolCall" as const,
+          name: "reportBlocked",
+          arguments: { missing: blockedMissing },
+        },
+        nextTaskReply,
+      ],
       invocation: { errorMessage: blockedMissing, status: "blocked" },
       terminal: { outcome: "blocked", type: "turn_completed" },
       subagentOutcome: "blocked",
+      parentInputs: [/^<agent-result [^>]*status="blocked">/, nextTaskResult],
     },
     {
-      // A child has no mailbox Turn to keep the note, so it is the result.
-      name: "quiet",
-      output: {
-        type: "toolCall" as const,
-        name: "noReply",
-        arguments: { note: "Bot comment needs no change." },
-      },
+      // The failure keeps the report that the Run already sent.
+      name: "parent task that fails after a report",
+      parentTask: true,
+      outputs: [
+        reportToParent("Found the cause."),
+        { type: "error" as const, errorMessage: "model unavailable" },
+      ],
+      invocation: { errorMessage: "model unavailable", status: "failed" },
+      terminal: { failureCode: "model_execution_failed", type: "turn_failed" },
+      subagentOutcome: "error",
+      parentInputs: [
+        /status="failed">[\s\S]*\nFound the cause\.\n<\/agent-result>$/,
+      ],
+    },
+    {
+      // A task steers the Run after its reports, and the Run ends with
+      // `noReply`. The earlier reports need no note.
+      name: "reported parent task",
+      parentTask: true,
+      steerTask: "Check the timeout path.",
+      outputs: [
+        reportToParent("Found the cause."),
+        reportToParent("Pushed the fix."),
+        { type: "toolCall" as const, name: "noReply", arguments: {} },
+      ],
+      invocation: { status: "completed" },
+      terminal: success,
+      subagentOutcome: "success",
+      parentInputs: [
+        /status="completed">\n[\s\S]*\nFound the cause\.\n\nPushed the fix\.\n<\/agent-result>$/,
+      ],
+    },
+    {
+      // A report is the Run's reply, so no text needs to follow it.
+      name: "parent task that ends on its report",
+      parentTask: true,
+      outputs: [
+        reportToParent("Pushed the fix."),
+        { type: "text" as const, text: "" },
+      ],
+      invocation: { status: "completed" },
+      terminal: success,
+      subagentOutcome: "success",
+      parentInputs: [/\nPushed the fix\.\n<\/agent-result>$/],
+    },
+    {
+      // The Run ends without a report and gets a reminder. A task that steers
+      // it after that reminder gets its own reminder.
+      name: "parent task steered after its reminder",
+      parentTask: true,
+      steerTask: "Check the timeout path.",
+      outputs: [
+        { type: "text" as const, text: "Looking." },
+        { type: "text" as const, text: "Still looking." },
+        { type: "text" as const, text: "Checked it." },
+        reportToParent("Checked the timeout path."),
+        { type: "text" as const, text: "Sent." },
+      ],
+      invocation: { status: "completed" },
+      terminal: success,
+      subagentOutcome: "success",
+      parentInputs: [/\nChecked the timeout path\.\n<\/agent-result>$/],
+    },
+    {
+      name: "silent parent task",
+      parentTask: true,
+      outputs: [
+        { type: "text" as const, text: "Found the cause." },
+        { type: "text" as const, text: "Still found the cause." },
+      ],
+      invocation: { status: "completed" },
+      // The Turn sent no report, so it did not reply.
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentInputs: [/ended without sending a report[\s\S]*<\/agent-result>$/],
+    },
+    {
+      // On a parent task, the `noReply` note is the report.
+      name: "parent task that ends with a noReply note",
+      parentTask: true,
+      outputs: [
+        {
+          type: "toolCall" as const,
+          name: "noReply",
+          arguments: { note: "No change needed." },
+        },
+      ],
+      invocation: { status: "completed" },
+      terminal: success,
+      subagentOutcome: "success",
+      parentInputs: [
+        /status="completed">\n[\s\S]*\nNo change needed\.\n<\/agent-result>$/,
+      ],
+    },
+    {
+      // The result cap cuts earlier reports first and keeps the last whole.
+      // A `noReply` note is capped like a `messageAgent` report first.
+      name: "parent task with reports past the result cap",
+      parentTask: true,
+      outputs: [
+        reportToParent("a".repeat(7_000)),
+        reportToParent("Pushed the fix."),
+        {
+          type: "toolCall" as const,
+          name: "noReply",
+          arguments: { note: "c".repeat(9_000) },
+        },
+      ],
+      invocation: { status: "completed" },
+      terminal: success,
+      subagentOutcome: "success",
+      parentInputs: [
+        /status="completed">\n[\s\S]*\n\[1 earlier report was cut to fit\.\]\n\nPushed the fix\.\n\nc{7999}…\n<\/agent-result>$/,
+      ],
+    },
+    {
+      // After a turn-limit stop, the final response is the report, and the
+      // reply gate does not ask for another tool call.
+      name: "parent task stopped by the turn limit before any report",
+      parentTask: true,
+      limits: { maxToolCallsPerTurn: 1 },
+      outputs: [
+        {
+          type: "toolCall" as const,
+          name: "updatePlan",
+          arguments: {
+            plan: [{ step: "Find the cause", status: "in_progress" }],
+          },
+        },
+        reportToParent("Found the cause."),
+        { type: "text" as const, text: "Out of steps; found the cause." },
+      ],
+      invocation: { status: "completed" },
+      terminal: success,
+      subagentOutcome: "success",
+      parentInputs: [/\nOut of steps; found the cause\.\n<\/agent-result>$/],
+    },
+    {
+      // Own work sends its final response after a turn-limit stop as one more
+      // message, as `messageAgent` would.
+      name: "own work stopped by the turn limit",
+      limits: { maxToolCallsPerTurn: 1 },
+      outputs: [
+        reportToParent("<@U123> approved the PR."),
+        reportToParent("Checks passed."),
+        { type: "text" as const, text: "Out of steps." },
+      ],
       invocation: {
-        result: "Bot comment needs no change.",
+        result: "",
         status: "completed",
       },
-      terminal: { outcome: "success", type: "turn_completed" },
+      terminal: success,
       subagentOutcome: "success",
+      parentInputs: [
+        /^<agent-message [^>]*>\n[\s\S]*approved the PR\./,
+        /^<agent-message [^>]*>\n[\s\S]*\nOut of steps\.\n<\/agent-message>$/,
+      ],
+    },
+    {
+      // A tool call after the turn-limit stop ends the Turn. The failure keeps the
+      // report that the Run already sent.
+      name: "parent task that hits the turn limit after a report",
+      parentTask: true,
+      limits: { maxToolCallsPerTurn: 1 },
+      outputs: [
+        reportToParent("Found the cause."),
+        reportToParent("Pushed the fix."),
+        reportToParent("Pushed the fix."),
+      ],
+      invocation: {
+        errorMessage: expect.stringMatching(/tool call/),
+        status: "failed",
+      },
+      terminal: { type: "turn_failed" },
+      subagentOutcome: "error",
+      parentInputs: [
+        /status="failed">[\s\S]*\nFound the cause\.\n<\/agent-result>$/,
+      ],
+    },
+    {
+      // Completed own work owes no result and is not a stop, so the parent
+      // task that waits behind it runs and reports alone.
+      name: "quiet own work with an open parent task",
+      openParentTask: true,
+      outputs: [
+        {
+          type: "toolCall" as const,
+          name: "noReply",
+          arguments: { note: "Bot comment needs no change." },
+        },
+        nextTaskReply,
+      ],
+      invocation: {
+        result: "",
+        status: "completed",
+      },
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentInputs: [nextTaskResult],
+    },
+    {
+      name: "own work that messages the parent",
+      outputs: [
+        reportToParent("<@U123> approved the PR."),
+        { type: "toolCall" as const, name: "noReply", arguments: {} },
+      ],
+      invocation: { status: "completed" },
+      // The Turn sent a report, so it replied.
+      terminal: success,
+      subagentOutcome: "success",
+      parentInputs: [/^<agent-message [^>]*>\n[\s\S]*approved the PR\./],
     },
   ])(
     "finishes a $name child Turn after saving its result",
     async ({
       invocation: expectedInvocation,
-      output,
+      limits,
+      openParentTask = false,
+      outputs,
+      parentInputs,
+      parentTask = false,
+      steerTask,
       subagentOutcome,
       terminal,
     }) => {
+      // Each row starts from the default limits.
+      await createApp(limits ? { limits } : undefined);
       const { conversationStore, fixture } = await prepareParentConversation();
+      // With `steerTask`, a parent task arrives while the second model call
+      // runs.
+      let childConversationId = "";
+      let arrived!: () => void;
+      const steeredIn = new Promise<void>((resolve) => (arrived = resolve));
+      const steer = async () => {
+        await queueParentTask(childConversationId, steerTask!, {
+          queue,
+          state,
+        });
+        arrived();
+      };
       const {
         queue,
         run: route,
         state,
       } = await createConversationWorkHarness(
-        createModelAgentRunner(createModelStream([output])),
+        createModelAgentRunner(
+          createModelStream(
+            outputs.map((output, index) =>
+              steerTask && index === 1
+                ? {
+                    ...output,
+                    onRequest: () => void steer(),
+                    waitFor: steeredIn,
+                  }
+                : output,
+            ),
+          ),
+          { queue: () => queue },
+        ),
       );
       try {
         const created = await createAndEnqueueAgentInvocation(
           {
             ...invocationInput,
             idempotencyKey: "failed-result-1",
+            ...(parentTask ? { parentToolCallId: "spawn-call" } : undefined),
           },
           { conversationStore, queue, state },
         );
+        childConversationId = created.childConversationId;
+        if (openParentTask) {
+          // It waits behind the Run below and runs after it.
+          await queueParentTask(childConversationId, "Check the next PR.", {
+            queue,
+            state,
+          });
+        }
 
         await expect(
-          processConversationQueueMessage(queue.takeMessage(), {
-            conversationStore,
-            queue,
-            run: route,
-            state,
-          }),
+          processConversationQueueMessage(
+            queue.takeMessageFor(created.childConversationId),
+            {
+              conversationStore,
+              queue,
+              run: route,
+              state,
+            },
+          ),
         ).resolves.toMatchObject({ status: "completed" });
 
         await expect(
           getAgentInvocation(created.invocationId),
         ).resolves.toMatchObject(expectedInvocation);
-        await expect(
-          loadTurnEvents(created.childConversationId),
-        ).resolves.toEqual([
+        const parentWork = await getConversationWorkState({
+          conversationId: parentConversationId,
+          state,
+        });
+        expect(
+          parentWork?.messages.map((message) => message.input.text) ?? [],
+        ).toEqual(
+          parentInputs.map((pattern) => expect.stringMatching(pattern)),
+        );
+        // An open parent task runs its own Turn after this one.
+        const turnId = getAgentInvocationTurnId(created.invocationId);
+        expect(
+          (await loadTurnEvents(created.childConversationId)).filter(
+            (event) => "turnId" in event.data && event.data.turnId === turnId,
+          ),
+        ).toEqual([
           expect.objectContaining({
             data: expect.objectContaining({
               type: "turn_started",
@@ -455,16 +690,19 @@ describe("agent invocation conversation work", () => {
             }),
           }),
         ]);
-        await expect(loadSubagentEvents(parentConversationId)).resolves.toEqual(
-          [
-            expect.objectContaining({ type: "subagent_started" }),
-            {
-              type: "subagent_ended",
-              subagentInvocationId: created.invocationId,
-              outcome: subagentOutcome,
-            },
-          ],
-        );
+        // A steering task has its own events.
+        expect(
+          (await loadSubagentEvents(parentConversationId)).filter(
+            (event) => event.subagentInvocationId === created.invocationId,
+          ),
+        ).toEqual([
+          expect.objectContaining({ type: "subagent_started" }),
+          {
+            type: "subagent_ended",
+            subagentInvocationId: created.invocationId,
+            outcome: subagentOutcome,
+          },
+        ]);
       } finally {
         await fixture.close();
       }
@@ -478,7 +716,10 @@ describe("agent invocation conversation work", () => {
   // stopped while its Turn stayed paused. A resume wake has no messages, but
   // its last try is still final, so a resume that keeps failing tells the
   // parent.
-  const resumed = { result: "Resumed child result", status: "completed" };
+  const resumed = {
+    reportLog: [expect.objectContaining({ text: "Resumed child result" })],
+    status: "completed",
+  };
   it.each([
     {
       name: "a parent task",
@@ -486,27 +727,49 @@ describe("agent invocation conversation work", () => {
       endBeforeWake: false,
       runs: 2,
       expected: resumed,
+      resultSent: true,
+    },
+    {
+      // The report goes out before the yield, and the Run ends with an
+      // empty final response after the resume. The earlier report is still
+      // its reply.
+      name: "a parent task that reports before the yield",
+      watchEvent: false,
+      reportBeforeYield: true,
+      endBeforeWake: false,
+      runs: 2,
+      expected: {
+        reportLog: [expect.objectContaining({ text: "Found the cause." })],
+        status: "completed",
+      },
+      resultSent: true,
     },
     {
       name: "a watch event",
       watchEvent: true,
       endBeforeWake: false,
       runs: 3,
-      expected: resumed,
+      // The child's own work sends no result.
+      expected: { status: "completed" },
+      resultSent: false,
     },
     {
       name: "an ended watch event",
       watchEvent: true,
       endBeforeWake: true,
       runs: 2,
-      expected: { parentMailboxStatus: "appended", status: "failed" },
+      // Failed own work is sent, so the parent knows it never finished.
+      expected: { status: "failed" },
+      resultSent: true,
     },
     {
       name: "a stopped child",
       watchEvent: false,
       stopBeforeWake: true,
       runs: 1,
-      expected: { parentMailboxStatus: "skipped", status: "stopped" },
+      // A stopped child sends nothing.
+      expected: { status: "stopped" },
+      resultSent: false,
     },
     {
       name: "a resume that keeps failing",
@@ -516,9 +779,9 @@ describe("agent invocation conversation work", () => {
       runs: CONVERSATION_WORK_MAX_RETRIES + 1,
       expected: {
         errorMessage: "resume unavailable",
-        parentMailboxStatus: "appended",
         status: "failed",
       },
+      resultSent: true,
     },
   ])(
     "gives the wake after a yielded child invocation for $name to that invocation",
@@ -526,54 +789,49 @@ describe("agent invocation conversation work", () => {
       endBeforeWake,
       expected,
       failedResumes = 0,
+      reportBeforeYield = false,
+      resultSent,
       runs,
       stopBeforeWake = false,
       watchEvent,
     }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const markDone = vi.fn((_input: { itemId: string }) => ({}));
-      await createApp({
-        plugins: defineJuniorPlugins([
-          defineJuniorPlugin({
-            manifest: {
-              name: "upkeep",
-              displayName: "Upkeep",
-              description: "Upkeep test tools",
-            },
-            hooks: {
-              tools: () => ({
-                markDone: definePluginTool({
-                  // The tool checks in code that its effect is safe, so action
-                  // review does not run, also in a child agent.
-                  approvalMode: "approve",
-                  exposure: "direct",
-                  annotations: {
-                    destructiveHint: true,
-                    idempotentHint: true,
-                    openWorldHint: true,
-                    readOnlyHint: false,
-                  },
-                  description: "Mark one item done.",
-                  inputSchema: z.object({ itemId: z.string() }),
-                  outputSchema: pluginToolOutputSchema,
-                  execute: markDone,
-                }),
-              }),
-            },
-          }),
-        ]),
-      });
+      await createApp({ plugins: upkeepPlugins(markDone) });
       const { conversationStore, fixture } = await prepareParentConversation();
+      const markDoneCall = {
+        type: "toolCall" as const,
+        name: "upkeep_markDone",
+        arguments: { itemId: "item-7" },
+      };
+      // The parent task reports. The watch event Run ends with `noReply`.
       const agentRunner = createModelAgentRunner(
         createModelStream([
-          ...(watchEvent ? [{ type: "text" as const, text: "Watching" }] : []),
-          {
-            type: "toolCall",
-            name: "upkeep_markDone",
-            arguments: { itemId: "item-7" },
-          },
-          { type: "text", text: "Resumed child result" },
+          ...(watchEvent
+            ? [
+                reportToParent("Watching"),
+                { type: "text" as const, text: "Watching" },
+              ]
+            : []),
+          ...(reportBeforeYield
+            ? [
+                reportToParent("Found the cause."),
+                markDoneCall,
+                { type: "text" as const, text: "" },
+              ]
+            : [
+                markDoneCall,
+                watchEvent
+                  ? {
+                      type: "toolCall" as const,
+                      name: "noReply",
+                      arguments: {},
+                    }
+                  : reportToParent("Resumed child result"),
+                { type: "text" as const, text: "Resumed child result" },
+              ]),
         ]),
+        { queue: () => queue },
       );
       const run = vi.spyOn(agentRunner, "run");
       const {
@@ -586,6 +844,7 @@ describe("agent invocation conversation work", () => {
           {
             ...invocationInput,
             idempotencyKey: "resume-1",
+            parentToolCallId: "spawn-call",
           },
           { conversationStore, queue, state },
         );
@@ -641,14 +900,16 @@ describe("agent invocation conversation work", () => {
           piMessages: expect.arrayContaining([
             expect.objectContaining({
               role: "toolResult",
-              toolName: "upkeep_markDone",
+              toolName: reportBeforeYield ? "messageAgent" : "upkeep_markDone",
             }),
           ]),
         });
         if (endBeforeWake) {
-          await completeAgentInvocation({
+          await finishAgentInvocation({
             errorMessage: "Agent invocation ended",
             invocationId,
+            sendResult: async (terminal) =>
+              await enqueueAgentInvocationResult(terminal, { queue, state }),
             status: "failed",
           });
         }
@@ -678,6 +939,17 @@ describe("agent invocation conversation work", () => {
         await expect(getAgentInvocation(invocationId)).resolves.toMatchObject(
           expected,
         );
+        const parentWork = await getConversationWorkState({
+          conversationId: parentConversationId,
+          state,
+        });
+        expect(
+          parentWork?.messages.some(
+            (message) =>
+              message.inboundMessageId ===
+              getAgentInvocationResultMessageId(invocationId),
+          ) ?? false,
+        ).toBe(resultSent);
         // An ended child leaves no paused Turn that a later wake could resume.
         await expect(
           getTurnRecord(
@@ -705,261 +977,6 @@ describe("agent invocation conversation work", () => {
             (event) => event.data.type === "guardian_action_reviewed",
           ),
         ).toEqual([]);
-      } finally {
-        await fixture.close();
-      }
-    },
-  );
-
-  // A child with an active invocation left over from earlier work gets new
-  // mailbox input. Only the new invocation may be active when it runs.
-  it.each([{ state: "running" as const }, { state: "paused" as const }])(
-    "ends a leftover $state child invocation before new mailbox input runs",
-    async ({ state: orphanState }) => {
-      const { conversationStore, fixture } = await prepareParentConversation();
-      const activeAtRun: unknown[] = [];
-      // Integration tests do not run the agent. The runner reads the run and
-      // stops it, so its work retries until the test finishes the invocation.
-      const { process, queue, state } = await createConversationWorkHarness({
-        run: async (run) => {
-          activeAtRun.push(
-            await getActiveAgentInvocationForConversation(run.conversationId),
-          );
-          throw new Error("stop after reading the run");
-        },
-      });
-      const parentMailbox = async () =>
-        (
-          await getConversationWorkState({
-            conversationId: parentConversationId,
-            state,
-          })
-        )?.messages ?? [];
-      try {
-        const orphan = await createAgentInvocation({
-          ...invocationInput,
-          agentName: "researcher",
-          idempotencyKey: "orphan-1",
-          parentToolCallId: "call-spawn",
-        });
-        const { childConversationId } = orphan;
-        await markAgentInvocationRunning(orphan.invocationId);
-        if (orphanState === "paused") {
-          await markAgentInvocationPaused(orphan.invocationId);
-        }
-        const orphanTurnId = getAgentInvocationTurnId(orphan.invocationId);
-        await upsertTurnRecord({
-          actor: invocationInput.actor,
-          conversationId: childConversationId,
-          piMessages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: invocationInput.input }],
-            },
-          ] as PiMessage[],
-          sliceId: 1,
-          source: { kind: "agent_invocation" },
-          state: orphanState,
-          surface: "internal",
-          turnId: orphanTurnId,
-          turnStartMessageIndex: 0,
-          ...(orphanState === "paused"
-            ? { resumeReason: "yield" as const }
-            : undefined),
-        });
-        const { invocation: queued } = await createAgentInvocationForMessage({
-          actor: invocationInput.actor,
-          childConversationId,
-          destination,
-          idempotencyKey: "parent-turn:call-message",
-          input: "Also check the retry path.",
-          parentConversationId,
-          parentToolCallId: "call-message",
-        });
-        await enqueueAgentInvocation(queued, {
-          conversationStore,
-          queue,
-          state,
-        });
-
-        await expect(
-          process(queue.takeMessageFor(childConversationId)),
-        ).resolves.toMatchObject({ status: "failed" });
-
-        expect(activeAtRun).toEqual([
-          expect.objectContaining({
-            invocationId: queued.invocationId,
-            status: "running",
-          }),
-        ]);
-        await expect(
-          getTurnRecord(childConversationId, orphanTurnId),
-        ).resolves.not.toMatchObject({ state: orphanState });
-        // The newer work does not continue the earlier task, so the earlier
-        // agent invocation sends its own result before the newer one ends.
-        await expect(
-          getAgentInvocation(orphan.invocationId),
-        ).resolves.toMatchObject({
-          parentMailboxStatus: "appended",
-          status: "failed",
-        });
-        const orphanResult = expect.objectContaining({
-          inboundMessageId: getAgentInvocationResultMessageId(
-            orphan.invocationId,
-          ),
-          input: expect.objectContaining({
-            text: expect.stringMatching(
-              orphanState === "paused"
-                ? /^<agent-result [^>]*status="failed"[\s\S]*\nThis task was not resumed\. Newer work for this child agent started/
-                : /^<agent-result [^>]*status="failed"[\s\S]*\nAgent invocation lost its worker/,
-            ),
-          }),
-        });
-        await expect(parentMailbox()).resolves.toEqual([orphanResult]);
-
-        await completeAgentInvocation({
-          invocationId: queued.invocationId,
-          result: "Retry path checked",
-          status: "completed",
-        });
-        await expect(
-          process(queue.takeMessageFor(childConversationId)),
-        ).resolves.toMatchObject({ status: "completed" });
-
-        await expect(parentMailbox()).resolves.toEqual([
-          orphanResult,
-          expect.objectContaining({
-            inboundMessageId: getAgentInvocationResultMessageId(
-              queued.invocationId,
-            ),
-            input: expect.objectContaining({
-              text: expect.stringMatching(
-                /status="completed">\n[\s\S]*\nRetry path checked\n<\/agent-result>$/,
-              ),
-            }),
-          }),
-        ]);
-      } finally {
-        await fixture.close();
-      }
-    },
-  );
-
-  const missing = "Write access to getsentry/junior. Ask the user.";
-  it.each([
-    {
-      name: "a reply",
-      tail: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Recovered visible result" }],
-        },
-      ],
-      expected: { result: "Recovered visible result", status: "completed" },
-      turnOutcome: "success",
-    },
-    {
-      name: "a blocked report",
-      tail: [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tool-2",
-              name: "reportBlocked",
-              arguments: { missing },
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          toolCallId: "tool-2",
-          toolName: "reportBlocked",
-          content: [{ type: "text", text: missing }],
-          details: { missing },
-          isError: false,
-        },
-      ],
-      expected: { errorMessage: missing, status: "blocked" },
-      turnOutcome: "blocked",
-    },
-  ])(
-    "recovers a completed child turn that ends with $name through production routing",
-    async ({ expected, tail, turnOutcome }) => {
-      const { conversationStore, fixture } = await prepareParentConversation();
-      const {
-        queue,
-        run: route,
-        state,
-      } = await createConversationWorkHarness(neverRunAgentRunner());
-      try {
-        const created = await createAndEnqueueAgentInvocation(
-          {
-            ...invocationInput,
-            idempotencyKey: "completed-recovery-1",
-          },
-          { conversationStore, queue, state },
-        );
-        await upsertTurnRecord({
-          actor: invocationInput.actor,
-          conversationId: created.childConversationId,
-          destination,
-          piMessages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: invocationInput.input }],
-            },
-            {
-              role: "assistant",
-              content: [
-                { type: "text", text: "Calling a tool" },
-                {
-                  type: "toolCall",
-                  id: "tool-1",
-                  name: "lookup",
-                  arguments: {},
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "tool-1",
-              toolName: "lookup",
-              content: [{ type: "text", text: "tool output" }],
-              isError: false,
-            },
-            ...tail,
-          ] as PiMessage[],
-          turnId: getAgentInvocationTurnId(created.invocationId),
-          turnStartMessageIndex: 0,
-          sliceId: 1,
-          source: { kind: "agent_invocation" },
-          state: "completed",
-          surface: "internal",
-        });
-        await expect(
-          processConversationQueueMessage(queue.takeMessage(), {
-            conversationStore,
-            queue,
-            run: route,
-            state,
-          }),
-        ).resolves.toMatchObject({ status: "completed" });
-
-        await expect(
-          getAgentInvocation(created.invocationId),
-        ).resolves.toMatchObject(expected);
-        await expect(
-          loadTurnEvents(created.childConversationId),
-        ).resolves.toEqual([
-          expect.objectContaining({
-            data: expect.objectContaining({
-              outcome: turnOutcome,
-              type: "turn_completed",
-            }),
-          }),
-        ]);
       } finally {
         await fixture.close();
       }

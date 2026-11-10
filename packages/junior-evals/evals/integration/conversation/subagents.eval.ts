@@ -164,7 +164,7 @@ describe("Child Agents", () => {
     expect(conversation.turns[1]?.status).toBe("succeeded");
   });
 
-  test("when a child agent starts its own child agent, report once after both finish", async ({
+  test("when a child agent starts its own child agent, the helper's result reaches the thread once", async ({
     agent,
   }) => {
     const { run } = await agent({
@@ -172,19 +172,18 @@ describe("Child Agents", () => {
     });
     const conversation = await run(
       slackMention(
-        'Use spawnAgent to start one child agent with this task: "Use spawnAgent to start one helper agent with the task \\"Reply with only the code word CEDAR-9.\\" When the helper\'s result arrives, reply with only that code word." When the child agent\'s result arrives, post the code word here.',
+        'Use spawnAgent to start one child agent with this task: "Use spawnAgent to start one helper agent with the task \\"Report only the code word CEDAR-9.\\" When the helper\'s result arrives, send only that code word to your parent agent." When the code word arrives, post it here.',
       ),
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
-    // The first agent invocation of the child ends while its helper's result
-    // is still open, so a later agent invocation of the child reports. The
-    // parent gets that one report, not two.
-    expect(conversation.turns).toHaveLength(2);
-    const resultTurn = conversation.turns[1];
-    expect(resultTurn?.status).toBe("succeeded");
-    expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
-      expect.stringContaining("CEDAR-9"),
-    ]);
+    // The child's task reports when its first Run ends. The helper's result
+    // starts the child's own work, which messages the parent. Each wakes the
+    // parent once, and the code word is posted once.
+    const replies = conversation.turns.flatMap((turn) => turn.replies);
+    expect(
+      replies.filter((reply) => reply.text.includes("CEDAR-9")),
+    ).toHaveLength(1);
+    expect(conversation.turns.at(-1)?.status).toBe("succeeded");
   });
 });

@@ -8,7 +8,6 @@ import {
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
-  completeAgentInvocation,
   getLatestAgentInvocationForConversation,
   markAgentInvocationMailboxAppended,
 } from "@/chat/agent-invocations/store";
@@ -31,6 +30,7 @@ import {
   type Harness,
 } from "../fixtures/thread-input";
 import { mockTitleModel } from "../fixtures/title-model";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
 
 const parentRun: AgentRun = {
   actor: slackInvocationInput.actor,
@@ -66,9 +66,9 @@ async function createIdleChild(
       options.parentConversationId ?? slackParentConversationId,
   });
   await options.withOpenWork?.(invocation.childConversationId);
-  await completeAgentInvocation({
+  await finishAgentInvocation({
     invocationId: invocation.invocationId,
-    result: "Done.",
+    closingReport: "Done.",
     status: "completed",
   });
   return invocation.childConversationId;
@@ -228,9 +228,9 @@ describe("Thread spawn and archive", () => {
         }),
       ).resolves.toMatchObject({ queued: true });
 
-      await completeAgentInvocation({
+      await finishAgentInvocation({
         invocationId: busy[1]!.invocationId,
-        result: "Done.",
+        closingReport: "Done.",
         status: "completed",
       });
       await expect(
@@ -321,9 +321,9 @@ describe("Thread spawn and archive", () => {
         idempotencyKey: "after-person",
         parentToolCallId: "call-after-person",
       });
-      await completeAgentInvocation({
+      await finishAgentInvocation({
         invocationId: invocation.invocationId,
-        result: "Done.",
+        closingReport: "Done.",
         status: "completed",
       });
       await expect(

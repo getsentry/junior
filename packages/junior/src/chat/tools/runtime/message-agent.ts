@@ -5,14 +5,14 @@ import {
   AgentMessageQueueFullError,
   AgentMessageTargetError,
 } from "@/chat/agent-invocations/errors";
-import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
+import {
+  MESSAGE_AGENT_TEXT_MAX_LENGTH,
+  PARENT_AGENT_TARGET,
+} from "@/chat/agent-invocations/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-/** Bound the text of one message so a loop cannot fill a mailbox quickly. */
-const MESSAGE_AGENT_TEXT_MAX_LENGTH = 8_000;
 
 const messageAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Target conversation ID"),
@@ -31,7 +31,7 @@ export function createMessageAgentTool(
   messageAgent: NonNullable<ToolRuntimeContext["messageAgent"]>,
 ) {
   return zodTool({
-    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to send your parent agent a finding or a question while you keep working. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work, and one result covers both. The result arrives later as a new task in this conversation; do not wait or poll for it. A message to your parent does not end your task. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent by its conversation_id, such as one from slackThreadRead. Both conversations must be public. A private conversation cannot message, or be messaged by, another top-level agent. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent. Your text to a child agent is its instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.`,
+    description: `Send a message to your parent agent or to a child agent that this conversation started. Use it to give an existing child agent more work, an answer, or a correction, and to report to your parent agent: your result, a finding, or a question. A message to a child continues its history. If the child is still working, it reads the message at its next step or after its current work, and one result covers both. The result arrives later as a new task in this conversation; do not wait or poll for it. A message to your parent does not end your run, and you can send more than one. A top-level agent (its conversation is not a child agent, such as a Slack thread) can also message another top-level agent by its conversation_id, such as one from slackThreadRead. Both conversations must be public. A private conversation cannot message, or be messaged by, another top-level agent. The target runs the message as its own task and sends no result. Use spawnAgent only to start a new child agent. Your text to a child agent is its instruction. Its action review judges the child's actions against that text, so name only actions that your own conversation backs, with the exact target.`,
     exposure: "modelOnly",
     // Action review judges the actions that the message names.
     approvalMode: "auto",
@@ -58,6 +58,22 @@ export function createMessageAgentTool(
           .describe("Message text. Include all context the target needs."),
       })
       .strict(),
+    // A message to the parent skips action review. It reaches the parent only
+    // as an escaped `<agent-message>` or `<agent-result>` data block, and any
+    // action that the parent takes because of it goes through the parent's
+    // own action review. Review here would add a model call to almost every
+    // child Run.
+    resolveApprovalMetadata: ({ to }) =>
+      to === PARENT_AGENT_TARGET
+        ? {
+            annotations: {
+              destructiveHint: false,
+              idempotentHint: true,
+              openWorldHint: false,
+              readOnlyHint: true,
+            },
+          }
+        : undefined,
     outputSchema: messageAgentOutputSchema,
     execute: async (input, options) => {
       if (!options.toolCallId) {

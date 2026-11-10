@@ -26,10 +26,7 @@ import {
   readAutomationResult,
   type AutomationResult,
 } from "@/chat/automation-result";
-import {
-  readBlockedReport,
-  type BlockedReport,
-} from "@/chat/agent-invocations/blocked-report";
+import { readBlockedReport } from "@/chat/agent-invocations/blocked-report";
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -55,8 +52,6 @@ export interface AgentRunResult {
   text: string;
   /** Declared result of a Scheduled automation or Event automation run. */
   automation?: AutomationResult;
-  /** Blocked report of a child agent run. */
-  blocked?: BlockedReport;
   /** Set when the run ended with no reply. */
   noReply?: NoReply;
   sandboxRef?: SandboxRef;
@@ -190,7 +185,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   return {
     text: primaryText,
-    ...(blocked ? { blocked } : undefined),
     ...(noReply ? { noReply } : undefined),
     sandboxRef,
     piMessages: input.piMessages,

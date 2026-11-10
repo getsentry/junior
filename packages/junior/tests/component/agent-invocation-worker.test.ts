@@ -12,14 +12,16 @@ import {
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/ids";
 import {
+  appendAgentInvocationReport,
   getAgentInvocation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
+import { getConversationEventStore } from "@/chat/db";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
+import { agentInvocationInputText } from "@/chat/agent-invocations/steering";
 import {
   buildAgentInvocationInboundMessage,
   createAgentInvocationWorker,
-  agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
 import { commitMessages } from "@/chat/conversations/projection";
 import { stopConversation } from "@/chat/conversations/stop";
@@ -37,6 +39,7 @@ import type {
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
   conversationId: PARENT_CONVERSATION_ID,
@@ -177,6 +180,7 @@ describe("agent invocation worker", () => {
       const created = await createAgentInvocation({
         ...INVOCATION_INPUT,
         idempotencyKey: "late-stop",
+        parentToolCallId: "call-late-stop",
       });
       const helper = await createAgentInvocation({
         ...INVOCATION_INPUT,
@@ -228,19 +232,16 @@ describe("agent invocation worker", () => {
         status: "completed",
       });
 
-      // The open helper would have reported for the child. The stop ended the
-      // helper before the child saved, so the child's own result reports.
+      // The stop ended the helper before the child saved, and the child's
+      // task still reports.
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
-        parentMailboxStatus: "pending",
-        result: "Partial result",
         status: "completed",
       });
       await expect(
         getAgentInvocation(helper.invocationId),
       ).resolves.toMatchObject({
-        parentMailboxStatus: "skipped",
         status: "stopped",
       });
     } finally {
@@ -258,6 +259,12 @@ describe("agent invocation worker", () => {
         parentToolCallId: "call-steer-task",
       });
       await markAgentInvocationRunning(created.invocationId);
+      // The Run already reported for its first task, as `messageAgent` does.
+      await appendAgentInvocationReport(created.invocationId, {
+        kind: "report",
+        text: "Checked the cache path.",
+        key: "report-1",
+      });
       const { invocation: message, queued } =
         await createAgentInvocationForMessage({
           ...INVOCATION_INPUT,
@@ -278,6 +285,21 @@ describe("agent invocation worker", () => {
           input: `Skip the "cache" path & <retry>.`,
           parentToolCallId: "call-steer-saved-message",
         });
+      // Another drain marked this message read, then failed before the
+      // parent saw it end and before it acknowledged the message.
+      const { invocation: markedMessage } =
+        await createAgentInvocationForMessage({
+          ...INVOCATION_INPUT,
+          childConversationId: created.childConversationId,
+          idempotencyKey: "steer-marked-message",
+          input: "Check the timeout path.",
+          parentToolCallId: "call-steer-marked-message",
+        });
+      await finishAgentInvocation({
+        invocationId: markedMessage.invocationId,
+        status: "completed",
+        steered: true,
+      });
       await upsertTurnRecord({
         actor: INVOCATION_INPUT.actor,
         conversationId: created.childConversationId,
@@ -336,6 +358,7 @@ describe("agent invocation worker", () => {
                 ownMessage,
                 buildAgentInvocationInboundMessage(message),
                 buildAgentInvocationInboundMessage(savedMessage),
+                buildAgentInvocationInboundMessage(markedMessage),
               ]),
             );
             return [];
@@ -376,22 +399,44 @@ describe("agent invocation worker", () => {
         [
           getAgentInvocationMessageId(message.invocationId),
           getAgentInvocationMessageId(savedMessage.invocationId),
+          getAgentInvocationMessageId(markedMessage.invocationId),
         ],
       ]);
+      // The parent sees each steered agent invocation end.
+      const parentEvents = await getConversationEventStore().loadHistory(
+        PARENT_CONVERSATION_ID,
+      );
+      expect(
+        parentEvents.flatMap((event) =>
+          event.data.type === "subagent_ended"
+            ? [event.data.subagentInvocationId]
+            : [],
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          markedMessage.invocationId,
+          message.invocationId,
+          savedMessage.invocationId,
+        ]),
+      );
       for (const steeredMessage of [message, savedMessage]) {
         await expect(
           getAgentInvocation(steeredMessage.invocationId),
         ).resolves.toMatchObject({
-          parentMailboxStatus: "steered",
           status: "completed",
         });
       }
-      // The running agent invocation reports for all of them.
+      // The running agent invocation reports for all of them. Its report
+      // came before the steering tasks, so the result says that they got
+      // none.
       await expect(
         getAgentInvocation(created.invocationId),
       ).resolves.toMatchObject({
-        parentMailboxStatus: "pending",
-        result: "Checked both paths.",
+        reportLog: [
+          expect.objectContaining({ text: "Checked the cache path." }),
+          expect.objectContaining({ kind: "steered_task" }),
+          expect.objectContaining({ kind: "steered_task" }),
+        ],
         status: "completed",
       });
       await expect(
@@ -403,7 +448,7 @@ describe("agent invocation worker", () => {
             last_result: "completed",
             name: "researcher",
             status: "idle",
-            task: `Skip the "cache" path & <retry>.`,
+            task: "Check the timeout path.",
           },
         ],
       });

@@ -1,10 +1,19 @@
 /** Shared parent Conversation setup for agent invocation integration tests. */
 import type { StateAdapter } from "chat";
 import { expect } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import { defineJuniorPlugins } from "@/app";
+import {
+  createSlackSource,
+  defineJuniorPlugin,
+  definePluginTool,
+  pluginToolOutputSchema,
+} from "@sentry/junior-plugin-api";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
+import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -16,6 +25,7 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import type { AgentRun } from "@/chat/agent/types";
+import { readParentAgentTask } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   deferred,
@@ -136,6 +146,8 @@ export async function spawnChildAgent(
       destination,
       idempotencyKey: args.idempotencyKey,
       parentConversationId: args.parentConversationId,
+      // spawnAgent passes its tool call ID.
+      parentToolCallId: args.idempotencyKey,
     },
     args,
   );
@@ -177,7 +189,6 @@ export async function expectChildAgentStopped(
     child.invocation;
   await expect(getAgentInvocation(invocationId)).resolves.toMatchObject({
     errorMessage: "Stopped by the parent conversation",
-    parentMailboxStatus: "skipped",
     status: "stopped",
   });
   // The child worker sees this request and aborts its run.
@@ -226,4 +237,82 @@ export function abortableAgentRunner() {
       started = deferred<void>();
     },
   };
+}
+
+/**
+ * Model output that reports `text` to the parent with `messageAgent`. A child
+ * reports with a tool, because its final response is not sent to the parent.
+ */
+export function reportToParent(text: string) {
+  return {
+    type: "toolCall" as const,
+    name: "messageAgent",
+    arguments: { to: "parent", text },
+  };
+}
+
+/**
+ * Queue one parent task for a child: the parent sends it with its bound
+ * `messageAgent` tool, as a parent Run would.
+ */
+export async function queueParentTask(
+  childConversationId: string,
+  text: string,
+  options: { queue: ConversationWorkQueueTestAdapter; state: StateAdapter },
+): Promise<void> {
+  const parentRun: AgentRun = {
+    actor: invocationInput.actor,
+    conversationId: parentConversationId,
+    destination,
+    instruction: { text: "Coordinate the work." },
+    source: { kind: "agent_invocation" },
+    turnId: "parent-turn",
+  };
+  await createMessageAgentTool(bindMessageAgent(parentRun, options)!).execute!(
+    { text, to: childConversationId },
+    { toolCallId: `call:${text}` },
+  );
+}
+
+/** The task text of one child Run, without its `<parent-agent-task>` tag. */
+export function taskOf(run: Pick<AgentRun, "instruction">): string {
+  return (
+    readParentAgentTask(run.instruction.text)?.trim() ?? run.instruction.text
+  );
+}
+
+/**
+ * A plugin with one `upkeep_markDone` tool. The tool checks in code that its
+ * effect is safe, so action review does not run, also in a child agent.
+ */
+export function upkeepPlugins(
+  execute: (input: { itemId: string }) => Record<string, never>,
+) {
+  return defineJuniorPlugins([
+    defineJuniorPlugin({
+      manifest: {
+        name: "upkeep",
+        displayName: "Upkeep",
+        description: "Upkeep test tools",
+      },
+      hooks: {
+        tools: () => ({
+          markDone: definePluginTool({
+            approvalMode: "approve",
+            exposure: "direct",
+            annotations: {
+              destructiveHint: true,
+              idempotentHint: true,
+              openWorldHint: true,
+              readOnlyHint: false,
+            },
+            description: "Mark one item done.",
+            inputSchema: z.object({ itemId: z.string() }),
+            outputSchema: pluginToolOutputSchema,
+            execute,
+          }),
+        }),
+      },
+    }),
+  ]);
 }

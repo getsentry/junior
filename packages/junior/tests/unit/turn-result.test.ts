@@ -66,7 +66,6 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe("");
-    expect(reply.blocked).toEqual({ missing });
     expect(reply.diagnostics.outcome).toBe("success");
   });
 

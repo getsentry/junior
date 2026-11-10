@@ -86,6 +86,12 @@ Canonical words for Junior code and docs. One concept, one word.
   boundary. **Follow-up message**: one that waits for the next Turn.
 - **Mailbox delivery**: `interrupt` (next safe boundary) or `defer` (in order).
 - **Turn**: one request-to-final-response cycle. Not one model call.
+- **Final response**: the assistant message that ends a Turn by having no tool
+  calls. A Turn that ends on a terminal tool (`noReply`, `reportBlocked`,
+  `finishAutomationRun`), an error, or an abort has no final response.
+  Assistant text in a message with tool calls is never a final response.
+  A child's final response is not sent to the parent. One exception: after
+  a turn-limit stop, a child Run's final response is sent as a report.
 - **Run**: one bounded attempt to advance a Turn. A later Run may resume the
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
@@ -107,6 +113,15 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Agent binding**: a parent-scoped name for one child Conversation.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
   its terminal result. Never shorten to "invocation".
+- **Parent task**: an Agent invocation from a parent `spawnAgent` or
+  `messageAgent` call. It ends with one result to the parent. **Own work**: an
+  Agent invocation that the runtime starts on the child, such as a Watch
+  Event or a result from the child's own child agent. It sends a result
+  only when it fails or is blocked. A stop of the child from its parent
+  sends nothing.
+- **Report**: `messageAgent` text from a child to its parent. The report log
+  of an Agent invocation saves each one. A parent task sends its reports in
+  its result. Own work sends each one at once as an Agent message.
 - **Agent message**: `messageAgent` text to a parent, a child, or another
   top-level agent (the agent of a root Conversation). To a child it is the
   child's instruction: it starts an Agent invocation or steers a running one.

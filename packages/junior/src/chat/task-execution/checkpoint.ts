@@ -95,6 +95,8 @@ interface TurnCheckpointWrite {
   cumulativeToolCallCount?: number;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean;
+  /** Latest task that got its reply gate reminder; survives history replacement. */
+  replyReminderTaskId?: string;
   /** Times recovery resumed this turn after a lost worker; survives later writes. */
   lostWorkerResumeCount?: number;
   trailingMessageProvenance?: ConversationMessageProvenance[];
@@ -229,6 +231,8 @@ function sharedWrite(
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
+      replyReminderTaskId:
+        args.replyReminderTaskId ?? latest?.replyReminderTaskId,
       lostWorkerResumeCount:
         args.lostWorkerResumeCount ?? latest?.lostWorkerResumeCount,
     }),

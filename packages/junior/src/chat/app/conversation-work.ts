@@ -19,6 +19,7 @@ import {
 import {
   createChildConversationWorker,
   enqueueAgentInvocationResult,
+  enqueueAgentMessageToParent,
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
@@ -144,7 +145,7 @@ export function createConversationWork(
     },
     runTurn: runtime.runDispatchTurn,
   });
-  const enqueueResult = async (
+  const sendResult = async (
     invocation: TerminalAgentInvocation,
   ): Promise<void> =>
     await enqueueAgentInvocationResult(invocation, {
@@ -152,7 +153,7 @@ export function createConversationWork(
       state: options.state,
     });
   const childWorker = createChildConversationWorker(options.agentRunner, {
-    enqueueResult,
+    sendResult,
     maxAgentDepth: botConfig.maxAgentDepth,
     queue: options.queue,
     state: options.state,
@@ -226,9 +227,17 @@ export function createConversationWork(
       // input does on a root. It waits behind a running or yielded one.
       if (threadTurn.kind === "mailbox") {
         await endActiveAgentInvocations(context.conversationId, {
-          enqueueResult,
+          enqueueMessage: async (sender, messageKey, text) =>
+            await enqueueAgentMessageToParent({
+              messageKey,
+              queue: options.queue,
+              sender,
+              state: options.state,
+              text,
+            }),
           errorMessage:
             "A person sent a Message in this Thread, so this task ended without a result. Send messageAgent again if you still need this work.",
+          sendResult,
         });
       }
       return await conversationTurnWorker(context, threadTurn);

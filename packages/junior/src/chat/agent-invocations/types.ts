@@ -10,7 +10,6 @@ import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
 import {
   AGENT_INVOCATION_MAILBOX_STATUSES,
-  AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
   AGENT_INVOCATION_STATUSES,
 } from "@/chat/agent-invocations/statuses";
 
@@ -31,15 +30,17 @@ export const CHILD_AGENT_KINDS = [
 ] as const satisfies readonly Exclude<ConversationKind, "root">[];
 export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
 
+/**
+ * Longest text of one `messageAgent` message, so a loop cannot fill a mailbox
+ * quickly. A report that does not come from that tool has the same cap.
+ */
+export const MESSAGE_AGENT_TEXT_MAX_LENGTH = 8_000;
+
 /** `messageAgent` target for the parent of a child agent. */
 export const PARENT_AGENT_TARGET = "parent";
 
 const agentInvocationMailboxStatusSchema = z.enum(
   AGENT_INVOCATION_MAILBOX_STATUSES,
-);
-
-const agentInvocationParentMailboxStatusSchema = z.enum(
-  AGENT_INVOCATION_PARENT_MAILBOX_STATUSES,
 );
 
 export const agentBindingSchema = z
@@ -50,6 +51,32 @@ export const agentBindingSchema = z
   })
   .strict();
 
+/**
+ * One entry in the report log of an agent invocation. A `report` is a text
+ * that the child sent to its parent. Its `key` is the `messageAgent` tool
+ * call id, so a retry of that call does not save it twice. A `steered_task`
+ * marks a parent task that steered the running Run, so later reports answer
+ * that task.
+ */
+const agentInvocationReportEntrySchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      key: exactStringSchema,
+      kind: z.literal("report"),
+      text: z.string(),
+    })
+    .strict(),
+  z
+    .object({
+      invocationId: exactStringSchema,
+      kind: z.literal("steered_task"),
+    })
+    .strict(),
+]);
+export type AgentInvocationReportEntry = z.output<
+  typeof agentInvocationReportEntrySchema
+>;
+
 const agentInvocationBaseSchema = z
   .object({
     actor: actorSchema,
@@ -59,12 +86,14 @@ const agentInvocationBaseSchema = z
     credentialContext: credentialContextSchema.optional(),
     destination: destinationSchema,
     input: exactStringSchema,
+    inputLabel: exactStringSchema.optional(),
     invocationId: exactStringSchema,
     mailboxStatus: agentInvocationMailboxStatusSchema,
     parentConversationId: exactStringSchema,
     parentToolCallId: exactStringSchema.optional(),
     agentType: agentTypeSchema.optional(),
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
+    reportLog: z.array(agentInvocationReportEntrySchema).optional(),
     source: sourceSchema,
     title: exactStringSchema.optional(),
     updatedAtMs: z.number().finite(),
@@ -76,14 +105,12 @@ export const agentInvocationSchema = z.discriminatedUnion("status", [
     status: z.enum(["pending", "running", "paused"]),
   }),
   agentInvocationBaseSchema.extend({
-    parentMailboxStatus: agentInvocationParentMailboxStatusSchema,
     result: z.string(),
     status: z.literal("completed"),
     terminalAtMs: z.number().finite(),
   }),
   agentInvocationBaseSchema.extend({
     errorMessage: z.string(),
-    parentMailboxStatus: agentInvocationParentMailboxStatusSchema,
     status: z.enum(["blocked", "failed", "stopped"]),
     terminalAtMs: z.number().finite(),
   }),

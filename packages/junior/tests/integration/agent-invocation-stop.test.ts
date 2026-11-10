@@ -9,7 +9,6 @@ import {
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/ids";
 import {
-  completeAgentInvocation,
   getAgentInvocation,
   listPendingAgentInvocationMailboxAppends,
 } from "@/chat/agent-invocations/store";
@@ -37,6 +36,7 @@ import {
   prepareParentConversation,
 } from "../fixtures/agent-invocations";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
 
 async function stopAgent(
   conversationId: string,
@@ -127,7 +127,6 @@ describe("stopping child agents", () => {
         getAgentInvocation(running.invocationId),
       ).resolves.toMatchObject({
         errorMessage: "Stopped by the parent conversation",
-        parentMailboxStatus: "skipped",
         status: "stopped",
       });
       // The parent asked for the stop, so no result Turn wakes it.
@@ -225,6 +224,7 @@ describe("stopping child agents", () => {
       const external = await harness.spawn({
         idempotencyKey: "stop-external",
         input: "long task",
+        parentToolCallId: "spawn-external",
       });
       const helper = await createAgentInvocation({
         ...invocationInput,
@@ -246,7 +246,6 @@ describe("stopping child agents", () => {
         getAgentInvocation(external.invocationId),
       ).resolves.toMatchObject({
         errorMessage: "Agent invocation was stopped",
-        parentMailboxStatus: "appended",
         status: "stopped",
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
@@ -263,7 +262,6 @@ describe("stopping child agents", () => {
       await expect(
         getAgentInvocation(helper.invocationId),
       ).resolves.toMatchObject({
-        parentMailboxStatus: "skipped",
         status: "stopped",
       });
       // The helper was stopped before its mailbox append. The heartbeat must
@@ -284,20 +282,23 @@ describe("stopping child agents", () => {
       const child = await createAgentInvocation({
         ...invocationInput,
         idempotencyKey: "tree-child",
+        parentToolCallId: "spawn-tree-child",
       });
       const openHelper = await createAgentInvocation({
         ...invocationInput,
         idempotencyKey: "tree-open-helper",
+        parentToolCallId: "spawn-tree-open-helper",
         parentConversationId: child.childConversationId,
       });
       const doneHelper = await createAgentInvocation({
         ...invocationInput,
         idempotencyKey: "tree-done-helper",
+        parentToolCallId: "spawn-tree-done-helper",
         parentConversationId: child.childConversationId,
       });
-      const doneResult = (await completeAgentInvocation({
+      const doneResult = (await finishAgentInvocation({
         invocationId: doneHelper.invocationId,
-        result: "Helper fact: 42.",
+        closingReport: "Helper fact: 42.",
         status: "completed",
       })) as TerminalAgentInvocation;
       // The result reaches the child mailbox before the stop.
@@ -305,14 +306,19 @@ describe("stopping child agents", () => {
         queue: harness.queue,
         state: harness.state,
       });
-      // The child finished its own turn while its helpers still work.
+      // The child's task reports while its helpers still work.
       await expect(
-        completeAgentInvocation({
+        finishAgentInvocation({
           invocationId: child.invocationId,
-          result: "Started helpers.",
+          closingReport: "Started helpers.",
+          sendResult: async (terminal) =>
+            await enqueueAgentInvocationResult(terminal, {
+              queue: harness.queue,
+              state: harness.state,
+            }),
           status: "completed",
         }),
-      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      ).resolves.toMatchObject({ status: "completed" });
 
       await expect(stopAgent(child.childConversationId)).resolves.toEqual({
         conversation_id: child.childConversationId,
@@ -322,7 +328,6 @@ describe("stopping child agents", () => {
       await expect(
         getAgentInvocation(openHelper.invocationId),
       ).resolves.toMatchObject({
-        parentMailboxStatus: "skipped",
         status: "stopped",
       });
       // A late spawnAgent call of the stopped child starts no work.
@@ -336,7 +341,6 @@ describe("stopping child agents", () => {
       await expect(
         getAgentInvocation(doneHelper.invocationId),
       ).resolves.toMatchObject({
-        parentMailboxStatus: "skipped",
         status: "completed",
       });
       // The child already had the result in its mailbox. It starts no work.
@@ -357,6 +361,11 @@ describe("stopping child agents", () => {
           status: "stopped",
         }),
       ]);
+      // The parent drops the child's result that it had not read yet, so
+      // the stopped child does not start a parent Run.
+      await expect(
+        harness.processNext(parentConversationId),
+      ).resolves.toMatchObject({ status: "completed" });
     } finally {
       await harness.close();
     }

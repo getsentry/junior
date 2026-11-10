@@ -50,7 +50,7 @@ export function createSpawnAgentTool(
 ) {
   return zodTool({
     description: [
-      "Start a new asynchronous child agent. A child agent has its own sandbox and tool budget, runs at the same time as you, and sends back only its result. Its kind is a Thread for one discrete work item that people will own and talk to, or a Task for work that you delegate. Use Tasks to run independent work in parallel and to keep long investigations out of your context.",
+      "Start a new asynchronous child agent. A child agent has its own sandbox and tool budget, runs at the same time as you, and sends back one result for each task you give it. Its kind is a Thread for one discrete work item that people will own and talk to, or a Task for work that you delegate. Use Tasks to run independent work in parallel and to keep long investigations out of your context.",
       "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
       "Do it yourself instead of a Task when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn a Task.",
       `Pick agent_type when one fits; omit it for a fresh general-purpose child with your tools:\n${formatAgentTypes()}`,

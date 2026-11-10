@@ -80,6 +80,7 @@ import {
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import { checkReplyGate } from "@/chat/agent/reply-gate";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import {
   FINISH_AUTOMATION_RUN_TOOL_NAME,
@@ -350,6 +351,7 @@ async function executeAgentRunInPrivacyContext(
       : undefined,
   };
   const delivery = run.delivery;
+  const replyGate = run.replyGate;
   const authorization = run.authorization;
   const durability = run.durability ?? {};
 
@@ -1423,6 +1425,7 @@ async function executeAgentRunInPrivacyContext(
           discardedRetryUsage = undefined;
           let actionConfirmationRetryUsed = false;
           let automationResultReminderUsed = !requireAutomationResult;
+          let replyGateLogged = false;
           let providerRetryAttempt = 0;
           let emptyOutputAttempt = 0;
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
@@ -1506,6 +1509,36 @@ async function executeAgentRunInPrivacyContext(
                 logWarn("agent.turn.automation_result.reminded", {});
                 run = agent!.continue();
                 continue;
+              }
+
+              // The automation reminder stays apart from the reply gate: it
+              // reads the transcript for `finishAutomationRun`, and the gate
+              // reads only saved state.
+              // After a turn-limit stop, the final response is the reply, and
+              // another tool call would end the Turn.
+              const replyCheck =
+                replyGate && !runResume.turnLimitWrappedUp
+                  ? await checkReplyGate({
+                      gate: replyGate,
+                      messages: agent!.state.messages,
+                      remindedTaskId: runResume.replyReminderTaskId,
+                    })
+                  : undefined;
+              if (replyCheck?.kind === "remind") {
+                runResume.markReplyReminded(replyCheck.taskId);
+                agent!.state.messages = replyCheck.messages;
+                await runResume.persistSafeBoundary(replyCheck.messages);
+                logWarn("agent.turn.reply_gate.remind", {});
+                run = agent!.continue();
+                continue;
+              }
+              if (replyCheck && !replyGateLogged) {
+                replyGateLogged = true;
+                if (replyCheck.kind === "reported") {
+                  logInfo("agent.turn.reply_gate.reported", {});
+                } else {
+                  logWarn("agent.turn.reply_gate.missing", {});
+                }
               }
 
               const emptyOutputContinuation = nextEmptyOutputContinuation({

@@ -120,7 +120,9 @@ describe("reporting support", () => {
       nowMs: Date.now(),
       source: "slack",
       title: testCase.title,
-      ...(testCase.visibility ? { visibility: testCase.visibility } : undefined),
+      ...(testCase.visibility
+        ? { visibility: testCase.visibility }
+        : undefined),
     });
 
     const summaries = (await readConversationFeed()).conversations;

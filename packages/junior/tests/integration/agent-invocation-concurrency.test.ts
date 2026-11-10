@@ -34,7 +34,11 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
-import { loadMessageEvents } from "../fixtures/agent-invocations";
+import {
+  loadMessageEvents,
+  reportToParent,
+  taskOf,
+} from "../fixtures/agent-invocations";
 import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { deferred } from "../fixtures/conversation-work";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
@@ -54,6 +58,14 @@ const baseInput = {
   parentConversationId,
 };
 
+/** A completed agent invocation that sent `text` as its one report. */
+function completedWith(text: string) {
+  return {
+    reportLog: [expect.objectContaining({ text })],
+    status: "completed",
+  };
+}
+
 async function searchAgents() {
   return await createSearchAgentsTool({ conversationId: parentConversationId })
     .execute!({}, {});
@@ -61,7 +73,8 @@ async function searchAgents() {
 
 function taskModel(request: AgentRun): StreamFn {
   return createModelStream([
-    { type: "text", text: `result:${request.instruction.text}` },
+    reportToParent(`result:${taskOf(request)}`),
+    { type: "text", text: "Reported." },
   ]);
 }
 
@@ -75,7 +88,9 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
     nowMs: 1_000,
     source: "local",
   });
-  const agentRunner = createModelAgentRunnerForRun(streamForRun);
+  const agentRunner = createModelAgentRunnerForRun(streamForRun, {
+    queue: () => queue,
+  });
   const run = vi.spyOn(agentRunner, "run");
   const {
     queue,
@@ -137,7 +152,12 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
       },
     ) =>
       await createAndEnqueueAgentInvocation(
-        { ...baseInput, ...overrides },
+        // spawnAgent passes its tool call ID.
+        {
+          ...baseInput,
+          parentToolCallId: overrides.idempotencyKey,
+          ...overrides,
+        },
         { conversationStore, queue, state },
       ),
   };
@@ -169,16 +189,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests.map((request) => request.history)).toEqual([[], []]);
       await expect(
         getAgentInvocation(first.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:first unnamed task",
-        status: "completed",
-      });
+      ).resolves.toMatchObject(completedWith("result:first unnamed task"));
       await expect(
         getAgentInvocation(second.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:second unnamed task",
-        status: "completed",
-      });
+      ).resolves.toMatchObject(completedWith("result:second unnamed task"));
     } finally {
       await harness.close();
     }
@@ -244,11 +258,7 @@ describe("agent invocation identity and concurrency", () => {
       ).resolves.toMatchObject({
         agentName: "researcher",
         reasoningLevel: "high",
-        // The child sees the parent's message as a parent agent task.
-        result: expect.stringMatching(
-          /^result:<parent-agent-task>\n[\s\S]*second named task\n<\/parent-agent-task>$/,
-        ),
-        status: "completed",
+        ...completedWith("result:second named task"),
       });
     } finally {
       await harness.close();
@@ -260,17 +270,14 @@ describe("agent invocation identity and concurrency", () => {
     const release = deferred<void>();
     const bothStarted = deferred<void>();
     const harness = await createHarness((request) => {
-      const task = request.instruction.text;
+      const task = taskOf(request);
       started.add(task);
       if (started.size === 2) {
         bothStarted.resolve(undefined);
       }
       return createModelStream([
-        {
-          type: "text",
-          text: `result:${task}`,
-          waitFor: release.promise,
-        },
+        { ...reportToParent(`result:${task}`), waitFor: release.promise },
+        { type: "text", text: "Reported." },
       ]);
     });
     try {
@@ -294,7 +301,7 @@ describe("agent invocation identity and concurrency", () => {
         Object.fromEntries(
           harness
             .requests()
-            .map((request) => [request.instruction.text, request.history]),
+            .map((request) => [taskOf(request), request.history]),
         ),
       ).toEqual({
         "parallel first": [],
@@ -305,16 +312,10 @@ describe("agent invocation identity and concurrency", () => {
       await processing;
       await expect(
         getAgentInvocation(first.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:parallel first",
-        status: "completed",
-      });
+      ).resolves.toMatchObject(completedWith("result:parallel first"));
       await expect(
         getAgentInvocation(second.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:parallel second",
-        status: "completed",
-      });
+      ).resolves.toMatchObject(completedWith("result:parallel second"));
     } finally {
       release.resolve(undefined);
       await harness.close();
@@ -469,9 +470,10 @@ describe("agent invocation identity and concurrency", () => {
   it("keeps a successful parallel child independent from a failing sibling", async () => {
     const harness = await createHarness((request) =>
       createModelStream([
-        request.instruction.text === "failing sibling"
+        taskOf(request) === "failing sibling"
           ? { type: "error", errorMessage: "sibling failed" }
-          : { type: "text", text: "successful sibling result" },
+          : reportToParent("successful sibling result"),
+        { type: "text", text: "Reported." },
       ]),
     );
     try {
@@ -487,18 +489,12 @@ describe("agent invocation identity and concurrency", () => {
       ]);
       await harness.drainQueuedWork();
 
-      expect(
-        harness
-          .requests()
-          .map((request) => request.instruction.text)
-          .sort(),
-      ).toEqual(["failing sibling", "successful sibling"].sort());
+      expect(harness.requests().map(taskOf).sort()).toEqual(
+        ["failing sibling", "successful sibling"].sort(),
+      );
       await expect(
         getAgentInvocation(successful.invocationId),
-      ).resolves.toMatchObject({
-        result: "successful sibling result",
-        status: "completed",
-      });
+      ).resolves.toMatchObject(completedWith("successful sibling result"));
       await expect(
         getAgentInvocation(failing.invocationId),
       ).resolves.toMatchObject({
@@ -617,12 +613,13 @@ describe("agent invocation identity and concurrency", () => {
           role: "user",
         }),
       );
-      // Its result is saved on its own agent invocation for the parent.
+      // The child's own work reports only with messageAgent, so its result
+      // is never sent to the parent.
       await expect(getAgentInvocation(timerRun.runId!)).resolves.toMatchObject({
         agentName: "watcher",
         childConversationId: child.childConversationId,
         parentConversationId,
-        result: expect.stringContaining("Check the deploy again."),
+        result: "",
         status: "completed",
       });
       // The timer Turn counts toward the automated-turn limit, as on a root.
@@ -782,19 +779,24 @@ describe("agent invocation identity and concurrency", () => {
 
   it("lets a parent list and stop the watches of its child agents", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-    // Each model request of a child, and an action to run during the next one.
+    // The first model request of each child Run, and an action to run
+    // during the next one.
     const modelInputs: Array<{ conversationId: string; text: string }> = [];
     let duringNextRequest: (() => Promise<unknown>) | undefined;
     const harness = await createHarness((request) => {
       const stream = taskModel(request);
+      let first = true;
       return async (model, context, options) => {
-        modelInputs.push({
-          conversationId: request.conversationId,
-          text: JSON.stringify(context.messages),
-        });
-        const action = duringNextRequest;
-        duringNextRequest = undefined;
-        await action?.();
+        if (first) {
+          first = false;
+          modelInputs.push({
+            conversationId: request.conversationId,
+            text: JSON.stringify(context.messages),
+          });
+          const action = duringNextRequest;
+          duringNextRequest = undefined;
+          await action?.();
+        }
         return await stream(model, context, options);
       };
     });

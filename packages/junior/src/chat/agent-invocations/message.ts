@@ -11,6 +11,7 @@ import { findChildAgentConversationId } from "./bindings";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
 import { createAgentInvocationForMessage } from "./create";
+import { sendReportToParent } from "./send-report";
 import { getActiveAgentInvocationForConversation } from "./store";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
 import { PARENT_AGENT_TARGET } from "./types";
@@ -25,7 +26,8 @@ type MessageOptions = {
 /**
  * Bind a Run's Actor and credentials to messages for its parent and child
  * agents, and for other top-level agents. A message to a child continues that
- * child. A message to the parent wakes the parent like a result. A top-level
+ * child. A message to the parent is the child's report: it wakes the parent,
+ * or it joins the result of the parent task that the child runs. A top-level
  * agent can also message another top-level agent that it has access to.
  */
 export function bindMessageAgent(
@@ -52,11 +54,19 @@ export function bindMessageAgent(
           "This conversation has no parent agent",
         );
       }
-      await enqueueAgentMessageToParent({
-        messageKey: `${run.turnId}:${call.toolCallId}`,
-        queue,
-        sender,
-        state: options.state,
+      // The tool call id keys the report, so a retry of this call sends it
+      // once and an intended repeat of the same text is sent again.
+      await sendReportToParent({
+        enqueueMessage: async (invocation, messageKey, text) =>
+          await enqueueAgentMessageToParent({
+            messageKey,
+            queue,
+            sender: invocation,
+            state: options.state,
+            text,
+          }),
+        invocation: sender,
+        key: `${run.turnId}:${call.toolCallId}`,
         text: input.text,
       });
       return {

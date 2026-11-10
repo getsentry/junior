@@ -1,8 +1,5 @@
 import { createWebSource } from "@sentry/junior-plugin-api";
-import {
-  completeAgentInvocation,
-  getActiveAgentInvocationForConversation,
-} from "@/chat/agent-invocations/store";
+import { getActiveAgentInvocationForConversation } from "@/chat/agent-invocations/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
@@ -24,6 +21,8 @@ import { createConversationWorkHarness } from "./conversation-work";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { expect } from "vitest";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
+import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 
 /** Compose production Conversation work with a Slack root. */
 export async function createHarness() {
@@ -112,9 +111,15 @@ export async function finishInvocation(
   const invocation =
     await getActiveAgentInvocationForConversation(childConversationId);
   if (!invocation) throw new Error("Expected an open Agent invocation");
-  await completeAgentInvocation({
+  // The test ends the Run, as its worker would.
+  await finishAgentInvocation({
     invocationId: invocation.invocationId,
-    result: "Found it.",
+    closingReport: "Found it.",
+    sendResult: async (terminal) =>
+      await enqueueAgentInvocationResult(terminal, {
+        queue: harness.queue,
+        state: harness.state,
+      }),
     status: "completed",
   });
   await expect(harness.process(childConversationId)).resolves.toMatchObject({
@@ -137,6 +142,8 @@ export async function startThread(
       agentName: "researcher",
       idempotencyKey,
       kind: "thread",
+      // spawnAgent passes its tool call ID.
+      parentToolCallId: idempotencyKey,
     },
     {
       conversationStore: harness.conversationStore,

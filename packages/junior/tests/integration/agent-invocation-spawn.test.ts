@@ -7,10 +7,7 @@ import {
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
 } from "@/chat/agent-invocations/ids";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-} from "@/chat/agent-invocations/store";
+import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -18,10 +15,7 @@ import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import {
-  recoverPendingAgentInvocationMailboxAppends,
-  recoverPendingAgentInvocationResults,
-} from "@/chat/agent-dispatch/heartbeat";
+import { recoverPendingAgentInvocationMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
   createLocalSource,
@@ -38,12 +32,14 @@ import {
   destination,
   invocationInput,
   parentConversationId,
+  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
   prepareParentConversation,
   prepareSlackParentConversation,
   loadSubagentEvents,
 } from "../fixtures/agent-invocations";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
 
 describe("agent invocation spawn and result delivery", () => {
   afterEach(async () => {
@@ -70,9 +66,9 @@ describe("agent invocation spawn and result delivery", () => {
         },
         3_000,
       );
-      await completeAgentInvocation({
+      await finishAgentInvocation({
         invocationId: first.invocationId,
-        result: "Finished.",
+        closingReport: "Finished.",
         status: "completed",
       });
       // A finished child keeps its name. A new task for it is a message.
@@ -143,6 +139,37 @@ describe("agent invocation spawn and result delivery", () => {
           agentName: "researcher",
         }),
       ).rejects.toThrow("idempotency key was reused with different input");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("makes a child private when its root's channel goes private", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "private-1",
+      });
+      const childBefore = await conversationStore.get({
+        conversationId: created.childConversationId,
+      });
+      expect(childBefore).toMatchObject({ visibility: "public" });
+
+      // Only the root records the new visibility. The child shares its
+      // Destination row, so its own row does not change. A child Run reads
+      // this visibility; see agent-invocation-work.test.ts.
+      await conversationStore.recordActivity({
+        conversationId: slackParentConversationId,
+        destination: slackDestination,
+        nowMs: 3_000,
+        source: "slack",
+        visibility: "private",
+      });
+      await expect(
+        conversationStore.get({ conversationId: created.childConversationId }),
+      ).resolves.toEqual({ ...childBefore, visibility: "private" });
     } finally {
       await fixture.close();
     }
@@ -345,7 +372,7 @@ describe("agent invocation spawn and result delivery", () => {
     }
   });
 
-  it("repairs a terminal result that never reached its parent", async () => {
+  it("sends a blocked result that names the open siblings", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
@@ -358,32 +385,32 @@ describe("agent invocation spawn and result delivery", () => {
         },
         2_000,
       );
-      // A sibling that the same parent started is still running.
+      // A task that the same parent gave a sibling is still open.
       await createAgentInvocation(
         {
           ...slackInvocationInput,
           agentName: "scout",
           idempotencyKey: "parent-result-repair-sibling",
+          parentToolCallId: "spawn-scout",
         },
         2_500,
       );
-      // The worker stopped after the terminal write and before the parent append.
-      await completeAgentInvocation({
+      // Another sibling runs only its own work, such as a Watch Event, which
+      // sends the parent no result.
+      await createAgentInvocation(
+        {
+          ...slackInvocationInput,
+          agentName: "watcher",
+          idempotencyKey: "parent-result-repair-own-work",
+        },
+        2_600,
+      );
+      await finishAgentInvocation({
         errorMessage: "GitHub authorization is required",
         invocationId: created.invocationId,
+        sendResult: async (invocation) =>
+          await enqueueAgentInvocationResult(invocation, { queue, state }),
         status: "blocked",
-      });
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({ parentMailboxStatus: "pending" });
-
-      await recoverPendingAgentInvocationResults({
-        conversationWorkQueue: queue,
-        nowMs: Date.now(),
-      });
-      await recoverPendingAgentInvocationResults({
-        conversationWorkQueue: queue,
-        nowMs: Date.now(),
       });
 
       expect(
@@ -395,7 +422,7 @@ describe("agent invocation spawn and result delivery", () => {
       ).toHaveLength(1);
       await expect(
         getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({ parentMailboxStatus: "appended" });
+      ).resolves.toMatchObject({ status: "blocked" });
       const parentWork = await getConversationWorkState({
         conversationId: slackParentConversationId,
         state,
@@ -413,15 +440,7 @@ describe("agent invocation spawn and result delivery", () => {
       );
       // The parent can wait for the open sibling instead of reporting early.
       expect(parentWork?.messages[0]?.input.text).toContain('"scout"');
-      await expect(
-        loadSubagentEvents(slackParentConversationId),
-      ).resolves.toEqual([
-        {
-          type: "subagent_ended",
-          subagentInvocationId: created.invocationId,
-          outcome: "blocked",
-        },
-      ]);
+      expect(parentWork?.messages[0]?.input.text).not.toContain('"watcher"');
     } finally {
       await fixture.close();
     }
@@ -477,9 +496,9 @@ describe("agent invocation spawn and result delivery", () => {
         outcome: "success",
         turnId: childTurnId,
       });
-      const terminal = await completeAgentInvocation({
+      const terminal = await finishAgentInvocation({
         invocationId: created.invocationId,
-        result: "Opened getsentry/junior#1.",
+        closingReport: "Opened getsentry/junior#1.",
         status: "completed",
       });
       await enqueueAgentInvocationResult(terminal as TerminalAgentInvocation, {
@@ -509,53 +528,6 @@ describe("agent invocation spawn and result delivery", () => {
           (item) => item.conversationId === slackParentConversationId,
         )?.annotations,
       ).toMatchObject([{ plugin: "github", key: change.key }]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("names a finished sibling whose result has not reached the parent", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    try {
-      const first = await createAgentInvocation(
-        { ...slackInvocationInput, idempotencyKey: "fan-out-first" },
-        2_000,
-      );
-      const sibling = await createAgentInvocation(
-        {
-          ...slackInvocationInput,
-          agentName: "analyst",
-          idempotencyKey: "fan-out-sibling",
-        },
-        2_500,
-      );
-      // Both children finish before either result reaches the parent.
-      const result = await completeAgentInvocation({
-        invocationId: first.invocationId,
-        result: "First finding.",
-        status: "completed",
-      });
-      await completeAgentInvocation({
-        invocationId: sibling.invocationId,
-        result: "Second finding.",
-        status: "completed",
-      });
-
-      await enqueueAgentInvocationResult(result as TerminalAgentInvocation, {
-        queue,
-        state,
-      });
-
-      const parentWork = await getConversationWorkState({
-        conversationId: slackParentConversationId,
-        state,
-      });
-      expect(parentWork?.messages[0]?.input.text).toContain(
-        ' waiting_on="analyst"',
-      );
     } finally {
       await fixture.close();
     }

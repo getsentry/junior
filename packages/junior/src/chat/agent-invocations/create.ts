@@ -40,6 +40,7 @@ type NewAgentInvocation = Pick<
   | "credentialContext"
   | "destination"
   | "input"
+  | "inputLabel"
   | "invocationId"
   | "parentConversationId"
   | "parentToolCallId"
@@ -63,6 +64,8 @@ async function insertAgentInvocation(
       agentName: invocation.agentName ?? null,
       agentType: invocation.agentType ?? null,
       credentialContext: invocation.credentialContext ?? null,
+      // A task title labels its input. Other input sets its own label.
+      inputLabel: invocation.inputLabel ?? invocation.title ?? null,
       parentToolCallId: invocation.parentToolCallId ?? null,
       reasoningLevel: invocation.reasoningLevel ?? null,
       source: invocation.source ?? { kind: "agent_invocation" },
@@ -251,6 +254,8 @@ export async function createAgentInvocation(
 export async function createAgentInvocationFromLatest(
   args: {
     input: string;
+    /** Short label for the input, such as an Event type and summary. */
+    inputLabel?: string;
     invocationId: string;
     latest: AgentInvocation;
     /** Actor, credentials, and Source for watch events. */
@@ -269,6 +274,7 @@ export async function createAgentInvocationFromLatest(
       credentialContext,
       destination: latest.destination,
       input: args.input,
+      inputLabel: args.inputLabel,
       invocationId: args.invocationId,
       parentConversationId: latest.parentConversationId,
       reasoningLevel: latest.reasoningLevel,

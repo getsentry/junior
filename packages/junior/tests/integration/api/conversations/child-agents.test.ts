@@ -6,7 +6,6 @@ import {
   conversationDetailReportSchema,
 } from "@/api/schema";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
-import { completeAgentInvocation } from "@/chat/agent-invocations/store";
 import { closeDb, getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import {
@@ -17,6 +16,7 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../../../fixtures/agent-invocations";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
 
 async function requestDetail(conversationId: string) {
   return await createJuniorApi().request(
@@ -55,7 +55,7 @@ describe("conversation child agents API", () => {
       },
       2_000,
     );
-    await completeAgentInvocation({
+    await finishAgentInvocation({
       errorMessage: "GitHub access is missing.",
       invocationId: blocked.invocationId,
       nowMs: 3_000,

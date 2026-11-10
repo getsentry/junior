@@ -9,6 +9,9 @@ import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import type { AgentRun } from "@/chat/agent/types";
+import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 
 function assistantMessage(text: string): AssistantMessage {
@@ -33,19 +36,41 @@ export function createTestTurnExecution(agentRunner: AgentRunner): ExecuteTurn {
     await executeTurn(agentRunner, run, saveResult);
 }
 
+/** Options for a model runner fixture. */
+interface ModelAgentRunnerOptions {
+  /**
+   * Work queue for `spawnAgent` and `messageAgent`, bound as production
+   * binds them. Without it, the run has neither tool.
+   */
+  queue?: () => ConversationWorkQueue;
+}
+
 /** Run the real agent while replacing only model output. */
-export function createModelAgentRunner(streamFn: StreamFn): AgentRunner {
-  return createModelAgentRunnerForRun(() => streamFn);
+export function createModelAgentRunner(
+  streamFn: StreamFn,
+  options?: ModelAgentRunnerOptions,
+): AgentRunner {
+  return createModelAgentRunnerForRun(() => streamFn, options);
 }
 
 /** Run the real agent while choosing a fixed model stream for each run. */
 export function createModelAgentRunnerForRun(
   streamForRun: (run: AgentRun) => StreamFn,
+  options: ModelAgentRunnerOptions = {},
 ): AgentRunner {
-  return createAgentRunner(async (run) => {
-    const { executeAgentRun } = await import("@/chat/agent");
-    return await executeAgentRun(run, streamForRun(run));
-  });
+  const { queue } = options;
+  return createAgentRunner(
+    async (run) => {
+      const { executeAgentRun } = await import("@/chat/agent");
+      return await executeAgentRun(run, streamForRun(run));
+    },
+    queue
+      ? {
+          bindMessageAgent: (run) => bindMessageAgent(run, { queue }),
+          bindSpawnAgent: (run) => bindSpawnAgent(run, { queue }),
+        }
+      : undefined,
+  );
 }
 
 /**

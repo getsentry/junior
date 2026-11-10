@@ -26,6 +26,7 @@ import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
 import type { ChildAgentKind } from "@/chat/agent-invocations/types";
+import type { ReplyGate } from "@/chat/agent/reply-gate";
 import type {
   ImageGenerateToolDeps,
   ViewImageToolDeps,
@@ -279,11 +280,16 @@ export type AgentRun = {
   conversationId: string;
   /**
    * Agent invocation that this Run advances. Only the Agent invocation worker
-   * sets it. Its input is agent-written, and its final reply goes to the
-   * parent. Behavior that depends on that reads this field, not the
+   * sets it. Its input is agent-written, and it reports to the parent only
+   * with tools. Behavior that depends on that reads this field, not the
    * Conversation kind: a person's Turn in a Thread has no Agent invocation.
    */
   agentInvocationId?: string;
+  /**
+   * Set when the Run replies only through tools, such as a child agent Run
+   * that reports with `messageAgent`. See `checkReplyGate`.
+   */
+  replyGate?: ReplyGate;
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */

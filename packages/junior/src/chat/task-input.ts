@@ -17,13 +17,29 @@ import {
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 
 /**
+ * Who a Watch Turn replies to. A root replies in its Conversation. A child
+ * agent replies to its parent, and its child agent rules say how.
+ */
+export type ReplyTarget = "conversation" | "parent";
+
+/**
  * Shared closing lines. Automations pass outcomes and end with a declared
  * result. Watches follow the Conversation's reply rules. A Watch reply goes
  * only to the Conversation, so a question asked in the provider must also get
  * its answer there. Watch instructions often say to stay silent, so this rule
- * sits in the contract, not in plugin guidance.
+ * sits in the contract, not in plugin guidance. For a child agent, the
+ * contract only says when to report.
  */
-function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
+function replyContractLines(
+  outcomes: TaskOutcome[] | undefined,
+  replyTo: ReplyTarget,
+): string[] {
+  if (!outcomes && replyTo === "parent") {
+    return [
+      "When an Event asks you a question, answer it where it was asked, with that provider's tool.",
+      `Report as your child agent rules say, and follow any reply format in the instructions, when the instructions say to notify, mention, or report to a person, when a person must decide or act, or when something failed. Otherwise, such as a routine fix that worked or feedback that you handled, end the run with \`${NO_REPLY_TOOL_NAME}\`.`,
+    ];
+  }
   if (!outcomes) {
     return [
       "When an Event asks you a question, answer it where it was asked, with that provider's tool. Then reply with the answer and a link to it.",
@@ -190,6 +206,8 @@ export function renderTaskInput(args: {
   instructions: string;
   /** Stored automation outcomes. Watches omit this and reply in the Conversation. */
   outcomes?: TaskOutcome[];
+  /** Who the Turn replies to. Defaults to the Conversation. */
+  replyTo?: ReplyTarget;
   /** Human label for the matched resource, when present. */
   about?: string;
   /** Event type, when an Event started the task. */
@@ -282,7 +300,7 @@ export function renderTaskInput(args: {
         externalText && clip(externalText, args.externalTextMaxLength),
         args.source,
       ),
-      ...replyContractLines(args.outcomes),
+      ...replyContractLines(args.outcomes, args.replyTo ?? "conversation"),
     ],
   );
 }
@@ -330,6 +348,8 @@ function eventTag(event: TaskBatchEvent, index: number): string {
  */
 export function renderTaskBatchInput(args: {
   groups: readonly TaskBatchGroup[];
+  /** Who the Turn replies to. Defaults to the Conversation. */
+  replyTo?: ReplyTarget;
 }): string {
   const total = args.groups.reduce(
     (count, group) => count + group.events.length,
@@ -382,5 +402,8 @@ export function renderTaskBatchInput(args: {
     );
   }
 
-  return renderTag("task", {}, [...body, ...replyContractLines(undefined)]);
+  return renderTag("task", {}, [
+    ...body,
+    ...replyContractLines(undefined, args.replyTo ?? "conversation"),
+  ]);
 }

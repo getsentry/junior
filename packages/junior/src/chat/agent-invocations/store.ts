@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
-import { getAgentInvocationIdForResult } from "./ids";
+import { appendClosingReport } from "./report";
 import {
   agentInvocationSchema,
   type AgentInvocation,
+  type AgentInvocationReportEntry,
   type AgentInvocationStatus,
   type TerminalAgentInvocation,
 } from "./types";
@@ -44,12 +45,10 @@ export function invocationFromRow(
       ? { errorMessage: row.errorMessage }
       : undefined),
     input: row.input,
+    ...(row.inputLabel ? { inputLabel: row.inputLabel } : undefined),
     invocationId: row.invocationId,
     mailboxStatus: row.mailboxStatus,
     parentConversationId: row.parentConversationId,
-    ...(row.parentMailboxStatus
-      ? { parentMailboxStatus: row.parentMailboxStatus }
-      : undefined),
     ...(row.parentToolCallId
       ? { parentToolCallId: row.parentToolCallId }
       : undefined),
@@ -57,6 +56,7 @@ export function invocationFromRow(
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
       : undefined),
+    ...(row.reportLog ? { reportLog: row.reportLog } : undefined),
     ...(row.result !== null ? { result: row.result } : undefined),
     source: row.source,
     status: row.status,
@@ -180,47 +180,6 @@ export async function listOpenAgentInvocations(
   return rows.map(invocationFromRow);
 }
 
-/**
- * Return whether a child Conversation has work that will start another agent
- * invocation on it: another open agent invocation, an open child agent, or a
- * sent child agent result that no agent invocation has received yet.
- */
-async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
-  const conversationId = invocation.childConversationId;
-  const open = await listOpenAgentInvocations(conversationId);
-  if (open.some((row) => row.invocationId !== invocation.invocationId)) {
-    return true;
-  }
-  const db = getSqlExecutor().db();
-  // A `replaced` child result is never sent. A later agent invocation of
-  // that child agent sends its report instead.
-  const sent = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      and(
-        eq(juniorAgentInvocations.parentConversationId, conversationId),
-        inArray(juniorAgentInvocations.parentMailboxStatus, [
-          "pending",
-          "appended",
-        ]),
-      ),
-    );
-  if (sent.length === 0) {
-    return false;
-  }
-  const received = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      inArray(
-        juniorAgentInvocations.invocationId,
-        sent.map((row) => getAgentInvocationIdForResult(row.invocationId)),
-      ),
-    );
-  return received.length < sent.length;
-}
-
 /** List bounded invocation records whose mailbox append still needs repair. */
 export async function listPendingAgentInvocationMailboxAppends(
   limit = 100,
@@ -241,58 +200,6 @@ export async function listPendingAgentInvocationMailboxAppends(
     .orderBy(asc(juniorAgentInvocations.createdAt))
     .limit(limit);
   return rows.map(invocationFromRow);
-}
-
-/** List terminal agent invocation results that still need a parent mailbox append. */
-export async function listPendingAgentInvocationResults(
-  limit = 100,
-): Promise<TerminalAgentInvocation[]> {
-  const rows = await getSqlExecutor()
-    .db()
-    .select()
-    .from(juniorAgentInvocations)
-    .where(eq(juniorAgentInvocations.parentMailboxStatus, "pending"))
-    .orderBy(asc(juniorAgentInvocations.terminalAt))
-    .limit(limit);
-  return rows.map(invocationFromRow).filter(isTerminalAgentInvocation);
-}
-
-/**
- * Send a `replaced` result to the parent now. A stop ended the open work of
- * the child, so no later agent invocation sends the report.
- */
-export async function reportReplacedAgentInvocation(
-  invocationId: string,
-  nowMs = Date.now(),
-): Promise<AgentInvocation | undefined> {
-  await getSqlExecutor()
-    .db()
-    .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "pending", updatedAt: new Date(nowMs) })
-    .where(
-      and(
-        eq(juniorAgentInvocations.invocationId, invocationId),
-        eq(juniorAgentInvocations.parentMailboxStatus, "replaced"),
-      ),
-    );
-  return await getAgentInvocation(invocationId);
-}
-
-/** Record that one terminal result is in its parent mailbox. */
-export async function markAgentInvocationParentMailboxAppended(
-  invocationId: string,
-  nowMs = Date.now(),
-): Promise<void> {
-  await getSqlExecutor()
-    .db()
-    .update(juniorAgentInvocations)
-    .set({ parentMailboxStatus: "appended", updatedAt: new Date(nowMs) })
-    .where(
-      and(
-        eq(juniorAgentInvocations.invocationId, invocationId),
-        eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
-      ),
-    );
 }
 
 /** Record that the invocation's idempotent mailbox append completed. */
@@ -349,90 +256,139 @@ export async function markAgentInvocationPaused(
 }
 
 /**
- * Persist one terminal invocation result without overwriting an earlier
- * result. The same write marks the result for the parent mailbox. If the
- * child still has open work, the result is `replaced`: the parent gets one
- * report, from the agent invocation that finishes the child's work.
- * `reportNow` sends the result even then, when that open work does not
- * continue this task.
+ * Save one report entry on a running agent invocation. A replay of the same
+ * report or steering task does not save it twice.
  */
-export async function completeAgentInvocation(
-  args: (
-    | {
-        invocationId: string;
-        result: string;
-        status: "completed";
-      }
-    | {
-        errorMessage: string;
-        invocationId: string;
-        status: "blocked" | "failed" | "stopped";
-      }
-  ) & { nowMs?: number; reportNow?: boolean },
-): Promise<AgentInvocation | undefined> {
-  const nowMs = args.nowMs ?? Date.now();
-  const current = await getAgentInvocation(args.invocationId);
-  if (!current || isTerminalAgentInvocation(current)) {
-    return current;
-  }
-  // Open child work only moves forward, so a read before the write is safe:
-  // each `replaced` result has open work that starts a later invocation. A
-  // stop is always reported, because the stop also stops that open work.
-  const parentMailboxStatus =
-    !args.reportNow &&
-    args.status !== "stopped" &&
-    (await hasOpenChildWork(current))
-      ? "replaced"
-      : "pending";
-  await getSqlExecutor()
-    .db()
-    .update(juniorAgentInvocations)
-    .set({
-      status: args.status,
-      result: args.status === "completed" ? args.result : null,
-      errorMessage: args.status === "completed" ? null : args.errorMessage,
-      parentMailboxStatus,
-      terminalAt: new Date(nowMs),
-      updatedAt: new Date(nowMs),
-    })
-    .where(
-      and(
-        eq(juniorAgentInvocations.invocationId, args.invocationId),
-        inArray(
-          juniorAgentInvocations.status,
-          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-        ),
-      ),
-    );
-  return await getAgentInvocation(args.invocationId);
-}
-
-/**
- * End a pending agent invocation whose input the running agent invocation of
- * the same child read as a steering message. The running agent invocation
- * reports for both, so this one is never sent to the parent.
- */
-export async function markAgentInvocationSteered(
+export async function appendAgentInvocationReport(
   invocationId: string,
+  entry: AgentInvocationReportEntry,
   nowMs = Date.now(),
-): Promise<AgentInvocation | undefined> {
+): Promise<void> {
+  const key =
+    entry.kind === "report"
+      ? { key: entry.key, kind: entry.kind }
+      : { invocationId: entry.invocationId, kind: entry.kind };
   await getSqlExecutor()
     .db()
     .update(juniorAgentInvocations)
     .set({
-      status: "completed",
-      result: "",
-      parentMailboxStatus: "steered",
-      terminalAt: new Date(nowMs),
+      reportLog: sql`coalesce(${juniorAgentInvocations.reportLog}, '[]'::jsonb) || ${JSON.stringify([entry])}::jsonb`,
       updatedAt: new Date(nowMs),
     })
     .where(
       and(
         eq(juniorAgentInvocations.invocationId, invocationId),
-        eq(juniorAgentInvocations.status, "pending"),
+        inArray(
+          juniorAgentInvocations.status,
+          NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+        ),
+        sql`not coalesce(${juniorAgentInvocations.reportLog}, '[]'::jsonb) @> ${JSON.stringify([key])}::jsonb`,
       ),
     );
-  return await getAgentInvocation(invocationId);
+}
+
+/** How one agent invocation ends. `closingReport` ends a parent task's log. */
+export type AgentInvocationEnd = (
+  | { noReply?: boolean; status: "completed" }
+  | { errorMessage: string; status: "blocked" | "failed" | "stopped" }
+) & { closingReport?: string };
+
+/**
+ * Return a parent task: work that a parent `spawnAgent` or `messageAgent`
+ * call gave the child. Other work, such as a Watch Event Run, is own work.
+ */
+export function isParentTask(
+  invocation: Pick<AgentInvocation, "parentToolCallId">,
+): boolean {
+  return invocation.parentToolCallId !== undefined;
+}
+
+function terminalColumns(
+  current: AgentInvocation,
+  end: AgentInvocationEnd,
+  nowMs: number,
+) {
+  const completed = end.status === "completed";
+  return {
+    errorMessage: completed ? null : end.errorMessage,
+    reportLog: isParentTask(current)
+      ? appendClosingReport(current.reportLog, end.closingReport, {
+          noReply: completed && Boolean(end.noReply),
+        })
+      : (current.reportLog ?? []),
+    result: completed ? "" : null,
+    status: end.status,
+    terminalAt: new Date(nowMs),
+  };
+}
+
+/**
+ * Return the agent invocation as it reads after `end`, without saving it.
+ * `finishAgentInvocation` renders the result from it before it saves.
+ */
+export function terminalAgentInvocation(
+  current: AgentInvocation,
+  end: AgentInvocationEnd,
+  nowMs: number,
+): TerminalAgentInvocation {
+  const columns = terminalColumns(current, end, nowMs);
+  return agentInvocationSchema.parse({
+    ...current,
+    ...(columns.errorMessage !== null
+      ? { errorMessage: columns.errorMessage }
+      : undefined),
+    reportLog: columns.reportLog,
+    ...(columns.result !== null ? { result: columns.result } : undefined),
+    status: columns.status,
+    terminalAtMs: nowMs,
+  }) as TerminalAgentInvocation;
+}
+
+/**
+ * Save how one agent invocation ended, without overwriting an earlier end.
+ * Only `finishAgentInvocation` calls it, after it sent any result.
+ * TODO(dcramer): Stop writing `parent_mailbox_status` in the cleanup after
+ * this release. Until then, `appended` or `steered` keeps an older runtime
+ * from sending the result again after a rollback.
+ */
+export async function saveTerminalAgentInvocation(
+  invocationId: string,
+  end: AgentInvocationEnd,
+  options: { nowMs: number; resultSent: boolean },
+): Promise<AgentInvocation | undefined> {
+  const executor = getSqlExecutor();
+  // The row lock keeps a report that `messageAgent` saves at the same time
+  // from being lost: it lands before this read or sees the terminal status.
+  return await executor.transaction(async () => {
+    const [row] = await executor
+      .db()
+      .select()
+      .from(juniorAgentInvocations)
+      .where(eq(juniorAgentInvocations.invocationId, invocationId))
+      .for("update");
+    const current = row ? invocationFromRow(row) : undefined;
+    if (!current || isTerminalAgentInvocation(current)) {
+      return current;
+    }
+    await executor
+      .db()
+      .update(juniorAgentInvocations)
+      .set({
+        ...terminalColumns(current, end, options.nowMs),
+        parentMailboxStatus: options.resultSent ? "appended" : "steered",
+        updatedAt: new Date(options.nowMs),
+      })
+      .where(
+        and(
+          eq(juniorAgentInvocations.invocationId, invocationId),
+          inArray(
+            juniorAgentInvocations.status,
+            NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+          ),
+        ),
+      );
+    return await getAgentInvocation(invocationId);
+  });
 }
 
 /** Return whether an agent invocation has finished. */

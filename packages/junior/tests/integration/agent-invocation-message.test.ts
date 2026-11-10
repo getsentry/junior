@@ -7,7 +7,6 @@ import {
   getAgentInvocationIdForMessage,
 } from "@/chat/agent-invocations/ids";
 import {
-  completeAgentInvocation,
   getAgentInvocation,
   markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
@@ -41,6 +40,7 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
+import { finishAgentInvocation } from "@/chat/agent-invocations/finish";
 
 const parentActor = slackInvocationInput.actor;
 
@@ -175,7 +175,6 @@ describe("messageAgent", () => {
         agentName: "researcher",
         reasoningLevel: "low",
         idempotencyKey: "message-child",
-        parentToolCallId: "call-spawn",
       });
       const running = (await markAgentInvocationRunning(child.invocationId))!;
 
@@ -228,12 +227,25 @@ describe("messageAgent", () => {
         conversation_id: slackParentConversationId,
         delivery: "queued",
       });
-      await childTool.execute!(
-        { text: "Found the bug in the retry path.", to: "parent" },
-        { toolCallId: "call-to-parent" },
-      );
+      // A retry of the same tool call saves and sends the report once. A
+      // new call with the same text, such as "CI still fails" twice, is a
+      // new report.
+      for (const toolCallId of ["call-to-parent", "call-to-parent-again"]) {
+        await childTool.execute!(
+          { text: "Found the bug in the retry path.", to: "parent" },
+          { toolCallId },
+        );
+      }
+      await expect(
+        getAgentInvocation(child.invocationId),
+      ).resolves.toMatchObject({
+        reportLog: [
+          expect.objectContaining({ text: "Found the bug in the retry path." }),
+          expect.objectContaining({ text: "Found the bug in the retry path." }),
+        ],
+      });
       const parentMessages = await mailbox(slackParentConversationId);
-      expect(parentMessages).toHaveLength(1);
+      expect(parentMessages).toHaveLength(2);
       expect(parentMessages[0]).toMatchObject({
         delivery: "defer",
         input: {
@@ -259,14 +271,15 @@ describe("messageAgent", () => {
         expect.objectContaining({ actor: parentActor }),
       ]);
 
-      // The first work finishes. The queued message reports for both.
+      // The child's own work finishes. It reported with messageAgent, so its
+      // result is not sent. The queued parent task reports for itself.
       await expect(
-        completeAgentInvocation({
+        finishAgentInvocation({
           invocationId: child.invocationId,
-          result: "First pass done.",
+          closingReport: "First pass done.",
           status: "completed",
         }),
-      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      ).resolves.toMatchObject({ status: "completed" });
       await expect(
         createSearchAgentsTool({ conversationId: slackParentConversationId })
           .execute!({}, {}),
@@ -383,26 +396,16 @@ describe("messageAgent", () => {
         { text: "Late finding.", to: "parent" },
         { toolCallId: "call-late" },
       );
-      // The child finishes while its helper is open, so its result is
-      // `replaced`. Then the parent stops the whole child tree.
-      await expect(
-        completeAgentInvocation({
-          invocationId: child.invocationId,
-          result: "Waiting on the helper.",
-          status: "completed",
-        }),
-      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      // The parent stops the whole child tree.
       await stopChildAgentInvocations({
         childConversationId: child.childConversationId,
         parentConversationId: slackParentConversationId,
       });
-      // The `replaced` result was never reported, so it is not a result.
       const { agents } = (await createSearchAgentsTool({
         conversationId: slackParentConversationId,
       }).execute!({}, {})) as { agents: Record<string, unknown>[] };
       expect(agents).toHaveLength(1);
       expect(agents[0]).toMatchObject({ status: "stopped" });
-      expect(agents[0]).not.toHaveProperty("last_result");
       const messages = await eventMessages(child.childConversationId);
       expect(messages).toHaveLength(1);
       await expect(

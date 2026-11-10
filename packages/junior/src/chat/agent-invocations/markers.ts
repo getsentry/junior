@@ -7,6 +7,7 @@
 import { getConversationEventStore } from "@/chat/db";
 import type { ConversationMessageMeta } from "@/chat/state/conversation";
 import { getAgentInvocationMessageId } from "./ids";
+import { reportTexts } from "./report";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 
 // The dashboard labels each child row with this kind.
@@ -81,9 +82,9 @@ const SUBAGENT_OUTCOMES = {
 
 /**
  * Record in the parent Conversation how one agent invocation ended, and record
- * a completed result as an assistant message in the child Conversation. The
- * heartbeat result repair also calls this, because the child work can be
- * acknowledged before the worker reports the result.
+ * the reports that the child sent as an assistant message in the child
+ * Conversation. A runtime note, such as "no report was sent", is not the
+ * child's text, so it is not recorded there.
  */
 export async function recordSubagentEnded(
   invocation: TerminalAgentInvocation,
@@ -103,7 +104,9 @@ export async function recordSubagentEnded(
     },
   ]);
   const result =
-    invocation.status === "completed" ? invocation.result.trim() : "";
+    invocation.status === "completed"
+      ? reportTexts(invocation.reportLog).join("\n\n")
+      : "";
   if (!result) return;
   const messageId = `agent-invocation:${invocation.invocationId}:reply`;
   await eventStore.append(invocation.childConversationId, [

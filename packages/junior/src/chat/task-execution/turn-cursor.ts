@@ -158,6 +158,8 @@ export interface TurnRecord {
   cumulativeUsage?: AgentTurnUsage;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean;
+  /** Latest task that got its reply gate reminder; survives history replacement. */
+  replyReminderTaskId?: string;
   /** Times recovery resumed this turn after its worker stopped checking in. */
   lostWorkerResumeCount?: number;
   dispatchId?: string;
@@ -318,6 +320,7 @@ const storedTurnRecordSchema = z
     errorMessage: z.string().optional(),
     cumulativeToolCallCount: z.number().int().nonnegative().optional(),
     turnLimitWrappedUp: z.boolean().optional(),
+    replyReminderTaskId: z.string().min(1).optional(),
     lostWorkerResumeCount: z.number().int().nonnegative().optional(),
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
@@ -509,6 +512,7 @@ function materializeTurnRecord(
       credentialSubject: stored.credentialSubject,
       cumulativeToolCallCount: stored.cumulativeToolCallCount,
       turnLimitWrappedUp: stored.turnLimitWrappedUp,
+      replyReminderTaskId: stored.replyReminderTaskId,
       lostWorkerResumeCount: stored.lostWorkerResumeCount,
       cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
@@ -640,6 +644,7 @@ function buildStoredRecord(args: {
   traceContext?: TraceContext;
   cumulativeToolCallCount?: number;
   turnLimitWrappedUp?: boolean;
+  replyReminderTaskId?: string;
   lostWorkerResumeCount?: number;
   turnStartSeq?: number;
 }): StoredTurnRecord {
@@ -661,6 +666,7 @@ function buildStoredRecord(args: {
       credentialSubject: args.credentialSubject,
       cumulativeToolCallCount: args.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp,
+      replyReminderTaskId: args.replyReminderTaskId,
       lostWorkerResumeCount: args.lostWorkerResumeCount,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
@@ -794,6 +800,7 @@ async function updateTurnState(args: {
         credentialSubject: args.existing.credentialSubject,
         cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         turnLimitWrappedUp: args.existing.turnLimitWrappedUp,
+        replyReminderTaskId: args.existing.replyReminderTaskId,
         lostWorkerResumeCount: args.existing.lostWorkerResumeCount,
         dispatchId: args.existing.dispatchId,
         dispatchOutcome: args.existing.dispatchOutcome,
@@ -825,6 +832,7 @@ export async function upsertTurnRecord(args: {
   cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
   turnLimitWrappedUp?: boolean;
+  replyReminderTaskId?: string;
   lostWorkerResumeCount?: number;
   destination?: Destination;
   dispatchId?: string;
@@ -1005,6 +1013,8 @@ async function upsertTurnRecordLocked(
           existingRecord?.cumulativeToolCallCount,
         turnLimitWrappedUp:
           args.turnLimitWrappedUp ?? existingRecord?.turnLimitWrappedUp,
+        replyReminderTaskId:
+          args.replyReminderTaskId ?? existingRecord?.replyReminderTaskId,
         lostWorkerResumeCount:
           args.lostWorkerResumeCount ?? existingRecord?.lostWorkerResumeCount,
         dispatchId,

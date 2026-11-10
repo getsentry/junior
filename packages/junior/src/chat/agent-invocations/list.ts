@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
@@ -14,6 +14,7 @@ import {
 import { getAgentInvocationIdForResult } from "./ids";
 import {
   invocationFromRow,
+  isParentTask,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
 } from "./store";
@@ -23,6 +24,7 @@ import {
   type AgentInvocationStatus,
   type ChildAgent,
   type ChildAgentResult,
+  type TerminalAgentInvocation,
 } from "./types";
 
 function isChildAgentResult(
@@ -34,12 +36,48 @@ function isChildAgentResult(
 /** Bound the agent invocations that one child agent listing reads. */
 const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
 
-/** Return whether a child's session stopped after its latest agent invocation. */
+/** Return whether a child's session stopped after this agent invocation started. */
 export function isChildAgentSessionStopped(
   latest: AgentInvocation,
   stoppedAtMs: number | undefined,
 ): boolean {
   return stoppedAtMs !== undefined && stoppedAtMs >= latest.createdAtMs;
+}
+
+/**
+ * Return whether the parent is owed a result for one terminal agent
+ * invocation. A parent task is owed one, and own work is owed one only when
+ * it failed or is blocked. A stopped child owes no other result: new input
+ * from the parent ends the stop and clears `stoppedAtMs`. A `stopped` parent
+ * task still reports, because only a person's stop of the child ends one
+ * here: a stop from the parent ends its tree in `stop.ts` and owes nothing.
+ * A steered task is owed none, because the Run that read it answers it, so
+ * the caller checks that first.
+ */
+export function isResultOwed(
+  invocation: TerminalAgentInvocation,
+  childStoppedAtMs: number | undefined,
+): boolean {
+  if (invocation.status === "stopped") {
+    return isParentTask(invocation);
+  }
+  return (
+    childStoppedAtMs === undefined &&
+    (isParentTask(invocation) ||
+      invocation.status === "blocked" ||
+      invocation.status === "failed")
+  );
+}
+
+/** Return the parent tasks that steered a Run of these agent invocations. */
+function steeredTaskIds(invocations: readonly AgentInvocation[]): Set<string> {
+  return new Set(
+    invocations.flatMap((invocation) =>
+      (invocation.reportLog ?? []).flatMap((entry) =>
+        entry.kind === "steered_task" ? [entry.invocationId] : [],
+      ),
+    ),
+  );
 }
 
 /** Stored facts of a child Conversation that its listing shows. */
@@ -55,14 +93,15 @@ function childAgentFromInvocations(
 ): ChildAgent {
   const { stoppedAtMs } = facts;
   // `invocations` is newest first. The oldest open agent invocation is the
-  // one that runs, so it owns the status. A `steered` agent invocation never
-  // ran: the agent invocation that read its input owns its status.
+  // one that runs, so it owns the status. A steered task never ran: the
+  // agent invocation that read its input owns its status.
   const latest = invocations[0]!;
+  const steered = steeredTaskIds(invocations);
   let current =
     invocations.find(
       (invocation) =>
         !isTerminalAgentInvocation(invocation) ||
-        invocation.parentMailboxStatus !== "steered",
+        !steered.has(invocation.invocationId),
     ) ?? latest;
   for (const invocation of invocations) {
     if (!isTerminalAgentInvocation(invocation)) {
@@ -78,19 +117,18 @@ function childAgentFromInvocations(
       !resultInvocationIds.has(invocation.invocationId),
   );
   const task =
-    tasks.find((invocation) => invocation.parentToolCallId) ??
+    tasks.find(isParentTask) ??
     tasks[0] ??
     invocations[invocations.length - 1]!;
   const terminal = isTerminalAgentInvocation(current) ? current : undefined;
-  // A `replaced`, `skipped`, or `steered` result is not reported, so it does
-  // not count as a result. A tree stop marks `replaced` results `skipped`.
+  // Only a result that the parent was sent counts. A later stop keeps a
+  // result that the parent already has.
   const lastResult = invocations
     .filter(isTerminalAgentInvocation)
     .filter(
       (invocation) =>
-        invocation.parentMailboxStatus !== "replaced" &&
-        invocation.parentMailboxStatus !== "skipped" &&
-        invocation.parentMailboxStatus !== "steered",
+        !steered.has(invocation.invocationId) &&
+        isResultOwed(invocation, undefined),
     )
     .map((invocation) => invocation.status)
     .find(isChildAgentResult);
@@ -105,16 +143,9 @@ function childAgentFromInvocations(
       : undefined),
     kind: facts.kind,
     ...(lastResult ? { lastResult } : undefined),
-    // A `replaced` result means open child work starts a later agent
-    // invocation on this child, so the child has not finished. Only a stop
-    // skips a result.
     status: isChildAgentSessionStopped(latest, stoppedAtMs)
       ? "stopped"
-      : terminal?.parentMailboxStatus === "replaced"
-        ? "pending"
-        : terminal?.parentMailboxStatus === "skipped"
-          ? "stopped"
-          : current.status,
+      : current.status,
     task: task.input,
     ...(task.title ? { title: task.title } : undefined),
     updatedAtMs: Math.max(
@@ -196,14 +227,15 @@ export async function listChildAgents(
 
 /**
  * List the other child agents of one parent whose results have not reached
- * the parent yet. A child counts while it runs and after it finishes until its
- * result is appended to the parent mailbox.
+ * the parent yet: a child with an open parent task. A result is sent before
+ * its agent invocation ends. Own work, such as a Watch Event Run, owes no
+ * result until it fails or blocks, so open own work does not count.
  */
 export async function listUnreportedSiblingAgents(
   parentConversationId: string,
   childConversationId: string,
 ): Promise<ChildAgent[]> {
-  const [children, pendingResults] = await Promise.all([
+  const [children, unreported] = await Promise.all([
     listChildAgents(parentConversationId),
     getSqlExecutor()
       .db()
@@ -214,20 +246,21 @@ export async function listUnreportedSiblingAgents(
       .where(
         and(
           eq(juniorAgentInvocations.parentConversationId, parentConversationId),
-          eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
+          isNotNull(juniorAgentInvocations.parentToolCallId),
+          inArray(
+            juniorAgentInvocations.status,
+            NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+          ),
         ),
       ),
   ]);
-  const withPendingResult = new Set(
-    pendingResults.map((row) => row.childConversationId),
+  const unreportedIds = new Set(
+    unreported.map((row) => row.childConversationId),
   );
   return children.filter(
     (child) =>
       child.childConversationId !== childConversationId &&
-      ((NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
-        child.status,
-      ) ||
-        withPendingResult.has(child.childConversationId)),
+      unreportedIds.has(child.childConversationId),
   );
 }
 

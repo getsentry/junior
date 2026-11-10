@@ -132,7 +132,6 @@ describe("agent invocation worker crash", () => {
       });
       for (const id of [invocationId, followUpId]) {
         await expect(getAgentInvocation(id)).resolves.toMatchObject({
-          parentMailboxStatus: "appended",
           status: "failed",
         });
       }
@@ -238,7 +237,6 @@ describe("agent invocation worker crash", () => {
       ).resolves.toMatchObject({ status: "completed" });
       await expect(getAgentInvocation(invocationId)).resolves.toMatchObject({
         errorMessage: "Agent invocation lost its worker before it could pause",
-        parentMailboxStatus: "appended",
         status: "failed",
       });
       const parent = await getConversationWorkState({

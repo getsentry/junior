@@ -17,12 +17,11 @@ export const AGENT_INVOCATION_MAILBOX_STATUSES = [
 ] as const;
 
 /**
- * Parent mailbox append state. Only terminal invocations have a value.
- * `replaced` means the child still had open work, so a later agent invocation
- * on the same child sends the result instead. `skipped` means a stop ended
- * the work, so the result is never used. `steered` means the agent invocation
- * that was running read the input as a steering message, so its result covers
- * this one.
+ * Old values of `parent_mailbox_status`. This runtime never reads the column.
+ * `finishAgentInvocation` writes `appended` when it sent a result and
+ * `steered` when the parent is owed none, so a rollback to an older runtime
+ * never sends a result again. Remove the column in the cleanup after this
+ * release.
  */
 export const AGENT_INVOCATION_PARENT_MAILBOX_STATUSES = [
   "pending",

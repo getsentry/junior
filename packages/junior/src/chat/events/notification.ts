@@ -8,6 +8,7 @@ import {
   renderTaskBatchInput,
   renderTaskInput,
   type EventDoneBy,
+  type ReplyTarget,
   type TaskBatchEvent,
 } from "@/chat/task-input";
 import type {
@@ -205,17 +206,43 @@ function readEventTaskFacts(
 }
 
 /**
+ * Return a short label for an Event batch: the type and summary of its first
+ * Event, and how many more it has.
+ */
+export function eventBatchLabel(
+  messages: readonly InboundMessage[],
+): string | undefined {
+  const first = messages[0];
+  const metadata = first?.input.metadata;
+  if (!first || !isEventMailboxMetadata(metadata)) return undefined;
+  const facts = readEventTaskFacts(first)?.facts;
+  const summary = facts?.trustedSummary ?? facts?.about;
+  const label = [
+    metadata.event.eventType,
+    summary ? `: ${summary}` : "",
+    messages.length > 1 ? ` (+${messages.length - 1} more)` : "",
+  ]
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  return label.length > 200 ? `${label.slice(0, 199)}…` : label;
+}
+
+/**
  * Write the agent inputs for an Event batch, one prompt content part each.
  *
  * One Event keeps its own text. Several Watch Events become one `<task>`
  * with one group per Watch, so shared instructions appear once. Entries
  * without task facts, such as child agent results, keep their own text as
  * their own inputs after the task. `rendered` replaces the text of an entry
- * by inbound message id, such as a person change to a Review item.
+ * by inbound message id, such as a person change to a Review item. A child
+ * agent's Events are rendered again from their facts, because their saved
+ * text carries the reply contract of a root.
  */
 export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
   rendered: ReadonlyMap<string, string> = new Map(),
+  options: { replyTo?: ReplyTarget } = {},
 ): string[] {
   const groups = new Map<
     string,
@@ -258,14 +285,28 @@ export function renderEventBatchInputs(
     });
   }
 
-  const ownText = (message: InboundMessage) =>
-    rendered.get(message.inboundMessageId) ?? message.input.text.trim();
+  const ownText = (message: InboundMessage) => {
+    const text = rendered.get(message.inboundMessageId);
+    if (text !== undefined) return text;
+    const saved = options.replyTo === "parent" && readEventTaskFacts(message);
+    return saved
+      ? renderTaskInput({
+          ...saved.facts,
+          event: saved.metadata.event.eventType,
+          replyTo: "parent",
+          source: saved.metadata.event.namespace,
+        })
+      : message.input.text.trim();
+  };
   const taskCount = messages.length - others.length;
   if (taskCount < 2) {
     return messages.map(ownText).filter(Boolean);
   }
   return [
-    renderTaskBatchInput({ groups: [...groups.values()] }),
+    renderTaskBatchInput({
+      groups: [...groups.values()],
+      replyTo: options.replyTo,
+    }),
     ...others.map(ownText).filter(Boolean),
   ];
 }

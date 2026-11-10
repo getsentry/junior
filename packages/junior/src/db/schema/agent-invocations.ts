@@ -11,6 +11,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type { AgentType } from "@/chat/agent-invocations/agent-types";
+import type { AgentInvocationReportEntry } from "@/chat/agent-invocations/types";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 import type {
@@ -52,6 +53,8 @@ export const juniorAgentInvocations = pgTable(
       .references(() => juniorConversations.conversationId),
     agentName: text("agent_name"),
     input: text("input").notNull(),
+    // A short label for the input, such as an Event type and summary.
+    inputLabel: text("input_label"),
     // Short display title of the task. Null for runtime-started invocations.
     title: text("title"),
     actor: jsonb("actor_json").$type<Actor>().notNull(),
@@ -83,6 +86,9 @@ export const juniorAgentInvocations = pgTable(
     >(),
     result: text("result"),
     errorMessage: text("error_message"),
+    // Reports that the child sent to its parent, and the parent tasks that
+    // steered the Run, in order. The result is rendered from it.
+    reportLog: jsonb("report_log").$type<AgentInvocationReportEntry[]>(),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
     terminalAt: timestamptz("terminal_at"),
