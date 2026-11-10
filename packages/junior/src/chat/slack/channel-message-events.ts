@@ -23,6 +23,8 @@ export const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
 const CHANNEL_RESOURCE_TYPE = "channel";
 const MESSAGE_POSTED_EVENT = "message.posted";
 const CHANNEL_ID_PATTERN = /^[CG][A-Z0-9]{2,}$/;
+const CHANNEL_LOCATION = "channel";
+const THREAD_LOCATION = "thread";
 
 const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   channelId: {
@@ -36,11 +38,17 @@ const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
     description:
       "Slack user ID of the message author. Required to run on bot posts, such as alert bots.",
   },
+  location: {
+    kind: "string",
+    enum: [CHANNEL_LOCATION, THREAD_LOCATION],
+    description:
+      "channel for a top-level message, thread for a thread reply. Leave out for top-level only; thread replies run only when this names thread.",
+  },
 });
 
 /**
- * Event registration for new top-level Slack channel messages. Only event
- * automations can use it, so watchEvents rejects it.
+ * Event registration for new Slack channel messages and thread replies. Only
+ * event automations can use it, so watchEvents rejects it.
  */
 export function slackChannelMessageEvents(): EventRegistrationInput {
   return {
@@ -62,7 +70,7 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
       [MESSAGE_POSTED_EVENT]: {
         reach: { anyOf: ["channelId"] },
         guidance:
-          "A person or bot posted a new top-level message in this channel. A bot post runs the automation only when match names the bot in user_id. A reply goes in that message's thread. If the instructions do not apply to this message, end with no action.",
+          "A person or bot posted a new message in this channel. A bot post runs the automation only when match names the bot in user_id. A thread reply runs it only when match.location names thread. A reply goes in the message's Slack thread. If the instructions do not apply to this message, end with no action.",
       },
     },
     limits: {
@@ -136,10 +144,11 @@ export function requireSlackChannelMessageScope(
 }
 
 /**
- * Build the Event for one new top-level channel message, or nothing.
+ * Build the Event for one new channel message or thread reply, or nothing.
  *
- * Thread replies and Slackbot posts do not count. Other bot posts are marked
- * with `postedByBot`, so only automations that name the bot can run on them.
+ * Slackbot posts do not count. Bot posts are marked with `postedByBot`, so
+ * only automations that name the bot can run on them. Thread replies carry
+ * the `thread` location, so only automations that name it can run on them.
  */
 export function slackChannelMessageEvent(input: {
   botId?: string;
@@ -151,18 +160,21 @@ export function slackChannelMessageEvent(input: {
   userId: string;
 }): EventInput | undefined {
   if (input.userId === "USLACKBOT") return undefined;
-  if (input.threadTs && input.threadTs !== input.ts) return undefined;
   if (!CHANNEL_ID_PATTERN.test(input.channelId)) return undefined;
   const postedByBot = Boolean(input.botId || input.subtype === "bot_message");
+  const threadTs =
+    input.threadTs && input.threadTs !== input.ts ? input.threadTs : undefined;
   return {
     eventKey: `${input.channelId}:${input.ts}`,
     eventType: MESSAGE_POSTED_EVENT,
     identifier: input.channelId,
     occurredAtMs: Math.floor(Number(input.ts) * 1000),
-    trustedSummary: `${postedByBot ? "The bot " : ""}<@${input.userId}> posted a new message in <#${input.channelId}>.`,
+    trustedSummary: `${postedByBot ? "The bot " : ""}<@${input.userId}> posted a new ${threadTs ? `thread reply under message ${threadTs}` : "message"} in <#${input.channelId}>.`,
     data: {
       channelId: input.channelId,
+      location: threadTs ? THREAD_LOCATION : CHANNEL_LOCATION,
       messageTs: input.ts,
+      ...(threadTs ? { threadTs } : undefined),
       userId: input.userId,
       ...(postedByBot ? { postedByBot: true } : undefined),
     },
@@ -178,7 +190,8 @@ export function slackChannelMessageEvent(input: {
  * channel, and this check keeps the rule when it does not.
  * A bot post runs only automations whose match names its author in `userId`.
  * Bots can post often and would use up the run limit of every other
- * automation in the channel.
+ * automation in the channel. A thread reply runs only automations whose
+ * match names the `thread` location, so existing automations stay top-level.
  */
 export function slackChannelMessageRunsAutomation(
   event: Event,
@@ -186,6 +199,12 @@ export function slackChannelMessageRunsAutomation(
 ): boolean {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return true;
   if (event.data?.channelId !== automation.destination.channelId) return false;
+  if (
+    event.data?.location === THREAD_LOCATION &&
+    ![automation.trigger.match?.location].flat().includes(THREAD_LOCATION)
+  ) {
+    return false;
+  }
   if (event.data?.postedByBot !== true) return true;
   return automation.trigger.match?.userId !== undefined;
 }
@@ -195,6 +214,6 @@ export function slackChannelMessageReplyThreadTs(
   event: Event,
 ): string | undefined {
   if (event.namespace !== SLACK_EVENT_NAMESPACE) return undefined;
-  const messageTs = event.data?.messageTs;
+  const messageTs = event.data?.threadTs ?? event.data?.messageTs;
   return typeof messageTs === "string" ? messageTs : undefined;
 }
