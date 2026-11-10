@@ -172,6 +172,23 @@ describe("skills", () => {
     ).toBeNull();
   });
 
+  it("prefers $skill over /skill and scans past paths", () => {
+    expect(parseSkillInvocation("/brief then $sum 1 2", stubSkills)).toEqual({
+      skillName: "sum",
+    });
+    expect(
+      parseSkillInvocation("read /tmp/notes.md then /brief", stubSkills),
+    ).toEqual({
+      skillName: "brief",
+    });
+    expect(
+      parseSkillInvocation("read /tmp/notes.md then $brief", stubSkills),
+    ).toEqual({
+      skillName: "brief",
+    });
+    expect(parseSkillInvocation("read /brief/notes.md", stubSkills)).toBeNull();
+  });
+
   it("returns null for an unregistered skill reference", () => {
     expect(parseSkillInvocation("/jr link sentry", stubSkills)).toBeNull();
     expect(parseSkillInvocation("$jr link sentry", stubSkills)).toBeNull();

@@ -21,7 +21,10 @@ export const pluginsSchema = z.array(pluginSchema);
 export const skillReportSchema = z
   .object({
     name: z.string(),
+    description: z.string(),
     pluginProvider: z.string().optional(),
+    /** The skill runs only when invoked by name, such as from an Automation. */
+    disableModelInvocation: z.boolean().optional(),
   })
   .strict();
 export const skillReportsSchema = z.array(skillReportSchema);
@@ -126,12 +129,7 @@ const pluginOperationalBarChartWidgetSchema = z
       .max(8),
     timeRangeDays: z
       .array(
-        z.union([
-          z.literal(1),
-          z.literal(7),
-          z.literal(30),
-          z.literal(90),
-        ]),
+        z.union([z.literal(1), z.literal(7), z.literal(30), z.literal(90)]),
       )
       .min(1)
       .max(4)

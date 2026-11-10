@@ -443,8 +443,11 @@ describe("Scheduled automation tools", () => {
         credential_mode: "creator",
         outcomes: [],
         status: "active",
-        instruction:
-          "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        task: {
+          kind: "instruction",
+          instruction:
+            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        },
         recurrence: {
           frequency: "weekly",
           interval: 1,
@@ -467,8 +470,11 @@ describe("Scheduled automation tools", () => {
     expect(listed).toMatchObject({
       automations: [
         {
-          instruction:
-            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          task: {
+            kind: "instruction",
+            instruction:
+              "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          },
           schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
@@ -483,8 +489,11 @@ describe("Scheduled automation tools", () => {
     expect(sameChannelOtherThread).toMatchObject({
       automations: [
         {
-          instruction:
-            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          task: {
+            kind: "instruction",
+            instruction:
+              "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          },
           schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
@@ -539,8 +548,11 @@ describe("Scheduled automation tools", () => {
       automation: {
         schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         status: "active",
-        instruction:
-          "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        task: {
+          kind: "instruction",
+          instruction:
+            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        },
       },
     });
     await expect(
@@ -773,7 +785,10 @@ describe("Scheduled automation tools", () => {
         next_run_at: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
         status: "active",
-        instruction: "Wash hands reminder: Remind David to wash his hands.",
+        task: {
+          kind: "instruction",
+          instruction: "Wash hands reminder: Remind David to wash his hands.",
+        },
       },
       objectCards: [
         {
@@ -919,8 +934,11 @@ describe("Scheduled automation tools", () => {
       automation: {
         id: taskId,
         next_run_at: "2026-05-26T17:00:00.000Z",
-        instruction:
-          "Tuesday scheduler digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction:
+            "Tuesday scheduler digest: Summarize open scheduler issues.",
+        },
         schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
       },
     });
@@ -959,7 +977,11 @@ describe("Scheduled automation tools", () => {
   it("treats a null update schedule as omitted", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
-      automation: { id: string; next_run_at: string; instruction: string };
+      automation: {
+        id: string;
+        next_run_at: string;
+        task: { instruction: string };
+      };
     };
 
     const updated = await executeTool(
@@ -967,7 +989,7 @@ describe("Scheduled automation tools", () => {
       {
         automation_id: created.automation.id,
         trigger: null,
-        instruction: `${created.automation.instruction} (edited)`,
+        instruction: `${created.automation.task.instruction} (edited)`,
       },
     );
 
@@ -976,7 +998,10 @@ describe("Scheduled automation tools", () => {
         id: created.automation.id,
         next_run_at: created.automation.next_run_at,
         status: "active",
-        instruction: `${created.automation.instruction} (edited)`,
+        task: {
+          kind: "instruction",
+          instruction: `${created.automation.task.instruction} (edited)`,
+        },
       },
     });
   });
@@ -1167,7 +1192,10 @@ describe("Scheduled automation tools", () => {
     ).resolves.toMatchObject({
       automation: {
         credential_mode: "system",
-        instruction: "Team digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction: "Team digest: Summarize open scheduler issues.",
+        },
       },
     });
     for (const status of ["paused", "active"] as const) {
@@ -1325,7 +1353,10 @@ describe("Scheduled automation tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: created.automation.id,
-        instruction: "Team-owned digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction: "Team-owned digest: Summarize open scheduler issues.",
+        },
       },
     });
     expect(deleted).toMatchObject({
@@ -1343,7 +1374,8 @@ describe("Scheduled automation tools", () => {
         name: "scheduled-automation",
       },
       task: {
-        text: "Team-owned digest: Summarize open scheduler issues.",
+        kind: "instruction",
+        instruction: "Team-owned digest: Summarize open scheduler issues.",
       },
     });
   });
@@ -1727,7 +1759,10 @@ describe("Scheduled automation tools", () => {
 
     expect(updated).toMatchObject({
       automation: {
-        instruction: "Renamed issue digest: Summarize open scheduler issues.",
+        task: {
+          kind: "instruction",
+          instruction: "Renamed issue digest: Summarize open scheduler issues.",
+        },
       },
     });
     await expect(
@@ -1974,7 +2009,10 @@ describe("Scheduled automation tools", () => {
         {
           id: mine.automation.id,
           destination: { channel: "CSOURCE" },
-          instruction: "Weekly planning reminder: post the agenda here.",
+          task: {
+            kind: "instruction",
+            instruction: "Weekly planning reminder: post the agenda here.",
+          },
         },
       ],
       truncated: false,
@@ -2053,7 +2091,10 @@ describe("Scheduled automation tools", () => {
     expect(movedPublic).toMatchObject({
       automation: {
         id: created.automation.id,
-        instruction: "Weekly planning reminder: post the agenda here.",
+        task: {
+          kind: "instruction",
+          instruction: "Weekly planning reminder: post the agenda here.",
+        },
         schedule: created.automation.schedule,
         next_run_at: created.automation.next_run_at,
         credential_mode: "creator",

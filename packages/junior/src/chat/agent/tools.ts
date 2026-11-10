@@ -547,6 +547,7 @@ export async function wireAgentTools(
     },
     toolRuntimeContext,
     {
+      automationSkills: args.availableSkills,
       pluginSandbox: createPluginToolSandbox(agentSandbox, {
         handleAuthSignal: pluginAuth.maybeHandleAuthSignal,
       }),

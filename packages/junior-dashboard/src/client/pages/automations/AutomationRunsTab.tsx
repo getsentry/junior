@@ -153,6 +153,7 @@ function AutomationRunsView(props: {
             emptySixHour: (date) => ({
               blocked: 0,
               completed: 0,
+              costUsd: 0,
               date,
               failed: 0,
             }),

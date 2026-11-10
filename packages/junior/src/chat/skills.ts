@@ -429,7 +429,10 @@ function isCommonEnvironmentVariable(name: string): boolean {
   ].includes(name.toUpperCase());
 }
 
-/** Extract an explicit skill invocation from a user message. */
+/**
+ * Extract an explicit skill invocation from a user message. `$name` is the
+ * canonical form; `/name` still works for older messages and automations.
+ */
 export function parseSkillInvocation(
   messageText: string,
   availableSkills: SkillMetadata[],
@@ -437,16 +440,6 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const slashMatch = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(trimmed);
-  if (slashMatch?.[1]) {
-    const skillName = slashMatch[1].toLowerCase();
-    if (!availableSkills.some((skill) => skill.name === skillName)) {
-      return null;
-    }
-
-    return { skillName };
-  }
-
   const dollarPattern = /(?:^|\s)\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
   for (const match of trimmed.matchAll(dollarPattern)) {
     const skillName = match[1]?.toLowerCase();
@@ -457,6 +450,18 @@ export function parseSkillInvocation(
       continue;
     }
     if (availableSkills.some((skill) => skill.name === skillName)) {
+      return { skillName };
+    }
+  }
+
+  // A path such as `/tmp` or `/brief/notes.md` is not a skill reference.
+  const slashPattern = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9/-])/gi;
+  for (const match of trimmed.matchAll(slashPattern)) {
+    const skillName = match[1]?.toLowerCase();
+    if (
+      skillName &&
+      availableSkills.some((skill) => skill.name === skillName)
+    ) {
       return { skillName };
     }
   }
