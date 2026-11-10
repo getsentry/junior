@@ -57,15 +57,17 @@ export function useComposerQuestions(conversationId: string) {
     () => (stale ? [] : items.filter(reviewItemWaitsForAnswer)),
     [items, stale],
   );
-  // The questions are known only when every page is in. Before that, a
-  // question on a later page would dock after the focus went elsewhere.
-  const morePages = hasNextPage && !failed;
+  // A failed page hides the questions on it and after it.
+  const loadFailed = !stale && (failed || (query.isError && !query.data));
   const { refetch } = query;
   const retry = useCallback(() => void refetch(), [refetch]);
   return {
-    // A failed page hides the questions on it and after it.
-    loadFailed: !stale && (failed || (query.isError && !query.data)),
-    pending: query.isPending || stale || morePages,
+    loadFailed,
+    // The questions are known only when every page is in. Before that, a
+    // question on a later page would dock after the focus went elsewhere,
+    // and it would count as one that just arrived. A failed page stays
+    // pending until Try again loads it.
+    pending: query.isPending || stale || Boolean(hasNextPage) || loadFailed,
     questions,
     retry,
   };
