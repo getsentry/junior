@@ -9,7 +9,13 @@ import {
   LockKeyhole,
   TriangleAlert,
 } from "lucide-react";
-import { useSyncExternalStore, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
@@ -93,11 +99,6 @@ export function ConversationPrivacyChip(props: {
     </span>
   );
 }
-
-/** Status icons a labeled chip shows before the rest collapse into +N. */
-const MAX_GROUP_STATUS_ICONS = 3;
-/** Icon chips the mobile facepile shows before the rest collapse into +N. */
-const MAX_FACEPILE_CHIPS = 5;
 
 /** Render plugin annotations as a newest-first stack in a conversation row. */
 export function ConversationSidebarAnnotations(props: {
@@ -185,73 +186,139 @@ function SidebarAnnotationIconFacepile(props: {
   cutoutColor: string;
   className?: string;
 }) {
-  const shown = props.annotations.slice(0, MAX_FACEPILE_CHIPS);
-  const hiddenCount = props.annotations.length - shown.length;
   return (
     <span
       className={cn(
         // Isolate stacking context so z-index only orders chips inside the pile.
-        // Extra right pad keeps the last chip's cutout ring from clipping.
-        "relative isolate inline-flex h-[18px] items-center pr-0.5",
+        "relative isolate inline-flex h-[18px] min-w-0 items-center",
         props.className,
       )}
     >
-      {shown.map((annotation, index) => (
-        <SidebarAnnotationStatusChip
-          annotation={annotation}
-          cutoutColor={props.cutoutColor}
-          key={annotation.key}
-          // Each chip to the right layers above the chip before it.
-          stacked={index > 0}
-          zIndex={index + 1}
-        />
-      ))}
-      {hiddenCount > 0 ? (
-        <span
-          aria-hidden="true"
-          className="relative -ml-1 box-border inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted"
-          style={{
-            boxShadow: `0 0 0 2px ${props.cutoutColor}`,
-            zIndex: shown.length + 1,
-          }}
-        >
-          +{hiddenCount}
-        </span>
-      ) : null}
+      <FittingIcons
+        // The padding keeps the cutout rings inside the clipped row.
+        className="-m-0.5 h-[22px] min-w-[22px] p-0.5"
+        icons={props.annotations.map((annotation, index) => (
+          <SidebarAnnotationStatusChip
+            annotation={annotation}
+            cutoutColor={props.cutoutColor}
+            key={annotation.key}
+            // Each chip to the right layers above the chip before it.
+            stacked={index > 0}
+            zIndex={index + 1}
+          />
+        ))}
+        overflow={(count) => (
+          <span
+            aria-hidden="true"
+            className="relative -ml-0.5 box-border inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted"
+            style={{
+              boxShadow: `0 0 0 2px ${props.cutoutColor}`,
+              zIndex: props.annotations.length + 1,
+            }}
+          >
+            +{count}
+          </span>
+        )}
+      />
     </span>
   );
 }
 
-/** One shared label with its newest status icons and a count of the rest. */
+/**
+ * Show the icons that fit in the row and a +N count for the rest. Icons that
+ * do not fit wrap onto lines that the row clips, so the count follows the
+ * real width.
+ */
+function FittingIcons(props: {
+  className: string;
+  icons: ReactNode[];
+  overflow(count: number): ReactNode;
+}) {
+  const rowRef = useRef<HTMLSpanElement>(null);
+  const overflowRef = useRef<HTMLSpanElement>(null);
+  const total = props.icons.length;
+  const [shown, setShown] = useState(total);
+
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const countFirstLine = () => {
+      const items = Array.from(row.children);
+      const bottom = items[0]?.getBoundingClientRect().bottom ?? 0;
+      return items.filter((item) => item.getBoundingClientRect().top < bottom)
+        .length;
+    };
+    const measure = () => {
+      // Measure without the +N first. Otherwise its own width keeps the
+      // last icons hidden after the row grows wide enough for all of them.
+      const overflow = overflowRef.current;
+      if (overflow) overflow.style.display = "none";
+      const fitting = countFirstLine();
+      if (overflow) overflow.style.display = "";
+      setShown(fitting === total || !overflow ? fitting : countFirstLine());
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [total]);
+
+  return (
+    <>
+      <span
+        className={cn(
+          // The row gap pushes wrapped lines fully outside the clip.
+          "flex flex-wrap items-center gap-y-6 overflow-hidden",
+          props.className,
+        )}
+        ref={rowRef}
+      >
+        {props.icons}
+      </span>
+      {shown < total ? (
+        <span className="contents" ref={overflowRef}>
+          {props.overflow(total - shown)}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** One shared label with the status icons that fit and a count of the rest. */
 function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
-  const shown = props.group.annotations.slice(0, MAX_GROUP_STATUS_ICONS);
-  const hiddenCount = props.group.annotations.length - shown.length;
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
-      {shown.map((annotation) =>
-        annotation.objectType ? (
-          <ObjectIcon
-            {...annotation}
-            objectType={annotation.objectType}
-            key={annotation.key}
-            decorative
-            size={14}
-          />
-        ) : annotation.icon ? (
-          <SidebarAnnotationIcon
-            decorative
-            icon={annotation.icon}
-            key={annotation.key}
-            size={11}
-          />
-        ) : null,
-      )}
-      {hiddenCount > 0 ? (
-        <span className="shrink-0 tabular-nums">+{hiddenCount}</span>
-      ) : null}
-      <span className="min-w-0 truncate whitespace-nowrap">
+    // No min-w-0: a chip shrinks only to one icon and its label, so the
+    // longest group gives up icons before a shorter one loses its label.
+    <span className="inline-flex h-5 items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+      <FittingIcons
+        className="h-3.5 min-w-3.5 gap-x-1"
+        icons={props.group.annotations.flatMap((annotation) =>
+          annotation.objectType ? (
+            <ObjectIcon
+              {...annotation}
+              objectType={annotation.objectType}
+              key={annotation.key}
+              decorative
+              size={14}
+            />
+          ) : annotation.icon ? (
+            <SidebarAnnotationIcon
+              decorative
+              icon={annotation.icon}
+              key={annotation.key}
+              size={11}
+            />
+          ) : (
+            []
+          ),
+        )}
+        overflow={(count) => (
+          <span className="shrink-0 tabular-nums">+{count}</span>
+        )}
+      />
+      <span className="max-w-40 shrink-0 truncate whitespace-nowrap">
         {props.group.label}
       </span>
     </span>
