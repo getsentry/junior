@@ -673,6 +673,20 @@
       "when": 1794312577586,
       "tag": "0095_web_linked_slack_identity_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1794326864904,
+      "tag": "0096_conversation_kind_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1794326902945,
+      "tag": "0097_conversation_kind_automation_validate",
+      "breakpoints": true
     }
   ]
 }

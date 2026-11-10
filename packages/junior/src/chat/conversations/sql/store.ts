@@ -19,7 +19,7 @@ import type {
   Conversation,
   ConversationExecution,
   ConversationRunMetrics,
-  ConversationKind,
+  ChildConversationKind,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -50,6 +50,7 @@ import {
 } from "./location";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -363,7 +364,7 @@ export class SqlStore implements ConversationStore {
 
   async createChild(args: {
     childConversationId: string;
-    kind: Exclude<ConversationKind, "root">;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
@@ -772,7 +773,9 @@ export class SqlStore implements ConversationStore {
     destinationId?: string;
   }): Promise<void> {
     const { conversation } = args;
-    if ((conversation.kind === "root") !== !conversation.parentConversationId) {
+    if (
+      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+    ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,
       );

@@ -16,11 +16,14 @@ export type ConversationSource =
   | "web";
 
 /**
- * Where a Conversation sits in its tree. A root has no parent. A Thread is a
- * child that people can message. A Task is a child that only its parent
- * messages. A Conversation never changes kind.
+ * Where a Conversation sits in its tree. A root and an Automation run have no
+ * parent. A Thread is a child that people can message. A Task is a child that
+ * only its parent messages. A Conversation never changes kind.
  */
-export type ConversationKind = "root" | "thread" | "task";
+export type ConversationKind = "root" | "automation" | "thread" | "task";
+
+/** The kind of a Conversation that has a parent. */
+export type ChildConversationKind = "thread" | "task";
 
 export type ConversationStatus =
   | "paused"
@@ -120,7 +123,7 @@ export interface ConversationStore {
    */
   createChild(args: {
     childConversationId: string;
-    kind: Exclude<ConversationKind, "root">;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
