@@ -1,4 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { and, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
 import { parseActor } from "@/chat/actor";
 import {
   IDLE_HORIZON_MS,
@@ -11,8 +12,9 @@ import {
 } from "@/chat/cache-warming/replay";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { findUserByEmail, readActorIdentity } from "@/chat/plugins/viewer";
+import { juniorConversationMetrics, juniorConversations } from "@/db/schema";
 import {
   personReplyTimesReportSchema,
   type PersonReplyTimesReport,
@@ -29,26 +31,38 @@ interface ConversationRow {
   parentConversationId: string | null;
 }
 
-// Conversations in which the person ran a Turn in the range, newest first.
+// The most recent Conversations in which the person ran a Turn in the range.
 async function loadPersonConversations(
   identityIds: string[],
   startMs: number,
 ): Promise<ConversationRow[]> {
-  return await getSqlExecutor().query<ConversationRow>(
-    `SELECT c.conversation_id AS "conversationId", c.kind,
-       c.parent_conversation_id AS "parentConversationId"
-     FROM (
-       SELECT m.conversation_id, max(m.occurred_at) AS last_turn_at
-       FROM junior_conversation_metrics m
-       WHERE m.actor_identity_id = ANY($1::text[]) AND m.occurred_at >= $2
-       GROUP BY m.conversation_id
-       ORDER BY last_turn_at DESC
-       LIMIT $3
-     ) turns
-     JOIN junior_conversations c ON c.conversation_id = turns.conversation_id
-     WHERE c.transcript_purged_at IS NULL`,
-    [identityIds, new Date(startMs).toISOString(), MAX_CONVERSATIONS],
-  );
+  const metrics = juniorConversationMetrics;
+  const lastTurnAt = max(metrics.occurredAt);
+  const turns = getDb()
+    .select({ conversationId: metrics.conversationId })
+    .from(metrics)
+    .where(
+      and(
+        inArray(metrics.actorIdentityId, identityIds),
+        gte(metrics.occurredAt, new Date(startMs)),
+      ),
+    )
+    .groupBy(metrics.conversationId)
+    .orderBy(desc(lastTurnAt))
+    .limit(MAX_CONVERSATIONS)
+    .as("turns");
+  return await getDb()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(turns)
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, turns.conversationId),
+    )
+    .where(isNull(juniorConversations.transcriptPurgedAt));
 }
 
 /**

@@ -3,8 +3,10 @@
  * recording in `warmup.ts`. The backfill uses it to fill the gap lists, and
  * the People profile uses it to show the reply times of one person.
  */
+import { and, eq, gte, inArray, or, sql } from "drizzle-orm";
 import type { ConversationKind } from "@/chat/conversations/store";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   gapSegment,
   IDLE_HORIZON_MS,
@@ -86,43 +88,49 @@ async function loadReplayEvents(
   conversationIds: string[],
   sinceMs?: number,
 ): Promise<ReplayEvent[]> {
-  return await getSqlExecutor().query<ReplayEvent>(
-    `SELECT e.conversation_id AS "conversationId", e.type,
-       CASE WHEN e.type = 'user_message' THEN
-         (e.payload->'provenance'->'actor'->>'userId') IS NOT NULL
-       END AS "personInstruction",
-       CASE WHEN e.type = 'user_message' THEN
-         e.payload->'provenance'->'actor'
-       END AS "actor",
-       m.message->>'stopReason' AS "stopReason",
-       m.message->>'timestamp' AS "startedAtMs",
-       e.payload->'usage'->>'cacheRead' AS "cacheRead",
-       e.payload->'usage'->>'cacheWrite' AS "cacheWrite"
-     FROM junior_conversation_events e
-     JOIN junior_conversations c ON c.conversation_id = e.conversation_id
-     CROSS JOIN LATERAL (
-       SELECT CASE
-         WHEN e.type <> 'assistant_message' THEN NULL
-         WHEN e.schema_version >= 2 THEN (e.payload->>'message')::jsonb
-         ELSE e.payload
-       END AS message
-     ) m
-     WHERE e.conversation_id = ANY($1::text[])
-       AND (
-         e.type = 'assistant_message'
-         OR (
-           e.type = 'user_message'
-           AND (e.payload->'provenance'->>'authority') = 'instruction'
-         )
-       )
-       AND e.created_at >= c.created_at
-       AND ($2::timestamptz IS NULL OR e.created_at >= $2::timestamptz)
-     ORDER BY e.conversation_id, e.seq`,
-    [
-      conversationIds,
-      sinceMs === undefined ? null : new Date(sinceMs).toISOString(),
-    ],
-  );
+  const events = juniorConversationEvents;
+  const isUserMessage = sql`${events.type} = 'user_message'`;
+  const actor = sql`${events.payload}->'provenance'->'actor'`;
+  const message = sql`CASE
+    WHEN ${events.type} <> 'assistant_message' THEN NULL
+    WHEN ${events.schemaVersion} >= 2 THEN (${events.payload}->>'message')::jsonb
+    ELSE ${events.payload}
+  END`;
+  return await getDb()
+    .select({
+      conversationId: events.conversationId,
+      type: sql<ReplayEvent["type"]>`${events.type}`,
+      personInstruction: sql<
+        boolean | null
+      >`CASE WHEN ${isUserMessage} THEN (${actor}->>'userId') IS NOT NULL END`,
+      actor: sql<unknown>`CASE WHEN ${isUserMessage} THEN ${actor} END`,
+      stopReason: sql<string | null>`(${message})->>'stopReason'`,
+      startedAtMs: sql<string | null>`(${message})->>'timestamp'`,
+      cacheRead: sql<string | null>`${events.payload}->'usage'->>'cacheRead'`,
+      cacheWrite: sql<string | null>`${events.payload}->'usage'->>'cacheWrite'`,
+    })
+    .from(events)
+    .innerJoin(
+      juniorConversations,
+      eq(juniorConversations.conversationId, events.conversationId),
+    )
+    .where(
+      and(
+        inArray(events.conversationId, conversationIds),
+        or(
+          eq(events.type, "assistant_message"),
+          and(
+            isUserMessage,
+            sql`(${events.payload}->'provenance'->>'authority') = 'instruction'`,
+          ),
+        ),
+        gte(events.createdAt, juniorConversations.createdAt),
+        sinceMs === undefined
+          ? undefined
+          : gte(events.createdAt, new Date(sinceMs)),
+      ),
+    )
+    .orderBy(events.conversationId, events.seq);
 }
 
 function isQueryCanceled(error: unknown): boolean {

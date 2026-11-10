@@ -23,12 +23,14 @@
  * from live idle periods.
  */
 import { performance } from "node:perf_hooks";
+import { and, desc, gte, isNull } from "drizzle-orm";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getChatConfig } from "@/chat/config";
-import { getSqlExecutor } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { juniorConversations } from "@/db/schema";
 import { MINUTE_MS } from "./model";
 import {
   historySegment,
@@ -73,14 +75,23 @@ interface ConversationRow {
 async function loadConversations(
   windowStartMs: number,
 ): Promise<ConversationRow[]> {
-  return await getSqlExecutor().query<ConversationRow>(
-    `SELECT conversation_id AS "conversationId", kind,
-       parent_conversation_id AS "parentConversationId"
-     FROM junior_conversations
-     WHERE last_activity_at >= $1 AND transcript_purged_at IS NULL
-     ORDER BY last_activity_at DESC, conversation_id`,
-    [new Date(windowStartMs).toISOString()],
-  );
+  return await getDb()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      kind: juniorConversations.kind,
+      parentConversationId: juniorConversations.parentConversationId,
+    })
+    .from(juniorConversations)
+    .where(
+      and(
+        gte(juniorConversations.lastActivityAt, new Date(windowStartMs)),
+        isNull(juniorConversations.transcriptPurgedAt),
+      ),
+    )
+    .orderBy(
+      desc(juniorConversations.lastActivityAt),
+      juniorConversations.conversationId,
+    );
 }
 
 // Stop before the next batch when the budget is used. The budget uses the
