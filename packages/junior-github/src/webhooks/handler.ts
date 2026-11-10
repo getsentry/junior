@@ -10,6 +10,7 @@ import type {
   PluginRoute,
   EventInput,
   EventPublisher,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
@@ -43,6 +44,7 @@ import {
   loadGitHubMergeConflictEvents,
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
+import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
   pullRequestReadyTargets,
   syncGitHubPullRequestReadyNotices,
@@ -187,6 +189,7 @@ export function createGitHubWebhookRoute(args: {
   privateKeyEnv: string;
   events: EventPublisher;
   reviewItems: PluginConversationReviewItems;
+  state: PluginState;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -213,6 +216,17 @@ export function createGitHubWebhookRoute(args: {
       }
       if (webhookInstallationId(body) !== installationId) {
         return new Response("Ignored", { status: 202 });
+      }
+      if (eventName === "push") {
+        const scheduled = await scheduleGitHubPushConflictCheck({
+          body,
+          db: args.db,
+          now: new Date(),
+          state: args.state,
+        });
+        return new Response(scheduled ? "Accepted" : "Ignored", {
+          status: 202,
+        });
       }
       const botEmail = args.botEmail();
       const pullRequestOutcome =

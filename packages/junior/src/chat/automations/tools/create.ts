@@ -4,7 +4,17 @@ import {
   type TaskOutcomeInput,
 } from "@/chat/task-outcomes-schema";
 import * as z from "zod";
-import { automationInstructionToolSchema } from "@/chat/automations/edit-schema";
+import {
+  automationContextToolSchema,
+  automationInstructionToolSchema,
+} from "@/chat/automations/edit-schema";
+import { requireAutomationSkill } from "@/chat/automations/edit-rules";
+import {
+  automationTaskDescription,
+  automationTaskText,
+  type AutomationTask,
+} from "@/chat/automations/task";
+import type { SkillMetadata } from "@/chat/skills";
 import { requireInstructionReferences } from "@/chat/automations/instruction-references";
 import {
   requireToolCaller,
@@ -15,9 +25,11 @@ import {
 } from "@/chat/automations/tool-access";
 import {
   automationIdForToolCall,
+  automationSkillToolSchema,
   automationToolResult,
   automationToolResultSchema,
   automationTriggerSchema,
+  newAutomationTask,
   triggerKind,
   type AutomationTriggerInput,
 } from "@/chat/automations/tool-support";
@@ -65,8 +77,8 @@ type NewAutomation = {
   credentialMode: "creator" | "system";
   destination: AutomationDestination;
   id: string;
-  instruction: string;
   nowMs: number;
+  task: AutomationTask;
   outcomes: TaskOutcome[];
   title: string | undefined;
 };
@@ -127,7 +139,7 @@ async function createScheduled(
     schedule: compiled.schedule,
     status: "active",
     outcomes: next.outcomes,
-    task: { text: next.instruction },
+    task: next.task,
     ...(next.title ? { title: next.title } : undefined),
   });
   logInfo(
@@ -154,7 +166,7 @@ async function createEvent(
       credentialMode: next.credentialMode,
       destination: next.destination,
       outcomes: next.outcomes,
-      task: { text: next.instruction },
+      task: next.task,
       ...(next.title ? { title: next.title } : undefined),
       trigger,
     }),
@@ -183,6 +195,8 @@ async function readReplayedAutomation(
 export function createAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
+  /** Every discovered skill, listed in the skill input. */
+  skills: readonly SkillMetadata[] = [],
 ) {
   const trigger = automationTriggerSchema(catalog);
   return zodTool({
@@ -197,10 +211,12 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      'Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. Its outcomes set where its messages go. Use trigger type "schedule" for one-time or recurring work. Use trigger type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs the instruction for every matching event. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.',
+      'Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. Its outcomes set where its messages go. Use trigger type "schedule" for one-time or recurring work. Use trigger type "event" only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X work; it runs for every matching event. Set instruction for written work, or skill to run an installed skill, with context only when the skill needs more. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.',
     inputSchema: z
       .object({
-        instruction: automationInstructionToolSchema,
+        instruction: automationInstructionToolSchema.nullable().optional(),
+        skill: automationSkillToolSchema(skills).nullable().optional(),
+        context: automationContextToolSchema.nullable().optional(),
         title: z
           .string()
           .trim()
@@ -208,7 +224,7 @@ export function createAutomationTool(
           .max(SHORT_TITLE_MAX_LENGTH)
           .nullable()
           .describe(
-            "Optional short display title. Omit or use null to generate one from the instruction.",
+            "Optional short display title. Omit or use null to generate one from the instruction or skill.",
           )
           .optional(),
         trigger,
@@ -230,7 +246,9 @@ export function createAutomationTool(
       .strict(),
     prepareArguments(args) {
       const input = args as {
-        instruction: string;
+        instruction?: string | null;
+        skill?: string | null;
+        context?: string | null;
         title?: string | null;
         trigger: z.input<typeof trigger>;
         outcomes?: TaskOutcomeInput[];
@@ -239,6 +257,15 @@ export function createAutomationTool(
       const prepared = { ...input };
       if (prepared.title == null) {
         delete prepared.title;
+      }
+      if (prepared.instruction == null) {
+        delete prepared.instruction;
+      }
+      if (prepared.skill == null) {
+        delete prepared.skill;
+      }
+      if (prepared.context == null) {
+        delete prepared.context;
       }
       if (
         prepared.credential_mode === "creator" ||
@@ -255,10 +282,20 @@ export function createAutomationTool(
       const caller = await requireToolCaller(context);
       const creator = requireToolCreator(caller, destination, kind);
       const { createdBy } = creator;
-      requireInstructionReferences(input.instruction, {
-        creator: createdBy,
-        destinationChannelId: destination.channelId,
+      // prepareArguments removed the nulls.
+      const task = newAutomationTask({
+        instruction: input.instruction ?? undefined,
+        skill: input.skill ?? undefined,
+        context: input.context ?? undefined,
       });
+      await requireAutomationSkill(task, undefined);
+      const text = automationTaskText(task);
+      if (text) {
+        requireInstructionReferences(text, {
+          creator: createdBy,
+          destinationChannelId: destination.channelId,
+        });
+      }
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(
@@ -311,8 +348,8 @@ export function createAutomationTool(
         creator,
         destination,
         id,
-        instruction: input.instruction,
         nowMs,
+        task,
         credentialMode: input.credential_mode ?? "creator",
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
@@ -323,7 +360,7 @@ export function createAutomationTool(
           signal: options.signal,
           completeText,
           cost: { conversationId: context.conversationId },
-          instruction: input.instruction,
+          instruction: automationTaskDescription(task),
           title: input.title,
         }),
       };

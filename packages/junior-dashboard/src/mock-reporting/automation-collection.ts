@@ -23,10 +23,18 @@ export function mockAutomationCollection(
   const all = report.automations;
   const filtered = all
     .filter((automation) => {
-      const search =
-        `${automation.title} ${automation.instruction} ${automation.kind === "event" ? automation.resource : ""}`.toLowerCase();
+      const { task } = automation;
+      const search = [
+        automation.title,
+        task.kind === "skill" ? task.skill : task.instruction,
+        automation.kind === "event" ? automation.resource : "",
+      ]
+        .join(" ")
+        .toLowerCase();
       return (
         (input.scope !== "mine" || automation.ownedByViewer) &&
+        (!input.skill ||
+          (task.kind === "skill" && task.skill === input.skill)) &&
         (input.scope !== "public" ||
           automation.destination.visibility === "public") &&
         (input.scope !== "attention" ||

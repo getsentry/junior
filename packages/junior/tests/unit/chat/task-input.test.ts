@@ -17,6 +17,23 @@ describe("renderTaskInput", () => {
     `);
   });
 
+  it("names the skill to run and keeps optional context as instructions", () => {
+    expect(
+      renderTaskInput({ instructions: "  ", skill: "release-check" }),
+    ).toContain("<task>\nRun the release-check skill.\nWhen an Event");
+    expect(
+      renderTaskInput({
+        instructions: "Only check getsentry/junior.",
+        skill: "release-check",
+      }),
+    ).toContain(
+      [
+        "Run the release-check skill. The instructions below add context for this run.",
+        "<instructions>Only check getsentry/junior.</instructions>",
+      ].join("\n"),
+    );
+  });
+
   it("renders optional facts between the job and reply contract", () => {
     const text = renderTaskInput({
       about: "GitHub PR getsentry/junior#691",

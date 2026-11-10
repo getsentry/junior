@@ -76,7 +76,7 @@ If Junior should receive events or report PR/issue outcomes, also:
 2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
 3. Subscribe the App to: Check suite, Deployment, Deployment status, Issues,
    Issue comment, Pull request, Pull request review, Pull request review
-   comment, and Release.
+   comment, Push, and Release.
 
 Keep the App writable if Junior should create issues, push branches, or open
 pull requests. Junior scopes write tokens to the target repository and still
@@ -439,6 +439,13 @@ The issue was reopened.
 
 </details>
 
+<details class="event">
+<summary><code>issue.updated</code></summary>
+
+The title or body was edited, or a label, assignee, or milestone was added or removed. The trusted summary names the change and who made it. Trusted data includes `change`, the webhook action such as `labeled`, and `senderId` and `senderLogin` for who made it. On `labeled` and `unlabeled`, trusted data also includes `label`, the lowercase label name. Event automations can match these keys. To run on one label that only some people add, match `change`, `label`, and `senderId`. Milestone names stay untrusted content. Updates that the App makes do not publish this event. Issue watches suggest this event. Repository watches support it but do not suggest it, because updates are frequent across a repository.
+
+</details>
+
 #### `pull_request`
 
 One pull request: `owner/repo#number`. Every pull request event has `repo` and
@@ -532,8 +539,13 @@ webhook includes mergeability, so Junior uses it when GitHub knows it. Review,
 comment, and check webhooks do not include it, so Junior reads the pull
 request. If GitHub reports a conflict, Junior publishes this event. Each head commit publishes once. GitHub
 calculates mergeability only when someone reads the pull request, so the first
-read can be unknown, and a later event reads it again. A pull request that gets
-no other events is not checked. Trusted data includes `base_branch`, `head_sha`,
+read can be unknown, and a later event reads it again. A push to the default
+branch of a repository with open pull requests that Junior opened also starts a
+check. The push webhook only saves the check. About two minutes later, the
+heartbeat finds those pull requests with one GraphQL search, which includes
+their mergeability, so many pushes in a short time give one search. When an answer is
+unknown, the heartbeat searches again one minute later. A pull request that Junior
+did not open and that gets no other events is not checked. Trusted data includes `base_branch`, `head_sha`,
 and `url`. Filters can match only `repo` and `pull_request`. The watch that
 Junior creates after it opens a pull request always gets this event, and the
 default guidance tells the agent to merge the base branch, not rebase. For a
