@@ -63,7 +63,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(conversationList).toBeVisible();
 
   const resizeList = page.getByRole("separator", {
-    name: "Resize conversation list",
+    name: "Resize sidebar",
   });
   const listSize = async () =>
     Number(await resizeList.getAttribute("aria-valuenow"));

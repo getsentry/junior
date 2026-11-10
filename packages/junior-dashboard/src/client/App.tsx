@@ -342,7 +342,7 @@ export function DashboardShell() {
         {ownsPane ? null : (
           <div
             className={cn(
-              "sticky top-0 h-dvh w-60 shrink-0 max-md:hidden",
+              "sticky top-0 h-dvh shrink-0 max-md:hidden",
               !paneOpen && "md:hidden",
             )}
           >
