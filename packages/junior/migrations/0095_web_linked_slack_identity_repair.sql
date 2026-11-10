@@ -7,7 +7,9 @@
 -- Evidence: a Slack instruction stores the Actor from the Slack profile in
 -- `provenance.actor`. Slack is the only source that may give a Slack Identity
 -- its email, so an instruction with the Identity's Slack user and email
--- proves that email. Nothing else proves it.
+-- proves that email. Nothing else proves it. In the same way, an instruction
+-- with the Identity's Slack user and name proves that the name came from
+-- Slack.
 --
 -- A candidate is a Slack user Identity when all of these are true:
 -- - It has a User and a verified email, and no evidence proves that email.
@@ -23,18 +25,24 @@
 --
 -- One statement repairs every table, so each part reads the same rows.
 -- junior:bounded-backfill: changes only rows of damaged Identities, their Users, and the roots they started or sent Turns in. #3065 found few of these.
-WITH "slack_evidence" AS (
+WITH "slack_actors" AS (
   SELECT DISTINCT
     "e"."payload"->'provenance'->'actor'->>'userId' AS "subject",
-    lower(btrim("e"."payload"->'provenance'->'actor'->>'email')) AS "email"
+    lower(btrim("e"."payload"->'provenance'->'actor'->>'email')) AS "email",
+    btrim("e"."payload"->'provenance'->'actor'->>'fullName') AS "full_name"
   FROM "junior_conversation_events" AS "e"
   WHERE "e"."type" = 'user_message'
     AND "e"."payload"->'provenance'->>'authority' = 'instruction'
     AND "e"."payload"->'provenance'->'actor'->>'platform' = 'slack'
-    AND "e"."payload"->'provenance'->'actor'->>'email' IS NOT NULL
+),
+"slack_evidence" AS (
+  SELECT DISTINCT "subject", "email"
+  FROM "slack_actors"
+  WHERE "email" IS NOT NULL
 ),
 "proven" AS (
-  SELECT "slack"."id", "slack"."user_id", "slack"."provider_tenant_id"
+  SELECT "slack"."id", "slack"."user_id", "slack"."provider_tenant_id",
+    "slack"."display_name"
   FROM "junior_identities" AS "slack"
   INNER JOIN "slack_evidence" AS "ev"
     ON "ev"."subject" = "slack"."provider_subject_id"
@@ -128,24 +136,47 @@ WITH "slack_evidence" AS (
     )
 ),
 -- The link gave the poster's User the starter's name when the User had none.
--- A User name comes from one of its Identities, so a name that no kept
--- Identity of the User has came from the damaged one. The next save of a
--- kept Identity gives the User a name again.
+-- Later dashboard posts copy the User name to the poster's web Identity, and
+-- the next save of that Identity copies it back to the User. So the web
+-- Identity name is not evidence. A name is the starter's when Slack evidence
+-- proves it for the damaged Identity and no proven Slack Identity of the User
+-- has it. Clear it on the User and on the User's web Identities. The next
+-- save of a kept Identity gives the User a name again.
+"stolen_names" AS (
+  SELECT DISTINCT "u"."id" AS "user_id", "u"."display_name"
+  FROM "damaged" AS "d"
+  INNER JOIN "junior_identities" AS "slack" ON "slack"."id" = "d"."identity_id"
+  INNER JOIN "junior_users" AS "u" ON "u"."id" = "d"."user_id"
+  WHERE "u"."display_name" = "slack"."display_name"
+    AND EXISTS (
+      SELECT 1
+      FROM "slack_actors" AS "a"
+      WHERE "a"."subject" = "slack"."provider_subject_id"
+        AND "a"."full_name" = "slack"."display_name"
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "proven" AS "kept"
+      WHERE "kept"."user_id" = "d"."user_id"
+        AND "kept"."display_name" = "u"."display_name"
+    )
+),
 "renamed_users" AS (
   UPDATE "junior_users" AS "u"
   SET "display_name" = NULL,
     "updated_at" = now()
-  FROM "damaged" AS "d"
-  INNER JOIN "junior_identities" AS "slack" ON "slack"."id" = "d"."identity_id"
-  WHERE "u"."id" = "d"."user_id"
-    AND "u"."display_name" = "slack"."display_name"
-    AND NOT EXISTS (
-      SELECT 1
-      FROM "junior_identities" AS "kept"
-      WHERE "kept"."user_id" = "d"."user_id"
-        AND "kept"."id" NOT IN (SELECT "identity_id" FROM "damaged")
-        AND "kept"."display_name" = "u"."display_name"
-    )
+  FROM "stolen_names" AS "n"
+  WHERE "u"."id" = "n"."user_id"
+),
+"renamed_web_identities" AS (
+  UPDATE "junior_identities" AS "web"
+  SET "display_name" = NULL,
+    "updated_at" = now()
+  FROM "stolen_names" AS "n"
+  WHERE "web"."user_id" = "n"."user_id"
+    AND "web"."kind" = 'user'
+    AND "web"."provider" = 'junior'
+    AND "web"."display_name" = "n"."display_name"
 ),
 -- The detail report of these roots shows the root Actor and Participants.
 "touched_roots" AS (
@@ -155,8 +186,9 @@ WITH "slack_evidence" AS (
 )
 -- Put the Identity back to its state before the link. Slack gave it no
 -- email, so a later Slack Turn cannot link it again. The same write copied
--- the poster's name when Slack gave none. The next Slack Turn of the
--- Identity saves its own name again.
+-- the poster's name when Slack gave none, so clear a name that matches the
+-- poster's web Identity unless Slack evidence proves it. The next Slack Turn
+-- of the Identity saves its own name again.
 UPDATE "junior_identities" AS "i"
 SET "user_id" = NULL,
   "email" = NULL,
@@ -169,6 +201,11 @@ SET "user_id" = NULL,
       WHERE "web"."user_id" = "d"."user_id"
         AND "web"."provider" = 'junior'
         AND "web"."display_name" = "i"."display_name"
+    ) AND NOT EXISTS (
+      SELECT 1
+      FROM "slack_actors" AS "a"
+      WHERE "a"."subject" = "i"."provider_subject_id"
+        AND "a"."full_name" = "i"."display_name"
     ) THEN NULL
     ELSE "i"."display_name"
   END,
