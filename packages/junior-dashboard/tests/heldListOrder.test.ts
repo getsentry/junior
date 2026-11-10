@@ -63,6 +63,21 @@ describe("held list order", () => {
     expect(view.pending).toBe(1);
   });
 
+  it("adds rows after every held row without holding them", () => {
+    const held = sectionOrder([section("today", a, b)]);
+    // The next page loads c, and a new row d arrives above b.
+    const view = holdSectionOrder(held, [
+      section("today", a, d, b, c),
+      section("older", { ...c, id: "e", displayTitle: "e" }),
+    ]);
+
+    expect(shown(view.sections)).toEqual([
+      ["today", ["a", "b", "c"]],
+      ["older", ["e"]],
+    ]);
+    expect(view.pending).toBe(1);
+  });
+
   it("counts one move as one update", () => {
     const held = sectionOrder([section("today", a, b, c, d)]);
     const view = holdSectionOrder(held, [section("today", d, a, b, c)]);

@@ -1,8 +1,7 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   Archive,
   ArchiveRestore,
-  ArrowUp,
   Pin,
   SquarePen,
 } from "lucide-react";
@@ -20,7 +19,6 @@ import { useConversationSubscription } from "./useConversationSubscription";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationRowMenu } from "./ConversationRowMenu";
 import {
-  PinnedConversationOrder,
   usePinnedRowDrag,
   type PinnedRowDrag,
 } from "./PinnedConversationOrder";
@@ -36,12 +34,9 @@ import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import { WaitingChip } from "./WaitingChip";
-import {
-  buildConversationSections,
-  type ConversationSection,
-} from "./conversationSections";
+import type { ConversationSection } from "./conversationSections";
+import { ConversationSectionList } from "./ConversationSectionList";
 import { ConversationStatusText } from "./ConversationListStatusIcon";
-import { useHeldListOrder } from "./heldListOrder";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
   ConversationSidebarThreadRow,
@@ -68,10 +63,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { Spinner } from "../components/ui/spinner";
-import {
-  useWaitingConversationsSettled,
-  type WaitingConversation,
-} from "../review-desk/queries";
+import type { WaitingConversation } from "../review-desk/queries";
 
 type ConversationSidebarEntry =
   | {
@@ -148,47 +140,6 @@ export function ConversationSidebar(props: {
       return next;
     });
   }, []);
-  // Rebuild section rows only when their inputs change. Avoid fresh Date.now()
-  // arrays on unrelated parent renders while the reader is scrolling.
-  const latestSections = useMemo(
-    () =>
-      buildConversationSections(props.conversations, {
-        nowMs: Date.now(),
-        timeZone: props.timeZone,
-        waiting: props.waitingConversations,
-      }),
-    [props.conversations, props.timeZone, props.waitingConversations],
-  );
-  const waitingSettled = useWaitingConversationsSettled();
-  const held = useHeldListOrder(latestSections, {
-    settled: !props.loading && waitingSettled,
-  });
-  const entries = useMemo(
-    () =>
-      conversationSidebarEntries(held.sections, collapsedKeys, {
-        expandedThreadRoots,
-        selectedId: props.selectedId,
-      }),
-    [collapsedKeys, expandedThreadRoots, props.selectedId, held.sections],
-  );
-  const { releaseHold } = held;
-  const { onReorderPins } = props;
-  const reorderPins = useCallback<ReorderPins>(
-    (move) => {
-      releaseHold();
-      onReorderPins(move);
-    },
-    [onReorderPins, releaseHold],
-  );
-  const pinnedConversations = useMemo(
-    () =>
-      entries.flatMap((entry) =>
-        entry.kind === "conversation" && entry.conversation.pinnedAt
-          ? [entry.conversation]
-          : [],
-      ),
-    [entries],
-  );
   const handleReorderError = useCallback(
     (conversation: Conversation) =>
       showActionError(conversation, "Could not reorder"),
@@ -213,108 +164,113 @@ export function ConversationSidebar(props: {
           New conversation
         </Button>
       </div>
-      <ScrollArea
-        {...held.holdProps}
-        viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
-      >
-        <ListUpdatesPill count={held.pending} onApply={held.applyPending} />
+      <ScrollArea viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
           </div>
-        ) : props.loading && entries.length === 0 ? (
+        ) : props.loading && props.conversations.length === 0 ? (
           <ConversationRowsLoading />
         ) : (
-          <PinnedConversationOrder
-            conversations={pinnedConversations}
-            onError={handleReorderError}
-            reorder={reorderPins}
+          <ConversationSectionList
+            conversations={props.conversations}
+            loading={props.loading}
+            onReorderError={handleReorderError}
+            onReorderPins={props.onReorderPins}
+            timeZone={props.timeZone}
+            waitingConversations={props.waitingConversations}
           >
-            <AnimatedList
-              ariaLabel="Your conversations"
-              className="grid gap-0.5"
-              empty={
-                !props.loading ? (
-                  <div className="p-2">
-                    <EmptyTelemetry>
-                      No conversations match this view.
-                    </EmptyTelemetry>
-                  </div>
-                ) : undefined
-              }
-              getKey={conversationEntryKey}
-              items={entries}
-              renderItem={(entry) =>
-                entry.kind === "section" ? (
-                  <ConversationSectionHeading
-                    className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
-                    collapsed={entry.collapsed}
-                    count={entry.count}
-                    label={entry.label}
-                    onToggle={() => toggleSection(entry.sectionKey)}
-                  />
-                ) : entry.kind === "thread-toggle" ? (
-                  <ConversationSidebarThreadToggle
-                    expanded={entry.expanded}
-                    hiddenCount={entry.hiddenCount}
-                    onToggle={() => toggleThreads(entry.rootId)}
-                  />
-                ) : entry.kind === "thread" ? (
-                  <ConversationSidebarThreadRow
-                    conversation={entry.conversation}
-                    depth={entry.depth}
-                    selected={entry.conversation.id === props.selectedId}
-                    waiting={props.waitingConversations.has(
-                      entry.conversation.id,
-                    )}
-                  />
-                ) : (
-                  <ConversationSidebarEntryRow
-                    conversation={entry.conversation}
-                    onArchiveError={showArchiveError}
-                    onArchived={showArchived}
-                    onPinError={handlePinError}
-                    onPinned={clearActionError}
-                    onUnreadError={handleUnreadError}
-                    onActionError={showActionError}
-                    onRowAction={releaseHold}
-                    selected={entry.conversation.id === props.selectedId}
-                    waiting={props.waitingConversations.get(
-                      entry.conversation.id,
-                    )}
-                  />
-                )
-              }
-              role="navigation"
-            />
-          </PinnedConversationOrder>
+            {({ releaseHold, sections }) => (
+              <ConversationSidebarEntries
+                collapsedKeys={collapsedKeys}
+                expandedThreadRoots={expandedThreadRoots}
+                loading={props.loading}
+                sections={sections}
+                selectedId={props.selectedId}
+                renderItem={(entry) =>
+                  entry.kind === "section" ? (
+                    <ConversationSectionHeading
+                      className={cn("px-3 pb-1", entry.first ? "pt-1" : "pt-3")}
+                      collapsed={entry.collapsed}
+                      count={entry.count}
+                      label={entry.label}
+                      onToggle={() => toggleSection(entry.sectionKey)}
+                    />
+                  ) : entry.kind === "thread-toggle" ? (
+                    <ConversationSidebarThreadToggle
+                      expanded={entry.expanded}
+                      hiddenCount={entry.hiddenCount}
+                      onToggle={() => toggleThreads(entry.rootId)}
+                    />
+                  ) : entry.kind === "thread" ? (
+                    <ConversationSidebarThreadRow
+                      conversation={entry.conversation}
+                      depth={entry.depth}
+                      selected={entry.conversation.id === props.selectedId}
+                      waiting={props.waitingConversations.has(
+                        entry.conversation.id,
+                      )}
+                    />
+                  ) : (
+                    <ConversationSidebarEntryRow
+                      conversation={entry.conversation}
+                      onArchiveError={showArchiveError}
+                      onArchived={showArchived}
+                      onPinError={handlePinError}
+                      onPinned={clearActionError}
+                      onUnreadError={handleUnreadError}
+                      onActionError={showActionError}
+                      onRowAction={releaseHold}
+                      selected={entry.conversation.id === props.selectedId}
+                      waiting={props.waitingConversations.get(
+                        entry.conversation.id,
+                      )}
+                    />
+                  )
+                }
+              />
+            )}
+          </ConversationSectionList>
         )}
       </ScrollArea>
     </aside>
   );
 }
 
-/**
- * Offer the order that the held list keeps back. The list holds its order
- * while the reader points at it or works in it; this applies the new order.
- */
-function ListUpdatesPill(props: { count: number; onApply(): void }) {
+/** Show the sidebar rows of the held sections, with their motion. */
+function ConversationSidebarEntries(props: {
+  collapsedKeys: ReadonlySet<string>;
+  expandedThreadRoots: ReadonlySet<string>;
+  loading: boolean;
+  renderItem(entry: ConversationSidebarEntry): ReactNode;
+  sections: ConversationSection[];
+  selectedId?: string;
+}) {
+  const { collapsedKeys, expandedThreadRoots, sections, selectedId } = props;
+  const entries = useMemo(
+    () =>
+      conversationSidebarEntries(sections, collapsedKeys, {
+        expandedThreadRoots,
+        selectedId,
+      }),
+    [collapsedKeys, expandedThreadRoots, sections, selectedId],
+  );
   return (
-    <div
-      aria-live="polite"
-      className="pointer-events-none sticky top-0 z-10 flex h-0 items-start justify-center"
-    >
-      {props.count > 0 ? (
-        <button
-          className="pointer-events-auto mt-1 inline-flex cursor-pointer items-center gap-1 rounded-full border border-dashboard-border-strong bg-dashboard-surface-raised px-2.5 py-1 font-sans text-xs font-medium text-dashboard-text shadow-sm duration-150 hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1"
-          onClick={props.onApply}
-          type="button"
-        >
-          <ArrowUp aria-hidden="true" className="size-3" />
-          {props.count} updated
-        </button>
-      ) : null}
-    </div>
+    <AnimatedList
+      ariaLabel="Your conversations"
+      className="grid gap-0.5"
+      empty={
+        !props.loading ? (
+          <div className="p-2">
+            <EmptyTelemetry>No conversations match this view.</EmptyTelemetry>
+          </div>
+        ) : undefined
+      }
+      getKey={conversationEntryKey}
+      items={entries}
+      renderItem={props.renderItem}
+      role="navigation"
+    />
   );
 }
 

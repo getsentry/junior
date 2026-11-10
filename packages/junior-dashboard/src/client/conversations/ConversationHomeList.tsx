@@ -32,15 +32,12 @@ import {
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./conversationArchive";
 import { DisplayText } from "../display-text/DisplayText";
-import {
-  buildConversationSections,
-  type ConversationSection,
-} from "./conversationSections";
+import type { ConversationSection } from "./conversationSections";
+import { ConversationSectionList } from "./ConversationSectionList";
 import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import {
-  PinnedConversationOrder,
   usePinnedRowDrag,
   type PinnedRowDrag,
 } from "./PinnedConversationOrder";
@@ -80,32 +77,32 @@ export function ConversationHomeList(props: {
     );
   }
 
-  const sections = buildConversationSections(props.conversations, {
-    nowMs: Date.now(),
-    timeZone: props.timeZone,
-    waiting: props.waitingConversations,
-  });
-  const pinnedSection = sections.find((section) => section.key === "pinned");
   return (
-    <PinnedConversationOrder
-      conversations={pinnedSection?.conversations ?? []}
-      onError={handleReorderError}
-      reorder={props.onReorderPins}
+    <ConversationSectionList
+      conversations={props.conversations}
+      loading={props.loading ?? false}
+      onReorderError={handleReorderError}
+      onReorderPins={props.onReorderPins}
+      timeZone={props.timeZone}
+      waitingConversations={props.waitingConversations}
     >
-      <div aria-label="Your conversations" className="grid gap-5" role="list">
-        {sections.map((section) => (
-          <ConversationCardSection
-            collapsed={collapsedKeys.has(section.key)}
-            key={section.key}
-            onArchiveError={showArchiveError}
-            onArchived={showArchived}
-            onToggle={() => toggleSection(section.key)}
-            waitingConversations={props.waitingConversations}
-            section={section}
-          />
-        ))}
-      </div>
-    </PinnedConversationOrder>
+      {({ releaseHold, sections }) => (
+        <div aria-label="Your conversations" className="grid gap-5" role="list">
+          {sections.map((section) => (
+            <ConversationCardSection
+              collapsed={collapsedKeys.has(section.key)}
+              key={section.key}
+              onArchiveError={showArchiveError}
+              onArchived={showArchived}
+              onRowAction={releaseHold}
+              onToggle={() => toggleSection(section.key)}
+              waitingConversations={props.waitingConversations}
+              section={section}
+            />
+          ))}
+        </div>
+      )}
+    </ConversationSectionList>
   );
 }
 
@@ -176,6 +173,7 @@ function ConversationCardSection(props: {
   collapsed: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  onRowAction(): void;
   onToggle(): void;
   section: ConversationSection;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
@@ -202,6 +200,7 @@ function ConversationCardSection(props: {
               conversation,
               onArchiveError: props.onArchiveError,
               onArchived: props.onArchived,
+              onRowAction: props.onRowAction,
               waitingOnViewer: props.waitingConversations.has(conversation.id),
             };
             return conversation.pinnedAt ? (
@@ -222,6 +221,8 @@ type ConversationCardProps = {
   drag?: PinnedRowDrag;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
+  /** Lets the list show the result of a row action at once. */
+  onRowAction(): void;
   waitingOnViewer: boolean;
 };
 
@@ -249,9 +250,9 @@ function ConversationCard(props: ConversationCardProps) {
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
   const unread = Boolean(conversation.unread);
   const emphasized = props.waitingOnViewer || unread;
-  // Only read state and a running Turn get a badge. Failed and stopped are
-  // secondary text beside the time.
-  const showStatus = emphasized || status === "active";
+  // Only read state gets a badge. A running card shows its spinner in place
+  // of the time, and failed and stopped are text beside the time.
+  const showStatus = emphasized && status !== "active";
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
     <article
@@ -343,12 +344,13 @@ function ConversationCard(props: ConversationCardProps) {
             aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
             className="relative z-[1] shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
             disabled={archive.isPending}
-            onClick={() =>
+            onClick={() => {
+              props.onRowAction();
               archive.mutate({
                 archived: !conversation.archivedAt,
                 lastSeenAt: conversation.lastSeenAt,
-              })
-            }
+              });
+            }}
             type="button"
           >
             {conversation.archivedAt ? (

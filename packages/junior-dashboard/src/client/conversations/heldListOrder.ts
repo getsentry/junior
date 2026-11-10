@@ -23,30 +23,43 @@ export function sectionOrder(sections: ConversationSection[]): HeldOrder {
 /**
  * Show the latest conversations in a held row order. A row keeps its held
  * section and place but shows its latest data. A row that is gone drops out.
+ * Rows that the latest order puts after every held row, such as the next
+ * page that the reader scrolls to, join at the end, so no held row moves.
  * `pending` counts the rows that the latest order would add or move: a new
- * row, a row in another section, or a row out of order in its section.
+ * row above a held row, a row in another section, or a row out of order in
+ * its section.
  */
 export function holdSectionOrder(
   held: HeldOrder,
   latest: ConversationSection[],
 ): { pending: number; sections: ConversationSection[] } {
-  const byId = new Map(
-    latest.flatMap((section) =>
-      section.conversations.map(
-        (conversation) => [conversation.id, conversation] as const,
-      ),
-    ),
+  const latestRows = latest.flatMap((section) =>
+    section.conversations.map((conversation) => ({ conversation, section })),
   );
+  const byId = new Map(
+    latestRows.map((row) => [row.conversation.id, row.conversation] as const),
+  );
+  const heldIds = new Set(held.flatMap((section) => section.ids));
+  let lastHeld = -1;
+  latestRows.forEach((row, index) => {
+    if (heldIds.has(row.conversation.id)) lastHeld = index;
+  });
+  const sections: ConversationSection[] = held.map((section) => ({
+    conversations: section.ids.flatMap((id) => byId.get(id) ?? []),
+    key: section.key,
+    label: section.label,
+  }));
+  for (const { conversation, section } of latestRows.slice(lastHeld + 1)) {
+    const target = sections.find((item) => item.key === section.key);
+    if (target) target.conversations.push(conversation);
+    else sections.push({ ...section, conversations: [conversation] });
+  }
   const shown = new Map<string, { index: number; key: string }>();
-  const sections = held.flatMap((section) => {
-    const conversations = section.ids.flatMap((id) => byId.get(id) ?? []);
-    conversations.forEach((conversation, index) =>
+  for (const section of sections) {
+    section.conversations.forEach((conversation, index) =>
       shown.set(conversation.id, { index, key: section.key }),
     );
-    return conversations.length > 0
-      ? [{ conversations, key: section.key, label: section.label }]
-      : [];
-  });
+  }
   let pending = 0;
   for (const section of latest) {
     const kept = section.conversations.flatMap((conversation) => {
@@ -55,7 +68,10 @@ export function holdSectionOrder(
     });
     pending += section.conversations.length - longestIncreasingRun(kept);
   }
-  return { pending, sections };
+  return {
+    pending,
+    sections: sections.filter((section) => section.conversations.length > 0),
+  };
 }
 
 /** Length of the longest increasing subsequence: the rows that need no move. */

@@ -110,6 +110,42 @@ async function sidebarSectionOf(
   return undefined;
 }
 
+/**
+ * Serve versions and waiting conversations that a test can change, so the
+ * feed poll picks up who waits.
+ */
+async function mockChangingWaiting(page: Page) {
+  let waiting = false;
+  const versions = {
+    conversations: "feed-1",
+    reviewItems: "review-1",
+    spend: "spend-1",
+  };
+  await page.route("**/api/versions*", (route) =>
+    route.fulfill({ json: versions }),
+  );
+  await page.route("**/api/review-items/waiting-conversations", (route) =>
+    route.fulfill({
+      json: {
+        conversations: waiting
+          ? [
+              {
+                conversationId: WAITING_CONVERSATION_ID,
+                items: [{ title: reviewItem.title }],
+                waitingSince: reviewItem.createdAt,
+              },
+            ]
+          : [],
+      },
+    }),
+  );
+  /** Change who waits, and move the token the poll reads. */
+  return (next: boolean) => {
+    waiting = next;
+    versions.reviewItems = `review-${next ? 2 : 3}`;
+  };
+}
+
 test.describe("conversation sections", () => {
   test("puts waiting conversations in Needs you first", async ({
     page,
@@ -489,35 +525,7 @@ test.describe("stable conversation list", () => {
   }) => {
     // Real versions poll interval.
     test.setTimeout(60_000);
-    let waiting = false;
-    const versions = {
-      conversations: "feed-1",
-      reviewItems: "review-1",
-      spend: "spend-1",
-    };
-    await page.route("**/api/versions*", (route) =>
-      route.fulfill({ json: versions }),
-    );
-    await page.route("**/api/review-items/waiting-conversations", (route) =>
-      route.fulfill({
-        json: {
-          conversations: waiting
-            ? [
-                {
-                  conversationId: WAITING_CONVERSATION_ID,
-                  items: [{ title: reviewItem.title }],
-                  waitingSince: reviewItem.createdAt,
-                },
-              ]
-            : [],
-        },
-      }),
-    );
-    /** Change who waits, and move the token the poll reads. */
-    const setWaiting = (next: boolean) => {
-      waiting = next;
-      versions.reviewItems = `review-${next ? 2 : 3}`;
-    };
+    const setWaiting = await mockChangingWaiting(page);
     await page.goto(dashboard.baseURL);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -584,6 +592,35 @@ test.describe("stable conversation list", () => {
     await page.mouse.move(1_200, 500);
     await page.evaluate(() => (document.activeElement as HTMLElement).blur());
     await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
+    await expect(pill).toHaveCount(0);
+  });
+
+  test("holds the home list order under the pointer", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    // A narrow window with a mouse shows the home list, not the sidebar.
+    await page.setViewportSize({ width: 700, height: 900 });
+    await page.goto(dashboard.baseURL);
+    const card = page.getByRole("link", {
+      name: "Open Checkout latency triage",
+    });
+    const inNeedsYou = page
+      .locator("section:has(#conversation-section-needs-you)")
+      .getByRole("link", { name: "Open Checkout latency triage" });
+    const pill = page.getByRole("button", { name: "1 updated" });
+    await expect(card).toBeVisible();
+    await expect(inNeedsYou).toHaveCount(0);
+
+    await card.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await expect(inNeedsYou).toHaveCount(0);
+    await pill.click();
+    await expect(inNeedsYou).toBeVisible();
     await expect(pill).toHaveCount(0);
   });
 });
