@@ -830,4 +830,8 @@ test("opens the event log from the sidebar row menu", async ({
   await row.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Open event log" }).click();
   await expect(log).toBeVisible();
+  // That switch adds no history entry, so Back leaves the conversation.
+  await page.goBack();
+  await expect(row).not.toHaveAttribute("aria-current", "page");
+  await expect(log).toBeHidden();
 });

@@ -641,8 +641,12 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
             archive: toggleArchive,
             continueInSlack: () => setContinueInSlackOpen(true),
             delivery: (paused) => delivery.mutate(paused),
+            // The page keeps its view in state, not in history. An open
+            // page replaces its entry, so Back does not land on the same
+            // page in the event log.
             eventLog: () =>
               navigate(conversationPath(props.conversation.id), {
+                replace: props.selected,
                 state: OPEN_EVENT_LOG_STATE,
               }),
             pin: (next) => pin.mutate(next),
