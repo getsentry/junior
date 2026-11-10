@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type Ref } from "react";
+import { useMemo, useState, type ReactNode, type Ref } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDown } from "lucide-react";
 
@@ -9,7 +9,11 @@ import type {
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Button } from "../components/ui/button";
 import { cn } from "../styles";
-import { ConversationTranscriptView } from "./ConversationTranscript";
+import {
+  ConversationTranscriptView,
+  TranscriptAskRevealContext,
+  type TranscriptAskReveal,
+} from "./ConversationTranscript";
 import { ConversationEventLog } from "./ConversationEventLog";
 import {
   TranscriptJumpToLatestContext,
@@ -54,6 +58,8 @@ export function Transcript(props: {
   /** The reader's own sends to show at the end until history has them. */
   pendingMessages?: readonly ConversationMailboxMessage[];
   responding?: boolean;
+  /** Show the row of the question that docks above the message box. */
+  revealAsk?: TranscriptAskReveal;
   /** Keep the rows around this event seq mounted, so the page can show it. */
   revealSeq?: number;
   search?: string;
@@ -97,6 +103,13 @@ export function Transcript(props: {
       raw: transcriptBottomVersion(props.transcript, "raw"),
     },
   });
+
+  const { revealAsk } = props;
+  const { showRow } = bottomPinning;
+  const askReveal = useMemo(
+    () => (revealAsk ? { ...revealAsk, showRow } : undefined),
+    [revealAsk, showRow],
+  );
 
   // Read positions follow the transcript rows, not the event log. Search
   // results skip rows, so they do not move the read position.
@@ -189,15 +202,17 @@ export function Transcript(props: {
         ) : (
           <TurnContextPanelProvider panel={props.turnContextPanel}>
             <TranscriptJumpToLatestContext value={jumpToLatest}>
-              <ConversationTranscriptView
-                onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-                conversation={props.transcript}
-                pendingMessages={props.pendingMessages}
-                responding={props.responding ?? props.live ?? false}
-                revealSeq={props.revealSeq}
-                scrollAnchorKey={bottomPinning.scrollAnchorKey}
-                unread={props.unread}
-              />
+              <TranscriptAskRevealContext value={askReveal}>
+                <ConversationTranscriptView
+                  onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+                  conversation={props.transcript}
+                  pendingMessages={props.pendingMessages}
+                  responding={props.responding ?? props.live ?? false}
+                  revealSeq={props.revealSeq}
+                  scrollAnchorKey={bottomPinning.scrollAnchorKey}
+                  unread={props.unread}
+                />
+              </TranscriptAskRevealContext>
             </TranscriptJumpToLatestContext>
           </TurnContextPanelProvider>
         )}
