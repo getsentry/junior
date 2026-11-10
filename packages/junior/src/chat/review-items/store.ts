@@ -656,6 +656,8 @@ export type WaitingConversation = {
   conversationId: string;
   /** Open Review items on this Conversation that need the User, newest first. */
   items: WaitingItem[];
+  /** When the oldest of those items was added: when the wait began. */
+  waitingSince: string;
 };
 
 /**
@@ -695,11 +697,15 @@ export async function listWaitingConversations(
     const plugin = reviewItemPlugin(row.dedupeKey);
     const item = { title: row.title, ...(plugin ? { plugin } : undefined) };
     const current = waiting.get(row.conversationId);
-    if (current) current.items.push(item);
-    else
+    // Rows come newest first, so each later row is older.
+    if (current) {
+      current.items.push(item);
+      current.waitingSince = row.createdAt.toISOString();
+    } else
       waiting.set(row.conversationId, {
         conversationId: row.conversationId,
         items: [item],
+        waitingSince: row.createdAt.toISOString(),
       });
   }
   return [...waiting.values()].sort((left, right) =>

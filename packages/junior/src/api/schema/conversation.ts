@@ -262,6 +262,9 @@ export const conversationSummaryReportSchema = z
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),
+    // Feed rows only: the newest Message that a reader would notice
+    // (`refreshLastMessageAt`). The dashboard sorts and groups rows by it.
+    lastMessageAt: z.string().datetime().optional(),
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),

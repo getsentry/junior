@@ -1,6 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, count, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
+import { setSpanAttributes } from "@/chat/logging";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import type { JuniorDatabase } from "@/db/db";
@@ -42,9 +43,45 @@ export async function pinConversation(
     throwApiError(404, "Conversation not found.");
   }
   const executor = getSqlExecutor();
-  return await executor.transaction(() =>
-    setPin(executor.db(), viewer, conversationId, body.pinned),
-  );
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    const result = await setPin(db, viewer, conversationId, body.pinned);
+    recordPinUsage(
+      body.pinned ? "pin" : "unpin",
+      await countViewerPins(db, viewer),
+    );
+    return result;
+  });
+}
+
+/**
+ * Tag the request span with a pin change and the viewer's pin count after
+ * it. Pins stay manual; this shows how much people use them.
+ */
+function recordPinUsage(
+  action: "pin" | "reorder" | "unpin",
+  pinnedCount: number,
+): void {
+  setSpanAttributes({
+    "app.conversation.pin.action": action,
+    "app.conversation.pin.count": pinnedCount,
+  });
+}
+
+async function countViewerPins(
+  db: JuniorDatabase,
+  viewer: User,
+): Promise<number> {
+  const [row] = await db
+    .select({ pins: count() })
+    .from(juniorConversationParticipants)
+    .where(
+      and(
+        eq(juniorConversationParticipants.userId, viewer.id),
+        isNotNull(juniorConversationParticipants.pinnedAt),
+      ),
+    );
+  return row?.pins ?? 0;
 }
 
 async function setPin(
@@ -145,6 +182,8 @@ export async function reorderPinnedConversations(
       and(eq(participants.userId, viewer.id), isNotNull(participants.pinnedAt)),
     )
     .returning({ rootConversationId: participants.rootConversationId });
+  // The update reads every pin of the viewer, so its rows are the pin count.
+  recordPinUsage("reorder", updated.length);
   const updatedIds = new Set(updated.map((row) => row.rootConversationId));
   return { conversationIds: ids.filter((id) => updatedIds.has(id)) };
 }

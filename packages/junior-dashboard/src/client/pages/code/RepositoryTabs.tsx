@@ -19,7 +19,7 @@ import { ConversationHomeList } from "../../conversations/ConversationHomeList";
 import { pinnedAndWaitingFirst } from "../../conversations/conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../../format";
 import { useDebouncedValue } from "../../debouncedValue";
-import { useWaitingConversationIds } from "../../review-desk/queries";
+import { useWaitingConversations } from "../../review-desk/queries";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
 import { repositoryActivity } from "./RepositorySections";
@@ -33,7 +33,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
   const search = useDebouncedValue(query.trim());
   const feed = useCodeRepositoryConversationsData(props.repositoryId, search);
   const conversations = buildConversations(feed.data?.conversations ?? []);
-  const waitingConversationIds = useWaitingConversationIds();
+  const waitingConversations = useWaitingConversations();
   useEffect(() => {
     setPage(1);
   }, [search]);
@@ -53,7 +53,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
       ) : (
         <ConversationHomeList
           conversations={pageItems(
-            pinnedAndWaitingFirst(conversations, waitingConversationIds),
+            pinnedAndWaitingFirst(conversations, waitingConversations),
             page,
             PAGE_SIZE,
           )}
@@ -64,7 +64,7 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
           }
           loading={!feed.data}
           timeZone={getDashboardTimeZone()}
-          waitingConversationIds={waitingConversationIds}
+          waitingConversations={waitingConversations}
         />
       )}
       <PagePagination

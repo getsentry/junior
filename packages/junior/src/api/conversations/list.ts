@@ -58,6 +58,7 @@ import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { listWaitingConversations } from "@/chat/review-items/store";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
+import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import {
@@ -151,6 +152,12 @@ async function conversationRows(
   return db
     .select({
       ...conversationRecordColumns,
+      // A row with no stored time yet, from before the column, reads it
+      // from its events. `coalesce` skips that read for every other row.
+      lastMessageAt:
+        sql<Date | null>`coalesce(${juniorConversations.lastMessageAt}, ${lastMessageAtSql(db)})`.mapWith(
+          juniorConversations.lastMessageAt,
+        ),
       // The feed row read shows the wait, so it needs no query of its own.
       awaitingAuthorization: treeAwaitsAuthorization(
         juniorConversations.conversationId,
@@ -589,12 +596,14 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
+      const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
         ...work,
         ...(row.awaitingAuthorization
           ? { awaitingAuthorization: true as const }
           : undefined),
+        ...(lastMessageAt ? { lastMessageAt } : undefined),
         ...(threads ? { threads } : undefined),
         ...(participants && participants.length > 0
           ? { participants }

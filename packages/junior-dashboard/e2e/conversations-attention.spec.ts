@@ -61,6 +61,7 @@ async function mockWaitingConversation(
                 { plugin: "github", title: READY_TITLE },
                 { title: reviewItem.title },
               ],
+              waitingSince: reviewItem.createdAt,
             },
           ],
         },
@@ -107,6 +108,42 @@ async function sidebarSectionOf(
     else if (title.test(item.text)) return section;
   }
   return undefined;
+}
+
+/**
+ * Serve versions and waiting conversations that a test can change, so the
+ * feed poll picks up who waits.
+ */
+async function mockChangingWaiting(page: Page) {
+  let waiting = false;
+  const versions = {
+    conversations: "feed-1",
+    reviewItems: "review-1",
+    spend: "spend-1",
+  };
+  await page.route("**/api/versions*", (route) =>
+    route.fulfill({ json: versions }),
+  );
+  await page.route("**/api/review-items/waiting-conversations", (route) =>
+    route.fulfill({
+      json: {
+        conversations: waiting
+          ? [
+              {
+                conversationId: WAITING_CONVERSATION_ID,
+                items: [{ title: reviewItem.title }],
+                waitingSince: reviewItem.createdAt,
+              },
+            ]
+          : [],
+      },
+    }),
+  );
+  /** Change who waits, and move the token the poll reads. */
+  return (next: boolean) => {
+    waiting = next;
+    versions.reviewItems = `review-${next ? 2 : 3}`;
+  };
 }
 
 test.describe("conversation sections", () => {
@@ -341,6 +378,10 @@ test.describe("conversation sections", () => {
     });
     // The menu stays open, like Pin, so the label flips in place.
     await menu.click();
+    await expect(
+      page.getByRole("button", { name: "Mark as unread" }),
+    ).toBeVisible();
+    await screenshot(page, "conversation-menu-mark-unread", { view: "mobile" });
     await page.getByRole("button", { name: "Mark as unread" }).click();
     await page.getByRole("button", { name: "Mark as read" }).click();
     await expect(
@@ -474,5 +515,155 @@ test.describe("conversation sections", () => {
     await attention.click();
     await expect(attention).toHaveAttribute("aria-expanded", "false");
     await expect(waitingRow).toHaveCount(0);
+  });
+});
+
+test.describe("stable conversation list", () => {
+  test("holds the order under the pointer and offers the new one", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    const waitingRow = sidebar.getByRole("link", {
+      name: /Checkout latency triage/,
+    });
+    // An open menu hides the sidebar from the accessibility tree.
+    const rowSection = () =>
+      sidebarSectionOf(
+        page.locator('[role="navigation"][aria-label="Your conversations"]'),
+        /Checkout latency triage/,
+      );
+    const pill = page.getByRole("button", { name: "1 updated" });
+    await expect(waitingRow).toBeVisible();
+    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
+
+    // While the pointer is on the list, the row keeps its place. Its marker
+    // still updates, and the pill offers the new order.
+    await waitingRow.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await expect(
+      waitingRow.getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    expect(await rowSection()).not.toMatch(/^Needs you/);
+    await screenshot(page, "conversations-list-held", {
+      lightTheme: true,
+      view: "desktop",
+    });
+
+    // A row menu opens outside the list, and it still holds the order.
+    await waitingRow.click({ button: "right" });
+    await page.getByRole("menu").hover();
+    await expect(pill).toBeVisible();
+    expect(await rowSection()).not.toMatch(/^Needs you/);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    // A pill applied from the keyboard lets go of focus, so the next update
+    // applies with no pointer on the list.
+    await page.mouse.move(1_200, 500);
+    await pill.focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(rowSection).toMatch(/^Needs you/);
+    setWaiting(false);
+    await expect
+      .poll(rowSection, { timeout: 15_000 })
+      .toMatch(/^(?!Needs you)/);
+    await expect(pill).toHaveCount(0);
+
+    // Hold again, then apply with a click.
+    await waitingRow.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await pill.click();
+    await expect.poll(rowSection).toMatch(/^Needs you/);
+    await expect(pill).toHaveCount(0);
+
+    // Leaving the list, pointer and focus both, applies the new order.
+    setWaiting(false);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    expect(await rowSection()).toMatch(/^Needs you/);
+    await page.mouse.move(1_200, 500);
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await expect.poll(rowSection).toMatch(/^(?!Needs you)/);
+    await expect(pill).toHaveCount(0);
+  });
+
+  test("holds the order for a pointer on the list edge through the first load", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    let releaseFeed!: () => void;
+    const feedGate = new Promise<void>((resolve) => (releaseFeed = resolve));
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        await feedGate;
+        await route.fallback();
+      },
+    );
+    await page.goto(dashboard.baseURL);
+    const sidebar = page.getByRole("navigation", {
+      name: "Your conversations",
+    });
+    // The pointer comes to rest on the list's side padding while its rows
+    // load.
+    await page
+      .locator('[data-slot="scroll-area"]')
+      .first()
+      .hover({ position: { x: 4, y: 120 } });
+    releaseFeed();
+    await expect(
+      sidebar.getByRole("link", { name: /Checkout latency triage/ }),
+    ).toBeVisible();
+
+    setWaiting(true);
+    await expect(page.getByRole("button", { name: "1 updated" })).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(
+      await sidebarSectionOf(
+        page.locator('[role="navigation"][aria-label="Your conversations"]'),
+        /Checkout latency triage/,
+      ),
+    ).not.toMatch(/^Needs you/);
+  });
+
+  test("holds the home list order under the pointer", async ({
+    page,
+    dashboard,
+  }) => {
+    // Real versions poll interval.
+    test.setTimeout(60_000);
+    const setWaiting = await mockChangingWaiting(page);
+    // A narrow window with a mouse shows the home list, not the sidebar.
+    await page.setViewportSize({ width: 700, height: 900 });
+    await page.goto(dashboard.baseURL);
+    const card = page.getByRole("link", {
+      name: "Open Checkout latency triage",
+    });
+    const inNeedsYou = page
+      .locator("section:has(#conversation-section-needs-you)")
+      .getByRole("link", { name: "Open Checkout latency triage" });
+    const pill = page.getByRole("button", { name: "1 updated" });
+    await expect(card).toBeVisible();
+    await expect(inNeedsYou).toHaveCount(0);
+
+    await card.hover();
+    setWaiting(true);
+    await expect(pill).toBeVisible({ timeout: 15_000 });
+    await expect(inNeedsYou).toHaveCount(0);
+    await pill.click();
+    await expect(inNeedsYou).toBeVisible();
+    await expect(pill).toHaveCount(0);
   });
 });

@@ -110,7 +110,8 @@ export const reviewItemCountSchema = z
 
 /**
  * Conversations linked to an open action item assigned to the viewer. `title`
- * is the newest such item; `count` is how many there are.
+ * is the newest such item; `count` is how many there are; `waitingSince` is
+ * when the oldest was added.
  */
 export const reviewItemWaitingConversationsSchema = z
   .object({
@@ -130,6 +131,8 @@ export const reviewItemWaitingConversationsSchema = z
                 .strict(),
             )
             .min(1),
+          /** When the oldest of those items was added: when the wait began. */
+          waitingSince: z.string().datetime(),
         })
         .strict(),
     ),

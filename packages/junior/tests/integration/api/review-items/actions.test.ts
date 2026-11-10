@@ -129,7 +129,7 @@ describe("review item actions API", () => {
     const fixture = await createConversationFixture();
     await slackConversation("slack:CPUB:1.000001");
     const ana = await user("ana@example.com");
-    await addItem({
+    const acmeId = await addItem({
       kind: "action",
       title: "Review acme entry",
       body: "The acme entry changed its license.",
@@ -191,10 +191,16 @@ describe("review item actions API", () => {
             { title: "Review globex entry" },
             { title: "Review acme entry" },
           ],
+          // The wait began with the oldest item.
+          waitingSince: (await getReviewItem(
+            getDb(),
+            acmeId,
+          ))!.createdAt.toISOString(),
         },
         {
           conversationId: "slack:CPUB:1.000004",
           items: [{ title: "Review initech entry" }],
+          waitingSince: expect.any(String),
         },
       ],
     });
@@ -296,10 +302,12 @@ describe("review item actions API", () => {
         {
           conversationId: "slack:CPUB:1.000001",
           items: [{ title: "Review acme entry" }],
+          waitingSince: expect.any(String),
         },
         {
           conversationId: "slack:CPUB:1.000002",
           items: [{ title: "Review acme entry" }],
+          waitingSince: expect.any(String),
         },
       ],
     });
@@ -464,6 +472,7 @@ describe("review item actions API", () => {
         {
           conversationId: "slack:CPUB:1.000001",
           items: [{ title: "Pull request needs review" }],
+          waitingSince: expect.any(String),
         },
       ],
     });

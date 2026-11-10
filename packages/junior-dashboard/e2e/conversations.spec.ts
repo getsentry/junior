@@ -518,8 +518,10 @@ test("scrolls long conversation and transcript panes independently", async ({
   ).toBeVisible();
 
   const conversationList = page
-    .getByRole("navigation", { name: "Your conversations" })
-    .locator("..");
+    .locator('[data-slot="scroll-area-viewport"]')
+    .filter({
+      has: page.getByRole("navigation", { name: "Your conversations" }),
+    });
   const transcript = page.getByLabel("Conversation transcript");
   const geometry = await page.evaluate(() => ({
     documentHeight: document.documentElement.scrollHeight,
