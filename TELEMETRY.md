@@ -655,8 +655,9 @@ previous Turn when agent history exists.
 - When no idle Neon pool client is free, a query outside a transaction runs
   over Neon's HTTP endpoint. Its `db` span has `app.db.transport: http`. A
   `db` span without the attribute ran on a WebSocket client. The pool then
-  opens a client in the background for the next query. If that open fails, it
-  logs `db.pool.client.connect_failed`.
+  opens a client in the background for the next query. It also opens one when
+  its last client closes. If a background open fails, it logs
+  `db.pool.client.connect_failed`.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.

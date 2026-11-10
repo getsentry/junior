@@ -68,6 +68,7 @@ class OverflowPool extends Pool {
     this.sql = neon(args.connectionString, { fullResults: true });
     this.dispatcher = args.dispatcher;
     this.statementTimeoutMs = args.statementTimeoutMs;
+    this.on("remove", () => this.reconnectWhenEmpty());
   }
 
   // Loose parameters satisfy every pg `query` overload.
@@ -109,14 +110,33 @@ class OverflowPool extends Pool {
       if (this.ending || this.idleCount > 0 || this.totalCount >= POOL_MAX) {
         return;
       }
-      this.connect((error, client) => {
-        if (client) {
-          client.release();
-          return;
-        }
-        logException(error, "db.pool.client.connect_failed", {
-          "app.db.driver": "neon",
-        });
+      this.openClient();
+    });
+  }
+
+  // pg-pool `min` keeps a client only when it is released into a pool that
+  // already holds `min` clients or fewer. Its idle timer does not check
+  // `min` again, so clients released while the pool was larger all close.
+  // Open one client when the last one closes. A failed connect does not emit
+  // `remove`, so it makes only one attempt.
+  private reconnectWhenEmpty() {
+    // After pg-pool serves queued queries, which can open a client.
+    setImmediate(() => {
+      if (this.ending || this.totalCount > 0) {
+        return;
+      }
+      this.openClient();
+    });
+  }
+
+  private openClient() {
+    this.connect((error, client) => {
+      if (client) {
+        client.release();
+        return;
+      }
+      logException(error, "db.pool.client.connect_failed", {
+        "app.db.driver": "neon",
       });
     });
   }
