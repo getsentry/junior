@@ -58,11 +58,9 @@ import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { listWaitingConversations } from "@/chat/review-items/store";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
+import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";
-import {
-  readLastMessageAtByConversation,
-  readLastUserMessageAtByConversation,
-} from "./user-message-activity";
+import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import {
   latestMessageSeqQuery,
   readConversationActivityPreviews,
@@ -154,6 +152,12 @@ async function conversationRows(
   return db
     .select({
       ...conversationRecordColumns,
+      // A row with no stored time yet, from before the column, reads it
+      // from its events. `coalesce` skips that read for every other row.
+      lastMessageAt:
+        sql<Date | null>`coalesce(${juniorConversations.lastMessageAt}, ${lastMessageAtSql(db)})`.mapWith(
+          juniorConversations.lastMessageAt,
+        ),
       // The feed row read shows the wait, so it needs no query of its own.
       awaitingAuthorization: treeAwaitsAuthorization(
         juniorConversations.conversationId,
@@ -465,7 +469,6 @@ export async function readConversationFeedFromSql(
       lastUserMessageAt: lastUserMessageAtByConversation,
     },
     activityPreviewByConversation,
-    lastMessageAtByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     unreadConversationIds,
@@ -499,7 +502,6 @@ export async function readConversationFeedFromSql(
       ),
     })),
     readConversationActivityPreviews(db, conversationIds),
-    readLastMessageAtByConversation(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     filter?.kind === "viewer"
@@ -594,9 +596,7 @@ export async function readConversationFeedFromSql(
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
       const threads = threadsByRoot.get(conversation.conversationId);
-      const lastMessageAt = lastMessageAtByConversation.get(
-        conversation.conversationId,
-      );
+      const lastMessageAt = row.lastMessageAt?.toISOString();
       return {
         ...summary,
         ...work,

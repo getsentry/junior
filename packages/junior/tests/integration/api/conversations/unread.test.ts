@@ -287,6 +287,36 @@ describe("conversation unread API", () => {
     });
   });
 
+  it("stores the last Message and reads events when a row has none", async () => {
+    const conversationId = "local:test:last-message-unstored";
+    await recordActivity(conversationId, 1_000);
+    const { viewer } = await authenticatedApi("unstored-reader@example.com");
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: conversationId,
+        userId: viewer.id,
+      });
+    const replyAt = await appendMessage(conversationId, { role: "assistant" });
+    // The append stores the time, so the feed reads no events for it.
+    const [stored] = await getDb()
+      .select({ lastMessageAt: juniorConversations.lastMessageAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, conversationId));
+    expect(stored?.lastMessageAt?.toISOString()).toBe(replyAt);
+
+    // Rows written before the stored time have none.
+    await getDb()
+      .update(juniorConversations)
+      .set({ lastMessageAt: null })
+      .where(eq(juniorConversations.conversationId, conversationId));
+
+    await expect(feedSummary(viewer, conversationId)).resolves.toMatchObject({
+      lastMessageAt: replyAt,
+    });
+  });
+
   it("marks a reply at the first event unread", async () => {
     const conversationId = "local:test:unread-first-event";
     await recordActivity(conversationId, 1_000);
