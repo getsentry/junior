@@ -14,7 +14,8 @@ function toNum(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
-function toFileRef(raw: unknown): SlackFileRef | undefined {
+/** Read a Slack file object from an untyped payload, or return undefined. */
+export function toFileRef(raw: unknown): SlackFileRef | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const obj = raw as Record<string, unknown>;
   const id = toStr(obj.id);

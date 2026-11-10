@@ -315,7 +315,10 @@ describe("Slack conversation work execution", () => {
         ],
       },
     ];
-    const queueRead = (files: ReturnType<typeof linkedFile>[]) =>
+    const queueRead = (
+      message: { files?: unknown[]; attachments?: unknown[] },
+      readBlocks: unknown[] = blocks,
+    ) =>
       queueSlackApiResponse("conversations.replies", {
         body: conversationsRepliesPage({
           messages: [
@@ -323,16 +326,46 @@ describe("Slack conversation work execution", () => {
               ts: envelope.event.ts,
               user: "U123",
               text: envelope.event.text,
-              blocks,
+              blocks: readBlocks,
               upload: false,
-              files,
+              ...message,
             },
           ],
         }),
       });
+    const messageLink =
+      "https://sentry.slack.com/archives/C0LINKED/p1712000000000100";
+    // A link to another Slack message reaches Junior as a rich text link.
+    const messageLinkBlocks = [
+      {
+        type: "rich_text",
+        elements: [
+          {
+            type: "rich_text_section",
+            elements: [
+              { type: "user", user_id: SLACK_BOT_USER_ID },
+              { type: "text", text: " read " },
+              { type: "link", url: messageLink },
+            ],
+          },
+        ],
+      },
+    ];
+    // Slack adds the linked message as an unfurl with that message's files.
+    const messageUnfurl = (files: ReturnType<typeof linkedFile>[]) => ({
+      from_url: messageLink,
+      is_msg_unfurl: true,
+      channel_id: "C0LINKED",
+      ts: "1712000000.000100",
+      files,
+    });
+    const readCalls = () =>
+      getCapturedSlackApiCalls("conversations.replies").map(
+        (call) => call.params,
+      );
 
     /** Run one mention turn and return the names of its attachments. */
-    async function runTurn(): Promise<string[]> {
+    async function runTurn(eventBlocks: unknown[] = blocks): Promise<string[]> {
       const queue = createConversationWorkQueueTestAdapter();
       const state = getStateAdapter();
       await state.connect();
@@ -340,7 +373,7 @@ describe("Slack conversation work execution", () => {
       await handleSlackWebhookAndFlush({
         request: slackWebhookRequest({
           ...envelope,
-          event: { ...envelope.event, blocks },
+          event: { ...envelope.event, blocks: eventBlocks },
         }),
         services: {
           getSlackAdapter: () => slackAdapter,
@@ -380,19 +413,17 @@ describe("Slack conversation work execution", () => {
 
     it("adds the files that Slack attaches after a person links them", async () => {
       // Slack attaches the linked files one at a time.
-      queueRead([linkedFile("F0FIRST", "first.csv")]);
-      queueRead([
-        linkedFile("F0FIRST", "first.csv"),
-        linkedFile("F0SECOND", "second.csv"),
-      ]);
+      queueRead({ files: [linkedFile("F0FIRST", "first.csv")] });
+      queueRead({
+        files: [
+          linkedFile("F0FIRST", "first.csv"),
+          linkedFile("F0SECOND", "second.csv"),
+        ],
+      });
 
       await expect(runTurn()).resolves.toEqual(["first.csv", "second.csv"]);
       // Each read asks Slack for only the linked message.
-      expect(
-        getCapturedSlackApiCalls("conversations.replies").map(
-          (call) => call.params,
-        ),
-      ).toEqual(
+      expect(readCalls()).toEqual(
         Array(2).fill(
           expect.objectContaining({
             oldest: envelope.event.ts,
@@ -409,6 +440,26 @@ describe("Slack conversation work execution", () => {
       });
 
       await expect(runTurn()).resolves.toEqual([]);
+    });
+
+    it("adds the files of a Slack message that a person links", async () => {
+      queueRead({}, messageLinkBlocks);
+      queueRead(
+        {
+          attachments: [messageUnfurl([linkedFile("F0REPORT", "report.csv")])],
+        },
+        messageLinkBlocks,
+      );
+
+      await expect(runTurn(messageLinkBlocks)).resolves.toEqual(["report.csv"]);
+      expect(readCalls()).toHaveLength(2);
+    });
+
+    it("stops reading when the linked Slack message has no files", async () => {
+      queueRead({ attachments: [messageUnfurl([])] }, messageLinkBlocks);
+
+      await expect(runTurn(messageLinkBlocks)).resolves.toEqual([]);
+      expect(readCalls()).toHaveLength(1);
     });
   });
 

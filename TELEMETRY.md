@@ -624,7 +624,9 @@ previous Turn when agent history exists.
 - `slack.message.ingress` records sender, team, and `app.slack.membership`
   (`verified`, `unverified`, `not_checked`) before membership checks. Identity
   fields record `missing` or `invalid`, never message text, names, or emails.
-  These attributes are only on ingress spans.
+  These attributes are only on ingress spans. A `message_changed` span also
+  records `app.slack.edited_message.ts` and
+  `app.slack.edited_message.file_count`, because ingress drops the edit.
 - On `queue.*` spans, `messaging.*` describes the Vercel Queue, not Slack.
   They follow the Sentry queue span conventions. `queue.process` starts a new
   trace.
