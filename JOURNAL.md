@@ -83,3 +83,27 @@ Read this first after a sandbox reset or context loss.
   - Note: after editing plugin-api, run `pnpm --filter @sentry/junior-plugin-api build`
     before typechecking dependents (they import from dist).
   - Repository input is `junior_code_changes.repository.name` = "owner/name".
+- Slice 3 done: draft PR #3090 (`walkthrough/3-storage`, commit f82385536),
+  base `walkthrough/2-code-change-hooks`. Stack #3089 = [#3087, #3088, #3090].
+  - DECISION: only ONE table in slice 3 (`junior_walkthrough_versions`).
+    The answers table moves to slice 6, where its shape is decided (no
+    speculative schema). Migration `0096_walkthrough_versions.sql`.
+  - Columns: id, parent_version_id, provider, repository, snapshot_key,
+    code_changes jsonb [{number, headSha, baseSha}], generation_conversation_id
+    (FK → conversations, ON DELETE SET NULL), source_conversation_id, status
+    (generating|ready|failed), document_key, cost_usd, failure_reason,
+    created_by_user_id, created_at, completed_at.
+  - Partial unique (provider, repository, snapshot_key) WHERE status<>'failed'.
+    Unique on generation_conversation_id (serves the list NOT EXISTS).
+  - Store `packages/junior/src/chat/walkthroughs/store.ts`:
+    `walkthroughSnapshotKey`, `startWalkthroughVersion` (onConflictDoNothing →
+    returns live one, started:false), `getWalkthroughVersion`,
+    `completeWalkthroughVersion(storage, {id, document, costUsd})`,
+    `failWalkthroughVersion({id, reason})`, `readWalkthroughDocument(storage, v)`.
+    Storage is passed in (like api.ts deps) because memory storage is per instance.
+  - Query plan (100k convs, 2k versions): home list keeps index scan on
+    last_activity_idx + index-only probe; 0.06 → 0.22 ms.
+  - Tests: DATABASE_URL=postgres://junior:junior@localhost:54322/junior
+    (compose postgres from `pnpm dev`). 32 list/search/migration files pass.
+  - Gotcha: the pnpm pre-commit hook is slow; a commit+push in one command can
+    time out but still land. Check `git ls-remote` before re-pushing.
