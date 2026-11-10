@@ -1,9 +1,10 @@
-import type {
-  WalkthroughAnswer,
-  WalkthroughChapter,
-  WalkthroughDocument,
-  WalkthroughEvidence,
-  WalkthroughHunk,
+import {
+  codeExcerptId,
+  type WalkthroughAnswer,
+  type WalkthroughChapter,
+  type WalkthroughDocument,
+  type WalkthroughEvidence,
+  type WalkthroughExcerpt,
 } from "@sentry/junior/api/schema";
 
 export type WalkthroughUpdate = WalkthroughDocument["updates"][number];
@@ -72,26 +73,20 @@ export const typeLabels: Record<WalkthroughChapter["type"], string> = {
   ship_check: "Ship check",
 };
 
-/** Index hunks by id once per document. */
-export function hunkIndex(
+/** Index excerpts by id once per document. */
+export function excerptIndex(
   document: WalkthroughDocument,
-): ReadonlyMap<string, WalkthroughHunk> {
-  return new Map(document.hunks.map((hunk) => [hunk.id, hunk]));
+): ReadonlyMap<string, WalkthroughExcerpt> {
+  return new Map(document.excerpts.map((excerpt) => [excerpt.id, excerpt]));
 }
 
 /** Layers cited by evidence. A chapter without code has no layer. */
 export function evidencePrs(
   evidence: readonly WalkthroughEvidence[],
-  hunks: ReadonlyMap<string, WalkthroughHunk>,
 ): number[] {
-  const prs = new Set<number>();
-  for (const e of evidence) {
-    if (e.kind === "hunk") {
-      const hunk = hunks.get(e.hunkId);
-      if (hunk) prs.add(hunk.pr);
-    }
-  }
-  return [...prs];
+  return [
+    ...new Set(evidence.flatMap((e) => (e.kind === "code" ? [e.pr] : []))),
+  ];
 }
 
 /** The latest update, or undefined when the reader is on a first review. */
@@ -155,7 +150,7 @@ export function walkthroughSteps(
 export function reviewDecisions(
   document: WalkthroughDocument,
 ): ReviewDecision[] {
-  const hunks = hunkIndex(document);
+  const excerpts = excerptIndex(document);
   const items = document.updates.flatMap((update) => update.items);
   const decisions: ReviewDecision[] = [];
   for (const chapter of document.content.chapters) {
@@ -167,23 +162,23 @@ export function reviewDecisions(
       decisions.push({
         id: decision.id,
         question: decision.question,
-        prs: decisionPrs(document, hunks, evidence, chapter.evidence),
+        prs: decisionPrs(document, evidence, chapter.evidence),
         stepKey: `chapter:${chapter.id}`,
         answeredBy: items.find((item) => item.answers === decision.id),
         // Feedback lands next to code. A decision about prose uses the
         // chapter's first code.
         location:
-          evidenceLocation(evidence, hunks) ??
+          evidenceLocation(evidence, excerpts) ??
           evidenceLocation(
-            chapter.evidence.find((e) => e.kind === "hunk"),
-            hunks,
+            chapter.evidence.find((e) => e.kind === "code"),
+            excerpts,
           ),
       });
     }
   }
   for (const item of items) {
-    const prs = decisionPrs(document, hunks, undefined, item.evidence);
-    const location = evidenceLocation(item.evidence[0], hunks);
+    const prs = decisionPrs(document, undefined, item.evidence);
+    const location = evidenceLocation(item.evidence[0], excerpts);
     if (item.answers) {
       decisions.push({
         id: confirmDecisionId(item.id),
@@ -289,27 +284,23 @@ export function reviewMarkdown(args: {
  */
 function decisionPrs(
   document: WalkthroughDocument,
-  hunks: ReadonlyMap<string, WalkthroughHunk>,
   evidence: WalkthroughEvidence | undefined,
   chapterEvidence: readonly WalkthroughEvidence[],
 ): number[] {
-  const own = evidence ? evidencePrs([evidence], hunks) : [];
+  const own = evidence ? evidencePrs([evidence]) : [];
   if (own.length) return own;
-  const chapter = evidencePrs(chapterEvidence, hunks);
+  const chapter = evidencePrs(chapterEvidence);
   return chapter.length ? chapter : document.layers.map((layer) => layer.pr);
 }
 
 function evidenceLocation(
   evidence: WalkthroughEvidence | undefined,
-  hunks: ReadonlyMap<string, WalkthroughHunk>,
+  excerpts: ReadonlyMap<string, WalkthroughExcerpt>,
 ): ReviewDecision["location"] {
-  if (evidence?.kind !== "hunk") return undefined;
-  const hunk = hunks.get(evidence.hunkId);
-  if (!hunk) return undefined;
-  const line =
-    hunk.lines.find((l) => l.kind === "add") ??
-    hunk.lines.find((l) => l.kind === "remove");
-  const number = line?.newLine ?? line?.oldLine;
-  const file = hunk.path.split("/").at(-1) ?? hunk.path;
-  return { label: number ? `${file}:${number}` : file, url: hunk.url };
+  if (evidence?.kind !== "code") return undefined;
+  const file = evidence.path.split("/").at(-1) ?? evidence.path;
+  return {
+    label: `${file}:${evidence.start}`,
+    url: excerpts.get(codeExcerptId(evidence))?.url,
+  };
 }

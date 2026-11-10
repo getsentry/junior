@@ -35,6 +35,7 @@ export type {
 } from "./schema/walkthrough";
 export {
   WALKTHROUGH_TEMPLATES,
+  codeExcerptId,
   walkthroughDocumentSchema,
 } from "../chat/walkthroughs/schema";
 export type {
@@ -42,8 +43,9 @@ export type {
   WalkthroughChapter,
   WalkthroughDecision,
   WalkthroughDocument,
+  WalkthroughCodeRef,
   WalkthroughEvidence,
-  WalkthroughHunk,
+  WalkthroughExcerpt,
 } from "../chat/walkthroughs/schema";
 export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
 export { dailyConversationActivitySchema } from "./activity";

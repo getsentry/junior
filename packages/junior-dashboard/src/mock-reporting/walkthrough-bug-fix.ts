@@ -1,7 +1,39 @@
-import type { WalkthroughDocument } from "@sentry/junior/api/schema";
+import {
+  codeExcerptId,
+  type WalkthroughDocument,
+} from "@sentry/junior/api/schema";
 import { withMockPermalinks } from "./walkthrough-permalinks";
 
 const file = "packages/junior/src/chat/automations/run-lock.ts";
+
+const lockKeyCause = {
+  pr: 3150,
+  path: file,
+  side: "base",
+  start: 21,
+  end: 22,
+} as const;
+const lockKeyFix = {
+  pr: 3150,
+  path: file,
+  side: "head",
+  start: 21,
+  end: 23,
+} as const;
+const runNow = {
+  pr: 3150,
+  path: "packages/junior/src/chat/automations/run-now.ts",
+  side: "head",
+  start: 40,
+  end: 44,
+} as const;
+const regressionTest = {
+  pr: 3150,
+  path: "packages/junior/tests/integration/automation-schedule.test.ts",
+  side: "head",
+  start: 118,
+  end: 122,
+} as const;
 
 /** A fixed single-PR bug fix on its first review, for the Walkthrough prototype. */
 export function readMockBugFixWalkthrough(): WalkthroughDocument {
@@ -21,11 +53,29 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
         deletions: 6,
       },
     ],
-    hunks: [
+    excerpts: [
       {
-        id: "lock-key",
-        pr: 3150,
-        path: file,
+        id: codeExcerptId(lockKeyCause),
+        ...lockKeyCause,
+        language: "ts",
+        lines: [
+          {
+            kind: "context",
+            content: "function runLockKey(run: ScheduledRun) {",
+            oldLine: 21,
+            newLine: 21,
+          },
+          {
+            kind: "remove",
+            content:
+              "  return `${run.automationId}:${process.env.VERCEL_DEPLOYMENT_ID}`;",
+            oldLine: 22,
+          },
+        ],
+      },
+      {
+        id: codeExcerptId(lockKeyFix),
+        ...lockKeyFix,
         language: "ts",
         lines: [
           {
@@ -50,9 +100,8 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "run-now",
-        pr: 3150,
-        path: "packages/junior/src/chat/automations/run-now.ts",
+        id: codeExcerptId(runNow),
+        ...runNow,
         language: "ts",
         lines: [
           {
@@ -87,9 +136,8 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "test",
-        pr: 3150,
-        path: "packages/junior/tests/integration/automation-schedule.test.ts",
+        id: codeExcerptId(regressionTest),
+        ...regressionTest,
         language: "ts",
         lines: [
           {
@@ -234,9 +282,8 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           },
           evidence: [
             {
-              kind: "hunk",
-              hunkId: "lock-key",
-              lines: { start: 1, end: 2 },
+              kind: "code",
+              ...lockKeyCause,
               note: "During a rollout, old and new deployments both get the tick.",
             },
             { kind: "check", checkId: "regression" },
@@ -268,7 +315,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
             added: [],
             broken: [],
           },
-          evidence: [{ kind: "hunk", hunkId: "lock-key" }],
+          evidence: [{ kind: "code", ...lockKeyFix }],
           decisions: [],
           asks: [],
         },
@@ -280,7 +327,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
             "“Run now” uses the same lock. Two clicks in one minute now run once.",
           body: "It now rounds its time to the minute [1], so fast repeat clicks merge into one run. Locks taken before this PR keep the old key until they expire, so the first rollout can still double-run once [2].",
           evidence: [
-            { kind: "hunk", hunkId: "run-now" },
+            { kind: "code", ...runNow },
             {
               kind: "source",
               sourceId: "brief-lock-ttl",
@@ -313,7 +360,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           body: "Junior ran the new test [2] on the base commit, where it fails, and on this PR, where it passes [1]. The rest of CI passes too [3].",
           evidence: [
             { kind: "check", checkId: "regression" },
-            { kind: "hunk", hunkId: "test" },
+            { kind: "code", ...regressionTest },
             { kind: "check", checkId: "ci" },
           ],
           decisions: [],

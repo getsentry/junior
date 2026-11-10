@@ -1,7 +1,7 @@
 import { ArrowUpRight, MessageCircleQuestion } from "lucide-react";
 import type {
   WalkthroughDocument,
-  WalkthroughHunk,
+  WalkthroughExcerpt,
 } from "@sentry/junior/api/schema";
 
 import { cn } from "../styles";
@@ -11,7 +11,7 @@ import { WalkthroughDecisionRow } from "./WalkthroughDecision";
 import { WalkthroughDiagram } from "./WalkthroughDiagram";
 import {
   CitedProse,
-  HunkReference,
+  CodeReference,
   ProofCard,
   ReferenceList,
   citedEvidence,
@@ -35,7 +35,7 @@ export function WalkthroughStepView(props: {
   answers: AnswerMap;
   decisions: readonly ReviewDecision[];
   document: WalkthroughDocument;
-  hunks: ReadonlyMap<string, WalkthroughHunk>;
+  excerpts: ReadonlyMap<string, WalkthroughExcerpt>;
   index: number;
   onAnswer(decisionId: string, value: "accept" | "change", note?: string): void;
   onAsk(): void;
@@ -50,8 +50,7 @@ export function WalkthroughStepView(props: {
   const evidence =
     step.kind === "chapter" ? step.chapter.evidence : step.item.evidence;
   // A lone PR needs no tag. In a stack, the tag says which layer this is.
-  const prs =
-    document.layers.length > 1 ? evidencePrs(evidence, props.hunks) : [];
+  const prs = document.layers.length > 1 ? evidencePrs(evidence) : [];
   const decisionIds =
     step.kind === "chapter"
       ? step.chapter.decisions.map((d) => d.id)
@@ -73,7 +72,7 @@ export function WalkthroughStepView(props: {
         )
       : [];
   const view = step.kind === "chapter" ? step.chapter.view : undefined;
-  const refs = citedEvidence(document, props.hunks, evidence);
+  const refs = citedEvidence(document, props.excerpts, evidence);
   const stacked = document.layers.length > 1;
   const caption =
     step.kind === "chapter" ? step.chapter.caption : step.item.caption;
@@ -176,8 +175,8 @@ export function WalkthroughStepView(props: {
         <ProofCard refs={refs} scope={step.key} />
       ) : null}
       {refs.map((ref) =>
-        ref.kind === "hunk" ? (
-          <HunkReference
+        ref.kind === "code" ? (
+          <CodeReference
             key={ref.n}
             ref={ref}
             scope={step.key}

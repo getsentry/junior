@@ -33,7 +33,7 @@ import {
 import { WalkthroughStepView } from "./WalkthroughStepView";
 import { prototypeAnswer } from "./prototypeAnswers";
 import {
-  hunkIndex,
+  excerptIndex,
   latestUpdate,
   layerStatus,
   reviewDecisions,
@@ -79,7 +79,7 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
     () => walkthroughSteps(document, mode),
     [document, mode],
   );
-  const hunks = useMemo(() => hunkIndex(document), [document]);
+  const excerpts = useMemo(() => excerptIndex(document), [document]);
   // Decisions can sit in either mode, so name steps from both.
   const stepTitles = useMemo(
     () =>
@@ -259,7 +259,7 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
                 answers={answers}
                 decisions={decisions}
                 document={document}
-                hunks={hunks}
+                excerpts={excerpts}
                 index={index}
                 onAnswer={(decisionId, value, note) =>
                   setAnswers((current) => ({

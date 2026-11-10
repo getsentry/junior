@@ -1,10 +1,11 @@
 import { Fragment } from "react";
 import { CircleCheck, CircleDashed, CircleX } from "lucide-react";
 import { Link } from "react-router";
-import type {
-  WalkthroughDocument,
-  WalkthroughEvidence as Evidence,
-  WalkthroughHunk,
+import {
+  codeExcerptId,
+  type WalkthroughDocument,
+  type WalkthroughEvidence as Evidence,
+  type WalkthroughExcerpt,
 } from "@sentry/junior/api/schema";
 
 import { OutboundLink } from "../components/OutboundLink";
@@ -32,10 +33,10 @@ const sourceLabels: Record<Source["kind"], string> = {
 /** One numbered piece of chapter evidence, resolved against the document. */
 export type CitedEvidence =
   | {
-      kind: "hunk";
+      kind: "code";
       n: number;
-      evidence: Evidence & { kind: "hunk" };
-      hunk: WalkthroughHunk;
+      evidence: Evidence & { kind: "code" };
+      excerpt: WalkthroughExcerpt;
     }
   | { kind: "source"; n: number; source: Source }
   | { kind: "check"; n: number; check: Check };
@@ -43,14 +44,14 @@ export type CitedEvidence =
 /** Resolve evidence in prose order, so "[2]" is the second item. */
 export function citedEvidence(
   document: WalkthroughDocument,
-  hunks: ReadonlyMap<string, WalkthroughHunk>,
+  excerpts: ReadonlyMap<string, WalkthroughExcerpt>,
   evidence: readonly Evidence[],
 ): CitedEvidence[] {
   return evidence.flatMap((e, index): CitedEvidence[] => {
     const n = index + 1;
-    if (e.kind === "hunk") {
-      const hunk = hunks.get(e.hunkId);
-      return hunk ? [{ kind: "hunk", n, evidence: e, hunk }] : [];
+    if (e.kind === "code") {
+      const excerpt = excerpts.get(codeExcerptId(e));
+      return excerpt ? [{ kind: "code", n, evidence: e, excerpt }] : [];
     }
     if (e.kind === "source") {
       const source = document.sources.find((s) => s.id === e.sourceId);
@@ -71,7 +72,7 @@ function fileName(path: string): string {
 }
 
 function referenceLabel(ref: CitedEvidence): string {
-  if (ref.kind === "hunk") return fileName(ref.hunk.path);
+  if (ref.kind === "code") return fileName(ref.excerpt.path);
   if (ref.kind === "check") return ref.check.label;
   const kind = ref.source.decisionKind
     ? ` · ${decisionKindLabels[ref.source.decisionKind]}`
@@ -266,19 +267,15 @@ export function ReferenceList(props: {
 }
 
 /**
- * One cited hunk. When the column is wide, the explanation sits beside the
- * code. Code comes from the stored diff, never from the model.
+ * One cited code excerpt. When the column is wide, the explanation sits beside
+ * the code. Code comes from the stored diff, never from the model.
  */
-export function HunkReference(props: {
-  layerUrl?: string;
-  ref: CitedEvidence & { kind: "hunk" };
+export function CodeReference(props: {
+  ref: CitedEvidence & { kind: "code" };
   scope: string;
   stacked: boolean;
 }) {
-  const { evidence, hunk } = props.ref;
-  const lines = evidence.lines
-    ? hunk.lines.slice(evidence.lines.start - 1, evidence.lines.end)
-    : hunk.lines;
+  const { evidence, excerpt } = props.ref;
   return (
     <figure
       className={cn(
@@ -290,16 +287,16 @@ export function HunkReference(props: {
       <figcaption className="grid content-start gap-1.5 text-sm text-dashboard-text-subtle">
         <span className="flex min-w-0 items-center gap-2 text-xs text-dashboard-text-muted">
           <ReferenceNumber n={props.ref.n} />
-          <span className="min-w-0 truncate font-mono" title={hunk.path}>
-            {fileName(hunk.path)}
+          <span className="min-w-0 truncate font-mono" title={excerpt.path}>
+            {fileName(excerpt.path)}
           </span>
-          {hunk.url ? (
+          {excerpt.url ? (
             <OutboundLink
-              aria-label={`Open ${fileName(hunk.path)} on GitHub`}
+              aria-label={`Open ${fileName(excerpt.path)} on GitHub`}
               className="shrink-0 text-dashboard-text-muted no-underline hover:text-dashboard-text"
-              href={hunk.url}
+              href={excerpt.url}
             >
-              {props.stacked ? `#${hunk.pr}` : ""}
+              {props.stacked ? `#${excerpt.pr}` : ""}
             </OutboundLink>
           ) : null}
         </span>
@@ -310,7 +307,7 @@ export function HunkReference(props: {
         ) : null}
       </figcaption>
       <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-1.5 font-mono text-sm leading-relaxed">
-        {lines.map((line, index) => (
+        {excerpt.lines.map((line, index) => (
           <div
             className={cn(
               "flex min-w-max gap-3 px-3",

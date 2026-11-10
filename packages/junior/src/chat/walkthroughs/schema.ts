@@ -1,10 +1,10 @@
 /**
  * Runtime schemas for Walkthroughs.
  *
- * The model writes a `WalkthroughOutput`. It names hunks by id and never
- * copies code. Junior adds the parts that do not need a model (layers, hunk
- * bodies, skipped files, checks, cost) and stores a `WalkthroughDocument`. The
- * dashboard renders only the stored document.
+ * The model writes a `WalkthroughOutput`. It cites code by PR, file, and line
+ * range and never copies code. Junior adds the parts that do not need a model
+ * (layers, code excerpts, skipped files, checks, cost) and stores a
+ * `WalkthroughDocument`. The dashboard renders only the stored document.
  *
  * Text limits are part of the contract. A caption is one sentence, so a
  * Walkthrough stays a story and does not turn into a wall of text.
@@ -83,20 +83,25 @@ const diagramViewSchema = z
   })
   .strict();
 
+/**
+ * Code at a commit. `head` lines are in the PR head commit and `base` lines are
+ * in its base commit, so removed code is cited on the base side. The range
+ * must fall inside one diff hunk, context lines included.
+ */
+const codeCitationFields = {
+  pr: z.number().int().positive(),
+  path: z.string().min(1),
+  side: z.enum(["head", "base"]).default("head"),
+  start: z.number().int().positive(),
+  end: z.number().int().positive(),
+};
+
 /** Every claim points at something Junior can resolve and the reader can open. */
 const evidenceSchema = z.discriminatedUnion("kind", [
   z
     .object({
-      kind: z.literal("hunk"),
-      hunkId: z.string().min(1),
-      /** Lines inside the hunk to show, as 1-based offsets. Omit for all. */
-      lines: z
-        .object({
-          start: z.number().int().positive(),
-          end: z.number().int().positive(),
-        })
-        .strict()
-        .optional(),
+      kind: z.literal("code"),
+      ...codeCitationFields,
       note: sentence(120).optional(),
     })
     .strict(),
@@ -115,6 +120,20 @@ const evidenceSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ]);
+
+/** A code citation without its note. */
+export type WalkthroughCodeRef = {
+  pr: number;
+  path: string;
+  side: "head" | "base";
+  start: number;
+  end: number;
+};
+
+/** Key of the excerpt that Junior stores for one code citation. */
+export function codeExcerptId(ref: WalkthroughCodeRef): string {
+  return `${ref.pr}:${ref.side}:${ref.path}#${ref.start}-${ref.end}`;
+}
 
 /** Why a reader must decide something. */
 const decisionOriginSchema = z.discriminatedUnion("kind", [
@@ -177,9 +196,16 @@ export const walkthroughChapterSchema = z
   })
   .strict();
 
+/** Changed files that no chapter cites, with the reason they do not matter. */
 const notCoveredSchema = z
   .array(
-    z.object({ hunkId: z.string().min(1), reason: sentence(120) }).strict(),
+    z
+      .object({
+        pr: z.number().int().positive(),
+        path: z.string().min(1),
+        reason: sentence(120),
+      })
+      .strict(),
   )
   .default([]);
 
@@ -201,7 +227,7 @@ export const walkthroughOutputSchema = z
         z.object({ pr: z.number().int().positive(), reason: caption }).strict(),
       )
       .default([]),
-    /** Every hunk that is not mechanical and that no chapter cites. */
+    /** Every changed file that is not mechanical and that no chapter cites. */
     notCovered: notCoveredSchema,
   })
   .strict();
@@ -242,14 +268,16 @@ const diffLineSchema = z
   })
   .strict();
 
-/** A hunk copied from the provider diff by Junior, never by the model. */
-export const walkthroughHunkSchema = z
+/**
+ * The diff lines for one code citation, copied from the provider diff by
+ * Junior, never by the model. `id` is `codeExcerptId` of the citation.
+ */
+export const walkthroughExcerptSchema = z
   .object({
     id: z.string().min(1),
-    pr: z.number().int().positive(),
-    path: z.string().min(1),
+    ...codeCitationFields,
     language: z.string().min(1).optional(),
-    /** Provider permalink to the first changed line, at its commit. */
+    /** Provider permalink to `start`, at the cited commit. */
     url: z.string().url().optional(),
     lines: z.array(diffLineSchema).min(1),
   })
@@ -279,7 +307,7 @@ export const walkthroughDocumentSchema = z
           .strict(),
       )
       .min(1),
-    hunks: z.array(walkthroughHunkSchema),
+    excerpts: z.array(walkthroughExcerptSchema),
     /** Mechanical changes that never reach the model. Only counts are shown. */
     skipped: z.array(
       z
@@ -349,5 +377,5 @@ export type WalkthroughUpdateOutput = z.infer<
 export type WalkthroughChapter = z.infer<typeof walkthroughChapterSchema>;
 export type WalkthroughEvidence = z.infer<typeof evidenceSchema>;
 export type WalkthroughDecision = z.infer<typeof decisionSchema>;
-export type WalkthroughHunk = z.infer<typeof walkthroughHunkSchema>;
+export type WalkthroughExcerpt = z.infer<typeof walkthroughExcerptSchema>;
 export type WalkthroughDocument = z.infer<typeof walkthroughDocumentSchema>;

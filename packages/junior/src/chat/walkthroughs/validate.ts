@@ -5,15 +5,35 @@
 import {
   WALKTHROUGH_TEMPLATES,
   type WalkthroughChapter,
+  type WalkthroughCodeRef,
   type WalkthroughEvidence,
   type WalkthroughOutput,
   type WalkthroughUpdateOutput,
 } from "./schema";
 
-/** Ids that the generation input offered to the model. */
+/** Inclusive line range on one side of a diff hunk. */
+export type WalkthroughLineRange = { start: number; end: number };
+
+/**
+ * One diff hunk. A side is missing when the hunk has no lines there, such as
+ * the base side of a new file.
+ */
+export type WalkthroughHunkRange = {
+  head?: WalkthroughLineRange;
+  base?: WalkthroughLineRange;
+};
+
+/** One changed file in one PR, with its hunks. */
+export type WalkthroughDiffFile = {
+  pr: number;
+  path: string;
+  hunks: readonly WalkthroughHunkRange[];
+};
+
+/** What the generation input offered to the model. */
 export type WalkthroughInputRefs = {
-  /** Hunks sent to the model, with their line count. Mechanical hunks are not sent. */
-  hunks: ReadonlyMap<string, { lineCount: number }>;
+  /** Mechanical files are left out, so they cannot be cited and need no coverage. */
+  files: readonly WalkthroughDiffFile[];
   sourceIds: ReadonlySet<string>;
   checkIds: ReadonlySet<string>;
 };
@@ -65,7 +85,7 @@ export function findWalkthroughProblems(
   // The reader judges whether the cause is the root cause. They need code or
   // a check to judge it, not the model's word.
   if (bugFixCause && !bugFixCause.evidence.some((e) => e.kind !== "source")) {
-    problems.push("The cause chapter cites no hunk or check.");
+    problems.push("The cause chapter cites no code or check.");
   }
   problems.push(
     ...coverageProblems(
@@ -202,30 +222,56 @@ function evidenceProblems(
       ? []
       : [`Unknown check ${evidence.checkId}.`];
   }
-  const hunk = refs.hunks.get(evidence.hunkId);
-  if (!hunk) return [`Unknown hunk ${evidence.hunkId}.`];
-  if (
-    evidence.lines &&
-    (evidence.lines.start > evidence.lines.end ||
-      evidence.lines.end > hunk.lineCount)
-  ) {
-    return [`Lines for hunk ${evidence.hunkId} are out of range.`];
-  }
-  return [];
+  return codeProblems(evidence, refs);
 }
 
-/** Every hunk sent to the model is cited or listed as not covered. */
+function codeProblems(
+  ref: WalkthroughCodeRef,
+  refs: WalkthroughInputRefs,
+): string[] {
+  const label = `${ref.path} lines ${ref.start}-${ref.end} (${ref.side}) in PR #${ref.pr}`;
+  if (ref.start > ref.end) return [`${label}: start is after end.`];
+  const file = refs.files.find((f) => f.pr === ref.pr && f.path === ref.path);
+  if (!file) return [`${label}: the file is not in the PR diff.`];
+  const inside = file.hunks.some((hunk) => {
+    const range = hunk[ref.side];
+    return range && ref.start >= range.start && ref.end <= range.end;
+  });
+  return inside ? [] : [`${label}: the range is not inside one diff hunk.`];
+}
+
+/**
+ * Every hunk sent to the model overlaps a code citation, or its file is listed
+ * as not covered.
+ */
 function coverageProblems(
   refs: WalkthroughInputRefs,
   evidence: readonly WalkthroughEvidence[],
-  notCovered: readonly { hunkId: string }[],
+  notCovered: readonly { pr: number; path: string }[],
 ): string[] {
-  const seen = new Set<string>();
-  for (const e of evidence) if (e.kind === "hunk") seen.add(e.hunkId);
-  for (const n of notCovered) seen.add(n.hunkId);
-  return [...refs.hunks.keys()]
-    .filter((id) => !seen.has(id))
-    .map((id) => `Hunk ${id} is not cited and not in notCovered.`);
+  const excused = (file: WalkthroughDiffFile) =>
+    notCovered.some((n) => n.pr === file.pr && n.path === file.path);
+  const cited = evidence.filter((e) => e.kind === "code");
+  const problems: string[] = [];
+  for (const file of refs.files) {
+    if (excused(file)) continue;
+    const citations = cited.filter(
+      (e) => e.pr === file.pr && e.path === file.path,
+    );
+    for (const hunk of file.hunks) {
+      const covered = citations.some((e) => {
+        const range = hunk[e.side];
+        return range && e.start <= range.end && e.end >= range.start;
+      });
+      const side = hunk.head ? "head" : "base";
+      const range = hunk[side];
+      if (covered || !range) continue;
+      problems.push(
+        `${file.path} lines ${range.start}-${range.end} (${side}) in PR #${file.pr} are not cited, and the file is not in notCovered.`,
+      );
+    }
+  }
+  return problems;
 }
 
 function duplicateIds(kind: string, ids: readonly string[]): string[] {

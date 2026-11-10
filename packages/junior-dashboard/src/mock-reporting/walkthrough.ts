@@ -1,8 +1,63 @@
-import type { WalkthroughDocument } from "@sentry/junior/api/schema";
+import {
+  codeExcerptId,
+  type WalkthroughDocument,
+} from "@sentry/junior/api/schema";
 import { withMockPermalinks } from "./walkthrough-permalinks";
 
 const repo = "getsentry/junior";
 const prUrl = (pr: number) => `https://github.com/${repo}/pull/${pr}`;
+
+const githubApi = "packages/junior-github/src/tool-support/github-api.ts";
+const migration = "packages/junior-github/migrations/0042_refresh.sql";
+const api401 = {
+  pr: 3102,
+  path: githubApi,
+  side: "head",
+  start: 88,
+  end: 92,
+} as const;
+const apiRetries = {
+  pr: 3102,
+  path: githubApi,
+  side: "head",
+  start: 14,
+  end: 14,
+} as const;
+const apiSpan = {
+  pr: 3102,
+  path: githubApi,
+  side: "head",
+  start: 93,
+  end: 93,
+} as const;
+const refreshSql = {
+  pr: 3101,
+  path: migration,
+  side: "head",
+  start: 1,
+  end: 5,
+} as const;
+const refreshSqlBackup = {
+  pr: 3101,
+  path: migration,
+  side: "head",
+  start: 5,
+  end: 5,
+} as const;
+const refreshMetric = {
+  pr: 3102,
+  path: githubApi,
+  side: "head",
+  start: 101,
+  end: 103,
+} as const;
+const retryJitter = {
+  pr: 3102,
+  path: githubApi,
+  side: "head",
+  start: 120,
+  end: 120,
+} as const;
 
 /** A fixed three-layer stack with one update, for the Walkthrough prototype. */
 export function readMockWalkthrough(): WalkthroughDocument {
@@ -41,11 +96,10 @@ export function readMockWalkthrough(): WalkthroughDocument {
         deletions: 0,
       },
     ],
-    hunks: [
+    excerpts: [
       {
-        id: "3102-api-401",
-        pr: 3102,
-        path: "packages/junior-github/src/tool-support/github-api.ts",
+        id: codeExcerptId(api401),
+        ...api401,
         language: "ts",
         lines: [
           {
@@ -75,9 +129,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "3102-api-retries",
-        pr: 3102,
-        path: "packages/junior-github/src/tool-support/github-api.ts",
+        id: codeExcerptId(apiRetries),
+        ...apiRetries,
         language: "ts",
         lines: [
           { kind: "remove", content: "const MAX_ATTEMPTS = 1;", oldLine: 14 },
@@ -85,9 +138,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "3102-api-span",
-        pr: 3102,
-        path: "packages/junior-github/src/tool-support/github-api.ts",
+        id: codeExcerptId(apiSpan),
+        ...apiSpan,
         language: "ts",
         lines: [
           {
@@ -98,9 +150,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "3101-sql",
-        pr: 3101,
-        path: "packages/junior-github/migrations/0042_refresh.sql",
+        id: codeExcerptId(refreshSql),
+        ...refreshSql,
         language: "sql",
         lines: [
           { kind: "add", content: "CREATE TABLE refresh_tokens (", newLine: 1 },
@@ -115,9 +166,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "3101-sql-backup",
-        pr: 3101,
-        path: "packages/junior-github/migrations/0042_refresh.sql",
+        id: codeExcerptId(refreshSqlBackup),
+        ...refreshSqlBackup,
         language: "sql",
         lines: [
           { kind: "remove", content: "DELETE FROM legacy_tokens;", oldLine: 5 },
@@ -130,9 +180,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "3102-metric",
-        pr: 3102,
-        path: "packages/junior-github/src/tool-support/github-api.ts",
+        id: codeExcerptId(refreshMetric),
+        ...refreshMetric,
         language: "ts",
         lines: [
           {
@@ -155,9 +204,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
         ],
       },
       {
-        id: "3102-jitter",
-        pr: 3102,
-        path: "packages/junior-github/src/tool-support/github-api.ts",
+        id: codeExcerptId(retryJitter),
+        ...retryJitter,
         language: "ts",
         lines: [
           {
@@ -287,10 +335,10 @@ export function readMockWalkthrough(): WalkthroughDocument {
             broken: [],
           },
           evidence: [
-            { kind: "hunk", hunkId: "3102-api-401" },
+            { kind: "code", ...api401 },
             {
-              kind: "hunk",
-              hunkId: "3102-api-retries",
+              kind: "code",
+              ...apiRetries,
               note: "Every GitHub call now retries, not only the 401 path.",
             },
           ],
@@ -316,7 +364,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             "It deletes every row in legacy_tokens. That can't be undone.",
           body: "The migration adds the refresh_tokens table. It also deletes every row in legacy_tokens, with no backup [1]. Junior assumed nothing reads that table [2].",
           evidence: [
-            { kind: "hunk", hunkId: "3101-sql" },
+            { kind: "code", ...refreshSql },
             {
               kind: "source",
               sourceId: "brief-legacy",
@@ -345,8 +393,8 @@ export function readMockWalkthrough(): WalkthroughDocument {
               sourceId: "sentry-401",
             },
             {
-              kind: "hunk",
-              hunkId: "3102-api-span",
+              kind: "code",
+              ...apiSpan,
               note: "Counts refreshes that work. Nothing counts refreshes that fail.",
             },
           ],
@@ -376,7 +424,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             answers: "delete",
             caption: "legacy_tokens is now renamed, not deleted.",
             body: "The migration now renames legacy_tokens to legacy_tokens_backup instead of deleting its rows [1]. You can drop the backup in a later release.",
-            evidence: [{ kind: "hunk", hunkId: "3101-sql-backup" }],
+            evidence: [{ kind: "code", ...refreshSqlBackup }],
             decisions: [],
           },
           {
@@ -385,7 +433,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             answers: "metric",
             caption: "Failed refreshes now have a metric.",
             body: "A failed refresh now increments github.token.refresh_failed [1], so you can alert on it.",
-            evidence: [{ kind: "hunk", hunkId: "3102-metric" }],
+            evidence: [{ kind: "code", ...refreshMetric }],
             decisions: [],
           },
           {
@@ -393,7 +441,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             touches: "change",
             caption: "Retries now wait up to 250 ms longer, at random.",
             body: "Each retry now waits a random 0 to 250 ms longer [1]. This spreads out retries when many Tasks fail at once.",
-            evidence: [{ kind: "hunk", hunkId: "3102-jitter" }],
+            evidence: [{ kind: "code", ...retryJitter }],
             decisions: [
               {
                 id: "jitter",
