@@ -31,6 +31,10 @@ import {
 
 const ALICE = person("UALICE", "Alice");
 const BOB = person("UBOB", "Bob");
+// The fixture forgets the MCP credentials of message authors only. A run with
+// creator credentials stores an OAuth client for its creator, so the
+// automation test uses a creator that no other test uses.
+const CAROL = person("UCAROL", "Carol");
 const BUDGET_ECHO = "mcp__eval-auth__budget-echo";
 const HANDBOOK_SEARCH = "mcp__eval-handbook__handbook-search";
 const PULL_REQUEST = "getsentry/junior#691";
@@ -234,7 +238,7 @@ describe("MCP Authorization", () => {
     run,
   }) => {
     await insertScheduledAutomation({
-      createdBy: ALICE,
+      createdBy: CAROL,
       credentialMode: "creator",
       destination: slackChannel(),
       due: true,
