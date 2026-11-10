@@ -44,6 +44,8 @@ export interface BoundDispatchOptions extends Omit<
 
 export interface DispatchRecord {
   actor: CredentialSystemActor;
+  /** Provider whose account the creator must connect before this work can run. */
+  authorizationProvider?: string;
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
   destination: SlackDestination;

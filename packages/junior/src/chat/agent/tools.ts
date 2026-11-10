@@ -340,6 +340,12 @@ export async function wireAgentTools(
       : undefined;
   const slackChannelId = slackDestination?.channelId;
 
+  // Pi gives a thrown tool error to the model as a tool result. A dispatch
+  // run must end instead: its owner blocks the work and tells the creator
+  // which account to connect.
+  const onAuthorizationFlowDisabled = args.run.dispatch
+    ? args.onFatalToolError
+    : undefined;
   const mcpAuth = createMcpAuthOrchestration({
     abortAgent: args.abortAgent,
     conversationId: args.run.conversationId,
@@ -359,6 +365,7 @@ export async function wireAgentTools(
       args.run.disabledFeatures,
       "interactive-auth",
     ),
+    onAuthorizationFlowDisabled,
     authorization: args.authorization,
   });
   const pluginAuth = createPluginAuthOrchestration({
@@ -379,6 +386,7 @@ export async function wireAgentTools(
       args.run.disabledFeatures,
       "interactive-auth",
     ),
+    onAuthorizationFlowDisabled,
     userTokenStore,
     authorization: args.authorization,
   });

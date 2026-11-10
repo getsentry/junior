@@ -102,6 +102,7 @@ describe("createMcpAuthOrchestration", () => {
 
   it("returns a deterministic error instead of delivering auth links when authorization is disabled", async () => {
     const abortAgent = vi.fn();
+    const onAuthorizationFlowDisabled = vi.fn();
     const orchestration = createMcpAuthOrchestration({
       abortAgent,
       conversationId: "slack:C123:1700000000.000000",
@@ -113,13 +114,16 @@ describe("createMcpAuthOrchestration", () => {
       userMessage: "<scheduled-automation-run />",
       getConfiguration: () => ({}),
       interactiveAuthEnabled: false,
+      onAuthorizationFlowDisabled,
     });
 
     await orchestration.authProviderFactory(plugin("github"));
 
-    await expect(
-      orchestration.onAuthorizationRequired("github"),
-    ).rejects.toBeInstanceOf(AuthorizationFlowDisabledError);
+    const error = await orchestration
+      .onAuthorizationRequired("github")
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AuthorizationFlowDisabledError);
+    expect(onAuthorizationFlowDisabled).toHaveBeenCalledWith(error);
 
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
     expect(createMcpOAuthClientProvider).toHaveBeenCalledWith(
