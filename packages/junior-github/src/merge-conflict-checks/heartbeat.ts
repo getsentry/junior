@@ -18,7 +18,6 @@ import {
   settleGitHubConflictCheck,
   type GitHubConflictCheck,
 } from "./store.js";
-import { CONFLICT_CHECK_DELAY_MS } from "./webhooks.js";
 
 /** Repositories per heartbeat. */
 const CHECK_LIMIT = 10;
@@ -26,12 +25,8 @@ const CHECK_LIMIT = 10;
 /** Pull requests per GraphQL request. */
 const PULL_REQUESTS_PER_REQUEST = 50;
 
-/**
- * A claimed check that stops without an end runs again after this time. It
- * must be longer than `CONFLICT_CHECK_DELAY_MS`, so a push during a check
- * moves the claim earlier and the check does not remove the new one.
- */
-const CLAIM_MS = 3 * CONFLICT_CHECK_DELAY_MS;
+/** A claimed check that stops without an end runs again after this time. */
+const CLAIM_MS = 5 * 60_000;
 
 /** Time to wait for GitHub to calculate mergeability. */
 const UNKNOWN_RETRY_MS = 60_000;
