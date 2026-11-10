@@ -275,7 +275,6 @@ export async function completeText(params: {
   messageAttributeMode?: "content" | "metadata";
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
-  temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
@@ -316,9 +315,6 @@ export async function completeText(params: {
     ...(params.thinkingLevel
       ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
       : undefined),
-    ...(params.temperature !== undefined
-      ? { "gen_ai.request.temperature": params.temperature }
-      : undefined),
     ...(params.maxTokens !== undefined
       ? { "gen_ai.request.max_tokens": params.maxTokens }
       : undefined),
@@ -353,7 +349,6 @@ export async function completeText(params: {
           },
           {
             apiKey,
-            temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
             cacheRetention: params.cacheRetention,
@@ -507,7 +502,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   system?: string;
   prompt: string;
   thinkingLevel?: ThinkingLevel;
-  temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
@@ -528,9 +522,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           prompt: params.prompt,
           ...(params.system !== undefined
             ? { system: params.system }
-            : undefined),
-          ...(params.temperature !== undefined
-            ? { temperature: params.temperature }
             : undefined),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
@@ -558,9 +549,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.provider.auth_mode": credential.mode,
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-          : undefined),
-        ...(params.temperature !== undefined
-          ? { "gen_ai.request.temperature": params.temperature }
           : undefined),
         ...(params.maxTokens !== undefined
           ? { "gen_ai.request.max_tokens": params.maxTokens }

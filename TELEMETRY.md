@@ -326,6 +326,11 @@ compare the phases:
 - The same `service.instance.id` on more than one slow call: they shared one
   process.
 
+When the main model refuses a Turn and `AI_REFUSAL_FALLBACK_MODEL` is set,
+`agent.turn.refusal_fallback` logs the main model as `gen_ai.request.model`
+and the fallback model as `app.ai.refusal_fallback.model`. The next
+`gen_ai.chat` span uses the fallback model.
+
 ### Cache Prefix
 
 The provider caches a request prefix in the order tools, system prompt,
@@ -672,7 +677,8 @@ previous Turn when agent history exists.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
-  #2318 tracks it.
+  #2318 tracks it. `already_reacted` on `reactions.add` and `no_reaction` on
+  `reactions.remove` are success, so they do not log `slack.action.failed`.
 
 ## Plugin Tasks and Notifications
 

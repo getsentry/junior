@@ -12,6 +12,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
@@ -82,6 +83,7 @@ import {
   childConversationStatus,
 } from "./ChildConversationStatus";
 import { useWaitingConversations } from "../review-desk/queries";
+import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -113,6 +115,7 @@ import {
   useQuickQuestionThread,
 } from "./QuickQuestion";
 import { Transcript } from "./TranscriptView";
+import type { TranscriptAskReveal } from "./ConversationTranscript";
 import {
   readConversationStartPosition,
   useMarkConversationRead,
@@ -210,6 +213,11 @@ export function ConversationPage(props: {
   // memory or outline jump stay mounted, so the jump finds its row and the
   // popover keeps it.
   const [revealSeq, setRevealSeq] = useState<number>();
+  // The docked question whose transcript row shows, and the Turn that
+  // asked it, so a row outside the loaded pages can load.
+  const [askReveal, setAskReveal] = useState<
+    TranscriptAskReveal & { turnId?: string }
+  >();
   // The page stays mounted across Conversations. Memory state belongs to one.
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -219,6 +227,7 @@ export function ConversationPage(props: {
     setMemoryPopover(undefined);
     setMemoryJump(undefined);
     setRevealSeq(undefined);
+    setAskReveal(undefined);
   }
   const quickQuestion = useQuickQuestionThread(props.conversationId);
   // Event details and turn context also show over a Quick question.
@@ -489,6 +498,39 @@ export function ConversationPage(props: {
     if (start) setLinkStart(start);
     return Boolean(start);
   });
+  const showQuestion = useCallback(
+    (item: ReviewItemPayload, arrived: boolean) =>
+      setAskReveal((current) => ({
+        arrived,
+        itemId: item.id,
+        // A child Conversation can add an item to this one. Its Turn is not
+        // in this transcript.
+        turnId:
+          item.addedByConversationId === conversationId
+            ? item.addedByTurnId
+            : undefined,
+        version: (current?.version ?? 0) + 1,
+      })),
+    [conversationId],
+  );
+  // A question that the reader moves to can sit outside the loaded rows.
+  // Then the transcript opens at the page around its Turn, like a link. A
+  // question that arrives by itself is at the latest, so it needs no page.
+  const openAskTurn = useEffectEvent((itemId: string, turnId: string) => {
+    const held = history.data?.events.some(
+      (event) =>
+        event.data.type === "tool_calls" &&
+        event.data.calls.some(
+          (call) => reviewItemIdFromToolCall(call) === itemId,
+        ),
+    );
+    if (!held) openLink({ turn: turnId });
+  });
+  useEffect(() => {
+    if (askReveal?.turnId && !askReveal.arrived) {
+      openAskTurn(askReveal.itemId, askReveal.turnId);
+    }
+  }, [askReveal]);
   useEffect(() => {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
@@ -819,6 +861,7 @@ export function ConversationPage(props: {
                           history.newer ? undefined : detail.inlineMessages
                         }
                         pinRequestVersion={pinRequestVersion}
+                        revealAsk={askReveal}
                         revealSeq={revealSeq}
                         responding={
                           !detail.error &&
@@ -859,6 +902,7 @@ export function ConversationPage(props: {
                   live={live}
                   onFocusRequestDone={setReplyFocusDoneKey}
                   onPinRequest={requestPin}
+                  onShowQuestion={showQuestion}
                   ref={replyRef}
                 />
               </div>

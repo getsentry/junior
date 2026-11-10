@@ -249,6 +249,32 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
+  it("treats a provider refusal as a content policy block", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [],
+          stopReason: "error",
+          rawStopReason: "refusal",
+          errorMessage: "Cyber safeguards flagged this message.",
+        },
+      ],
+      userInput: "Do the thing",
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      reasoningLevel: "medium",
+    });
+
+    expect(reply.diagnostics.outcome).toBe("provider_error");
+    expect(reply.diagnostics.providerError).toMatchObject({
+      kind: "content_policy",
+      retryable: false,
+    });
+  });
+
   it("keeps thread text when a turn adds a reaction and returns real text", () => {
     const reply = buildTurnResult({
       newMessages: [
