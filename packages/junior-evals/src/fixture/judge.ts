@@ -137,7 +137,6 @@ async function completeJudge(args: {
     modelId: JUDGE_MODEL_ID,
     system: args.system,
     messages: [{ role: "user", content: args.prompt, timestamp: Date.now() }],
-    temperature: 0,
   });
   return text;
 }
