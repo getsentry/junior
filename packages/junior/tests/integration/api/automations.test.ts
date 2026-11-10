@@ -664,6 +664,12 @@ describe("Automations API", () => {
       expect(
         attention.automations.find((task) => task.id === "sched_tasks_api"),
       ).toMatchObject({ status: "active", lastRunStatus: "failed" });
+      // The Inbox lists only the viewer's own Automations that need attention.
+      expect(
+        (await list("scope=attention&owner=me")).automations.map(
+          (task) => task.id,
+        ),
+      ).toEqual(["event_automations_api", "sched_tasks_api"]);
       expect((await list("state=unavailable")).total).toBe(2);
       const lastPage = await list("page=21");
       expect(lastPage.automations.map((task) => task.id)).toEqual([
