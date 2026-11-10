@@ -47,7 +47,7 @@ export function WalkthroughSidePanel(props: {
       <TabsList className="px-2" variant="line">
         <TabsTrigger value="questions">Questions</TabsTrigger>
         <TabsTrigger value="review">
-          Your review
+          Review
           {props.openCount ? (
             <CountBadge
               count={props.openCount}

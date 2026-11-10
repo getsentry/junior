@@ -235,7 +235,7 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
             {/* Wide screens show the review tab beside the story. */}
             {panel ? null : (
               <Button onClick={() => showSide("review")} type="button">
-                Your review
+                Review
                 {open ? (
                   <CountBadge count={open} label={`${open} not answered`} />
                 ) : null}
