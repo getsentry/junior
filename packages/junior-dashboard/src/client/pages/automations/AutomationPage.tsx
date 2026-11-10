@@ -296,7 +296,7 @@ function AutomationHeaderLine(props: { automation: AutomationSummary }) {
   const parts: ReactNode[] = [
     trigger,
     automation.destination.label,
-    `Created by ${automation.ownedByViewer ? "you" : automation.createdBy}`,
+    `Creator: ${automation.ownedByViewer ? "you" : automation.createdBy}`,
   ];
   // Each part starts with its separator. The negative margin and the clip
   // hide the separator of any part that starts a line.

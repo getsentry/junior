@@ -36,6 +36,8 @@ move to the domain below.
 - `mcp.tool_call.completed` is an audit event for each successful call to a
   tool in a plugin's `mcp.audit-tools`. `app.credential.account` is
   `service_account` or `actor`.
+- `automation.claim.completed` is an audit event for each claim. `user.id` is
+  the new creator, and `app.task.previous_creator.id` is the previous one.
 
 ## Query Recipes
 

@@ -196,7 +196,7 @@ export function AutomationAttention({
           {automation.statusReason ??
             "Check the last run to see what needs fixing."}{" "}
           {!automation.ownedByViewer && automation.credentialMode === "creator"
-            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to Junior's credentials first.`
+            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, claim it, or switch it to Junior's credentials first.`
             : null}
         </p>
       ) : null}

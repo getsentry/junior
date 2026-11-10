@@ -62,11 +62,12 @@ Canonical words for Junior code and docs. One concept, one word.
   `junior service-account connect`). It serves Actors with no own connection;
   `accounts.user-oauth: false` makes it the only path.
 - **Automation**: a saved instruction run later, with a creator, trigger,
-  instruction, and ordered outcomes.
+  instruction, and ordered outcomes. A **claim** makes another person its
+  creator.
 - **Schedule**: a time trigger. **Scheduled** / **Event automation**: an
   Automation with a Schedule / Event trigger.
 - **Automation version**: one saved definition (title, instruction, trigger,
-  Destination, outcomes, credential mode). Not the edit revision.
+  Destination, outcomes, creator, credential mode). Not the edit revision.
 - **Automation run**: one dispatch of an Automation to its outcome. Not a Run.
 - **Event**: one normalized change (namespace, identifier, type, idempotency
   key) from core or a plugin. It can wake a Conversation.

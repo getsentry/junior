@@ -33,6 +33,7 @@ import {
 } from "../../format";
 import { pathWithSearch } from "../../searchParams";
 import { dashboardInlineLinkClass } from "../../styles";
+import { AutomationClaimButton } from "./AutomationClaimButton";
 import { AutomationCost } from "./AutomationCost";
 import { AutomationOutcomeList } from "./AutomationOutcomeFields";
 import { AUTOMATION_RUN_PARAM } from "./AutomationRunDetails";
@@ -354,7 +355,7 @@ function AutomationAbout({ automation }: { automation: AutomationSummary }) {
   return (
     <FactSection title="About">
       <FactList>
-        <Fact label="Created by">
+        <Fact label="Creator">
           {automation.createdByEmail ? (
             <Link
               className="text-inherit no-underline hover:underline"
@@ -382,13 +383,18 @@ function AutomationAbout({ automation }: { automation: AutomationSummary }) {
         </Fact>
       </FactList>
       {automation.ownedByViewer ? null : (
-        <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
-          {automation.destination.visibility === "private"
-            ? null
-            : "You can edit, pause, or delete it because it is in a public channel. "}
-          Only {automation.createdBy} can turn on their connected accounts, or
-          resume or run it while it uses them.
-        </p>
+        <>
+          <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
+            {automation.destination.visibility === "private"
+              ? null
+              : "You can edit, pause, or delete it because it is in a public channel. "}
+            Only {automation.createdBy} can turn on their connected accounts, or
+            resume or run it while it uses them. Claim it to become its creator.
+          </p>
+          {automation.status === "completed" ? null : (
+            <AutomationClaimButton automation={automation} />
+          )}
+        </>
       )}
     </FactSection>
   );

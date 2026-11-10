@@ -294,6 +294,7 @@ const VERSION_FIELDS = [
   { key: "when", label: "When to run" },
   { key: "destination", label: "Destination" },
   { key: "outcomes", label: "Where results go" },
+  { key: "createdBy", label: "Creator" },
   { key: "credentialMode", label: "Credentials" },
 ] as const;
 
@@ -413,9 +414,11 @@ function fieldValue(
       ) : (
         "No message on success"
       );
+    case "createdBy":
+      return principalName(definition.createdBy);
     case "credentialMode":
       return definition.credentialMode === "creator"
-        ? `Uses accounts connected by ${automation.ownedByViewer ? "you" : automation.createdBy}.`
+        ? `Uses accounts connected by ${principalName(definition.createdBy)}.`
         : "System credentials only";
   }
 }
@@ -486,12 +489,16 @@ function diffLines(before: string, after: string): DiffLine[] {
   return lines;
 }
 
+function principalName(principal: {
+  fullName?: string;
+  slackUserId: string;
+  userName?: string;
+}): string {
+  return principal.fullName ?? principal.userName ?? principal.slackUserId;
+}
+
 function versionEditor(version: ListedAutomationVersion): string {
-  return version.editedBy
-    ? (version.editedBy.fullName ??
-        version.editedBy.userName ??
-        version.editedBy.slackUserId)
-    : "Editor unknown";
+  return version.editedBy ? principalName(version.editedBy) : "Editor unknown";
 }
 
 function versionChangeText(

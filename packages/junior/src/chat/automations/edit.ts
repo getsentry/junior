@@ -1,6 +1,6 @@
 /**
- * Web edits and lifecycle actions. Anyone who can read an Automation can
- * manage it. Creator credential rules still apply.
+ * Web edits, claims, and lifecycle actions. Anyone who can read an
+ * Automation can manage it. Creator credential rules still apply.
  */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
 import { AutomationEditError, requireCredentialStart } from "./edit-rules";
@@ -29,6 +29,8 @@ import {
   type ScheduleIntent,
 } from "@/chat/scheduled-automations/schedule-intent";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
+import { sanitizeScheduledAutomationPrincipal } from "@/chat/scheduled-automations/identity";
+import { claimAutomation } from "./claim";
 import type { AutomationViewer } from "./creator";
 import { automationRevision, requireAutomationRevision } from "./revision";
 import {
@@ -264,7 +266,8 @@ export async function activateViewerAutomationVersion(
   const saved = await readAutomationVersion(getDb(), id, input.version);
   if (!saved)
     throw new AutomationEditError("This version does not exist.", "version");
-  const { definition } = saved;
+  // A restore keeps the current creator. Only a claim changes it.
+  const definition = { ...saved.definition, createdBy: current.task.createdBy };
   if (sameDefinitionValue(definition, automationDefinition(current.task)))
     return editView(current, current.ownedByViewer);
   if (!sameDefinitionValue(definition.destination, current.task.destination)) {
@@ -307,6 +310,43 @@ export async function activateViewerAutomationVersion(
     return saveViewerEdit(user, current, update, { title });
   }
   throw new ViewerTaskNotFoundError();
+}
+
+/**
+ * Claim an Automation from the dashboard. The viewer's account in the
+ * Destination workspace becomes the creator account.
+ */
+export async function claimViewerAutomation(
+  user: User,
+  id: string,
+  input: { revision: string },
+): Promise<AutomationEdit> {
+  const current = await requireEditableAutomation(user, id);
+  const { destination } = current.task;
+  const identity = user.identities.find(
+    (candidate) =>
+      candidate.provider === destination.platform &&
+      candidate.providerTenantId === destination.teamId,
+  );
+  if (!identity)
+    throw new AutomationEditError(
+      "Sign in with your account in the workspace of this Automation to claim it.",
+    );
+  const next = await claimAutomation(
+    current,
+    {
+      identityId: identity.id,
+      createdBy: sanitizeScheduledAutomationPrincipal({
+        slackUserId: identity.providerSubjectId,
+        ...(identity.displayName
+          ? { fullName: identity.displayName }
+          : undefined),
+        ...(identity.handle ? { userName: identity.handle } : undefined),
+      }),
+    },
+    input.revision,
+  );
+  return editView(next, next.ownedByViewer);
 }
 
 /** Pause or resume future triggers from the dashboard. */

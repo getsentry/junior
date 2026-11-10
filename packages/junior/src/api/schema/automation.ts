@@ -271,6 +271,7 @@ const scheduledAutomationVersionSchema = z
     kind: z.literal("scheduled"),
     definition: scheduledAutomationSchema
       .pick({
+        createdBy: true,
         credentialMode: true,
         destination: true,
         outcomes: true,
@@ -287,6 +288,7 @@ const eventAutomationVersionSchema = z
     kind: z.literal("event"),
     definition: eventAutomationSchema
       .pick({
+        createdBy: true,
         credentialMode: true,
         destination: true,
         outcomes: true,
@@ -365,6 +367,11 @@ export const automationLifecycleSchema = z
     action: z.enum(["pause", "resume"]),
     revision: automationRevisionSchema,
   })
+  .strict();
+
+/** Claim makes the viewer the creator, with system credentials. */
+export const automationClaimSchema = z
+  .object({ revision: automationRevisionSchema })
   .strict();
 
 const automationEditBaseSchema = scheduledAutomationSchema

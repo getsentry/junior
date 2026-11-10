@@ -13,11 +13,16 @@ import { canonicalJson } from "./revision";
 
 type VersionedAutomation = ScheduledAutomation | EventAutomation;
 
-/** Return the versioned part of an Automation. Lifecycle and run state are excluded. */
+/**
+ * Return the versioned part of an Automation. Lifecycle and run state are
+ * excluded. The creator is included, so a claim saves a version and history
+ * shows who owned each one.
+ */
 export function automationDefinition(task: VersionedAutomation) {
   const common = {
     title: task.title?.trim() || null,
     task: task.task,
+    createdBy: task.createdBy,
     credentialMode: task.credentialMode,
     destination: task.destination,
     outcomes: task.outcomes,

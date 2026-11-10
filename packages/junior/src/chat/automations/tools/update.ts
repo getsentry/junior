@@ -14,12 +14,14 @@ import {
   automationTaskText,
   type AutomationTask,
 } from "@/chat/automations/task";
+import { claimAutomation } from "@/chat/automations/claim";
 import type { TaskCandidate } from "@/chat/automations/read";
 import { requireInstructionReferences } from "@/chat/automations/instruction-references";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
   requireToolCaller,
+  requireToolCreator,
   requireToolDestination,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
@@ -341,6 +343,13 @@ export function createUpdateAutomationTool(
           "Set creator to make the automation creator's credentials available, or system to disable them. Creator always means the automation's createdBy actor, never the current requester. Only that creator may enable creator mode. Omit or use null to leave unchanged.",
         )
         .optional(),
+      claim: z
+        .boolean()
+        .nullable()
+        .describe(
+          "Set true to make the requester the creator, when they take over an automation that someone else created. They then manage it as its creator, and runs name and notify them. A claim always switches it to system credentials, so no one's connected accounts move to someone else. Status does not change. Combine only with status. Omit or use null to keep the creator.",
+        )
+        .optional(),
       status: z
         .enum(["active", "paused"])
         .nullable()
@@ -368,7 +377,7 @@ export function createUpdateAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the title, instruction or skill and its context, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, skill, context, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
+      "Update the title, instruction or skill and its context, trigger, outcomes, credential use, creator, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, skill, context, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel. Set claim to make the requester its creator.",
     inputSchema,
     prepareArguments(args) {
       // Null means omitted, except a null context, which removes it.
@@ -380,18 +389,42 @@ export function createUpdateAutomationTool(
       ) as z.input<typeof inputSchema>;
     },
     outputSchema: automationToolResultSchema,
-    async execute({ automation_id, status: requestedStatus, ...fields }) {
+    async execute({
+      automation_id,
+      claim,
+      status: requestedStatus,
+      ...fields
+    }) {
       // prepareArguments removed every null but the context.
       const input = fields as UpdateInput;
       const status = requestedStatus ?? undefined;
       const caller = await requireToolCaller(context);
-      const current = await requireToolAutomation(caller, automation_id);
+      let current = await requireToolAutomation(caller, automation_id);
+      // Claiming your own automation changes nothing. After a claim, the
+      // requester is the creator, so a status change applies as theirs.
+      if (claim && !current.ownedByViewer) {
+        if (Object.keys(input).length > 0) {
+          throw new ToolInputError(
+            "Claim the automation first, with only status. Then make the other changes in another call.",
+          );
+        }
+        const claimer = requireToolCreator(
+          caller,
+          current.task.destination,
+          current.kind,
+        );
+        current = await claimAutomation(
+          current,
+          { identityId: claimer.identity.id, createdBy: claimer.createdBy },
+          automationRevision(current.task),
+        );
+      }
       if (input.trigger && triggerKind(input.trigger) !== current.kind) {
         throw new ToolInputError(
           `This automation runs on ${current.kind === "scheduled" ? "a schedule" : "events"}. The trigger type cannot change. Create a new automation instead.`,
         );
       }
-      if (Object.keys(input).length === 0 && status === undefined) {
+      if (Object.keys(input).length === 0 && status === undefined && !claim) {
         throw new ToolInputError("Automation update requires a change.");
       }
       if (current.kind === "scheduled" && current.task.status === "completed") {

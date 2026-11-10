@@ -7,6 +7,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   activateViewerAutomationVersion,
   changeViewerAutomationLifecycle,
+  claimViewerAutomation,
   deleteViewerTask,
   readViewerAutomationEdit,
   updateViewerAutomation,
@@ -17,6 +18,7 @@ import { emptyResponse, jsonResponse } from "@/api/http";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
+  automationClaimSchema,
   automationLifecycleSchema,
   automationEventCatalogSchema,
   automationScheduleIntentSchema,
@@ -249,6 +251,27 @@ export function createAutomationRoutes(): Hono<JuniorApiEnv> {
         return jsonResponse(
           automationEditSchema,
           await changeViewerAutomationLifecycle(
+            context.get("viewer"),
+            id,
+            context.req.valid("json"),
+          ),
+        );
+      } catch (error) {
+        return editErrorResponse(error);
+      }
+    },
+  );
+  app.post(
+    "/:id/claim",
+    requireViewer,
+    validateRequest("param", automationParamsSchema, "Invalid Automation."),
+    validateRequest("json", automationClaimSchema, "Invalid claim."),
+    async (context) => {
+      const { id } = context.req.valid("param");
+      try {
+        return jsonResponse(
+          automationEditSchema,
+          await claimViewerAutomation(
             context.get("viewer"),
             id,
             context.req.valid("json"),

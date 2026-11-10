@@ -3,6 +3,7 @@ import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import {
+  changesRequestedEvent,
   context,
   createTask,
   execute,
@@ -647,6 +648,56 @@ describe("event automations", () => {
     ).resolves.toEqual({ dispatched: 1 });
 
     expect(queue.sentRecords()).toHaveLength(2);
+  });
+
+  it("never runs a claimed automation with another person's credentials", async () => {
+    const created = await createTask("Address the requested changes.");
+    const db = fixture.sql.db();
+    const update = (userId: string, input: Record<string, unknown>) =>
+      execute(
+        createUpdateAutomationTool(
+          automationToolContext(context(userId)),
+          getEventCatalog(),
+        ),
+        { automation_id: created.automation.id, ...input },
+      );
+    await update("U123", { status: "paused" });
+    // A claim cannot also turn on credentials or make other edits.
+    await expect(
+      update("U999", { claim: true, credential_mode: "creator" }),
+    ).rejects.toThrow("Claim the automation first");
+
+    await update("U999", { claim: true });
+    expect(await getEventAutomation(db, created.automation.id)).toMatchObject({
+      createdBy: { slackUserId: "U999" },
+      credentialMode: "system",
+      status: "paused",
+    });
+    // The previous creator manages it like any other public reader now.
+    await expect(
+      update("U123", { credential_mode: "creator" }),
+    ).rejects.toThrow(
+      "Only the event automation creator can enable creator credential use.",
+    );
+
+    // Another person claims it and resumes it in the same call.
+    await update("U777", { claim: true, status: "active" });
+    expect(await getEventAutomation(db, created.automation.id)).toMatchObject({
+      createdBy: { slackUserId: "U777" },
+      credentialMode: "system",
+      status: "active",
+    });
+    await ingestEventAutomations(changesRequestedEvent("github:claimed"), {
+      queue,
+      teamId,
+    });
+    const { conversationId } = queue.sentRecords().at(-1)!;
+    const dispatch = await getDispatchRecord(
+      conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch?.credentialSubject).toBeUndefined();
+    // The run names the new creator.
+    expect(dispatch?.input).toContain("<created-by><@U777>.");
   });
 
   it("saves filters in the case of event data", async () => {

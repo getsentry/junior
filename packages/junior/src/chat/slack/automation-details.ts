@@ -128,7 +128,7 @@ function renderAutomationDetails(
       "Destination",
       `${automation.destination.label} · ${automation.destination.visibility}`,
     ),
-    textField("created_by", "Created by", automation.createdBy),
+    textField("created_by", "Creator", automation.createdBy),
     dateField("date_created", "Created", automation.createdAt, "Unknown"),
     textField(
       "executions",

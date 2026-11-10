@@ -357,6 +357,7 @@ test("makes an earlier version active from version history", async ({
   const definition = {
     title: editor.value.title,
     task: editor.value.task,
+    createdBy: editor.value.createdBy,
     credentialMode: editor.value.credentialMode,
     destination: editor.value.destination,
     outcomes: editor.value.outcomes,

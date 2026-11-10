@@ -11,7 +11,19 @@ import {
 } from "@/chat/scheduled-automations/tasks";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { getReviewItem, insertReviewItem } from "@/chat/review-items/store";
-import { setupAutomationEditApi as setup } from "../../fixtures/automation-edit-api";
+import {
+  automationEditSchema,
+  automationVersionListSchema,
+} from "@/api/schema/automation";
+import { conversationsOpenOk } from "../../fixtures/slack/factories/api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiResponse,
+} from "../../msw/handlers/slack-api";
+import {
+  destination,
+  setupAutomationEditApi as setup,
+} from "../../fixtures/automation-edit-api";
 
 describe("Automation lifecycle API", () => {
   test.each(["scheduled", "event"] as const)(
@@ -127,6 +139,142 @@ describe("Automation lifecycle API", () => {
           closeReason: "Automation deleted",
           status: "dismissed",
         });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  test.each(["scheduled", "event"] as const)(
+    "lets a public reader claim %s work with system credentials",
+    async (kind) => {
+      const { app, fixture, url, read, patch, lifecycle } = await setup(kind);
+      const claim = (revision: string, viewer = "reader@example.com") =>
+        app.request(`${url}/claim`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "test-viewer": viewer,
+          },
+          body: JSON.stringify({ revision }),
+        });
+      try {
+        const initial = await read();
+        // The creator also gets a DM after each run.
+        const withDm = automationEditSchema.parse(
+          await (
+            await patch({
+              kind,
+              revision: initial.revision,
+              outcomes: [
+                ...initial.outcomes,
+                { action: "send_message", destination: "task_creator" },
+              ],
+            })
+          ).json(),
+        );
+        expect(withDm.credentialMode).toBe("creator");
+        expect(
+          (await claim(withDm.revision, "foreign@example.com")).status,
+        ).toBe(404);
+        expect((await claim(initial.revision)).status).toBe(409);
+
+        queueSlackApiResponse("conversations.open", {
+          body: conversationsOpenOk({ channelId: "D0TEST" }),
+        });
+        queueSlackApiResponse("conversations.open", {
+          body: conversationsOpenOk({ channelId: "DREADER" }),
+        });
+        const response = await claim(withDm.revision);
+        expect(response.status).toBe(200);
+        expect(automationEditSchema.parse(await response.json())).toMatchObject(
+          {
+            ownedByViewer: true,
+            createdBy: { slackUserId: "U456" },
+            credentialMode: "system",
+            status: initial.status,
+            // The previous creator's DM moves to the new creator.
+            outcomes: [
+              initial.outcomes[0],
+              {
+                action: "send_message",
+                destination: { ...destination, channelId: "DREADER" },
+              },
+            ],
+          },
+        );
+        expect(
+          getCapturedSlackApiCalls("conversations.open")
+            .slice(-2)
+            .map((call) => call.params),
+        ).toMatchObject([{ users: "U123" }, { users: "U456" }]);
+
+        // The previous creator is now a public reader.
+        const before = await read();
+        expect(before.ownedByViewer).toBe(false);
+        const creatorCredentials = await patch({
+          kind,
+          revision: before.revision,
+          credentialMode: "creator",
+        });
+        expect(creatorCredentials.status).toBe(400);
+        // The new creator manages it, so their edit is the creator's edit.
+        const readerEdit = await patch(
+          {
+            kind,
+            revision: before.revision,
+            task: { kind: "instruction", instruction: "Claimed edit." },
+          },
+          "reader@example.com",
+        );
+        expect(readerEdit.status).toBe(200);
+        expect(
+          automationEditSchema.parse(await readerEdit.json()),
+        ).toMatchObject({
+          ownedByViewer: true,
+          createdBy: { slackUserId: "U456" },
+        });
+        for (const action of ["pause", "resume"] as const) {
+          expect(
+            (await lifecycle(action, undefined, "reader@example.com")).status,
+          ).toBe(200);
+        }
+
+        // The claim is a version, so history shows who owned each one.
+        const { versions } = automationVersionListSchema.parse(
+          await (await app.request(`${url}/versions`)).json(),
+        );
+        expect(
+          versions.map(({ version, editedBy, definition }) => [
+            version,
+            editedBy?.slackUserId,
+            definition.createdBy.slackUserId,
+            definition.credentialMode,
+          ]),
+        ).toEqual([
+          [4, "U456", "U456", "system"],
+          [3, "U456", "U456", "system"],
+          [2, "U123", "U123", "creator"],
+          [1, "U123", "U123", "creator"],
+        ]);
+        // A restore keeps the current creator, so the previous creator's DM
+        // cannot come back.
+        queueSlackApiResponse("conversations.open", {
+          body: conversationsOpenOk({ channelId: "DREADER" }),
+        });
+        const restored = await app.request(`${url}/versions/2/activate`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "test-viewer": "reader@example.com",
+          },
+          body: JSON.stringify({ revision: (await read()).revision }),
+        });
+        expect(restored.status).toBe(400);
+        expect(await restored.json()).toMatchObject({
+          fields: { outcomes: expect.any(Array) },
+        });
+        expect((await read()).createdBy).toEqual({ slackUserId: "U456" });
       } finally {
         await fixture.close();
       }
