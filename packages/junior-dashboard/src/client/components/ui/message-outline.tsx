@@ -130,12 +130,18 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
     }
   }, [activeIndex, listRef, previewIndex]);
 
+  // A wheel scrolls the items under a still pointer without a pointer
+  // move, so a scroll points again from the last pointer position.
+  const pointerYRef = useRef<number>(undefined);
+  const pointAt = (list: HTMLOListElement, clientY: number) => {
+    pointerYRef.current = clientY;
+    const y = clientY - list.getBoundingClientRect().top + list.scrollTop;
+    movePointer(y / ITEM_PX - 0.5);
+  };
   const onPointerMove = (event: PointerEvent<HTMLOListElement>) => {
     // A tap is not a hover.
     if (event.pointerType === "touch") return;
-    const list = event.currentTarget;
-    const y = event.clientY - list.getBoundingClientRect().top + list.scrollTop;
-    movePointer(y / ITEM_PX - 0.5);
+    pointAt(event.currentTarget, event.clientY);
   };
 
   return (
@@ -150,8 +156,16 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
           movePointer(undefined);
         }
       }}
-      onPointerLeave={() => movePointer(undefined)}
+      onPointerLeave={() => {
+        pointerYRef.current = undefined;
+        movePointer(undefined);
+      }}
       onPointerMove={onPointerMove}
+      onScroll={(event) => {
+        if (pointerYRef.current !== undefined) {
+          pointAt(event.currentTarget, pointerYRef.current);
+        }
+      }}
       ref={listRef}
       {...props}
     />
