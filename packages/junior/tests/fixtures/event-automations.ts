@@ -105,12 +105,14 @@ export async function createTask(
   toolCallId?: string,
   events = ["pull_request.review.changes_requested"],
   taskContext = context(),
+  credentialMode?: "creator" | "system",
 ) {
   return (await execute(
     createAutomationTool(automationToolContext(taskContext), getEventCatalog()),
     {
       instruction,
       outcomes: [],
+      credential_mode: credentialMode,
       trigger: {
         type: "event",
         namespace: "github",
