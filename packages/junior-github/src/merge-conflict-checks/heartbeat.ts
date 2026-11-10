@@ -4,12 +4,16 @@
  * Only a conflict that a Watch or event automation wants publishes
  * `pull_request.merge_conflict`. No agent runs for the check.
  */
-import type { EventPublisher, PluginLogger } from "@sentry/junior-plugin-api";
+import type {
+  EventPublisher,
+  PluginLogger,
+  PluginState,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubMergeConflictEvents } from "../webhooks/merge-conflict.js";
 import {
-  claimGitHubConflictChecks,
+  claimGitHubConflictCheck,
   listOpenGitHubPullRequestNumbers,
   settleGitHubConflictCheck,
   type GitHubConflictCheck,
@@ -94,20 +98,20 @@ async function checkRepository(
   return unknown;
 }
 
+interface CheckArgs {
+  db: GitHubDb;
+  events: EventPublisher;
+  loadMergeability: LoadMergeability;
+  log: Pick<PluginLogger, "error">;
+  now: Date;
+  state: PluginState;
+}
+
 async function runCheck(
-  args: {
-    db: GitHubDb;
-    events: EventPublisher;
-    loadMergeability: LoadMergeability;
-    log: Pick<PluginLogger, "error">;
-    now: Date;
-  },
+  args: CheckArgs,
   check: GitHubConflictCheck,
+  numbers: number[],
 ): Promise<void> {
-  const numbers = await listOpenGitHubPullRequestNumbers(
-    args.db,
-    check.repositoryFullName,
-  );
   let unknown: boolean;
   try {
     unknown = await checkRepository(args, check.repositoryFullName, numbers);
@@ -119,33 +123,39 @@ async function runCheck(
     });
     // Keep the claim, so the check runs again when the claim ends.
     if (check.attempts >= MAX_ATTEMPTS) {
-      await settleGitHubConflictCheck(args.db, check);
+      await settleGitHubConflictCheck(args.state, check);
     }
     return;
   }
   await settleGitHubConflictCheck(
-    args.db,
+    args.state,
     check,
     unknown && check.attempts < MAX_ATTEMPTS
-      ? new Date(args.now.getTime() + UNKNOWN_RETRY_MS)
+      ? args.now.getTime() + UNKNOWN_RETRY_MS
       : undefined,
   );
 }
 
-/** Run the merge conflict checks that are due. */
-export async function runGitHubConflictChecks(args: {
-  db: GitHubDb;
-  events: EventPublisher;
-  loadMergeability: LoadMergeability;
-  log: Pick<PluginLogger, "error">;
-  now: Date;
-}): Promise<void> {
-  const checks = await claimGitHubConflictChecks(args.db, {
-    claimedUntil: new Date(args.now.getTime() + CLAIM_MS),
-    limit: CHECK_LIMIT,
-    now: args.now,
-  });
-  for (const check of checks) {
-    await runCheck(args, check);
+/**
+ * Run the merge conflict checks that are due. Only a repository with open
+ * Junior pull requests can have a check.
+ */
+export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
+  const nowMs = args.now.getTime();
+  let checked = 0;
+  for (const [
+    repositoryFullName,
+    numbers,
+  ] of await listOpenGitHubPullRequestNumbers(args.db)) {
+    if (checked >= CHECK_LIMIT) break;
+    const check = await claimGitHubConflictCheck({
+      claimedUntilMs: nowMs + CLAIM_MS,
+      nowMs,
+      repositoryFullName,
+      state: args.state,
+    });
+    if (!check) continue;
+    checked += 1;
+    await runCheck(args, check, numbers);
   }
 }

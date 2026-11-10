@@ -10,6 +10,7 @@ import type {
   PluginRoute,
   EventInput,
   EventPublisher,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
@@ -188,6 +189,7 @@ export function createGitHubWebhookRoute(args: {
   privateKeyEnv: string;
   events: EventPublisher;
   reviewItems: PluginConversationReviewItems;
+  state: PluginState;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -220,6 +222,7 @@ export function createGitHubWebhookRoute(args: {
           body,
           db: args.db,
           now: new Date(),
+          state: args.state,
         });
         return new Response(scheduled ? "Accepted" : "Ignored", {
           status: 202,

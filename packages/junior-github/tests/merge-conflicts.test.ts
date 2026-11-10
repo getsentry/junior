@@ -3,6 +3,7 @@ import type {
   EventInput,
   EventPublisher,
   HeartbeatHookContext,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,6 +76,27 @@ describe("merge conflict check on webhook events", () => {
   let watchesConflicts: boolean;
   let reactions: number;
 
+  let stored: Map<string, unknown>;
+  const state: PluginState = {
+    async delete(key) {
+      stored.delete(key);
+    },
+    async get<T>(key: string) {
+      return stored.get(key) as T | undefined;
+    },
+    async set(key, value) {
+      stored.set(key, structuredClone(value));
+    },
+    async setIfNotExists(key, value) {
+      if (stored.has(key)) return false;
+      stored.set(key, structuredClone(value));
+      return true;
+    },
+    async withLock(_key, _ttlMs, callback) {
+      return await callback();
+    },
+  };
+
   const events: EventPublisher = {
     // The Watch made after Junior creates a pull request.
     async hasMatch(candidates) {
@@ -120,6 +142,7 @@ describe("merge conflict check on webhook events", () => {
       events,
       log: { error() {}, info() {}, warn() {} },
       plugin: { name: "github" },
+      state,
       users: {
         async readIdentity() {
           return undefined;
@@ -137,6 +160,7 @@ describe("merge conflict check on webhook events", () => {
 
   beforeEach(async () => {
     fixture = await createGitHubFixture();
+    stored = new Map();
     published = [];
     pullRequestReads = 0;
     watchesComments = true;
@@ -293,6 +317,7 @@ describe("merge conflict check on webhook events", () => {
     const minute = 60_000;
     let graphqlQueries: string[];
     let mergeability: Record<number, string>;
+    let duringRead: (() => Promise<void>) | undefined;
 
     async function heartbeat(nowMs: number): Promise<void> {
       const unused = () => {
@@ -311,13 +336,7 @@ describe("merge conflict check on webhook events", () => {
         log: { error() {}, info() {}, warn() {} },
         nowMs,
         plugin: { name: "github" },
-        state: {
-          delete: unused,
-          get: unused,
-          set: unused,
-          setIfNotExists: unused,
-          withLock: unused,
-        },
+        state,
       };
       await githubPlugin().hooks!.heartbeat!(context);
     }
@@ -338,10 +357,12 @@ describe("merge conflict check on webhook events", () => {
       vi.useFakeTimers({ now: pushedAt, toFake: ["Date"] });
       graphqlQueries = [];
       mergeability = { 946: "CONFLICTING", 947: "MERGEABLE" };
+      duringRead = undefined;
       mswServer.use(
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { query } = (await request.json()) as { query: string };
           graphqlQueries.push(query);
+          await duringRead?.();
           const numbers = [
             ...query.matchAll(/pullRequest\(number: (\d+)\)/g),
           ].map((match) => Number(match[1]));
@@ -429,6 +450,20 @@ describe("merge conflict check on webhook events", () => {
       await heartbeat(pushedAt + 3 * minute);
       expect(graphqlQueries).toHaveLength(2);
       expect(conflicts()).toHaveLength(2);
+    });
+
+    it("keeps a push that arrives during a check", async () => {
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      vi.setSystemTime(pushedAt + 2 * minute);
+      duringRead = async () => {
+        duringRead = undefined;
+        await deliver("push-2", pushRequest("refs/heads/main"));
+      };
+      await heartbeat(pushedAt + 2 * minute);
+      expect(graphqlQueries).toHaveLength(1);
+
+      await heartbeat(pushedAt + 4 * minute);
+      expect(graphqlQueries).toHaveLength(2);
     });
 
     it("does not check after a push to another branch", async () => {

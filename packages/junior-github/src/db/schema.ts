@@ -116,27 +116,6 @@ export const juniorGitHubPullRequests = pgTable(
     index("junior_github_pull_requests_unmerged_conversations_idx")
       .using("gin", table.conversationIds)
       .where(sql`${table.state} <> 'merged'`),
-    index("junior_github_pull_requests_open_repository_idx")
-      .on(table.repositoryFullName)
-      .where(sql`${table.state} = 'open'`),
-  ],
-);
-
-/**
- * A merge conflict check that waits for the heartbeat, one per repository.
- * A push to the default branch adds or moves it. The heartbeat removes it.
- */
-export const juniorGitHubConflictChecks = pgTable(
-  "junior_github_conflict_checks",
-  {
-    repositoryFullName: text("repository_full_name").primaryKey(),
-    /** When the heartbeat checks the repository's open Junior pull requests. */
-    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
-    /** Checks since the last push that ended with an unknown answer. */
-    attempts: integer("attempts").notNull().default(0),
-  },
-  (table) => [
-    index("junior_github_conflict_checks_due_at_idx").on(table.dueAt),
   ],
 );
 
@@ -192,7 +171,6 @@ export const juniorGitHubPullRequestRequesters = pgTable(
 );
 
 export const githubSqlSchema = {
-  juniorGitHubConflictChecks,
   juniorGitHubIssues,
   juniorGitHubPullRequestIssues,
   juniorGitHubPullRequestRequesters,

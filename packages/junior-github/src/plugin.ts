@@ -326,6 +326,7 @@ export function githubPlugin(
             ),
           log: ctx.log,
           now: new Date(ctx.nowMs),
+          state: ctx.state,
         });
       },
       async unfinishedWork(ctx) {
@@ -389,6 +390,7 @@ export function githubPlugin(
             privateKeyEnv,
             events: ctx.events,
             reviewItems: ctx.reviewItems,
+            state: ctx.state,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

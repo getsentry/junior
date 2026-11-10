@@ -1,7 +1,9 @@
 /**
  * The `push` webhook part of merge conflict checks. It makes no GitHub API
- * calls, so a busy default branch costs only database writes.
+ * calls, so a busy default branch costs one database read and a state
+ * write.
  */
+import type { PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { scheduleGitHubConflictCheck } from "./store.js";
@@ -30,6 +32,7 @@ export async function scheduleGitHubPushConflictCheck(args: {
   body: unknown;
   db: GitHubDb;
   now: Date;
+  state: PluginState;
 }): Promise<boolean> {
   const parsed = pushSchema.safeParse(args.body);
   if (
@@ -39,8 +42,10 @@ export async function scheduleGitHubPushConflictCheck(args: {
   ) {
     return false;
   }
-  return await scheduleGitHubConflictCheck(args.db, {
-    dueAt: new Date(args.now.getTime() + CONFLICT_CHECK_DELAY_MS),
+  return await scheduleGitHubConflictCheck({
+    db: args.db,
+    dueAtMs: args.now.getTime() + CONFLICT_CHECK_DELAY_MS,
     repositoryFullName: parsed.data.repository.full_name,
+    state: args.state,
   });
 }

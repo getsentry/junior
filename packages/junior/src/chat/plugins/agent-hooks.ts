@@ -1078,6 +1078,7 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      state: createPluginState(pluginName),
       reviewItems: {
         forConversation: (conversationId) =>
           createPluginReviewItems({
