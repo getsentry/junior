@@ -125,4 +125,19 @@ describe("loadAttachment tool", () => {
     ).rejects.toThrow(/read 0 bytes, expected 11/);
     expect(sandboxWorkspace.written).toEqual([]);
   });
+
+  it("points a Slack file id to slackThreadRead", async () => {
+    const tool = createLoadAttachmentTool({
+      conversationId: CONVERSATION_ID,
+      db: getSqlExecutor(),
+      storage: createMemoryAttachmentStorage(),
+      workspace: workspace(),
+    });
+
+    await expect(
+      tool.execute?.({ attachment_id: "F0CGYELM0NL" }, {}),
+    ).rejects.toThrow(
+      "F0CGYELM0NL is a Slack file id, not an attachment id. Read the thread with slackThreadRead to get the file's attachment_id.",
+    );
+  });
 });

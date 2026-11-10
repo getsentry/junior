@@ -51,6 +51,8 @@ export interface MentionInput {
   files?: FileInput[];
   /** The text of a message that the person forwarded with this one. */
   forwarded?: string;
+  /** Files of the forwarded message. Slack lists them under it, not in `files`. */
+  forwardedFiles?: FileInput[];
   /** Another Slack app posted the message. Its bot user is the author. */
   fromApp?: boolean;
   text: string;
@@ -64,6 +66,8 @@ export interface ThreadMessageInput {
   files?: FileInput[];
   /** The text of a message that the person forwarded with this one. */
   forwarded?: string;
+  /** Files of the forwarded message. Slack lists them under it, not in `files`. */
+  forwardedFiles?: FileInput[];
   text: string;
 }
 
@@ -197,6 +201,7 @@ export function slackMention(
     channelType?: "channel" | "im";
     files?: FileInput[];
     forwarded?: string;
+    forwardedFiles?: FileInput[];
     fromApp?: boolean;
   } = {},
 ): MentionInput {
@@ -210,6 +215,7 @@ export function slackThreadMessage(
     author?: SlackAuthor;
     files?: FileInput[];
     forwarded?: string;
+    forwardedFiles?: FileInput[];
   } = {},
 ): ThreadMessageInput {
   return { kind: "thread_message", text, ...options };

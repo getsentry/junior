@@ -9,6 +9,8 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const ATTACHMENT_DIR = ".junior/attachments";
+// Stored attachment ids are lowercase hex, so this never matches one.
+const SLACK_FILE_ID_PATTERN = /^F[A-Z0-9]{6,}$/;
 
 async function readStream(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
@@ -48,6 +50,11 @@ export function createLoadAttachmentTool(args: {
         db: args.db,
       });
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
+        if (SLACK_FILE_ID_PATTERN.test(attachment_id)) {
+          throw new ToolInputError(
+            `${attachment_id} is a Slack file id, not an attachment id. Read the thread with slackThreadRead to get the file's attachment_id.`,
+          );
+        }
         throw new ToolInputError("Attachment not found in this conversation.");
       }
       const body = await args.storage.get(attachment.storageKey);

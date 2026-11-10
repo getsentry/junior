@@ -28,10 +28,74 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
 import { getConversationStore } from "@/chat/db";
+import { downloadPrivateSlackFile } from "@/chat/slack/client";
+import { storeAttachment } from "@/chat/attachments/store";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { logWarn } from "@/chat/logging";
 
 interface ThreadReadAttachmentDeps {
   conversationId: string;
   db: JuniorSqlDatabase;
+  storage?: AttachmentStorage;
+}
+
+/** Private file URLs get the bot token, so only send it to Slack hosts. */
+function isSlackFileUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      (url.hostname === "slack.com" || url.hostname.endsWith(".slack.com"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Store files from the current Conversation's thread that no Turn stored.
+ *
+ * Slack attaches a linked file after the message event, and a file can be in
+ * a message that started no Turn. Storing it here gives the model an
+ * `attachment_id` for `loadAttachment`. A file that fails to download stays
+ * metadata-only, the same as a failed download at turn start.
+ */
+async function storeThreadFiles(args: {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+  files: SlackFileRef[];
+  storage: AttachmentStorage;
+}): Promise<Array<readonly [string, string]>> {
+  const stored: Array<readonly [string, string]> = [];
+  for (const file of args.files) {
+    const url = file.url_private;
+    if (!file.id || !url || !isSlackFileUrl(url)) continue;
+    const filename = file.name ?? "attachment";
+    try {
+      const data = await downloadPrivateSlackFile(url);
+      const attachment = await storeAttachment({
+        conversationId: args.conversationId,
+        db: args.db,
+        file: {
+          bytes: data.byteLength,
+          data,
+          filename,
+          mimeType: file.mimetype ?? "application/octet-stream",
+          path: filename,
+        },
+        source: { id: file.id, provider: "slack" },
+        storage: args.storage,
+      });
+      stored.push([file.id, attachment.id]);
+    } catch (error) {
+      logWarn("attachment.thread_read.storage.failed", {
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+        "app.file.mime_type": file.mimetype,
+      });
+    }
+  }
+  return stored;
 }
 
 /**
@@ -297,6 +361,26 @@ export function createSlackThreadReadTool(
             : [],
         ),
       );
+      // Only the current Conversation's own thread. Files from other threads
+      // stay metadata-only.
+      const isCurrentThread =
+        channelId === context.locationChannelId &&
+        resolvedThreadTs === context.threadTs;
+      if (attachmentDeps?.storage && isCurrentThread) {
+        const unstored = replies.flatMap((reply) =>
+          collectMessageFiles(reply).filter(
+            (file) => file.id && !attachmentIdsBySlackFileId.has(file.id),
+          ),
+        );
+        for (const [fileId, attachmentId] of await storeThreadFiles({
+          conversationId: attachmentDeps.conversationId,
+          db: attachmentDeps.db,
+          files: unstored,
+          storage: attachmentDeps.storage,
+        })) {
+          attachmentIdsBySlackFileId.set(fileId, attachmentId);
+        }
+      }
       const messages = replies.map((reply) =>
         sanitizeMessage(reply, attachmentIdsBySlackFileId),
       );

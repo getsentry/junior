@@ -261,6 +261,7 @@ export function createTools(
     tools.slackThreadRead = createSlackThreadReadTool(slackContext, {
       conversationId: context.conversationId,
       db: getSqlExecutor(),
+      storage: context.attachmentStorage,
     });
     tools.slackChannelJoin = createSlackChannelJoinTool(slackContext);
     if (context.conversationPrivacy === "public") {

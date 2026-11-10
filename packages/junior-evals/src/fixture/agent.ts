@@ -487,7 +487,14 @@ export async function createFixtureAgent(
       ? { files: input.files.map(slack.addFile) }
       : undefined;
     const forwarded = input.forwarded
-      ? { attachments: [forwardedMessage(input.forwarded)] }
+      ? {
+          attachments: [
+            forwardedMessage(
+              input.forwarded,
+              input.forwardedFiles?.map(slack.addFile),
+            ),
+          ],
+        }
       : undefined;
     slack.addThreadMessage(record.channelId, {
       ...(fromApp ? { bot_id: SLACK_APP_BOT_ID } : undefined),

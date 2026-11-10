@@ -50,8 +50,11 @@ type SlackAttachment = Record<string, unknown>;
  * A forwarded message, as Slack sends it on the message of the person who
  * forwarded it.
  */
-export function forwardedMessage(text: string): SlackAttachment {
-  return { is_share: true, text };
+export function forwardedMessage(
+  text: string,
+  files?: SlackFile[],
+): SlackAttachment {
+  return { is_share: true, text, ...(files?.length ? { files } : undefined) };
 }
 
 /**
