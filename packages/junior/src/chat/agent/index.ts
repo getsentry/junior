@@ -93,7 +93,10 @@ import {
   getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
-import { nextProviderRetry } from "@/chat/services/provider-retry";
+import {
+  nextProviderRetry,
+  nextRefusalFallback,
+} from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
@@ -1463,6 +1466,7 @@ async function executeAgentRunInPrivacyContext(
           let actionConfirmationRetryUsed = false;
           let automationResultReminderUsed = !requireAutomationResult;
           let providerRetryAttempt = 0;
+          let refusalFallbackUsed = false;
           let emptyOutputAttempt = 0;
           const prepareRetry = async (messages: PiMessage[]): Promise<void> => {
             discardedRetryUsage = addAgentTurnUsage(
@@ -1573,7 +1577,29 @@ async function executeAgentRunInPrivacyContext(
                 messages: agent!.state.messages,
               });
               if (!providerRetry) {
-                break;
+                const refusalFallback = refusalFallbackUsed
+                  ? undefined
+                  : nextRefusalFallback({
+                      failure: lastAssistant,
+                      fallbackModelId: botConfig.refusalFallbackModelId,
+                      messages: agent!.state.messages,
+                    });
+                if (!refusalFallback) {
+                  break;
+                }
+                // Only the rest of this run slice uses the fallback model. A
+                // later slice or Turn starts again on the main model.
+                refusalFallbackUsed = true;
+                await prepareRetry(refusalFallback.messages);
+                agent!.state.model = resolveGatewayModel(
+                  refusalFallback.modelId,
+                );
+                logWarn("agent.turn.refusal_fallback", {
+                  "gen_ai.request.model": activeModelId,
+                  "app.ai.refusal_fallback.model": refusalFallback.modelId,
+                });
+                run = agent!.continue();
+                continue;
               }
 
               providerRetryAttempt += 1;

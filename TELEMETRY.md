@@ -326,6 +326,11 @@ compare the phases:
 - The same `service.instance.id` on more than one slow call: they shared one
   process.
 
+When the main model refuses a Turn and `AI_REFUSAL_FALLBACK_MODEL` is set,
+`agent.turn.refusal_fallback` logs the main model as `gen_ai.request.model`
+and the fallback model as `app.ai.refusal_fallback.model`. The next
+`gen_ai.chat` span uses the fallback model.
+
 ### Cache Prefix
 
 The provider caches a request prefix in the order tools, system prompt,

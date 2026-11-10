@@ -256,6 +256,16 @@ export function createProviderError(
 // error and keeps the provider reason in `rawStopReason`.
 const REFUSAL_STOP_REASONS = new Set(["refusal", "sensitive"]);
 
+/** Return whether the provider refused to answer a Pi assistant message. */
+export function isProviderRefusal(message: {
+  rawStopReason?: string;
+}): boolean {
+  return (
+    message.rawStopReason !== undefined &&
+    REFUSAL_STOP_REASONS.has(message.rawStopReason)
+  );
+}
+
 /** Normalize a failed Pi assistant message. A provider refusal is a content policy block. */
 export function createAssistantProviderError(
   message: { errorMessage?: string; rawStopReason?: string },
@@ -263,9 +273,7 @@ export function createAssistantProviderError(
 ): ProviderError {
   return createProviderError(message.errorMessage ?? "", {
     ...options,
-    ...(message.rawStopReason && REFUSAL_STOP_REASONS.has(message.rawStopReason)
-      ? { kind: "content_policy" }
-      : undefined),
+    ...(isProviderRefusal(message) ? { kind: "content_policy" } : undefined),
   });
 }
 
