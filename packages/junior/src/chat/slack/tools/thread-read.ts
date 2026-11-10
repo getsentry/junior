@@ -208,7 +208,12 @@ export function createSlackThreadReadTool(
         .describe("Slack message archive URL.")
         .nullable()
         .optional(),
-      channel_id: slackChannelRefParam.nullable().optional(),
+      channel_id: slackChannelRefParam
+        .describe(
+          `${slackChannelRefParam.description} Defaults to the current conversation's channel.`,
+        )
+        .nullable()
+        .optional(),
       slack_ts: slackTimestampParam(
         "Slack message timestamp. May be the thread root or any message in the thread.",
       )
@@ -245,21 +250,26 @@ export function createSlackThreadReadTool(
         channelId = parsed.reference.channelId;
         messageTs = parsed.reference.messageTs;
         threadTs = parsed.reference.threadTs;
-      } else if (channel_id && slack_ts) {
+      } else if (slack_ts) {
         const parsedTs = parseRequiredSlackTimestampParam("slack_ts", slack_ts);
         if (!parsedTs.ok) {
           throw new ToolInputError(parsedTs.error);
         }
-        const target = await resolveSlackChannelRef({
-          field: "channel_id",
-          value: channel_id,
-          teamId: context.teamId,
-        });
-        channelId = target.channelId;
+        // Without a channel, read the current Conversation's channel. The
+        // model often has only a timestamp from the current thread.
+        channelId = channel_id
+          ? (
+              await resolveSlackChannelRef({
+                field: "channel_id",
+                value: channel_id,
+                teamId: context.teamId,
+              })
+            ).channelId
+          : context.locationChannelId;
         messageTs = parsedTs.value;
       } else {
         throw new ToolInputError(
-          "Provide either a Slack message `url` or both `channel_id` and `slack_ts`.",
+          "Provide a Slack message `url` or a `slack_ts`. `channel_id` defaults to the current conversation's channel.",
         );
       }
 

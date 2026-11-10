@@ -113,10 +113,8 @@ describe("files in the current Conversation's thread", () => {
     queueSlackPrivateFileDownload({ status: 200, body: "a,b\n1,2\n" });
     queueSlackPrivateFileDownload({ status: 200, body: "%PDF-1.4" });
 
-    const result = await executeTool(tool, {
-      channel_id: "C0CURRENT",
-      slack_ts: THREAD_TS,
-    });
+    // The model often sends only a timestamp from the current thread.
+    const result = await executeTool(tool, { slack_ts: THREAD_TS });
 
     const csvId = result.messages[0].files[0].attachment_id;
     const pdfId = result.messages[1].files[0].attachment_id;

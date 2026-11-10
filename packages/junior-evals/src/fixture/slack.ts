@@ -322,10 +322,19 @@ export function installSlackMock(testName: string): SlackMock {
       "https://slack.com/api/conversations.replies",
       async ({ request }) => {
         const params = await readSlackParams(request);
-        const threadTs = params.ts ?? "";
+        const channel = params.channel ?? "";
+        // Like Slack, `ts` can be the root or any reply of the thread.
+        const threadTs =
+          [...threads.entries()].find(
+            ([key, messages]) =>
+              key.startsWith(`${channel}:`) &&
+              messages.some((message) => message.ts === params.ts),
+          )?.[1][0]?.thread_ts ??
+          params.ts ??
+          "";
         return HttpResponse.json(
           conversationsRepliesPage({
-            messages: threads.get(threadKey(params.channel ?? "", threadTs)),
+            messages: threads.get(threadKey(channel, threadTs)),
             threadTs,
           }),
         );
