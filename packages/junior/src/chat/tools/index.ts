@@ -21,6 +21,7 @@ import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
 import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
+import { createMarkProgressReplyTool } from "@/chat/tools/runtime/mark-progress-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
   createAddReviewItemTool,
@@ -30,6 +31,7 @@ import {
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { PROGRESS_REPLY_TOOL_NAME } from "@/chat/progress-reply";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
@@ -247,6 +249,10 @@ export function createTools(
     );
   } else {
     tools[NO_REPLY_TOOL_NAME] = createNoReplyTool();
+    // A child Run's reply goes to its parent, not to a person.
+    if (!context.agentInvocationId) {
+      tools[PROGRESS_REPLY_TOOL_NAME] = createMarkProgressReplyTool();
+    }
   }
 
   if (context.mcpToolManager) {

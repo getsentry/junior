@@ -52,7 +52,7 @@ async function appendMessage(
   conversationId: string,
   message:
     | { authorIdentityId: string }
-    | { quiet?: boolean; role: "assistant" },
+    | { progress?: boolean; quiet?: boolean; role: "assistant" },
 ) {
   const index = nextMessage++;
   await getConversationEventStore().append(conversationId, [
@@ -67,6 +67,7 @@ async function appendMessage(
           : {
               role: "assistant",
               ...(message.quiet ? { meta: { quiet: true } } : undefined),
+              ...(message.progress ? { meta: { progress: true } } : undefined),
             }),
       },
     },
@@ -250,6 +251,47 @@ describe("conversation unread API", () => {
     // unread.
     expect((await setUnread(app, conversationId, true)).status).toBe(409);
     await expect(unread(viewer, conversationId)).resolves.toBe(false);
+  });
+
+  it("does not count a progress reply as new", async () => {
+    const conversationId = "local:test:unread-progress";
+    await recordActivity(conversationId, 1_000);
+    const { app, viewer } = await authenticatedApi(
+      "progress-reader@example.com",
+    );
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1_000),
+        rootConversationId: conversationId,
+        userId: viewer.id,
+      });
+    await appendMessage(conversationId, { role: "assistant" }); // 0
+    await putReadPosition(app, conversationId, 0);
+
+    // A progress reply shows, but it only says that work continues.
+    await appendMessage(conversationId, { progress: true, role: "assistant" }); // 1
+    await expect(unread(viewer, conversationId)).resolves.toBe(false);
+    const detail = await app.request(
+      `http://localhost/api/conversations/${conversationId}`,
+    );
+    expect(await detail.json()).toMatchObject({
+      events: [{ seq: 0 }, { seq: 1, data: { role: "assistant" } }],
+    });
+
+    // The result that follows is new, and a later progress reply keeps it so.
+    await appendMessage(conversationId, { role: "assistant" }); // 2
+    await appendMessage(conversationId, { progress: true, role: "assistant" }); // 3
+    await expect(unread(viewer, conversationId)).resolves.toBe(true);
+    // Mark as unread goes back to just before the result, not the progress.
+    await putReadPosition(app, conversationId, 3);
+    expect((await setUnread(app, conversationId, true)).status).toBe(200);
+    const reopened = await app.request(
+      `http://localhost/api/conversations/${conversationId}`,
+    );
+    expect(await reopened.json()).toMatchObject({
+      readPosition: { lastReadSeq: 1 },
+    });
   });
 
   it("marks a reply at the first event unread", async () => {

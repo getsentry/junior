@@ -202,7 +202,16 @@ export type AgentRunState = {
  * implementations after the core Turn lifecycle stores each completed
  * assistant Message.
  */
-export type Delivery = (message: AssistantMessage) => void | Promise<void>;
+export type Delivery = (
+  message: AssistantMessage,
+  options?: DeliveryOptions,
+) => void | Promise<void>;
+
+/** How the runner classified one delivered assistant message. */
+export type DeliveryOptions = {
+  /** The run marked its replies as progress only before this message. */
+  progress?: true;
+};
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {

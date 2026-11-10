@@ -337,6 +337,8 @@ const conversationReportMessageEventDataSchema = z
     eventNamespace: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
+    /** Progress message: shown, but not unread and not notified. */
+    progress: z.literal(true).optional(),
     quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),
     /**

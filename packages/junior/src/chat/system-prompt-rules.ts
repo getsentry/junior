@@ -10,6 +10,7 @@ import type { Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { PROGRESS_REPLY_TOOL_NAME } from "@/chat/progress-reply";
 
 /**
  * Prompt mode for one Run. `automation` is for Scheduled automation and Event
@@ -169,6 +170,7 @@ const TOOL_CALL_STYLE_RULES = [
 const CONVERSATION_RULES = [
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
   "- Runtime owns continuation and authorization notices; on resumed turns, answer with the final requested content only.",
+  `- When a reply only says that work continues and its result comes later, such as after you hand work to a child agent, call \`${PROGRESS_REPLY_TOOL_NAME}\` before you write it. The reply still shows, but it does not make the Conversation unread or notify anyone. Never use it on an answer, a result, a question, a failure, or a request for a decision.`,
 ];
 
 /**

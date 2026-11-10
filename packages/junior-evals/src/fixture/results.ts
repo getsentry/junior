@@ -28,6 +28,8 @@ export interface Reply {
   channelId?: string;
   conversationId: string;
   messageId: string;
+  /** Progress message: shown, but not unread and not notified. */
+  progress?: true;
   text: string;
 }
 
@@ -299,6 +301,7 @@ export function readCallEvents(args: {
         const reply = {
           conversationId: args.conversationId,
           messageId: data.messageId,
+          ...(data.progress ? { progress: data.progress } : undefined),
           text: data.text,
         };
         if (data.quiet) {

@@ -48,6 +48,8 @@ export interface ConversationMessageMeta {
   imageAttachmentCount?: number;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
+  /** Progress message: delivered, but not unread and not notified. */
+  progress?: true;
   /** Quiet message: stored, but not delivered to the Location. */
   quiet?: true;
   replied?: boolean;

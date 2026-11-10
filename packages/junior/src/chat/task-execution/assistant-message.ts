@@ -38,6 +38,8 @@ export async function commitAssistantMessage(args: {
   conversation: ThreadConversationState;
   conversationId: string;
   deliveryResult?: DeliveryResult;
+  /** Stored as a Progress message: delivered, but not unread or notified. */
+  progress?: true;
   /** Stored as a Quiet message; the caller skipped Delivery. */
   quiet?: true;
   sessionId: string;
@@ -48,6 +50,7 @@ export async function commitAssistantMessage(args: {
   const conversationMessageId = recordDeliveredAssistantMessage({
     cards: args.cards,
     conversation: args.conversation,
+    ...(args.progress ? { progress: args.progress } : undefined),
     ...(args.quiet ? { quiet: args.quiet } : undefined),
     sessionId: args.sessionId,
     source: args.source,

@@ -81,6 +81,7 @@ import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { readProgressReply } from "@/chat/progress-reply";
 import {
   FINISH_AUTOMATION_RUN_TOOL_NAME,
   readAutomationResult,
@@ -927,7 +928,10 @@ async function executeAgentRunInPrivacyContext(
       }
       try {
         await requireConversationLease("reply");
-        await delivery(message);
+        const progress = readProgressReply(
+          agent!.state.messages.slice(runResume.beforeMessageCount),
+        );
+        await delivery(message, progress ? { progress } : undefined);
         acceptedToolFreeAssistant = true;
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(

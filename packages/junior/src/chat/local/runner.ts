@@ -10,6 +10,8 @@ import { messageCardText } from "@/chat/conversations/cards";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { progressReplyMeta } from "@/chat/progress-reply";
+import type { DeliveryOptions } from "@/chat/agent/types";
 import { randomUUID } from "node:crypto";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -266,6 +268,7 @@ async function runLocalAgentTurnInContext(
   /** Print and record one completed assistant message in local conversation order. */
   const deliverAssistantMessage = async (
     reply: AssistantMessage | string,
+    options?: DeliveryOptions,
   ): Promise<void> => {
     const message = typeof reply === "string" ? undefined : reply;
     const text =
@@ -282,6 +285,7 @@ async function runLocalAgentTurnInContext(
     const recordedMessageId = recordDeliveredAssistantMessage({
       cards,
       conversation,
+      ...progressReplyMeta(options, cards),
       sessionId: turnId,
       text,
       userMessageId,

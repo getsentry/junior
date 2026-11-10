@@ -101,6 +101,10 @@ Canonical words for Junior code and docs. One concept, one word.
   code. Execution code says turn, run, result, outcome, or delivery.
 - **Quiet message**: the `noReply` note of an Event Turn, for a routine
   outcome. Junior stores it but does not deliver it to the Location.
+- **Progress message**: an assistant Message that the agent marked with
+  `markProgressReply` as interim, such as an ack that work moved to a child
+  agent. Junior delivers it, but it does not make the Conversation unread or
+  send a notification.
 - **Transcript**: a reporting view of Messages and history. Not storage.
 - **Quick question**: a hidden, read-only fork that asks about text in one
   Reply. Keep as fork makes it a normal fork.

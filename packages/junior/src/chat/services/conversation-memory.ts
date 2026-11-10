@@ -138,6 +138,7 @@ export function upsertConversationMessage(
 export function recordDeliveredAssistantMessage(args: {
   cards?: MessageCard[];
   conversation: ThreadConversationState;
+  progress?: true;
   quiet?: true;
   sessionId: string;
   source?: "slack" | "web";
@@ -166,6 +167,7 @@ export function recordDeliveredAssistantMessage(args: {
     },
     meta: {
       ...(objectCards?.length ? { objectCards } : undefined),
+      ...(args.progress ? { progress: args.progress } : undefined),
       ...(args.quiet ? { quiet: args.quiet } : undefined),
       replied: true,
       ...(args.source ? { source: args.source } : undefined),

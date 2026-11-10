@@ -32,7 +32,7 @@ import {
   turnInputTelemetry,
   withTurnSpan,
 } from "@/chat/task-execution/turn-telemetry";
-import type { AgentFeature } from "@/chat/agent/types";
+import type { AgentFeature, DeliveryOptions } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
@@ -52,6 +52,7 @@ import {
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { progressReplyMeta } from "@/chat/progress-reply";
 import { botConfig } from "@/chat/config";
 import {
   latestConversationMessageSeq,
@@ -597,7 +598,7 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
-          options?: { quiet?: true },
+          options?: DeliveryOptions & { quiet?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
@@ -637,6 +638,7 @@ export function createConversationTurnWorker(
             conversation,
             conversationId: context.conversationId,
             ...(deliveryResult ? { deliveryResult } : undefined),
+            ...progressReplyMeta(options, cards),
             ...(quiet ? { quiet } : undefined),
             sessionId: turnId,
             ...(deliveryResult

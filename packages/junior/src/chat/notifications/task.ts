@@ -91,6 +91,7 @@ type SkipReason =
   | "no_user"
   | "not_configured"
   | "outside_hours"
+  | "progress"
   | "quiet"
   | "slack_paused";
 
@@ -121,6 +122,8 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   if (!reply) return skip("no_reply");
   // A Quiet message notifies nobody, like in the Location.
   if (reply.meta?.quiet) return skip("quiet");
+  // A Progress message only says that work continues; its result notifies.
+  if (reply.meta?.progress) return skip("progress");
   const db = context.db as JuniorDatabase;
   const userId = await recipientUserId(db, run);
   if (!userId) return skip("no_user");

@@ -31,12 +31,13 @@ import { readConversationAccessFromSql } from "./access";
 import { markConversationRead } from "./read-position";
 
 /**
- * Junior's newest reply in the outer Conversation that the transcript shows
- * as its own row. Quiet replies fold into activity, like tools and status
- * events, so they do not count. It walks the message role index from the
- * newest Message, so it stops at the first reply that is not quiet.
+ * Junior's newest reply in the outer Conversation that can make it unread.
+ * Quiet replies fold into activity, like tools and status events, so they do
+ * not count. Progress replies show but only say that work continues, so they
+ * do not count either. It walks the message role index from the newest
+ * Message, so it stops at the first reply that is neither.
  */
-function latestVisibleReply(db: JuniorDatabase, conversationId: SQLWrapper) {
+function latestNewReply(db: JuniorDatabase, conversationId: SQLWrapper) {
   return db
     .select({ seq: juniorConversationEvents.seq })
     .from(juniorConversationEvents)
@@ -46,6 +47,7 @@ function latestVisibleReply(db: JuniorDatabase, conversationId: SQLWrapper) {
         eq(juniorConversationEvents.type, "message"),
         sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
         sql`(${juniorConversationEvents.payload}->'meta'->>'quiet') is distinct from 'true'`,
+        sql`(${juniorConversationEvents.payload}->'meta'->>'progress') is distinct from 'true'`,
       ),
     )
     .orderBy(
@@ -78,9 +80,9 @@ function viewerMessageSeq(
 }
 
 /**
- * Whether Junior's latest visible reply is after the viewer's read position
- * in one outer Conversation. The position is at least the viewer's own
- * latest Message. No reply reads as false.
+ * Whether Junior's latest reply that counts as new is after the viewer's
+ * read position in one outer Conversation. The position is at least the
+ * viewer's own latest Message. No reply reads as false.
  */
 export function unreadReplySql(
   db: JuniorDatabase,
@@ -88,13 +90,13 @@ export function unreadReplySql(
   conversationId: SQLWrapper,
   lastReadSeq: SQLWrapper,
 ): SQL<boolean> {
-  return sql<boolean>`coalesce((${latestVisibleReply(db, conversationId)}) > greatest(coalesce(${lastReadSeq}, -1), coalesce((${viewerMessageSeq(db, userId, conversationId)}), -1)), false)`;
+  return sql<boolean>`coalesce((${latestNewReply(db, conversationId)}) > greatest(coalesce(${lastReadSeq}, -1), coalesce((${viewerMessageSeq(db, userId, conversationId)}), -1)), false)`;
 }
 
 /**
- * Return the Conversations that have a visible Junior reply after the
- * user's read position. The position is at least the user's own latest
- * Message, so a reply in Slack or the dashboard counts as read.
+ * Return the Conversations that have a Junior reply that counts as new
+ * after the user's read position. The position is at least the user's own
+ * latest Message, so a reply in Slack or the dashboard counts as read.
  *
  * A Conversation with no stored read position counts from its start. The
  * read-position backfill migration gave each root in a user's feed a
@@ -135,8 +137,9 @@ export async function readUnreadConversationIds(
 }
 
 /**
- * Store a read report and say whether Junior's latest visible reply is still
- * unread, so the dashboard can clear its unread flag without a refetch.
+ * Store a read report and say whether Junior's latest reply that counts as
+ * new is still unread, so the dashboard can clear its unread flag without a
+ * refetch.
  *
  * Only a viewer who may read the transcript can report: a participant, or
  * anyone for a public Conversation. Others get the same 404 as a missing
@@ -169,11 +172,11 @@ export async function reportConversationRead(
  * the read position of the root, which the feed reads.
  *
  * Read moves the position to the last event. Unread is the one write that
- * moves it back: to just before Junior's latest visible reply, so the
- * transcript shows that reply as new again. A reply at seq 0 has no seq
- * before it, so unread removes the position and the Conversation counts from
- * its start. The viewer's own latest Message also counts as read, so unread
- * fails when that Message is after the reply.
+ * moves it back: to just before Junior's latest reply that counts as new
+ * (see `latestNewReply`), so the transcript shows that reply as new again.
+ * A reply at seq 0 has no seq before it, so unread removes the position and
+ * the Conversation counts from its start. The viewer's own latest Message
+ * also counts as read, so unread fails when that Message is after the reply.
  */
 export async function markConversationUnread(
   viewer: User,
@@ -200,8 +203,8 @@ export async function markConversationUnread(
     return { unreadReply: false };
   }
   const db = getDb();
-  const reply = latestVisibleReply(db, juniorConversations.conversationId).as(
-    "latest_visible_reply",
+  const reply = latestNewReply(db, juniorConversations.conversationId).as(
+    "latest_new_reply",
   );
   const [row] = await db
     .select({

@@ -398,6 +398,9 @@ function reportEventData(args: {
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
           : undefined),
+        ...(data.meta?.progress === true
+          ? { progress: true as const }
+          : undefined),
         ...(data.meta?.quiet === true ? { quiet: true as const } : undefined),
         ...(args.canExposePayload &&
         typeof data.meta?.trustedSummary === "string"

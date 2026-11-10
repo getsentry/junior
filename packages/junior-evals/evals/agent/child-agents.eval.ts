@@ -30,4 +30,41 @@ describe("Child Agent Results", () => {
       }),
     );
   });
+
+  test("when a reply only says a child agent took the work, mark it as progress, and not the result", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        'Use spawnAgent to start one child agent with the task "Call systemTime once and reply with the UTC time." Tell me once it has started, then tell me the time it reports.',
+      ),
+    );
+
+    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    const handoff = conversation.turns.find((turn) =>
+      turn.toolCalls.some((call) => call.name === "spawnAgent"),
+    );
+    expect(
+      handoff?.toolCalls.some((call) => call.name === "markProgressReply"),
+    ).toBe(true);
+    expect(handoff?.replies.length).toBeGreaterThan(0);
+    expect(handoff?.replies.map((reply) => reply.progress)).toEqual(
+      handoff?.replies.map(() => true),
+    );
+    // The result is what the person waits for, so it notifies.
+    expect(conversation.replies.at(-1)?.progress).toBeUndefined();
+    expect(conversation.replies.at(-1)?.text).toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  test("when a reply answers the request directly, do not mark it as progress", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention("what time is it right now in UTC?"),
+    );
+
+    expect(completedToolCalls("markProgressReply", conversation)).toEqual([]);
+    expect(conversation.replies).toHaveLength(1);
+    expect(conversation.replies[0]?.progress).toBeUndefined();
+  });
 });

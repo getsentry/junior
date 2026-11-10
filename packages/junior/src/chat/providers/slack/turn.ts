@@ -39,6 +39,7 @@ import {
   RetryableDeliveryError,
   type AgentRun,
   type AgentSteeringMessage,
+  type DeliveryOptions,
 } from "@/chat/agent/types";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import {
@@ -125,6 +126,7 @@ import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { progressReplyMeta } from "@/chat/progress-reply";
 import {
   abandonTurnRecord,
   failTurnRecord,
@@ -813,6 +815,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         const deliverAssistantMessage = async (
           reply: AssistantMessage | string,
           terminalDispatchOutcome?: "blocked" | "failed",
+          deliveryOptions?: DeliveryOptions,
         ): Promise<void> => {
           const agentMessage = typeof reply === "string" ? undefined : reply;
           const text =
@@ -889,6 +892,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           const recordedMessageId = recordDeliveredAssistantMessage({
             cards,
             conversation: preparedState.conversation,
+            ...progressReplyMeta(deliveryOptions, cards),
             sessionId: turnId,
             source: "slack",
             text,
@@ -1144,7 +1148,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               }
             },
             ...(deliversFinalText(options.execution?.dispatch)
-              ? { delivery: deliverAssistantMessage }
+              ? {
+                  delivery: (message, deliveryOptions) =>
+                    deliverAssistantMessage(
+                      message,
+                      undefined,
+                      deliveryOptions,
+                    ),
+                }
               : undefined),
             durability: {
               onInputCommitted: options.ack,

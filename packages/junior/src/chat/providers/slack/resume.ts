@@ -16,6 +16,7 @@ import type {
 import {
   RetryableDeliveryError,
   type Delivery,
+  type DeliveryOptions,
   type AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -26,6 +27,7 @@ import {
   postsRunNotices,
 } from "@/chat/automation-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { progressReplyMeta } from "@/chat/progress-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
@@ -501,6 +503,7 @@ async function resumeSlackTurnInContext(
     /** Post and record one completed assistant message for the resumed turn. */
     const deliverAssistantMessage = async (
       reply: AssistantMessage | string,
+      options?: DeliveryOptions,
     ): Promise<void> => {
       const message = typeof reply === "string" ? undefined : reply;
       const text =
@@ -548,6 +551,7 @@ async function resumeSlackTurnInContext(
       const recordedMessageId = recordDeliveredAssistantMessage({
         cards,
         conversation: deliveryState.conversation,
+        ...progressReplyMeta(options, cards),
         sessionId: deliveryState.sessionId,
         source: "slack",
         text,

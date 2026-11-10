@@ -89,7 +89,9 @@ async function viewerApi() {
  */
 async function completeDashboardTurn(
   reply: string,
-  stored: { text: string; quiet?: true } | null = { text: reply },
+  stored: { text: string; progress?: true; quiet?: true } | null = {
+    text: reply,
+  },
 ): Promise<string[]> {
   const conversationId = `local:web:${randomUUID()}`;
   const source = createWebSource(conversationId, "private");
@@ -138,6 +140,7 @@ async function completeDashboardTurn(
           role: "assistant",
           text: stored.text,
           ...(stored.quiet ? { meta: { quiet: true } } : undefined),
+          ...(stored.progress ? { meta: { progress: true } } : undefined),
         },
       },
     ]);
@@ -234,12 +237,20 @@ describe("reply notification task", () => {
     const after = await api("GET", "/api/notifications");
     expect(after?.deviceCount).toBe(1);
 
-    // A Turn with no reply, or with a Quiet message, notifies nobody.
+    // A Turn with no reply, a Quiet message, or a Progress message notifies
+    // nobody.
     await completeDashboardTurn("Nothing to send.", null);
     await completeDashboardTurn("Fixed the lint failure and pushed.", {
       text: "Fixed the lint failure and pushed.",
       quiet: true,
     });
+    await completeDashboardTurn(
+      "Handed the migration to a Thread. I'll report back.",
+      {
+        text: "Handed the migration to a Thread. I'll report back.",
+        progress: true,
+      },
+    );
     expect(pushes).toHaveLength(1);
   });
 
