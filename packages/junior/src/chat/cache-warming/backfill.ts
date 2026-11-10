@@ -1,6 +1,6 @@
 /**
- * One-time fill of the cache warming gap lists from stored Conversation
- * history.
+ * Fill of the empty cache warming gap lists from stored Conversation
+ * history, about once a month.
  *
  * `warmup.ts` learns reply gaps only from idle periods after it is deployed.
  * Until a `gapSegment` has gaps, Junior sends no warmups for it. This replays
@@ -46,11 +46,18 @@ import {
 } from "./warmup";
 
 // The key names the segment format. A change of the `gapSegment` keys must
-// change it, so that the fill runs again for the new segment lists.
-const BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
+// change it, so that the fill runs again for the new segment lists. `v2`
+// replaces a key whose `done` had no TTL. Existing installs run the backfill
+// once more after deploy, and that run fills only segments that are empty.
+const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
+// A completed run expires after the gap list TTL. Then a heartbeat checks
+// for empty segment lists again, about once a month, for a fresh install and
+// for one that has run for a long time. A list that expired while warming was
+// off gets history again. Until then a heartbeat makes one state call.
+const BACKFILL_DONE_TTL_MS = GLOBAL_GAPS_TTL_MS;
 // Each batch is one query, and the SQL statement timeout applies to it. Small
 // batches keep each query short and let the budget check run often.
 const CONVERSATION_BATCH_SIZE = 10;
@@ -347,9 +354,9 @@ async function collectGaps(
 }
 
 /**
- * Fill each empty cache warming gap list once per install from the stored
- * Conversation history. The heartbeat calls it each minute. After one run
- * completes, a call makes one state request and returns.
+ * Fill each empty cache warming gap list from the stored Conversation
+ * history. The heartbeat calls it each minute. After a run completes, a call
+ * makes one state request and returns, until the completed run expires.
  *
  * A run that uses its scan budget writes the gaps that it has and also
  * completes. Some gaps are better than none, and a run that cannot finish
@@ -416,7 +423,7 @@ export async function backfillCacheWarmingGaps(args: {
         gapCount += newest.length;
         segmentCount += 1;
       }
-      await state.set(BACKFILL_KEY, "done");
+      await state.set(BACKFILL_KEY, "done", BACKFILL_DONE_TTL_MS);
       const completed = {
         ...logAttributes,
         "app.cache_warming.backfill.gap_count": gapCount,
