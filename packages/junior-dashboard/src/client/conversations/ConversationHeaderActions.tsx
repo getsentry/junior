@@ -13,6 +13,7 @@ import {
   PinOff,
   ScrollText,
   Search,
+  Unlink,
   X,
 } from "lucide-react";
 
@@ -43,6 +44,14 @@ export type ConversationArchiveAction = {
 export type ConversationContinueInSlackAction = {
   disabled: boolean;
   onClick(): void;
+};
+
+export type ConversationDeliveryAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+  /** Updates stay in the dashboard, not the Slack thread. */
+  paused: boolean;
 };
 
 export type ConversationPinAction = {
@@ -78,6 +87,8 @@ export function ConversationHeaderActions(props: {
   conversationId: string;
   /** Present only when the viewer can move this conversation to Slack. */
   continueInSlack?: ConversationContinueInSlackAction;
+  /** Present only when the viewer can detach it from its Slack thread. */
+  delivery?: ConversationDeliveryAction;
   copyAction?: ReactNode;
   detailsOpen: boolean;
   onDetailsClick(): void;
@@ -128,6 +139,21 @@ export function ConversationHeaderActions(props: {
           onClick={props.continueInSlack.onClick}
         >
           <MessageSquareShare aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+      ) : null}
+      {props.delivery ? (
+        <MenuActionButton
+          disabled={props.delivery.disabled}
+          label={
+            props.delivery.paused ? "Reattach to Slack" : "Detach from Slack"
+          }
+          onClick={props.delivery.onClick}
+        >
+          {props.delivery.paused ? (
+            <MessageSquareShare aria-hidden="true" size={16} strokeWidth={2} />
+          ) : (
+            <Unlink aria-hidden="true" size={16} strokeWidth={2} />
+          )}
         </MenuActionButton>
       ) : null}
       <MenuActionButton

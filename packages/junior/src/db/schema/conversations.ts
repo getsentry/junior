@@ -103,6 +103,11 @@ export const juniorConversations = pgTable(
      * from its parent, clears it.
      */
     stoppedAt: timestamptz("stopped_at"),
+    /**
+     * Set while a root's Event Turn replies stay out of its Location. Junior
+     * still stores them. A person's next mention in the Location clears it.
+     */
+    deliveryPausedAt: timestamptz("delivery_paused_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),

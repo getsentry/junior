@@ -3,6 +3,7 @@ import {
   readMessageAttachments,
   type MessageAttachment,
 } from "@/chat/attachments/input";
+import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -611,7 +612,13 @@ export function createConversationTurnWorker(
           const quiet =
             options?.quiet === true && isEventTurn && cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
-          if (deliverToProvider && !quiet) {
+          // Read the pause at reply time: a person can pause Delivery while
+          // this Turn runs.
+          if (
+            deliverToProvider &&
+            !quiet &&
+            !(await isConversationDeliveryPaused(context.conversationId))
+          ) {
             if (!conversationLocation || !deliverMessage) {
               throw new Error(
                 `Conversation ${context.conversationId} cannot deliver to its Location`,

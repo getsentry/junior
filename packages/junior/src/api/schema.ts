@@ -145,6 +145,14 @@ export type {
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
 export {
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
+} from "./schema/conversation-delivery";
+export type {
+  ConversationDeliveryBody,
+  ConversationDeliveryResponse,
+} from "./schema/conversation-delivery";
+export {
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
