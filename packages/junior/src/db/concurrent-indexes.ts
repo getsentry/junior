@@ -11,9 +11,12 @@
  */
 import type { MigrationMeta } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "./db";
+import { isPostgresErrorCode } from "./postgres-error";
 
 const CONCURRENT_INDEX_MARKER = "-- junior:concurrent-index";
 const INDEX_STATEMENT = /^CREATE INDEX "([a-z0-9_]+)" ON "([a-z0-9_]+)" .+;$/;
+// Postgres `undefined_column`.
+const UNDEFINED_COLUMN = "42703";
 
 interface ConcurrentIndex {
   name: string;
@@ -103,7 +106,21 @@ async function buildConcurrentIndex(
   if (!table?.exists) {
     return;
   }
-  const expected = await expectedDefinition(executor, index);
+  let expected: string;
+  try {
+    expected = await expectedDefinition(executor, index);
+  } catch (error) {
+    // A pending migration adds a column that the index uses. A concurrent
+    // build cannot run before that migration, and gives no benefit after
+    // it: its ADD COLUMN already blocks writes to the table until the
+    // migration batch commits. The migration's own build then scans only
+    // the rows that already exist. If the column is missing for another
+    // reason, that build fails with the same error.
+    if (isPostgresErrorCode(error, UNDEFINED_COLUMN)) {
+      return;
+    }
+    throw error;
+  }
   let state = await readIndexState(executor, index.name);
   if (state && !state.usable) {
     // An interrupted concurrent build leaves an index that cannot be used.

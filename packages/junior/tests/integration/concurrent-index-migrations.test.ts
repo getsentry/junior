@@ -130,6 +130,38 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
       }
     });
 
+    it("builds a marked index on a column that the same pending migration adds", async () => {
+      const noteIndex = "concurrent_index_items_note_idx";
+      const fixture = await createEmptyJuniorPostgresFixture();
+      const pending = await createItemsWithPendingMigration(fixture.sql, {
+        sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;--> statement-breakpoint
+DO $$
+BEGIN
+  IF to_regclass('${noteIndex}') IS NULL THEN
+    -- junior:concurrent-index
+    CREATE INDEX "${noteIndex}" ON "concurrent_index_items" USING btree ("note") WHERE "concurrent_index_items"."note" IS NOT NULL;
+  END IF;
+END $$;`,
+        tag: "0001_items_note_index",
+      });
+
+      try {
+        await expect(pending.migrate()).resolves.toMatchObject({
+          migrated: 1,
+        });
+        const [index] = await fixture.sql.query<{ usable: boolean }>(
+          `SELECT indisvalid AND indisready AS usable
+           FROM pg_index
+           WHERE indexrelid = to_regclass($1)`,
+          [noteIndex],
+        );
+        expect(index?.usable).toBe(true);
+      } finally {
+        await fixture.close();
+        await rm(pending.dir, { force: true, recursive: true });
+      }
+    });
+
     it("rebuilds an interrupted build and rejects an index that differs", async () => {
       const fixture = await createEmptyJuniorPostgresFixture();
       const pending = await createItemsWithPendingMigration(fixture.sql);
