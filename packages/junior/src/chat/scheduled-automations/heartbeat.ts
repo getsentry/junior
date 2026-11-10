@@ -5,6 +5,11 @@ import {
   getScheduledAutomationDispatch,
 } from "@/chat/agent-dispatch/context";
 import { renderTaskInput } from "@/chat/task-input";
+import { hasAutomationWork } from "@/chat/automations/task";
+import {
+  findAutomationSkill,
+  missingAutomationSkillReason,
+} from "@/chat/automations/skill";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
@@ -44,6 +49,7 @@ function buildDispatchInput(task: ScheduledAutomation): string {
   return renderTaskInput({
     creator: slackMention(task.createdBy.slackUserId),
     instructions: task.task.text,
+    skill: task.task.skill,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
   });
 }
@@ -53,7 +59,7 @@ function buildDispatchMetadata(args: {
   run: ScheduledRun;
   task: ScheduledAutomation;
 }): Record<string, string> {
-  if (!args.task.task.text?.trim()) {
+  if (!hasAutomationWork(args.task.task)) {
     throw new Error("Scheduled automation text is required");
   }
   return {
@@ -361,6 +367,18 @@ export async function runScheduledAutomationHeartbeat(args: {
       continue;
     }
 
+    const { skill } = task.task;
+    if (skill && !(await findAutomationSkill(skill))) {
+      await finishClaimedRun({
+        db,
+        errorMessage: missingAutomationSkillReason(skill),
+        nowMs: args.nowMs,
+        run,
+        status: "blocked",
+      });
+      continue;
+    }
+
     let dispatch;
     try {
       dispatch = await dispatchScheduledAutomation({
@@ -382,6 +400,7 @@ export async function runScheduledAutomationHeartbeat(args: {
           destination: task.destination,
           destinationVisibility: task.conversationAccess.visibility,
           input: buildDispatchInput(task),
+          ...(skill ? { skill } : undefined),
           metadata,
           replyAttribution: automationReplyAttribution(task.title),
           outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),

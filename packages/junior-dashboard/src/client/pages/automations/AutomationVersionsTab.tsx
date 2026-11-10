@@ -288,6 +288,7 @@ function VersionListItem(props: {
 
 const VERSION_FIELDS = [
   { key: "title", label: "Title" },
+  { key: "skill", label: "Skill" },
   { key: "instruction", label: "What to do" },
   { key: "when", label: "When to run" },
   { key: "destination", label: "Destination" },
@@ -363,7 +364,14 @@ function fieldValue(
   switch (key) {
     case "title":
       return definition.title ?? "First line of the instruction";
+    case "skill":
+      return definition.skill ? (
+        <span className="font-mono">{definition.skill}</span>
+      ) : (
+        "No skill"
+      );
     case "instruction":
+      if (!definition.instruction) return "No context";
       return (
         <DisplayText
           mentions={automation.mentions}

@@ -98,6 +98,82 @@ test("edits an Automation in place, preserves list state, and protects the draft
   ]);
 });
 
+test("runs a skill with optional context instead of an instruction", async ({
+  page,
+  dashboard,
+}) => {
+  const state = await mockAutomationEditor(page, "scheduled");
+  await page.route("**/api/skills", (route) =>
+    route.fulfill({
+      json: [
+        {
+          name: "release-check",
+          description: "Check release readiness and post a short summary.",
+          disableModelInvocation: true,
+        },
+        {
+          name: "triage-incident",
+          description: "Triage a live incident into a suspects-first note.",
+        },
+        {
+          name: "tpm",
+          description: "Run the TPM bug digest from Linear.",
+          pluginProvider: "linear",
+        },
+      ],
+    }),
+  );
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1/edit`);
+  await page.getByRole("button", { name: "Skill", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Pick a skill for Junior to run. Add context only when this automation needs more than the skill does.",
+    ),
+  ).toBeVisible();
+  await page.getByLabel("Skill", { exact: true }).click();
+  await screenshot(page, "automation-skill-picker", { view: "desktop" });
+  await page.getByPlaceholder("Search by name or description").fill("release");
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Skill", { exact: true })).toContainText(
+    "Manual only",
+  );
+  await page.getByRole("button", { name: "Add context", exact: true }).click();
+  await page
+    .getByLabel("Additional context", { exact: true })
+    .fill("Only check getsentry/junior.");
+  const yourChanges = page.getByRole("complementary", {
+    name: "Your changes",
+  });
+  await expect(yourChanges).toContainText("New: release-check");
+  await expect(yourChanges).toContainText("Additional context");
+  await screenshot(page, "automation-skill-editor");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(
+    page.getByText("Automation saved", { exact: true }),
+  ).toBeVisible();
+  expect(state.writes).toEqual([
+    {
+      kind: "scheduled",
+      revision: "a".repeat(64),
+      instruction: "Only check getsentry/junior.",
+      skill: "release-check",
+    },
+  ]);
+
+  // A saved skill that is gone stays selected and says why runs block.
+  state.value = { ...state.value, skill: "removed-check", instruction: "" };
+  await page.goto(`${dashboard.baseURL}/automations/scheduled-1/edit`);
+  await expect(
+    page.getByText(
+      "The skill removed-check is no longer installed. This automation is blocked until you choose another skill or switch to an instruction.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel("Skill", { exact: true })).toContainText(
+    "Not found",
+  );
+  await screenshot(page, "automation-skill-missing");
+});
+
 test("keeps Event edits through validation, failed saves, and concurrent changes", async ({
   page,
   dashboard,

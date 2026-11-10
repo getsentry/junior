@@ -28,6 +28,10 @@ import {
   eventAutomationRunLimitReason,
 } from "@/chat/event-automations/run-limit";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import {
+  findAutomationSkill,
+  missingAutomationSkillReason,
+} from "@/chat/automations/skill";
 import { botConfig } from "@/chat/config";
 import {
   slackChannelMessageReplyThreadTs,
@@ -66,6 +70,7 @@ function eventInput(
     source: event.namespace,
     creator: slackMention(task.createdBy.slackUserId),
     instructions: task.task.text,
+    skill: task.task.skill,
     outcomes,
     guidance,
     trustedSummary: event.trustedSummary,
@@ -109,6 +114,18 @@ export async function ingestEventAutomations(
   const errors: unknown[] = [];
   for (const task of tasks) {
     try {
+      const { skill } = task.task;
+      if (skill && !(await findAutomationSkill(skill))) {
+        const reason = missingAutomationSkillReason(skill);
+        if (await blockEventAutomation(db, task.id, reason)) {
+          await notifyAutomationBlocked({
+            automationId: task.id,
+            kind: "event",
+            reason,
+          });
+        }
+        continue;
+      }
       const idempotencyKey = eventAutomationDispatchKey(
         task.id,
         event.namespace,
@@ -177,6 +194,7 @@ export async function ingestEventAutomations(
           destination,
           destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event, outcomes, catalog),
+          ...(skill ? { skill } : undefined),
           metadata: { eventAutomationId: task.id },
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,

@@ -16,6 +16,7 @@ import {
 /** In form order, so the list reads top to bottom like the form. */
 const CHANGE_LABELS: Record<keyof AutomationDraft, string> = {
   title: "Title",
+  skill: "Skill",
   instruction: "Instruction",
   schedule: "Schedule",
   trigger: "Trigger",
@@ -38,8 +39,16 @@ export function AutomationDraftChanges(props: {
     (key) => props.changes[key] !== undefined,
   );
   const saved = savedDraft(props.original);
+  const skillMode =
+    props.changes.skill !== undefined
+      ? props.changes.skill !== null
+      : saved.skill !== null;
+  const changeLabel = (key: keyof AutomationDraft) =>
+    key === "instruction" && skillMode
+      ? "Additional context"
+      : CHANGE_LABELS[key];
   const label = (draft: Partial<AutomationDraft>, key: keyof AutomationDraft) =>
-    draftValueLabel(draft, key, props.summary);
+    draftValueLabel(draft, key, props.summary, skillMode);
   return (
     <aside
       aria-label="Your changes"
@@ -61,9 +70,9 @@ export function AutomationDraftChanges(props: {
             {keys.map((key) => (
               <li className="grid min-w-0 gap-1 text-sm" key={key}>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium">{CHANGE_LABELS[key]}</span>
+                  <span className="font-medium">{changeLabel(key)}</span>
                   <Button
-                    aria-label={`Undo ${CHANGE_LABELS[key].toLowerCase()} change`}
+                    aria-label={`Undo ${changeLabel(key).toLowerCase()} change`}
                     disabled={props.disabled}
                     onClick={() => props.onUndo(key)}
                   >
@@ -102,12 +111,20 @@ function draftValueLabel(
   draft: Partial<AutomationDraft>,
   key: keyof AutomationDraft,
   summary: AutomationSummary,
+  skillMode: boolean,
 ): string {
   switch (key) {
     case "title":
-      return draft.title || "First line of the instruction";
+      return (
+        draft.title ||
+        (skillMode ? "Named after the skill" : "First line of the instruction")
+      );
+    case "skill":
+      return draft.skill === null
+        ? "Instruction"
+        : draft.skill || "No skill chosen";
     case "instruction":
-      return draft.instruction || "Empty";
+      return draft.instruction || (skillMode ? "None" : "Empty");
     case "credentialMode":
       return draft.credentialMode === "creator"
         ? summary.ownedByViewer

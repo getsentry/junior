@@ -75,12 +75,23 @@ function AutomationSettings(props: { automation: AutomationSummary }) {
   return (
     <div className="min-w-0 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
       <AutomationFormSection title="What to do">
-        <div className="text-base leading-relaxed [overflow-wrap:anywhere]">
-          <DisplayText
-            mentions={automation.mentions ?? []}
-            text={automation.instruction}
-          />
-        </div>
+        {automation.skill ? (
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            Runs the{" "}
+            <span className="font-mono text-dashboard-text">
+              {automation.skill}
+            </span>{" "}
+            skill{automation.instruction ? " with this context:" : "."}
+          </p>
+        ) : null}
+        {automation.instruction ? (
+          <div className="text-base leading-relaxed [overflow-wrap:anywhere]">
+            <DisplayText
+              mentions={automation.mentions ?? []}
+              text={automation.instruction}
+            />
+          </div>
+        ) : null}
       </AutomationFormSection>
       <AutomationFormSection title="When to run">
         {automation.kind === "scheduled" ? (

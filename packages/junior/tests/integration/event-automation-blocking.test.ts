@@ -4,7 +4,10 @@ import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { markDispatchBlocked } from "@/chat/agent-dispatch/store";
+import {
+  getDispatchRecord,
+  markDispatchBlocked,
+} from "@/chat/agent-dispatch/store";
 import { getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { ingestEventAutomations } from "@/chat/event-automations/ingest";
@@ -25,6 +28,7 @@ import {
   createConversationWorkQueueTestAdapter,
   type ConversationWorkQueueTestAdapter,
 } from "../fixtures/conversation-work";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import {
   createConfiguredJuniorSqlFixture,
@@ -168,6 +172,91 @@ describe("event automation blocking", () => {
       status: "blocked",
       statusReason: reason,
     });
+  });
+
+  it("runs the chosen skill and blocks when it is no longer installed", async () => {
+    let removeSkills: (() => Promise<void>) | undefined =
+      await installTestSkills([
+        {
+          name: "release-check",
+          description: "Check the release.",
+          body: "Check the release.",
+          disableModelInvocation: true,
+        },
+      ]);
+    try {
+      const create = (skill: string) =>
+        execute(
+          createAutomationTool(
+            automationToolContext(context()),
+            getEventCatalog(),
+          ),
+          {
+            skill,
+            outcomes: [],
+            trigger: {
+              type: "event",
+              namespace: "github",
+              label: "GitHub PR getsentry/junior#1174",
+              events: ["pull_request.review.changes_requested"],
+              match: { repo: "getsentry/junior", pull_request: 1174 },
+            },
+          },
+          `skill-create-${skill}`,
+        ) as Promise<{ automation: { id: string } }>;
+      await expect(create("unknown-check")).rejects.toThrow(
+        "The skill unknown-check is not installed.",
+      );
+      const { automation } = await create("release-check");
+      const db = fixture.sql.db();
+      const read = async () => (await getEventAutomation(db, automation.id))!;
+      const ingest = (eventKey: string) =>
+        ingestEventAutomations(changesRequestedEvent(eventKey), {
+          queue,
+          teamId,
+        });
+
+      expect(await ingest("github:skill-1")).toEqual({ dispatched: 1 });
+      const dispatchId = queue
+        .sentRecords()[0]!
+        .conversationId!.replace(/^agent-dispatch:/, "");
+      await expect(getDispatchRecord(dispatchId)).resolves.toMatchObject({
+        skill: "release-check",
+      });
+
+      await removeSkills();
+      removeSkills = undefined;
+      expect(await ingest("github:skill-2")).toEqual({ dispatched: 0 });
+      expect(await read()).toMatchObject({
+        status: "blocked",
+        statusReason:
+          "The skill release-check is no longer installed. Choose another skill or switch to an instruction.",
+      });
+      expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
+
+      // A null skill switches the Automation to an instruction.
+      await execute(
+        createUpdateAutomationTool(
+          automationToolContext(context()),
+          getEventCatalog(),
+        ),
+        {
+          automation_id: automation.id,
+          skill: null,
+          instruction: "Add the release-train label.",
+          status: "active",
+        },
+      );
+      const resumed = await read();
+      expect(resumed).toMatchObject({
+        status: "active",
+        task: { text: "Add the release-train label." },
+      });
+      expect(resumed.task).not.toHaveProperty("skill");
+      expect(await ingest("github:skill-3")).toEqual({ dispatched: 1 });
+    } finally {
+      await removeSkills?.();
+    }
   });
 
   it("limits runs for each event automation, not for its trigger", async () => {

@@ -96,6 +96,7 @@ function editView(
     revision: automationRevision(task),
     title: task.title ?? null,
     instruction: task.task.text,
+    ...(task.task.skill ? { skill: task.task.skill } : undefined),
     credentialMode: task.credentialMode,
     outcomes: task.outcomes,
     destination: task.destination,
@@ -276,6 +277,8 @@ export async function activateViewerAutomationVersion(
   const fields: AutomationEditFields = {};
   if (definition.instruction !== current.task.task.text)
     fields.instruction = definition.instruction;
+  if (definition.skill !== current.task.task.skill)
+    fields.skill = definition.skill ?? null;
   if (definition.credentialMode !== current.task.credentialMode)
     fields.credentialMode = definition.credentialMode;
   if (!sameDefinitionValue(definition.outcomes, current.task.outcomes))

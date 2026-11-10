@@ -19,6 +19,7 @@ import {
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
 import {
+  automationSkillToolSchema,
   automationToolResult,
   automationToolResultSchema,
   automationTriggerChangesSchema,
@@ -33,6 +34,7 @@ import { editEventAutomation } from "@/chat/event-automations/edit";
 import { changedEventMatch } from "@/chat/event-automations/tool-support";
 import { saveEventAutomation } from "@/chat/event-automations/store";
 import type { EventCatalog } from "@/chat/events/catalog";
+import type { SkillMetadata } from "@/chat/skills";
 import { logInfo } from "@/chat/logging";
 import { editScheduledAutomation } from "@/chat/scheduled-automations/edit";
 import { scheduleIntentFromTool } from "@/chat/scheduled-automations/schedule-intent";
@@ -58,6 +60,8 @@ import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 type UpdateInput = {
   title?: string;
   instruction?: string;
+  /** Null switches to instruction mode. */
+  skill?: string | null;
   trigger?: AutomationTriggerChangesInput;
   outcomes?: z.output<typeof taskOutcomeInputSchema>[];
   credential_mode?: "creator" | "system";
@@ -179,6 +183,7 @@ async function updateScheduled(
     {
       title: input.title,
       instruction: input.instruction,
+      skill: input.skill,
       schedule:
         input.trigger?.type === "schedule"
           ? scheduleIntentFromTool(input.trigger.schedule)
@@ -236,6 +241,7 @@ async function updateEvent(
     {
       title: input.title,
       instruction: input.instruction,
+      skill: input.skill,
       // The tools cannot set an identifier, so a saved one stays. A filter
       // that is left out keeps its saved value. Another namespace starts a
       // new trigger.
@@ -275,8 +281,11 @@ async function updateEvent(
 export function createUpdateAutomationTool(
   context: AutomationToolContext,
   catalog: EventCatalog,
+  /** Every discovered skill, listed in the skill input. */
+  skills: readonly SkillMetadata[] = [],
 ) {
   const trigger = automationTriggerChangesSchema(catalog);
+  const skill = automationSkillToolSchema(skills);
   const inputSchema = z
     .object({
       automation_id: z
@@ -287,6 +296,12 @@ export function createUpdateAutomationTool(
         ),
       title: automationTitleSchema.optional(),
       instruction: automationInstructionToolSchema.nullable().optional(),
+      skill: skill
+        .nullable()
+        .describe(
+          `${skill.description} Use null to switch to the instruction; also set instruction then. Omit to keep the current skill or instruction.`,
+        )
+        .optional(),
       trigger: trigger
         .nullable()
         .describe(
@@ -335,19 +350,21 @@ export function createUpdateAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Update the title, instruction, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
+      "Update the title, instruction, skill, trigger, outcomes, credential use, or status of a scheduled or event automation. Anyone in the workspace can update anything on an automation in a public channel, including its outcomes and destination. Automations in private channels and DMs can be updated from there or by their creator, and only their creator can move them. Only the creator can enable creator credentials. A non-creator who changes the instruction, skill, trigger, outcomes, or destination switches it to system credentials. The trigger type cannot change. Set destination to move a scheduled automation to this conversation or to a public channel.",
     inputSchema,
     prepareArguments(args) {
-      // Null means omitted.
+      // Null means omitted, except a null skill, which switches to the
+      // instruction.
       return Object.fromEntries(
         Object.entries(args as Record<string, unknown>).filter(
-          ([, value]) => value != null,
+          ([key, value]) =>
+            value !== undefined && (value !== null || key === "skill"),
         ),
       ) as z.input<typeof inputSchema>;
     },
     outputSchema: automationToolResultSchema,
     async execute({ automation_id, status: requestedStatus, ...fields }) {
-      // prepareArguments removed every null.
+      // prepareArguments removed every null but the skill.
       const input = fields as UpdateInput;
       const status = requestedStatus ?? undefined;
       const caller = await requireToolCaller(context);

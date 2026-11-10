@@ -23,7 +23,13 @@ export type AutomationScheduleDraft =
 
 export type AutomationDraft = {
   title: string;
+  /** The instruction, or the optional context of a skill. */
   instruction: string;
+  /**
+   * Null is instruction mode. An empty string is skill mode before a skill is
+   * chosen; saving rejects it.
+   */
+  skill: string | null;
   credentialMode: AutomationEdit["credentialMode"];
   outcomes: NonNullable<AutomationUpdate["outcomes"]>;
   schedule?: AutomationScheduleDraft;
@@ -35,6 +41,7 @@ export function createAutomationDraft(value: AutomationEdit): AutomationDraft {
   return {
     title: value.title ?? "",
     instruction: value.instruction,
+    skill: value.skill ?? null,
     credentialMode: value.credentialMode,
     outcomes: value.outcomes,
     trigger: value.kind === "event" ? value.trigger : undefined,
@@ -95,6 +102,7 @@ export function automationDraftChanges(
   if (draft.title !== (original.title ?? "")) changes.title = draft.title;
   if (draft.instruction !== original.instruction)
     changes.instruction = draft.instruction;
+  if (draft.skill !== (original.skill ?? null)) changes.skill = draft.skill;
   if (draft.credentialMode !== original.credentialMode)
     changes.credentialMode = draft.credentialMode;
   if (JSON.stringify(draft.outcomes) !== JSON.stringify(original.outcomes))

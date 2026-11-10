@@ -174,6 +174,11 @@ export type AgentDispatch = {
   /** Visible effects after successful work. */
   outcomes?: TaskOutcome[];
   /**
+   * Skill that an Automation in skill mode runs. The run invokes it like an
+   * explicit skill, so a skill with `disable-model-invocation` loads too.
+   */
+  skill?: string;
+  /**
    * The run ends with one declared Automation result. It gets no Delivery,
    * and only a declared message posts. The dispatch layer sets this once.
    */

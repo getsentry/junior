@@ -169,6 +169,8 @@ export async function insertScheduledAutomation(args: {
    * An empty list stores no outcomes, so a successful run posts nothing.
    */
   sendTo?: SlackChannel[];
+  /** Skill that each run invokes. `task` is then its optional context. */
+  skill?: string;
   task: string;
 }): Promise<{ id: string }> {
   const author = resolveAuthor(args.createdBy);
@@ -212,7 +214,10 @@ export async function insertScheduledAutomation(args: {
           timezone: "America/Los_Angeles",
         },
     status: "active",
-    task: { text: args.task },
+    task: {
+      text: args.task,
+      ...(args.skill ? { skill: args.skill } : undefined),
+    },
     updatedAtMs: nowMs - 60_000,
   };
   await insertCreationThread(args.destination);

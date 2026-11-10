@@ -18,6 +18,8 @@ export function automationDefinition(task: VersionedAutomation) {
   const common = {
     title: task.title?.trim() || null,
     instruction: task.task.text,
+    // Omitted in instruction mode, so older definitions still match.
+    ...(task.task.skill ? { skill: task.task.skill } : undefined),
     credentialMode: task.credentialMode,
     destination: task.destination,
     outcomes: task.outcomes,

@@ -15,10 +15,11 @@ import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/typ
  * One row per Automation of either kind. `record` holds the fields that have
  * no column. Each write also copies the nested fields that queries filter or
  * search on into columns: `team_id`, `channel_id`, `creator_slack_user_id`,
- * `instruction`, and the event trigger `namespace` and `identifier`. An event
- * trigger with no identifier runs for every resource of its namespace, so its
- * `identifier` is null. The match index finds those rows with
- * `identifier is null`.
+ * `instruction`, and the event trigger `namespace` and `identifier`.
+ * `instruction` holds the task description, which names the skill in skill
+ * mode, so search and title fallback find it. An event trigger with no
+ * identifier runs for every resource of its namespace, so its `identifier` is
+ * null. The match index finds those rows with `identifier is null`.
  */
 export const juniorAutomations = pgTable(
   "junior_automations",

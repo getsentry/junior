@@ -12,6 +12,7 @@ import type {
   ScheduledAutomationConversationAccess,
 } from "./types";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
+import { automationTaskDescription } from "@/chat/automations/task";
 
 /** Model-facing shape of one scheduled automation. */
 export const compactTaskResultSchema = z
@@ -25,6 +26,7 @@ export const compactTaskResultSchema = z
     updated_at: z.string().datetime(),
     original_request: z.string().nullable(),
     instruction: z.string(),
+    skill: z.string().nullable(),
     schedule: z.string(),
     timezone: z.string(),
     // Uses the keys of the schedule input, so the model can pass the
@@ -105,6 +107,7 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
     updated_at: new Date(task.updatedAtMs).toISOString(),
     original_request: task.originalRequest ?? null,
     instruction: task.task.text,
+    skill: task.task.skill ?? null,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
     recurrence: task.schedule.recurrence
@@ -159,9 +162,9 @@ export async function scheduleAutomationToolResult(
   isCreator: boolean,
 ) {
   const automation = compactTask(task, isCreator);
+  const description = automationTaskDescription(task.task);
   const title =
-    automation.title ??
-    fallbackShortTitle(automation.instruction, "Scheduled automation");
+    automation.title ?? fallbackShortTitle(description, "Scheduled automation");
   const annotation: ObjectAnnotation = {
     kind: "object",
     objectType: "automation",
@@ -169,7 +172,7 @@ export async function scheduleAutomationToolResult(
     key: task.id,
     title,
     url: automation.dashboard_url,
-    description: automation.instruction,
+    description,
     status: automation.status,
     trigger:
       task.schedule.kind === "one_off" && task.nextRunAtMs !== undefined

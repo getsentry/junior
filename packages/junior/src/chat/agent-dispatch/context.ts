@@ -148,7 +148,8 @@ export async function dispatchEventAutomation(args: {
   };
 }) {
   const plugin = "junior";
-  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, skill, ...unboundOptions } =
+    args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
     ? bindEventAutomationCredentialSubject({
@@ -162,6 +163,7 @@ export async function dispatchEventAutomation(args: {
   const options: BoundDispatchOptions = {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
+    ...(skill ? { skill } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: {
       kind: "event_automation",
@@ -195,7 +197,8 @@ export async function dispatchScheduledAutomation(args: {
   // Also the signed credential binding label. A rename breaks existing task
   // credentials.
   const plugin = "scheduler";
-  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, skill, ...unboundOptions } =
+    args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
     ? bindScheduledAutomationCredentialSubject({
@@ -209,6 +212,7 @@ export async function dispatchScheduledAutomation(args: {
   const options: BoundDispatchOptions = {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
+    ...(skill ? { skill } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: {
       kind: "scheduled_automation",

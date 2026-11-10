@@ -52,14 +52,21 @@ function renderAutomationDetails(
         ? "ready"
         : "unavailable";
   // Item entities use custom_fields only. Do not add task-specific fields.
-  const fields: DetailField[] = [
-    textField("status", "Status", status),
-    {
-      ...textField("description", "Instruction", automation.instruction),
+  const fields: DetailField[] = [textField("status", "Status", status)];
+  if (automation.skill)
+    fields.push(textField("skill", "Skill", automation.skill));
+  // A skill can run without context, and Slack rejects an empty field.
+  if (automation.instruction) {
+    fields.push({
+      ...textField(
+        "description",
+        automation.skill ? "Context" : "Instruction",
+        automation.instruction,
+      ),
       format: "markdown",
       long: true,
-    },
-  ];
+    });
+  }
   if (automation.kind === "scheduled") {
     fields.push(
       { ...textField("trigger", "Schedule", automation.schedule), long: true },

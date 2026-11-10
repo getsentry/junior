@@ -20,6 +20,7 @@ import {
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { installTestSkills } from "../fixtures/skill-dirs";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
@@ -403,6 +404,74 @@ describe("scheduled automation heartbeat", () => {
     ).resolves.toMatchObject({
       status: "deleted",
     });
+  }, 30_000);
+
+  it("dispatches a skill run with the skill named in the dispatch", async () => {
+    const removeSkills = await installTestSkills([
+      {
+        name: "manual-digest",
+        description: "Post the manual digest.",
+        body: "Post the digest.",
+        disableModelInvocation: true,
+      },
+    ]);
+    try {
+      const db = scheduledAutomationDb();
+      await saveScheduledAutomation(
+        db,
+        createTask({
+          task: {
+            skill: "manual-digest",
+            text: "Only cover getsentry/junior.",
+          },
+        }),
+      );
+
+      await runAuthorizedHeartbeat();
+
+      const running = await readScheduledRun(
+        db,
+        `sched_plugin_1:${TEST_RUN_AT_MS}`,
+      );
+      expect(running?.status).toBe("running");
+      const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
+      // The agent run invokes the skill from this field, not from the text.
+      expect(dispatchRecord?.skill).toBe("manual-digest");
+      expect(dispatchRecord?.input).toContain(
+        [
+          "Run the manual-digest skill. The instructions below add context for this run.",
+          "<instructions>Only cover getsentry/junior.</instructions>",
+        ].join("\n"),
+      );
+    } finally {
+      await removeSkills();
+    }
+  }, 30_000);
+
+  it("blocks a skill run when the skill is no longer installed", async () => {
+    const db = scheduledAutomationDb();
+    await saveScheduledAutomation(
+      db,
+      createTask({ task: { skill: "removed-digest", text: "" } }),
+    );
+
+    await runAuthorizedHeartbeat();
+
+    const reason =
+      "The skill removed-digest is no longer installed. Choose another skill or switch to an instruction.";
+    await expect(
+      readScheduledRun(db, `sched_plugin_1:${TEST_RUN_AT_MS}`),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      errorMessage: reason,
+      dispatchId: null,
+    });
+    await expect(
+      readScheduledAutomation(db, "sched_plugin_1"),
+    ).resolves.toMatchObject({ status: "blocked", statusReason: reason });
+    expect(conversationWorkQueue.sentRecords()).toHaveLength(0);
+    // The creator hears that the Automation is blocked.
+    expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
   }, 30_000);
 
   it("blocks malformed scheduled automations without stopping the core heartbeat", async () => {

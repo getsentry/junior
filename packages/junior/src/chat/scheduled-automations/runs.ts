@@ -201,6 +201,7 @@ function taskDedupeFingerprint(task: ScheduledAutomation): string {
       timezone: task.schedule.timezone,
     },
     task: normalizedText(task.task.text),
+    skill: task.task.skill ?? null,
   });
 }
 

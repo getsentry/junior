@@ -17,6 +17,7 @@ import {
   type EventTriggerDescription,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { automationSkillNameSchema } from "@/chat/automations/task";
 import { actorIdentitySchema } from "./conversation";
 
 const automationDestinationSchema = z
@@ -57,7 +58,10 @@ const automationSummaryBaseSchema = z.object({
   createdByEmail: z.string().trim().email().optional(),
   destination: automationDestinationSchema,
   id: z.string().min(1),
-  instruction: z.string().min(1),
+  /** The instruction, or the optional context of a skill. */
+  instruction: z.string(),
+  /** Skill that each run invokes. Absent in instruction mode. */
+  skill: automationSkillNameSchema.optional(),
   /** People mentioned in the instruction, resolved at read time. */
   mentions: z.array(actorIdentitySchema).optional(),
   lastConversationId: z.string().min(1).optional(),
@@ -245,6 +249,7 @@ export const automationRunListSchema = z
 const automationDefinitionFields = {
   title: z.string().nullable(),
   instruction: z.string(),
+  skill: automationSkillNameSchema.optional(),
 };
 
 const automationVersionFields = {
@@ -366,6 +371,7 @@ const automationEditBaseSchema = scheduledAutomationSchema
     revision: automationRevisionSchema,
     title: z.string().nullable(),
     instruction: z.string(),
+    skill: automationSkillNameSchema.optional(),
     credentialMode: z.enum(["system", "creator"]),
     outcomes: z.array(taskOutcomeSchema).max(5),
     /** Creator-only rules apply when false. */

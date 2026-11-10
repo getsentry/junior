@@ -19,6 +19,8 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import type { AutomationDestination } from "./creator";
 import type { TaskCandidate } from "./read";
+import { automationSkillNameSchema } from "./task";
+import type { SkillMetadata } from "@/chat/skills";
 
 const automationResultSchema = z.discriminatedUnion("type", [
   compactTaskResultSchema,
@@ -74,6 +76,20 @@ export function automationTriggerChangesSchema(catalog: EventCatalog) {
       type: z.literal("event"),
     }),
   ]);
+}
+
+/**
+ * Build the skill input of the create and update tools. The description
+ * lists every discovered skill, because `<available-skills>` leaves out the
+ * ones with `disable-model-invocation`, and an Automation can run those too.
+ */
+export function automationSkillToolSchema(skills: readonly SkillMetadata[]) {
+  const names = skills.map((skill) =>
+    skill.disableModelInvocation ? `${skill.name} (manual only)` : skill.name,
+  );
+  return automationSkillNameSchema.describe(
+    `Skill that each run invokes instead of a written instruction. Any installed skill works, including manual-only ones. Installed skills: ${names.length > 0 ? names.join(", ") : "none"}.`,
+  );
 }
 
 /** Automation trigger input after parsing. */

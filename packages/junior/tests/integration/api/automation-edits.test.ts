@@ -26,6 +26,7 @@ import {
   execute,
   context as eventContext,
 } from "../../fixtures/event-automations";
+import { installTestSkills } from "../../fixtures/skill-dirs";
 import {
   destination,
   originalInstruction,
@@ -96,6 +97,79 @@ describe("Automation edit API", () => {
         ownedByViewer: false,
       });
     } finally {
+      await fixture.close();
+    }
+  });
+
+  test("switches an Automation to an installed skill and back", async () => {
+    const { app, fixture, url, read, patch } = await setup("scheduled");
+    const removeSkills = await installTestSkills([
+      {
+        name: "release-check",
+        description: "Check the release.",
+        body: "Check the release.",
+        disableModelInvocation: true,
+      },
+    ]);
+    try {
+      const initial = await read();
+      const unknown = await patch({
+        kind: "scheduled",
+        revision: initial.revision,
+        skill: "unknown-check",
+      });
+      expect(unknown.status).toBe(400);
+      expect(await unknown.json()).toMatchObject({
+        fields: {
+          skill: [
+            "The skill unknown-check is not installed. Choose an installed skill.",
+          ],
+        },
+      });
+
+      // A skill needs no context. A manual-only skill can be chosen too.
+      const edited = await patch({
+        kind: "scheduled",
+        revision: initial.revision,
+        skill: "release-check",
+        instruction: "",
+      });
+      expect(edited.status).toBe(200);
+      const saved = automationEditSchema.parse(await edited.json());
+      expect(saved).toMatchObject({ skill: "release-check", instruction: "" });
+      const summary = await app.request(url);
+      expect(await summary.json()).toMatchObject({
+        skill: "release-check",
+        instruction: "",
+      });
+      const versions = automationVersionListSchema.parse(
+        await (await app.request(`${url}/versions`)).json(),
+      ).versions;
+      expect(versions[0]?.definition).toMatchObject({
+        skill: "release-check",
+        instruction: "",
+      });
+
+      // Leaving skill mode needs an instruction.
+      const empty = await patch({
+        kind: "scheduled",
+        revision: saved.revision,
+        skill: null,
+      });
+      expect(empty.status).toBe(400);
+      expect(await empty.json()).toMatchObject({
+        fields: { instruction: ["Write an instruction or choose a skill."] },
+      });
+      const restored = await patch({
+        kind: "scheduled",
+        revision: saved.revision,
+        skill: null,
+        instruction: originalInstruction,
+      });
+      expect(restored.status).toBe(200);
+      expect(await restored.json()).not.toHaveProperty("skill");
+    } finally {
+      await removeSkills();
       await fixture.close();
     }
   });
