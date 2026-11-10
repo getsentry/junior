@@ -210,6 +210,11 @@ function AutomationRunLine(props: {
           >
             {run.error}
           </span>
+        ) : run.status === "blocked" ? (
+          // A blocked run without a reason still needs a word; the dot alone is easy to miss.
+          <span className="col-start-2 truncate text-amber-300 sm:col-start-auto">
+            Blocked
+          </span>
         ) : (
           <span className="col-start-2 truncate text-dashboard-text-muted sm:col-start-auto">
             {title}
