@@ -76,7 +76,7 @@ export interface ReplayGap {
 
 /**
  * Load the model responses and Turn instructions of these Conversations, in
- * order. `sinceMs` skips older rows.
+ * order.
  *
  * Agent history stores each model response as an `assistant_message` and
  * each instruction of a Turn as a `user_message`. Schema version 2 keeps the
@@ -86,7 +86,6 @@ export interface ReplayGap {
  */
 async function loadReplayEvents(
   conversationIds: string[],
-  sinceMs?: number,
 ): Promise<ReplayEvent[]> {
   const events = juniorConversationEvents;
   const isUserMessage = sql`${events.type} = 'user_message'`;
@@ -125,9 +124,6 @@ async function loadReplayEvents(
           ),
         ),
         gte(events.createdAt, juniorConversations.createdAt),
-        sinceMs === undefined
-          ? undefined
-          : gte(events.createdAt, new Date(sinceMs)),
       ),
     )
     .orderBy(events.conversationId, events.seq);
@@ -151,7 +147,7 @@ function isQueryCanceled(error: unknown): boolean {
  */
 export async function loadReplayEventBatches(
   conversationIds: string[],
-  options: { shouldStop?: () => boolean; sinceMs?: number } = {},
+  options: { shouldStop?: () => boolean } = {},
 ): Promise<{
   canceledBatches: number;
   events: Map<string, ReplayEvent[]>;
@@ -168,7 +164,7 @@ export async function loadReplayEventBatches(
     const batch = conversationIds.slice(i, i + REPLAY_BATCH_SIZE);
     let rows: ReplayEvent[];
     try {
-      rows = await loadReplayEvents(batch, options.sinceMs);
+      rows = await loadReplayEvents(batch);
     } catch (error) {
       if (!isQueryCanceled(error)) throw error;
       canceledBatches += 1;

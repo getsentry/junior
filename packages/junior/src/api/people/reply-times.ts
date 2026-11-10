@@ -1,11 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { and, desc, eq, gte, inArray, isNull, max } from "drizzle-orm";
 import { parseActor } from "@/chat/actor";
-import {
-  IDLE_HORIZON_MS,
-  gapHistogramReport,
-  TURN_DEPTHS,
-} from "@/chat/cache-warming/model";
+import { gapHistogramReport, TURN_DEPTHS } from "@/chat/cache-warming/model";
 import {
   loadReplayEventBatches,
   replayConversation,
@@ -87,10 +83,10 @@ export async function readPersonReplyTimes(args: {
     subject.identities.map((identity) => identity.id),
     startMs,
   );
-  // An idle period that ends in the range can start before it.
+  // The Turn depth of an idle period counts every earlier Turn, so the
+  // replay reads the whole history, as the backfill does.
   const { canceledBatches, events } = await loadReplayEventBatches(
     conversations.map((row) => row.conversationId),
-    { sinceMs: startMs - IDLE_HORIZON_MS },
   );
   const gaps = conversations.flatMap((conversation) =>
     replayConversation(

@@ -13,6 +13,7 @@ import { closeConversationFixture } from "../../../fixtures/conversation";
 import { mockTitleModel } from "../../../fixtures/title-model";
 
 const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
 const T0 = Date.parse("2026-06-01T09:00:00.000Z");
 
 function reply(startedAtMs: number): AssistantMessage {
@@ -79,16 +80,17 @@ describe("person reply times API", () => {
   it("serves the reply times of a person only to that person", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     mockTitleModel("Conversation title");
-    // Alice replies after 7 minutes, then after 60 minutes, which is past
-    // the horizon. Nobody replies to the last Turn.
-    await runTurns([T0, T0 + 7 * MINUTE, T0 + 67 * MINUTE]);
+    // Alice ran one Turn before the 1 day range. In the range she replies
+    // after 7 minutes, then after 60 minutes, which is past the horizon.
+    // Nobody replies to the last Turn.
+    await runTurns([T0 - 2 * DAY, T0, T0 + 7 * MINUTE, T0 + 67 * MINUTE]);
     vi.setSystemTime(T0 + 130 * MINUTE);
 
     const own = await replyTimes("alice@example.com");
     expect(own.status).toBe(200);
     const report = personReplyTimesReportSchema.parse(await own.json());
     expect(report.histogram).toMatchObject({ noReply: 1, total: 2 });
-    // The 7 min reply follows the first Turn, the late one the second.
+    // The Turn before the range counts in the depth of both idle periods.
     expect(
       report.depths.map(({ depth, histogram }) => ({
         depth,
@@ -96,8 +98,8 @@ describe("person reply times API", () => {
         total: histogram.total,
       })),
     ).toEqual([
-      { depth: "1", noReply: 0, total: 1 },
-      { depth: "2-3", noReply: 1, total: 1 },
+      { depth: "1", noReply: 0, total: 0 },
+      { depth: "2-3", noReply: 1, total: 2 },
       { depth: "4+", noReply: 0, total: 0 },
     ]);
     expect(report.histogram.bins.filter((bin) => bin.count > 0)).toEqual([
