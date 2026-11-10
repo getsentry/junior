@@ -3,7 +3,6 @@ import { ChevronRight } from "lucide-react";
 import type { WalkthroughDocument } from "@sentry/junior/api/schema";
 
 import { CopyButton } from "../components/CopyButton";
-import { DetailsPanel } from "../components/DetailsPanel";
 import { StatusChip } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import {
@@ -15,6 +14,7 @@ import { Textarea } from "../components/ui/textarea";
 import { DetailsCard } from "../conversations/DetailsList";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
+import { CountBadge } from "./WalkthroughSidePanel";
 import {
   layerStatus,
   liveDecisions,
@@ -56,37 +56,25 @@ export function WalkthroughReview(props: {
   answers: AnswerMap;
   decisions: readonly ReviewDecision[];
   document: WalkthroughDocument;
-  onClose(): void;
   onOpenStep(stepKey: string): void;
   stepTitles: Readonly<Record<string, string>>;
 }) {
   // Read the stack top down, like GitHub.
   const layers = [...props.document.layers].reverse();
   return (
-    <DetailsPanel
-      label="Review"
-      onClose={props.onClose}
-      sheetTitle="Review"
-      title={
-        <h2 className="m-0 font-sans text-sm font-semibold text-dashboard-text">
-          Your review
-        </h2>
-      }
-    >
-      <div className="grid gap-3 p-3">
-        {layers.map((layer) => (
-          <LayerReview
-            answers={props.answers}
-            decisions={props.decisions}
-            key={layer.pr}
-            layer={layer}
-            onOpenStep={props.onOpenStep}
-            stacked={layers.length > 1}
-            stepTitles={props.stepTitles}
-          />
-        ))}
-      </div>
-    </DetailsPanel>
+    <div className="grid gap-3 p-3">
+      {layers.map((layer) => (
+        <LayerReview
+          answers={props.answers}
+          decisions={props.decisions}
+          key={layer.pr}
+          layer={layer}
+          onOpenStep={props.onOpenStep}
+          stacked={layers.length > 1}
+          stepTitles={props.stepTitles}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -126,12 +114,10 @@ function LayerReview(props: {
             {verdictLabels[posted]}
           </StatusChip>
         ) : status.kind === "open" ? (
-          <span
-            aria-label={`${status.count} not answered`}
-            className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-dashboard-accent px-1 text-2xs font-semibold leading-none tabular-nums text-dashboard-text-inverse"
-          >
-            {status.count}
-          </span>
+          <CountBadge
+            count={status.count}
+            label={`${status.count} not answered`}
+          />
         ) : null
       }
       title={props.stacked ? `#${layer.pr} ${layer.title}` : `#${layer.pr}`}

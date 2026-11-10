@@ -10,7 +10,6 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
     versionId: "wt_bf_v1",
     contentVersionId: "wt_bf_v1",
     repository: "getsentry/junior",
-    conversationId: "slack:CQA123:1770003600.000200",
     layers: [
       {
         pr: 3150,

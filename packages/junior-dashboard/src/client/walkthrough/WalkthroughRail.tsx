@@ -1,6 +1,12 @@
-import type { WalkthroughDocument } from "@sentry/junior/api/schema";
+import { MessagesSquare } from "lucide-react";
+import type {
+  WalkthroughDocument,
+  WalkthroughReport,
+} from "@sentry/junior/api/schema";
 
 import { ConversationLinkedWork } from "../conversations/ConversationLinkedWork";
+import { DetailsRow, DetailsRowLine } from "../conversations/DetailsList";
+import { conversationPath } from "../conversations/conversationRoutes";
 import { cn } from "../styles";
 import {
   stepChapter,
@@ -16,6 +22,8 @@ export function WalkthroughRail(props: {
   activeKey: string;
   document: WalkthroughDocument;
   onSelect(key: string): void;
+  /** The Conversation that made the PR, when the viewer may read it. */
+  source?: WalkthroughReport["source"];
   steps: readonly WalkthroughStep[];
 }) {
   const { document } = props;
@@ -44,6 +52,26 @@ export function WalkthroughRail(props: {
         </h2>
         <ConversationLinkedWork links={links} watchesByUrl={NO_WATCHES} />
       </section>
+      {props.source ? (
+        <section className="grid gap-2">
+          <h2 className="m-0 font-sans text-sm font-semibold text-dashboard-text">
+            Made in
+          </h2>
+          <div className="-mx-1.5">
+            {/* Same shape as the pull request row: a label, then the title. */}
+            <DetailsRow
+              icon={<MessagesSquare aria-hidden="true" size={14} />}
+              title="Conversation"
+              to={conversationPath(props.source.conversationId)}
+              tooltip={props.source.title}
+            >
+              <DetailsRowLine className="line-clamp-2 break-words">
+                {props.source.title}
+              </DetailsRowLine>
+            </DetailsRow>
+          </div>
+        </section>
+      ) : null}
       <div className="-mx-1.5 grid gap-3">
         {groups.map((group) => (
           <div className="grid gap-0.5" key={group.label ?? "steps"}>

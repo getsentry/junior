@@ -16,6 +16,17 @@ export const walkthroughReportSchema = z
   .object({
     document: walkthroughDocumentSchema,
     answers: z.array(walkthroughAnswerSchema),
+    /**
+     * The Conversation that made the PR. The server sets it only when the
+     * viewer may read that Conversation, so a private one stays unknown.
+     */
+    source: z
+      .object({
+        conversationId: z.string().min(1),
+        title: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     /** The last version this viewer finished. Undefined on a first review. */
     seenVersionId: z.string().min(1).optional(),
   })

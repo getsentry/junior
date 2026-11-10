@@ -193,9 +193,17 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(walkthroughReportSchema, {
           document: readMockBugFixWalkthrough(),
           answers: [],
+          source: {
+            conversationId: "slack:CQA123:1770003600.000200",
+            title: "Stop double automation runs after a deploy",
+          },
         })
       : jsonResponse(walkthroughReportSchema, {
           document: readMockWalkthrough(),
+          source: {
+            conversationId: "slack:CQA123:1770003600.000200",
+            title: "Refresh expired GitHub tokens in long Tasks",
+          },
           answers: [
             { versionId: "wt_v1", decisionId: "retries", value: "accept" },
             {

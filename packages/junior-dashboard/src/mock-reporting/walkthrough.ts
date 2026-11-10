@@ -12,7 +12,6 @@ export function readMockWalkthrough(): WalkthroughDocument {
     parentVersionId: "wt_v1",
     contentVersionId: "wt_v1",
     repository: repo,
-    conversationId: "slack:CQA123:1770003600.000200",
     layers: [
       {
         pr: 3101,

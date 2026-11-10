@@ -40,6 +40,8 @@ export function WalkthroughStepView(props: {
   onAnswer(decisionId: string, value: "accept" | "change", note?: string): void;
   onAsk(): void;
   onOpenStep(stepKey: string): void;
+  /** The Conversation that made the PR, when the viewer may read it. */
+  sourceConversationId?: string;
   step: WalkthroughStep;
   total: number;
 }) {
@@ -123,7 +125,7 @@ export function WalkthroughStepView(props: {
             text={body}
           />
           <ReferenceList
-            conversationId={document.conversationId}
+            conversationId={props.sourceConversationId}
             refs={refs}
             scope={step.key}
           />

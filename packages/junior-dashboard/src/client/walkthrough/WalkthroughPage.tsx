@@ -8,6 +8,7 @@ import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { PageRouteLoading } from "../components/PageRouteLoading";
 import { PageHeader } from "../components/layout/PageHeader";
 import { PageLayout } from "../components/layout/PageLayout";
+import { useDetailsPanel } from "../components/DetailsPanel";
 import { Button } from "../components/ui/button";
 import {
   Tooltip,
@@ -24,6 +25,11 @@ import {
 } from "./WalkthroughQuestions";
 import { WalkthroughRail } from "./WalkthroughRail";
 import { WalkthroughReview } from "./WalkthroughReview";
+import {
+  CountBadge,
+  WalkthroughSidePanel,
+  type WalkthroughSideTab,
+} from "./WalkthroughSidePanel";
 import { WalkthroughStepView } from "./WalkthroughStepView";
 import { prototypeAnswer } from "./prototypeAnswers";
 import {
@@ -95,10 +101,9 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
       ]),
     ),
   );
-  const [asking, setAsking] = useState(false);
-  const [reviewPinned, setReviewPinned] = useState(false);
-  // Closing the review on a step with decisions keeps it closed there.
-  const [reviewClosedOn, setReviewClosedOn] = useState<string>();
+  const [tab, setTab] = useState<WalkthroughSideTab>("questions");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const panel = useDetailsPanel();
   const [questions, setQuestions] = useState<WalkthroughQuestion[]>([]);
   const [quote, setQuote] = useState<{ quote: string; stepKey: string }>();
   const mainRef = useRef<HTMLElement>(null);
@@ -118,6 +123,13 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [activeKey]);
+
+  // A step with decisions shows the review. Other steps show questions.
+  useEffect(() => {
+    setTab(
+      decisions.some((d) => d.stepKey === activeKey) ? "review" : "questions",
+    );
+  }, [activeKey, decisions]);
 
   useDocumentTitle(`Walkthrough · ${document.content.title}`);
 
@@ -159,17 +171,9 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
       setMode(inUpdate && update ? "update" : "story");
     setActiveKey(key);
   };
-  // The review shows on its own where the step has decisions to answer.
-  // Elsewhere it stays closed, so the story gets the width.
-  const stepHasDecisions = decisions.some((d) => d.stepKey === step.key);
-  const side = asking
-    ? "questions"
-    : reviewPinned || (stepHasDecisions && reviewClosedOn !== step.key)
-      ? "review"
-      : undefined;
-  const closeReview = () => {
-    setReviewPinned(false);
-    setReviewClosedOn(step.key);
+  const showSide = (next: WalkthroughSideTab) => {
+    setTab(next);
+    setSheetOpen(true);
   };
   const open = document.layers.reduce((sum, layer) => {
     const status = layerStatus(layer.pr, decisions, answers);
@@ -184,6 +188,7 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
         activeKey={step.key}
         document={document}
         onSelect={setActiveKey}
+        source={props.report.source}
         steps={steps}
       />
       <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]">
@@ -201,7 +206,7 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <span className="inline-flex items-center rounded-md border border-dashboard-border-subtle px-2 py-1 text-xs tabular-nums text-dashboard-text-subtle">
+                    <span className="text-sm tabular-nums text-dashboard-text-muted">
                       ${cost.toFixed(2)}
                     </span>
                   }
@@ -227,30 +232,22 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
                 </ModeButton>
               </div>
             ) : null}
-            {side !== "review" ? (
-              <Button
-                aria-label={open ? `Your review, ${open} open` : "Your review"}
-                onClick={() => {
-                  setAsking(false);
-                  setReviewPinned(true);
-                }}
-                type="button"
-              >
+            {/* Wide screens show the review tab beside the story. */}
+            {panel ? null : (
+              <Button onClick={() => showSide("review")} type="button">
                 Your review
                 {open ? (
-                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-dashboard-accent px-1 text-2xs font-semibold leading-none tabular-nums text-dashboard-text-inverse">
-                    {open}
-                  </span>
+                  <CountBadge count={open} label={`${open} not answered`} />
                 ) : null}
               </Button>
-            ) : null}
+            )}
           </div>
         </header>
         {/* The side panel starts at the header rule, so its border meets it. */}
         <div
           className={cn(
             "grid min-h-0 min-w-0",
-            side && "xl:grid-cols-[minmax(0,1fr)_24rem]",
+            "xl:grid-cols-[minmax(0,1fr)_24rem]",
           )}
         >
           <main
@@ -270,8 +267,9 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
                     [decisionId]: { value, note },
                   }))
                 }
-                onAsk={() => setAsking(true)}
+                onAsk={() => showSide("questions")}
                 onOpenStep={openStep}
+                sourceConversationId={props.report.source?.conversationId}
                 step={step}
                 total={steps.length}
               />
@@ -302,31 +300,37 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
             <QuickQuestionSelectionButton
               onAsk={(selection) => {
                 setQuote({ quote: selection.quote, stepKey: step.key });
-                setAsking(true);
+                showSide("questions");
               }}
               rootRef={mainRef}
             />
           </main>
-          {side === "questions" ? (
-            <WalkthroughQuestions
-              anchor={anchor}
-              onClose={() => setAsking(false)}
-              onOpenStep={openStep}
-              onSubmit={ask}
-              questions={questions}
-              suggestions={step.kind === "chapter" ? step.chapter.asks : []}
-              walkthroughId={document.versionId}
-            />
-          ) : side === "review" ? (
-            <WalkthroughReview
-              answers={answers}
-              decisions={decisions}
-              document={document}
-              onClose={closeReview}
-              onOpenStep={openStep}
-              stepTitles={stepTitles}
-            />
-          ) : null}
+          <WalkthroughSidePanel
+            onSheetClose={() => setSheetOpen(false)}
+            onTabChange={setTab}
+            openCount={open}
+            questions={
+              <WalkthroughQuestions
+                anchor={anchor}
+                onOpenStep={openStep}
+                onSubmit={ask}
+                questions={questions}
+                suggestions={step.kind === "chapter" ? step.chapter.asks : []}
+                walkthroughId={document.versionId}
+              />
+            }
+            review={
+              <WalkthroughReview
+                answers={answers}
+                decisions={decisions}
+                document={document}
+                onOpenStep={openStep}
+                stepTitles={stepTitles}
+              />
+            }
+            sheetOpen={sheetOpen}
+            tab={tab}
+          />
         </div>
       </div>
     </div>

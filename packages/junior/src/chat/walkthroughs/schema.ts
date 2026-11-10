@@ -264,8 +264,6 @@ export const walkthroughDocumentSchema = z
     /** The version whose full generation wrote `content`. */
     contentVersionId: z.string().min(1),
     repository: sentence(200),
-    /** The Conversation that made the PR. Brief sources link to it. */
-    conversationId: z.string().min(1).optional(),
     layers: z
       .array(
         z

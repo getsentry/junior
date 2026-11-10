@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { CircleCheck, CircleDashed, CircleX } from "lucide-react";
 import { Link } from "react-router";
 import type {
@@ -95,6 +96,15 @@ function ReferenceNumber(props: { n: number }) {
   );
 }
 
+/** A citation in prose. Small and raised, like a footnote mark. */
+function CitationMark(props: { n: number }) {
+  return (
+    <span className="inline-grid h-3.5 min-w-3.5 place-items-center rounded-sm bg-dashboard-fill-strong px-0.5 font-sans text-2xs leading-none font-medium tabular-nums text-dashboard-text-muted">
+      {props.n}
+    </span>
+  );
+}
+
 const flashClass =
   "scroll-mt-24 transition-colors data-[flash=true]:bg-dashboard-accent/10";
 
@@ -108,37 +118,65 @@ export function CitedProse(props: {
   scope: string;
   text: string;
 }) {
-  const parts = props.text.split(/(\[\d+\])/);
+  // Split into text runs and the citations that follow each run.
+  const runs: { cites: CitedEvidence[]; text: string }[] = [];
+  for (const part of props.text.split(/(\[\d+\])/)) {
+    const n = /^\[(\d+)\]$/.exec(part)?.[1];
+    const ref = n ? props.refs.find((r) => r.n === Number(n)) : undefined;
+    const last = runs.at(-1);
+    if (ref && last) last.cites.push(ref);
+    else if (ref) runs.push({ cites: [ref], text: "" });
+    else if (part) runs.push({ cites: [], text: part });
+  }
   return (
     <p className={cn("m-0", props.className)}>
-      {parts.map((part, index) => {
-        const n = /^\[(\d+)\]$/.exec(part)?.[1];
-        const ref = n ? props.refs.find((r) => r.n === Number(n)) : undefined;
-        if (!ref) {
-          return part ? <DisplayText inline key={index} text={part} /> : null;
+      {runs.map((run, index) => {
+        if (!run.cites.length) {
+          return <DisplayText inline key={index} text={run.text} />;
         }
-        const id = referenceId(props.scope, ref.n);
+        // Keep a mark on the line of the word it follows. Skip a word that
+        // carries markdown, so the split cannot break its formatting.
+        const match = /^([\s\S]*?)(\S*)\s*$/.exec(run.text);
+        const word = match?.[2] ?? "";
+        const plain = !/[*_`[\]]/.test(word);
+        const head = plain ? (match?.[1] ?? "") : run.text;
         return (
-          <Tooltip key={index}>
-            <TooltipTrigger
-              render={
-                <button
-                  aria-label={`Reference ${ref.n}: ${referenceLabel(ref)}`}
-                  className="ml-1 inline cursor-pointer border-0 bg-transparent p-0 align-[0.1em] hover:[&>span]:text-dashboard-text"
-                  onClick={() => scrollToReference(id)}
-                  type="button"
-                >
-                  <ReferenceNumber n={ref.n} />
-                </button>
-              }
-            />
-            <TooltipContent>
-              <DisplayText inline text={referenceLabel(ref)} />
-            </TooltipContent>
-          </Tooltip>
+          <Fragment key={index}>
+            {head ? <DisplayText inline text={head} /> : null}
+            <span className="whitespace-nowrap">
+              {plain ? word : null}
+              {run.cites.map((ref) => (
+                <CitationButton key={ref.n} refItem={ref} scope={props.scope} />
+              ))}
+            </span>
+          </Fragment>
         );
       })}
     </p>
+  );
+}
+
+function CitationButton(props: { refItem: CitedEvidence; scope: string }) {
+  const ref = props.refItem;
+  const id = referenceId(props.scope, ref.n);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-label={`Reference ${ref.n}: ${referenceLabel(ref)}`}
+            className="ml-0.5 inline cursor-pointer border-0 bg-transparent p-0 align-super leading-none hover:[&>span]:text-dashboard-text"
+            onClick={() => scrollToReference(id)}
+            type="button"
+          >
+            <CitationMark n={ref.n} />
+          </button>
+        }
+      />
+      <TooltipContent>
+        <DisplayText inline text={referenceLabel(ref)} />
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
