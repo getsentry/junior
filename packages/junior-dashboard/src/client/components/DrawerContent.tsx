@@ -36,7 +36,6 @@ export function DrawerContent(props: DrawerProps) {
         data-dashboard-modal=""
         className={cn(
           "data-[swipe-axis=x]:[--drawer-content-width:100%] data-[swipe-axis=x]:sm:[--drawer-content-width:100%]",
-          // A full-width drawer has no free edge to round or border.
           "max-md:data-[swipe-direction=right]:rounded-l-none max-md:data-[swipe-direction=right]:border-l-0",
           props.width === "wide"
             ? "data-[swipe-axis=x]:md:[--drawer-content-width:min(760px,94vw)]"

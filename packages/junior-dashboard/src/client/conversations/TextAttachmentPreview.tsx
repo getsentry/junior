@@ -88,7 +88,6 @@ export function TextAttachmentPreview(props: {
       }
       closeLabel={`Close ${filename}`}
       header={
-        // The actions leave little width on a phone, so wrap instead of truncating.
         <div className="min-w-0 [overflow-wrap:anywhere]">
           <h2
             className="m-0 font-mono text-sm font-semibold text-dashboard-text"
