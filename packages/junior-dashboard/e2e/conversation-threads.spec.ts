@@ -14,7 +14,7 @@ async function mockWaiting(page: Page, conversationId: string) {
   await page.route("**/api/review-items/waiting-conversations", (route) =>
     route.fulfill({
       json: {
-        conversations: [{ conversationId, count: 1, title: "Pick a fix" }],
+        conversations: [{ conversationId, items: [{ title: "Pick a fix" }] }],
       },
     }),
   );

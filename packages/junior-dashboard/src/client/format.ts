@@ -910,7 +910,6 @@ export function buildConversations(
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
-      unfinishedWork: summary.unfinishedWork,
       awaitingAuthorization: summary.awaitingAuthorization,
       visibility: summary.visibility,
     }))

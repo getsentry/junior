@@ -49,6 +49,7 @@ import {
   pullRequestReadyTargets,
   syncGitHubPullRequestReadyNotices,
 } from "./pull-request-ready.js";
+import { syncGitHubPullRequestReviewRequest } from "./pull-request-review-request.js";
 import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
@@ -469,6 +470,15 @@ export function createGitHubWebhookRoute(args: {
         log: args.log,
         reviewItems: args.reviewItems,
         targets: pullRequestReadyTargets(eventName, body),
+      });
+      await syncGitHubPullRequestReviewRequest({
+        body,
+        db: args.db,
+        deliveryId,
+        eventName,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        reviewItems: args.reviewItems,
       });
       if (
         !pullRequestOutcome &&

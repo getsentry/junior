@@ -118,8 +118,18 @@ export const reviewItemWaitingConversationsSchema = z
       z
         .object({
           conversationId: z.string().min(1),
-          title: z.string().min(1),
-          count: z.number().int().positive(),
+          /** Open items that need the viewer, newest first. */
+          items: z
+            .array(
+              z
+                .object({
+                  /** The plugin that added the item, such as `github`. */
+                  plugin: z.string().min(1).optional(),
+                  title: z.string().min(1),
+                })
+                .strict(),
+            )
+            .min(1),
         })
         .strict(),
     ),

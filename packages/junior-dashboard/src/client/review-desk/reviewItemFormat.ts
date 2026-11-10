@@ -26,7 +26,9 @@ export function reviewItemSubjectHref(url: string): string | undefined {
 /** Name the state of an item: what it needs while open, or how it closed. */
 export function reviewItemStatusLabel(item: ReviewItemPayload): string {
   if (item.status === "open") {
-    return item.kind === "action" ? "Needs an answer" : "Notice";
+    if (item.kind === "notice") return "Notice";
+    // A plugin ask waits on a step outside Junior, so it has no question.
+    return item.request ? "Needs an answer" : "Waiting on you";
   }
   return item.status === "done" ? "Done" : "Dismissed";
 }

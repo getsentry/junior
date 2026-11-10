@@ -2,8 +2,6 @@ import { memo, useCallback, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  ChevronRight,
-  Inbox,
   LockKeyhole,
   Pin,
   SquarePen,
@@ -37,8 +35,8 @@ import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AnimatedList } from "./AnimatedList";
+import { WaitingChip } from "./WaitingChip";
 import {
-  attentionConversationIds,
   buildConversationSections,
   type ConversationSection,
 } from "./conversationSections";
@@ -151,12 +149,9 @@ export function ConversationSidebar(props: {
     () =>
       conversationSidebarEntries(
         buildConversationSections(props.conversations, {
-          attentionIds: attentionConversationIds(
-            props.conversations,
-            props.waitingConversations.keys(),
-          ),
           nowMs: Date.now(),
           timeZone: props.timeZone,
+          waitingIds: props.waitingConversations,
         }),
         collapsedKeys,
         { expandedThreadRoots, selectedId: props.selectedId },
@@ -558,28 +553,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           </Tooltip>
         ) : null}
         {props.waiting ? (
-          <Link
-            className="mb-1.5 ml-[2.125rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
-            to={conversationPath(props.conversation.id, { reviewItems: true })}
-          >
-            <Inbox
-              aria-hidden="true"
-              className="size-3 shrink-0 text-dashboard-text-muted"
-            />
-            <span className="min-w-0 truncate">{props.waiting.title}</span>
-            {props.waiting.count > 1 ? (
-              <span className="ml-auto shrink-0 text-dashboard-text-faint">
-                +{props.waiting.count - 1} more
-              </span>
-            ) : null}
-            <ChevronRight
-              aria-hidden="true"
-              className={cn(
-                "size-3 shrink-0 text-dashboard-text-muted",
-                props.waiting.count > 1 ? undefined : "ml-auto",
-              )}
-            />
-          </Link>
+          <WaitingChip
+            conversationId={props.conversation.id}
+            waiting={props.waiting}
+          />
         ) : null}
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}

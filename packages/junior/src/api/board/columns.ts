@@ -3,9 +3,10 @@
  * records, so these rules guess at stage from facts that exist for other
  * reasons. Each guess is named here, so a real stage field can replace it:
  *
- * 1. Ready means an open plugin notice on the review desk has the code change
- *    as its subject. The GitHub plugin adds a "Ready to merge" notice and
- *    closes it when the pull request merges or stops being ready.
+ * 1. Ready means an open plugin item on the review desk has the code change
+ *    as its subject: the change waits on a person, not on Junior. The GitHub
+ *    plugin adds "Ready to merge" and "Review requested" items and closes
+ *    them when that step ends.
  * 2. A ticket is `open` or `closed`. Other provider states are not known, so
  *    those tickets are not on the Board.
  * 3. A closed ticket finished when its annotation last changed.
