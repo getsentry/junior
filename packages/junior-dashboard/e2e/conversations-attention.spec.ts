@@ -617,12 +617,10 @@ test.describe("stable conversation list", () => {
     });
     // The pointer comes to rest on the list's side padding while its rows
     // load.
-    const box = await page
+    await page
       .locator('[data-slot="scroll-area"]')
       .first()
-      .boundingBox();
-    if (!box) throw new Error("The conversation list has no box.");
-    await page.mouse.move(box.x + 4, box.y + 120);
+      .hover({ position: { x: 4, y: 120 } });
     releaseFeed();
     await expect(
       sidebar.getByRole("link", { name: /Checkout latency triage/ }),
