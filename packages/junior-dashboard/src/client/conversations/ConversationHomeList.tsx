@@ -289,7 +289,9 @@ function ConversationCard(props: ConversationCardProps) {
           size={15}
         />
         {showStatus ? (
-          <span className="absolute -bottom-1 -right-1 grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
+          // Inside the tile corner, on the tile color, so the badge stays
+          // within the tile.
+          <span className="absolute bottom-px right-px grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
             <ConversationListStatusIcon
               // The tile already shows the lock.
               isPrivate={false}
