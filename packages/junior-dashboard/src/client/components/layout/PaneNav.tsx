@@ -36,14 +36,16 @@ const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 const PANE_EDGE_CLASS =
   "border-r border-dashboard-border bg-dashboard-surface-panel";
 
+// Rows stay lighter than the conversation titles below them. The 0.875rem
+// icon column lines their labels up with those titles.
 const ROW_CLASS =
-  "flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg border-0 px-3 text-left font-sans text-sm font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 [&_svg]:size-4 [&_svg]:shrink-0";
+  "grid h-9 w-full min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border-0 px-3 text-left font-sans text-sm font-normal no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 [&_svg]:size-4 [&_svg]:justify-self-center";
 
 const IDLE_ROW_CLASS =
   "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text";
 
 const ACTIVE_ROW_CLASS =
-  "bg-dashboard-accent/[0.1] text-dashboard-accent-text hover:bg-dashboard-accent/[0.14]";
+  "bg-dashboard-accent/[0.12] text-dashboard-accent-text hover:bg-dashboard-accent/[0.16]";
 
 type PaneNavValue = {
   navItems: DashboardHeaderNavItem[];
@@ -222,7 +224,7 @@ function PaneRow(props: {
       to={props.to}
     >
       <Icon aria-hidden="true" strokeWidth={1.9} />
-      <span className="min-w-0 flex-1 truncate">{props.label}</span>
+      <span className="truncate">{props.label}</span>
       {props.count ? (
         <span className="rounded-full bg-dashboard-accent px-1.5 text-2xs font-semibold leading-4 tabular-nums text-dashboard-text-inverse">
           {props.count > 99 ? "99+" : props.count.toLocaleString("en-US")}
@@ -256,11 +258,12 @@ function PaneNavHeader(props: { onNewConversation?(): void }) {
   return (
     <div
       className={cn(
-        "grid gap-1 border-b border-b-dashboard-border-subtle px-3 pb-2 pt-1.5 max-md:hidden",
+        "grid gap-0.5 border-b border-b-dashboard-border-subtle px-3 pb-2 max-md:hidden",
         PANE_EDGE_CLASS,
       )}
     >
-      <div className="flex h-11 items-center justify-between gap-2">
+      {/* Same height as the page headers, so the row reads as their start. */}
+      <div className="flex h-12 items-center justify-between gap-2">
         <Link
           aria-label={`${name} home`}
           className="flex min-w-0 items-center gap-1.5 rounded-lg text-inherit no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
@@ -278,33 +281,16 @@ function PaneNavHeader(props: { onNewConversation?(): void }) {
       </div>
       {props.onNewConversation ? (
         <button
-          className={cn(
-            ROW_CLASS,
-            "cursor-pointer bg-transparent text-dashboard-text hover:bg-dashboard-fill-hover",
-          )}
+          className={cn(ROW_CLASS, IDLE_ROW_CLASS, "cursor-pointer")}
           onClick={props.onNewConversation}
           type="button"
         >
-          <SquarePen
-            aria-hidden="true"
-            className="text-dashboard-accent-text"
-            strokeWidth={2}
-          />
+          <SquarePen aria-hidden="true" strokeWidth={1.9} />
           New conversation
         </button>
       ) : (
-        <Link
-          className={cn(
-            ROW_CLASS,
-            "text-dashboard-text hover:bg-dashboard-fill-hover",
-          )}
-          to="/"
-        >
-          <SquarePen
-            aria-hidden="true"
-            className="text-dashboard-accent-text"
-            strokeWidth={2}
-          />
+        <Link className={cn(ROW_CLASS, IDLE_ROW_CLASS)} to="/">
+          <SquarePen aria-hidden="true" strokeWidth={1.9} />
           New conversation
         </Link>
       )}

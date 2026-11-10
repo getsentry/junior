@@ -110,7 +110,8 @@ export function DetailsPanel(props: {
       aria-label={props.label}
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
     >
-      <header className="flex items-center justify-between gap-3 border-b border-dashboard-border py-2 pl-5 pr-3">
+      {/* Same height as the conversation header beside it. */}
+      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-dashboard-border py-1.5 pl-5 pr-3">
         <div className="min-w-0 flex-1">{props.title}</div>
         {/* Keep actions beside close, so they do not move with the title width. */}
         <div className="flex shrink-0 items-center gap-0.5">

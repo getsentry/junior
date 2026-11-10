@@ -93,9 +93,10 @@ test("opens conversation details beside the chat", async ({
   await expect(details).toBeVisible();
   await expect(detailsButton).toBeHidden();
   await expect(closeDetails).toBeFocused();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
-  await page.getByRole("button", { name: "Hide search" }).click();
+  await page.getByRole("button", { name: "Close search" }).click();
   await screenshot(page, "conversation-share-details");
   // Clipboard denial must show a failure and allow another attempt.
   await page.evaluate(() => {
@@ -261,6 +262,7 @@ test("shows recalled and captured memories in popovers", async ({
 
   // A memory in details opens its Turn's popover in the transcript, even
   // when a search hides that row.
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Search transcript" }).click();
   await page.getByPlaceholder("Search transcript…").fill("no such text");
   await expect(captured).toBeHidden();

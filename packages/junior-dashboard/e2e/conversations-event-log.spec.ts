@@ -49,6 +49,7 @@ test("inspects all reporting events and searches full event data", async ({
   await expect(toolRow).toHaveAttribute("aria-expanded", "false");
 
   // Search must still reveal a result that the reader has closed.
+  await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("button", { name: "Search transcript" }).click();
   await page
     .getByPlaceholder("Search transcript…")

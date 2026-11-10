@@ -46,7 +46,7 @@ export function ConversationHeaderActions(props: {
   // does not show them. Every other row comes from `useConversationMenuItems`.
   return (
     <div className="grid gap-0.5">
-      {mobile && !props.menu.eventLogOpen ? (
+      {!props.menu.eventLogOpen ? (
         <MenuActionButton
           label={props.searchOpen ? "Hide search" : "Search transcript"}
           onClick={() => {
