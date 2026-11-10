@@ -38,7 +38,7 @@ const TEAM_ID = "T123";
 let fixture: LocalJuniorSqlFixture;
 let queue: ConversationWorkQueueTestAdapter;
 
-function trigger(match?: Record<string, string>) {
+function trigger(match?: Record<string, string | string[]>) {
   return {
     type: "event" as const,
     namespace: "slack",
@@ -234,6 +234,67 @@ describe("Slack channel-message automations", () => {
       destination: { channelId: "C123", threadTs: "1712346.0002" },
       metadata: { eventAutomationId: automation.id },
     });
+  });
+
+  it("runs for thread replies only when its match names the thread location", async () => {
+    const catalog = getEventCatalog();
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    const create = createAutomationTool(
+      automationToolContext(channelContext),
+      catalog,
+    );
+    await execute(create, {
+      instruction: "Triage each new top-level alert.",
+      title: "Triage top-level alerts",
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
+      ],
+      trigger: trigger({ user_id: "U777" }),
+    });
+    const { automation } = (await execute(
+      create,
+      {
+        instruction: "Triage each deploy failure.",
+        title: "Triage deploy failures",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger({ user_id: "U777", location: ["channel", "thread"] }),
+      },
+      "thread-automation-call",
+    )) as { automation: { id: string } };
+
+    // A bot reply in a Slack thread runs only the automation that names
+    // the thread location, and Junior replies in that Slack thread.
+    await postChannelMessage({
+      botId: "B777",
+      threadTs: "1712347.0001",
+      ts: "1712347.0002",
+      user: "U777",
+    });
+    const sent = queue.sentRecords();
+    expect(sent).toHaveLength(1);
+    const dispatch = await getDispatchRecord(
+      sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch).toMatchObject({
+      destination: { channelId: "C123", threadTs: "1712347.0001" },
+      metadata: { eventAutomationId: automation.id },
+    });
+
+    // A top-level bot post still runs both.
+    await postChannelMessage({
+      botId: "B777",
+      ts: "1712347.0003",
+      user: "U777",
+    });
+    expect(queue.sentRecords()).toHaveLength(3);
   });
 
   it("watches only the channel where the automation posts", async () => {
