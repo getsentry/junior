@@ -16,6 +16,7 @@ const rootTurn = {
     reportBlocked: false,
     noReply: true,
     finishAutomationRun: false,
+    submitWalkthrough: false,
   },
 };
 
@@ -36,6 +37,7 @@ const childAgentTurn = {
     reportBlocked: true,
     noReply: true,
     finishAutomationRun: false,
+    submitWalkthrough: false,
   },
 };
 
@@ -82,6 +84,31 @@ describe("turnBehavior", () => {
       });
     },
   );
+
+  it("gives a Walkthrough generation the submit tool and nothing that reaches people", () => {
+    expect(
+      turnBehavior({
+        kind: "root",
+        personInput: false,
+        automationRun: false,
+        walkthroughGeneration: true,
+      }),
+    ).toEqual({
+      delivery: "conversation",
+      promptMode: "conversation",
+      gated: false,
+      tools: {
+        agents: "none",
+        reviewDesk: false,
+        subscriptions: false,
+        userCustomization: false,
+        reportBlocked: false,
+        noReply: false,
+        finishAutomationRun: false,
+        submitWalkthrough: true,
+      },
+    });
+  });
 
   it("counts only Slack and web input as a person's", () => {
     expect(

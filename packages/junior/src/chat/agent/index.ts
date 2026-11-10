@@ -308,6 +308,7 @@ async function executeAgentRunInPrivacyContext(
     kind: conversationKind,
     personInput: isPersonInput(run.source.kind),
     automationRun: run.dispatch?.declaresResult === true,
+    walkthroughGeneration: run.walkthroughGeneration !== undefined,
   });
   // TODO(dcramer): Gate every answer tool here, not only the Automation run.
   const requireAutomationResult = behavior.gated;

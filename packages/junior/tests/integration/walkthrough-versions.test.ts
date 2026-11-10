@@ -1,8 +1,16 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  createLocalSource,
+  defineJuniorPlugin,
+} from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
-import { getConversationStore } from "@/chat/db";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { createApp, defineJuniorPlugins } from "@/app";
+import { createTools } from "@/chat/tools";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   walkthroughDocumentSchema,
@@ -180,5 +188,188 @@ describe("Walkthrough versions", () => {
     const listed = await listedIds();
     expect(listed).toContain(ordinary);
     expect(listed).not.toContain(generation);
+  });
+});
+
+const RETRY_PATCH = [
+  "@@ -1,2 +1,3 @@",
+  " export const attempts = 1;",
+  "-export const delayMs = 2;",
+  "+export const delayMs = 3;",
+  "+export const jitter = true;",
+].join("\n");
+
+/** A code plugin that serves one changed file and one unchanged caller. */
+function codePlugin() {
+  return defineJuniorPlugin({
+    manifest: {
+      name: "github",
+      displayName: "GitHub",
+      description: "Code changes for tests",
+    },
+    hooks: {
+      codeChanges: {
+        async readStack() {
+          return undefined;
+        },
+        async readDiff() {
+          return {
+            files: [
+              { path: "src/retry.ts", status: "modified", patch: RETRY_PATCH },
+              {
+                path: "pnpm-lock.yaml",
+                status: "modified",
+                patch: "@@ -1 +1 @@\n-a\n+b",
+              },
+            ],
+          };
+        },
+        async readFile({ path }) {
+          return path === "src/caller.ts"
+            ? "import { delayMs } from './retry';\nwait(delayMs);\n"
+            : undefined;
+        },
+      },
+    },
+  });
+}
+
+function submitOutput(seq: number) {
+  return {
+    title: "Retries wait longer",
+    intent: "This PR changes the retry delay and adds jitter.",
+    diagram: {
+      nodes: [{ id: "retry", label: "Retry", column: 0, row: 0 }],
+      edges: [],
+    },
+    chapters: [
+      {
+        id: "change",
+        type: "feature",
+        slot: "change",
+        caption: "The delay grows and jitter is on.",
+        body: "The delay goes from 2 to 3 [1] and the caller waits on it [2], as asked [3].",
+        evidence: [
+          { kind: "code", path: "src/retry.ts", pr: 3087, start: 2, end: 3 },
+          { kind: "code", path: "src/caller.ts", pr: 3087, start: 2, end: 2 },
+          { kind: "message", seq },
+        ],
+      },
+    ],
+  };
+}
+
+describe("submitWalkthrough", () => {
+  afterEach(async () => {
+    await closeConversationFixture();
+  });
+
+  it("exists only in Walkthrough generation Turns and stores a checked document", async () => {
+    await createApp({ plugins: defineJuniorPlugins([codePlugin()]) });
+    const source = await publicConversation("local:web:walkthrough-source");
+    const [message] = await getConversationEventStore().append(source, [
+      {
+        createdAtMs: Date.now(),
+        data: {
+          type: "message",
+          messageId: "ask",
+          role: "user",
+          text: "Make retries wait a bit longer, see https://sentry.io/issues/1/",
+        },
+      },
+    ]);
+    const generationId = await publicConversation("local:web:walkthrough-run");
+    const layer = {
+      ...codeChanges[0]!,
+      title: "Retry",
+      body: "",
+      url: "https://github.com/getsentry/junior/pull/3087",
+      additions: 2,
+      deletions: 1,
+    };
+    const { version } = await startWalkthroughVersion({
+      provider: "github",
+      repository: "getsentry/junior",
+      codeChanges: [codeChanges[0]!],
+      generationConversationId: generationId,
+      sourceConversationId: source,
+    });
+    const storage = createMemoryAttachmentStorage();
+    const context = {
+      conversationId: generationId,
+      destination: { platform: "local" as const, conversationId: generationId },
+      egress: { fetch: async () => new Response("ok") },
+      source: createLocalSource(generationId),
+      workspace: {} as ToolRuntimeContext["workspace"],
+      attachmentStorage: storage,
+      turnTools: turnBehavior({
+        kind: "root",
+        personInput: true,
+        automationRun: false,
+      }).tools,
+    } satisfies ToolRuntimeContext;
+
+    expect(createTools([], {}, context).submitWalkthrough).toBeUndefined();
+    const tool = createTools(
+      [],
+      {},
+      {
+        ...context,
+        turnTools: turnBehavior({
+          kind: "root",
+          personInput: false,
+          automationRun: false,
+          walkthroughGeneration: true,
+        }).tools,
+        walkthroughGeneration: {
+          versionId: version.id,
+          provider: "github",
+          repository: "getsentry/junior",
+          layers: [layer],
+          sourceConversationId: source,
+          modelId: "test-model",
+        },
+      },
+    ).submitWalkthrough!;
+
+    // A citation outside the hunk and the unchanged caller cannot resolve.
+    const bad = submitOutput(message!.seq);
+    bad.chapters[0]!.evidence[0] = {
+      kind: "code",
+      path: "src/retry.ts",
+      pr: 3087,
+      start: 9,
+      end: 9,
+    };
+    await expect(
+      tool.execute!(walkthroughOutputSchema.parse(bad), { toolCallId: "bad" }),
+    ).rejects.toThrow(/problem/);
+    expect((await getWalkthroughVersion(version.id))?.status).toBe(
+      "generating",
+    );
+
+    await tool.execute!(
+      walkthroughOutputSchema.parse(submitOutput(message!.seq)),
+      {
+        toolCallId: "good",
+      },
+    );
+    const ready = await getWalkthroughVersion(version.id);
+    expect(ready?.status).toBe("ready");
+    const stored = await readWalkthroughDocument(storage, ready!);
+    expect(stored?.skipped).toEqual([
+      { reason: "lockfile", files: 1, lines: 2 },
+    ]);
+    expect(stored?.messages).toEqual([
+      {
+        seq: message!.seq,
+        role: "user",
+        text: "Make retries wait a bit longer, see https://sentry.io/issues/1/",
+      },
+    ]);
+    expect(stored?.excerpts.map((excerpt) => excerpt.id)).toEqual([
+      "3087:head:src/retry.ts#2-3",
+      "3087:head:src/caller.ts#2-2",
+    ]);
   });
 });

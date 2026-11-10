@@ -89,7 +89,7 @@ export function validateWalkthrough(
     ...coverageProblems(
       refs,
       output.chapters.flatMap((c) => c.evidence),
-      output.notCovered,
+      output.not_covered,
     ),
   );
   return problems;
@@ -131,7 +131,7 @@ export function validateWalkthroughUpdate(
         ...output.items.flatMap((i) => i.evidence),
         ...output.addedChapters.flatMap((c) => c.evidence),
       ],
-      output.notCovered,
+      output.not_covered,
     ),
   );
   return problems;
@@ -215,9 +215,9 @@ function evidenceProblems(
       : [`Link ${evidence.url} is not in a PR body or a cited message.`];
   }
   if (evidence.kind === "check") {
-    return refs.checkIds.has(evidence.checkId)
+    return refs.checkIds.has(evidence.check_id)
       ? []
-      : [`Unknown check ${evidence.checkId}.`];
+      : [`Unknown check ${evidence.check_id}.`];
   }
   return codeProblems(evidence, refs);
 }
@@ -274,7 +274,7 @@ function coverageProblems(
       const range = hunk[side];
       if (covered || !range) continue;
       problems.push(
-        `${file.path} lines ${range.start}-${range.end} (${side}) in PR #${file.pr} are not cited, and the file is not in notCovered.`,
+        `${file.path} lines ${range.start}-${range.end} (${side}) in PR #${file.pr} are not cited, and the file is not in not_covered.`,
       );
     }
   }

@@ -31,6 +31,7 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { WalkthroughGeneration } from "@/chat/walkthroughs/submit-tool";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -93,6 +94,8 @@ interface BaseToolRuntimeContext {
   turnId?: string;
   /** Tools that this Turn's kind and opener allow, from `turnBehavior`. */
   turnTools: TurnBehavior["tools"];
+  /** Walkthrough version that this Run generates. See `AgentRun.walkthroughGeneration`. */
+  walkthroughGeneration?: WalkthroughGeneration;
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */

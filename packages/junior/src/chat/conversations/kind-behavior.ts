@@ -35,6 +35,7 @@ export type TurnBehavior = {
     reportBlocked: boolean;
     noReply: boolean;
     finishAutomationRun: boolean;
+    submitWalkthrough: boolean;
   };
 };
 
@@ -50,6 +51,7 @@ const ROOT: TurnBehavior = {
     reportBlocked: false,
     noReply: true,
     finishAutomationRun: false,
+    submitWalkthrough: false,
   },
 };
 
@@ -75,6 +77,7 @@ const AGENT_IN_CHILD: TurnBehavior = {
     reportBlocked: true,
     noReply: true,
     finishAutomationRun: false,
+    submitWalkthrough: false,
   },
 };
 
@@ -89,17 +92,41 @@ const AUTOMATION_RUN: TurnBehavior = {
   },
 };
 
+// A Walkthrough generation reads the code change and ends by submitting the
+// Walkthrough. Its hidden Conversation keeps the final response, and it
+// cannot reach people, other agents, or subscriptions.
+const WALKTHROUGH_GENERATION: TurnBehavior = {
+  delivery: "conversation",
+  promptMode: "conversation",
+  gated: false,
+  tools: {
+    agents: "none",
+    reviewDesk: false,
+    subscriptions: false,
+    userCustomization: false,
+    reportBlocked: false,
+    noReply: false,
+    finishAutomationRun: false,
+    submitWalkthrough: true,
+  },
+};
+
 /**
  * Return the behavior of one Turn. `automationRun` marks the dispatch Turn of
  * a Scheduled or Event automation run. Kind alone cannot mark it: the
  * dispatch Turn is the only gated Turn on an `automation` Conversation, and a
  * person's reply or a Watch Event Turn there runs like a Turn on a root.
+ *
+ * `walkthroughGeneration` marks a Walkthrough generation run, a temporary
+ * bridge until a `walkthrough` kind exists.
  */
 export function turnBehavior(args: {
   kind: ConversationKind;
   personInput: boolean;
   automationRun: boolean;
+  walkthroughGeneration?: boolean;
 }): TurnBehavior {
+  if (args.walkthroughGeneration) return WALKTHROUGH_GENERATION;
   if (args.automationRun) return AUTOMATION_RUN;
   if (isTopLevelKind(args.kind)) return ROOT;
   if (!args.personInput) return AGENT_IN_CHILD;

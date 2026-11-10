@@ -417,6 +417,9 @@ export async function wireAgentTools(
     conversationId: args.run.conversationId,
     turnId: args.run.turnId,
     turnTools: args.behavior.tools,
+    ...(args.run.walkthroughGeneration
+      ? { walkthroughGeneration: args.run.walkthroughGeneration }
+      : undefined),
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),

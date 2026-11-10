@@ -57,7 +57,7 @@ function output(overrides: Record<string, unknown> = {}) {
         { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
       ]),
     ],
-    notCovered: [{ pr: 3150, path: retryFile, reason: "Retry count only." }],
+    not_covered: [{ pr: 3150, path: retryFile, reason: "Retry count only." }],
     ...overrides,
   });
 }
@@ -68,8 +68,8 @@ describe("validateWalkthrough", () => {
   });
 
   it("reports hunks that the story skips without saying so", () => {
-    expect(validateWalkthrough(output({ notCovered: [] }), refs)).toEqual([
-      "src/retry.ts lines 1-3 (head) in PR #3150 are not cited, and the file is not in notCovered.",
+    expect(validateWalkthrough(output({ not_covered: [] }), refs)).toEqual([
+      "src/retry.ts lines 1-3 (head) in PR #3150 are not cited, and the file is not in not_covered.",
     ]);
   });
 
@@ -193,7 +193,7 @@ describe("validateWalkthrough", () => {
     const problems = validateWalkthrough(
       output({
         chapters: [causeChapter([{ kind: "message", seq: 12 }])],
-        notCovered: [
+        not_covered: [
           { pr: 3150, path: lockFile, reason: "Shown elsewhere." },
           { pr: 3150, path: retryFile, reason: "Retry count only." },
         ],

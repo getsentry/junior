@@ -28,6 +28,10 @@ import {
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
+import {
+  createSubmitWalkthroughTool,
+  SUBMIT_WALKTHROUGH_TOOL_NAME,
+} from "@/chat/walkthroughs/submit-tool";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { createEventTools } from "@/chat/tools/events";
@@ -246,6 +250,12 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
+  if (turnTools.submitWalkthrough && context.walkthroughGeneration) {
+    tools[SUBMIT_WALKTHROUGH_TOOL_NAME] = createSubmitWalkthroughTool(
+      context,
+      context.walkthroughGeneration,
+    );
+  }
   if (turnTools.reportBlocked) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }

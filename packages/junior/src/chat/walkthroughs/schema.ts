@@ -126,7 +126,7 @@ const evidenceSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("check"),
       /** Id of a deterministic check result, such as CI or a move detector. */
-      checkId: z.string().min(1),
+      check_id: z.string().min(1),
     })
     .strict(),
 ]);
@@ -236,7 +236,7 @@ export const walkthroughOutputSchema = z
       )
       .default([]),
     /** Every changed file that is not mechanical and that no chapter cites. */
-    notCovered: notCoveredSchema,
+    not_covered: notCoveredSchema,
   })
   .strict();
 
@@ -262,7 +262,7 @@ export const walkthroughUpdateOutputSchema = z
       .max(8),
     /** New concerns that do not fit an old chapter. */
     addedChapters: z.array(walkthroughChapterSchema).max(4).default([]),
-    notCovered: notCoveredSchema,
+    not_covered: notCoveredSchema,
   })
   .strict();
 
