@@ -442,7 +442,7 @@ The issue was reopened.
 <details class="event">
 <summary><code>issue.updated</code></summary>
 
-The title or body was edited, or a label, assignee, or milestone was added or removed. The trusted summary names the change and who made it. Label and milestone names stay untrusted content. Updates that the App makes do not publish this event. Issue watches suggest this event. Repository watches support it but do not suggest it, because updates are frequent across a repository.
+The title or body was edited, or a label, assignee, or milestone was added or removed. The trusted summary names the change and who made it. Trusted data includes `change`, the webhook action such as `labeled`, and `senderId` and `senderLogin` for who made it. On `labeled` and `unlabeled`, trusted data also includes `label`, the lowercase label name. Event automations can match these keys. To run on one label that only some people add, match `change`, `label`, and `senderId`. Milestone names stay untrusted content. Updates that the App makes do not publish this event. Issue watches suggest this event. Repository watches support it but do not suggest it, because updates are frequent across a repository.
 
 </details>
 

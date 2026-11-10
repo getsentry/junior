@@ -25,7 +25,9 @@ const issueUpdateWebhookSchema = z.object({
   label: z.object({ name: z.string() }).nullish(),
   milestone: z.object({ title: z.string() }).nullish(),
   repository: z.object({ full_name: z.string().min(1) }),
-  sender: z.object({ login: z.string().min(1) }).optional(),
+  sender: z
+    .object({ id: z.number().optional(), login: z.string().min(1) })
+    .optional(),
 });
 type IssueUpdateWebhook = z.output<typeof issueUpdateWebhookSchema>;
 
@@ -89,7 +91,8 @@ export function normalizeIssueUpdateEvents(
   if (!parsed.success) return undefined;
   const update = describeIssueUpdate(parsed.data);
   if (!update) return undefined;
-  const doneBy = parsed.data.sender?.login;
+  const { action, label, sender } = parsed.data;
+  const doneBy = sender?.login;
   if (isBotLogin(doneBy, botEmail)) return [];
 
   const input = {
@@ -110,7 +113,16 @@ export function normalizeIssueUpdateEvents(
     identifier: resource.identifier,
     trustedSummary: `${issue.label} was ${update.change}${doneBy ? ` by ${doneBy}` : ""}.`,
     ...gitHubDoneBy(doneBy),
-    data: { repo: gitHubRepoDataSchema.parse(input.repo), issue: input.number },
+    // `change` and `label` let an automation run on one label change without
+    // reading untrusted text. The summary still keeps the label name out.
+    data: {
+      repo: gitHubRepoDataSchema.parse(input.repo),
+      issue: input.number,
+      change: action,
+      ...(label ? { label: label.name.toLowerCase() } : undefined),
+      ...(sender?.id !== undefined ? { senderId: sender.id } : undefined),
+      ...(doneBy ? { senderLogin: doneBy } : undefined),
+    },
     ...(untrustedText ? { untrustedText } : undefined),
   }));
 }

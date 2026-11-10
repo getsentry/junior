@@ -19,10 +19,24 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
   "issue.updated",
 ];
 
+// The `issues` webhook actions that `issue.updated` publishes.
+const ISSUE_UPDATE_CHANGES = [
+  "edited",
+  "labeled",
+  "unlabeled",
+  "assigned",
+  "unassigned",
+  "milestoned",
+  "demilestoned",
+];
+
+const SENDER_EVENTS = ["issue.comment.created", "issue.updated"];
+
 /**
  * Exact values GitHub sets on issue event data. Every issue event sets the
- * repository and issue number. Only `issue.comment.created` sets the comment
- * filters, so a trigger with them cannot select other events.
+ * repository and issue number. Comments and updates set who acted. Only
+ * updates set `change` and `label`, so an automation can run on one label
+ * that one person adds without the model reading label text.
  */
 export const GITHUB_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   ...gitHubCommentMatchFields(["issue.comment.created"]),
@@ -31,6 +45,31 @@ export const GITHUB_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
     kind: "number",
     description: "issue number, such as 12",
     events: GITHUB_ISSUE_EVENTS,
+  },
+  senderId: {
+    kind: "number",
+    description:
+      "immutable numeric GitHub user id of who wrote the comment or made the update; prefer over logins",
+    events: SENDER_EVENTS,
+  },
+  senderLogin: {
+    kind: "string",
+    description:
+      "GitHub login of who wrote the comment or made the update; logins can be renamed",
+    events: SENDER_EVENTS,
+  },
+  change: {
+    kind: "string",
+    enum: ISSUE_UPDATE_CHANGES,
+    description: "what the issue update changed, such as labeled",
+    events: ["issue.updated"],
+  },
+  label: {
+    kind: "string",
+    case: "lower",
+    description:
+      "lowercase name of the label that was added or removed, set only when change is labeled or unlabeled",
+    events: ["issue.updated"],
   },
 });
 
