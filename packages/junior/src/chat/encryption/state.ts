@@ -42,10 +42,9 @@ export function createEncryptedState(state: StateAdapter): EncryptedState {
   return {
     async get(key) {
       const stored = await state.get<unknown>(key);
-      if (stored === null || stored === undefined) return undefined;
-      if (!isEncryptedSecret(stored)) {
-        throw new Error("Stored value is not encrypted");
-      }
+      // A value that is not an envelope, such as one saved before
+      // encryption, reads as missing.
+      if (!isEncryptedSecret(stored)) return undefined;
       return decode(key, stored)?.value;
     },
     async set(key, value, ttlMs) {
