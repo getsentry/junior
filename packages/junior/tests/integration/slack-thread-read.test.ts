@@ -431,6 +431,13 @@ describe("slackThreadRead", () => {
     ).rejects.toThrow("private");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
+    expect(
+      await getConversationStore().getDestinationVisibility({
+        provider: "slack",
+        providerTenantId: "T123",
+        providerDestinationId: "C0UNCONFIRMED",
+      }),
+    ).toBe("private");
   });
 
   it("does not trust stale persisted public visibility when live Slack proof fails", async () => {
@@ -458,6 +465,54 @@ describe("slackThreadRead", () => {
     ).rejects.toThrow(/not found|cannot see it/i);
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
+  });
+
+  it("reads a channel that is stored as private but is public now", async () => {
+    const store = getConversationStore();
+    await store.recordActivity({
+      conversationId: "slack:C0CONVERTED:1700000000.100000",
+      destination: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C0CONVERTED",
+      },
+      nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+      source: "slack",
+      visibility: "private",
+    });
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "C0CONVERTED",
+        isPrivate: false,
+      }),
+    });
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.100000",
+        messages: [
+          {
+            ts: "1700000000.100000",
+            thread_ts: "1700000000.100000",
+            user: "U1",
+            text: "now public",
+          },
+        ],
+      }),
+    });
+
+    const tool = createTool({ locationChannelId: "C0CURRENT" });
+    const result = await executeTool(tool, {
+      url: "https://sentry.slack.com/archives/C0CONVERTED/p1700000000100000",
+    });
+
+    expect(result.messages[0].text).toBe("now public");
+    expect(
+      await store.getDestinationVisibility({
+        provider: "slack",
+        providerTenantId: "T123",
+        providerDestinationId: "C0CONVERTED",
+      }),
+    ).toBe("public");
   });
 
   it("joins then retries when conversations.replies returns not_in_channel", async () => {

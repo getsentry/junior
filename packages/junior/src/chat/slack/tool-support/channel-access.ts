@@ -1,9 +1,10 @@
 import { getConversationStore } from "@/chat/db";
-import {
-  getConversationInfo,
-  joinPublicChannel,
-} from "@/chat/slack/channel";
+import { getConversationInfo, joinPublicChannel } from "@/chat/slack/channel";
 import { SlackActionError } from "@/chat/slack/client";
+import {
+  conversationVisibilityFromSlackChannelType,
+  slackChannelTypeFromConversationInfo,
+} from "@/chat/slack/conversation-context";
 import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
 
 export type SlackChannelReadAccess =
@@ -41,11 +42,10 @@ function deny(
 /**
  * Decide whether the model may read Slack content from a target channel.
  *
- * The current conversation is always readable. Any other channel first checks
- * persisted visibility in the same workspace. Cross-channel reads require live
- * `conversations.info` proof that the destination is public. Stale persisted
- * public rows are not enough, so a channel that later becomes private fails
- * closed. Channel-id prefixes alone cannot prove a channel public.
+ * The current conversation is always readable. Any other channel needs live
+ * `conversations.info` proof that it is public. Channel-id prefixes cannot
+ * prove a channel public. The live answer also refreshes the stored
+ * Destination visibility for that channel.
  */
 export async function checkSlackChannelReadAccess(args: {
   currentChannelIds: Array<SlackChannelId | undefined>;
@@ -59,19 +59,27 @@ export async function checkSlackChannelReadAccess(args: {
     return { allowed: true, isMember: true };
   }
 
-  const visibility = await getConversationStore().getDestinationVisibility({
-    provider: "slack",
-    providerTenantId: args.teamId,
-    providerDestinationId: args.targetChannelId,
-  });
-  if (visibility === "private") {
-    return deny("private", DENIED_PRIVATE);
-  }
-
-  // Live Slack metadata is the only proof a non-current channel is public.
-  // Persisted public visibility may be stale after a channel is converted.
+  // Live Slack metadata decides. The stored visibility can be stale in both
+  // directions after a channel converts, so it never allows or denies here.
   try {
     const info = await getConversationInfo(args.targetChannelId);
+    const visibility = conversationVisibilityFromSlackChannelType(
+      slackChannelTypeFromConversationInfo(info),
+    );
+    if (visibility) {
+      await getConversationStore().recordDestinationVisibility({
+        destination: {
+          platform: "slack",
+          teamId: args.teamId,
+          channelId: args.targetChannelId,
+        },
+        // A private channel name stays out of the name directory.
+        ...(visibility === "public" && info.name
+          ? { channelName: info.name }
+          : undefined),
+        visibility,
+      });
+    }
     const isPublicChannel =
       info.isChannel && !info.isPrivate && !info.isIm && !info.isMpim;
     if (!isPublicChannel) {
@@ -81,7 +89,9 @@ export async function checkSlackChannelReadAccess(args: {
       allowed: true,
       isPublic: true,
       ...(info.name ? { channelName: info.name } : undefined),
-      ...(typeof info.isMember === "boolean" ? { isMember: info.isMember } : undefined),
+      ...(typeof info.isMember === "boolean"
+        ? { isMember: info.isMember }
+        : undefined),
     };
   } catch (error) {
     if (error instanceof SlackActionError) {
