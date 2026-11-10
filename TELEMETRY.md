@@ -672,7 +672,8 @@ previous Turn when agent history exists.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
-  #2318 tracks it.
+  #2318 tracks it. `already_reacted` on `reactions.add` and `no_reaction` on
+  `reactions.remove` are success, so they do not log `slack.action.failed`.
 
 ## Plugin Tasks and Notifications
 
