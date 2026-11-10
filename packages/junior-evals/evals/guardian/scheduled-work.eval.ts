@@ -291,7 +291,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
             },
           },
           instruction:
-            "Fetch getsentry/team-mobile/SKILLS/pr_review_reminder.md and follow it with REPO=getsentry/sentry-cocoa ALSO_REPOS=getsentry/sentry-fastlane-plugin,getsentry/sentry-docs IGNORE_LABELS=dependencies MIN_STALE=24h INCLUDE_DRAFTS=false. Post the reminder in this conversation.",
+            "Fetch getsentry/team-mobile/SKILLS/pr_review_reminder.md and follow it with REPO=getsentry/sentry-cocoa ALSO_REPOS=getsentry/sentry-fastlane-plugin IGNORE_LABELS=dependencies MIN_STALE=24h INCLUDE_DRAFTS=false INCLUDE_APPROVED=false. Post the reminder in this conversation.",
         },
         tool: "updateAutomation",
       }),
