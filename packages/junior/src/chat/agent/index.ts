@@ -765,6 +765,7 @@ async function executeAgentRunInPrivacyContext(
       contextContentParts: promptContextContentParts,
       inputMessages,
       inputMessagesAttribute,
+      platform: promptPlatform,
       promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
       shouldPromptAgent,
@@ -1039,6 +1040,7 @@ async function executeAgentRunInPrivacyContext(
     const cacheWarming = createCacheWarmingRecorder(
       conversationId,
       isUserActor(actor) && conversationKind !== "task",
+      { platform: promptPlatform, mode: behavior.promptMode },
     );
     // Batch counts go on the `gen_ai.invoke_agent` span, because production
     // drops info logs.

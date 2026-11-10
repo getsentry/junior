@@ -7,6 +7,7 @@
  * the optional canonical telemetry view of public input messages.
  */
 import { isDeepStrictEqual } from "node:util";
+import type { Platform } from "@sentry/junior-plugin-api";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
@@ -15,15 +16,11 @@ import {
   sandboxSkillPathResolution,
 } from "@/chat/sandbox/paths";
 import {
-  buildPluginSystemPromptContributions,
-  buildSystemPrompt,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
 } from "@/chat/prompt";
-import {
-  getPluginSystemPromptContributions,
-  getPluginUserPromptContributions,
-} from "@/chat/plugins/agent-hooks";
+import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
+import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
@@ -69,6 +66,8 @@ export interface PromptInput {
 /** Fully assembled prompt state for one run slice. */
 export interface PromptAssembly {
   baseInstructions: string;
+  /** Platform that `baseInstructions` was built for. */
+  platform: Platform;
   contextContentParts: UserContentPart[];
   inputMessages: Array<{
     role: string;
@@ -636,17 +635,10 @@ export async function assemblePrompt(args: {
     args.run.location?.provider === "slack"
       ? "slack"
       : "local";
-  const systemPromptContributions =
-    await getPluginSystemPromptContributions(platform);
-  const pluginSystemPrompt = buildPluginSystemPromptContributions(
-    systemPromptContributions,
+  const baseInstructions = await buildDeploymentSystemPrompt(
+    platform,
+    args.promptMode,
   );
-  const baseInstructions = [
-    buildSystemPrompt(platform, args.promptMode),
-    pluginSystemPrompt,
-  ]
-    .filter((section): section is string => Boolean(section))
-    .join("\n\n");
   // A replayed or checkpointed prompt already holds the context of this Turn,
   // so `loadPromptTurnContext` returns nothing for it.
   const {
@@ -761,6 +753,7 @@ export async function assemblePrompt(args: {
     contextContentParts,
     inputMessages,
     inputMessagesAttribute,
+    platform,
     ...(trimmedPrompt.promptTimestamp !== undefined
       ? { promptTimestamp: trimmedPrompt.promptTimestamp }
       : undefined),
