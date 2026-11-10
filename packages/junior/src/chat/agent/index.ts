@@ -30,6 +30,7 @@ import {
   withLogContext,
   withSpan,
   type LogContext,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -165,7 +166,11 @@ import {
   requestContextSummary,
 } from "@/chat/agent/context-summary";
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
-import { logToolBatch } from "@/chat/agent/tool-batch";
+import {
+  createToolBatchStats,
+  recordToolBatch,
+  toolBatchSpanAttributes,
+} from "@/chat/agent/tool-batch";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -1007,6 +1012,10 @@ async function executeAgentRunInPrivacyContext(
       conversationId,
       isUserActor(actor) && conversationKind !== "task",
     );
+    // Batch counts go on the `gen_ai.invoke_agent` span, because production
+    // drops info logs.
+    const toolBatchStats = createToolBatchStats();
+    let setAgentSpanAttributes: SetSpanAttributes | undefined;
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
@@ -1022,7 +1031,8 @@ async function executeAgentRunInPrivacyContext(
           (part) => part.type === "toolCall",
         );
         if (toolCalls.length > 1 && toolCall.id === toolCalls[0]!.id) {
-          logToolBatch(toolCalls, context.tools ?? []);
+          recordToolBatch(toolBatchStats, toolCalls, context.tools ?? []);
+          setAgentSpanAttributes?.(toolBatchSpanAttributes(toolBatchStats));
         }
         const exclusiveTool = exclusiveToolName(toolCalls);
         if (exclusiveTool && toolCalls.length !== 1) {
@@ -1244,7 +1254,8 @@ async function executeAgentRunInPrivacyContext(
         `invoke_agent ${botConfig.userName}`,
         "gen_ai.invoke_agent",
         spanContext,
-        async () => {
+        async (setInvokeAgentSpanAttributes) => {
+          setAgentSpanAttributes = setInvokeAgentSpanAttributes;
           // A declared Automation result is final. Each Automation run owns
           // its dispatch Conversation, so a result in this history belongs to
           // this run. A resumed slice returns it without calling the model.
