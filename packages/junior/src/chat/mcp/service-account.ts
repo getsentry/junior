@@ -105,7 +105,7 @@ export async function getMcpServiceAccountCredentials(
 }
 
 /**
- * Save stale credentials again with the current key. It runs only when the
+ * Save stale credentials again with the active key. It runs only when the
  * update lock is free, so it cannot write back a refresh token that an
  * update replaced.
  */

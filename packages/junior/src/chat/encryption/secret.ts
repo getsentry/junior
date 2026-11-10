@@ -1,79 +1,47 @@
 /**
  * Encrypt secrets that Junior keeps at rest, such as provider credentials.
  *
- * AES-256-GCM with a key that HKDF derives from `JUNIOR_SECRET`. Each value
- * is bound to a context, usually its storage key, as additional authenticated
- * data. A value copied to another key does not decrypt.
+ * AES-256-GCM with keys from `JUNIOR_ENCRYPTION_KEYS` (see `keyring.ts`).
+ * Each value is bound to a context, usually its storage key, and to its key
+ * id as additional authenticated data. A value copied to another key does not
+ * decrypt.
  *
- * Rotation: the envelope holds a key id. New values always use the current
- * `JUNIOR_SECRET`. Values from a secret in `JUNIOR_SECRET_PREVIOUS` still
- * decrypt and report `stale`, so the owner can save them again with the
- * current key. A key id that matches no configured secret gives
- * `SecretKeyMismatchError`, not a tampering failure.
+ * New values use the active key. Any listed key decrypts. A value from a key
+ * that is not active reports `stale`, so its owner can save it again with the
+ * active key. A key id that is not listed gives `SecretKeyMismatchError`, not
+ * a tampering failure.
+ *
+ * There is no per-value salt. The keys are random, not passwords, and each
+ * value has a random IV. The storage key in the AAD already names the
+ * identity that owns the value.
  *
  * Envelope: `jenc:v1:<keyId>:<iv>.<ciphertext>.<tag>` (base64url parts).
  */
-import {
-  createCipheriv,
-  createDecipheriv,
-  hkdfSync,
-  randomBytes,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { getChatConfig } from "@/chat/config";
+import type { EncryptionKeyring } from "@/chat/encryption/keyring";
 
 const ENVELOPE_PREFIX = "jenc:v1:";
 const ALGORITHM = "aes-256-gcm";
-const KEY_INFO = "junior.encryption.key.v1";
-const KEY_ID_INFO = "junior.encryption.key-id.v1";
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
-interface EncryptionKey {
-  id: string;
-  key: Buffer;
-}
-
-/** A decrypted secret. `stale` means a previous key encrypted it. */
+/** A decrypted secret. `stale` means a key that is not active encrypted it. */
 export interface DecryptedSecret {
   stale: boolean;
   text: string;
 }
 
-/** The envelope key id matches no configured `JUNIOR_SECRET`. */
+/** The envelope key id is not in `JUNIOR_ENCRYPTION_KEYS`. */
 export class SecretKeyMismatchError extends Error {
   constructor() {
-    super("Stored secret was encrypted with an unknown JUNIOR_SECRET");
+    super("Stored secret was encrypted with a key that is not configured");
     this.name = "SecretKeyMismatchError";
   }
 }
 
-function deriveKey(secret: string): EncryptionKey {
-  const derive = (info: string, length: number) =>
-    Buffer.from(hkdfSync("sha256", secret, "", info, length));
-  return {
-    id: derive(KEY_ID_INFO, 6).toString("base64url"),
-    key: derive(KEY_INFO, 32),
-  };
-}
-
-function currentKey(): EncryptionKey {
-  const secret = process.env.JUNIOR_SECRET?.trim();
-  if (!secret) {
-    throw new Error("Cannot encrypt stored secrets (set JUNIOR_SECRET)");
-  }
-  return deriveKey(secret);
-}
-
-/** Retired secrets, comma-separated. They only decrypt. */
-function previousKeys(): EncryptionKey[] {
-  return (process.env.JUNIOR_SECRET_PREVIOUS ?? "")
-    .split(",")
-    .map((secret) => secret.trim())
-    .filter(Boolean)
-    .map(deriveKey);
-}
-
-function additionalData(context: string): Buffer {
-  return Buffer.from(`${ENVELOPE_PREFIX}${context}`, "utf8");
+function additionalData(keyId: string, context: string): Buffer {
+  return Buffer.from(`${ENVELOPE_PREFIX}${keyId}\0${context}`, "utf8");
 }
 
 /** Check whether a stored value is an encryption envelope. */
@@ -81,14 +49,18 @@ export function isEncryptedSecret(value: unknown): value is string {
   return typeof value === "string" && value.startsWith(ENVELOPE_PREFIX);
 }
 
-/** Encrypt one secret and bind it to `context`, such as its storage key. */
-export function encryptSecret(plaintext: string, context: string): string {
-  const { id, key } = currentKey();
+/** Encrypt one secret with the active key and bind it to `context`. */
+export function encryptSecret(
+  plaintext: string,
+  context: string,
+  keyring: EncryptionKeyring = getChatConfig().encryption,
+): string {
+  const { id, key } = keyring.active;
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGORITHM, key, iv, {
     authTagLength: TAG_BYTES,
   });
-  cipher.setAAD(additionalData(context));
+  cipher.setAAD(additionalData(id, context));
   const ciphertext = Buffer.concat([
     cipher.update(plaintext, "utf8"),
     cipher.final(),
@@ -103,6 +75,7 @@ export function encryptSecret(plaintext: string, context: string): string {
 export function decryptSecret(
   envelope: string,
   context: string,
+  keyring: EncryptionKeyring = getChatConfig().encryption,
 ): DecryptedSecret {
   if (!isEncryptedSecret(envelope)) {
     throw new Error("Stored secret is not an encryption envelope");
@@ -114,20 +87,16 @@ export function decryptSecret(
   if (!keyId || !iv || !ciphertext || !tag || tag.length !== TAG_BYTES) {
     throw new Error("Stored secret envelope is malformed");
   }
-  const current = currentKey();
-  const match =
-    keyId === current.id
-      ? current
-      : previousKeys().find((candidate) => candidate.id === keyId);
+  const match = keyring.keys.find((candidate) => candidate.id === keyId);
   if (!match) throw new SecretKeyMismatchError();
   const decipher = createDecipheriv(ALGORITHM, match.key, iv, {
     authTagLength: TAG_BYTES,
   });
-  decipher.setAAD(additionalData(context));
+  decipher.setAAD(additionalData(keyId, context));
   decipher.setAuthTag(tag);
   const text = Buffer.concat([
     decipher.update(ciphertext),
     decipher.final(),
   ]).toString("utf8");
-  return { stale: match !== current, text };
+  return { stale: match.id !== keyring.active.id, text };
 }

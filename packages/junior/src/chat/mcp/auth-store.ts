@@ -360,7 +360,7 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  // Stale values expire within the credential TTL or move to the current key
+  // Stale values expire within the credential TTL or move to the active key
   // on the next save, so they are not saved again here.
   const stored = parseStoredCredentials(
     (await readEncryptedState(stateAdapter, credentialsKey(userId, provider)))

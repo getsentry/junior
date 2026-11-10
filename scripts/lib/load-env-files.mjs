@@ -13,6 +13,9 @@ function envFileNames(nodeEnv) {
 
 export const JUNIOR_LOCAL_DEV_INTERNAL_SECRET = "junior-local-dev-internal";
 export const JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET = "junior-local-dev-heartbeat";
+/** Fixed development key. Never use it outside local development. */
+export const JUNIOR_LOCAL_DEV_ENCRYPTION_KEYS =
+  "local-dev:0wuo8mmlBXksSBiuBsrlcvrJh95g9UUH_OhGeyaKAcE";
 
 function hasValue(value) {
   return typeof value === "string" && value.trim() !== "";
@@ -27,6 +30,9 @@ export function applyJuniorDevelopmentDefaults(env, options = {}) {
 
   if (!hasValue(env.JUNIOR_SECRET)) {
     env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
+  }
+  if (!hasValue(env.JUNIOR_ENCRYPTION_KEYS)) {
+    env.JUNIOR_ENCRYPTION_KEYS = JUNIOR_LOCAL_DEV_ENCRYPTION_KEYS;
   }
   if (!hasValue(env.JUNIOR_SCHEDULER_SECRET) && !hasValue(env.CRON_SECRET)) {
     env.JUNIOR_SCHEDULER_SECRET = JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;

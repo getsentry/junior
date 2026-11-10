@@ -20,8 +20,8 @@ export interface EncryptedStateRead {
 
 /**
  * Decrypt one stored envelope. The storage key is the encryption context.
- * A value from an unknown `JUNIOR_SECRET` reads as missing, so the owner asks
- * for the credential again and saves it with the current key.
+ * A value from a key that is no longer configured reads as missing, so the
+ * owner asks for the credential again and saves it with the active key.
  */
 function decode(key: string, envelope: string): EncryptedStateRead | undefined {
   try {
@@ -54,9 +54,9 @@ export function createEncryptedState(state: StateAdapter): EncryptedState {
 }
 
 /**
- * Read a value and report whether it is stale: encrypted with a key from
- * `JUNIOR_SECRET_PREVIOUS`, or saved before encryption. Long-lived owners
- * save stale values again, so they move to the current key.
+ * Read a value and report whether it is stale: encrypted with a key that is
+ * not active, or saved before encryption. Long-lived owners save stale values
+ * again, so they move to the active key.
  */
 export async function readEncryptedState(
   state: StateAdapter,

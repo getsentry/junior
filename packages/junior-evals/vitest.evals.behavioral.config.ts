@@ -29,6 +29,8 @@ loadJuniorTestEnvFiles({
 });
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
+process.env.JUNIOR_ENCRYPTION_KEYS =
+  "test:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
 // Run agent Turns on Luna at high reasoning to keep eval cost down. Prod
 // defaults to Opus; set AI_MODEL to eval another model. `||=` because
 // apps/example/.env.example sets both to an empty string.

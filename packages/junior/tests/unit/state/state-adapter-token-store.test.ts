@@ -1,14 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import { readEncryptionKeyring } from "@/chat/encryption/keyring";
+import { encryptSecret } from "@/chat/encryption/secret";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 describe("StateAdapterTokenStore", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   function createAdapter(overrides: Partial<StateAdapter> = {}) {
     const adapter = {
       get: async () => null,
@@ -119,21 +117,28 @@ describe("StateAdapterTokenStore", () => {
     await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
   });
 
-  it("moves tokens to a rotated JUNIOR_SECRET on read", async () => {
+  it("moves tokens from a key that is not active on read", async () => {
     const state = createMemoryState();
     await state.connect();
-    const store = new StateAdapterTokenStore(state);
     const tokens = { accessToken: "access-token", refreshToken: "refresh" };
-    await store.set("U123", "notion", tokens);
-    vi.stubEnv("JUNIOR_SECRET", "rotated-secret");
+    const oldKeyOnly = readEncryptionKeyring({
+      JUNIOR_ENCRYPTION_KEYS: process.env.JUNIOR_ENCRYPTION_KEYS,
+      JUNIOR_ENCRYPTION_KEY_ID: "test-old",
+    });
+    await state.set(
+      "oauth-token:U123:notion",
+      encryptSecret(
+        JSON.stringify(tokens),
+        "oauth-token:U123:notion",
+        oldKeyOnly,
+      ),
+    );
+    const store = new StateAdapterTokenStore(state);
 
-    // Without the retired secret, the tokens read as missing.
-    await expect(store.get("U123", "notion")).resolves.toBeUndefined();
-
-    vi.stubEnv("JUNIOR_SECRET_PREVIOUS", "junior-test-secret");
     await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
 
-    vi.stubEnv("JUNIOR_SECRET_PREVIOUS", "");
-    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+    expect(await state.get("oauth-token:U123:notion")).toMatch(
+      /^jenc:v1:test:/,
+    );
   });
 });

@@ -22,6 +22,8 @@ loadJuniorTestEnvFiles({
 });
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
+process.env.JUNIOR_ENCRYPTION_KEYS =
+  "test:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 // Classifier cases do not touch Redis state, but keep a loopback default so any
 // accidental shared import that reads REDIS_URL stays sandboxed.

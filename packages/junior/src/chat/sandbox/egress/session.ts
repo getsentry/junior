@@ -251,7 +251,7 @@ export async function getSandboxEgressCredentialLease(
   }
   const state = getStateAdapter();
   await state.connect();
-  // A stale lease is a cache miss. The next issue saves it with the current
+  // A stale lease is a cache miss. The next issue saves it with the active
   // key.
   const stored = await readEncryptedState(state, leaseKey(provider, grant));
   return stored?.stale ? undefined : parseLease(stored?.value);

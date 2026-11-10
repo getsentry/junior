@@ -54,7 +54,7 @@ export class StateAdapterTokenStore implements UserTokenStore {
   }
 
   /**
-   * Save stale tokens again with the current key. It runs only when the
+   * Save stale tokens again with the active key. It runs only when the
    * refresh gate is free, so it cannot write back a refresh token that a
    * refresh replaced.
    */

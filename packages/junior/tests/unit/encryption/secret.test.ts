@@ -1,19 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { readEncryptionKeyring } from "@/chat/encryption/keyring";
 import {
   decryptSecret,
   encryptSecret,
   SecretKeyMismatchError,
 } from "@/chat/encryption/secret";
 
-describe("encryptSecret", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
+const OLD_KEY = "old:yzdMjBLutb3SqjtwO1Lm3Cr2wN7FSGG8tzlRjvJc8Xg";
+const NEW_KEY = "new:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
 
+describe("encryptSecret", () => {
   it("decrypts only with the context it was encrypted for", () => {
     const envelope = encryptSecret("access-token", "oauth-token:U1:github");
 
-    expect(envelope).toMatch(/^jenc:v1:/);
+    expect(envelope).toMatch(/^jenc:v1:test:/);
     expect(envelope).not.toContain("access-token");
     expect(decryptSecret(envelope, "oauth-token:U1:github")).toEqual({
       stale: false,
@@ -24,18 +24,42 @@ describe("encryptSecret", () => {
     );
   });
 
-  it("decrypts with a previous JUNIOR_SECRET and reports it stale", () => {
-    const envelope = encryptSecret("access-token", "key");
-    vi.stubEnv("JUNIOR_SECRET", "rotated-secret");
+  it("decrypts with a key that is not active and reports it stale", () => {
+    const oldOnly = readEncryptionKeyring({ JUNIOR_ENCRYPTION_KEYS: OLD_KEY });
+    const rotated = readEncryptionKeyring({
+      JUNIOR_ENCRYPTION_KEYS: `${NEW_KEY},${OLD_KEY}`,
+      JUNIOR_ENCRYPTION_KEY_ID: "new",
+    });
+    const newOnly = readEncryptionKeyring({ JUNIOR_ENCRYPTION_KEYS: NEW_KEY });
+    const envelope = encryptSecret("access-token", "key", oldOnly);
 
-    expect(() => decryptSecret(envelope, "key")).toThrow(
-      SecretKeyMismatchError,
-    );
-
-    vi.stubEnv("JUNIOR_SECRET_PREVIOUS", "older-secret, junior-test-secret");
-    expect(decryptSecret(envelope, "key")).toEqual({
+    expect(decryptSecret(envelope, "key", rotated)).toEqual({
       stale: true,
       text: "access-token",
     });
+    expect(() => decryptSecret(envelope, "key", newOnly)).toThrow(
+      SecretKeyMismatchError,
+    );
+  });
+});
+
+describe("readEncryptionKeyring", () => {
+  it.each([
+    [{}, "JUNIOR_ENCRYPTION_KEYS is required"],
+    [{ JUNIOR_ENCRYPTION_KEYS: "old:c2hvcnQ" }, 'key "old" must be 32 bytes'],
+    [
+      { JUNIOR_ENCRYPTION_KEYS: `${OLD_KEY},${OLD_KEY}` },
+      "must not repeat a key id",
+    ],
+    [
+      { JUNIOR_ENCRYPTION_KEYS: `${NEW_KEY},${OLD_KEY}` },
+      "JUNIOR_ENCRYPTION_KEY_ID is required",
+    ],
+    [
+      { JUNIOR_ENCRYPTION_KEYS: NEW_KEY, JUNIOR_ENCRYPTION_KEY_ID: "old" },
+      'JUNIOR_ENCRYPTION_KEY_ID "old" is not in JUNIOR_ENCRYPTION_KEYS',
+    ],
+  ])("rejects an invalid keyring", (env, message) => {
+    expect(() => readEncryptionKeyring(env)).toThrow(message);
   });
 });

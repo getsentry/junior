@@ -23,8 +23,9 @@ related:
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
 | `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
-| `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context. Encrypts stored provider credentials.                                                              |
-| `JUNIOR_SECRET_PREVIOUS`                    | No          | Comma-separated retired `JUNIOR_SECRET` values. Junior uses them only to decrypt stored credentials during a rotation.                                                      |
+| `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
+| `JUNIOR_ENCRYPTION_KEYS`                    | Yes         | Keys that encrypt stored provider credentials, as comma-separated `<id>:<key>` entries. See [Encryption keys](#encryption-keys).                                            |
+| `JUNIOR_ENCRYPTION_KEY_ID`                  | Conditional | Id of the key for new values. Required when `JUNIOR_ENCRYPTION_KEYS` has more than one key.                                                                                 |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `AI_MODEL`                                  | No          | Model for every agent Turn. Also the fallback for `AI_FAST_MODEL`. Defaults to `anthropic/claude-opus-5.5`.                                                                 |
 | `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Defaults to `high`.                                                                                |
@@ -98,12 +99,24 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 
 Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox actor context signed with the previous value.
 
-To rotate `JUNIOR_SECRET` without disconnecting stored provider accounts:
+## Encryption keys
 
-1. Add the old value to `JUNIOR_SECRET_PREVIOUS`.
-2. Set `JUNIOR_SECRET` to the new value and deploy.
-3. Keep `JUNIOR_SECRET_PREVIOUS` for at least 30 days. Junior saves each credential again with the new key when it reads or refreshes it.
-4. Remove the old value. Credentials that Junior did not use in that period read as missing, and users must connect them again.
+Junior encrypts stored provider credentials with AES-256-GCM. The keys are separate from `JUNIOR_SECRET`, so you can rotate them on their own schedule. Each stored value records the id of the key that encrypted it.
+
+Generate a key and give it an id, such as the month you made it:
+
+```bash
+node -e "console.log('2026-11:' + require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Set the result as `JUNIOR_ENCRYPTION_KEYS`. With one key, `JUNIOR_ENCRYPTION_KEY_ID` is optional. Junior does not start when a key is not 32 bytes, an id repeats, or `JUNIOR_ENCRYPTION_KEY_ID` is not in the list.
+
+To rotate a key:
+
+1. Add the new key to `JUNIOR_ENCRYPTION_KEYS`. Keep `JUNIOR_ENCRYPTION_KEY_ID` on the old id, and deploy. All instances can now read values that the new key encrypts.
+2. Set `JUNIOR_ENCRYPTION_KEY_ID` to the new id, and deploy. New values use the new key. Junior saves a credential again with the new key when it reads or refreshes it.
+3. Keep the old key for at least 30 days.
+4. Remove the old key. Credentials that Junior did not use in that period read as missing, and users must connect them again.
 
 ## Dashboard auth
 
