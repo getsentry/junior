@@ -5,11 +5,18 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../components/StatusChip";
+import { cn } from "../styles";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { WalkthroughDecisionRow } from "./WalkthroughDecision";
 import { WalkthroughDiagram } from "./WalkthroughDiagram";
-import { WalkthroughEvidence } from "./WalkthroughEvidence";
+import {
+  CitedProse,
+  HunkReference,
+  ProofCard,
+  ReferenceList,
+  citedEvidence,
+} from "./WalkthroughEvidence";
 import {
   confirmDecisionId,
   evidencePrs,
@@ -46,7 +53,7 @@ export function WalkthroughStepView(props: {
   hunks: ReadonlyMap<string, WalkthroughHunk>;
   index: number;
   onAnswer(decisionId: string, value: "accept" | "change", note?: string): void;
-  onAsk(question?: string): void;
+  onAsk(): void;
   onOpenStep(stepKey: string): void;
   step: WalkthroughStep;
   total: number;
@@ -79,13 +86,14 @@ export function WalkthroughStepView(props: {
         )
       : [];
   const view = step.kind === "chapter" ? step.chapter.view : undefined;
-  const asks = step.kind === "chapter" ? step.chapter.asks : [];
+  const refs = citedEvidence(document, props.hunks, evidence);
+  const stacked = document.layers.length > 1;
   const caption =
     step.kind === "chapter" ? step.chapter.caption : step.item.caption;
   const body = step.kind === "chapter" ? step.chapter.body : step.item.body;
 
   return (
-    <article className="grid min-w-0 gap-6">
+    <article className="@container grid min-w-0 gap-6">
       <header className="grid gap-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-dashboard-text-muted">
           <span className="tabular-nums">
@@ -113,19 +121,36 @@ export function WalkthroughStepView(props: {
         <h2 className="m-0 font-display text-3xl leading-tight font-medium text-dashboard-text">
           {stepTitle(document, step)}
         </h2>
+      </header>
+
+      {/* Story first. A diagram sits beside it when the column is wide. */}
+      <div
+        className={cn(
+          "grid gap-6",
+          view &&
+            "@3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @3xl:items-start",
+        )}
+      >
         {/* The Quick question menu reads selections inside this marker. */}
         <div
-          className="grid max-w-2xl gap-2"
+          className="grid max-w-2xl gap-3"
           data-quick-question-message-id={step.key}
         >
           <p className="m-0 text-lg leading-7 font-medium text-dashboard-text">
             <DisplayText inline text={caption} />
           </p>
-          <div className="text-base leading-7 text-dashboard-text-subtle">
-            <DisplayText text={body} />
-          </div>
+          <CitedProse
+            className="text-base leading-7 text-dashboard-text-subtle"
+            refs={refs}
+            scope={step.key}
+            text={body}
+          />
+          <ReferenceList refs={refs} scope={step.key} />
         </div>
-      </header>
+        {view ? (
+          <WalkthroughDiagram diagram={document.content.diagram} view={view} />
+        ) : null}
+      </div>
 
       {step.kind === "item" && chapter ? (
         <div className="grid gap-2 rounded-md border border-dashboard-border-subtle bg-dashboard-fill-faint p-3 text-sm">
@@ -163,21 +188,22 @@ export function WalkthroughStepView(props: {
         </div>
       ) : null}
 
-      {view ? (
-        <WalkthroughDiagram diagram={document.content.diagram} view={view} />
+      {/* In the proof step the checks are the point, so they lead. */}
+      {chapter?.slot === "proof" ? (
+        <ProofCard refs={refs} scope={step.key} />
       ) : null}
-
-      {evidence.length ? (
-        <section aria-label="Evidence" className="grid gap-3">
-          {evidence.map((e, index) => (
-            <WalkthroughEvidence
-              document={document}
-              evidence={e}
-              hunks={props.hunks}
-              key={index}
-            />
-          ))}
-        </section>
+      {refs.map((ref) =>
+        ref.kind === "hunk" ? (
+          <HunkReference
+            key={ref.n}
+            ref={ref}
+            scope={step.key}
+            stacked={stacked}
+          />
+        ) : null,
+      )}
+      {chapter?.slot !== "proof" ? (
+        <ProofCard refs={refs} scope={step.key} />
       ) : null}
 
       {decisions.length ? (
@@ -193,30 +219,14 @@ export function WalkthroughStepView(props: {
         </section>
       ) : null}
 
-      <section
-        aria-label="Ask about this step"
-        className="flex flex-wrap items-center gap-2"
+      <Button
+        className="h-7 w-fit rounded-full px-2.5 text-xs"
+        onClick={props.onAsk}
+        type="button"
       >
-        <Button
-          className="h-7 rounded-full px-2.5 text-xs"
-          onClick={() => props.onAsk()}
-          type="button"
-        >
-          <MessageCircleQuestion aria-hidden="true" size={13} />
-          Ask about this
-        </Button>
-        {asks.map((ask) => (
-          <Button
-            className="h-7 rounded-full px-2.5 text-xs"
-            key={ask}
-            onClick={() => props.onAsk(ask)}
-            type="button"
-            variant="quiet"
-          >
-            {ask}
-          </Button>
-        ))}
-      </section>
+        <MessageCircleQuestion aria-hidden="true" size={13} />
+        Ask about this
+      </Button>
     </article>
   );
 }

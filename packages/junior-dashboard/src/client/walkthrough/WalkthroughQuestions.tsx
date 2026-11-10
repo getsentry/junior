@@ -108,18 +108,7 @@ export function WalkthroughQuestions(props: {
               </TranscriptMessageShell>
             </div>
           ))}
-        </div>
-        <div className="grid gap-2 px-3 pt-2 pb-2">
-          <blockquote className="m-0 border-l-2 border-dashboard-border-heavy pl-2.5 text-xs text-dashboard-text-muted">
-            <ClampedPreview
-              className="leading-relaxed break-words whitespace-pre-wrap"
-              key={props.anchor.quote ?? props.anchor.stepKey}
-              label="quote"
-              lines={2}
-            >
-              {props.anchor.quote ?? `About “${props.anchor.stepTitle}”`}
-            </ClampedPreview>
-          </blockquote>
+          {/* Like Quick question: suggestions sit where the next answer goes. */}
           {suggestions.length && !thinking ? (
             <div className="flex flex-wrap gap-2">
               {suggestions.map((suggestion) => (
@@ -133,6 +122,18 @@ export function WalkthroughQuestions(props: {
               ))}
             </div>
           ) : null}
+        </div>
+        <div className="grid gap-2 px-3 pt-2 pb-2">
+          <blockquote className="m-0 border-l-2 border-dashboard-border-heavy pl-2.5 text-xs text-dashboard-text-muted">
+            <ClampedPreview
+              className="leading-relaxed break-words whitespace-pre-wrap"
+              key={props.anchor.quote ?? props.anchor.stepKey}
+              label="quote"
+              lines={2}
+            >
+              {props.anchor.quote ?? `About “${props.anchor.stepTitle}”`}
+            </ClampedPreview>
+          </blockquote>
           <ConversationComposer
             compact
             disabled={thinking}

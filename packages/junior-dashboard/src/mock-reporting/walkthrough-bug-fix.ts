@@ -19,7 +19,6 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
         baseSha: "0d4f7aa",
         additions: 38,
         deletions: 6,
-        files: 4,
       },
     ],
     hunks: [
@@ -120,10 +119,16 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
     ],
     skipped: [{ reason: "generated", files: 1, lines: 14 }],
     checks: [
-      { id: "ci", label: "CI on #3150", status: "passed" },
+      {
+        id: "ci",
+        label: "CI on #3150",
+        detail: "212 tests, 0 failed.",
+        status: "passed",
+      },
       {
         id: "regression",
         label: "New test fails on the base commit and passes on this PR",
+        detail: "Base 0d4f7aa: fails. This PR 5be21c9: passes.",
         status: "passed",
       },
     ],
@@ -171,7 +176,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           type: "bug_fix",
           slot: "broken",
           caption: "After a deploy, some scheduled automations run twice.",
-          body: "Sentry shows the duplicates, and they all start within 90 seconds of a deploy. The person who asked for this PR saw the 9:00 standup digest post twice.",
+          body: "Sentry counts 212 duplicate runs in 7 days, all within 90 seconds of a deploy [1]. The person who asked for this PR saw the 9:00 standup digest post twice [2].",
           view: {
             show: [
               "scheduler",
@@ -208,7 +213,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "cause",
           caption:
             "The lock key includes the deployment id. Two deployments take two different locks.",
-          body: "During a rollout, the old and the new deployment both get the same scheduler tick. The lock key below includes the deployment id, so each deployment takes its own lock and both run.",
+          body: "During a rollout, the old and the new deployment both get the same tick. The lock key includes the deployment id [1], so each deployment takes its own lock and both run. A test that sends one tick to two deployments fails on the base commit [2].",
           view: {
             show: [
               "scheduler",
@@ -244,7 +249,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "fix",
           caption:
             "Key the lock by automation and scheduled time. This fixes the cause, not the symptom.",
-          body: "The key is now the automation id plus the scheduled time. Both deployments compute the same key, so only the first one takes the lock.",
+          body: "The key is now the automation id plus the scheduled time [1]. Both deployments compute the same key, so only the first one gets the lock.",
           view: {
             show: [
               "scheduler",
@@ -272,7 +277,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "side_effects",
           caption:
             "“Run now” uses the same lock. Two clicks in one minute now run once.",
-          body: "Two other paths use this lock. “Run now” rounds its time to the minute, so fast repeat clicks merge. Old locks keep the old key format until they expire.",
+          body: "It now rounds its time to the minute [1], so fast repeat clicks merge into one run. Locks taken before this PR keep the old key until they expire, so the first rollout can still double-run once [2].",
           evidence: [
             { kind: "hunk", hunkId: "run-now" },
             {
@@ -304,21 +309,22 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           slot: "proof",
           caption:
             "A new test runs one tick on two deployments. It fails before the fix and passes after.",
-          body: "The new test sends one tick through two deployments and expects one run. Junior ran it on the base commit, where it fails, and on this PR, where it passes.",
+          body: "Junior ran the new test [2] on the base commit, where it fails, and on this PR, where it passes [1]. The rest of CI passes too [3].",
           evidence: [
             { kind: "check", checkId: "regression" },
             { kind: "hunk", hunkId: "test" },
+            { kind: "check", checkId: "ci" },
           ],
           decisions: [],
           asks: [],
         },
         {
-          id: "how-well-know",
+          id: "after-ship",
           type: "ship_check",
-          slot: "how_well_know",
+          slot: "after_ship",
           caption:
             "Duplicate runs should drop to 0 within a day of the first deploy.",
-          body: "The Sentry issue in “What broke” counts duplicate runs. After the first full deploy with this PR, it should get no new events.",
+          body: "Watch the Sentry issue from “What broke” [1]. After the first full deploy with this PR, it should get no new events.",
           evidence: [
             {
               kind: "source",

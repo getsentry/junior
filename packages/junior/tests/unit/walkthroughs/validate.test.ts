@@ -28,7 +28,7 @@ function output(overrides: Record<string, unknown> = {}) {
         type: "bug_fix",
         slot: "cause",
         caption: "Tokens expire after 8 hours.",
-        body: "Every Task that runs longer fails.",
+        body: "Every Task that runs longer fails [1].",
         view: { show: ["client", "api", "c-a"] },
         evidence: [
           { kind: "hunk", hunkId: "h-fix", lines: { start: 1, end: 4 } },
@@ -61,7 +61,7 @@ describe("findWalkthroughProblems", () => {
             type: "bug_fix",
             slot: "cause",
             caption: "Tokens expire after 8 hours.",
-            body: "Every Task that runs longer fails.",
+            body: "Every Task that runs longer fails [1].",
             evidence: [
               {
                 kind: "source",
@@ -82,6 +82,25 @@ describe("findWalkthroughProblems", () => {
     ]);
   });
 
+  it("rejects prose that cites missing evidence or skips evidence", () => {
+    const uncited = output({
+      chapters: [
+        {
+          id: "cause",
+          type: "bug_fix",
+          slot: "cause",
+          caption: "Tokens expire after 8 hours.",
+          body: "Every Task that runs longer fails [2].",
+          evidence: [{ kind: "hunk", hunkId: "h-fix" }],
+        },
+      ],
+    });
+    expect(findWalkthroughProblems(uncited, refs)).toEqual([
+      "cause cites [2], which is not in its evidence.",
+      "cause never cites evidence [1].",
+    ]);
+  });
+
   it("rejects a slot that the change type does not have", () => {
     const wrong = output({
       chapters: [
@@ -90,7 +109,7 @@ describe("findWalkthroughProblems", () => {
           type: "migration",
           slot: "cause",
           caption: "Wrong slot.",
-          body: "Prose.",
+          body: "Prose [1].",
           evidence: [{ kind: "hunk", hunkId: "h-fix" }],
         },
       ],

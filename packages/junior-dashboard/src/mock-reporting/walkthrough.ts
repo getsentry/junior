@@ -21,7 +21,6 @@ export function readMockWalkthrough(): WalkthroughDocument {
         baseSha: "77c0e12",
         additions: 48,
         deletions: 12,
-        files: 2,
       },
       {
         pr: 3102,
@@ -31,7 +30,6 @@ export function readMockWalkthrough(): WalkthroughDocument {
         baseSha: "a1f9c03",
         additions: 132,
         deletions: 20,
-        files: 4,
       },
       {
         pr: 3103,
@@ -41,7 +39,6 @@ export function readMockWalkthrough(): WalkthroughDocument {
         baseSha: "c4d2e88",
         additions: 0,
         deletions: 0,
-        files: 21,
       },
     ],
     hunks: [
@@ -245,7 +242,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
           slot: "gap",
           caption:
             "Tokens expire after 8 hours, and long Tasks fail with them.",
-          body: "GitHub user tokens expire after 8 hours. A Task that runs longer gets a 401 and fails. Sentry shows 41 such failures in 2 weeks.",
+          body: "GitHub user tokens expire after 8 hours [2]. A Task that runs longer gets a 401 and fails. Sentry counts 41 such failures in 2 weeks [1].",
           view: {
             show: ["task", "client", "api", "store", "t-c", "c-a", "c-s"],
             highlight: ["api"],
@@ -270,7 +267,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
           type: "feature",
           slot: "change",
           caption: "On a 401, refresh the token, save it, and try once more.",
-          body: "When GitHub answers 401, the client refreshes the token, saves it, and sends the same call once more. The same PR also raises the retry count for every call.",
+          body: "When GitHub answers 401, the client refreshes the token, saves it, and sends the call once more [1]. The same PR also raises retries for every call [2].",
           view: {
             show: [
               "task",
@@ -316,7 +313,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
           slot: "safe_to_run",
           caption:
             "It deletes every row in legacy_tokens. That can't be undone.",
-          body: "The migration adds the refresh_tokens table. It also deletes every row in legacy_tokens, and there is no backup.",
+          body: "The migration adds the refresh_tokens table. It also deletes every row in legacy_tokens, with no backup [1]. Junior assumed nothing reads that table [2].",
           evidence: [
             { kind: "hunk", hunkId: "3101-sql" },
             {
@@ -336,11 +333,11 @@ export function readMockWalkthrough(): WalkthroughDocument {
           asks: ["What still references legacy_tokens?"],
         },
         {
-          id: "how-well-know",
+          id: "after-ship",
           type: "ship_check",
-          slot: "how_well_know",
+          slot: "after_ship",
           caption: "Tests can't prove this works. Production will.",
-          body: "Tests use a fake GitHub, so they can't show that real refreshes work. Production can: the 401 failures in Sentry should stop.",
+          body: "Tests use a fake GitHub, so they can't show that real refreshes work. In production, the 401 failures in Sentry should stop [1]. A span counts refreshes that work, but nothing counts the ones that fail [2].",
           evidence: [
             {
               kind: "source",
@@ -377,16 +374,16 @@ export function readMockWalkthrough(): WalkthroughDocument {
             touches: "safe-to-run",
             answers: "delete",
             caption: "legacy_tokens is now renamed, not deleted.",
-            body: "The migration now renames legacy_tokens to legacy_tokens_backup instead of deleting its rows. You can drop the backup in a later release.",
+            body: "The migration now renames legacy_tokens to legacy_tokens_backup instead of deleting its rows [1]. You can drop the backup in a later release.",
             evidence: [{ kind: "hunk", hunkId: "3101-sql-backup" }],
             decisions: [],
           },
           {
             id: "failed-metric",
-            touches: "how-well-know",
+            touches: "after-ship",
             answers: "metric",
             caption: "Failed refreshes now have a metric.",
-            body: "A failed refresh now increments github.token.refresh_failed, so you can alert on it.",
+            body: "A failed refresh now increments github.token.refresh_failed [1], so you can alert on it.",
             evidence: [{ kind: "hunk", hunkId: "3102-metric" }],
             decisions: [],
           },
@@ -394,7 +391,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
             id: "jitter",
             touches: "change",
             caption: "Retries now wait up to 250 ms longer, at random.",
-            body: "Each retry now waits a random 0 to 250 ms longer. This spreads out retries when many Tasks fail at once.",
+            body: "Each retry now waits a random 0 to 250 ms longer [1]. This spreads out retries when many Tasks fail at once.",
             evidence: [{ kind: "hunk", hunkId: "3102-jitter" }],
             decisions: [
               {

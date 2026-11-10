@@ -47,7 +47,7 @@ export const slotLabels: Record<string, string> = {
   cause: "The cause",
   fix: "The fix",
   side_effects: "Side effects",
-  proof: "Proof",
+  proof: "How we know it works",
   claim: "The claim",
   exceptions: "Exceptions",
   why: "Why",
@@ -58,7 +58,7 @@ export const slotLabels: Record<string, string> = {
   hot_path: "Hot path",
   numbers: "Numbers",
   before_after: "Before and after",
-  how_well_know: "How we'll know",
+  after_ship: "After it ships",
 };
 
 export const typeLabels: Record<WalkthroughChapter["type"], string> = {
@@ -146,51 +146,6 @@ export function walkthroughSteps(
     key: `chapter:${chapter.id}`,
     chapter,
   }));
-}
-
-/** Change types in story order. A ship check is not a type of change. */
-export function changeTypes(
-  document: WalkthroughDocument,
-): WalkthroughChapter["type"][] {
-  return [
-    ...new Set(
-      document.content.chapters
-        .map((c) => c.type)
-        .filter((type) => type !== "ship_check"),
-    ),
-  ];
-}
-
-const skippedLabels: Record<
-  WalkthroughDocument["skipped"][number]["reason"],
-  [string, string]
-> = {
-  generated: ["generated file", "generated files"],
-  lockfile: ["lockfile", "lockfiles"],
-  moved: ["moved file", "moved files"],
-  rename: ["renamed file", "renamed files"],
-  whitespace: ["whitespace-only file", "whitespace-only files"],
-};
-
-/**
- * Size of the change in one line, such as "+38 −6 in 4 files · 1 generated
- * file not shown".
- */
-export function sizeSummary(document: WalkthroughDocument): string {
-  const total = document.layers.reduce(
-    (sum, layer) => ({
-      additions: sum.additions + layer.additions,
-      deletions: sum.deletions + layer.deletions,
-      files: sum.files + layer.files,
-    }),
-    { additions: 0, deletions: 0, files: 0 },
-  );
-  const size = `+${total.additions} −${total.deletions} in ${total.files} file${total.files === 1 ? "" : "s"}`;
-  if (!document.skipped.length) return size;
-  const skipped = document.skipped
-    .map((s) => `${s.files} ${skippedLabels[s.reason][s.files === 1 ? 0 : 1]}`)
-    .join(", ");
-  return `${size} · ${skipped} not shown`;
 }
 
 /**
@@ -284,8 +239,9 @@ export function layerStatus(
 }
 
 /**
- * One layer's review as GitHub Markdown. It pastes into the "Review changes"
- * box. A permalink on its own line renders as a code snippet on GitHub.
+ * One layer's review as GitHub Markdown, plain enough to read before it is
+ * pasted into the "Review changes" box. A permalink on its own line renders
+ * as a code snippet on GitHub.
  */
 export function reviewMarkdown(args: {
   answers: AnswerMap;
@@ -317,13 +273,10 @@ export function reviewMarkdown(args: {
   if (accepted.length) {
     sections.push(
       [
-        `<details><summary>Checked and fine (${accepted.length})</summary>`,
-        "",
+        "**Checked and fine**",
         ...accepted.map(
           (d) => `- ${d.context ? `${d.context} ` : ""}${d.question}`,
         ),
-        "",
-        "</details>",
       ].join("\n"),
     );
   }

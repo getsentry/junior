@@ -33,7 +33,7 @@ export const WALKTHROUGH_TEMPLATES = {
   dependency: ["what_changed", "blast_radius", "rollback"],
   performance: ["hot_path", "change", "numbers"],
   ui: ["before_after"],
-  ship_check: ["how_well_know"],
+  ship_check: ["after_ship"],
 } as const;
 
 export type WalkthroughChangeType = keyof typeof WALKTHROUGH_TEMPLATES;
@@ -138,8 +138,9 @@ const decisionSchema = z
   .strict();
 
 /**
- * Short prose under the caption. It tells a reader with no context what the
- * evidence below shows. Two or three sentences, not a wall of text.
+ * Short prose under the caption: the story for a reader with no context. It
+ * cites evidence by 1-based index, such as "[2]", and cites every piece.
+ * Two or three sentences, not a wall of text.
  */
 const bodySchema = z.string().trim().min(1).max(360);
 
@@ -273,7 +274,6 @@ export const walkthroughDocumentSchema = z
             baseSha: shaSchema,
             additions: z.number().int().nonnegative(),
             deletions: z.number().int().nonnegative(),
-            files: z.number().int().nonnegative(),
           })
           .strict(),
       )
@@ -300,6 +300,8 @@ export const walkthroughDocumentSchema = z
         .object({
           id: z.string().min(1),
           label: sentence(120),
+          /** What ran and where, such as the base and head results. */
+          detail: sentence(160).optional(),
           status: z.enum(["passed", "failed", "pending"]),
           url: z.string().url().optional(),
         })

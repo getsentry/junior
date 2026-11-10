@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronRight, Circle, PencilLine } from "lucide-react";
+import { Check, Circle, PencilLine } from "lucide-react";
 import type { WalkthroughDocument } from "@sentry/junior/api/schema";
 
 import { CopyButton } from "../components/CopyButton";
@@ -7,14 +7,14 @@ import { DetailsPanel } from "../components/DetailsPanel";
 import { StatusChip } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../components/ui/collapsible";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { Textarea } from "../components/ui/textarea";
 import { DetailsCard } from "../conversations/DetailsList";
 import { DisplayText } from "../display-text/DisplayText";
-import { cn, dashboardDisclosureChevronClass } from "../styles";
+import { cn } from "../styles";
 import {
   layerStatus,
   liveDecisions,
@@ -25,6 +25,22 @@ import {
 
 type Layer = WalkthroughDocument["layers"][number];
 type Verdict = "approve" | "changes" | "comment";
+
+const verdictActions: Record<Verdict, string> = {
+  approve: "Approve as you",
+  changes: "Request changes as you",
+  comment: "Comment as you",
+};
+
+// Junior opens these PRs, so GitHub only counts a review from a person.
+const verdictHelp: Record<Verdict, (pr: number) => string> = {
+  approve: (pr) =>
+    `Approves #${pr} on GitHub from your account. Junior opened this PR, so it can't approve it.`,
+  changes: (pr) =>
+    `Posts this review on #${pr} from your GitHub account and requests changes. Junior reads it and pushes a fix.`,
+  comment: (pr) =>
+    `Posts this review on #${pr} from your GitHub account. It doesn't approve or block the PR.`,
+};
 
 const verdictLabels: Record<Verdict, string> = {
   approve: "Approved",
@@ -114,7 +130,7 @@ function LayerReview(props: {
       }
       title={props.stacked ? `#${layer.pr} ${layer.title}` : `#${layer.pr}`}
     >
-      <div className="grid gap-3">
+      <div className="grid min-w-0 gap-3">
         {decisions.length ? (
           <ul className="-mx-1.5 m-0 grid list-none gap-0.5 p-0">
             {decisions.map((decision) => (
@@ -139,41 +155,41 @@ function LayerReview(props: {
           value={comment}
         />
         {markdown ? (
-          <Collapsible className="grid gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <CollapsibleTrigger className="group flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-xs font-medium text-dashboard-text-muted hover:text-dashboard-text">
-                <ChevronRight
-                  aria-hidden="true"
-                  className={dashboardDisclosureChevronClass}
-                />
-                What GitHub gets
-              </CollapsibleTrigger>
+          <div className="relative">
+            <pre className="thin-scrollbar m-0 max-h-72 overflow-y-auto rounded-md border border-dashboard-border-subtle bg-dashboard-bg py-2.5 pr-10 pl-3 font-mono text-xs leading-relaxed wrap-anywhere whitespace-pre-wrap text-dashboard-text-subtle">
+              {markdown}
+            </pre>
+            <div className="absolute top-1 right-1">
               <CopyButton
                 getText={() => markdown}
-                label="Copy as GitHub review"
+                label="Copy review for GitHub"
               />
             </div>
-            <CollapsibleContent>
-              <div className="rounded-md border border-dashboard-border-subtle bg-dashboard-bg p-3 text-sm text-dashboard-text">
-                <DisplayText text={markdown} />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+          </div>
         ) : null}
-        <Button
-          disabled={!verdict || Boolean(posted)}
-          onClick={() => setPosted(verdict)}
-          type="button"
-          variant={verdict === "comment" ? "default" : "primary"}
-        >
-          {verdict === "changes"
-            ? "Request changes as you"
-            : verdict === "approve"
-              ? "Approve as you"
-              : verdict === "comment"
-                ? "Comment as you"
-                : `Answer ${status.kind === "open" ? status.count : ""} more to approve`}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="grid">
+                <Button
+                  disabled={!verdict || Boolean(posted)}
+                  onClick={() => setPosted(verdict)}
+                  type="button"
+                  variant={verdict === "comment" ? "default" : "primary"}
+                >
+                  {verdict
+                    ? verdictActions[verdict]
+                    : `Answer ${status.kind === "open" ? status.count : ""} more to approve`}
+                </Button>
+              </span>
+            }
+          />
+          <TooltipContent>
+            {verdict
+              ? verdictHelp[verdict](layer.pr)
+              : "Accept or change every decision first."}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </DetailsCard>
   );

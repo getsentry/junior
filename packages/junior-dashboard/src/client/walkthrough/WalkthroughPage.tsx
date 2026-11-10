@@ -21,13 +21,11 @@ import { WalkthroughReview } from "./WalkthroughReview";
 import { WalkthroughStepView } from "./WalkthroughStepView";
 import { prototypeAnswer } from "./prototypeAnswers";
 import {
-  changeTypes,
   hunkIndex,
   latestUpdate,
+  layerStatus,
   reviewDecisions,
-  sizeSummary,
   stepTitle,
-  typeLabels,
   walkthroughSteps,
   type AnswerMap,
 } from "./walkthroughModel";
@@ -80,9 +78,8 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
       ]),
     ),
   );
-  const [side, setSide] = useState<"questions" | "review" | undefined>(
-    "review",
-  );
+  // Closed at first, so the story gets the width for code beside prose.
+  const [side, setSide] = useState<"questions" | "review">();
   const [questions, setQuestions] = useState<WalkthroughQuestion[]>([]);
   const [quote, setQuote] = useState<{ quote: string; stepKey: string }>();
   const mainRef = useRef<HTMLElement>(null);
@@ -136,7 +133,10 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
       setMode(inUpdate && update ? "update" : "story");
     setActiveKey(key);
   };
-  const types = changeTypes(document).map((type) => typeLabels[type]);
+  const open = document.layers.reduce((sum, layer) => {
+    const status = layerStatus(layer.pr, decisions, answers);
+    return sum + (status.kind === "open" ? status.count : 0);
+  }, 0);
 
   return (
     <PageLayout className="max-w-screen-2xl">
@@ -162,25 +162,23 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
             {side !== "review" ? (
               <Button onClick={() => setSide("review")} type="button">
                 Your review
+                {open ? (
+                  <span className="text-dashboard-text-muted tabular-nums">
+                    {open} to answer
+                  </span>
+                ) : null}
               </Button>
             ) : null}
           </div>
         }
-        description={
-          <span className="grid gap-1.5">
-            <DisplayText inline text={document.content.intent} />
-            <span className="text-xs text-dashboard-text-muted">
-              {types.join(", ")} · {sizeSummary(document)}
-            </span>
-          </span>
-        }
+        description={<DisplayText inline text={document.content.intent} />}
         documentTitle={`Walkthrough · ${document.content.title}`}
         title={document.content.title}
       />
       <div
         className={cn(
-          "grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)]",
-          side && "xl:grid-cols-[15rem_minmax(0,1fr)_24rem]",
+          "grid gap-8 lg:grid-cols-[16rem_minmax(0,1fr)]",
+          side && "xl:grid-cols-[16rem_minmax(0,1fr)_24rem]",
         )}
       >
         <WalkthroughRail
@@ -202,10 +200,7 @@ function WalkthroughView(props: { report: WalkthroughReport }) {
                 [decisionId]: { value, note },
               }))
             }
-            onAsk={(question) => {
-              setSide("questions");
-              if (question) void ask(question);
-            }}
+            onAsk={() => setSide("questions")}
             onOpenStep={openStep}
             step={step}
             total={steps.length}

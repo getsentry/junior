@@ -98,7 +98,10 @@ export function findWalkthroughUpdateProblems(
         `Update item ${item.id} answers ${item.answers}, which has no "change" feedback.`,
       );
     }
-    problems.push(...item.evidence.flatMap((e) => evidenceProblems(e, refs)));
+    problems.push(
+      ...item.evidence.flatMap((e) => evidenceProblems(e, refs)),
+      ...citationProblems(item.id, item.body, item.evidence.length),
+    );
   }
   for (const chapter of output.addedChapters) {
     if (parent.chapterIds.has(chapter.id)) {
@@ -124,7 +127,10 @@ function chapterProblems(
   refs: WalkthroughInputRefs,
   diagramIds: ReadonlySet<string> | undefined,
 ): string[] {
-  const problems = chapter.evidence.flatMap((e) => evidenceProblems(e, refs));
+  const problems = [
+    ...chapter.evidence.flatMap((e) => evidenceProblems(e, refs)),
+    ...citationProblems(chapter.id, chapter.body, chapter.evidence.length),
+  ];
   const templateSlots: readonly string[] = WALKTHROUGH_TEMPLATES[chapter.type];
   if (!templateSlots.includes(chapter.slot)) {
     problems.push(
@@ -160,6 +166,27 @@ function chapterProblems(
         problems.push(`Chapter ${chapter.id} shows unknown diagram id ${id}.`);
       }
     }
+  }
+  return problems;
+}
+
+/**
+ * The prose cites evidence as "[n]". Each citation must resolve, and each
+ * piece of evidence must be cited, so no reference floats free of the story.
+ */
+function citationProblems(
+  id: string,
+  body: string,
+  evidenceCount: number,
+): string[] {
+  const cited = new Set(
+    [...body.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1])),
+  );
+  const problems = [...cited]
+    .filter((n) => n < 1 || n > evidenceCount)
+    .map((n) => `${id} cites [${n}], which is not in its evidence.`);
+  for (let n = 1; n <= evidenceCount; n++) {
+    if (!cited.has(n)) problems.push(`${id} never cites evidence [${n}].`);
   }
   return problems;
 }

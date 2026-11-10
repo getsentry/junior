@@ -22,9 +22,11 @@ export function WalkthroughRail(props: {
   const { document } = props;
   // Layers are stored bottom first. Read the stack top down, like GitHub.
   const links = [...document.layers].reverse().map((layer) => ({
-    description: `#${layer.pr} · +${layer.additions} −${layer.deletions}`,
+    // Same shape as the GitHub plugin's annotation, so the row matches
+    // Linked work in the Conversation details panel.
+    description: layer.title,
     key: `github:${layer.pr}`,
-    label: layer.title,
+    label: `${document.repository}#${layer.pr}`,
     objectType: "code_change" as const,
     plugin: "github",
     status: "open",
@@ -97,7 +99,8 @@ function stepGroups(
     label?: string;
     steps: { step: WalkthroughStep; index: number }[];
   }[] = [];
-  // A ship check is not a type of change, so it does not make a mix.
+  // A ship check is not a type of change, so it does not make a mix, and it
+  // needs no heading of its own.
   const types = new Set(
     steps
       .map((s) => stepChapter(document, s)?.type)
@@ -105,7 +108,10 @@ function stepGroups(
   );
   steps.forEach((step, index) => {
     const type = stepChapter(document, step)?.type;
-    const label = types.size > 1 && type ? typeLabels[type] : undefined;
+    const label =
+      types.size > 1 && type && type !== "ship_check"
+        ? typeLabels[type]
+        : undefined;
     const last = groups.at(-1);
     if (last && last.label === label) last.steps.push({ step, index });
     else groups.push({ label, steps: [{ step, index }] });
