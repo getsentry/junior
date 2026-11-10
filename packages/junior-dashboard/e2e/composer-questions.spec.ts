@@ -304,6 +304,58 @@ test("a question that docks while the reader reads back does not move the transc
   await expect(record).not.toHaveAttribute("data-highlighted");
 });
 
+test("a question open on load does not mark its record while later pages load", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  // The question is on the first page. A second page loads after it docks.
+  let releasePage = () => {};
+  const pageHeld = new Promise<void>((resolve) => {
+    releasePage = resolve;
+  });
+  await page.route(
+    (url) =>
+      url.pathname === "/api/review-items" &&
+      url.searchParams.get("conversationId") === ONE_QUESTION_ID,
+    async (route) => {
+      if (new URL(route.request().url()).searchParams.has("cursor")) {
+        await pageHeld;
+        return route.fulfill({ json: { items: [] } });
+      }
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({ json: { ...body, nextCursor: "page-2" } });
+    },
+  );
+  // The mark is brief, so count every time a record gets it.
+  await page.addInitScript(() => {
+    const marks = { count: 0 };
+    Object.assign(window, { askMarks: marks });
+    new MutationObserver((changes) => {
+      marks.count += changes.filter((change) =>
+        (change.target as Element).hasAttribute("data-highlighted"),
+      ).length;
+    }).observe(document, {
+      attributeFilter: ["data-highlighted"],
+      subtree: true,
+    });
+  });
+  await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
+  const question = page.getByRole("region", { name: /^Question:/ });
+  const record = page.getByRole("region", {
+    name: "Asked Approve the payments-v42 rollout",
+  });
+  await expect(question).toBeVisible();
+  await expect(record).toBeVisible();
+  releasePage();
+  await expect(record).toBeInViewport();
+  const marks = await page.evaluate(
+    () => (window as unknown as { askMarks: { count: number } }).askMarks.count,
+  );
+  expect(marks).toBe(0);
+});
+
 test("a typed message answers the question", async ({ dashboard, page }) => {
   await page.setViewportSize(desktop);
   await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
