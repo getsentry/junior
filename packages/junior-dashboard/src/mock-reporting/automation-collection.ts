@@ -30,6 +30,7 @@ export function mockAutomationCollection(
         .toLowerCase();
       return (
         (input.scope !== "mine" || automation.ownedByViewer) &&
+        (input.owner !== "me" || automation.ownedByViewer) &&
         (!input.skill ||
           (task.kind === "skill" && task.skill === input.skill)) &&
         (input.scope !== "public" ||

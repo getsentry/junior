@@ -177,6 +177,7 @@ export async function readAutomationCollection(
         ? unavailable
         : eq(collection.state, input.state),
     input.creator ? eq(collection.creator, input.creator) : undefined,
+    input.owner === "me" ? eq(collection.owned, true) : undefined,
     input.destination
       ? eq(collection.destination, input.destination)
       : undefined,
