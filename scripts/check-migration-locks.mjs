@@ -122,15 +122,18 @@ function backfillViolations(lines, newTables) {
 function alterTableViolations(lines, newTables) {
   const violations = [];
   const alterPattern = new RegExp(
-    String.raw`^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?${TABLE}`,
+    String.raw`\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?${TABLE}`,
     "i",
   );
-  const statements = lines.map(withoutLineComment).join("\n").split(";");
-  for (const statement of statements) {
-    const table = alterPattern.exec(statement)?.[1]?.toLowerCase();
-    if (table === undefined || newTables.has(table)) {
+  // A statement can sit inside a DO block, after other PL/pgSQL code.
+  const fragments = lines.map(withoutLineComment).join("\n").split(";");
+  for (const fragment of fragments) {
+    const match = alterPattern.exec(fragment);
+    const table = match?.[1]?.toLowerCase();
+    if (!match || table === undefined || newTables.has(table)) {
       continue;
     }
+    const statement = fragment.slice(match.index);
     if (
       /\bADD\s+CONSTRAINT\b[\s\S]*\b(?:FOREIGN\s+KEY|CHECK)\b/i.test(
         statement,
