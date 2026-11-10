@@ -26,8 +26,7 @@ Read this first after a sandbox reset or context loss.
 
 ## Open questions
 
-- Review item 4338131e (dedupe `walkthrough:slice-4a:cost-run`): how to run
-  the 4a cost check; sandbox has no AI Gateway key.
+- None.
 
 ## Log
 
@@ -35,3 +34,14 @@ Read this first after a sandbox reset or context loss.
 
 - Thomas approved proceeding with the plan, stacked, with this journal.
 - Created this journal branch.
+- Review item 4338131e answered: no key needed. An egress proxy injects AI
+  Gateway auth. Verified: `curl https://ai-gateway.vercel.sh/v1/chat/completions`
+  without a key returns 200 with usage and `gateway_cost`. If the CLI demands
+  `AI_GATEWAY_API_KEY`, set a placeholder value. 4a cost runs happen here.
+- Slice 1 started on `walkthrough/1-schema` (from origin/main). Schema changes
+  vs prototype: Brief `source` evidence replaced by `message` (seq in the
+  source Conversation) and `link` (url must appear in a PR body or cited
+  message); decision origin `assumed` has no sourceId; document `sources` →
+  `sourceConversationId` + `messages`; removed `meta.briefVersion` and the
+  unimplemented `moved` skip reason. Head-side code citations may point
+  outside the diff.
