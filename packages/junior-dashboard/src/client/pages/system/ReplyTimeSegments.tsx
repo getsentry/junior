@@ -38,6 +38,14 @@ function segmentParts(segment: string) {
     : { group: parts[0], turns: parts[1] ?? "", work: parts[2] ?? "" };
 }
 
+// A thin segment leans on the `none` segment with the same Actor and Turn
+// depth, as `parentGapSegment` in the cache warming model. Only a non-archived
+// `none` segment has none to lean on.
+function hasParent(segment: string): boolean {
+  const parts = segmentParts(segment);
+  return parts.group === "archived" || parts.work !== "none";
+}
+
 function replyShare(segment: Segment): string {
   const { noReply, total } = segment.histogram;
   return total ? `${Math.round(((total - noReply) / total) * 100)}%` : "—";
@@ -75,7 +83,7 @@ export function ReplyTimeSegments(props: {
       <ChartHeader
         description={
           props.report
-            ? `Time until the next message after a Turn ends, by cache warming segment. The planner warms a segment after ${minSamples} samples.`
+            ? `Time until the next message after a Turn ends, by cache warming segment. A segment with fewer than ${minSamples} samples uses the samples of its "none" segment.`
             : undefined
         }
         title="Reply times"
@@ -176,7 +184,9 @@ export function ReplyTimeSegments(props: {
                   </span>
                   <span>
                     {current.histogram.total < minSamples
-                      ? "Too few samples to warm"
+                      ? hasParent(current.segment)
+                        ? `Uses its "none" segment until ${minSamples} samples`
+                        : "Too few samples to warm"
                       : currentSummary?.median
                         ? `Typical reply ${currentSummary.median}`
                         : "No replies"}

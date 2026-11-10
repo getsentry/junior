@@ -22,7 +22,10 @@ export const replyTimeHistogramSchema = z
 export const replyTimeSegmentsReportSchema = z
   .object({
     generatedAt: z.string().datetime(),
-    /** Below this many gaps, the planner does not warm the segment. */
+    /**
+     * Below this many gaps, the planner leans on the segment's `none`
+     * segment, or does not warm a `none` segment.
+     */
     minSamples: z.number().int().positive(),
     segments: z.array(
       z
