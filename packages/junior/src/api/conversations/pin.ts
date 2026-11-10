@@ -16,6 +16,7 @@ import type {
   ReorderPinnedConversationsResponse,
 } from "../schema/conversation-pin";
 import { readConversationAccessFromSql } from "./access";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 /**
  * Pin or unpin one conversation for the signed-in viewer.
@@ -69,7 +70,7 @@ async function setPin(
   if (!conversation) throwApiError(404, "Conversation not found.");
   // The viewer passed the access check above, so the root id is safe to name.
   // MCP output has no root field, and the caller needs it to act.
-  if (conversationKindFromRow(conversation) !== "root") {
+  if (!isTopLevelKind(conversationKindFromRow(conversation))) {
     throwApiError(
       409,
       `A child conversation cannot be pinned or unpinned. It uses its root's pin: ${conversation.rootConversationId ?? conversation.parentConversationId}.`,

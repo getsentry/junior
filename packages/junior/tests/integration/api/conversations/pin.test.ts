@@ -1,4 +1,5 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -12,7 +13,10 @@ import {
 } from "@/api/schema";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -194,6 +198,17 @@ describe("conversation pin API", () => {
       { conversationId: older, pinned: true },
       { conversationId: newer, pinned: false },
     ]);
+    // An Automation run has no parent, so it takes its own pin like a root.
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: "automation" })
+      .where(eq(juniorConversations.conversationId, newer));
+    expect((await setPin(app, newer, true)).status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(newer, { viewer }),
+      ),
+    ).toMatchObject({ kind: "automation", pinnedAt: expect.any(String) });
   });
 
   it("keeps the viewer's Pinned order until a pin changes", async () => {

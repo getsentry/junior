@@ -755,7 +755,7 @@ export function ConversationPage(props: {
                 onClick: () => {
                   if (conversation?.archivedAt) {
                     setArchived(false);
-                  } else if (conversation!.kind === "root") {
+                  } else if (!conversation!.parentConversationId) {
                     setArchived(true);
                   } else {
                     setConfirmChildArchive(true);

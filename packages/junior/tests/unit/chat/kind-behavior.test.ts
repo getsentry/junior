@@ -43,6 +43,7 @@ describe("turnBehavior", () => {
   it.each([
     { kind: "root", personInput: true, expected: rootTurn },
     { kind: "root", personInput: false, expected: rootTurn },
+    { kind: "automation", personInput: false, expected: rootTurn },
     { kind: "thread", personInput: true, expected: personInThreadTurn },
     { kind: "thread", personInput: false, expected: childAgentTurn },
     { kind: "task", personInput: false, expected: childAgentTurn },

@@ -680,6 +680,13 @@
       "when": 1794333504935,
       "tag": "0096_automation_task_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1794344562301,
+      "tag": "0097_conversation_kind_automation",
+      "breakpoints": true
     }
   ]
 }

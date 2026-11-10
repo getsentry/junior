@@ -4,7 +4,7 @@ import {
   sourceSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { ConversationKind } from "@/chat/conversations/store";
+import type { ChildConversationKind } from "@/chat/conversations/store";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { agentTypeSchema } from "./agent-types";
@@ -28,7 +28,7 @@ export const agentNameSchema = exactStringSchema.max(64);
 export const CHILD_AGENT_KINDS = [
   "thread",
   "task",
-] as const satisfies readonly Exclude<ConversationKind, "root">[];
+] as const satisfies readonly ChildConversationKind[];
 export type ChildAgentKind = (typeof CHILD_AGENT_KINDS)[number];
 
 /** `messageAgent` target for the parent of a child agent. */
