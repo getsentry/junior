@@ -141,7 +141,6 @@ async function scheduleWarmup(
 ): Promise<void> {
   const { cacheExpiresAtMs, delayMs } = warmupTiming(
     requestStartedAtMs,
-    warm.prefixTokens,
     warm.cacheTtlMs,
   );
   await sendCacheWarmup({ ...message, cacheExpiresAtMs }, delayMs);

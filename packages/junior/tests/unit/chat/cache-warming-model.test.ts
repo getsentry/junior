@@ -156,15 +156,15 @@ describe("decideWarmup", () => {
   });
 
   it("counts warmups every TTL minus the margin in a plan", () => {
-    // A 400k-token prefix warms 135 seconds before expiry, so warmups come
-    // every 165 seconds. A plan that reaches replies 20 minutes out costs
-    // more warmups than one 5-minute step each would count.
+    // A warmup runs 45 seconds before expiry, so warmups come every 255
+    // seconds. A plan that reaches replies 20 minutes out costs more warmups
+    // than one 5-minute step each would count, and then it does not pay.
     const decision = decideWarmup({
       ...prices,
       conversationGapsMs: [],
-      globalGapsMs: [...gaps(30, 20 * MINUTE), ...gaps(70, NO_REPLY_GAP_MS)],
+      globalGapsMs: [...gaps(23, 20 * MINUTE), ...gaps(77, NO_REPLY_GAP_MS)],
       idleMs: 4 * MINUTE,
-      prefixTokens: 400_000,
+      prefixTokens: 200_000,
     });
 
     expect(decision).toMatchObject({ warm: false, reason: "unlikely_return" });
