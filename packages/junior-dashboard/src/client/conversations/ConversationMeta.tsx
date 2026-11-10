@@ -94,6 +94,11 @@ export function ConversationPrivacyChip(props: {
   );
 }
 
+/** Status icons a labeled chip shows before the rest collapse into +N. */
+const MAX_GROUP_STATUS_ICONS = 3;
+/** Icon chips the mobile facepile shows before the rest collapse into +N. */
+const MAX_FACEPILE_CHIPS = 5;
+
 /** Render plugin annotations as a newest-first stack in a conversation row. */
 export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
@@ -180,6 +185,8 @@ function SidebarAnnotationIconFacepile(props: {
   cutoutColor: string;
   className?: string;
 }) {
+  const shown = props.annotations.slice(0, MAX_FACEPILE_CHIPS);
+  const hiddenCount = props.annotations.length - shown.length;
   return (
     <span
       className={cn(
@@ -189,7 +196,7 @@ function SidebarAnnotationIconFacepile(props: {
         props.className,
       )}
     >
-      {props.annotations.map((annotation, index) => (
+      {shown.map((annotation, index) => (
         <SidebarAnnotationStatusChip
           annotation={annotation}
           cutoutColor={props.cutoutColor}
@@ -199,17 +206,31 @@ function SidebarAnnotationIconFacepile(props: {
           zIndex={index + 1}
         />
       ))}
+      {hiddenCount > 0 ? (
+        <span
+          aria-hidden="true"
+          className="relative -ml-1 box-border inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full border border-dashboard-border-strong bg-dashboard-control px-1 font-sans text-2xs tabular-nums leading-none text-dashboard-text-muted"
+          style={{
+            boxShadow: `0 0 0 2px ${props.cutoutColor}`,
+            zIndex: shown.length + 1,
+          }}
+        >
+          +{hiddenCount}
+        </span>
+      ) : null}
     </span>
   );
 }
 
-/** One shared label with every status icon for that label. */
+/** One shared label with its newest status icons and a count of the rest. */
 function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
 }) {
+  const shown = props.group.annotations.slice(0, MAX_GROUP_STATUS_ICONS);
+  const hiddenCount = props.group.annotations.length - shown.length;
   return (
     <span className="inline-flex h-5 min-w-0 max-w-60 shrink-0 items-center gap-1 truncate rounded-full border border-dashboard-border-strong bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
-      {props.group.annotations.map((annotation) =>
+      {shown.map((annotation) =>
         annotation.objectType ? (
           <ObjectIcon
             {...annotation}
@@ -227,6 +248,9 @@ function SidebarAnnotationGroupChip(props: {
           />
         ) : null,
       )}
+      {hiddenCount > 0 ? (
+        <span className="shrink-0 tabular-nums">+{hiddenCount}</span>
+      ) : null}
       <span className="min-w-0 truncate whitespace-nowrap">
         {props.group.label}
       </span>
