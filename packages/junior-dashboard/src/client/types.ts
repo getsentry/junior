@@ -199,6 +199,8 @@ export type Conversation = {
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[];
   unfinishedWork?: boolean;
+  /** A Turn waits on a person to finish an authorization. Server-owned. */
+  awaitingAuthorization?: boolean;
   visibility?: ConversationSummaryReport["visibility"];
 };
 

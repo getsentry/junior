@@ -308,6 +308,12 @@ export const conversationSummaryReportSchema = z
      */
     isPriority: z.boolean().optional(),
     unfinishedWork: z.boolean().optional(),
+    /**
+     * True on the conversation feed when a Turn in the conversation or a
+     * child waits on a person to finish an authorization that has not
+     * expired.
+     */
+    awaitingAuthorization: z.boolean().optional(),
   })
   .strict();
 

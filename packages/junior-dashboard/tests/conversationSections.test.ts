@@ -62,7 +62,7 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts unread, waiting, and open-PR conversations in Needs attention before Today", () => {
+  it("puts unread, waiting, sign-in, and open-PR conversations in Needs attention before Today", () => {
     const conversations = [
       conversation("today", "2026-08-03T11:00:00-07:00"),
       {
@@ -82,6 +82,11 @@ describe("conversation activity sections", () => {
         status: "active" as const,
         unfinishedWork: true,
       },
+      // A Turn parked for authorization leaves the conversation idle.
+      {
+        ...conversation("connecting", "2026-08-02T10:00:00-07:00"),
+        awaitingAuthorization: true,
+      },
     ];
     const sections = buildConversationSections(conversations, {
       ...NOW,
@@ -90,7 +95,7 @@ describe("conversation activity sections", () => {
 
     expect(sectionIds(sections)).toEqual([
       {
-        conversations: ["today-unread", "open-pr", "waiting-old"],
+        conversations: ["today-unread", "connecting", "open-pr", "waiting-old"],
         label: "Needs attention",
       },
       { conversations: ["today", "open-pr-running"], label: "Today" },
