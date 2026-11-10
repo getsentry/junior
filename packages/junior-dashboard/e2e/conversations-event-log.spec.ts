@@ -807,3 +807,31 @@ for (const view of [desktop, mobile]) {
     });
   });
 }
+
+test("opens the event log from the sidebar row menu", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(dashboard.baseURL);
+  const row = page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Closed issue summary/ });
+  const log = page.getByRole("region", { name: "Conversation event log" });
+  await row.click({ button: "right" });
+  // The viewer is not a participant, so the menu disables changes.
+  await expect(page.getByRole("menuitem", { name: "Archive" })).toBeDisabled();
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(row).toHaveAttribute("aria-current", "page");
+  await expect(log).toBeVisible();
+
+  // The page is open already, so the row menu switches its view.
+  await page.getByTitle("Back to conversation").click();
+  await expect(log).toBeHidden();
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Open event log" }).click();
+  await expect(log).toBeVisible();
+  // That switch adds no history entry, so Back leaves the conversation.
+  await page.goBack();
+  await expect(row).not.toHaveAttribute("aria-current", "page");
+  await expect(log).toBeHidden();
+});

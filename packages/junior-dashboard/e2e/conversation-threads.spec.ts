@@ -199,10 +199,10 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   releaseArchive();
   await expect(rootRow).toBeVisible();
 
-  // An archived Thread stays readable, and Unarchive brings its row back.
+  // An archived Thread stays readable, and Restore brings its row back.
   await page.goto(threadUrl);
   await openMenu.click();
-  await page.getByRole("button", { name: "Unarchive" }).click();
+  await page.getByRole("button", { name: "Restore", exact: true }).click();
   await expect(threadRow).toBeVisible();
   await expect(nestedRow).toBeVisible();
   await expect(openMenus).toHaveCount(0);

@@ -13,6 +13,7 @@ function conversation(id: string, lastSeenAt: string): Conversation {
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,
+    isParticipant: true,
     lastProgressAt: lastSeenAt,
     lastSeenAt,
     startedAt: lastSeenAt,
