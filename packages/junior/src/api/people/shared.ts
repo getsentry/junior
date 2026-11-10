@@ -8,6 +8,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import type { ConversationMetric } from "@/db/schema/conversation-metrics";
 import type {
   ActorActivityDayReport,
@@ -121,20 +122,18 @@ function turnSum(turns: PersonTurns, metric: ConversationMetric) {
 export function turnAggregateColumns(turns: PersonTurns) {
   const roots = sql`COUNT(DISTINCT ${turns.rootConversationId})`;
   const lastTurn = sql`${turns.occurredAt} = ${turns.lastRootTurnAt}`;
+  const status = conversationStatusSql(turnRoot);
   return {
     active: sql<number>`${roots} FILTER (
-      WHERE ${lastTurn} AND ${turnRoot.executionStatus} NOT IN ('idle', 'failed')
+      WHERE ${lastTurn} AND ${status} = 'active'
     )::integer`,
     conversations: sql<number>`${roots}::integer`,
     costUsd: sql<
       number | null
     >`${turnSum(turns, "cost_usd")}::double precision`,
     durationMs: sql<number>`COALESCE(${turnSum(turns, "duration_ms")}, 0)::double precision`,
-    // A stopped Conversation reports `stopped`, not `failed`.
     failed: sql<number>`${roots} FILTER (
-      WHERE ${lastTurn}
-        AND ${turnRoot.executionStatus} = 'failed'
-        AND ${turnRoot.stoppedAt} IS NULL
+      WHERE ${lastTurn} AND ${status} = 'failed'
     )::integer`,
     tokens: sql<
       number | null
@@ -289,8 +288,6 @@ export async function recentActorRows(email: string) {
       destinationId: juniorDestinations.id,
       durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,
-      executionStatus: juniorConversations.executionStatus,
-      stoppedAt: juniorConversations.stoppedAt,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       fullName: juniorUsers.displayName,
       kind: juniorConversations.kind,
@@ -305,6 +302,7 @@ export async function recentActorRows(email: string) {
         string | null
       >`CASE WHEN ${juniorIdentities.provider} = 'slack' THEN ${juniorIdentities.providerSubjectId} END`,
       source: juniorConversations.source,
+      status: conversationStatusSql(juniorConversations),
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,
       usage: juniorConversations.usage,

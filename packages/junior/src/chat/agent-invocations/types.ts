@@ -4,6 +4,7 @@ import {
   sourceSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { ConversationReportStatus } from "@/api/schema/conversation";
 import type { ConversationKind } from "@/chat/conversations/store";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
@@ -127,6 +128,8 @@ export type ChildAgent = {
   /** Set while the child Conversation is archived. */
   archivedAtMs?: number;
   childConversationId: string;
+  /** Status of the child Conversation's own work. */
+  conversationStatus: ConversationReportStatus;
   /** Error of the latest agent invocation when the child is blocked, failed, or stopped. */
   errorMessage?: string;
   kind: ChildAgentKind;

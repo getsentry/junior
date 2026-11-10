@@ -7,11 +7,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 
-import {
-  conversationDisplayTitle,
-  formatTime,
-  visualStatusForConversation,
-} from "../format";
+import { conversationDisplayTitle, formatTime } from "../format";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/ui/skeleton";
 import {
@@ -241,7 +237,7 @@ function ConversationCard(props: ConversationCardProps) {
       if (archived) props.onArchived(conversation);
     },
   });
-  const status = visualStatusForConversation(conversation);
+  const status = conversation.status;
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
@@ -255,6 +251,7 @@ function ConversationCard(props: ConversationCardProps) {
     props.waitingOnViewer ||
     unread ||
     status === "active" ||
+    status === "needs_input" ||
     status === "failed";
   return (
     <article

@@ -2,46 +2,29 @@ import { CircleAlert, CircleCheck, CircleStop, CircleX } from "lucide-react";
 
 import { StatusChip, type StatusChipTone } from "../components/StatusChip";
 import { Spinner } from "../components/ui/spinner";
-import { visualStatusForConversation } from "../format";
 import { cn } from "../styles";
-import type { Conversation, VisualStatus } from "../types";
+import type { ConversationStatus } from "../types";
 
-/** The status a Thread or Task shows today. */
-type ChildConversationStatus = "waiting" | VisualStatus;
-
-/**
- * Pick the status of a Thread or Task from runtime state, never from model
- * text. Waiting on the viewer wins over every other state.
- */
-export function childConversationStatus(
-  conversation: Conversation,
-  waiting: boolean,
-): ChildConversationStatus {
-  // TODO(#2888): Show the derived Conversation status (`active`,
-  // `needs_input`, `failed`, `stopped`, `idle`) once the API returns it.
-  return waiting ? "waiting" : visualStatusForConversation(conversation);
-}
-
-const labels: Record<ChildConversationStatus, string> = {
+const labels: Record<ConversationStatus, string> = {
   active: "Running",
   failed: "Failed",
   idle: "Idle",
+  needs_input: "Needs input",
   stopped: "Stopped",
-  waiting: "Waiting on you",
 };
 
-const tones: Record<ChildConversationStatus, StatusChipTone> = {
+const tones: Record<ConversationStatus, StatusChipTone> = {
   active: "info",
   failed: "danger",
   idle: "neutral",
+  needs_input: "warning",
   stopped: "neutral",
-  waiting: "warning",
 };
 
 /** Mark a Thread or Task status with one icon and an audible label. */
 export function ChildConversationStatusIcon(props: {
   className?: string;
-  status: ChildConversationStatus;
+  status: ConversationStatus;
 }) {
   const label = labels[props.status];
   const className = cn("size-3.5 shrink-0", props.className);
@@ -54,7 +37,7 @@ export function ChildConversationStatusIcon(props: {
     );
   }
   const Icon =
-    props.status === "waiting"
+    props.status === "needs_input"
       ? CircleAlert
       : props.status === "failed"
         ? CircleX
@@ -66,7 +49,7 @@ export function ChildConversationStatusIcon(props: {
       aria-label={label}
       className={cn(
         className,
-        props.status === "waiting" && "text-amber-400",
+        props.status === "needs_input" && "text-amber-400",
         props.status === "failed" && "text-rose-400",
         (props.status === "idle" || props.status === "stopped") &&
           "text-dashboard-text-faint",
@@ -78,7 +61,7 @@ export function ChildConversationStatusIcon(props: {
 
 /** Show the status of a Thread or Task page beside its title. */
 export function ChildConversationStatusPill(props: {
-  status: ChildConversationStatus;
+  status: ConversationStatus;
 }) {
   return (
     <StatusChip

@@ -205,9 +205,9 @@ function withMockViewerState<
   unread?: true;
 } {
   const pinPosition = mockPinPositions.get(pinConversationId);
-  // Match the API: only idle conversations are unread.
+  // Match the API: a conversation with work running is never unread.
   const unread =
-    (report.status === "completed" || report.status === "stopped") &&
+    report.status !== "active" &&
     mockUnreadConversationIds.has(report.conversationId);
   return {
     ...report,
@@ -294,7 +294,7 @@ function detail(
     kind: options.kind ?? "root",
     lastProgressAt: options.lastProgressAt ?? options.startedAt,
     lastSeenAt: options.lastSeenAt ?? options.startedAt,
-    status: options.status ?? "completed",
+    status: options.status ?? "idle",
     surface: options.surface ?? "internal",
   };
 }
@@ -1702,6 +1702,7 @@ function simpleConversation(
     channel?: string;
     sourceTask?: ConversationDetailReport["sourceTask"];
     archivedAt?: string;
+    status?: ConversationDetailReport["status"];
   },
 ): ConversationDetailReport {
   // Finished work stays in Today even when it was active in the last 24 hours.
@@ -1900,14 +1901,18 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       // The nested Thread below.
       childAgentTotals: { count: 1, cumulativeDurationMs: 12_000 },
     },
-    threadConversation(
-      nowMs,
-      DASHBOARD_QA_NESTED_THREAD_ID,
-      "Recheck pin order in Safari",
-      "Recheck the pinned row order in Safari.",
-      -2.9 * 60 * 60_000,
-      DASHBOARD_QA_THREAD_ID,
-    ),
+    {
+      ...threadConversation(
+        nowMs,
+        DASHBOARD_QA_NESTED_THREAD_ID,
+        "Recheck pin order in Safari",
+        "Recheck the pinned row order in Safari.",
+        -2.9 * 60 * 60_000,
+        DASHBOARD_QA_THREAD_ID,
+      ),
+      // QA shows a Thread whose Review item waits on a person.
+      status: "needs_input" as const,
+    },
     threadConversation(
       nowMs,
       DASHBOARD_QA_ARCHIVED_THREAD_ID,
@@ -1925,6 +1930,8 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Sandbox validation",
       surface: "slack",
       channel: "CQA999",
+      // A root whose Review item waits on a person.
+      status: "needs_input",
     }),
     simpleConversation(nowMs, {
       conversationId: SCHEDULER_CONVERSATION_ID,

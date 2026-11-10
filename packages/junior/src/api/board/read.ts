@@ -12,10 +12,9 @@ import {
 } from "drizzle-orm";
 import { conversationAnnotationInputSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import type {
-  ConversationKind,
-  ConversationStatus,
-} from "@/chat/conversations/store";
+import type { ConversationReportStatus } from "@/api/schema/conversation";
+import type { ConversationKind } from "@/chat/conversations/store";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import {
   PLUGIN_REVIEW_ITEM_KEY_PREFIX,
   reviewItemNeedsUser,
@@ -49,7 +48,7 @@ type TreeNode = {
   createdAtMs: number;
   kind: ConversationKind | null;
   parentConversationId: string | null;
-  status: ConversationStatus;
+  status: ConversationReportStatus;
   title: string | null;
 };
 
@@ -135,7 +134,7 @@ async function readViewerTrees(userId: string, nowMs: number) {
       createdAt: juniorConversations.createdAt,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
-      status: juniorConversations.executionStatus,
+      status: conversationStatusSql(juniorConversations),
       title: juniorConversations.title,
     })
     .from(juniorConversations)
@@ -273,7 +272,7 @@ export async function readBoard(args: {
   const workingHomes = new Set<string>();
   const needsViewerHomes = new Set<string>();
   for (const node of nodes.values()) {
-    if (node.status !== "running" && node.status !== "pending") continue;
+    if (node.status !== "active") continue;
     const home = homeId(nodes, node.conversationId);
     if (home) workingHomes.add(home);
   }

@@ -363,7 +363,7 @@ test("inspects all reporting events and searches full event data", async ({
           forkedFromTitle: report.displayTitle,
           events: [],
           isParticipant: true,
-          status: "completed",
+          status: "idle",
           forks: [],
         }),
       }),
@@ -621,7 +621,7 @@ for (const width of [1440, 390]) {
     const scrollHeight = () =>
       scroll.evaluate((element) => element.scrollHeight);
     const heightBeforeIdle = await scrollHeight();
-    report.status = "completed";
+    report.status = "idle";
     report.events.push({
       seq: 41,
       createdAt: report.lastSeenAt,
@@ -771,7 +771,7 @@ for (const view of [desktop, mobile]) {
       },
     ];
     // Junior asked and ended its Turn, so it waits for the answer.
-    report.status = "completed";
+    report.status = "needs_input";
     await page.route(`**${api}*`, (route) =>
       route.fulfill({ json: withRequestedMailbox(route, report, mailbox) }),
     );

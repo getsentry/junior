@@ -302,6 +302,7 @@ describe("Lifecycle and Resilience", () => {
     );
 
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    expect(conversation.status).toBe("failed");
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("content policy"),
     ]);
@@ -315,6 +316,8 @@ describe("Lifecycle and Resilience", () => {
     );
 
     expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    // A Turn that succeeds after a failure clears it.
+    expect(next.status).toBe("idle");
     expect(next.replies).toHaveLength(1);
     expect(next.replies[0]!.text).toMatch(/maple/i);
   });

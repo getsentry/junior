@@ -30,16 +30,14 @@ type ConversationProjectionSource = Pick<
   | "channelName"
   | "conversationId"
   | "createdAtMs"
-  | "execution"
   | "kind"
   | "lastActivityAtMs"
   | "location"
   | "parentConversationId"
   | "source"
-  | "stoppedAtMs"
   | "title"
   | "updatedAtMs"
->;
+> & { execution: Pick<StoredConversation["execution"], "updatedAtMs"> };
 
 function privateConversationLabel(
   slackConversation: ReturnType<
@@ -119,24 +117,6 @@ function actorIdentityReport(
       : undefined),
   };
   return Object.keys(identity).length > 0 ? identity : undefined;
-}
-
-/**
- * A stopped Conversation shows as `stopped` while no work runs. A Turn that
- * runs before the stop ends, such as one that its parent's new work starts,
- * shows as `active`.
- */
-function statusFromConversation(
-  conversation: ConversationProjectionSource,
-): ConversationReportStatus {
-  const status = conversation.execution.status;
-  if (status !== "idle" && status !== "failed") {
-    return "active";
-  }
-  if (conversation.stoppedAtMs !== undefined) {
-    return "stopped";
-  }
-  return status === "idle" ? "completed" : "failed";
 }
 
 function titleFromConversation(args: {
@@ -240,6 +220,8 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number;
   pinPosition?: number;
+  /** The status that `conversationStatusSql` read with the row. */
+  status: ConversationReportStatus;
   /** A visible Junior reply is after the viewer's read position. */
   unreadReply?: boolean;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -274,11 +256,9 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation,
     canViewPrivateContent,
   );
-  const status = statusFromConversation(conversation);
-  // Only an idle Conversation waits on the reader. A stopped one is idle too.
-  const unread =
-    (status === "completed" || status === "stopped") &&
-    args.unreadReply === true;
+  const { status } = args;
+  // A reply waits on the reader once no work runs.
+  const unread = status !== "active" && args.unreadReply === true;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
@@ -15,6 +16,7 @@ import {
 /** The columns of one Conversation record, for `selectConversationRecords`. */
 export const conversationRecordColumns = {
   conversation: juniorConversations,
+  status: conversationStatusSql(juniorConversations),
   location: juniorDestinations,
   identityDisplayName: juniorIdentities.displayName,
   identityEmail: juniorIdentities.email,
@@ -128,6 +130,7 @@ export type ConversationRecord = {
   conversation: Conversation;
   durationMs: number;
   locationId?: string;
+  status: ConversationRecordRow["status"];
   usage: ConversationRecordRow["conversation"]["usage"];
   rootConversationId: string | null;
 };
@@ -142,6 +145,7 @@ export function conversationRecordFromRow(
     ...(row.location?.visibility === "public"
       ? { locationId: row.location.id }
       : undefined),
+    status: row.status,
     usage: row.conversation.usage,
     rootConversationId: row.conversation.rootConversationId,
   };

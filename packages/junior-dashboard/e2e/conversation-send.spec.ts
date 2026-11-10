@@ -432,7 +432,7 @@ test("hands web and external messages from queue to history without gaps", async
         mailbox,
         eventHistory: { status: "available" },
         isParticipant: true,
-        status: active ? "active" : "completed",
+        status: active ? "active" : "idle",
         events: [
           ...detail.events,
           ...committed.map((message, index) => ({
@@ -781,7 +781,7 @@ test("stops the active Turn and returns queued text to the composer", async ({
         {
           ...detail,
           isParticipant: true,
-          status: active ? "active" : "completed",
+          status: active ? "active" : "idle",
         },
         { conversationId, generatedAt: createdAt, messages: queued },
       ),

@@ -26,14 +26,10 @@ import {
 } from "./PinnedConversationOrder";
 import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
-import {
-  conversationDisplayTitle,
-  isIdleConversation,
-  visualStatusForConversation,
-} from "../format";
+import { conversationDisplayTitle } from "../format";
 import { formatCompactAge } from "./conversationAge";
 import { cn } from "../styles";
-import type { Conversation } from "../types";
+import type { Conversation, ConversationStatus } from "../types";
 import { AnimatedList } from "./AnimatedList";
 import {
   attentionConversationIds,
@@ -252,9 +248,6 @@ export function ConversationSidebar(props: {
                     conversation={entry.conversation}
                     depth={entry.depth}
                     selected={entry.conversation.id === props.selectedId}
-                    waiting={props.waitingConversations.has(
-                      entry.conversation.id,
-                    )}
                   />
                 ) : (
                   <ConversationSidebarEntryRow
@@ -430,14 +423,14 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const [renaming, setRenaming] = useState(false);
   const prefetch = usePrefetchConversation(props.conversation.id);
   const pinned = Boolean(props.conversation.pinnedAt);
-  const status = visualStatusForConversation(props.conversation);
+  const status = props.conversation.status;
   const title = conversationDisplayTitle(props.conversation);
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const unread = Boolean(props.conversation.unread);
   const emphasized = unread || Boolean(props.waiting);
   const drag = props.drag;
-  // Unread tracks idle conversations only.
-  const canMarkUnread = isIdleConversation(props.conversation);
+  // Unread tracks only conversations with no work running.
+  const canMarkUnread = status !== "active";
   const archived = Boolean(props.conversation.archivedAt);
   // The leading marker toggles read state. A waiting row's marker is about
   // its review item, so it stays a plain marker.
@@ -662,10 +655,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   );
 });
 
-/** Show the row age, or the status when the conversation runs, failed, or stopped. */
+/** Show the row age, or the status when it is not `idle`. */
 function ConversationRowState(props: {
   lastSeenAt: string;
-  status: ReturnType<typeof visualStatusForConversation>;
+  status: ConversationStatus;
 }) {
   if (props.status === "active") {
     return (
@@ -677,6 +670,11 @@ function ConversationRowState(props: {
   }
   if (props.status === "failed") {
     return <span className="font-sans text-xs text-rose-400">Failed</span>;
+  }
+  if (props.status === "needs_input") {
+    return (
+      <span className="font-sans text-xs text-amber-400">Needs input</span>
+    );
   }
   if (props.status === "stopped") {
     return (

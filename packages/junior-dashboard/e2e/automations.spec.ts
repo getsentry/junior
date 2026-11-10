@@ -50,7 +50,7 @@ test("opens scheduled and event automations in the native Automations view", asy
         lastProgressAt: NOW,
         lastSeenAt: NOW,
         startedAt: NOW,
-        status: "completed",
+        status: "idle",
         surface: "internal",
       }),
     });

@@ -41,6 +41,7 @@ import {
   selectConversationRecords,
   type ConversationRecordRow,
 } from "./record";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { readFeedThreads } from "./threads";
 import { readUnreadConversationIds, unreadReplySql } from "./unread";
 import { conversationFeedSchema } from "../schema/conversation";
@@ -255,7 +256,7 @@ export function conversationFeedVersionQuery(
         count(*) filter (where ${feedTree.archivedAt} is not null),
         string_agg(concat_ws('/',
           ${feedTree.conversationId}, ${feedTree.title},
-          ${feedTree.executionStatus}, ${feedTree.stoppedAt},
+          ${conversationStatusSql(feedTree)},
           ${shownActivityMinute(feedTree.lastActivityAt)}
         ), ',' order by ${feedTree.conversationId}) filter (
           where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
@@ -283,11 +284,10 @@ export function conversationFeedVersionQuery(
     .select({
       conversationId,
       channelName: juniorConversations.channelName,
-      executionStatus: juniorConversations.executionStatus,
       lastActivityAt: juniorConversations.lastActivityAt,
       pinnedAt: pin.pinnedAt,
       pinPosition: pin.pinPosition,
-      stoppedAt: juniorConversations.stoppedAt,
+      status: conversationStatusSql(juniorConversations).as("status"),
       title: juniorConversations.title,
       activity: shownActivityMinute(juniorConversations.lastActivityAt).as(
         "activity",
@@ -340,7 +340,7 @@ export function conversationFeedVersionQuery(
     order: sql`string_agg(${page.conversationId}, ',' order by ${page.pinnedAt} is not null desc, ${page.lastActivityAt} desc, ${page.conversationId})`,
     pin: byRow(page.pinnedAt, page.pinPosition),
     title: byRow(page.title, page.channelName),
-    status: byRow(page.executionStatus, page.stoppedAt),
+    status: byRow(page.status),
     activity: byRow(page.activity),
     messages: byRow(page.assistantSeq, page.userSeq),
     unread: byRow(page.unread),
@@ -529,6 +529,7 @@ export async function readConversationFeedFromSql(
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const summary = conversationSummaryFromStoredConversation({
         ...viewerMarksByConversation.get(conversation.conversationId),
+        status: row.status,
         unreadReply: unreadConversationIds.has(conversation.conversationId),
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,

@@ -35,7 +35,7 @@ export async function mockReadPositionConversation(
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
-    status: "completed",
+    status: "idle",
     surface: "internal",
   };
   const state = {

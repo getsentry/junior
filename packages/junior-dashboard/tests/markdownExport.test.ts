@@ -37,7 +37,7 @@ function conversation(
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
-    status: "completed",
+    status: "idle",
     surface: "slack",
     ...overrides,
   };

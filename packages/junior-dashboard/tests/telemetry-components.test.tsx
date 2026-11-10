@@ -96,7 +96,7 @@ function conversation(
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
-    status: "completed",
+    status: "idle",
     surface: "internal",
     ...overrides,
   };
@@ -435,7 +435,7 @@ describe("dashboard canonical-event components", () => {
     );
     const completedHtml = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <Transcript transcript={{ ...active, status: "completed" }} />
+        <Transcript transcript={{ ...active, status: "idle" }} />
       </QueryClientProvider>,
     );
 
@@ -1185,11 +1185,11 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('aria-label="Event log"');
   });
 
-  it("keeps the terminal parent error when child detail says completed", () => {
+  it("keeps the terminal parent error when child detail says idle", () => {
     const child = conversation([], {
       conversationId: "child-1",
       displayTitle: "Advisor review",
-      status: "completed",
+      status: "idle",
     });
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const target: SubagentTranscriptTarget = {
@@ -1235,7 +1235,7 @@ describe("dashboard canonical-event components", () => {
     const child = conversation([], {
       conversationId: "child-1",
       displayTitle: "Advisor review",
-      status: "completed",
+      status: "idle",
     });
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
     const drawerHtml = renderToStaticMarkup(
@@ -1251,7 +1251,7 @@ describe("dashboard canonical-event components", () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-    expect(drawerHtml).toContain(">completed</span>");
+    expect(drawerHtml).toContain(">idle</span>");
     expect(drawerHtml).not.toContain(">running</span>");
     expect(drawerHtml).toContain("Open conversation");
   });
@@ -1392,7 +1392,7 @@ describe("dashboard canonical-event components", () => {
             fullName: "Avery Example",
           },
           startedAt: "2026-01-02T00:00:00.000Z",
-          status: "completed",
+          status: "idle",
           surface: "slack",
         },
       ],
@@ -1561,7 +1561,7 @@ describe("dashboard canonical-event components", () => {
           lastProgressAt: "2026-01-05T00:00:00.000Z",
           lastSeenAt: "2026-01-05T00:00:00.000Z",
           startedAt: "2026-01-05T00:00:00.000Z",
-          status: "completed",
+          status: "idle",
           surface: "slack",
         },
       ],
@@ -2002,7 +2002,7 @@ describe("dashboard canonical-event components", () => {
       lastProgressAt: "2026-01-01T00:00:01.000Z",
       lastSeenAt: "2026-01-01T00:00:01.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
+      status: "idle",
       surface: "slack",
     };
     const detail = conversation(

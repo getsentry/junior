@@ -91,7 +91,7 @@ async function serveQuickQuestionFork(
       detail.events = detail.events.slice(0, reply + 1);
       const last = detail.events.at(-1);
       detail.conversationId = forkId;
-      detail.status = "completed";
+      detail.status = "idle";
       detail.events.push(
         ...messages.map((message, index) => ({
           seq: last.seq + index + 1,

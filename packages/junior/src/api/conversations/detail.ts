@@ -69,6 +69,7 @@ function projectConversationDetail(args: {
   previousSeq?: number;
   readPosition?: ConversationDetailReport["readPosition"];
   sourceTask?: ConversationDetailReport["sourceTask"];
+  status: ConversationDetailReport["status"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   unreadAfterSeq?: number;
   unreadPage?: ConversationDetailReport["unreadPage"];
@@ -95,6 +96,7 @@ function projectConversationDetail(args: {
       durationMs: args.durationMs,
       firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
+      status: args.status,
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
         : undefined),
@@ -327,6 +329,7 @@ async function readConversationDetailFromSql(
     authors: people.authors,
     participants: people.participants,
     ...(sourceTask ? { sourceTask } : undefined),
+    status: record.status,
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
       ? undefined

@@ -14,6 +14,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
+import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
@@ -342,6 +343,7 @@ export async function insertReviewItem(
       .returning({ id: juniorReviewItems.id });
     if (!inserted[0]) return undefined;
     await replaceLinks(tx, inserted[0].id, input);
+    await touchConversationDetail(tx, [input.addedByConversationId]);
     return inserted[0].id;
   });
   if (!id) return undefined;
@@ -379,9 +381,13 @@ export async function updateReviewItemContent(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({ id: juniorReviewItems.id });
+      .returning({
+        addedByConversationId: juniorReviewItems.addedByConversationId,
+        id: juniorReviewItems.id,
+      });
     if (!updated[0]) return false;
-    await replaceLinks(tx, input.id, input);
+    await replaceLinks(tx, updated[0].id, input);
+    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
     return true;
   });
 }
@@ -419,7 +425,13 @@ export async function closeReviewItem(
         eq(juniorReviewItems.status, "open"),
       ),
     )
-    .returning({ id: juniorReviewItems.id });
+    .returning({
+      addedByConversationId: juniorReviewItems.addedByConversationId,
+    });
+  await touchConversationDetail(
+    db,
+    updated.map((row) => row.addedByConversationId),
+  );
   return updated.length > 0;
 }
 
@@ -439,7 +451,7 @@ export async function dismissOpenReviewItems(
   ),
 ): Promise<void> {
   const now = new Date(input.nowMs);
-  await db
+  const dismissed = await db
     .update(juniorReviewItems)
     .set({
       closeReason: input.reason,
@@ -459,7 +471,13 @@ export async function dismissOpenReviewItems(
               isNull(juniorReviewItems.automationId),
             ),
       ),
-    );
+    )
+    .returning({
+      addedByConversationId: juniorReviewItems.addedByConversationId,
+    });
+  await touchConversationDetail(db, [
+    ...new Set(dismissed.map((row) => row.addedByConversationId)),
+  ]);
 }
 
 /**
@@ -480,7 +498,9 @@ export async function takeReviewItem(
           eq(juniorReviewItems.status, "open"),
         ),
       )
-      .returning({ id: juniorReviewItems.id });
+      .returning({
+        addedByConversationId: juniorReviewItems.addedByConversationId,
+      });
     if (!updated[0]) return false;
     await tx
       .delete(juniorReviewItemAssignees)
@@ -488,6 +508,7 @@ export async function takeReviewItem(
     await tx
       .insert(juniorReviewItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
+    await touchConversationDetail(tx, [updated[0].addedByConversationId]);
     return true;
   });
 }

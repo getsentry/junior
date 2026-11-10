@@ -9,10 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import type {
-  ConversationDetailReport,
-  ConversationFeed,
-} from "@sentry/junior/api/schema";
+import type { ConversationFeed } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import { ConversationSidePanelLayout } from "./ConversationSidePanelLayout";
@@ -74,11 +71,7 @@ import {
 } from "./TranscriptTurnContextView";
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
-import {
-  ChildConversationStatusPill,
-  childConversationStatus,
-} from "./ChildConversationStatus";
-import { useWaitingConversations } from "../review-desk/queries";
+import { ChildConversationStatusPill } from "./ChildConversationStatus";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -91,8 +84,6 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
-  isIdleConversation,
-  visualStatusForConversation,
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
@@ -243,7 +234,6 @@ export function ConversationPage(props: {
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
-  const waiting = useWaitingConversations().has(conversationId);
   // The page keeps the start preference from when the Conversation opened.
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
@@ -430,11 +420,8 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "expired"
       ? undefined
       : transcript?.events.find((event) => event.seq === selectedEventSeq);
-  const visualStatus = conversation
-    ? visualStatusForConversation(conversation)
-    : undefined;
   // History and mailbox use the same deferred server snapshot.
-  const live = conversationIsLive(visualStatus, detail.data);
+  const live = (detail.data ?? conversation)?.status === "active";
   const setSelectedEventSeq = useCallback(
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
@@ -719,12 +706,13 @@ export function ConversationPage(props: {
                 pinned: Boolean(conversation?.pinnedAt),
               }}
               read={{
-                // Unread tracks idle conversations only, like the sidebar row.
+                // Unread tracks only conversations with no work running,
+                // like the sidebar row.
                 disabled:
                   !conversation ||
                   !detail.data?.isParticipant ||
                   markUnread.isPending ||
-                  (!unread && !isIdleConversation(conversation)),
+                  (!unread && conversation.status === "active"),
                 error: Boolean(markUnread.error),
                 onClick: () => markUnread.mutate(!unread),
                 unread,
@@ -763,9 +751,7 @@ export function ConversationPage(props: {
               sidebarToggle={props.sidebarToggle}
               status={
                 isChildConversation(conversationDetail) && conversation ? (
-                  <ChildConversationStatusPill
-                    status={childConversationStatus(conversation, waiting)}
-                  />
+                  <ChildConversationStatusPill status={conversation.status} />
                 ) : null
               }
               subscription={{
@@ -917,12 +903,4 @@ export function ConversationPage(props: {
       ) : null}
     </div>
   );
-}
-
-function conversationIsLive(
-  visualStatus: ReturnType<typeof visualStatusForConversation> | undefined,
-  detail: ConversationDetailReport | undefined,
-): boolean {
-  if (detail) return detail.status === "active";
-  return visualStatus === "active";
 }

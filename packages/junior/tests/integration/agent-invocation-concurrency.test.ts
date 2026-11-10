@@ -207,7 +207,7 @@ describe("agent invocation identity and concurrency", () => {
             last_result: "completed",
             name: "researcher",
             relation: "child",
-            status: "pending",
+            status: "active",
             task: "second named task",
             updated_at: expect.any(String),
           },
@@ -518,7 +518,7 @@ describe("agent invocation identity and concurrency", () => {
         error: "sibling failed",
         kind: "task",
         last_result: "failed",
-        status: "idle",
+        status: "failed",
         task: "failing sibling",
         updated_at: expect.any(String),
       };
@@ -543,7 +543,7 @@ describe("agent invocation identity and concurrency", () => {
             conversation_id: parentConversationId,
             relation: "parent",
             // Both child results wait in the parent mailbox.
-            status: "pending",
+            status: "active",
             updated_at: expect.any(String),
           },
           { relation: "sibling", ...failingChild },

@@ -1,12 +1,13 @@
 import { sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import {
+  conversationStatusSql,
+  type ConversationStatusColumns,
+} from "@/chat/conversations/sql/status";
 import { juniorConversations } from "@/db/schema";
 
-interface ConversationAggregateSource {
-  conversationId: AnyPgColumn;
+interface ConversationAggregateSource extends ConversationStatusColumns {
   durationMs: AnyPgColumn;
-  executionStatus: AnyPgColumn;
-  stoppedAt: AnyPgColumn;
   usage: AnyPgColumn;
 }
 
@@ -76,9 +77,10 @@ export function conversationAggregateColumns(sources?: {
   const conversationCount = sources
     ? sql`COUNT(DISTINCT ${roots.conversationId})`
     : sql`COUNT(*)`;
+  const status = conversationStatusSql(roots);
   return {
     active: sql<number>`${conversationCount} FILTER (
-      WHERE ${roots.executionStatus} NOT IN ('idle', 'failed')
+      WHERE ${status} = 'active'
     )::integer`,
     conversations: sql<number>`${conversationCount}::integer`,
     cachedInputTokens: sql<
@@ -89,9 +91,8 @@ export function conversationAggregateColumns(sources?: {
     >`SUM(${usageTokenValue(metrics, "cacheCreationTokens")})::double precision`,
     costUsd: sql<number | null>`SUM(${costValue(metrics)})::double precision`,
     durationMs: sql<number>`COALESCE(SUM(${metrics.durationMs}), 0)::double precision`,
-    // A stopped Conversation reports `stopped`, not `failed`.
     failed: sql<number>`${conversationCount} FILTER (
-      WHERE ${roots.executionStatus} = 'failed' AND ${roots.stoppedAt} IS NULL
+      WHERE ${status} = 'failed'
     )::integer`,
     inputTokens: sql<
       number | null

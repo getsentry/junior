@@ -20,7 +20,8 @@ import {
 import { alias } from "drizzle-orm/pg-core";
 import { parseStoredBrief } from "@/chat/briefs/schema";
 import { treeHasAnnotationKey } from "@/chat/conversations/sql/annotation-filter";
-import type { ConversationStatus } from "@/chat/conversations/store";
+import type { ConversationReportStatus } from "@/api/schema/conversation";
+import { conversationStatusSql } from "@/chat/conversations/sql/status";
 import { getDb } from "@/chat/db";
 import {
   juniorConversationBriefs,
@@ -33,7 +34,7 @@ export interface TopLevelAgent {
   /** The Conversation is archived, for everyone. */
   archived: boolean;
   conversationId: string;
-  status: ConversationStatus;
+  status: ConversationReportStatus;
   /** Summary of the latest Brief. A new Conversation may have none yet. */
   summary?: string;
   title?: string;
@@ -111,7 +112,7 @@ export async function searchTopLevelAgents(args: {
       briefContent: briefs.content,
       conversationId: juniorConversations.conversationId,
       lastActivityAt: juniorConversations.lastActivityAt,
-      status: juniorConversations.executionStatus,
+      status: conversationStatusSql(juniorConversations),
       title: juniorConversations.title,
     })
     .from(juniorConversations)
