@@ -254,9 +254,9 @@ describe("versions API", () => {
     const withTaskCost = await read();
     expect(changed(withTurn, withTaskCost)).toEqual(["conversation", "spend"]);
 
-    // Each Event of a live Turn moves the root's last activity. The row
-    // shows that as an age in whole minutes, so the feed moves only when
-    // the minute changes.
+    // Each Event moves the root's last activity. An idle row shows that as
+    // an age in whole minutes, so the feed moves only when the minute
+    // changes.
     const rootToolEvent = async (atMs: number) => {
       await getConversationEventStore().append(OWN, [
         {
@@ -279,6 +279,27 @@ describe("versions API", () => {
     ]);
     expect(feedMoved(withRootTool, nextMinute)).toEqual(["activity"]);
 
+    // A running row shows that it runs in place of its age, so the Events
+    // of a live Turn do not move the feed. Its end moves the status.
+    const rootTurn = async (status: "idle" | "running", atMs: number) => {
+      await getConversationStore().recordExecution({
+        conversationId: OWN,
+        createdAtMs: atMs,
+        execution: { runId: "turn-2", status, updatedAtMs: atMs },
+        lastActivityAtMs: atMs,
+        metrics: { durationMs: 50 },
+        source: "slack",
+        updatedAtMs: atMs,
+      });
+      return await read();
+    };
+    const running = await rootTurn("running", nowMs + 60_000);
+    expect(feedMoved(nextMinute, running)).toEqual(["activity", "status"]);
+    const liveEvent = await rootToolEvent(nowMs + 120_000);
+    expect(changed(running, liveEvent)).toEqual(["conversation"]);
+    const turnEnded = await rootTurn("idle", nowMs + 120_000);
+    expect(feedMoved(liveEvent, turnEnded)).toEqual(["activity", "status"]);
+
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
     await getConversationEventStore().append(OWN, [
@@ -292,7 +313,7 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(nextMinute, withReply)).toEqual([
+    expect(changed(turnEnded, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);
