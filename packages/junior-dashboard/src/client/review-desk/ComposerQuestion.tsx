@@ -79,7 +79,9 @@ function isTextTarget(target: EventTarget): boolean {
  * next send from the message box, which also takes the answer in the
  * reader's own words. Esc dismisses the question. While the question has
  * focus, any other typed key moves focus to the message box, so the key
- * starts the answer there.
+ * starts the answer there. `onShow` reports each question that docks, and
+ * whether the reader moved to it, so the transcript can show where it
+ * came from. A click on the title reports the question again.
  */
 export function ComposerQuestion(props: {
   /** Lets the message box send the picks. */
@@ -88,6 +90,8 @@ export function ComposerQuestion(props: {
   focusMessageBox(): void;
   /** Reports whether a question has picks that are not sent. */
   onAnswersChange(hasAnswers: boolean): void;
+  /** Reports the question that shows, and whether the reader moved to it. */
+  onShow?(item: ReviewItemPayload, byReader: boolean): void;
   questions: readonly ReviewItemPayload[];
   ref?: Ref<HTMLElement>;
 }) {
@@ -136,10 +140,29 @@ export function ComposerQuestion(props: {
     props.questions.findIndex((item) => item.id === selectedId),
   );
   const item = props.questions[index];
+  // A step, or an answer to the shown question, moves the reader to the
+  // next question. A question that docks by itself is not their move.
+  const readerMovedRef = useRef(false);
+  const shownIdRef = useRef<string>(undefined);
+  const { onShow } = props;
+  useEffect(() => {
+    const previous = shownIdRef.current;
+    shownIdRef.current = item?.id;
+    if (!item) {
+      readerMovedRef.current = false;
+      return;
+    }
+    if (item.id === previous) return;
+    const byReader = readerMovedRef.current;
+    readerMovedRef.current = false;
+    onShow?.(item, byReader);
+  }, [item, onShow]);
   if (!item) return null;
   const count = props.questions.length;
-  const step = (offset: number) =>
+  const step = (offset: number) => {
+    readerMovedRef.current = true;
     setSelectedId(props.questions[(index + offset + count) % count]!.id);
+  };
   // Keep the keys working after an action: the question keeps focus while one
   // is open, and the message box takes it when none is left. Take keeps the
   // question open.
@@ -208,7 +231,11 @@ export function ComposerQuestion(props: {
               else formsRef.current.delete(question.id);
             }}
             item={question}
+            onCloseShown={(closing) => {
+              if (position === index) readerMovedRef.current = closing;
+            }}
             onPicksChange={onPicksChange}
+            onShowRecord={() => onShow?.(question, true)}
             stepper={
               count > 1 ? (
                 <div className="flex shrink-0 items-center gap-0.5 text-xs text-dashboard-text-muted">
@@ -247,6 +274,9 @@ function DockedQuestion(props: {
   afterAction(closed: boolean): void;
   formRef: Ref<UserInputFormHandle>;
   item: ReviewItemPayload;
+  /** An action starts to close this question, or failed to close it. */
+  onCloseShown(closing: boolean): void;
+  onShowRecord(): void;
   onPicksChange(id: string, picked: boolean): void;
   stepper: ReactNode;
 }) {
@@ -260,9 +290,13 @@ function DockedQuestion(props: {
 
   async function run(body: ReviewItemActionBody) {
     setError(undefined);
+    const closing = body.action !== "take";
+    // The list can drop the item before the action resolves.
+    if (closing) props.onCloseShown(true);
     try {
       await action.mutateAsync({ body, id: item.id });
     } catch (failure) {
+      if (closing) props.onCloseShown(false);
       setError(actionError(failure));
       throw failure;
     }
@@ -278,7 +312,14 @@ function DockedQuestion(props: {
           size={15}
         />
         <h2 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">
-          {item.title}
+          {/* The title shows where Junior asked in the transcript. */}
+          <button
+            className="max-w-full cursor-pointer truncate text-left hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+            onClick={props.onShowRecord}
+            type="button"
+          >
+            {item.title}
+          </button>
         </h2>
         {props.stepper}
         <Button

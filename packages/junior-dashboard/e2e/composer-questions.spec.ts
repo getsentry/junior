@@ -1,3 +1,4 @@
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -8,6 +9,55 @@ const THREE_QUESTIONS_ID = "internal:questions-qa";
 
 async function openConversation(page: Page, baseURL: string, id: string) {
   await page.goto(`${baseURL}/conversations/${encodeURIComponent(id)}`);
+}
+
+/**
+ * Give each of the three questions its own Turn with a long reply, so their
+ * records sit apart in the transcript.
+ */
+async function spreadQuestionTurns(page: Page) {
+  const path = `/api/conversations/${encodeURIComponent(THREE_QUESTIONS_ID)}`;
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      const response = await route.fetch({
+        headers: {
+          ...route.request().headers(),
+          [CONVERSATION_DETAIL_VERSION_HEADER]: "",
+        },
+      });
+      const detail = await response.json();
+      const [ask, window, tables, negative, done] = detail.events;
+      const text = (event: typeof ask, value: string) => ({
+        ...event,
+        data: { ...event.data, text: value },
+      });
+      const report = (topic: string) =>
+        Array.from(
+          { length: 8 },
+          (_, step) => `${topic}: step ${step + 1} of the check passed.`,
+        ).join("\n\n");
+      const events = [
+        ask,
+        window,
+        text(done, report("Dry run")),
+        text(ask, "Check the tables too."),
+        tables,
+        text(done, report("Tables")),
+        text(ask, "And the negative invoices?"),
+        negative,
+        done,
+      ].map((event, seq) => ({
+        ...event,
+        data:
+          event.data.type === "message"
+            ? { ...event.data, messageId: `spread-${seq}` }
+            : event.data,
+        seq,
+      }));
+      await route.fulfill({ json: { ...detail, events }, response });
+    },
+  );
 }
 
 for (const view of [desktop, mobile]) {
@@ -137,6 +187,109 @@ test("steps through several questions with the keyboard", async ({
   ).toContainText("Write off the negative invoices.");
 });
 
+for (const view of [{ ...desktop, height: 560 }, mobile]) {
+  test(`a docked question shows where Junior asked it (${view.width}px)`, async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize(view);
+    // Without motion the transcript jumps, so each check sees where it ends.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await spreadQuestionTurns(page);
+    await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
+    const question = page.getByRole("region", { name: /^Question:/ });
+    const record = (title: string) =>
+      page.getByRole("region", { name: `Asked ${title}` });
+    const windowRecord = record("Pick the billing migration window");
+    const tablesRecord = record("Choose the first migration batch");
+    const negativeRecord = record("Handle the negative invoices");
+    await expect(question).toContainText("1 of 3", { useInnerText: true });
+    // The transcript opens at the latest message, not at the question.
+    await expect(negativeRecord).toBeInViewport();
+    await expect(windowRecord).not.toBeInViewport();
+
+    // A step shows the record of the question, and marks it.
+    await question.getByRole("button", { name: "Next question" }).click();
+    await expect(tablesRecord).toBeInViewport();
+    await expect(tablesRecord).toHaveAttribute("data-highlighted", "");
+    await question.getByRole("button", { name: "Previous question" }).click();
+    await expect(windowRecord).toBeInViewport();
+    await expect(windowRecord).toHaveAttribute("data-highlighted", "");
+    await expect(question).toBeInViewport();
+    // Only the transcript scrolls, not the page.
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await screenshot(page, "conversation-question-context", {
+      view: view === mobile ? "mobile" : "desktop",
+    });
+
+    // The title shows the record again after the reader scrolls away.
+    const transcript = page.getByLabel("Conversation transcript");
+    await transcript.evaluate((element) =>
+      element.scrollTo({ top: element.scrollHeight }),
+    );
+    await expect(windowRecord).not.toBeInViewport();
+    await question
+      .getByRole("button", { name: "Pick the billing migration window" })
+      .click();
+    await expect(windowRecord).toBeInViewport();
+
+    // An answer moves to the next question and shows its record.
+    await transcript.evaluate((element) =>
+      element.scrollTo({ top: element.scrollHeight }),
+    );
+    await question.focus();
+    await page.keyboard.press("2");
+    await expect(question).toContainText("1 of 2", { useInnerText: true });
+    await expect(tablesRecord).toBeInViewport();
+    await expect(tablesRecord).toHaveAttribute("data-highlighted", "");
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+}
+
+test("a question that docks while the reader reads back does not move the transcript", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize({ ...desktop, height: 480 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // The question docks only after the reader scrolled up, as if Junior just
+  // asked it. The versions poll then reads the Review items again.
+  let asked = false;
+  await page.route(
+    (url) =>
+      url.pathname === "/api/review-items" &&
+      url.searchParams.get("conversationId") === ONE_QUESTION_ID,
+    async (route) => {
+      if (asked) await route.fallback();
+      else await route.fulfill({ json: { items: [] } });
+    },
+  );
+  await page.route("**/api/versions*", async (route) => {
+    const response = await route.fetch();
+    const versions = await response.json();
+    await route.fulfill({
+      json: { ...versions, reviewItems: asked ? "asked" : "waiting" },
+      response,
+    });
+  });
+  await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
+  const record = page.getByRole("region", {
+    name: "Asked Approve the payments-v42 rollout",
+  });
+  await expect(record).toBeInViewport();
+  const question = page.getByRole("region", { name: /^Question:/ });
+  await expect(question).toHaveCount(0);
+
+  const transcript = page.getByLabel("Conversation transcript");
+  await transcript.evaluate((element) => element.scrollTo({ top: 0 }));
+  await expect(record).not.toBeInViewport();
+  asked = true;
+  await expect(question).toBeVisible({ timeout: 15_000 });
+  expect(await transcript.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect(record).not.toBeInViewport();
+  await expect(record).not.toHaveAttribute("data-highlighted");
+});
+
 test("a typed message answers the question", async ({ dashboard, page }) => {
   await page.setViewportSize(desktop);
   await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
@@ -148,7 +301,7 @@ test("a typed message answers the question", async ({ dashboard, page }) => {
   });
 
   // A typed key in the question starts the answer in the message box.
-  await question.getByRole("heading").click();
+  await question.focus();
   await expect(question).toBeFocused();
   await page.keyboard.type("Hold");
   await expect(composer).toBeFocused();
