@@ -9,6 +9,7 @@
  * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AgentInvocationSource,
   Destination,
@@ -169,6 +170,7 @@ export function createPromptHookContext(args: {
 interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
+  behavior: TurnBehavior;
   currentActor?: Actor;
   /** Live Pi transcript used to give Guardian bounded action context. */
   currentAgentMessages: () => PiMessage[];
@@ -404,9 +406,7 @@ export async function wireAgentTools(
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     turnId: args.run.turnId,
-    ...(args.run.agentInvocationId
-      ? { agentInvocationId: args.run.agentInvocationId }
-      : undefined),
+    turnTools: args.behavior.tools,
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),

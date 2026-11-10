@@ -1,4 +1,5 @@
 import type { FileUpload } from "chat";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
   AgentInvocationSource,
   EventAutomationSource,
@@ -90,8 +91,11 @@ interface BaseToolRuntimeContext {
   conversationId: string;
   /** Turn that runs this tool call. */
   turnId?: string;
-  /** Agent invocation that this Run advances. See `AgentRun.agentInvocationId`. */
-  agentInvocationId?: string;
+  /**
+   * Tools that this Turn's kind and opener allow, from `turnBehavior`. Unset
+   * outside an agent Run; then the root Turn's tools apply.
+   */
+  turnTools?: TurnBehavior["tools"];
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Location associated with this Conversation. */

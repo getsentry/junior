@@ -32,6 +32,7 @@ const ISOLATED_EVAL_ROOTS = [
   "packages/junior-evals/evals/guardian/",
 ];
 const AGENT_TEST_BASELINE_PATH = "scripts/test-architecture-baseline.json";
+const SOURCE_ROOTS = ["packages/junior/src"];
 
 const RULES = [
   {
@@ -128,6 +129,26 @@ const AGENT_TEST_RULES = [
   },
 ];
 
+/**
+ * Rules for runtime source. Conversation kind decides behavior only in
+ * `kind-behavior.ts`. The stop rule in `session-stop.ts` reads the Source of
+ * input on its own. The baseline lists the legacy sites that still branch.
+ */
+export const SOURCE_RULES = [
+  {
+    id: "kind-behavior",
+    message:
+      "branch on Conversation kind, the parent edge, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
+    pathPrefix: "packages/junior/src/",
+    exclude: [
+      "packages/junior/src/chat/conversations/kind-behavior.ts",
+      "packages/junior/src/chat/conversations/session-stop.ts",
+    ],
+    pattern:
+      /\b(?:conversationKind|kind)\s*[!=]==\s*["'](?:root|thread|task|automation)["']|["'](?:root|thread|task)["']\s*[!=]==\s*[\w.?]*[kK]ind\b|\bparentConversationId\s*\?(?![.?])|\bparentToolCallId\s*(?:\?(?![.?])|[!=]==)|\bif\s*\(\s*!?[\w.?]*parentToolCallId\s*\)|\bdeclaresResult\b|\bsource\.kind\s*[!=]==\s*["'](?:slack|web)["']/g,
+  },
+];
+
 const IMPORT_PATTERN =
   /\bimport\s+(type\s+)?(?:[^"';]*?\s+from\s+)?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -163,6 +184,7 @@ function allowedAgentTestImport(filePath, source, typeOnly) {
 
 function agentRuleApplies(rule, filePath) {
   if (filePath.startsWith(AGENT_FIXTURE_ROOT)) return false;
+  if (rule.exclude?.includes(filePath)) return false;
   if (rule.pathPrefix && !filePath.startsWith(rule.pathPrefix)) return false;
   if (
     rule.pathPrefix === AGENT_EVALS_ROOT &&
@@ -173,10 +195,10 @@ function agentRuleApplies(rule, filePath) {
   return true;
 }
 
-/** Count agent test contract violations by rule and file. */
-export function collectAgentTestViolations(files) {
+/** Count baseline rule violations by rule and file. */
+export function collectAgentTestViolations(files, rules = AGENT_TEST_RULES) {
   const violations = {};
-  for (const rule of AGENT_TEST_RULES) {
+  for (const rule of rules) {
     const byFile = {};
     for (const file of files) {
       if (!agentRuleApplies(rule, file.path)) continue;
@@ -194,10 +216,14 @@ export function collectAgentTestViolations(files) {
  * Report agent test contract violations above the baseline. A baseline entry
  * that is now too high must be lowered, so each list only gets shorter.
  */
-export function checkAgentTestArchitecture(files, baseline) {
+export function checkAgentTestArchitecture(
+  files,
+  baseline,
+  rules = AGENT_TEST_RULES,
+) {
   const errors = [];
-  const violations = collectAgentTestViolations(files);
-  for (const rule of AGENT_TEST_RULES) {
+  const violations = collectAgentTestViolations(files, rules);
+  for (const rule of rules) {
     const actualByFile = violations[rule.id];
     const allowedByFile = baseline[rule.id] ?? {};
     for (const [filePath, actual] of Object.entries(actualByFile)) {
@@ -324,14 +350,20 @@ function collectTests(root, testRoots = TEST_ROOTS) {
 function main() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const root = path.resolve(scriptDirectory, "..");
+  const baseline = JSON.parse(
+    fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
+  );
   const errors = [
     ...checkIntegrationTestArchitecture(collectTests(root)),
     ...checkDatabaseTestFixtures(collectTests(root, DATABASE_TEST_ROOTS)),
     ...checkAgentTestArchitecture(
       collectSourceFiles(root, AGENT_TEST_ROOTS),
-      JSON.parse(
-        fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
-      ),
+      baseline,
+    ),
+    ...checkAgentTestArchitecture(
+      collectSourceFiles(root, SOURCE_ROOTS),
+      baseline,
+      SOURCE_RULES,
     ),
   ];
   if (errors.length === 0) {
@@ -342,7 +374,7 @@ function main() {
     [
       "Test architecture check failed:",
       ...errors,
-      `Fix the test to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
+      `Fix the code to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
     ].join("\n"),
   );
   process.exitCode = 1;

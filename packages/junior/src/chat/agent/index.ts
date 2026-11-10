@@ -125,6 +125,10 @@ import {
 import { getConversationStore } from "@/chat/db";
 import type { ConversationKind } from "@/chat/conversations/store";
 import {
+  isPersonInput,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
+import {
   RetryableDeliveryError,
   assertRunConsistency,
   actorFromRun,
@@ -284,7 +288,13 @@ async function executeAgentRunInPrivacyContext(
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
-  const requireAutomationResult = run.dispatch?.declaresResult === true;
+  const behavior = turnBehavior({
+    kind: conversationKind ?? "root",
+    personInput: isPersonInput(run.source.kind),
+    automationRun: run.dispatch?.declaresResult === true,
+  });
+  // TODO(dcramer): Gate every answer tool here, not only the Automation run.
+  const requireAutomationResult = behavior.answer !== undefined;
   const input = {
     actor: run.instruction.actor,
     messageText: run.instruction.text,
@@ -670,6 +680,7 @@ async function executeAgentRunInPrivacyContext(
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
       activeSkills,
+      behavior,
       currentActor: actor,
       currentAgentMessages,
       currentTurnMessages,
@@ -740,6 +751,7 @@ async function executeAgentRunInPrivacyContext(
       userContentParts: promptUserContentParts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
+      promptMode: behavior.promptMode,
       currentActor: actor,
       availableSkills,
       configurationValues,

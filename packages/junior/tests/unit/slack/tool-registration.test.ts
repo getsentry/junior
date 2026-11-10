@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createEventSource,
   createLocalSource,
@@ -331,8 +332,12 @@ describe("Slack tool registration", () => {
     // An Agent invocation reports the need to its parent.
     const childTools = createTools([], {}, {
       ...ctx("C12345"),
-      agentInvocationId: "invocation-1",
       parentConversationId: "slack:C12345:1700000000.000",
+      turnTools: turnBehavior({
+        kind: "task",
+        personInput: false,
+        automationRun: false,
+      }).tools,
     } as ToolRuntimeContext);
     expect(childTools.addReviewItem?.disabledReason).toContain("reportBlocked");
   });

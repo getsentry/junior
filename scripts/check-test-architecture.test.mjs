@@ -4,6 +4,7 @@ import {
   checkAgentTestArchitecture,
   checkDatabaseTestFixtures,
   checkIntegrationTestArchitecture,
+  SOURCE_RULES,
 } from "./check-test-architecture.mjs";
 
 const TEST_PATH = "packages/junior/tests/integration/new.test.ts";
@@ -309,5 +310,28 @@ test("allows agent tests to import the fixture, the public app API, plugin packa
       {},
     ),
     [],
+  );
+});
+
+test("rejects a new kind branch outside kind-behavior.ts", () => {
+  const source = (path, contents) => ({ path, contents });
+  const branch = 'if (conversation.kind === "thread") {}';
+  assert.equal(
+    checkAgentTestArchitecture(
+      [
+        source("packages/junior/src/chat/new.ts", branch),
+        source(
+          "packages/junior/src/chat/conversations/kind-behavior.ts",
+          branch,
+        ),
+        source(
+          "packages/junior/src/chat/old.ts",
+          "run.dispatch?.declaresResult",
+        ),
+      ],
+      { "kind-behavior": { "packages/junior/src/chat/old.ts": 1 } },
+      SOURCE_RULES,
+    ).length,
+    1,
   );
 });

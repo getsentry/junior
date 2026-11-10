@@ -7,6 +7,7 @@
  * the optional canonical telemetry view of public input messages.
  */
 import { isDeepStrictEqual } from "node:util";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   sandboxSkillDir,
@@ -586,6 +587,8 @@ export async function assemblePrompt(args: {
   existingTurnStartMessageIndex?: number;
   explicitSkill: Skill | null;
   priorPiMessages?: PiMessage[];
+  /** From `turnBehavior`. */
+  promptMode: PromptMode;
   resumedFromSessionRecord: boolean;
   run: Pick<
     AgentRun,
@@ -595,7 +598,6 @@ export async function assemblePrompt(args: {
     | "slackConversation"
     | "location"
     | "delivery"
-    | "agentInvocationId"
   >;
   spanContext: LogContext;
   disabledTools: DisabledToolPromptContext[];
@@ -627,11 +629,7 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
-  const promptMode = args.run.dispatch?.declaresResult
-    ? "automation"
-    : args.run.agentInvocationId
-      ? "child_agent"
-      : "conversation";
+  const promptMode = args.promptMode;
   // Automation runs have no Delivery port. Their declared message still goes
   // to Slack, so they keep Slack formatting rules.
   const platform =

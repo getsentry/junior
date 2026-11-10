@@ -149,12 +149,11 @@ import {
   type ScheduleSessionCompletedPluginTasksOptions,
 } from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
 import {
-  finishedRunReply,
-  postsRunNotices,
-  runDispatchOutcome,
   deliversFinalText,
-} from "@/chat/automation-result";
+  postsRunNotices,
+} from "@/chat/conversations/kind-behavior";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,

@@ -1,4 +1,5 @@
 import * as z from "zod";
+import { ROOT_TURN_TOOLS } from "@/chat/conversations/kind-behavior";
 import { updateConversationSubscription } from "@/api/conversations/subscription";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -22,7 +23,7 @@ const CONVERSATION_SUBSCRIPTION_TOOL_SOURCE = {
 export function createConversationSubscriptionTools(
   context: ToolRuntimeContext,
 ): ToolRegistry {
-  if (context.agentInvocationId) return {};
+  if (!(context.turnTools ?? ROOT_TURN_TOOLS).subscriptions) return {};
 
   return {
     setConversationSubscription: zodTool({

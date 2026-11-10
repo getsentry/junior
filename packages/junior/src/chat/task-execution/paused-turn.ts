@@ -72,7 +72,7 @@ import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
-import { postsRunNotices } from "@/chat/automation-result";
+import { postsRunNotices } from "@/chat/conversations/kind-behavior";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
   createSlackActor,
