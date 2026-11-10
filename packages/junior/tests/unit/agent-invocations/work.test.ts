@@ -11,6 +11,7 @@ describe("agentInvocationRunPolicy", () => {
       destination: { conversationId: "local:test:child", platform: "local" },
       input: "Implement the change.",
       invocationId: "invocation-1",
+      kind: "own_work",
       mailboxStatus: "pending",
       parentConversationId: "agent:parent",
       reasoningLevel: "medium",
