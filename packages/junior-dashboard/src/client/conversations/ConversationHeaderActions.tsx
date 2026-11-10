@@ -103,7 +103,7 @@ export function ConversationHeaderActions(props: {
   const eventLogOpen = props.view === "raw";
   return (
     <div className="grid gap-0.5">
-      {mobile && !eventLogOpen ? (
+      {!eventLogOpen ? (
         <MenuActionButton
           label={props.searchOpen ? "Hide search" : "Search transcript"}
           onClick={props.onSearchClick}

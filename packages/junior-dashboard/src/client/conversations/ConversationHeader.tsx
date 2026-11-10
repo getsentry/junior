@@ -12,7 +12,6 @@ import {
 import {
   ConversationHeaderActions,
   HeaderIconButton,
-  TranscriptSearchToggle,
   type ConversationArchiveAction,
   type ConversationContinueInSlackAction,
   type ConversationDeliveryAction,
@@ -24,8 +23,13 @@ import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import type { TranscriptSearchMatch } from "./transcriptSearch";
+import {
+  useTranscriptFindShortcut,
+  type TranscriptSearchMatch,
+} from "./transcriptSearch";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+
+const NO_ANCHOR = { current: null };
 
 /**
  * Keep the conversation title and frequently used controls in the header.
@@ -72,6 +76,7 @@ export function ConversationHeader(props: {
   const detailsOpen = props.detailsOpen;
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   const wasDetailsOpen = useRef(detailsOpen);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +115,15 @@ export function ConversationHeader(props: {
     }
     setSearchOpen(true);
   };
+
+  // Search lives in the `⋯` menu; ⌘F / Ctrl+F still opens it. The Event log
+  // has its own search, so the shortcut stays with the browser there.
+  useTranscriptFindShortcut({
+    anchorRef: props.view === "raw" ? NO_ANCHOR : headerRef,
+    inputRef: searchInputRef,
+    onOpen: toggleSearch,
+    open: searchOpenVisible,
+  });
 
   const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
     <ConversationHeaderActions
@@ -239,12 +253,13 @@ export function ConversationHeader(props: {
       {/* Desktop: above the event log's sticky toolbar, so the `⋯` menu
           covers it. Mobile: below the app header, which holds the menu. */}
       <header
+        ref={headerRef}
         className={cn(
           "relative z-10 border-b md:z-30 border-dashboard-border bg-dashboard-bg",
           !showMobileHeader && "hidden md:block",
         )}
       >
-        <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
+        <div className="hidden h-12 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
           <div className="flex min-w-0 items-center gap-1.5">
             {props.sidebarToggle ? (
               <div className="shrink-0">{props.sidebarToggle}</div>
@@ -274,13 +289,6 @@ export function ConversationHeader(props: {
                 {props.cost}
               </span>
             ) : null}
-            {props.view === "raw" ? null : (
-              <TranscriptSearchToggle
-                inputRef={searchInputRef}
-                onClick={toggleSearch}
-                open={searchOpenVisible}
-              />
-            )}
             <ConversationOverflowMenu>
               {(close) => menuActions("desktop", close)}
             </ConversationOverflowMenu>
