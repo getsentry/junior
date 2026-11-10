@@ -1,5 +1,8 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
+import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
+import { mockAutomationEditor } from "./automation-editor-fixture";
+import { automationReport } from "./automation-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -130,6 +133,35 @@ const prMerge = {
   title: "Ready to merge · #42",
 };
 
+// A second GitHub ask, so pull requests group by state.
+const prReview = {
+  ...prMerge,
+  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  body: "GitHub asks you to review **Pin the release train**.",
+  conversationIds: [],
+  createdAt: "2026-08-07T09:00:00.000Z",
+  id: "item-pr-review",
+  subject: {
+    id: "https://github.com/getsentry/payments/pull/91",
+    title: "getsentry/payments#91",
+    url: "https://github.com/getsentry/payments/pull/91",
+  },
+  title: "Review requested · #91",
+};
+
+// A notice for Everyone in another Conversation: FYI, so a sweep clears it.
+const digest = {
+  ...base,
+  addedByConversationId: "scheduler:daily-ops-digest",
+  assignedToEveryone: true,
+  assignees: [],
+  body: "The digest skipped two noisy alerts.",
+  createdAt: "2026-08-07T07:00:00.000Z",
+  id: "item-digest",
+  kind: "notice" as const,
+  title: "Digest skipped two noisy alerts",
+};
+
 /**
  * Serve the given open items and the archived one. An answer or dismiss
  * closes the item, as on the server, so the inbox can move on. `keepOpen`
@@ -188,23 +220,6 @@ async function mockReviewItems(
       : route.fulfill({ json: { error: "Not found" }, status: 404 });
   });
   return actions;
-}
-
-/** Show no blocked Automations, so an empty inbox is empty. */
-async function mockNoBlockedAutomations(page: Page) {
-  await page.route(
-    (url) =>
-      url.pathname.endsWith("/api/automations") &&
-      url.searchParams.get("state") === "blocked",
-    async (route) => {
-      const response = await route.fetch();
-      const body = await response.json();
-      await route.fulfill({
-        response,
-        json: { ...body, automations: [], total: 0 },
-      });
-    },
-  );
 }
 
 test("the inbox bundles review items by conversation", async ({
@@ -537,7 +552,6 @@ test("a search bundles open and archived items together", async ({
 
 test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await mockReviewItems(page, { open: [] });
-  await mockNoBlockedAutomations(page);
   await page.goto(`${dashboard.baseURL}/review`);
   await expect(page.getByText("Nothing needs you")).toBeVisible();
   await expect(page.getByText(answered.title)).toHaveCount(0);
@@ -668,4 +682,182 @@ test("Send sends docked picks and asks before a message drops others", async ({
     .poll(() => messages)
     .toEqual([{ answersBefore: 1, message: "Friday works." }]);
   expect(actions).toHaveLength(1);
+});
+
+test("each bundle groups its rows the way its filter reads", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, {
+    open: [rollout, license, audit, prReady, migration, prMerge, prReview],
+  });
+  await page.goto(`${dashboard.baseURL}/review`);
+  const bundles = page.getByRole("complementary", { name: "Inbox bundles" });
+  await expect(bundles.getByRole("link")).toHaveText([
+    /^All/,
+    /^Pull requests/,
+    /^Decisions/,
+    /^Automations/,
+    /^Investigate checkout latency/,
+    // A Conversation with no title is named after its newest item.
+    new RegExp(`^${audit.title}`),
+  ]);
+
+  // Pull requests group by state.
+  await bundles.getByRole("link", { name: /^Pull requests/ }).click();
+  await expect(page).toHaveURL(/[?&]bundle=prs/);
+  // Sections, not the toast region.
+  const sections = page.locator("section[aria-label]");
+  await expect(sections).toHaveText([
+    /^Review requested/,
+    /^Ready to merge/,
+    /^Other/,
+  ]);
+  await screenshot(page, "review-desk-pull-requests", { view: "desktop" });
+
+  // Decisions group by Conversation, the longest wait first.
+  await bundles.getByRole("link", { name: /^Decisions/ }).click();
+  const decisions = sections;
+  await expect(decisions).toHaveCount(2);
+  await expect(decisions.nth(1)).toHaveAccessibleName(
+    "Investigate checkout latency",
+  );
+  await expect(
+    decisions.nth(1).getByRole("button", { expanded: false }),
+  ).toHaveText([new RegExp(migration.title), new RegExp(rollout.title)]);
+
+  // One Conversation groups by item kind.
+  await bundles
+    .getByRole("link", { name: /^Investigate checkout latency/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Investigate checkout latency" }),
+  ).toBeVisible();
+  await expect(sections).toHaveText([/^Decisions/, /^Pull requests/]);
+  await expect(
+    page.getByRole("link", { name: "Open conversation" }),
+  ).toHaveAttribute(
+    "href",
+    `/conversations/${encodeURIComponent(conversationId)}`,
+  );
+});
+
+test("the needs-you link groups waiting items by conversation", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(
+    `${dashboard.baseURL}/review?filter=needs-you&group=conversation`,
+  );
+  // The count is Conversations, not items. The notice does not wait on you.
+  await expect(
+    page.getByRole("heading", { name: "2 conversations need you" }),
+  ).toBeVisible();
+  const groups = page.locator("section[aria-label]");
+  await expect(groups).toHaveCount(2);
+  await expect(groups.nth(1)).toHaveAccessibleName(
+    "Investigate checkout latency",
+  );
+  await expect(groups.getByRole("button", { expanded: false })).toHaveCount(4);
+  await expect(page.getByText(prReady.title)).toHaveCount(0);
+  await screenshot(page, "review-desk-needs-you", { view: "desktop" });
+});
+
+test("an automation row expands in place and only its buttons leave", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, { open: [license] });
+  const editor = await mockAutomationEditor(page, "scheduled");
+  editor.value = { ...editor.value, status: "blocked" };
+  const report = structuredClone(automationReport);
+  const summary = report.automations.find(
+    (automation) => automation.id === "scheduled-1",
+  )!;
+  Object.assign(summary, {
+    lastRunStatus: "blocked",
+    status: "blocked",
+    statusReason: "GitHub access expired.",
+  });
+  await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+    route.fulfill({
+      json: mockAutomationCollection(
+        report,
+        new URL(route.request().url()).searchParams,
+      ),
+    }),
+  );
+  const lifecycle: unknown[] = [];
+  await page.route("**/api/automations/scheduled-1/lifecycle", (route) => {
+    lifecycle.push(route.request().postDataJSON());
+    return route.fulfill({ json: { ...editor.value, status: "active" } });
+  });
+
+  // All lists the viewer's Automations that need attention in Needs you.
+  await page.goto(`${dashboard.baseURL}/review`);
+  const needsYou = page.getByRole("region", { name: "Needs you" });
+  await expect(
+    needsYou.getByRole("button", { name: /Weekly project summary/ }),
+  ).toBeVisible();
+
+  await page
+    .getByRole("complementary", { name: "Inbox bundles" })
+    .getByRole("link", { name: /^Automations/ })
+    .click();
+  await expect(page).toHaveURL(/\/review\?bundle=automations$/);
+  const blocked = page.getByRole("region", { name: "Blocked" });
+  await blocked.getByRole("button", { name: /Weekly project summary/ }).click();
+  // A click on the row expands it. It never leaves the inbox.
+  await expect(page).toHaveURL(/\/review\?bundle=automations$/);
+  const details = page.getByRole("region", {
+    name: "Weekly project summary: attention",
+  });
+  await expect(details).toContainText("Blocked: GitHub access expired.");
+  await expect(details).toContainText("Last run blocked");
+  await screenshot(page, "review-desk-automation", { view: "desktop" });
+  await details.getByRole("button", { name: "Resume" }).click();
+  await expect
+    .poll(() => lifecycle)
+    .toEqual([{ action: "resume", revision: editor.value.revision }]);
+  await details.getByRole("link", { name: "Open editor" }).click();
+  await expect(page).toHaveURL(/\/automations\/scheduled-1\/edit$/);
+});
+
+test("a sweep clears only FYI items, with an Undo", async ({
+  dashboard,
+  page,
+}) => {
+  const actions = await mockReviewItems(page, {
+    open: [license, prReady, digest],
+  });
+  await page.goto(`${dashboard.baseURL}/review`);
+  // The notice in the bundle that needs you and the FYI digest go; the
+  // question stays.
+  const sweep = page.getByRole("button", {
+    name: "Clear 2 in All; 1 that need you stay",
+  });
+  await sweep.click();
+  const digestRow = page.getByRole("button", { name: /Digest skipped/ });
+  await expect(digestRow).toHaveCount(0);
+  const cleared = page.getByText("Cleared 2 items");
+  await expect(cleared).toBeVisible();
+  await screenshot(page, "review-desk-sweep", { view: "desktop" });
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(digestRow).toBeVisible();
+  expect(actions).toEqual([]);
+
+  // p pins the active row. A pin keeps it out of a sweep.
+  await page.keyboard.press("j");
+  await page.keyboard.press("p");
+  const pinned = page.getByRole("region", { name: "Pinned" });
+  await expect(pinned.getByRole("button", { expanded: false })).toHaveCount(1);
+
+  await page
+    .getByRole("button", { name: "Clear 1 in All; 1 that need you stay" })
+    .click();
+  // The sweep closes the items when the Undo window ends.
+  await expect
+    .poll(() => actions, { timeout: 10_000 })
+    .toEqual([{ body: { action: "dismiss" }, id: digest.id }]);
 });

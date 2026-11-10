@@ -123,17 +123,18 @@ export function useReviewItemCountData(enabled: boolean) {
 }
 
 /**
- * List the viewer's blocked Automations. They show on the review desk, but
- * their state stays derived from Automation status.
+ * The viewer's Automations that need attention: blocked, a trigger that is
+ * unavailable, or a last run that failed or blocked. The Automation list
+ * computes it; there is no Review item for it.
  */
-export function useBlockedAutomationsData(enabled: boolean) {
+export function useAutomationAttentionData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "automations", "scope=mine&state=blocked"],
+    queryKey: ["dashboard", "automations", "scope=attention&owner=me"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         automationListSchema,
-        "/api/automations?scope=mine&state=blocked&pageSize=100",
+        "/api/automations?scope=attention&owner=me&pageSize=100",
         signal,
       ),
     retry: false,
