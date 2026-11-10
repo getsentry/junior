@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eventCatalogEntry } from "@/chat/events/catalog";
@@ -14,7 +15,14 @@ vi.mock("@/chat/events/store", () => ({
 
 import { createEventTools } from "@/chat/tools/events";
 
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
+
 const context: ToolRuntimeContext = {
+  turnTools: rootTurnTools,
   conversationId: "slack:C123:1712345.0001",
   destination: {
     platform: "slack",

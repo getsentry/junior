@@ -1,6 +1,7 @@
 import { githubPlugin } from "@sentry/junior-github";
 import { vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import { createSlackSource, type SlackActor } from "@sentry/junior-plugin-api";
@@ -61,6 +62,11 @@ export function context(
       visibility: sourceVisibility,
     }),
     userText: "Create a task for review feedback.",
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+      automationRun: false,
+    }).tools,
   } as ToolRuntimeContext;
 }
 

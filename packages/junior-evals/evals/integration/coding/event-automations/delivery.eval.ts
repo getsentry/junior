@@ -1,11 +1,15 @@
 import { describe, expect } from "vitest";
-import { githubWebhook } from "@junior-evals/fixture/inputs";
+import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
 import {
   insertEventAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const reviewTrigger = {
@@ -57,6 +61,21 @@ describe("Event automation delivery", () => {
     expect(delivery.toolCalls.map((call) => call.name)).not.toContain(
       "deleteAutomation",
     );
+
+    // A person's reply in the run's thread is a chat Turn in the run's
+    // Conversation, and its final response is delivered.
+    const followUp = await delivery.continue(
+      slackMention("Which pull request was that? Answer with its number only."),
+    );
+    expect(followUp.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    expect(followUp.replies).toEqual([
+      expect.objectContaining({
+        conversationId: delivery.replies[0]!.conversationId,
+        text: expect.stringContaining("691"),
+      }),
+    ]);
+    expect(delivery.replies[0]!.conversationId).toMatch(/^agent-dispatch:/);
+    expect(toolCallsOf("finishAutomationRun", followUp)).toEqual([]);
   });
 
   test.for([

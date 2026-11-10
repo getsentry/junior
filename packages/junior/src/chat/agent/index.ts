@@ -30,6 +30,7 @@ import {
   withLogContext,
   withSpan,
   type LogContext,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -125,6 +126,10 @@ import {
 import { getConversationStore } from "@/chat/db";
 import type { ConversationKind } from "@/chat/conversations/store";
 import {
+  isPersonInput,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
+import {
   RetryableDeliveryError,
   assertRunConsistency,
   actorFromRun,
@@ -165,7 +170,11 @@ import {
   requestContextSummary,
 } from "@/chat/agent/context-summary";
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
-import { logToolBatch } from "@/chat/agent/tool-batch";
+import {
+  createToolBatchStats,
+  recordToolBatch,
+  toolBatchSpanAttributes,
+} from "@/chat/agent/tool-batch";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -231,6 +240,13 @@ export async function executeAgentRun(
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });
+  // Spawning a child writes its row first. Only a root can run before its
+  // row exists.
+  if (!conversation && run.parentConversationId) {
+    throw new Error(
+      `Child Conversation ${run.conversationId} has no Conversation row`,
+    );
+  }
   const visibility = conversation?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
@@ -265,7 +281,7 @@ export async function executeAgentRun(
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         run,
-        conversation?.kind,
+        conversation?.kind ?? "root",
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -276,7 +292,7 @@ export async function executeAgentRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
-  conversationKind: ConversationKind | undefined,
+  conversationKind: ConversationKind,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: StreamFn | undefined,
@@ -284,7 +300,13 @@ async function executeAgentRunInPrivacyContext(
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
   const turnId = run.turnId;
-  const requireAutomationResult = run.dispatch?.declaresResult === true;
+  const behavior = turnBehavior({
+    kind: conversationKind,
+    personInput: isPersonInput(run.source.kind),
+    automationRun: run.dispatch?.declaresResult === true,
+  });
+  // TODO(dcramer): Gate every answer tool here, not only the Automation run.
+  const requireAutomationResult = behavior.gated;
   const input = {
     actor: run.instruction.actor,
     messageText: run.instruction.text,
@@ -670,6 +692,7 @@ async function executeAgentRunInPrivacyContext(
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
       activeSkills,
+      behavior,
       currentActor: actor,
       currentAgentMessages,
       currentTurnMessages,
@@ -740,6 +763,7 @@ async function executeAgentRunInPrivacyContext(
       userContentParts: promptUserContentParts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
+      promptMode: behavior.promptMode,
       currentActor: actor,
       availableSkills,
       configurationValues,
@@ -1007,6 +1031,10 @@ async function executeAgentRunInPrivacyContext(
       conversationId,
       isUserActor(actor) && conversationKind !== "task",
     );
+    // Batch counts go on the `gen_ai.invoke_agent` span, because production
+    // drops info logs.
+    const toolBatchStats = createToolBatchStats();
+    let setAgentSpanAttributes: SetSpanAttributes | undefined;
     agent = new Agent({
       // Resolve on every provider call so runtime OIDC tokens stay fresh.
       getApiKey: getGatewayApiKey,
@@ -1022,7 +1050,8 @@ async function executeAgentRunInPrivacyContext(
           (part) => part.type === "toolCall",
         );
         if (toolCalls.length > 1 && toolCall.id === toolCalls[0]!.id) {
-          logToolBatch(toolCalls, context.tools ?? []);
+          recordToolBatch(toolBatchStats, toolCalls, context.tools ?? []);
+          setAgentSpanAttributes?.(toolBatchSpanAttributes(toolBatchStats));
         }
         const exclusiveTool = exclusiveToolName(toolCalls);
         if (exclusiveTool && toolCalls.length !== 1) {
@@ -1244,7 +1273,8 @@ async function executeAgentRunInPrivacyContext(
         `invoke_agent ${botConfig.userName}`,
         "gen_ai.invoke_agent",
         spanContext,
-        async () => {
+        async (setInvokeAgentSpanAttributes) => {
+          setAgentSpanAttributes = setInvokeAgentSpanAttributes;
           // A declared Automation result is final. Each Automation run owns
           // its dispatch Conversation, so a result in this history belongs to
           // this run. A resumed slice returns it without calling the model.

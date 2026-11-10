@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWebSource } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
@@ -13,6 +14,12 @@ import {
 } from "../../fixtures/conversation";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 import { signedInViewer } from "../../fixtures/user";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
 
 async function webFiles() {
   const fixture = await createConversationFixture();
@@ -33,6 +40,7 @@ async function webFiles() {
   ]);
   const storage = createMemoryAttachmentStorage();
   const context: ToolRuntimeContext = {
+    turnTools: rootTurnTools,
     conversationId,
     conversationPrivacy: "private",
     destination,

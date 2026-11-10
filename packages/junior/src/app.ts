@@ -863,7 +863,10 @@ export async function createApp(
   });
 
   app.get("/api/internal/heartbeat", (c) => {
-    return heartbeatGET(c.req.raw, waitUntil, { conversationWorkQueue });
+    return heartbeatGET(c.req.raw, waitUntil, {
+      conversationWorkQueue,
+      events,
+    });
   });
 
   app.get("/api/internal/retention", (c) => {
