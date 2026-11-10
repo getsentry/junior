@@ -151,6 +151,35 @@ const decisionKindLabels: Record<
   stated: "Stated",
 };
 
+const sourceLinkClass =
+  "text-dashboard-text-muted underline decoration-dashboard-border-heavy underline-offset-2 hover:text-dashboard-text";
+
+/**
+ * Name where a source comes from. The name is the link, for every kind: a
+ * Brief line opens its Conversation, and a Sentry line opens Sentry.
+ */
+function SourceLabel(props: { conversationId?: string; source: Source }) {
+  const label = sourceLabels[props.source.kind];
+  if (props.source.kind.startsWith("brief_") && props.conversationId) {
+    return (
+      <Link
+        className={sourceLinkClass}
+        to={conversationPath(props.conversationId)}
+      >
+        {label}
+      </Link>
+    );
+  }
+  if (props.source.url) {
+    return (
+      <OutboundLink className={sourceLinkClass} href={props.source.url}>
+        {label}
+      </OutboundLink>
+    );
+  }
+  return label;
+}
+
 /** Sources the prose cites, as numbered footnotes. */
 export function ReferenceList(props: {
   /** The Conversation that made the PR. Brief lines link to it. */
@@ -176,16 +205,10 @@ export function ReferenceList(props: {
           <ReferenceNumber n={ref.n} />
           <span>
             <span className="text-dashboard-text-muted">
-              {ref.source.kind.startsWith("brief_") && props.conversationId ? (
-                <Link
-                  className="text-dashboard-text-muted underline decoration-dashboard-border-heavy underline-offset-2 hover:text-dashboard-text"
-                  to={conversationPath(props.conversationId)}
-                >
-                  {sourceLabels[ref.source.kind]}
-                </Link>
-              ) : (
-                sourceLabels[ref.source.kind]
-              )}
+              <SourceLabel
+                conversationId={props.conversationId}
+                source={ref.source}
+              />
               {" · "}
               {ref.source.decisionKind === "assumed" ? (
                 <span className="text-amber-300 light:text-amber-700">
@@ -197,17 +220,6 @@ export function ReferenceList(props: {
               ) : null}
             </span>
             <DisplayText inline text={ref.source.text} />
-            {ref.source.url ? (
-              <>
-                {" "}
-                <OutboundLink
-                  className="text-dashboard-text-muted hover:text-dashboard-text"
-                  href={ref.source.url}
-                >
-                  Open
-                </OutboundLink>
-              </>
-            ) : null}
           </span>
         </li>
       ))}
