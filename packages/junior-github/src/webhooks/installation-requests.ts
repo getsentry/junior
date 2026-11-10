@@ -73,6 +73,40 @@ export async function loadPullRequest(
   );
 }
 
+/**
+ * Read the mergeability of many pull requests in one repository with one
+ * GraphQL request and a read-only token.
+ */
+export async function loadPullRequestMergeability(
+  env: GitHubInstallationEnv,
+  input: { numbers: number[]; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "pull request mergeability",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  // The numbers come from the database as integers, so the aliases are safe.
+  const fields = input.numbers
+    .map(
+      (number) =>
+        `pr${number}: pullRequest(number: ${number}) { number state mergeable headRefOid baseRefName url }`,
+    )
+    .join(" ");
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      query: `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields} } }`,
+      variables: { name, owner },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
 /** Add the "reviewing" reaction to one pull request feedback comment. */
 export async function markPullRequestFeedbackReviewing(
   env: GitHubInstallationEnv,

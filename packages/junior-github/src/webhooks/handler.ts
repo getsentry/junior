@@ -43,10 +43,7 @@ import {
   loadGitHubMergeConflictEvents,
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
-import {
-  markGitHubPushConflictChecks,
-  recordGitHubPullRequestWebhookBaseBranch,
-} from "../merge-conflict-checks/webhooks.js";
+import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
   pullRequestReadyTargets,
   syncGitHubPullRequestReadyNotices,
@@ -219,12 +216,12 @@ export function createGitHubWebhookRoute(args: {
         return new Response("Ignored", { status: 202 });
       }
       if (eventName === "push") {
-        const marked = await markGitHubPushConflictChecks({
+        const scheduled = await scheduleGitHubPushConflictCheck({
           body,
           db: args.db,
           now: new Date(),
         });
-        return new Response(marked > 0 ? "Accepted" : "Ignored", {
+        return new Response(scheduled ? "Accepted" : "Ignored", {
           status: 202,
         });
       }
@@ -349,10 +346,6 @@ export function createGitHubWebhookRoute(args: {
             pullRequestLinkedIssues,
           )
         : false;
-      if (eventName === "pull_request") {
-        // After the outcome, so the row for a new pull request exists.
-        await recordGitHubPullRequestWebhookBaseBranch({ body, db: args.db });
-      }
 
       const checkSuitePublishTargets =
         eventName === "check_suite"

@@ -1,9 +1,57 @@
 {
-  "id": "fc6fc4ee-ba34-413b-b421-a4fdd43d5f24",
+  "id": "327f5a60-d494-48c3-b9e2-2db51fade6a6",
   "prevId": "3156d5c8-917d-416b-a19b-f58e7ee76acc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.junior_github_conflict_checks": {
+      "name": "junior_github_conflict_checks",
+      "schema": "",
+      "columns": {
+        "repository_full_name": {
+          "name": "repository_full_name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "junior_github_conflict_checks_due_at_idx": {
+          "name": "junior_github_conflict_checks_due_at_idx",
+          "columns": [
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.junior_github_issues": {
       "name": "junior_github_issues",
       "schema": "",
@@ -324,25 +372,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "base_branch": {
-          "name": "base_branch",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "conflict_check_at": {
-          "name": "conflict_check_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "conflict_check_attempts": {
-          "name": "conflict_check_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {
@@ -423,17 +452,11 @@
           "method": "gin",
           "with": {}
         },
-        "junior_github_pull_requests_open_base_idx": {
-          "name": "junior_github_pull_requests_open_base_idx",
+        "junior_github_pull_requests_open_repository_idx": {
+          "name": "junior_github_pull_requests_open_repository_idx",
           "columns": [
             {
               "expression": "repository_full_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "base_branch",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -441,22 +464,6 @@
           ],
           "isUnique": false,
           "where": "\"junior_github_pull_requests\".\"state\" = 'open'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_github_pull_requests_conflict_check_idx": {
-          "name": "junior_github_pull_requests_conflict_check_idx",
-          "columns": [
-            {
-              "expression": "conflict_check_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_github_pull_requests\".\"state\" = 'open' AND \"junior_github_pull_requests\".\"conflict_check_at\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

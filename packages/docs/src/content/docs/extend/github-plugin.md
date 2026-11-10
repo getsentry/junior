@@ -532,12 +532,13 @@ webhook includes mergeability, so Junior uses it when GitHub knows it. Review,
 comment, and check webhooks do not include it, so Junior reads the pull
 request. If GitHub reports a conflict, Junior publishes this event. Each head commit publishes once. GitHub
 calculates mergeability only when someone reads the pull request, so the first
-read can be unknown, and a later event reads it again. A push to the base
-branch of an open pull request that Junior opened also starts a check. The push
-webhook only saves the check. About two minutes later, the heartbeat reads each
-saved pull request once, so many pushes in a short time give one read. When the
-answer is unknown, the heartbeat reads it again one minute later. A pull request
-that Junior did not open and that gets no other events is not checked. Trusted data includes `base_branch`, `head_sha`,
+read can be unknown, and a later event reads it again. A push to the default
+branch of a repository with open pull requests that Junior opened also starts a
+check. The push webhook only saves the check. About two minutes later, the
+heartbeat reads the mergeability of all those pull requests in one GraphQL
+request, so many pushes in a short time give one read. When an answer is
+unknown, the heartbeat reads again one minute later. A pull request that Junior
+did not open and that gets no other events is not checked. Trusted data includes `base_branch`, `head_sha`,
 and `url`. Filters can match only `repo` and `pull_request`. The watch that
 Junior creates after it opens a pull request always gets this event, and the
 default guidance tells the agent to merge the base branch, not rebase. For a

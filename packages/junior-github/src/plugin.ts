@@ -24,6 +24,7 @@ import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestCommitPages,
+  loadPullRequestMergeability,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
 } from "./webhooks/installation-requests.js";
@@ -318,10 +319,10 @@ export function githubPlugin(
         await runGitHubConflictChecks({
           db: ctx.db as GitHubDb,
           events: ctx.events,
-          loadPullRequest: async (pullRequest) =>
-            await loadPullRequest(
+          loadMergeability: async (input) =>
+            await loadPullRequestMergeability(
               { appIdEnv, installationIdEnv, privateKeyEnv },
-              pullRequest,
+              input,
             ),
           log: ctx.log,
           now: new Date(ctx.nowMs),

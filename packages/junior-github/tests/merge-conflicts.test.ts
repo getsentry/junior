@@ -288,9 +288,11 @@ describe("merge conflict check on webhook events", () => {
     ]);
   });
 
-  describe("after a push to the base branch", () => {
+  describe("after a push to the default branch", () => {
     const pushedAt = Date.parse("2026-11-09T12:00:00.000Z");
     const minute = 60_000;
+    let graphqlQueries: string[];
+    let mergeability: Record<number, string>;
 
     async function heartbeat(nowMs: number): Promise<void> {
       const unused = () => {
@@ -320,129 +322,136 @@ describe("merge conflict check on webhook events", () => {
       await githubPlugin().hooks!.heartbeat!(context);
     }
 
-    function pushRequest(ref: string): Request {
+    function pushRequest(ref: string, repo = "getsentry/junior"): Request {
       return signedRequest({
-        deliveryId: `push-${ref}`,
+        deliveryId: `push-${repo}-${ref}`,
         eventName: "push",
         body: {
           installation: { id: 456 },
           ref,
-          repository: { full_name: "getsentry/junior" },
+          repository: { default_branch: "main", full_name: repo },
         },
       });
     }
 
     beforeEach(async () => {
       vi.useFakeTimers({ now: pushedAt, toFake: ["Date"] });
+      graphqlQueries = [];
+      mergeability = { 946: "CONFLICTING", 947: "MERGEABLE" };
+      mswServer.use(
+        http.post("https://api.github.com/graphql", async ({ request }) => {
+          const { query } = (await request.json()) as { query: string };
+          graphqlQueries.push(query);
+          const numbers = [
+            ...query.matchAll(/pullRequest\(number: (\d+)\)/g),
+          ].map((match) => Number(match[1]));
+          return HttpResponse.json({
+            data: {
+              repository: Object.fromEntries(
+                numbers.map((number) => [
+                  `pr${number}`,
+                  {
+                    baseRefName: "main",
+                    headRefOid: "1111111111111111111111111111111111111111",
+                    mergeable: mergeability[number],
+                    number,
+                    state: "OPEN",
+                    url: `https://github.com/getsentry/junior/pull/${number}`,
+                  },
+                ]),
+              ),
+            },
+          });
+        }),
+      );
+      const row = (number: number, state: "merged" | "open") => ({
+        number,
+        openedAt: new Date(pushedAt - 60 * minute),
+        pullRequestId: `${number}0`,
+        repositoryFullName: "getsentry/junior",
+        repositoryId: "1",
+        state,
+        updatedAt: new Date(pushedAt - 60 * minute),
+      });
       await fixture
         .db()
         .insert(juniorGitHubPullRequests)
-        .values({
-          baseBranch: "main",
-          number: 946,
-          openedAt: new Date(pushedAt - 60 * minute),
-          pullRequestId: "9460",
-          repositoryFullName: "getsentry/junior",
-          repositoryId: "1",
-          state: "open",
-          updatedAt: new Date(pushedAt - 60 * minute),
-        });
+        .values([row(946, "open"), row(947, "open"), row(948, "merged")]);
     });
 
     afterEach(() => {
       vi.useRealTimers();
     });
 
-    it("publishes a conflict on the heartbeat, with one read for a burst of pushes", async () => {
+    it("publishes a conflict with one read for a burst of pushes", async () => {
       await deliver("push-1", pushRequest("refs/heads/main"));
       vi.setSystemTime(pushedAt + minute);
       await deliver("push-2", pushRequest("refs/heads/main"));
       // The push webhook makes no GitHub call.
-      expect(pullRequestReads).toBe(0);
+      expect(graphqlQueries).toHaveLength(0);
 
       await heartbeat(pushedAt + minute);
-      expect(pullRequestReads).toBe(0);
+      expect(graphqlQueries).toHaveLength(0);
 
       await heartbeat(pushedAt + 2 * minute);
-      expect(pullRequestReads).toBe(1);
-      expect(conflicts().map((event) => event.identifier)).toEqual([
-        "getsentry/junior#946",
-        "getsentry/junior",
+      expect(graphqlQueries).toHaveLength(1);
+      // Only the open Junior pull requests, in one request.
+      expect(graphqlQueries[0]).toContain("pullRequest(number: 946)");
+      expect(graphqlQueries[0]).toContain("pullRequest(number: 947)");
+      expect(graphqlQueries[0]).not.toContain("pullRequest(number: 948)");
+      expect(conflicts()).toEqual([
+        expect.objectContaining({
+          data: {
+            baseBranch: "main",
+            headSha: "1111111111111111111111111111111111111111",
+            pullRequest: 946,
+            repo: "getsentry/junior",
+            url: "https://github.com/getsentry/junior/pull/946",
+          },
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({ identifier: "getsentry/junior" }),
       ]);
+      expect(pullRequestReads).toBe(0);
 
       await heartbeat(pushedAt + 10 * minute);
-      expect(pullRequestReads).toBe(1);
+      expect(graphqlQueries).toHaveLength(1);
     });
 
     it("reads again while GitHub calculates mergeability", async () => {
-      pullRequest = pullRequestResponse({
-        headSha: "1111111111111111111111111111111111111111",
-        mergeable: null,
-        mergeableState: "unknown",
-      });
+      mergeability[946] = "UNKNOWN";
       await deliver("push-1", pushRequest("refs/heads/main"));
       await heartbeat(pushedAt + 2 * minute);
-      expect(pullRequestReads).toBe(1);
+      expect(graphqlQueries).toHaveLength(1);
       expect(conflicts()).toEqual([]);
 
-      pullRequest = pullRequestResponse({
-        headSha: "1111111111111111111111111111111111111111",
-        mergeable: false,
-        mergeableState: "dirty",
-      });
+      mergeability[946] = "CONFLICTING";
       await heartbeat(pushedAt + 3 * minute);
-      expect(pullRequestReads).toBe(2);
+      expect(graphqlQueries).toHaveLength(2);
       expect(conflicts()).toHaveLength(2);
     });
 
     it("does not check after a push to another branch", async () => {
       await deliver("push-1", pushRequest("refs/heads/feat/other"));
       await heartbeat(pushedAt + 10 * minute);
-      expect(pullRequestReads).toBe(0);
+      expect(graphqlQueries).toHaveLength(0);
     });
 
-    it("does not read the pull request when nothing wants conflicts", async () => {
+    it("does not check a repository without open Junior pull requests", async () => {
+      await deliver(
+        "push-1",
+        pushRequest("refs/heads/main", "getsentry/other"),
+      );
+      await heartbeat(pushedAt + 10 * minute);
+      expect(graphqlQueries).toHaveLength(0);
+    });
+
+    it("publishes no conflict that nothing wants", async () => {
       watchesConflicts = false;
       await deliver("push-1", pushRequest("refs/heads/main"));
       await heartbeat(pushedAt + 2 * minute);
-      watchesConflicts = true;
-      await heartbeat(pushedAt + 10 * minute);
-      expect(pullRequestReads).toBe(0);
+      expect(graphqlQueries).toHaveLength(1);
       expect(conflicts()).toEqual([]);
-    });
-
-    it("uses the base branch from a pull request webhook", async () => {
-      await deliver(
-        "edited-1",
-        signedRequest({
-          deliveryId: "edited-1",
-          eventName: "pull_request",
-          body: {
-            action: "edited",
-            installation: { id: 456 },
-            repository: { full_name: "getsentry/junior" },
-            pull_request: {
-              ...pullRequestResponse({
-                headSha: "1111111111111111111111111111111111111111",
-                mergeable: true,
-                mergeableState: "clean",
-              }),
-              base: { ref: "release/1.0" },
-              draft: false,
-              id: 9460,
-              number: 946,
-              user: { login: "jane" },
-            },
-          },
-        }),
-      );
-      await deliver("push-1", pushRequest("refs/heads/main"));
-      await heartbeat(pushedAt + 10 * minute);
-      expect(pullRequestReads).toBe(0);
-
-      await deliver("push-2", pushRequest("refs/heads/release/1.0"));
-      await heartbeat(pushedAt + 20 * minute);
-      expect(pullRequestReads).toBe(1);
     });
   });
 });
