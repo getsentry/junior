@@ -46,8 +46,10 @@ import {
 } from "./warmup";
 
 // The key names the segment format. A change of the `gapSegment` keys must
-// change it, so that the fill runs again for the new segment lists.
-const BACKFILL_KEY = "junior:cache_warming:backfill:work_state";
+// change it, so that the fill runs again for the new segment lists. `v2`
+// replaces a key whose `done` had no TTL. Existing installs run the backfill
+// once more after deploy, and that run fills only segments that are empty.
+const BACKFILL_KEY = "junior:cache_warming:backfill:work_state:v2";
 // A run that fails or is stopped before it marks the install as done holds
 // the claim for this long. Then a later heartbeat tries again.
 const BACKFILL_CLAIM_TTL_MS = 60 * MINUTE_MS;
