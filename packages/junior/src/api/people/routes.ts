@@ -12,10 +12,6 @@ import {
   personalSpendReportSchema,
 } from "../schema/person";
 import { codePersonReportSchema } from "../schema/code";
-import {
-  personReplyTimesQuerySchema,
-  personReplyTimesReportSchema,
-} from "../schema/reply-times";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -23,7 +19,6 @@ import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
-import { readPersonReplyTimes } from "./reply-times";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 // A versioned photo path never changes its bytes. `private` keeps photos out
@@ -94,30 +89,6 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
         pluginOperationalReportFeedSchema,
         await readPeoplePluginReports({ email, viewer }),
       );
-    },
-  );
-
-  app.get(
-    "/:email/reply-times",
-    requireViewer,
-    validateRequest("param", personParamsSchema, "Invalid route parameters."),
-    validateRequest(
-      "query",
-      personReplyTimesQuerySchema,
-      "Invalid query parameters.",
-    ),
-    async (context) => {
-      const { email } = context.req.valid("param");
-      const { days } = context.req.valid("query");
-      const report = await readPersonReplyTimes({
-        days,
-        email,
-        viewer: context.get("viewer"),
-      });
-      // Only the person reads their reply times. Any other viewer gets the
-      // answer for a person that does not exist.
-      if (!report) throwApiError(404, "Reply times not found.");
-      return jsonResponse(personReplyTimesReportSchema, report);
     },
   );
 

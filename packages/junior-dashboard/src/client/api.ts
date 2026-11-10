@@ -20,7 +20,6 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  personReplyTimesReportSchema,
   replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
@@ -324,21 +323,6 @@ export function useActorCodeData(email: string | undefined) {
       fetchDashboardJson(
         codePersonReportSchema,
         `/api/people/${encodeURIComponent(email!)}/code`,
-        signal,
-      ),
-    retry: false,
-  });
-}
-
-/** Fetch the viewer's own reply times. The server answers only that person. */
-export function usePersonReplyTimesData(args: { days: number; email: string }) {
-  return useQuery({
-    placeholderData: keepPreviousData,
-    queryKey: ["dashboard", "people", args.email, "reply-times", args.days],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        personReplyTimesReportSchema,
-        `/api/people/${encodeURIComponent(args.email)}/reply-times?days=${args.days}`,
         signal,
       ),
     retry: false,

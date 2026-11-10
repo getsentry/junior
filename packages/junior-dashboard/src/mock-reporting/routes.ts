@@ -55,8 +55,6 @@ import {
   locationParamsSchema,
   personalSpendReportSchema,
   personParamsSchema,
-  personReplyTimesQuerySchema,
-  personReplyTimesReportSchema,
   replyTimeSegmentsReportSchema,
   pluginOperationalReportFeedSchema,
   reviewItemCountSchema,
@@ -123,10 +121,7 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
-import {
-  readMockPersonReplyTimes,
-  readMockReplyTimeSegments,
-} from "./reply-times";
+import { readMockReplyTimeSegments } from "./reply-times";
 import { readMockConversationWatches } from "./watches";
 
 function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
@@ -229,21 +224,6 @@ export function createMockReportingApi(): Hono<{
   app.get("/reply-times", () =>
     jsonResponse(replyTimeSegmentsReportSchema, readMockReplyTimeSegments()),
   );
-  app.get("/people/:email/reply-times", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    const query = personReplyTimesQuerySchema.safeParse(c.req.query());
-    if (!params.success || !query.success) {
-      return errorResponse("Invalid request.", 400);
-    }
-    // Like the core route, only the profile's person reads their gaps.
-    const viewerEmail = c.get("viewer")?.email.toLowerCase();
-    return viewerEmail === params.data.email.toLowerCase()
-      ? jsonResponse(
-          personReplyTimesReportSchema,
-          readMockPersonReplyTimes(query.data.days),
-        )
-      : errorResponse("Reply times not found.", 404);
-  });
   app.get("/people/:email/code", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
     if (!params.success) {

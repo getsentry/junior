@@ -363,13 +363,8 @@ export type {
   AutomationVersionList,
   ListedAutomationVersion,
 } from "./schema/automation";
-export {
-  personReplyTimesQuerySchema,
-  personReplyTimesReportSchema,
-  replyTimeSegmentsReportSchema,
-} from "./schema/reply-times";
+export { replyTimeSegmentsReportSchema } from "./schema/reply-times";
 export type {
-  PersonReplyTimesReport,
   ReplyTimeHistogram,
   ReplyTimeSegmentsReport,
 } from "./schema/reply-times";
