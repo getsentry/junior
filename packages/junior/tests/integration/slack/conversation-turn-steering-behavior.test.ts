@@ -22,8 +22,10 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { SLACK_STOP_ACK } from "@/chat/ingress/slack-stop";
-import { SLACK_DETACH_ACK } from "@/chat/ingress/slack-detach";
-import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
+import {
+  isConversationDeliveryPaused,
+  pauseConversationDelivery,
+} from "@/chat/conversations/delivery-pause";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { hasConversationStop } from "@/chat/task-execution/state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -425,31 +427,25 @@ describe("Slack ingress: thread messages", () => {
     );
   });
 
-  it("pauses Delivery from `!detach` once, and the next mention resumes it", async () => {
-    const { queue, send } = ingress();
+  it("attaches a detached Conversation again on the next mention", async () => {
+    const { send } = ingress();
     await send({
       eventType: "app_mention",
       text: `<@${SLACK_BOT_USER_ID}> watch the deploy`,
       ts: THREAD_TS,
     });
-    const detach = {
-      text: `<@${SLACK_BOT_USER_ID}> !detach`,
+    await expect(pauseConversationDelivery(CONVERSATION_ID)).resolves.toBe(
+      true,
+    );
+    // A message that does not mention Junior keeps it detached.
+    await send({
+      eventType: "message",
+      text: "looks fine to me",
       ts: "1712345.000200",
-    };
-    // Slack sends a mention as both `message` and `app_mention`.
-    await send({ ...detach, eventType: "message" });
-    await send({ ...detach, eventType: "app_mention" });
-
+    });
     await expect(isConversationDeliveryPaused(CONVERSATION_ID)).resolves.toBe(
       true,
     );
-    expect(
-      slackApiOutbox
-        .messages()
-        .filter((call) => call.params.text === SLACK_DETACH_ACK),
-    ).toHaveLength(1);
-    // A detach starts no Turn.
-    expect(queue.queuedMessages()).toHaveLength(1);
 
     await send({
       eventType: "app_mention",
