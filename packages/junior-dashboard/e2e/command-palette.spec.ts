@@ -143,7 +143,8 @@ test("a palette switch focuses the question while Junior waits for an answer", a
 }) => {
   await page.setViewportSize({ height: 800, width: 1280 });
   await routeAsParticipant(page, CLOSED_ISSUE_ID, question.id);
-  // The question loads after the reply box shows.
+  // The question sits on a second page that loads after the reply box
+  // shows.
   let releaseQuestion = () => {};
   const questionHeld = new Promise<void>((resolve) => {
     releaseQuestion = resolve;
@@ -152,6 +153,9 @@ test("a palette switch focuses the question while Junior waits for an answer", a
     const url = new URL(route.request().url());
     if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
       return route.fallback();
+    }
+    if (!url.searchParams.has("cursor")) {
+      return route.fulfill({ json: { items: [], nextCursor: "page-2" } });
     }
     await questionHeld;
     await route.fulfill({ json: { items: [question] } });

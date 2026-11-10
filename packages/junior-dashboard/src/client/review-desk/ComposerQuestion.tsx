@@ -54,7 +54,10 @@ export function useComposerQuestions(conversationId: string) {
     () => (stale ? [] : items.filter(reviewItemWaitsForAnswer)),
     [items, stale],
   );
-  return { pending: query.isPending || stale, questions };
+  // The questions are known only when every page is in. Before that, a
+  // question on a later page would dock after the focus went elsewhere.
+  const morePages = hasNextPage && !failed;
+  return { pending: query.isPending || stale || morePages, questions };
 }
 
 function actionError(error: unknown): string {
