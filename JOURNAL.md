@@ -190,3 +190,16 @@ Read this first after a sandbox reset or context loss.
   calls executeTurn with walkthroughGeneration, cost on the version row,
   step/$ limits, then 2–3 real cost runs. Read #3052 first. Decide merged-layer
   filtering and generation Conversation visibility (private source reads).
+- #3090 merge_conflict event: main moved (27 commits) and took migrations
+  0096–0099. Fixed with `gh stack checkout 3090` + `gh stack rebase`; took
+  main's meta/_journal.json + 0096_snapshot.json, deleted our 0096 SQL, and
+  regenerated with `pnpm exec drizzle-kit generate --config drizzle.config.ts
+  --name walkthrough_versions` → `0100_walkthrough_versions.sql` (SQL
+  byte-identical). `gh stack rebase --continue`, `gh stack push` (hook passed;
+  main fixed the zod import in #3092).
+  New heads: 1 08604c08a, 2 240f96822, 3 b319aa96d, 4a 4005781b1.
+  All 4 PRs mergeable=true. tsc, walkthrough/list/api tests, github
+  code-changes tests pass.
+- PR body edits via `gh api PATCH` return 403 from the sandbox token. #3090
+  body still says `0096` (now `0100`); #3124 body still has the stale
+  --no-verify note. Fix when a PR-edit path is available.
