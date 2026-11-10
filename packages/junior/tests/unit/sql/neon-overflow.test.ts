@@ -199,6 +199,11 @@ describe("Neon pool overflow", () => {
 
     expect(wire.clientsClosed).toBe(2);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(3));
+
+    // The reopened client stays open past the next idle timeout.
+    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(wire.clientsClosed).toBe(2);
     const [row] = await executor.query<{ transport: string }>("select 3");
     expect(row?.transport).toBe("websocket");
     expect(wire.clientsOpened).toBe(3);
@@ -215,17 +220,19 @@ describe("Neon pool overflow", () => {
   it("tries one reconnect when it fails", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await executor.query("select 'warm'");
+    await Promise.all([executor.query("select 1"), executor.query("select 2")]);
+    await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
     wire.failNextConnect = true;
 
     vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS);
 
-    await vi.waitFor(() => expect(wire.clientsOpened).toBe(2));
+    await vi.waitFor(() => expect(wire.clientsOpened).toBe(3));
     await new Promise((resolve) => setImmediate(resolve));
-    expect(wire.clientsOpened).toBe(2);
-    // The empty pool opens its next client inline.
-    const [row] = await executor.query<{ transport: string }>("select 1");
-    expect(row?.transport).toBe("websocket");
     expect(wire.clientsOpened).toBe(3);
+    // The empty pool opens its next client inline.
+    const [row] = await executor.query<{ transport: string }>("select 3");
+    expect(row?.transport).toBe("websocket");
+    expect(wire.clientsOpened).toBe(4);
   });
 
   it("uses a free client while pg-pool hands another one over", async () => {
