@@ -12,14 +12,21 @@ export interface EncryptedState {
   set(key: string, value: unknown, ttlMs?: number): Promise<void>;
 }
 
+/** One decrypted value. `stale` means the owner should save it again. */
+export interface EncryptedStateRead {
+  stale: boolean;
+  value: unknown;
+}
+
 /**
  * Decrypt one stored envelope. The storage key is the encryption context.
- * A value from a previous `JUNIOR_SECRET` reads as missing, so the owner asks
+ * A value from an unknown `JUNIOR_SECRET` reads as missing, so the owner asks
  * for the credential again and saves it with the current key.
  */
-function decode(key: string, envelope: string): unknown {
+function decode(key: string, envelope: string): EncryptedStateRead | undefined {
   try {
-    return JSON.parse(decryptSecret(envelope, key));
+    const { stale, text } = decryptSecret(envelope, key);
+    return { stale, value: JSON.parse(text) };
   } catch (error) {
     if (error instanceof SecretKeyMismatchError) return undefined;
     throw error;
@@ -39,7 +46,7 @@ export function createEncryptedState(state: StateAdapter): EncryptedState {
       if (!isEncryptedSecret(stored)) {
         throw new Error("Stored value is not encrypted");
       }
-      return decode(key, stored);
+      return decode(key, stored)?.value;
     },
     async set(key, value, ttlMs) {
       await state.set(key, encryptSecret(JSON.stringify(value), key), ttlMs);
@@ -48,19 +55,17 @@ export function createEncryptedState(state: StateAdapter): EncryptedState {
 }
 
 /**
- * Read a value that may predate encryption. `plaintext` is true for a value
- * saved before encryption, so the owner can save it again encrypted.
- *
- * TODO(dcramer): Delete after no plaintext credential keys remain. Use
- * `EncryptedState.get` then.
+ * Read a value and report whether it is stale: encrypted with a key from
+ * `JUNIOR_SECRET_PREVIOUS`, or saved before encryption. Long-lived owners
+ * save stale values again, so they move to the current key.
  */
-export async function readEncryptedOrPlaintext(
+export async function readEncryptedState(
   state: StateAdapter,
   key: string,
-): Promise<{ plaintext: boolean; value: unknown } | undefined> {
+): Promise<EncryptedStateRead | undefined> {
   const stored = await state.get<unknown>(key);
   if (stored === null || stored === undefined) return undefined;
-  if (!isEncryptedSecret(stored)) return { plaintext: true, value: stored };
-  const value = decode(key, stored);
-  return value === undefined ? undefined : { plaintext: false, value };
+  // TODO(dcramer): Delete after no plaintext credential keys remain.
+  if (!isEncryptedSecret(stored)) return { stale: true, value: stored };
+  return decode(key, stored);
 }

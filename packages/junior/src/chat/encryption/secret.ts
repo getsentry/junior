@@ -3,9 +3,13 @@
  *
  * AES-256-GCM with a key that HKDF derives from `JUNIOR_SECRET`. Each value
  * is bound to a context, usually its storage key, as additional authenticated
- * data. A value copied to another key does not decrypt. The envelope holds a
- * key id, so a changed `JUNIOR_SECRET` gives `SecretKeyMismatchError`, not a
- * tampering failure.
+ * data. A value copied to another key does not decrypt.
+ *
+ * Rotation: the envelope holds a key id. New values always use the current
+ * `JUNIOR_SECRET`. Values from a secret in `JUNIOR_SECRET_PREVIOUS` still
+ * decrypt and report `stale`, so the owner can save them again with the
+ * current key. A key id that matches no configured secret gives
+ * `SecretKeyMismatchError`, not a tampering failure.
  *
  * Envelope: `jenc:v1:<keyId>:<iv>.<ciphertext>.<tag>` (base64url parts).
  */
@@ -28,11 +32,21 @@ interface EncryptionKey {
   key: Buffer;
 }
 
-function deriveKey(): EncryptionKey {
-  const secret = process.env.JUNIOR_SECRET?.trim();
-  if (!secret) {
-    throw new Error("Cannot encrypt stored secrets (set JUNIOR_SECRET)");
+/** A decrypted secret. `stale` means a previous key encrypted it. */
+export interface DecryptedSecret {
+  stale: boolean;
+  text: string;
+}
+
+/** The envelope key id matches no configured `JUNIOR_SECRET`. */
+export class SecretKeyMismatchError extends Error {
+  constructor() {
+    super("Stored secret was encrypted with an unknown JUNIOR_SECRET");
+    this.name = "SecretKeyMismatchError";
   }
+}
+
+function deriveKey(secret: string): EncryptionKey {
   const derive = (info: string, length: number) =>
     Buffer.from(hkdfSync("sha256", secret, "", info, length));
   return {
@@ -41,12 +55,21 @@ function deriveKey(): EncryptionKey {
   };
 }
 
-/** The envelope was encrypted with a key from a different `JUNIOR_SECRET`. */
-export class SecretKeyMismatchError extends Error {
-  constructor() {
-    super("Stored secret was encrypted with a different JUNIOR_SECRET");
-    this.name = "SecretKeyMismatchError";
+function currentKey(): EncryptionKey {
+  const secret = process.env.JUNIOR_SECRET?.trim();
+  if (!secret) {
+    throw new Error("Cannot encrypt stored secrets (set JUNIOR_SECRET)");
   }
+  return deriveKey(secret);
+}
+
+/** Retired secrets, comma-separated. They only decrypt. */
+function previousKeys(): EncryptionKey[] {
+  return (process.env.JUNIOR_SECRET_PREVIOUS ?? "")
+    .split(",")
+    .map((secret) => secret.trim())
+    .filter(Boolean)
+    .map(deriveKey);
 }
 
 function additionalData(context: string): Buffer {
@@ -60,7 +83,7 @@ export function isEncryptedSecret(value: unknown): value is string {
 
 /** Encrypt one secret and bind it to `context`, such as its storage key. */
 export function encryptSecret(plaintext: string, context: string): string {
-  const { id, key } = deriveKey();
+  const { id, key } = currentKey();
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv(ALGORITHM, key, iv, {
     authTagLength: TAG_BYTES,
@@ -77,7 +100,10 @@ export function encryptSecret(plaintext: string, context: string): string {
 }
 
 /** Decrypt an `encryptSecret` envelope with the same `context`. */
-export function decryptSecret(envelope: string, context: string): string {
+export function decryptSecret(
+  envelope: string,
+  context: string,
+): DecryptedSecret {
   if (!isEncryptedSecret(envelope)) {
     throw new Error("Stored secret is not an encryption envelope");
   }
@@ -88,15 +114,20 @@ export function decryptSecret(envelope: string, context: string): string {
   if (!keyId || !iv || !ciphertext || !tag || tag.length !== TAG_BYTES) {
     throw new Error("Stored secret envelope is malformed");
   }
-  const { id, key } = deriveKey();
-  if (keyId !== id) throw new SecretKeyMismatchError();
-  const decipher = createDecipheriv(ALGORITHM, key, iv, {
+  const current = currentKey();
+  const match =
+    keyId === current.id
+      ? current
+      : previousKeys().find((candidate) => candidate.id === keyId);
+  if (!match) throw new SecretKeyMismatchError();
+  const decipher = createDecipheriv(ALGORITHM, match.key, iv, {
     authTagLength: TAG_BYTES,
   });
   decipher.setAAD(additionalData(context));
   decipher.setAuthTag(tag);
-  return Buffer.concat([
+  const text = Buffer.concat([
     decipher.update(ciphertext),
     decipher.final(),
   ]).toString("utf8");
+  return { stale: match !== current, text };
 }

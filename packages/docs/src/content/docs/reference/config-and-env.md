@@ -24,6 +24,7 @@ related:
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
 | `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context. Encrypts stored provider credentials.                                                              |
+| `JUNIOR_SECRET_PREVIOUS`                    | No          | Comma-separated retired `JUNIOR_SECRET` values. Junior uses them only to decrypt stored credentials during a rotation.                                                      |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                                                  |
 | `AI_MODEL`                                  | No          | Model for every agent Turn. Also the fallback for `AI_FAST_MODEL`. Defaults to `anthropic/claude-opus-5.5`.                                                                 |
 | `AI_REASONING_LEVEL`                        | No          | Main-agent reasoning level: `none`, `low`, `medium`, `high`, or `xhigh`. Defaults to `high`.                                                                                |
@@ -95,7 +96,14 @@ Generate `JUNIOR_SECRET` with Node, then store the generated value in every envi
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox actor context signed with the previous value. It also disconnects stored provider accounts and service accounts. Users and Admins must connect them again.
+Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox actor context signed with the previous value.
+
+To rotate `JUNIOR_SECRET` without disconnecting stored provider accounts:
+
+1. Add the old value to `JUNIOR_SECRET_PREVIOUS`.
+2. Set `JUNIOR_SECRET` to the new value and deploy.
+3. Keep `JUNIOR_SECRET_PREVIOUS` for at least 30 days. Junior saves each credential again with the new key when it reads or refreshes it.
+4. Remove the old value. Credentials that Junior did not use in that period read as missing, and users must connect them again.
 
 ## Dashboard auth
 

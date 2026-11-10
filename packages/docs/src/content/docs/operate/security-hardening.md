@@ -28,7 +28,7 @@ Use this checklist after deployment and when investigating a security issue. Rea
 - Only domains registered by a plugin can receive provider credentials.
 - The sandbox receives placeholders, not reusable tokens.
 - User access belongs to the current user or an exact task delegation.
-- Rotating `JUNIOR_SECRET` invalidates pending callbacks and sandbox identity signed with the old value. It also disconnects stored provider accounts, so users must connect them again.
+- Rotating `JUNIOR_SECRET` invalidates pending callbacks and sandbox identity signed with the old value. Put the old value in `JUNIOR_SECRET_PREVIOUS` to keep stored provider accounts connected. See [Config and env](/reference/config-and-env/).
 
 ## Action Review
 

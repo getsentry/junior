@@ -14,7 +14,7 @@ import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
 import {
   createEncryptedState,
-  readEncryptedOrPlaintext,
+  readEncryptedState,
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -360,15 +360,11 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  // Plaintext values expire within the credential TTL, so they are not
-  // saved again here.
+  // Stale values expire within the credential TTL or move to the current key
+  // on the next save, so they are not saved again here.
   const stored = parseStoredCredentials(
-    (
-      await readEncryptedOrPlaintext(
-        stateAdapter,
-        credentialsKey(userId, provider),
-      )
-    )?.value,
+    (await readEncryptedState(stateAdapter, credentialsKey(userId, provider)))
+      ?.value,
   );
   if (stored) return stored;
   // TODO(dcramer): Delete after no legacy `dashboard:` MCP credential keys
@@ -377,7 +373,7 @@ export async function getMcpStoredOAuthCredentials(
   if (!legacyUserId) return undefined;
   const legacyKey = credentialsKey(legacyUserId, provider);
   const legacy = parseStoredCredentials(
-    (await readEncryptedOrPlaintext(stateAdapter, legacyKey))?.value,
+    (await readEncryptedState(stateAdapter, legacyKey))?.value,
   );
   if (!legacy) return undefined;
   await putMcpStoredOAuthCredentials(userId, provider, legacy);

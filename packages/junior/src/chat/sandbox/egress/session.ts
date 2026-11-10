@@ -12,7 +12,7 @@ import {
 } from "@/chat/sandbox/egress/schemas";
 import {
   createEncryptedState,
-  readEncryptedOrPlaintext,
+  readEncryptedState,
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -251,13 +251,10 @@ export async function getSandboxEgressCredentialLease(
   }
   const state = getStateAdapter();
   await state.connect();
-  // A plaintext lease from before encryption is a cache miss. The next issue
-  // saves it again, encrypted.
-  const stored = await readEncryptedOrPlaintext(
-    state,
-    leaseKey(provider, grant),
-  );
-  return stored?.plaintext ? undefined : parseLease(stored?.value);
+  // A stale lease is a cache miss. The next issue saves it with the current
+  // key.
+  const stored = await readEncryptedState(state, leaseKey(provider, grant));
+  return stored?.stale ? undefined : parseLease(stored?.value);
 }
 
 /** Drop remembered installation headers after the upstream rejects them. */

@@ -6,7 +6,7 @@ import type {
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
 import {
   createEncryptedState,
-  readEncryptedOrPlaintext,
+  readEncryptedState,
   type EncryptedState,
 } from "@/chat/encryption/state";
 import { sleep } from "@/chat/sleep";
@@ -43,33 +43,29 @@ export class StateAdapterTokenStore implements UserTokenStore {
     userId: string,
     provider: string,
   ): Promise<StoredTokens | undefined> {
-    const stored = await readEncryptedOrPlaintext(
+    const stored = await readEncryptedState(
       this.state,
       tokenKey(userId, provider),
     );
     if (!stored) return undefined;
     const tokens = storedTokensSchema.parse(stored.value);
-    if (stored.plaintext) await this.encryptPlaintext(userId, provider);
+    if (stored.stale) await this.saveStale(userId, provider);
     return tokens;
   }
 
   /**
-   * Save plaintext tokens again, encrypted. It runs only when the refresh gate
-   * is free, so it cannot write back a refresh token that a refresh replaced.
-   *
-   * TODO(dcramer): Delete with `readEncryptedOrPlaintext`.
+   * Save stale tokens again with the current key. It runs only when the
+   * refresh gate is free, so it cannot write back a refresh token that a
+   * refresh replaced.
    */
-  private async encryptPlaintext(
-    userId: string,
-    provider: string,
-  ): Promise<void> {
+  private async saveStale(userId: string, provider: string): Promise<void> {
     await withLock(
       this.state,
       refreshLockKey(userId, provider),
       async () => {
         const key = tokenKey(userId, provider);
-        const current = await readEncryptedOrPlaintext(this.state, key);
-        if (!current?.plaintext) return;
+        const current = await readEncryptedState(this.state, key);
+        if (!current?.stale) return;
         await this.set(
           userId,
           provider,

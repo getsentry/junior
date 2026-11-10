@@ -24,7 +24,7 @@ import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   createEncryptedState,
-  readEncryptedOrPlaintext,
+  readEncryptedState,
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
@@ -96,34 +96,29 @@ export async function getMcpServiceAccountCredentials(
   provider: string,
 ): Promise<McpServiceAccountCredentials | undefined> {
   const state = getStateAdapter();
-  const stored = await readEncryptedOrPlaintext(
-    state,
-    serviceAccountKey(provider),
-  );
+  const stored = await readEncryptedState(state, serviceAccountKey(provider));
   const credentials = parseCredentials(stored?.value);
-  if (credentials && stored?.plaintext) {
-    await encryptPlaintextCredentials(provider);
+  if (credentials && stored?.stale) {
+    await saveStaleCredentials(provider);
   }
   return credentials;
 }
 
 /**
- * Save plaintext credentials again, encrypted. It runs only when the update
- * lock is free, so it cannot write back a refresh token that an update
- * replaced.
- *
- * TODO(dcramer): Delete with `readEncryptedOrPlaintext`.
+ * Save stale credentials again with the current key. It runs only when the
+ * update lock is free, so it cannot write back a refresh token that an
+ * update replaced.
  */
-async function encryptPlaintextCredentials(provider: string): Promise<void> {
+async function saveStaleCredentials(provider: string): Promise<void> {
   const state = getStateAdapter();
   await withLock(
     state,
     updateLockKey(provider),
     async (lock) => {
       const key = serviceAccountKey(provider);
-      const current = await readEncryptedOrPlaintext(state, key);
+      const current = await readEncryptedState(state, key);
       const credentials = parseCredentials(current?.value);
-      if (!current?.plaintext || !credentials) return;
+      if (!current?.stale || !credentials) return;
       await fenceLock(state, lock);
       await putMcpServiceAccountCredentials(provider, credentials);
     },

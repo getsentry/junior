@@ -119,16 +119,21 @@ describe("StateAdapterTokenStore", () => {
     await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
   });
 
-  it("reads tokens saved with a previous JUNIOR_SECRET as missing", async () => {
+  it("moves tokens to a rotated JUNIOR_SECRET on read", async () => {
     const state = createMemoryState();
     await state.connect();
     const store = new StateAdapterTokenStore(state);
-    await store.set("U123", "notion", {
-      accessToken: "access-token",
-      refreshToken: "refresh",
-    });
+    const tokens = { accessToken: "access-token", refreshToken: "refresh" };
+    await store.set("U123", "notion", tokens);
     vi.stubEnv("JUNIOR_SECRET", "rotated-secret");
 
+    // Without the retired secret, the tokens read as missing.
     await expect(store.get("U123", "notion")).resolves.toBeUndefined();
+
+    vi.stubEnv("JUNIOR_SECRET_PREVIOUS", "junior-test-secret");
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+
+    vi.stubEnv("JUNIOR_SECRET_PREVIOUS", "");
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
   });
 });
