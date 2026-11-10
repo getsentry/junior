@@ -303,7 +303,10 @@ describe("event delivery", () => {
         destination: SLACK_DESTINATION,
         destinationVisibility: "public",
         outcomes: [{ action: "send_message", destination: SLACK_DESTINATION }],
-        task: { text: "Summarize the reviewer comment." },
+        task: {
+          kind: "instruction",
+          instruction: "Summarize the reviewer comment.",
+        },
         trigger: {
           events: ["pull_request.comment.created"],
           label: "GitHub PR getsentry/junior#691",

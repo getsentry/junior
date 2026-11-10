@@ -88,6 +88,7 @@ export function buildDispatchRoutingContext(
       plugin: dispatch.plugin,
       replyAttribution: dispatch.replyAttribution,
       outcomes: dispatch.outcomes,
+      ...(dispatch.skill ? { skill: dispatch.skill } : undefined),
       ...(dispatch.source.kind === "scheduled_automation" ||
       dispatch.source.kind === "event_automation"
         ? { declaresResult: true }

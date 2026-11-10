@@ -140,6 +140,7 @@ import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmatio
 import { readParentAgentTask } from "@/chat/input-tags";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
+import { missingAutomationSkillReason } from "@/chat/automations/skill";
 import {
   assemblePrompt,
   buildPromptInput,
@@ -475,10 +476,18 @@ async function executeAgentRunInPrivacyContext(
         "messaging.message.id": slackSource?.messageTs ?? "",
       });
     }
-    const skillInvocation = parseSkillInvocation(userInput, availableSkills);
+    // An Automation in skill mode names its skill in the dispatch, so its
+    // text is not parsed for one.
+    const dispatchSkill = run.dispatch?.skill;
+    const skillInvocation = dispatchSkill
+      ? { skillName: dispatchSkill }
+      : parseSkillInvocation(userInput, availableSkills);
     const invokedSkill = skillInvocation
       ? findSkillByName(skillInvocation.skillName, availableSkills)
       : null;
+    if (dispatchSkill && !invokedSkill) {
+      throw new Error(missingAutomationSkillReason(dispatchSkill));
+    }
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
