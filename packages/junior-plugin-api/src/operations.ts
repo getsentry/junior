@@ -4,6 +4,7 @@ import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { EventPublisher } from "./events";
+import type { PluginJobScheduler } from "./jobs";
 import type { PluginConversationAnnotations } from "./annotations";
 import type {
   PluginConversationEventReader,
@@ -168,6 +169,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
+  /** Schedules the plugin's jobs, for example to debounce webhooks. */
+  jobs: PluginJobScheduler;
   /** Review desk items that the plugin adds and closes from its events. */
   reviewItems: PluginConversationReviewItems;
   users: {

@@ -24,6 +24,7 @@ export * from "./dispatch";
 export * from "./events";
 export * from "./event-triggers";
 export * from "./tasks";
+export * from "./jobs";
 export * from "./tools";
 export * from "./operations";
 export * from "./credentials";

@@ -664,6 +664,10 @@ previous Turn when agent history exists.
 
 ## Plugin Tasks and Notifications
 
+- A `plugin.job` span runs each plugin job. `app.plugin.name` and
+  `app.plugin.job` name the job. Each job is in its own trace.
+  `plugin.job.queue_message.rejected` logs a job message that failed its
+  signature check.
 - A `plugin.task` span runs each plugin task. `app.plugin.name`,
   `app.plugin.task`, and `app.ai.turn.session_id` name the task and the
   Turn. A web or Event Turn runs its tasks in its `chat.turn`, before the

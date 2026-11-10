@@ -12,6 +12,7 @@ export const JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE = "17 * * * *";
 export const JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE =
   "/api/internal/agent/continue";
 export const JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE = "/api/internal/plugin/tasks";
+export const JUNIOR_PLUGIN_JOB_CALLBACK_ROUTE = "/api/internal/plugin/jobs";
 export const JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE =
   "/api/internal/workspace/snapshots";
 export const JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE = "/api/internal/cache/warmups";
