@@ -335,3 +335,40 @@ test("rejects a new kind branch outside kind-behavior.ts", () => {
     1,
   );
 });
+
+test("counts each form of a kind branch", () => {
+  const branches = [
+    "if (x.parentConversationId) {}",
+    "if (!parentConversationId) {}",
+    "const child = Boolean(row && row.parentConversationId);",
+    "const root = conversation?.parentConversationId ? a : b;",
+    "if (invocation.parentToolCallId !== undefined) {}",
+    "const messages = spawnAgent || run.agentInvocationId;",
+    'if (message.source === "web") {}',
+    "switch (run.source.kind) {}",
+    'if ("automation" === kind) {}',
+    "const result = run.dispatch?.declaresResult === true;",
+  ];
+  const notBranches = [
+    "parentConversationId?: string;",
+    "declaresResult?: boolean;",
+    "const row = { parentConversationId: id, declaresResult: true };",
+    'const ts = source.kind === "slack" ? source.threadTs : undefined;',
+    "const parent = run.parentConversationId ?? root;",
+    "// if (x.parentConversationId) is a comment.",
+  ];
+  const count = (contents) =>
+    checkAgentTestArchitecture(
+      [{ path: "packages/junior/src/chat/new.ts", contents }],
+      {},
+      SOURCE_RULES,
+    ).length;
+  assert.deepEqual(
+    branches.map(count),
+    branches.map(() => 1),
+  );
+  assert.deepEqual(
+    notBranches.map(count),
+    notBranches.map(() => 0),
+  );
+});

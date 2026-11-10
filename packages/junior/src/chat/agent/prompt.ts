@@ -629,11 +629,10 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
-  const promptMode = args.promptMode;
   // Automation runs have no Delivery port. Their declared message still goes
   // to Slack, so they keep Slack formatting rules.
   const platform =
-    (args.run.delivery || promptMode === "automation") &&
+    (args.run.delivery || args.promptMode === "automation") &&
     args.run.location?.provider === "slack"
       ? "slack"
       : "local";
@@ -643,7 +642,7 @@ export async function assemblePrompt(args: {
     systemPromptContributions,
   );
   const baseInstructions = [
-    buildSystemPrompt(platform, promptMode),
+    buildSystemPrompt(platform, args.promptMode),
     pluginSystemPrompt,
   ]
     .filter((section): section is string => Boolean(section))

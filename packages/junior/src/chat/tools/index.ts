@@ -1,5 +1,4 @@
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
-import { ROOT_TURN_TOOLS } from "@/chat/conversations/kind-behavior";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
@@ -109,7 +108,7 @@ export function createTools(
   options: CreateToolsOptions = {},
 ) {
   const state = createToolState();
-  const turnTools = context.turnTools ?? ROOT_TURN_TOOLS;
+  const turnTools = context.turnTools;
   const slackContext = getSlackToolContext(context);
   const slackLocationCapabilities = slackContext
     ? resolveChannelCapabilities(slackContext.locationChannelId)
@@ -240,7 +239,7 @@ export function createTools(
   if (turnTools.reportBlocked) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
-  if (turnTools.finishAutomationRun && context.automation) {
+  if (context.automation) {
     tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
       context.automation,
     );

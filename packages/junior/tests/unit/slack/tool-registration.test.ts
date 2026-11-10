@@ -10,6 +10,12 @@ import { createTools } from "@/chat/tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
 const noopSandbox = {} as any;
 const actionToken = readSlackActionToken({
   raw: { action_token: "action-123" },
@@ -48,6 +54,7 @@ function ctx(
 ): ToolRuntimeContext {
   if (!channelId) {
     return {
+      turnTools: rootTurnTools,
       conversationId: "local:test:tool-registration",
       destination: {
         platform: "local" as const,
@@ -60,6 +67,7 @@ function ctx(
   }
 
   return {
+    turnTools: rootTurnTools,
     conversationId: `slack:${channelId}:1700000000.100000`,
     conversationPrivacy:
       sourceVisibility ?? (channelId.startsWith("C") ? "public" : "private"),
@@ -347,6 +355,7 @@ describe("Slack tool registration", () => {
       [],
       {},
       {
+        turnTools: rootTurnTools,
         conversationId: "local:test:run-test",
         destination: {
           platform: "local",

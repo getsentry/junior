@@ -11,6 +11,7 @@ import { githubPlugin } from "@sentry/junior-github";
 import { googlePlugin } from "@sentry/junior-google";
 import { vercelPlugin } from "@sentry/junior-vercel";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { proposalTool } from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
@@ -91,6 +92,11 @@ const context: ToolRuntimeContext = {
   // A root Run can start and message child agents.
   messageAgent: unavailable,
   spawnAgent: unavailable,
+  turnTools: turnBehavior({
+    kind: "root",
+    personInput: true,
+    automationRun: false,
+  }).tools,
 };
 
 let agentTools: Promise<Record<string, AnyToolDefinition>> | undefined;

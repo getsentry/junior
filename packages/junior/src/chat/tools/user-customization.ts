@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { ROOT_TURN_TOOLS } from "@/chat/conversations/kind-behavior";
 import {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationTextSchema,
@@ -26,7 +25,7 @@ export function createUserCustomizationTools(
   context: ToolRuntimeContext,
 ): ToolRegistry {
   if (!isExperimentalFeatureEnabled("user-customization")) return {};
-  if (!(context.turnTools ?? ROOT_TURN_TOOLS).userCustomization) return {};
+  if (!context.turnTools.userCustomization) return {};
 
   return {
     updateUserCustomization: zodTool({

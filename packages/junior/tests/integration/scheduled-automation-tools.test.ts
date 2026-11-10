@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import type { EventCatalog } from "@/chat/events/catalog";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
@@ -49,6 +50,12 @@ import {
   conversationsInfoOk,
   usersInfoOk,
 } from "../fixtures/slack/factories/api";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
@@ -148,6 +155,7 @@ function createContext(
     destination: { platform: "slack", teamId, channelId },
     actor,
     userText: "schedule this weekly",
+    turnTools: rootTurnTools,
   } as ToolRuntimeContext;
   return {
     ...automationToolContext(runtime),
@@ -2225,6 +2233,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         [],
         {},
         {
+          turnTools: rootTurnTools,
           conversationId: `slack:DDM:1700000000.100000`,
           source: createSlackSource({
             teamId: TEAM_ID,
@@ -2332,6 +2341,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // A dashboard Turn in a Conversation with a Slack Location delivers to
       // that channel. The creator is the person's linked Slack account there.
       const located = createTools([], {}, {
+        turnTools: rootTurnTools,
         ...webTurn("slack:DDM:1700000000.100000"),
         location: {
           id: `location:${TEAM_ID}:C123`,
@@ -2371,6 +2381,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // cannot create one.
       const conversationId = "test:schedule-cards";
       const unlocated = createTools([], {}, {
+        turnTools: rootTurnTools,
         ...webTurn(conversationId),
         destination: { platform: "local", conversationId },
       } as ToolRuntimeContext);
@@ -2427,6 +2438,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
         [],
         {},
         {
+          turnTools: rootTurnTools,
           conversationId: "slack:C123:1700000000.100000",
           location: {
             id: `location:${TEAM_ID}:C123`,

@@ -235,6 +235,13 @@ export async function executeAgentRun(
   const conversation = await getConversationStore().get({
     conversationId: run.conversationId,
   });
+  // Spawning a child writes its row first. Only a root can run before its
+  // row exists.
+  if (!conversation && run.parentConversationId) {
+    throw new Error(
+      `Child Conversation ${run.conversationId} has no Conversation row`,
+    );
+  }
   const visibility = conversation?.visibility;
   const conversationPrivacy = resolveConversationPrivacy({
     visibility,
@@ -269,7 +276,7 @@ export async function executeAgentRun(
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         run,
-        conversation?.kind,
+        conversation?.kind ?? "root",
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -280,7 +287,7 @@ export async function executeAgentRun(
 
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
-  conversationKind: ConversationKind | undefined,
+  conversationKind: ConversationKind,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: StreamFn | undefined,
@@ -289,12 +296,12 @@ async function executeAgentRunInPrivacyContext(
   const conversationId = run.conversationId;
   const turnId = run.turnId;
   const behavior = turnBehavior({
-    kind: conversationKind ?? "root",
+    kind: conversationKind,
     personInput: isPersonInput(run.source.kind),
     automationRun: run.dispatch?.declaresResult === true,
   });
   // TODO(dcramer): Gate every answer tool here, not only the Automation run.
-  const requireAutomationResult = behavior.answer !== undefined;
+  const requireAutomationResult = behavior.gated;
   const input = {
     actor: run.instruction.actor,
     messageText: run.instruction.text,

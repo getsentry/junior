@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  deliversFinalText,
   isPersonInput,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
 
-const conversationTurn = {
+const rootTurn = {
   delivery: "location",
   promptMode: "conversation",
+  gated: false,
   tools: {
+    agents: "children",
     reviewDesk: true,
     subscriptions: true,
     userCustomization: true,
@@ -18,10 +19,17 @@ const conversationTurn = {
   },
 };
 
+const personInThreadTurn = {
+  ...rootTurn,
+  tools: { ...rootTurn.tools, agents: "none" },
+};
+
 const childAgentTurn = {
   delivery: "conversation",
   promptMode: "child_agent",
+  gated: false,
   tools: {
+    agents: "children_and_parent",
     reviewDesk: false,
     subscriptions: false,
     userCustomization: false,
@@ -33,25 +41,25 @@ const childAgentTurn = {
 
 describe("turnBehavior", () => {
   it.each([
-    { kind: "root", personInput: true, expected: conversationTurn },
-    { kind: "root", personInput: false, expected: conversationTurn },
-    { kind: "thread", personInput: true, expected: conversationTurn },
+    { kind: "root", personInput: true, expected: rootTurn },
+    { kind: "root", personInput: false, expected: rootTurn },
+    { kind: "thread", personInput: true, expected: personInThreadTurn },
     { kind: "thread", personInput: false, expected: childAgentTurn },
-    { kind: "task", personInput: true, expected: conversationTurn },
     { kind: "task", personInput: false, expected: childAgentTurn },
   ] as const)(
     "gives a $kind Turn with person input $personInput its behavior",
     ({ kind, personInput, expected }) => {
-      const behavior = turnBehavior({
-        kind,
-        personInput,
-        automationRun: false,
-      });
-
-      expect(behavior).toEqual(expected);
-      expect(behavior.answer).toBeUndefined();
+      expect(turnBehavior({ kind, personInput, automationRun: false })).toEqual(
+        expected,
+      );
     },
   );
+
+  it("rejects a person's input on a task", () => {
+    expect(() =>
+      turnBehavior({ kind: "task", personInput: true, automationRun: false }),
+    ).toThrow("A task Conversation cannot have a person's input");
+  });
 
   it("makes an Automation run end with its declared result", () => {
     expect(
@@ -59,24 +67,13 @@ describe("turnBehavior", () => {
     ).toEqual({
       delivery: "conversation",
       promptMode: "automation",
-      answer: {
-        tools: ["finishAutomationRun"],
-        reminder: expect.stringContaining("finishAutomationRun"),
-        onMissing: "post_nothing",
-      },
+      gated: true,
       tools: {
-        ...conversationTurn.tools,
+        ...rootTurn.tools,
         noReply: false,
         finishAutomationRun: true,
       },
     });
-  });
-
-  it("delivers a final response unless the dispatch declares a result or has no outcomes", () => {
-    expect(deliversFinalText(undefined)).toBe(true);
-    expect(deliversFinalText({ outcomes: [{}] })).toBe(true);
-    expect(deliversFinalText({ declaresResult: true })).toBe(false);
-    expect(deliversFinalText({ outcomes: [] })).toBe(false);
   });
 
   it("counts only Slack and web input as a person's", () => {

@@ -30,6 +30,11 @@ function context(
       },
     },
     workspace: {} as ToolRuntimeContext["workspace"],
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+      automationRun: false,
+    }).tools,
     ...overrides,
   } as ToolRuntimeContext;
 }

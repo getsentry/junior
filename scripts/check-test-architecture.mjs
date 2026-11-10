@@ -129,23 +129,64 @@ const AGENT_TEST_RULES = [
   },
 ];
 
+// A kind or person-Source branch outside `kind-behavior.ts`.
+const KIND_BRANCH_PATTERNS = [
+  // Conversation kind compared to a value, in either order.
+  /\b[\w$]*[kK]ind\s*(?:===|!==)\s*["'](?:root|thread|task|automation)["']/g,
+  /["'](?:root|thread|task|automation)["']\s*(?:===|!==)\s*(?:[\w$]+\??\.)*[\w$]*[kK]ind\b/g,
+  // A person Source check. Narrowing a Source union to use the narrowed
+  // Source, such as `source.kind === "slack" ? source.threadTs`, is not one.
+  /\bsource(?:\.kind)?\s*(?:===|!==)\s*["'](?:slack|web)["'](?!\s*(?:\?|&&)\s*(?:\{\s*\.\.\.)?(?:[\w$]+\??\.)*source\b)/g,
+  /\bswitch\s*\(\s*(?:[\w$]+\??\.)*source\.kind\s*\)/g,
+  // Reading the Automation result flag. Its declaration and writes are not.
+  /\bdeclaresResult\b(?!\s*\??:)/g,
+];
+
+// A field of the parent edge or the Agent invocation read as a condition.
+const EDGE_FIELD_PATTERN =
+  /\b(?:parentConversationId|parentToolCallId|agentInvocationId)\b/g;
+const EDGE_CONDITION_BEFORE =
+  /(?:\bif\s*\(|!|&&|\|\||===|!==|==|!=)\s*(?:[\w$]+\??\.)*$/;
+const EDGE_CONDITION_AFTER = /^\s*(?:\?(?![.?:])|&&|\|\||===|!==|==|!=)/;
+
+/** Remove comments, so prose that names a field is not counted. */
+function stripComments(contents) {
+  return contents.replace(/\/\*[\s\S]*?\*\/|(?<![:"'`\w])\/\/.*$/gm, "");
+}
+
+/** Count kind, parent-edge, and person-Source branches in one file. */
+function countKindBranches(file) {
+  const code = stripComments(file.contents);
+  let count = 0;
+  for (const pattern of KIND_BRANCH_PATTERNS) {
+    count += countMatches(code, pattern);
+  }
+  for (const match of code.matchAll(EDGE_FIELD_PATTERN)) {
+    const before = code.slice(Math.max(0, match.index - 120), match.index);
+    const after = code.slice(match.index + match[0].length);
+    if (
+      EDGE_CONDITION_BEFORE.test(before) ||
+      EDGE_CONDITION_AFTER.test(after.slice(0, 8))
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 /**
- * Rules for runtime source. Conversation kind decides behavior only in
- * `kind-behavior.ts`. The stop rule in `session-stop.ts` reads the Source of
- * input on its own. The baseline lists the legacy sites that still branch.
+ * Rules for runtime source. Conversation kind and the person who opened a
+ * Turn decide behavior only in `kind-behavior.ts`. The baseline lists the
+ * legacy sites that still branch.
  */
 export const SOURCE_RULES = [
   {
     id: "kind-behavior",
     message:
-      "branch on Conversation kind, the parent edge, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
+      "branch on Conversation kind, the parent edge, the Agent invocation, declaresResult, or a person Source only in chat/conversations/kind-behavior.ts; read turnBehavior instead",
     pathPrefix: "packages/junior/src/",
-    exclude: [
-      "packages/junior/src/chat/conversations/kind-behavior.ts",
-      "packages/junior/src/chat/conversations/session-stop.ts",
-    ],
-    pattern:
-      /\b(?:conversationKind|kind)\s*[!=]==\s*["'](?:root|thread|task|automation)["']|["'](?:root|thread|task)["']\s*[!=]==\s*[\w.?]*[kK]ind\b|\bparentConversationId\s*\?(?![.?])|\bparentToolCallId\s*(?:\?(?![.?])|[!=]==)|\bif\s*\(\s*!?[\w.?]*parentToolCallId\s*\)|\bdeclaresResult\b|\bsource\.kind\s*[!=]==\s*["'](?:slack|web)["']/g,
+    exclude: ["packages/junior/src/chat/conversations/kind-behavior.ts"],
+    count: countKindBranches,
   },
 ];
 

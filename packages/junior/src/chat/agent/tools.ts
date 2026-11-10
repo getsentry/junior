@@ -9,7 +9,10 @@
  * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
+import type {
+  AgentTools,
+  TurnBehavior,
+} from "@/chat/conversations/kind-behavior";
 import type {
   AgentInvocationSource,
   Destination,
@@ -448,13 +451,8 @@ export async function wireAgentTools(
             await readActorIdentity(args.currentActor!),
         }
       : undefined),
-    ...(args.durability.spawnAgent
-      ? { spawnAgent: args.durability.spawnAgent }
-      : undefined),
-    ...(args.durability.messageAgent
-      ? { messageAgent: args.durability.messageAgent }
-      : undefined),
-    ...(args.run.dispatch?.declaresResult
+    ...bindAgentTools(args.run, args.behavior.tools.agents),
+    ...(args.behavior.tools.finishAutomationRun
       ? {
           // A dispatch record from before #1788 has no outcomes and sends to
           // its Destination.
@@ -463,7 +461,7 @@ export async function wireAgentTools(
           // Automations have stored outcomes since #1788, and older dispatch
           // records have passed the 7-day state TTL.
           automation: {
-            sendsMessage: args.run.dispatch.outcomes?.length !== 0,
+            sendsMessage: args.run.dispatch?.outcomes?.length !== 0,
           },
         }
       : undefined),
@@ -702,5 +700,30 @@ export async function wireAgentTools(
     disabledTools,
     toolGuidance,
     toolRuntimeContext,
+  };
+}
+
+/** Bind the agent tools that the Turn's behavior gives it. */
+function bindAgentTools(
+  run: AgentRun,
+  agents: AgentTools,
+): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
+  const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
+  if (agents === "none" || !bindSpawnAgent) return {};
+  const spawnAgent = isAgentRunFeatureDisabled(
+    run.disabledFeatures,
+    "subagents",
+  )
+    ? undefined
+    : bindSpawnAgent(run);
+  // A child agent can always message its parent, even when it is too deep to
+  // start child agents of its own.
+  const messageAgent =
+    spawnAgent || agents === "children_and_parent"
+      ? bindMessageAgent?.(run, agents)
+      : undefined;
+  return {
+    ...(spawnAgent ? { spawnAgent } : undefined),
+    ...(messageAgent ? { messageAgent } : undefined),
   };
 }

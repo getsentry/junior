@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ROOT_TURN_TOOLS } from "@/chat/conversations/kind-behavior";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   defineJuniorPlugin,
@@ -42,6 +42,11 @@ function runtimeContext() {
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+      automationRun: false,
+    }).tools,
     workspace: {} as any,
   };
 }
@@ -311,7 +316,7 @@ describe("Pi tool adapter integration", () => {
         spawnAgent,
         // Every model-only tool at once, which no single Turn kind loads.
         turnTools: {
-          ...ROOT_TURN_TOOLS,
+          ...runtimeContext().turnTools,
           finishAutomationRun: true,
           noReply: false,
           reportBlocked: true,

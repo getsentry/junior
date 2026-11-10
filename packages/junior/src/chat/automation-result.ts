@@ -120,7 +120,7 @@ export function runDispatchOutcome(result: {
 }
 
 /** Reminder for an Automation run that stopped without a declared result. */
-export const MISSING_RESULT_REMINDER =
+const MISSING_RESULT_REMINDER =
   "This automation run has not ended. Your text was not delivered. Call `finishAutomationRun` now with one result.";
 
 /**

@@ -1,14 +1,20 @@
-import {
-  FINISH_AUTOMATION_RUN_TOOL_NAME,
-  MISSING_RESULT_REMINDER,
-  type RunDispatch,
-} from "@/chat/automation-result";
+import type { RunDispatch } from "@/chat/automation-result";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 
 /**
+ * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
+ * when spawnAgent is available. `children_and_parent`: the same, but
+ * messageAgent stays available to reach the parent when the Turn is too deep
+ * to spawn. `none`: neither.
+ */
+export type AgentTools = "none" | "children" | "children_and_parent";
+
+/**
  * What one Turn does that depends on the Conversation kind and on who opened
- * the Turn. This module is the only place that branches on them.
+ * the Turn. This module is the target home for those branches. The
+ * `kind-behavior` baseline of the architecture check lists the legacy
+ * branches that remain outside it.
  */
 export type TurnBehavior = {
   /**
@@ -19,13 +25,10 @@ export type TurnBehavior = {
    */
   delivery: "location" | "conversation";
   promptMode: PromptMode;
-  /** The tools that must end the Turn, and what happens when none does. */
-  answer?: {
-    tools: readonly string[];
-    reminder: string;
-    onMissing: "quiet" | "tell_parent" | "post_nothing";
-  };
+  /** The Turn must end with its answer tool, or it is reminded once. */
+  gated: boolean;
   tools: {
+    agents: AgentTools;
     reviewDesk: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
@@ -38,7 +41,9 @@ export type TurnBehavior = {
 const ROOT: TurnBehavior = {
   delivery: "location",
   promptMode: "conversation",
+  gated: false,
   tools: {
+    agents: "children",
     reviewDesk: true,
     subscriptions: true,
     userCustomization: true,
@@ -48,15 +53,22 @@ const ROOT: TurnBehavior = {
   },
 };
 
-/** Tools of a root Turn, for a tool context built outside an agent Run. */
-export const ROOT_TURN_TOOLS = ROOT.tools;
+// A person's Turn in a Thread runs like a Turn on a root, but it does not
+// start or message child agents: their results would report to the parent as
+// the wrong Actor.
+const PERSON_IN_THREAD: TurnBehavior = {
+  ...ROOT,
+  tools: { ...ROOT.tools, agents: "none" },
+};
 
 // Every other Turn on a child is an agent invocation: an agent wrote its
 // input, and its final response goes back to its parent.
 const AGENT_IN_CHILD: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
+  gated: false,
   tools: {
+    agents: "children_and_parent",
     reviewDesk: false,
     subscriptions: false,
     userCustomization: false,
@@ -69,16 +81,9 @@ const AGENT_IN_CHILD: TurnBehavior = {
 const AUTOMATION_RUN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "automation",
-  answer: {
-    tools: [FINISH_AUTOMATION_RUN_TOOL_NAME],
-    reminder: MISSING_RESULT_REMINDER,
-    onMissing: "post_nothing",
-  },
+  gated: true,
   tools: {
-    reviewDesk: true,
-    subscriptions: true,
-    userCustomization: true,
-    reportBlocked: false,
+    ...ROOT.tools,
     noReply: false,
     finishAutomationRun: true,
   },
@@ -97,9 +102,11 @@ export function turnBehavior(args: {
   automationRun: boolean;
 }): TurnBehavior {
   if (args.automationRun) return AUTOMATION_RUN;
-  // A person's Turn in a Thread runs like a Turn on a root.
-  if (args.kind === "root" || args.personInput) return ROOT;
-  return AGENT_IN_CHILD;
+  if (args.kind === "root") return ROOT;
+  if (!args.personInput) return AGENT_IN_CHILD;
+  if (args.kind === "thread") return PERSON_IN_THREAD;
+  // Only an agent writes input to a task.
+  throw new Error("A task Conversation cannot have a person's input");
 }
 
 /** Return whether a person sent input from this Source. */
@@ -109,17 +116,12 @@ export function isPersonInput(source: string | undefined): boolean {
 
 /**
  * Return whether the runtime delivers the final response of a Slack or
- * dispatch run. Only root Conversations reach these paths: a person's Turn in
- * a Thread runs on the Conversation Turn worker. A dispatch with no outcomes
- * delivers nothing.
+ * dispatch run. Only root Conversations reach these paths, so only an
+ * Automation run keeps its final response in the Conversation. A dispatch
+ * with no outcomes delivers nothing.
  */
 export function deliversFinalText(dispatch: RunDispatch): boolean {
-  const behavior = turnBehavior({
-    kind: "root",
-    personInput: dispatch === undefined,
-    automationRun: dispatch?.declaresResult === true,
-  });
-  return behavior.delivery === "location" && dispatch?.outcomes?.length !== 0;
+  return dispatch?.outcomes?.length !== 0 && !dispatch?.declaresResult;
 }
 
 /**
