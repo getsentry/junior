@@ -1,13 +1,11 @@
-import { useRef, type ReactNode, type Ref, type RefObject } from "react";
 import {
-  Info,
-  MessageSquareShare,
-  MessagesSquare,
-  ScrollText,
-  Search,
-  Unlink,
-  X,
-} from "lucide-react";
+  Fragment,
+  useRef,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+} from "react";
+import { Info, MessagesSquare, ScrollText, Search, X } from "lucide-react";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { Separator } from "../components/ui/separator";
@@ -21,97 +19,40 @@ import { platformShortcut } from "../keyboard";
 import { cn } from "../styles";
 import { useTranscriptFindShortcut } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
-import { ShareConversationButton } from "./ShareConversationButton";
 import { OutboundLink } from "../components/OutboundLink";
-import { SlackMark } from "./SlackMark";
-import { conversationMenuItems } from "./conversationMenuItems";
-
-export type ConversationArchiveAction = {
-  archived: boolean;
-  disabled: boolean;
-  /** The message to show when the last archive change failed. */
-  error?: string;
-  onClick(): void;
-  pending: boolean;
-};
-
-export type ConversationContinueInSlackAction = {
-  disabled: boolean;
-  onClick(): void;
-};
-
-export type ConversationDeliveryAction = {
-  disabled: boolean;
-  error: boolean;
-  onClick(): void;
-  /** Updates stay in the dashboard, not the Slack thread. */
-  paused: boolean;
-};
-
-export type ConversationPinAction = {
-  disabled: boolean;
-  error: boolean;
-  onClick(): void;
-  pinned: boolean;
-};
-
-export type ConversationSubscriptionAction = {
-  disabled: boolean;
-  error: boolean;
-  onClick(): void;
-  subscribed: boolean;
-};
-
-export type ConversationRenameAction = {
-  disabled: boolean;
-  error: boolean;
-  onClick(): void;
-};
-
-export type ConversationReadAction = {
-  disabled: boolean;
-  error: boolean;
-  onClick(): void;
-  unread: boolean;
-};
+import {
+  useConversationMenuItems,
+  type ConversationMenu,
+  type ConversationMenuItem,
+} from "./conversationMenuItems";
 
 /**
- * Keep secondary conversation actions in the menu, with search and details
- * available there on mobile too.
+ * Render the conversation `⋯` menu rows, with search and details there on
+ * mobile too. A toggle or a row whose label shows its result keeps the menu
+ * open. Every other row closes it before it acts.
  */
 export function ConversationHeaderActions(props: {
-  archive: ConversationArchiveAction;
-  pin: ConversationPinAction;
-  read: ConversationReadAction;
-  rename: ConversationRenameAction;
-  subscription: ConversationSubscriptionAction;
-  conversationId: string;
-  /** Present only when the viewer can move this conversation to Slack. */
-  continueInSlack?: ConversationContinueInSlackAction;
-  /** Present only when the viewer can detach it from its Slack thread. */
-  delivery?: ConversationDeliveryAction;
-  copyAction?: ReactNode;
+  close(): void;
   detailsOpen: boolean;
+  menu: ConversationMenu;
   onDetailsClick(): void;
   onSearchClick(): void;
-  onViewChange(value: TranscriptViewMode): void;
   placement: "desktop" | "mobile";
   searchOpen: boolean;
-  sentryConversationUrl?: string;
-  view: TranscriptViewMode;
 }) {
+  const groups = useConversationMenuItems(props.menu);
   const mobile = props.placement === "mobile";
-  const eventLogOpen = props.view === "raw";
-  // Rows above the separator need page state or detail-only fields, so the
-  // sidebar row menu cannot show them. Share shows its result in its own
-  // label, and that menu closes on click. Rows below the separator come from
-  // `conversationMenuItems`, which the sidebar row menu renders too.
+  // Search, details, and the app menu need the page, so the sidebar row menu
+  // does not show them. Every other row comes from `useConversationMenuItems`.
   return (
     <div className="grid gap-0.5">
-      {mobile && !eventLogOpen ? (
+      {mobile && !props.menu.eventLogOpen ? (
         <MenuActionButton
           label={props.searchOpen ? "Hide search" : "Search transcript"}
-          onClick={props.onSearchClick}
+          onClick={() => {
+            props.close();
+            props.onSearchClick();
+          }}
           pressed={props.searchOpen}
         >
           {props.searchOpen ? (
@@ -124,76 +65,71 @@ export function ConversationHeaderActions(props: {
       {mobile ? (
         <MenuActionButton
           label="Conversation details"
-          onClick={props.onDetailsClick}
+          onClick={() => {
+            props.close();
+            props.onDetailsClick();
+          }}
           pressed={props.detailsOpen}
         >
           <Info aria-hidden="true" size={16} strokeWidth={2} />
         </MenuActionButton>
       ) : null}
-      {/* The copy action is a sibling keyed by the same id. Unique keys keep
-          React from duplicating menu rows on re-render. */}
-      <ShareConversationButton
-        key={`share:${props.conversationId}`}
-        conversationId={props.conversationId}
-      />
-      {props.copyAction}
-      {props.continueInSlack ? (
-        <MenuActionButton
-          disabled={props.continueInSlack.disabled}
-          label="Continue in Slack"
-          onClick={props.continueInSlack.onClick}
-        >
-          <span aria-hidden="true" className="inline-flex">
-            <SlackMark className="size-4" />
-          </span>
-        </MenuActionButton>
-      ) : null}
-      {props.delivery ? (
-        <MenuActionButton
-          disabled={props.delivery.disabled}
-          label={
-            props.delivery.paused ? "Reattach to Slack" : "Detach from Slack"
-          }
-          onClick={props.delivery.onClick}
-        >
-          {props.delivery.paused ? (
-            <MessageSquareShare aria-hidden="true" size={16} strokeWidth={2} />
-          ) : (
-            <Unlink aria-hidden="true" size={16} strokeWidth={2} />
-          )}
-        </MenuActionButton>
-      ) : null}
-      <MenuActionButton
-        label={eventLogOpen ? "Back to conversation" : "Open event log"}
-        onClick={() => props.onViewChange(eventLogOpen ? "rich" : "raw")}
-      >
-        {eventLogOpen ? (
-          <MessagesSquare aria-hidden="true" size={16} strokeWidth={2} />
-        ) : (
-          <ScrollText aria-hidden="true" size={16} strokeWidth={2} />
-        )}
-      </MenuActionButton>
-      {props.sentryConversationUrl ? (
-        <OutboundLink
-          className={buttonVariants({ size: "menu" })}
-          href={props.sentryConversationUrl}
-        >
-          <SentryGlyph />
-          Open in Sentry
-        </OutboundLink>
-      ) : null}
-      <Separator className="my-1 bg-dashboard-border-subtle" />
-      {conversationMenuItems(props).map((item) => (
-        <MenuActionButton
-          disabled={item.disabled}
-          key={item.key}
-          label={item.label}
-          onClick={item.onClick}
-        >
-          <item.icon aria-hidden="true" size={16} strokeWidth={2} />
-        </MenuActionButton>
+      {groups.map((items, index) => (
+        <Fragment key={index}>
+          {index > 0 ? (
+            <Separator className="my-1 bg-dashboard-border-subtle" />
+          ) : null}
+          {items.map((item) => (
+            <ConversationMenuRow
+              close={props.close}
+              item={item}
+              key={item.key}
+            />
+          ))}
+        </Fragment>
       ))}
     </div>
+  );
+}
+
+function ConversationMenuRow(props: {
+  close(): void;
+  item: ConversationMenuItem;
+}) {
+  const { item } = props;
+  const icon = <item.icon aria-hidden="true" className="size-4 shrink-0" />;
+  if (item.href) {
+    return (
+      <OutboundLink
+        className={buttonVariants({ size: "menu" })}
+        href={item.href}
+      >
+        {icon}
+        {item.label}
+      </OutboundLink>
+    );
+  }
+  return (
+    <>
+      <Button
+        aria-label={item.label}
+        disabled={item.disabled}
+        focusableWhenDisabled={item.stayOpen || item.toggle}
+        onClick={() => {
+          if (!item.stayOpen && !item.toggle) props.close();
+          item.onClick?.();
+        }}
+        size="menu"
+      >
+        {icon}
+        <span>{item.label}</span>
+      </Button>
+      {item.feedback === undefined ? null : (
+        <span className="sr-only" role="status">
+          {item.feedback}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -342,19 +278,5 @@ function MenuActionButton(props: {
       {props.children}
       <span>{props.label}</span>
     </Button>
-  );
-}
-
-/** Draw the Sentry glyph in the current text color, sized like a menu icon. */
-function SentryGlyph() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="size-4 shrink-0"
-      fill="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path d="M13.91 2.505c-.873-1.448-2.972-1.448-3.844 0L6.904 7.92a15.478 15.478 0 0 1 8.53 12.811h-2.221A13.301 13.301 0 0 0 5.784 9.814l-2.926 5.06a7.65 7.65 0 0 1 4.435 5.848H2.194a.365.365 0 0 1-.298-.534l1.413-2.402a5.16 5.16 0 0 0-1.614-.913L.296 19.275a2.182 2.182 0 0 0 .812 2.999 2.24 2.24 0 0 0 1.086.288h6.983a9.322 9.322 0 0 0-3.845-8.318l1.11-1.922a11.47 11.47 0 0 1 4.95 10.24h5.915a17.242 17.242 0 0 0-7.885-15.28l2.244-3.845a.37.37 0 0 1 .504-.13c.255.14 9.75 16.708 9.928 16.9a.365.365 0 0 1-.327.543h-2.287c.029.612.029 1.223 0 1.831h2.297a2.206 2.206 0 0 0 1.922-3.31z" />
-    </svg>
   );
 }

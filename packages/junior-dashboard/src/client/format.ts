@@ -894,6 +894,7 @@ export function buildConversations(
       cumulativeUsage: summary.cumulativeUsage,
       displayTitle: summary.displayTitle,
       id: summary.conversationId,
+      isParticipant: summary.isParticipant,
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,

@@ -182,6 +182,8 @@ export type Conversation = {
   cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
   displayTitle: string;
   id: string;
+  /** The viewer takes part, so they can pin, archive, rename, and mark it. */
+  isParticipant: boolean;
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;

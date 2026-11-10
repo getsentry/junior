@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useHref } from "react-router";
 import { Check, Share2 } from "lucide-react";
 
-import { Button } from "../components/ui/button";
 import { conversationPath } from "./conversationRoutes";
 
-/** Share a conversation link without changing who can access it. */
-export function ShareConversationButton(props: { conversationId: string }) {
-  const href = useHref(conversationPath(props.conversationId));
+/**
+ * Share a conversation link without changing who can access it. The label,
+ * icon, and `feedback` status text name the result of the last share.
+ */
+export function useShareConversationLink(conversationId: string) {
+  const href = useHref(conversationPath(conversationId));
   const [status, setStatus] = useState<
     "idle" | "sharing" | "copied" | "copy-failed" | "share-failed"
   >("idle");
@@ -19,7 +21,6 @@ export function ShareConversationButton(props: { conversationId: string }) {
         : status === "share-failed"
           ? "Share failed — retry"
           : "Share";
-  const Icon = status === "copied" ? Check : Share2;
   const feedback =
     status === "copied"
       ? "Conversation link copied. Access has not changed."
@@ -29,7 +30,7 @@ export function ShareConversationButton(props: { conversationId: string }) {
           ? "Could not share the link. Try again or copy it from the address bar."
           : "";
 
-  async function shareLink() {
+  async function share() {
     setStatus("sharing");
     const url = new URL(href, window.location.origin).href;
     // Touch-first devices use the native sheet, including tablets. Desktop
@@ -60,21 +61,11 @@ export function ShareConversationButton(props: { conversationId: string }) {
     }
   }
 
-  return (
-    <>
-      <Button
-        aria-label={label}
-        disabled={status === "sharing"}
-        focusableWhenDisabled
-        onClick={() => void shareLink()}
-        size="menu"
-      >
-        <Icon aria-hidden="true" size={16} strokeWidth={2} />
-        <span>{label}</span>
-      </Button>
-      <span className="sr-only" role="status">
-        {feedback}
-      </span>
-    </>
-  );
+  return {
+    disabled: status === "sharing",
+    feedback,
+    icon: status === "copied" ? Check : Share2,
+    label,
+    share,
+  };
 }

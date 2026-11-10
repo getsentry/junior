@@ -416,6 +416,7 @@ describe("dashboard conversation formatting", () => {
         id: "1",
         cumulativeDurationMs: 0,
         displayTitle: "x",
+        isParticipant: true,
         lastProgressAt: "x",
         lastSeenAt: "x",
         startedAt: "x",

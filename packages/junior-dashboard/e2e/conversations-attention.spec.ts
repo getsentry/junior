@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
+import { viewAsParticipant } from "./conversationMenu";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const WAITING_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
@@ -207,6 +208,8 @@ test.describe("conversation sections", () => {
     page,
     dashboard,
   }) => {
+    // Only participants can mark read.
+    await viewAsParticipant(page);
     await page.goto(dashboard.baseURL);
 
     const sidebar = page.getByRole("navigation", {
@@ -249,10 +252,15 @@ test.describe("conversation sections", () => {
     await expect(unreadDot).toBeVisible();
 
     await finishedRow.click({ button: "right" });
+    // The row menu shows the rows of the `⋯` menu, in the same order.
     await expect(page.getByRole("menuitem")).toHaveText([
+      "Share",
+      "Copy as Markdown",
+      "Open event log",
       "Mark as read",
       "Pin",
       "Rename",
+      "Subscribe",
       "Archive",
     ]);
     await screenshot(page, "conversation-sidebar-context-menu", {
@@ -341,6 +349,7 @@ test.describe("conversation sections", () => {
     page,
     dashboard,
   }) => {
+    await viewAsParticipant(page);
     await page.goto(dashboard.baseURL);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",

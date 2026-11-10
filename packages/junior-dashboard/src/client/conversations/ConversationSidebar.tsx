@@ -8,7 +8,8 @@ import {
   Pin,
   SquarePen,
 } from "lucide-react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useArchiveConversation } from "./conversationArchive";
 import { useConversationActionToasts } from "./conversationActionToasts";
@@ -16,17 +17,19 @@ import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { usePinConversation } from "./usePinConversation";
 import { useRenameConversation } from "./useRenameConversation";
 import { RenameConversationDialog } from "./RenameConversationDialog";
+import { useConversationDelivery } from "./useConversationDelivery";
+import { useConversationSubscription } from "./useConversationSubscription";
+import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
+import { ConversationRowMenu } from "./ConversationRowMenu";
 import {
   PinnedConversationOrder,
   usePinnedRowDrag,
   type PinnedRowDrag,
 } from "./PinnedConversationOrder";
 import type { ReorderPins } from "./useReorderPinnedConversations";
-import { conversationPath } from "./conversationRoutes";
-import { conversationMenuItems } from "./conversationMenuItems";
+import { conversationPath, OPEN_EVENT_LOG_STATE } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
-  formatConversationCostTotal,
   isIdleConversation,
   visualStatusForConversation,
 } from "../format";
@@ -45,14 +48,15 @@ import {
   ConversationSidebarThreadToggle,
 } from "./ConversationSidebarThreadRow";
 import { sidebarThreads } from "./sidebarThreads";
-import { usePrefetchConversation } from "./conversationPrefetch";
+import {
+  prefetchConversationDetail,
+  usePrefetchConversation,
+} from "./conversationPrefetch";
 import { useCollapsedConversationSections } from "./useCollapsedConversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "../components/ui/context-menu";
 import { Button } from "../components/ui/button";
@@ -127,11 +131,6 @@ export function ConversationSidebar(props: {
           : "Could not mark as read",
       );
     },
-    [showActionError],
-  );
-  const handleRenameError = useCallback(
-    (conversation: Conversation) =>
-      showActionError(conversation, "Could not rename"),
     [showActionError],
   );
   const { collapsedKeys, toggle: toggleSection } =
@@ -263,7 +262,7 @@ export function ConversationSidebar(props: {
                     onPinError={handlePinError}
                     onPinned={clearActionError}
                     onUnreadError={handleUnreadError}
-                    onRenameError={handleRenameError}
+                    onActionError={showActionError}
                     selected={entry.conversation.id === props.selectedId}
                     waiting={props.waitingConversations.get(
                       entry.conversation.id,
@@ -379,7 +378,7 @@ type ConversationSidebarRowProps = {
   onPinError(conversation: Conversation, wasPinning: boolean): void;
   onPinned(conversation: Conversation): void;
   onUnreadError(conversation: Conversation, wasMarkingUnread: boolean): void;
-  onRenameError(conversation: Conversation): void;
+  onActionError(conversation: Conversation, title: string): void;
   selected: boolean;
   waiting?: WaitingConversation;
 };
@@ -424,9 +423,20 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
     onError: (unread) => props.onUnreadError(props.conversation, unread),
   });
   const rename = useRenameConversation(props.conversation.id, {
-    onError: () => props.onRenameError(props.conversation),
+    onError: () => props.onActionError(props.conversation, "Could not rename"),
+  });
+  const subscription = useConversationSubscription(props.conversation.id, {
+    onError: () =>
+      props.onActionError(props.conversation, "Could not update subscription"),
+  });
+  const delivery = useConversationDelivery(props.conversation.id, {
+    onError: () =>
+      props.onActionError(props.conversation, "Could not change Slack updates"),
   });
   const [renaming, setRenaming] = useState(false);
+  const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const prefetch = usePrefetchConversation(props.conversation.id);
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
@@ -440,19 +450,24 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const archived = Boolean(props.conversation.archivedAt);
   // The leading marker toggles read state. A waiting row's marker is about
   // its review item, so it stays a plain marker.
-  const canToggleRead = !props.waiting && (unread || canMarkUnread);
+  // The API takes row actions only from participants.
+  const participant = props.conversation.isParticipant;
+  const canToggleRead =
+    participant && !props.waiting && (unread || canMarkUnread);
   const togglePin = () => pin.mutate(!pinned);
-  const cost = formatConversationCostTotal(
-    props.conversation.cumulativeUsage,
-    props.conversation.auxiliaryCosts,
-  );
   const toggleArchive = () =>
     archive.mutate({
       archived: !archived,
       lastSeenAt: props.conversation.lastSeenAt,
     });
   return (
-    <ContextMenu>
+    <ContextMenu
+      // The menu shows rows from the detail, so read it as a hover does.
+      onOpenChange={(open) => {
+        if (open)
+          void prefetchConversationDetail(queryClient, props.conversation.id);
+      }}
+    >
       <ContextMenuTrigger
         {...prefetch}
         {...drag?.listeners}
@@ -471,8 +486,8 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
           aria-current={props.selected ? "page" : undefined}
           aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
           className={cn(
-            "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus max-sm:pr-10",
-            ROW_ACTIONS_FADE_CLASS,
+            "grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-3 py-1.5 text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+            participant && `max-sm:pr-10 ${ROW_ACTIONS_FADE_CLASS}`,
             // A long press opens the row menu or drags a pin, not the iOS
             // link callout.
             "[-webkit-touch-callout:none]",
@@ -568,98 +583,95 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         ) : null}
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
-        <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
-          {archived ? null : (
+        {participant ? (
+          <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+            {archived ? null : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
+                      aria-pressed={pinned}
+                      className={cn(ROW_ACTION_BUTTON_CLASS, "max-sm:hidden")}
+                      disabled={pin.isPending}
+                      onClick={togglePin}
+                      type="button"
+                    >
+                      <Pin
+                        aria-hidden="true"
+                        fill={pinned ? "currentColor" : "none"}
+                        size={14}
+                      />
+                    </button>
+                  }
+                />
+                <TooltipContent size="compact">
+                  {pinned ? "Unpin" : "Pin"}
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
-                    aria-label={`${pinned ? "Unpin" : "Pin"} ${title}`}
-                    aria-pressed={pinned}
-                    className={cn(ROW_ACTION_BUTTON_CLASS, "max-sm:hidden")}
-                    disabled={pin.isPending}
-                    onClick={togglePin}
+                    aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
+                    className={ROW_ACTION_BUTTON_CLASS}
+                    disabled={archive.isPending}
+                    onClick={toggleArchive}
                     type="button"
                   >
-                    <Pin
-                      aria-hidden="true"
-                      fill={pinned ? "currentColor" : "none"}
-                      size={14}
-                    />
+                    {archived ? (
+                      <ArchiveRestore aria-hidden="true" size={14} />
+                    ) : (
+                      <Archive aria-hidden="true" size={14} />
+                    )}
                   </button>
                 }
               />
               <TooltipContent size="compact">
-                {pinned ? "Unpin" : "Pin"}
+                {archived ? "Restore" : "Archive"}
               </TooltipContent>
             </Tooltip>
-          )}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  aria-label={`${archived ? "Restore" : "Archive"} ${title}`}
-                  className={ROW_ACTION_BUTTON_CLASS}
-                  disabled={archive.isPending}
-                  onClick={toggleArchive}
-                  type="button"
-                >
-                  {archived ? (
-                    <ArchiveRestore aria-hidden="true" size={14} />
-                  ) : (
-                    <Archive aria-hidden="true" size={14} />
-                  )}
-                </button>
-              }
-            />
-            <TooltipContent size="compact">
-              {archived ? "Restore" : "Archive"}
-            </TooltipContent>
-          </Tooltip>
-        </div>
+          </div>
+        ) : null}
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {conversationMenuItems({
-          archive: {
-            archived,
-            disabled: archive.isPending,
-            onClick: toggleArchive,
-            pending: archive.isPending,
-          },
-          pin: { disabled: pin.isPending, onClick: togglePin, pinned },
-          read: {
-            disabled: markUnread.isPending || (!unread && !canMarkUnread),
-            onClick: () => markUnread.mutate(!unread),
-            unread,
-          },
-          rename: { disabled: false, onClick: () => setRenaming(true) },
-        }).map((item) => (
-          <ContextMenuItem
-            disabled={item.disabled}
-            key={item.key}
-            onClick={item.onClick}
-          >
-            <item.icon aria-hidden="true" />
-            {item.label}
-          </ContextMenuItem>
-        ))}
-        {/* The row has no room for cost. The `⋯` menu leaves it out because
-            the page header shows it. */}
-        {cost ? (
-          <>
-            <ContextMenuSeparator />
-            <div className="flex justify-between gap-3 px-2 py-1.5 text-xs text-muted-foreground">
-              <span>Cost</span>
-              <span className="tabular-nums">{cost}</span>
-            </div>
-          </>
-        ) : null}
+        <ConversationRowMenu
+          actions={{
+            archive: toggleArchive,
+            continueInSlack: () => setContinueInSlackOpen(true),
+            delivery: (paused) => delivery.mutate(paused),
+            eventLog: () =>
+              navigate(conversationPath(props.conversation.id), {
+                state: OPEN_EVENT_LOG_STATE,
+              }),
+            pin: (next) => pin.mutate(next),
+            read: (next) => markUnread.mutate(next),
+            rename: () => setRenaming(true),
+            subscription: (subscribed) => subscription.mutate(subscribed),
+          }}
+          conversation={props.conversation}
+          conversationId={props.conversation.id}
+          pending={{
+            archive: archive.isPending,
+            delivery: delivery.isPending,
+            pin: pin.isPending,
+            read: markUnread.isPending,
+            subscription: subscription.isPending,
+          }}
+        />
       </ContextMenuContent>
       {renaming ? (
         <RenameConversationDialog
           onClose={() => setRenaming(false)}
           onSave={(next) => rename.mutate(next)}
           title={title}
+        />
+      ) : null}
+      {continueInSlackOpen ? (
+        <ContinueInSlackDialog
+          conversationId={props.conversation.id}
+          onClose={() => setContinueInSlackOpen(false)}
         />
       ) : null}
     </ContextMenu>

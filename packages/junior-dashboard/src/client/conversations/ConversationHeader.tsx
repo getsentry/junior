@@ -13,14 +13,8 @@ import {
   ConversationHeaderActions,
   HeaderIconButton,
   TranscriptSearchToggle,
-  type ConversationArchiveAction,
-  type ConversationContinueInSlackAction,
-  type ConversationDeliveryAction,
-  type ConversationPinAction,
-  type ConversationReadAction,
-  type ConversationRenameAction,
-  type ConversationSubscriptionAction,
 } from "./ConversationHeaderActions";
+import type { ConversationMenu } from "./conversationMenuItems";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
@@ -36,20 +30,17 @@ export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[];
   contextTags?: ReactNode;
-  /** A `menu` layout copy action for the `⋯` menu. */
-  copyAction?: ReactNode;
-  archive: ConversationArchiveAction;
-  conversationId: string;
-  continueInSlack?: ConversationContinueInSlackAction;
-  delivery?: ConversationDeliveryAction;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
   cost?: ReactNode;
   detailsOpen: boolean;
+  /** Messages of failed menu actions, shown below the title bar. */
+  errors: readonly string[];
   onDetailsClick(): void;
   /** Links to the fork source and to forks of this conversation. */
   forks?: ReactNode;
   /** Linked work links in the tags row below the title on mobile. */
   linkedWork?: ReactNode;
+  menu: ConversationMenu;
   /**
    * The Conversation is not created yet. Its actions stay inert until it
    * exists; the sidebar toggle still works.
@@ -57,17 +48,12 @@ export function ConversationHeader(props: {
   pending?: boolean;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
-  pin: ConversationPinAction;
   privacy: ReactNode;
-  read: ConversationReadAction;
-  rename: ConversationRenameAction;
   search: string;
   searchMatch: TranscriptSearchMatch;
-  sentryConversationUrl?: string;
   sidebarToggle?: ReactNode;
   /** Status pill of a child Conversation, after its title. */
   status?: ReactNode;
-  subscription: ConversationSubscriptionAction;
   title: string;
   view: TranscriptViewMode;
 }) {
@@ -115,55 +101,13 @@ export function ConversationHeader(props: {
 
   const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
     <ConversationHeaderActions
-      archive={{
-        ...props.archive,
-        // A child archive opens a confirm, and a restore keeps the page open,
-        // so close the menu here.
-        onClick: () => {
-          close();
-          props.archive.onClick();
-        },
-      }}
-      conversationId={props.conversationId}
-      continueInSlack={
-        props.continueInSlack && {
-          disabled: props.continueInSlack.disabled,
-          onClick: () => {
-            close();
-            props.continueInSlack?.onClick();
-          },
-        }
-      }
-      delivery={props.delivery}
-      pin={props.pin}
-      read={props.read}
-      rename={{
-        ...props.rename,
-        // Rename opens a dialog, so close the menu first.
-        onClick: () => {
-          close();
-          props.rename.onClick();
-        },
-      }}
-      subscription={props.subscription}
-      copyAction={props.copyAction}
+      close={close}
       detailsOpen={detailsOpen}
-      onDetailsClick={() => {
-        close();
-        props.onDetailsClick();
-      }}
-      onSearchClick={() => {
-        close();
-        toggleSearch();
-      }}
-      onViewChange={(value) => {
-        close();
-        props.onViewChange(value);
-      }}
+      menu={props.menu}
+      onDetailsClick={props.onDetailsClick}
+      onSearchClick={toggleSearch}
       placement={placement}
       searchOpen={searchOpenVisible}
-      sentryConversationUrl={props.sentryConversationUrl}
-      view={props.view}
     />
   );
 
@@ -200,12 +144,7 @@ export function ConversationHeader(props: {
 
   const showMobileHeader =
     searchOpenVisible ||
-    Boolean(props.archive.error) ||
-    props.pin.error ||
-    props.read.error ||
-    props.rename.error ||
-    props.subscription.error ||
-    props.delivery?.error ||
+    props.errors.length > 0 ||
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
@@ -329,36 +268,11 @@ export function ConversationHeader(props: {
             value={props.search}
           />
         ) : null}
-        {props.archive.error ? (
-          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            {props.archive.error}
+        {props.errors.map((error) => (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7" key={error}>
+            {error}
           </div>
-        ) : null}
-        {props.pin.error ? (
-          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not update pin.
-          </div>
-        ) : null}
-        {props.read.error ? (
-          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not update read state.
-          </div>
-        ) : null}
-        {props.rename.error ? (
-          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not rename.
-          </div>
-        ) : null}
-        {props.subscription.error ? (
-          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not update subscription.
-          </div>
-        ) : null}
-        {props.delivery?.error ? (
-          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
-            Could not change Slack updates.
-          </div>
-        ) : null}
+        ))}
       </header>
     </>
   );

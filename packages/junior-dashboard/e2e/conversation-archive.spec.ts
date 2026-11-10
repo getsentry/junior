@@ -1,4 +1,8 @@
+import { viewAsParticipant } from "./conversationMenu";
 import { expect, test } from "./test";
+
+// Only participants can archive or restore.
+test.beforeEach(async ({ page }) => viewAsParticipant(page));
 
 test("finds an old archived conversation by title and restores it", async ({
   page,
@@ -46,11 +50,17 @@ test("archives and restores a conversation from the sidebar", async ({
       response,
       json: {
         ...feed,
-        conversations: feed.conversations.filter(
-          (conversation: { displayTitle: string }) =>
-            !archived ||
-            conversation.displayTitle !== "Dashboard QA edge cases",
-        ),
+        // This route replaces the `viewAsParticipant` one.
+        conversations: feed.conversations
+          .filter(
+            (conversation: { displayTitle: string }) =>
+              !archived ||
+              conversation.displayTitle !== "Dashboard QA edge cases",
+          )
+          .map((conversation: object) => ({
+            ...conversation,
+            isParticipant: true,
+          })),
       },
     });
   });

@@ -10,10 +10,14 @@ import { conversationDetailQueryKey } from "./queries";
  * unsubscribe drops the viewer's pin, and it archives the conversation when
  * the viewer was the last subscriber.
  */
-export function useConversationSubscription(conversationId: string) {
+export function useConversationSubscription(
+  conversationId: string,
+  options?: { onError?(): void },
+) {
   const queryClient = useQueryClient();
   const detailQueryKey = conversationDetailQueryKey(conversationId);
   return useMutation({
+    onError: () => options?.onError?.(),
     mutationFn: (subscribed: boolean) =>
       patch(
         conversationSubscriptionResponseSchema,

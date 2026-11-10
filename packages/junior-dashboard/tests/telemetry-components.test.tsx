@@ -370,43 +370,41 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <ConversationHeader
-          archive={{
-            archived: false,
-            disabled: false,
-            onClick: () => {},
-            pending: false,
-          }}
-          conversationId="conversation-1"
           detailsOpen={false}
+          errors={[]}
+          menu={{
+            actions: {
+              archive: () => {},
+              continueInSlack: () => {},
+              delivery: () => {},
+              eventLog: () => {},
+              pin: () => {},
+              read: () => {},
+              rename: () => {},
+              subscription: () => {},
+            },
+            conversation: undefined,
+            conversationId: "conversation-1",
+            detail: undefined,
+            eventLogOpen: true,
+            pending: {
+              archive: false,
+              delivery: false,
+              pin: false,
+              read: false,
+              subscription: false,
+            },
+          }}
           onDetailsClick={() => {}}
           onSearchChange={() => {}}
           onViewChange={() => {}}
-          pin={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            pinned: false,
-          }}
           privacy={null}
-          read={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            unread: false,
-          }}
-          rename={{ disabled: false, error: false, onClick: () => {} }}
           search=""
           searchMatch={{
             count: 0,
             index: 0,
             setMatches: () => {},
             step: () => {},
-          }}
-          subscription={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            subscribed: true,
           }}
           title="Header QA"
           view="raw"
