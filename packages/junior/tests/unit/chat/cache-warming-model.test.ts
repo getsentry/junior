@@ -45,7 +45,7 @@ describe("decideWarmup", () => {
       ...prices,
       // The global gaps say "soon", but this conversation has enough gaps of
       // its own to replace them.
-      conversationGapsMs: gaps(20, 3 * 60 * MINUTE),
+      conversationGapsMs: gaps(100, 3 * 60 * MINUTE),
       globalGapsMs: gaps(100, 7 * MINUTE),
       idleMs: 4 * MINUTE,
       prefixTokens: 200_000,
@@ -55,17 +55,19 @@ describe("decideWarmup", () => {
   });
 
   it("gives a conversation's own gaps their share next to a large global list", () => {
-    const decision = decideWarmup({
-      ...prices,
-      // Half of the weight is on this conversation's slow replies, even though
-      // the global list is 200 times longer.
-      conversationGapsMs: gaps(10, 3 * 60 * MINUTE),
-      globalGapsMs: gaps(2_000, 5 * MINUTE),
-      idleMs: 4 * MINUTE,
-      prefixTokens: 200_000,
-    });
+    const returnProbability = (ownGaps: number) =>
+      decideWarmup({
+        ...prices,
+        conversationGapsMs: gaps(ownGaps, 3 * 60 * MINUTE),
+        globalGapsMs: gaps(2_000, 5 * MINUTE),
+        idleMs: 4 * MINUTE,
+        prefixTokens: 200_000,
+      }).returnProbability;
 
-    expect(decision.returnProbability).toBeCloseTo(0.5);
+    // Each of this conversation's slow replies moves 1% of the weight, even
+    // though the global list is much longer. A few gaps move it little.
+    expect(returnProbability(20)).toBeCloseTo(0.8);
+    expect(returnProbability(50)).toBeCloseTo(0.5);
   });
 
   it("counts idle periods with no reply and stops at the idle horizon", () => {
