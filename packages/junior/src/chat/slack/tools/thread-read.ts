@@ -381,15 +381,22 @@ export function createSlackThreadReadTool(
         channelId === context.locationChannelId &&
         resolvedThreadTs === context.threadTs;
       if (attachmentDeps?.storage && isCurrentThread) {
-        const unstored = replies.flatMap((reply) =>
-          collectMessageFiles(reply).filter(
-            (file) =>
-              file.id &&
-              file.url_private &&
-              isSlackFileUrl(file.url_private) &&
-              !attachmentIdsBySlackFileId.has(file.id),
-          ),
-        );
+        // Key by Slack file id, so a file shared twice uses one cap slot.
+        const unstored = [
+          ...new Map(
+            replies.flatMap((reply) =>
+              collectMessageFiles(reply)
+                .filter(
+                  (file) =>
+                    file.id &&
+                    file.url_private &&
+                    isSlackFileUrl(file.url_private) &&
+                    !attachmentIdsBySlackFileId.has(file.id),
+                )
+                .map((file) => [file.id, file] as const),
+            ),
+          ).values(),
+        ];
         // One read stores at most as many files as a Turn gives the model.
         // A later read stores the rest, because stored files match first.
         unstoredFileCount = Math.max(0, unstored.length - MAX_USER_ATTACHMENTS);

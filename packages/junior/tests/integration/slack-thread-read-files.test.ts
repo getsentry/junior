@@ -180,6 +180,22 @@ describe("files in the current Conversation's thread", () => {
           url_private: `https://files.slack.com/files-pri/T123-${id}/${id}.png`,
         })),
       },
+      {
+        // The same file shared again uses no second cap slot.
+        ts: "1700000000.800000",
+        thread_ts: THREAD_TS,
+        user: "U1",
+        text: "this one again",
+        files: [
+          {
+            id: "F0IMG0001",
+            name: "F0IMG0001.png",
+            mimetype: "image/png",
+            url_private:
+              "https://files.slack.com/files-pri/T123-F0IMG0001/F0IMG0001.png",
+          },
+        ],
+      },
     ]);
     for (const id of screenshotIds.slice(0, 3)) {
       queueSlackPrivateFileDownload({ status: 200, body: id });
@@ -199,6 +215,9 @@ describe("files in the current Conversation's thread", () => {
       expect.any(String),
       undefined,
     ]);
+    expect(again.messages[2].files[0].attachment_id).toBe(
+      again.messages[1].files[0].attachment_id,
+    );
     expect(again.unstored_file_count).toBe(1);
   });
 
