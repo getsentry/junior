@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import {
@@ -19,6 +20,12 @@ import { githubPlugin } from "@sentry/junior-github";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import type { EmittedLogRecord } from "@/chat/logging";
 import { mswServer } from "../msw/server";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
 
 const ORIGINAL_ENV = { ...process.env };
 const FIXTURE_PLUGIN_ROOT = path.resolve(
@@ -836,6 +843,7 @@ describe("sandbox egress proxy integration", () => {
       [],
       {},
       {
+        turnTools: rootTurnTools,
         conversationId,
         destination: {
           platform: "local",

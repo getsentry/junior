@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
   defineJuniorPlugin,
@@ -41,6 +42,11 @@ function runtimeContext() {
     destination: LOCAL_DESTINATION,
     egress: TEST_EGRESS,
     source: LOCAL_SOURCE,
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+      automationRun: false,
+    }).tools,
     workspace: {} as any,
   };
 }
@@ -306,9 +312,15 @@ describe("Pi tool adapter integration", () => {
         ...runtimeContext(),
         automation: { sendsMessage: false },
         messageAgent,
-        agentInvocationId: "invocation-1",
         parentConversationId: "local:test:parent",
         spawnAgent,
+        // Every model-only tool at once, which no single Turn kind loads.
+        turnTools: {
+          ...runtimeContext().turnTools,
+          finishAutomationRun: true,
+          noReply: false,
+          reportBlocked: true,
+        },
       },
     );
     const tools = createPiAgentTools(registry, new SkillSandbox([], []), {});

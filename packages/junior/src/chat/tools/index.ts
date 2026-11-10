@@ -108,6 +108,7 @@ export function createTools(
   options: CreateToolsOptions = {},
 ) {
   const state = createToolState();
+  const turnTools = context.turnTools;
   const slackContext = getSlackToolContext(context);
   const slackLocationCapabilities = slackContext
     ? resolveChannelCapabilities(slackContext.locationChannelId)
@@ -235,17 +236,15 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  // An Agent invocation reports to its parent.
-  if (context.agentInvocationId) {
+  if (turnTools.reportBlocked) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
-
-  // An Automation run ends with its declared result instead.
   if (context.automation) {
     tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
       context.automation,
     );
-  } else {
+  }
+  if (turnTools.noReply) {
     tools[NO_REPLY_TOOL_NAME] = createNoReplyTool();
   }
 
@@ -365,7 +364,7 @@ export function createTools(
           reviewItemServices,
         ),
       },
-      context.agentInvocationId
+      !turnTools.reviewDesk
         ? `A child agent cannot use the review desk. Use ${REPORT_BLOCKED_TOOL_NAME} to tell the parent agent what needs a person.`
         : undefined,
     ),
