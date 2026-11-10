@@ -17,6 +17,10 @@ import {
   joinCreatedSlackChannel,
   slackChannelCreatedEnvelopeSchema,
 } from "./slack-channel-created";
+import {
+  recordJoinedSlackChannelVisibility,
+  slackMemberJoinedEnvelopeSchema,
+} from "./slack-member-joined";
 import { ThreadImpl, type Message, type StateAdapter } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import {
@@ -828,6 +832,26 @@ export async function handleSlackWebhook(args: {
         ),
       );
     }
+    return new Response("ok", { status: 200 });
+  }
+
+  const memberJoined = slackMemberJoinedEnvelopeSchema.safeParse(json);
+  if (memberJoined.success) {
+    const { channel: channelId, user: userId } = memberJoined.data.event;
+    enqueue(
+      args.waitUntil,
+      withLogContext({ platform: "slack", destinationName: channelId }, () =>
+        recordJoinedSlackChannelVisibility({
+          adapter,
+          channelId,
+          installation: installationFromEnvelope(memberJoined.data),
+          state: args.services.state ?? getStateAdapter(),
+          userId,
+        }).catch((error) => {
+          logException(error, "slack.channel.join_visibility.failed");
+        }),
+      ),
+    );
     return new Response("ok", { status: 200 });
   }
 
