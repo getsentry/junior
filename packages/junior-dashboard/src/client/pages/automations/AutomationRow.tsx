@@ -92,9 +92,10 @@ export function AutomationRow(props: {
         <div className="hidden md:block">
           <AutomationRunStrip
             label={`Recent runs of ${automation.title}`}
-            runs={(automation.recentRuns ?? []).map((run) => ({
+            // Runs can share a completion time, so the order breaks ties.
+            runs={(automation.recentRuns ?? []).map((run, index) => ({
               ...run,
-              key: run.executedAt,
+              key: `${run.executedAt}:${index}`,
             }))}
             slots={AUTOMATION_ROW_RUN_SLOTS}
           />

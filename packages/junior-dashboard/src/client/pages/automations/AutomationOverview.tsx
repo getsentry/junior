@@ -102,7 +102,8 @@ function AutomationActivity(props: {
           <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
             Recent runs
           </h3>
-          {runs.length > 0 ? (
+          {/* Older runs stay reachable while recent history loads or fails. */}
+          {runs.length > 0 || automation.totalRuns > 0 ? (
             <Link
               className={`${dashboardInlineLinkClass} text-xs`}
               to={pathWithSearch(

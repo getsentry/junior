@@ -115,31 +115,34 @@ export function automationProblemSummary(
     label: "Open runs",
     to: automationPath(automation.id, "runs"),
   };
-  if (problem === "trigger" && automation.kind === "event") {
+  const triggerProblem =
+    automation.kind === "event" ? automation.trigger.problems[0] : undefined;
+  // Like the Overview notice, a broken trigger sends you to the editor even
+  // when another problem leads the row.
+  const action = triggerProblem
+    ? { label: "Change trigger", to: automationPath(automation.id, "edit") }
+    : automation.lastConversationId
+      ? {
+          label: "Open last run",
+          to: conversationPath(automation.lastConversationId),
+        }
+      : runs;
+  if (problem === "trigger") {
     return {
-      action: {
-        label: "Change trigger",
-        to: automationPath(automation.id, "edit"),
-      },
-      message: automation.trigger.problems[0] ?? "Trigger unavailable",
+      action,
+      message: triggerProblem ?? "Trigger unavailable",
       tone: "warning",
     };
   }
-  const last = automation.lastConversationId
-    ? {
-        label: "Open last run",
-        to: conversationPath(automation.lastConversationId),
-      }
-    : runs;
   if (problem === "fix") {
     return {
-      action: last,
+      action,
       message: automation.statusReason ?? `${automation.status} until fixed`,
       tone: "warning",
     };
   }
   return {
-    action: last,
+    action,
     message: `Last run ${automation.lastRunStatus}${
       automation.lastRunAt ? ` ${formatRelativeTime(automation.lastRunAt)}` : ""
     }`,
