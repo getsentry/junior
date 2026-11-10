@@ -1,8 +1,12 @@
 import {
   eventMatchFieldsSchema,
+  mergeEventMatchFields,
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
-import { gitHubCommentMatchFields } from "./comment.js";
+import {
+  gitHubCommentMatchFields,
+  gitHubSenderMatchFields,
+} from "./comment.js";
 import { gitHubRepoDataSchema, gitHubRepoMatchFields } from "./scope.js";
 
 export const GITHUB_ISSUE_EVENTS = [
@@ -19,8 +23,11 @@ export const GITHUB_ISSUE_SUGGESTED_EVENTS = [
   "issue.updated",
 ];
 
-// The `issues` webhook actions that `issue.updated` publishes.
-const ISSUE_UPDATE_CHANGES = [
+/**
+ * The `issues` webhook actions that `issue.updated` publishes. The webhook
+ * schema and the `change` match field both use this list.
+ */
+export const GITHUB_ISSUE_UPDATE_CHANGES = [
   "edited",
   "labeled",
   "unlabeled",
@@ -28,50 +35,39 @@ const ISSUE_UPDATE_CHANGES = [
   "unassigned",
   "milestoned",
   "demilestoned",
-];
-
-const SENDER_EVENTS = ["issue.comment.created", "issue.updated"];
+] as const;
 
 /**
  * Exact values GitHub sets on issue event data. Every issue event sets the
  * repository and issue number. Comments and updates set who acted. Only
  * updates set `change` and `label`, so an automation can run on one label
- * that one person adds without the model reading label text.
+ * that one person adds without the model deciding from untrusted text.
  */
-export const GITHUB_ISSUE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
-  ...gitHubCommentMatchFields(["issue.comment.created"]),
-  ...gitHubRepoMatchFields(GITHUB_ISSUE_EVENTS),
-  issue: {
-    kind: "number",
-    description: "issue number, such as 12",
-    events: GITHUB_ISSUE_EVENTS,
-  },
-  senderId: {
-    kind: "number",
-    description:
-      "immutable numeric GitHub user id of who wrote the comment or made the update; prefer over logins",
-    events: SENDER_EVENTS,
-  },
-  senderLogin: {
-    kind: "string",
-    description:
-      "GitHub login of who wrote the comment or made the update; logins can be renamed",
-    events: SENDER_EVENTS,
-  },
-  change: {
-    kind: "string",
-    enum: ISSUE_UPDATE_CHANGES,
-    description: "what the issue update changed, such as labeled",
-    events: ["issue.updated"],
-  },
-  label: {
-    kind: "string",
-    case: "lower",
-    description:
-      "lowercase name of the label that was added or removed, set only when change is labeled or unlabeled",
-    events: ["issue.updated"],
-  },
-});
+export const GITHUB_ISSUE_MATCH_FIELDS = mergeEventMatchFields(
+  gitHubCommentMatchFields(["issue.comment.created"]),
+  gitHubSenderMatchFields(["issue.updated"]),
+  eventMatchFieldsSchema.parse({
+    ...gitHubRepoMatchFields(GITHUB_ISSUE_EVENTS),
+    issue: {
+      kind: "number",
+      description: "issue number, such as 12",
+      events: GITHUB_ISSUE_EVENTS,
+    },
+    change: {
+      kind: "string",
+      enum: [...GITHUB_ISSUE_UPDATE_CHANGES],
+      description: "what the issue update changed, such as labeled",
+      events: ["issue.updated"],
+    },
+    label: {
+      kind: "string",
+      case: "lower",
+      description:
+        "lowercase name of the label that was added or removed, set only when change is labeled or unlabeled",
+      events: ["issue.updated"],
+    },
+  }),
+);
 
 /** The identifier shape that `gitHubIssueResource` builds. */
 export const GITHUB_ISSUE_IDENTIFIER = {

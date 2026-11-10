@@ -1,19 +1,27 @@
 import type { EventInput } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { gitHubIssueResource } from "../events/issue.js";
+import {
+  GITHUB_ISSUE_UPDATE_CHANGES,
+  gitHubIssueResource,
+} from "../events/issue.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
 import {
+  definedValues,
   gitHubDoneBy,
   gitHubEventKey,
+  gitHubSenderData,
+  gitHubSenderSchema,
   nonBlank,
   providerTime,
   titleAndBodyText,
 } from "./event-targets.js";
 import { isBotLogin } from "./ownership.js";
 
+// Other `issues` actions, such as `opened`, fail this schema and fall through
+// to the issue lifecycle normalizer.
 const issueUpdateWebhookSchema = z.object({
-  action: z.string(),
+  action: z.enum(GITHUB_ISSUE_UPDATE_CHANGES),
   assignee: z.object({ login: z.string().nullish() }).nullish(),
   changes: z.record(z.string(), z.unknown()).optional(),
   issue: z.object({
@@ -25,20 +33,21 @@ const issueUpdateWebhookSchema = z.object({
   label: z.object({ name: z.string() }).nullish(),
   milestone: z.object({ title: z.string() }).nullish(),
   repository: z.object({ full_name: z.string().min(1) }),
-  sender: z
-    .object({ id: z.number().optional(), login: z.string().min(1) })
-    .optional(),
+  sender: gitHubSenderSchema.optional(),
 });
 type IssueUpdateWebhook = z.output<typeof issueUpdateWebhookSchema>;
 
 /**
  * Describe what an `issues` update action changed. `change` is trusted text:
  * GitHub logins and field names only. Label and milestone names are
- * repository-controlled text, so they go in `untrustedText`.
+ * repository-controlled text, so they stay out of `change` and go in
+ * `untrustedText`. Event data also carries the lowercase label name as a
+ * match value; only people with repository write access create labels.
  */
-function describeIssueUpdate(
-  delivery: IssueUpdateWebhook,
-): { change: string; untrustedText?: string } | undefined {
+function describeIssueUpdate(delivery: IssueUpdateWebhook): {
+  change: string;
+  untrustedText?: string;
+} {
   const assignee = nonBlank(delivery.assignee?.login);
   switch (delivery.action) {
     case "edited": {
@@ -71,8 +80,6 @@ function describeIssueUpdate(
           ? `Milestone: ${delivery.milestone.title}`
           : undefined,
       };
-    default:
-      return undefined;
   }
 }
 
@@ -90,7 +97,6 @@ export function normalizeIssueUpdateEvents(
   const parsed = issueUpdateWebhookSchema.safeParse(body);
   if (!parsed.success) return undefined;
   const update = describeIssueUpdate(parsed.data);
-  if (!update) return undefined;
   const { action, label, sender } = parsed.data;
   const doneBy = sender?.login;
   if (isBotLogin(doneBy, botEmail)) return [];
@@ -113,16 +119,15 @@ export function normalizeIssueUpdateEvents(
     identifier: resource.identifier,
     trustedSummary: `${issue.label} was ${update.change}${doneBy ? ` by ${doneBy}` : ""}.`,
     ...gitHubDoneBy(doneBy),
-    // `change` and `label` let an automation run on one label change without
-    // reading untrusted text. The summary still keeps the label name out.
-    data: {
+    // `change` and `label` let an automation select one label change in code,
+    // so the model does not decide from untrusted text.
+    data: definedValues({
       repo: gitHubRepoDataSchema.parse(input.repo),
       issue: input.number,
       change: action,
-      ...(label ? { label: label.name.toLowerCase() } : undefined),
-      ...(sender?.id !== undefined ? { senderId: sender.id } : undefined),
-      ...(doneBy ? { senderLogin: doneBy } : undefined),
-    },
+      label: label?.name.toLowerCase(),
+      ...gitHubSenderData(sender),
+    }),
     ...(untrustedText ? { untrustedText } : undefined),
   }));
 }

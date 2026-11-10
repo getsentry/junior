@@ -3,7 +3,25 @@
  * normalizers.
  */
 import type { EventInput } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { gitHubRepositoryResource } from "../events/repository.js";
+
+/**
+ * The user who sent a webhook. GitHub authenticates this user, so on a comment
+ * or review it is the author, and on an issue update it made the change.
+ * Match on the numeric id; logins can be renamed and reused.
+ */
+export const gitHubSenderSchema = z.object({
+  id: z.number(),
+  login: z.string().min(1),
+});
+
+/** Trusted event data that names who sent a webhook. */
+export function gitHubSenderData(
+  sender: z.output<typeof gitHubSenderSchema> | undefined,
+): { senderId?: number; senderLogin?: string } {
+  return { senderId: sender?.id, senderLogin: sender?.login };
+}
 
 /** The GitHub user who did what an Event describes, when GitHub names one. */
 export function gitHubDoneBy(
