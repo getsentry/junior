@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   finishedRunReply,
-  postsRunNotices,
   remindMissingAutomationResult,
   runDispatchOutcome,
   type AutomationResult,
 } from "@/chat/automation-result";
+import { postsRunNotices } from "@/chat/conversations/kind-behavior";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";

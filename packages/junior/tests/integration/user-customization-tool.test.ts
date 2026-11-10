@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createLocalSource, type Identity } from "@sentry/junior-plugin-api";
 import { closeDb } from "@/chat/db";
 import { setExperimentalFeatures } from "@/chat/experimental";
@@ -29,6 +30,11 @@ function context(
       },
     },
     workspace: {} as ToolRuntimeContext["workspace"],
+    turnTools: turnBehavior({
+      kind: "root",
+      personInput: true,
+      automationRun: false,
+    }).tools,
     ...overrides,
   } as ToolRuntimeContext;
 }
@@ -62,8 +68,12 @@ describe("user customization tool", () => {
     expect(
       createUserCustomizationTools(
         context({
-          agentInvocationId: "invocation-1",
           parentConversationId: "local:user-customization:parent",
+          turnTools: turnBehavior({
+            kind: "task",
+            personInput: false,
+            automationRun: false,
+          }).tools,
         }),
       ),
     ).toEqual({});

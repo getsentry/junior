@@ -5,6 +5,8 @@ import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
+import { findAutomationSkill } from "./skill";
+import type { AutomationTask } from "./task";
 
 export class AutomationEditError extends ToolInputError {
   readonly field: string | undefined;
@@ -33,8 +35,34 @@ export function requireCredentialStart(
   );
 }
 
+/** Return true when an edit changes what a run does. */
+export function changesAutomationTask(
+  current: AutomationTask,
+  input: AutomationEditFields,
+): boolean {
+  return input.task !== undefined && !isDeepStrictEqual(input.task, current);
+}
+
 /**
- * Apply shared title, instruction, outcome, and creator credential rules.
+ * Require a newly selected skill to be installed. A kept skill that is gone
+ * stays, so other fields can still be saved; its runs block until someone
+ * picks another skill.
+ */
+export async function requireAutomationSkill(
+  task: AutomationTask,
+  current: AutomationTask | undefined,
+): Promise<void> {
+  if (task.kind !== "skill") return;
+  if (current?.kind === "skill" && current.skill === task.skill) return;
+  if (await findAutomationSkill(task.skill)) return;
+  throw new AutomationEditError(
+    `The skill ${task.skill} is not installed. Choose an installed skill.`,
+    "task.skill",
+  );
+}
+
+/**
+ * Apply shared title, task, outcome, and creator credential rules.
  * Anyone who can manage the Automation can change any field except turning on
  * creator credentials. A non-creator change to execution or outcomes switches
  * it to system credentials, so creator credential output stays where the
@@ -85,10 +113,12 @@ export async function editAutomationFields(
       }
     }
   }
+  const task = input.task ?? current.task;
+  await requireAutomationSkill(task, current.task);
   const changesOutcomes = !isDeepStrictEqual(outcomes, current.outcomes);
   return {
     title: input.title ?? current.title,
-    task: { text: input.instruction ?? current.task.text },
+    task,
     credentialMode:
       (changesExecution || changesOutcomes) && !isCreator
         ? ("system" as const)

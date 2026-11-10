@@ -19,6 +19,8 @@ export interface HeartbeatHookContext extends PluginContext {
   };
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
+  /** Publish events, as from a plugin route. */
+  events: EventPublisher;
   nowMs: number;
   state: PluginState;
 }
@@ -170,6 +172,8 @@ export interface RouteRegistrationHookContext extends PluginContext {
   events: EventPublisher;
   /** Review desk items that the plugin adds and closes from its events. */
   reviewItems: PluginConversationReviewItems;
+  /** Plugin-namespaced state, the same as in heartbeats. */
+  state: PluginState;
   users: {
     /**
      * Read one stored identity and the user it links to now, with every

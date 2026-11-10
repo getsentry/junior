@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterEach, describe, expect, it } from "vitest";
 import { createWebSource } from "@sentry/junior-plugin-api";
 import {
@@ -14,10 +15,17 @@ import { createSearchConversationEventsTool } from "@/chat/tools/search-conversa
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { juniorConversationEvents } from "@/db/schema";
 
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+  automationRun: false,
+}).tools;
+
 const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
 
 function context(): ToolRuntimeContext {
   return {
+    turnTools: rootTurnTools,
     conversationId: CURRENT_CONVERSATION_ID,
     destination: {
       platform: "slack",
@@ -44,6 +52,7 @@ function context(): ToolRuntimeContext {
 /** Tool context of a Turn in a web Conversation. */
 function webContext(conversationId: string): ToolRuntimeContext {
   return {
+    turnTools: rootTurnTools,
     conversationId,
     destination: { platform: "local", conversationId },
     source: createWebSource(conversationId),

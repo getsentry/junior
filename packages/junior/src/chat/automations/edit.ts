@@ -95,7 +95,7 @@ function editView(
     id: task.id,
     revision: automationRevision(task),
     title: task.title ?? null,
-    instruction: task.task.text,
+    task: task.task,
     credentialMode: task.credentialMode,
     outcomes: task.outcomes,
     destination: task.destination,
@@ -274,8 +274,8 @@ export async function activateViewerAutomationVersion(
     );
   }
   const fields: AutomationEditFields = {};
-  if (definition.instruction !== current.task.task.text)
-    fields.instruction = definition.instruction;
+  if (!sameDefinitionValue(definition.task, current.task.task))
+    fields.task = definition.task;
   if (definition.credentialMode !== current.task.credentialMode)
     fields.credentialMode = definition.credentialMode;
   if (!sameDefinitionValue(definition.outcomes, current.task.outcomes))

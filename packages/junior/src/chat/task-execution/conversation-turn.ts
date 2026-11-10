@@ -1,4 +1,5 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   readMessageAttachments,
   type MessageAttachment,
@@ -439,12 +440,9 @@ export function createConversationTurnWorker(
       visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    // A person's Turn in a Thread does not start or message child agents:
-    // their results would report to the parent as the wrong Actor.
-    const disabledFeatures: AgentFeature[] = [
-      ...(webActor ? [] : ["interactive-auth" as const]),
-      ...(isThread ? ["subagents" as const] : []),
-    ];
+    const disabledFeatures: AgentFeature[] = webActor
+      ? []
+      : ["interactive-auth"];
     const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
     // cursor stores Event Source.
@@ -452,14 +450,15 @@ export function createConversationTurnWorker(
     // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
-    // Only a root delivers to its Location. A child keeps a copy of its
-    // root's Location, but its output goes back to its parent.
-    // TODO(dcramer): This root check is temporary. Remove it when each Run
-    // gets explicit Delivery, so a child Run gets none.
+    // Only an Event Turn delivers here, and an Event has no person.
     const deliverToProvider =
       Boolean(conversationLocation) &&
       isEventTurn &&
-      storedConversation?.kind === "root";
+      turnBehavior({
+        kind: storedConversation?.kind ?? "root",
+        personInput: false,
+        automationRun: false,
+      }).delivery === "location";
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
     const surface = deliverToProvider ? ("slack" as const) : ("api" as const);

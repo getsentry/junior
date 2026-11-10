@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
+import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import {
   eventBatchMessageMeta,
   isEventMailboxMetadata,
@@ -120,7 +121,9 @@ export async function skipInputAfterConversationStop(
   { context: ConversationWorkerContext } | { skipped: ConversationWorkerResult }
 > {
   const messages = context.attempt.messages;
-  const personInput = messages.filter(isPersonInput);
+  const personInput = messages.filter((message) =>
+    isPersonInput(message.source),
+  );
   if (personInput.length > 0) {
     // The batch can still hold input that the stop cancels. Only input sent
     // after the stop ends it. A Slack stop takes its time from Slack, so this
@@ -170,10 +173,6 @@ export async function skipInputAfterConversationStop(
   }
   await context.attempt.ack();
   return { skipped: { status: "completed" } };
-}
-
-function isPersonInput(message: InboundMessage): boolean {
-  return message.source === "web" || message.source === "slack";
 }
 
 function isEventInput(message: InboundMessage): boolean {

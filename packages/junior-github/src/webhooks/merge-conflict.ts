@@ -5,7 +5,9 @@
  * conflicted pull request gets no new checks. So when a webhook delivers
  * another event for a watched pull request, such as a comment, a review, or a
  * check result, the webhook also reads its mergeability and publishes
- * `pull_request.merge_conflict`.
+ * `pull_request.merge_conflict`. A push to the default branch also starts a
+ * check of the repository's open Junior pull requests. See
+ * `merge-conflict-checks/`.
  */
 import type {
   EventInput,

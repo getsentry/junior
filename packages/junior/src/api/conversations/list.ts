@@ -246,8 +246,10 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * dashboard can record which inputs moved it.
  *
  * The token holds only what a feed row shows, so a Task's own writes do not
- * move it. Every Event of a live Turn moves `last_activity_at`, but rows
- * show it only as an age in whole minutes, so the token holds its minute.
+ * move it. Every Event of a live Turn moves `last_activity_at`, but a
+ * running row shows its running state in place of the age, so the token
+ * holds no activity for it. Other rows show an age in whole minutes, so the
+ * token holds its minute. The end of the Turn moves the status.
  * The rows are in feed order, so a move that reorders them moves the token.
  * The newest Message of each role stands for the preview and participants.
  * The row shows only whether a reply is unread, so a scroll that moves the
@@ -304,9 +306,11 @@ export function conversationFeedVersionQuery(
       pinPosition: pin.pinPosition,
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
-      activity: shownActivityMinute(juniorConversations.lastActivityAt).as(
-        "activity",
-      ),
+      // Every other status shows as running, as in `statusFromConversation`.
+      activity: sql`case
+        when ${juniorConversations.executionStatus} in ('idle', 'failed')
+        then ${shownActivityMinute(juniorConversations.lastActivityAt)}
+      end`.as("activity"),
       assistantSeq:
         sql<number>`(${latestMessageSeqQuery(db, "assistant", conversationId)})`.as(
           "assistant_seq",

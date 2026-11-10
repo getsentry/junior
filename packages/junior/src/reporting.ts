@@ -48,14 +48,16 @@ function readDescriptionText(home: string): string | undefined {
   }
 }
 
-/** Read discovered skill names for authenticated runtime diagnostics. */
+/** Read discovered skills for runtime diagnostics and the Automation editor. */
 export async function readSkillReports(): Promise<SkillReport[]> {
   const { discoverSkills } = await import("@/chat/skills");
   const skills = await discoverSkills();
   return skillReportsSchema.parse(
     skills.map((skill) => ({
       name: skill.name,
+      description: skill.description,
       pluginProvider: skill.pluginProvider,
+      disableModelInvocation: skill.disableModelInvocation,
     })),
   );
 }

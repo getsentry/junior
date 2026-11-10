@@ -367,10 +367,13 @@ export async function mockDashboardApis(
         visibility: "public" as const,
       },
       id,
-      instruction:
-        kind === "scheduled"
-          ? "Send the weekly project summary"
-          : "Summarize the closed issue",
+      task: {
+        kind: "instruction" as const,
+        instruction:
+          kind === "scheduled"
+            ? "Send the weekly project summary"
+            : "Summarize the closed issue",
+      },
       kind,
       credentialMode: "creator",
       ownedByViewer: true,

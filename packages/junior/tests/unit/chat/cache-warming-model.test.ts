@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   decideWarmup as decideWarmupAt,
   NO_REPLY_GAP_MS,
+  parentGapSegment,
   type WarmupDecisionInput,
   warmupFailureCountsAsMiss,
 } from "@/chat/cache-warming/model";
@@ -222,6 +223,63 @@ describe("decideWarmup", () => {
         prefixTokens: 200_000,
       }),
     ).toMatchObject({ warm: false, reason: "few_gaps" });
+  });
+
+  it("leans on the parent segment only while the segment is thin", () => {
+    const input = {
+      ...prices,
+      conversationGapsMs: [],
+      idleMs: 4 * MINUTE,
+      prefixTokens: 200_000,
+    };
+
+    // A new segment warms with the return chances of its parent.
+    expect(
+      decideWarmup({
+        ...input,
+        globalGapsMs: [6 * MINUTE],
+        parentGapsMs: gaps(100, 7 * MINUTE),
+      }),
+    ).toMatchObject({ warm: true, reason: "warm", parentPrior: true });
+    // A thin parent does not make enough gaps either.
+    expect(
+      decideWarmup({
+        ...input,
+        globalGapsMs: [6 * MINUTE],
+        parentGapsMs: gaps(5, 7 * MINUTE),
+      }),
+    ).toMatchObject({ warm: false, reason: "few_gaps", parentPrior: true });
+    // A full segment decides alone.
+    const full = { ...input, globalGapsMs: gaps(20, 3 * 60 * MINUTE) };
+    const withParent = decideWarmup({
+      ...full,
+      parentGapsMs: gaps(100, 7 * MINUTE),
+    });
+    expect(withParent).toMatchObject({
+      warm: false,
+      reason: "unlikely_return",
+      parentPrior: false,
+    });
+    expect(withParent).toEqual(decideWarmup(full));
+  });
+});
+
+describe("parentGapSegment", () => {
+  it("picks the none segment with the same Actor and Turn depth", () => {
+    const turn = { userActor: true, endedTurns: 1 };
+
+    expect(
+      parentGapSegment({ ...turn, workState: "open", archived: false }),
+    ).toBe("user:2-3:none");
+    expect(
+      parentGapSegment({ ...turn, workState: "done", archived: true }),
+    ).toBe("user:2-3:none");
+    expect(
+      parentGapSegment({ ...turn, workState: "none", archived: true }),
+    ).toBe("user:2-3:none");
+    expect(
+      parentGapSegment({ ...turn, workState: "none", archived: false }),
+    ).toBeUndefined();
   });
 });
 

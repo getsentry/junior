@@ -208,7 +208,7 @@ attributes. Nested logs and spans inherit them.
 | Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                                  |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.callback.resume.*`, `agent.continue.*`, `mcp.oauth_callback.failed`    |
 | Vercel firewall challenged egress    | `sandbox.egress.challenged`, span `bash`                                                                     |
-| Tool calls ran one at a time         | `agent.tool_batch.started`, `app.sandbox.bash.wait_ms` on span `bash`                                        |
+| Tool calls ran one at a time         | `app.tool_batch.*` on span `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on span `bash`                  |
 | Auth signal missed by a command      | `sandbox.egress.auth_signal.missing`, span `bash`                                                            |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                                     |
 | Memory recall slow, empty, or noisy  | `app.memory.recall.*` on span `plugin.hook` (`userPrompt`), span `gen_ai.rerank`, `plugin.log.warn`          |
@@ -262,21 +262,28 @@ Attributes on the `codemode` span:
 
 ## Tool Batches
 
-`agent.tool_batch.started` logs each assistant message with two or more tool
-calls. Pi runs the calls in parallel, unless one of the tools is
-`sequential`. Then it runs all of them one at a time.
+A tool batch is an assistant message with two or more tool calls. Pi runs the
+calls in parallel, unless one of the tools is `sequential`. Then it runs all
+of them one at a time. Production drops info logs, so the counts for one Run
+are attributes on its `gen_ai.invoke_agent` span.
 
-| Attribute                              | Type     | Meaning                                    |
-| -------------------------------------- | -------- | ------------------------------------------ |
-| `app.tool_batch.size`                  | int      | tool calls in the message                  |
-| `app.tool_batch.execution`             | string   | `parallel` or `sequential`                 |
-| `app.tool_batch.tool_names`            | string[] | tool names, in call order                  |
-| `app.tool_batch.sequential_tool_names` | string[] | tools that made the batch run sequentially |
+| Attribute                              | Type   | Meaning                                         |
+| -------------------------------------- | ------ | ----------------------------------------------- |
+| `app.tool_batch.count`                 | int    | tool batches in the Run                         |
+| `app.tool_batch.sequential_count`      | int    | batches that ran one call at a time             |
+| `app.tool_batch.sequential_call_count` | int    | tool calls in those batches                     |
+| `app.tool_batch.sequential_tool_names` | string | comma-separated tools that made them sequential |
 
 - `app.sandbox.bash.wait_ms` on span `bash` is the time the command waited for
-  earlier bash commands of the same Run.
+  earlier bash commands of the same Run. Only concurrent calls wait, such as
+  calls that a Code Mode script starts together.
 - `sandbox.egress.auth_signal.missing` means that the command output has the
   `junior-auth-required` marker, but the command read no auth signal.
+
+```text
+dataset=spans query='span.op:gen_ai.invoke_agent tags[app.tool_batch.count,number]:>0'
+fields=sum(tags[app.tool_batch.count,number]),sum(tags[app.tool_batch.sequential_count,number])
+```
 
 ## Model Requests
 
@@ -436,6 +443,7 @@ Attributes on the `cache_warming.warmup` span:
 | `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                        |
 | `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                          |
 | `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                 |
+| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used its parent segment's gaps  |
 | `app.cost.total_usd`                   | double  | cost of the warmup call                                   |
 | `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                   |
 
@@ -445,6 +453,9 @@ Attributes on the `cache_warming.warmup` span:
   pick its gap segment: `user|system:1|2-3|4+:open|done|none`, or
   `archived:open|done|none`. The `cache_warming.warmup.*` and
   `cache_warming.conversation.returned` logs carry them too.
+- A segment with fewer than 20 gaps leans on its parent segment: the
+  `none` segment with the same Actor and Turn depth. `parent_prior` is true
+  when the parent's gaps were in the decision.
 - The decision attributes are absent when the warmup skipped before the
   decision. The cost and usage attributes are absent when no warmup call
   completed.
