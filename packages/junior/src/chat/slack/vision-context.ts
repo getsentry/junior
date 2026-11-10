@@ -51,7 +51,8 @@ interface VisionThreadReply {
   files?: VisionThreadFile[];
 }
 
-const MAX_USER_ATTACHMENTS = 3;
+/** Most files of one Message that a Turn gives the model. */
+export const MAX_USER_ATTACHMENTS = 3;
 const MAX_USER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
 const MAX_VISION_SUMMARY_CHARS = 500;

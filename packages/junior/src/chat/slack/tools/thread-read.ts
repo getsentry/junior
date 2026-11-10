@@ -32,6 +32,7 @@ import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import { storeAttachment } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { logWarn } from "@/chat/logging";
+import { MAX_USER_ATTACHMENTS } from "@/chat/slack/vision-context";
 
 interface ThreadReadAttachmentDeps {
   conversationId: string;
@@ -58,7 +59,8 @@ function isSlackFileUrl(value: string): boolean {
  * Slack attaches a linked file after the message event, and a file can be in
  * a message that started no Turn. Storing it here gives the model an
  * `attachment_id` for `loadAttachment`. A file that fails to download stays
- * metadata-only, the same as a failed download at turn start.
+ * metadata-only, the same as a failed download at turn start. Callers pass
+ * only files with a Slack `url_private`.
  */
 async function storeThreadFiles(args: {
   conversationId: string;
@@ -69,7 +71,7 @@ async function storeThreadFiles(args: {
   const stored: Array<readonly [string, string]> = [];
   for (const file of args.files) {
     const url = file.url_private;
-    if (!file.id || !url || !isSlackFileUrl(url)) continue;
+    if (!file.id || !url) continue;
     const filename = file.name ?? "attachment";
     try {
       const data = await downloadPrivateSlackFile(url);
@@ -190,13 +192,14 @@ export function createSlackThreadReadTool(
   attachmentDeps?: ThreadReadAttachmentDeps,
 ) {
   return zodTool({
-    description:
-      "Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns `conversation_ids` when you took part in the thread; pass one to `searchConversationEvents`.",
+    description: `Read a Slack thread, including message reaction users, from a shared archive URL or explicit channel + timestamp. Works for the current conversation and public channels. Returns \`conversation_ids\` when you took part in the thread; pass one to \`searchConversationEvents\`. In the current conversation's thread, stores up to ${MAX_USER_ATTACHMENTS} new files per call and returns their \`attachment_id\` for \`loadAttachment\`; \`unstored_file_count\` counts the files left for a later call.`,
+    // Not read-only: it stores files of the current thread as Conversation
+    // attachments. Reading again stores nothing new for the same files.
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
       openWorldHint: true,
-      readOnlyHint: true,
+      readOnlyHint: false,
     },
     inputSchema: z.object({
       url: z
@@ -361,6 +364,7 @@ export function createSlackThreadReadTool(
             : [],
         ),
       );
+      let unstoredFileCount = 0;
       // Only the current Conversation's own thread. Files from other threads
       // stay metadata-only.
       const isCurrentThread =
@@ -369,13 +373,20 @@ export function createSlackThreadReadTool(
       if (attachmentDeps?.storage && isCurrentThread) {
         const unstored = replies.flatMap((reply) =>
           collectMessageFiles(reply).filter(
-            (file) => file.id && !attachmentIdsBySlackFileId.has(file.id),
+            (file) =>
+              file.id &&
+              file.url_private &&
+              isSlackFileUrl(file.url_private) &&
+              !attachmentIdsBySlackFileId.has(file.id),
           ),
         );
+        // One read stores at most as many files as a Turn gives the model.
+        // A later read stores the rest, because stored files match first.
+        unstoredFileCount = Math.max(0, unstored.length - MAX_USER_ATTACHMENTS);
         for (const [fileId, attachmentId] of await storeThreadFiles({
           conversationId: attachmentDeps.conversationId,
           db: attachmentDeps.db,
-          files: unstored,
+          files: unstored.slice(0, MAX_USER_ATTACHMENTS),
           storage: attachmentDeps.storage,
         })) {
           attachmentIdsBySlackFileId.set(fileId, attachmentId);
@@ -400,6 +411,9 @@ export function createSlackThreadReadTool(
           ? { conversation_ids: conversationIds }
           : undefined),
         count: messages.length,
+        ...(unstoredFileCount > 0
+          ? { unstored_file_count: unstoredFileCount }
+          : undefined),
         messages,
       };
     },
