@@ -5,9 +5,6 @@ import {
   ChevronRight,
   Inbox,
   LockKeyhole,
-  Mail,
-  MailOpen,
-  Pencil,
   Pin,
   SquarePen,
 } from "lucide-react";
@@ -26,8 +23,10 @@ import {
 } from "./PinnedConversationOrder";
 import type { ReorderPins } from "./useReorderPinnedConversations";
 import { conversationPath } from "./conversationRoutes";
+import { conversationMenuItems } from "./conversationMenuItems";
 import {
   conversationDisplayTitle,
+  formatConversationCostTotal,
   isIdleConversation,
   visualStatusForConversation,
 } from "../format";
@@ -443,6 +442,10 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   // its review item, so it stays a plain marker.
   const canToggleRead = !props.waiting && (unread || canMarkUnread);
   const togglePin = () => pin.mutate(!pinned);
+  const cost = formatConversationCostTotal(
+    props.conversation.cumulativeUsage,
+    props.conversation.auxiliaryCosts,
+  );
   const toggleArchive = () =>
     archive.mutate({
       archived: !archived,
@@ -616,40 +619,41 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
-        {unread ? (
-          <ContextMenuItem onClick={() => markUnread.mutate(false)}>
-            <MailOpen aria-hidden="true" />
-            Mark as read
-          </ContextMenuItem>
-        ) : (
+        {conversationMenuItems({
+          archive: {
+            archived,
+            disabled: archive.isPending,
+            onClick: toggleArchive,
+            pending: archive.isPending,
+          },
+          pin: { disabled: pin.isPending, onClick: togglePin, pinned },
+          read: {
+            disabled: markUnread.isPending || (!unread && !canMarkUnread),
+            onClick: () => markUnread.mutate(!unread),
+            unread,
+          },
+          rename: { disabled: false, onClick: () => setRenaming(true) },
+        }).map((item) => (
           <ContextMenuItem
-            disabled={!canMarkUnread}
-            onClick={() => markUnread.mutate(true)}
+            disabled={item.disabled}
+            key={item.key}
+            onClick={item.onClick}
           >
-            <Mail aria-hidden="true" />
-            Mark as unread
+            <item.icon aria-hidden="true" />
+            {item.label}
           </ContextMenuItem>
-        )}
-        {/* Archived rows restore before they pin, like the row buttons. */}
-        {archived ? null : (
-          <ContextMenuItem disabled={pin.isPending} onClick={togglePin}>
-            <Pin aria-hidden="true" />
-            {pinned ? "Unpin" : "Pin"}
-          </ContextMenuItem>
-        )}
-        <ContextMenuItem onClick={() => setRenaming(true)}>
-          <Pencil aria-hidden="true" />
-          Rename
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem disabled={archive.isPending} onClick={toggleArchive}>
-          {archived ? (
-            <ArchiveRestore aria-hidden="true" />
-          ) : (
-            <Archive aria-hidden="true" />
-          )}
-          {archived ? "Restore" : "Archive"}
-        </ContextMenuItem>
+        ))}
+        {/* The row has no room for cost. The `⋯` menu leaves it out because
+            the page header shows it. */}
+        {cost ? (
+          <>
+            <ContextMenuSeparator />
+            <div className="flex justify-between gap-3 px-2 py-1.5 text-xs text-muted-foreground">
+              <span>Cost</span>
+              <span className="tabular-nums">{cost}</span>
+            </div>
+          </>
+        ) : null}
       </ContextMenuContent>
       {renaming ? (
         <RenameConversationDialog

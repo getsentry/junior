@@ -1,16 +1,8 @@
 import { useRef, type ReactNode, type Ref, type RefObject } from "react";
 import {
-  Archive,
-  ArchiveRestore,
-  Bell,
-  BellOff,
   Info,
-  Mail,
-  MailOpen,
   MessageSquareShare,
   MessagesSquare,
-  Pin,
-  PinOff,
   ScrollText,
   Search,
   Unlink,
@@ -32,6 +24,7 @@ import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { ShareConversationButton } from "./ShareConversationButton";
 import { OutboundLink } from "../components/OutboundLink";
 import { SlackMark } from "./SlackMark";
+import { conversationMenuItems } from "./conversationMenuItems";
 
 export type ConversationArchiveAction = {
   archived: boolean;
@@ -69,6 +62,12 @@ export type ConversationSubscriptionAction = {
   subscribed: boolean;
 };
 
+export type ConversationRenameAction = {
+  disabled: boolean;
+  error: boolean;
+  onClick(): void;
+};
+
 export type ConversationReadAction = {
   disabled: boolean;
   error: boolean;
@@ -84,6 +83,7 @@ export function ConversationHeaderActions(props: {
   archive: ConversationArchiveAction;
   pin: ConversationPinAction;
   read: ConversationReadAction;
+  rename: ConversationRenameAction;
   subscription: ConversationSubscriptionAction;
   conversationId: string;
   /** Present only when the viewer can move this conversation to Slack. */
@@ -102,6 +102,10 @@ export function ConversationHeaderActions(props: {
 }) {
   const mobile = props.placement === "mobile";
   const eventLogOpen = props.view === "raw";
+  // Rows above the separator need page state or detail-only fields, so the
+  // sidebar row menu cannot show them. Share shows its result in its own
+  // label, and that menu closes on click. Rows below the separator come from
+  // `conversationMenuItems`, which the sidebar row menu renders too.
   return (
     <div className="grid gap-0.5">
       {mobile && !eventLogOpen ? (
@@ -179,40 +183,16 @@ export function ConversationHeaderActions(props: {
         </OutboundLink>
       ) : null}
       <Separator className="my-1 bg-dashboard-border-subtle" />
-      <MenuActionButton
-        disabled={props.read.disabled}
-        label={props.read.unread ? "Mark as read" : "Mark as unread"}
-        onClick={props.read.onClick}
-      >
-        {props.read.unread ? (
-          <MailOpen aria-hidden="true" size={16} strokeWidth={2} />
-        ) : (
-          <Mail aria-hidden="true" size={16} strokeWidth={2} />
-        )}
-      </MenuActionButton>
-      <MenuActionButton
-        disabled={props.pin.disabled}
-        label={props.pin.pinned ? "Unpin" : "Pin"}
-        onClick={props.pin.onClick}
-      >
-        {props.pin.pinned ? (
-          <PinOff aria-hidden="true" size={16} strokeWidth={2} />
-        ) : (
-          <Pin aria-hidden="true" size={16} strokeWidth={2} />
-        )}
-      </MenuActionButton>
-      <MenuActionButton
-        disabled={props.subscription.disabled}
-        label={props.subscription.subscribed ? "Unsubscribe" : "Subscribe"}
-        onClick={props.subscription.onClick}
-      >
-        {props.subscription.subscribed ? (
-          <BellOff aria-hidden="true" size={16} strokeWidth={2} />
-        ) : (
-          <Bell aria-hidden="true" size={16} strokeWidth={2} />
-        )}
-      </MenuActionButton>
-      <ArchiveConversationButton {...props.archive} />
+      {conversationMenuItems(props).map((item) => (
+        <MenuActionButton
+          disabled={item.disabled}
+          key={item.key}
+          label={item.label}
+          onClick={item.onClick}
+        >
+          <item.icon aria-hidden="true" size={16} strokeWidth={2} />
+        </MenuActionButton>
+      ))}
     </div>
   );
 }
@@ -361,26 +341,6 @@ function MenuActionButton(props: {
     >
       {props.children}
       <span>{props.label}</span>
-    </Button>
-  );
-}
-
-function ArchiveConversationButton(props: ConversationArchiveAction) {
-  const label = props.pending
-    ? "Saving archive state"
-    : props.archived
-      ? "Unarchive"
-      : "Archive";
-  const Icon = props.archived ? ArchiveRestore : Archive;
-  return (
-    <Button
-      aria-label={label}
-      disabled={props.disabled}
-      onClick={props.onClick}
-      size="menu"
-    >
-      <Icon aria-hidden="true" size={16} strokeWidth={2} />
-      <span>{label}</span>
     </Button>
   );
 }

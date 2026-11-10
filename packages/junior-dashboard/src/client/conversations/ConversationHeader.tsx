@@ -18,6 +18,7 @@ import {
   type ConversationDeliveryAction,
   type ConversationPinAction,
   type ConversationReadAction,
+  type ConversationRenameAction,
   type ConversationSubscriptionAction,
 } from "./ConversationHeaderActions";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
@@ -59,6 +60,7 @@ export function ConversationHeader(props: {
   pin: ConversationPinAction;
   privacy: ReactNode;
   read: ConversationReadAction;
+  rename: ConversationRenameAction;
   search: string;
   searchMatch: TranscriptSearchMatch;
   sentryConversationUrl?: string;
@@ -135,6 +137,14 @@ export function ConversationHeader(props: {
       delivery={props.delivery}
       pin={props.pin}
       read={props.read}
+      rename={{
+        ...props.rename,
+        // Rename opens a dialog, so close the menu first.
+        onClick: () => {
+          close();
+          props.rename.onClick();
+        },
+      }}
       subscription={props.subscription}
       copyAction={props.copyAction}
       detailsOpen={detailsOpen}
@@ -193,6 +203,7 @@ export function ConversationHeader(props: {
     Boolean(props.archive.error) ||
     props.pin.error ||
     props.read.error ||
+    props.rename.error ||
     props.subscription.error ||
     props.delivery?.error ||
     Boolean(props.forks) ||
@@ -331,6 +342,11 @@ export function ConversationHeader(props: {
         {props.read.error ? (
           <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
             Could not update read state.
+          </div>
+        ) : null}
+        {props.rename.error ? (
+          <div className="px-4 pb-3 text-xs text-red-300 md:px-7">
+            Could not rename.
           </div>
         ) : null}
         {props.subscription.error ? (

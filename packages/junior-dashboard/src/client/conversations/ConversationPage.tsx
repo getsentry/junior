@@ -27,6 +27,8 @@ import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
 import { useConversationDelivery } from "./useConversationDelivery";
 import { useMarkConversationUnread } from "./useMarkConversationUnread";
+import { useRenameConversation } from "./useRenameConversation";
+import { RenameConversationDialog } from "./RenameConversationDialog";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
@@ -308,6 +310,8 @@ export function ConversationPage(props: {
   const delivery = useConversationDelivery(conversationId);
   const deliveryPaused = detail.data?.deliveryPaused;
   const markUnread = useMarkConversationUnread(conversationId);
+  const rename = useRenameConversation(conversationId);
+  const [renaming, setRenaming] = useState(false);
   const markRead = useMarkConversationRead(conversationId);
   // Focus or a click in the composer counts as reading, like transcript input.
   const [composerEngaged, setComposerEngaged] = useState(false);
@@ -742,6 +746,12 @@ export function ConversationPage(props: {
                 onClick: () => markUnread.mutate(!unread),
                 unread,
               }}
+              rename={{
+                // The API lets only participants rename, the same as pin.
+                disabled: !conversation || !detail.data?.isParticipant,
+                error: Boolean(rename.error),
+                onClick: () => setRenaming(true),
+              }}
               archive={{
                 archived: Boolean(conversation?.archivedAt),
                 disabled: !conversation || archive.isPending,
@@ -922,6 +932,13 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+      {renaming ? (
+        <RenameConversationDialog
+          onClose={() => setRenaming(false)}
+          onSave={(next) => rename.mutate(next)}
+          title={title}
+        />
+      ) : null}
       {continueInSlackOpen ? (
         <ContinueInSlackDialog
           conversationId={conversationId}

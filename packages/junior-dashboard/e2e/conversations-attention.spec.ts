@@ -369,6 +369,16 @@ test.describe("conversation sections", () => {
 
     await page.reload();
     await expect(renamedRow).toBeVisible();
+
+    // The `⋯` menu renames too.
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    );
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
+      "Investigate checkout latency",
+    );
   });
 
   test("the sidebar review chip opens details at Needs you", async ({

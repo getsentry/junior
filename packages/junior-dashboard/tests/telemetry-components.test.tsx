@@ -394,6 +394,7 @@ describe("dashboard canonical-event components", () => {
             onClick: () => {},
             unread: false,
           }}
+          rename={{ disabled: false, error: false, onClick: () => {} }}
           search=""
           searchMatch={{
             count: 0,

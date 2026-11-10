@@ -168,6 +168,7 @@ export function NewConversationPending(props: {
                 onClick: noop,
                 unread: false,
               }}
+              rename={{ disabled: true, error: false, onClick: noop }}
               search=""
               searchMatch={searchMatch}
               sidebarToggle={props.sidebarToggle}
