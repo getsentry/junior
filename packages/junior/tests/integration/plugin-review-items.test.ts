@@ -127,6 +127,7 @@ describe("plugin review items", () => {
       {
         conversationId: "slack:C1:1.000001",
         items: [{ plugin: "github", title: NOTICE.title }],
+        waitingSince: expect.any(String),
       },
     ]);
     expect(await countReviewItemsNeedingUser(getDb(), ana.user.id)).toBe(1);
