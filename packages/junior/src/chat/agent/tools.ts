@@ -704,7 +704,7 @@ export async function wireAgentTools(
 }
 
 /** Bind the agent tools that the Turn's behavior gives it. */
-function bindAgentTools(
+export function bindAgentTools(
   run: AgentRun,
   agents: AgentTools,
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
