@@ -52,6 +52,9 @@ export const automationCostWindowsSchema = z
   })
   .strict();
 
+/** Runs each summary carries for the list run strip. */
+export const AUTOMATION_RECENT_RUN_LIMIT = 20;
+
 const automationSummaryBaseSchema = z.object({
   costUsd: automationCostWindowsSchema,
   credentialMode: z.enum(["creator", "system"]),
@@ -68,10 +71,24 @@ const automationSummaryBaseSchema = z.object({
   lastRunAt: z.string().datetime().optional(),
   lastRunStatus: z.enum(["blocked", "completed", "failed"]).optional(),
   ownedByViewer: z.boolean(),
+  /** Newest terminal runs, oldest first, so the list can show recent health. */
+  recentRuns: z
+    .array(
+      z
+        .object({
+          durationMs: z.number().finite().nonnegative().optional(),
+          executedAt: z.string().datetime(),
+          status: z.enum(["blocked", "completed", "failed"]),
+        })
+        .strict(),
+    )
+    .max(AUTOMATION_RECENT_RUN_LIMIT),
   runs: automationRunWindowsSchema,
   outcomes: z.array(taskOutcomeSchema).max(5),
   /** Short display title; falls back from the task when unset. */
   title: z.string().min(1),
+  /** Linked Conversation cost of every run, since the Automation was created. */
+  totalCostUsd: z.number().finite().nonnegative(),
   totalRuns: z.number().int().nonnegative(),
 });
 
@@ -117,17 +134,6 @@ export const automationMetricBucketSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
 
-/** One UTC day/hour of completed automation executions stacked by automation type. */
-export const automationExecutionDaySchema = z
-  .object({
-    /** Linked conversation spend for executions in this bucket. */
-    costUsd: z.number().finite().nonnegative(),
-    date: automationMetricBucketSchema,
-    event: z.number().int().nonnegative(),
-    scheduled: z.number().int().nonnegative(),
-  })
-  .strict();
-
 export const automationListQuerySchema = z
   .object({
     q: z.string().trim().max(200).optional(),
@@ -155,9 +161,6 @@ const automationFilterOptionSchema = z
 
 export const automationListSchema = z
   .object({
-    executionDays: z.array(automationExecutionDaySchema),
-    executionHours: z.array(automationExecutionDaySchema).optional(),
-    executionSixHours: z.array(automationExecutionDaySchema).optional(),
     automations: z.array(automationSummarySchema),
     total: z.number().int().nonnegative(),
     page: z.number().int().positive(),
@@ -217,6 +220,8 @@ export const automationExecutionStatusDaySchema = z
   .object({
     blocked: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
+    /** Linked Conversation cost of the runs in this bucket. */
+    costUsd: z.number().finite().nonnegative(),
     date: automationMetricBucketSchema,
     failed: z.number().int().nonnegative(),
   })
@@ -332,9 +337,6 @@ export type AutomationVersionList = z.output<
   typeof automationVersionListSchema
 >;
 
-export type AutomationExecutionDay = z.output<
-  typeof automationExecutionDaySchema
->;
 export type AutomationExecutionStatusDay = z.output<
   typeof automationExecutionStatusDaySchema
 >;

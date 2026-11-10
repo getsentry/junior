@@ -12,7 +12,6 @@ import {
   PopoverTrigger,
 } from "../../components/ui/popover";
 import { Button } from "../../components/ui/button";
-import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { FilterGroup } from "../../components/FilterBar";
 import { SearchInput } from "../../components/SearchInput";
 import { NativeSelect } from "../../components/ui/native-select";
@@ -100,57 +99,26 @@ export function AutomationFilters(props: {
   );
   return (
     <div className="grid gap-3">
-      <div className="grid gap-2 lg:grid-cols-[auto_minmax(16rem,1fr)] lg:items-center lg:gap-4">
-        <ToggleGroup
-          aria-label="Scope"
-          className="flex-wrap gap-2"
-          onValueChange={([next]) => {
-            if (next) onChange("scope", next);
-          }}
-          value={[filters.scope]}
-        >
-          {(
-            [
-              ["all", "All"],
-              ["mine", "Mine"],
-              ["public", "Public"],
-              ["attention", "Needs attention"],
-            ] as const
-          ).map(([value, label]) => (
-            <ToggleGroupItem
-              className="min-h-11 lg:min-h-9"
-              key={value}
-              value={value}
-              variant="pill"
-            >
-              {label}
-              {data && value !== "attention" ? (
-                <span className="ml-1.5 opacity-65">{data.counts[value]}</span>
-              ) : null}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <div className="flex items-center gap-2">
-          <SearchInput
-            className="flex-1"
-            size="default"
-            label="Search automations"
-            placeholder="Search automations"
-            value={props.searchText}
-            onChange={props.onSearch}
-          />
-          {desktop ? (
-            <Popover open={expanded} onOpenChange={setExpanded}>
-              <PopoverTrigger render={trigger} />
-              <PopoverContent align="end" className="w-80">
-                <PopoverTitle>Filters</PopoverTitle>
-                <div className="mt-4">{controls}</div>
-              </PopoverContent>
-            </Popover>
-          ) : (
-            trigger
-          )}
-        </div>
+      <div className="flex items-center gap-2">
+        <SearchInput
+          className="flex-1"
+          size="default"
+          label="Search automations"
+          placeholder="Search automations"
+          value={props.searchText}
+          onChange={props.onSearch}
+        />
+        {desktop ? (
+          <Popover open={expanded} onOpenChange={setExpanded}>
+            <PopoverTrigger render={trigger} />
+            <PopoverContent align="end" className="w-80">
+              <PopoverTitle>Filters</PopoverTitle>
+              <div className="mt-4">{controls}</div>
+            </PopoverContent>
+          </Popover>
+        ) : (
+          trigger
+        )}
       </div>
       {activeFilters.length > 0 ? (
         <div
@@ -241,25 +209,6 @@ function AutomationFilterFields({
         onChange={(value) => onChange("state", value)}
       />
     </div>
-  );
-}
-
-/** Keep list order visible beside the result count instead of inside Filters. */
-export function AutomationSort(props: {
-  value: AutomationListQuery["sort"];
-  onChange(value: string): void;
-}) {
-  return (
-    <DirectorySortSelect
-      ariaLabel="Sort automations"
-      onChange={props.onChange}
-      options={[
-        { value: "newest", label: "Recently created" },
-        { value: "oldest", label: "Oldest created" },
-        { value: "title", label: "Title A–Z" },
-      ]}
-      value={props.value}
-    />
   );
 }
 
