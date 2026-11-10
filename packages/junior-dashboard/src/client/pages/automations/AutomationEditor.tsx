@@ -150,7 +150,7 @@ export function AutomationEditor(props: {
         event.preventDefault();
         if (save.isPending || conflict || !dirty) return;
         // The schema allows empty text, because a skill needs no context.
-        const taskError =
+        const taskError: Record<string, string[]> | undefined =
           draft.skill === ""
             ? { skill: ["Choose a skill."] }
             : draft.skill === null && !draft.instruction.trim()
