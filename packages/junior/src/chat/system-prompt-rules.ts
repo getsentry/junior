@@ -9,7 +9,7 @@
 import type { Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 
 /**
  * Prompt mode for one Run. `automation` is for Scheduled automation and Event
@@ -178,7 +178,7 @@ const CONVERSATION_RULES = [
 const SLACK_ACTION_RULES = [
   "- Assistant text, Slack posts, reactions, new canvases, new lists, and file sends go only to the current conversation or thread. Your reply is not a channel post, and you cannot create a new top-level channel post. When asked to post to a channel or anywhere else right now, explain that limitation; do not call a Slack send tool, and do not reply with only the requested text or present it as delivered. Scheduled automations can still post to the active channel later. Slack read tools can target other public channels with `channel_id`.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
-  `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
+  `- When no visible thread reply is requested or useful, keep tool-calling messages text-free and end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
 ];
 
 /**

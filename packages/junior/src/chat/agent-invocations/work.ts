@@ -672,7 +672,7 @@ async function saveAgentInvocationResult(args: {
             status: "blocked" as const,
           }
         : {
-            result: args.result.text,
+            result: args.result.text || (args.result.noReply?.note ?? ""),
             status: "completed" as const,
           }),
   });

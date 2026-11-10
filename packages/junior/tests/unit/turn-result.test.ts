@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { buildTurnResult } from "@/chat/services/turn-result";
 
 describe("buildTurnResult", () => {
@@ -278,28 +277,6 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("treats the no-reply marker as intentional silent completion", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: NO_REPLY_MARKER }],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "Do whatever makes sense here",
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      modelId: "test-model",
-      reasoningLevel: "medium",
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(true);
-  });
-
   it("does not treat a tool-call terminal tail as intentional no-reply", () => {
     const reply = buildTurnResult({
       newMessages: [
@@ -328,7 +305,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
-  it("keeps no-reply marker silent when side-effect tools also ran", () => {
+  it("keeps a legacy marker reply silent when side-effect tools also ran", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -339,7 +316,7 @@ describe("buildTurnResult", () => {
         },
         {
           role: "assistant",
-          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          content: [{ type: "text", text: "[[NO_REPLY]]" }],
           stopReason: "stop",
         },
       ],

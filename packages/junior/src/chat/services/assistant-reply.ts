@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isNoReplyMarker, stripQuietMarker } from "@/chat/no-reply";
+import { isLegacyNoReplyMarker } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -7,7 +7,7 @@ const THINKING_XML_BLOCK_PATTERN =
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 
 type ReplyDecision =
-  | { kind: "deliver"; text: string; quiet?: true }
+  | { kind: "deliver"; text: string }
   | { kind: "empty" }
   | { kind: "suppress" };
 
@@ -35,15 +35,12 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Marker silence and tool-call tails both mean do not deliver this message.
-  if (isNoReplyMarker(text)) {
+  // Old history ends some Turns with a marker, and the model can copy one.
+  // That text must never reach a person.
+  if (isLegacyNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
-  // Strip the marker on every path so it never reaches a person. Only Event
-  // Turn Delivery acts on `quiet`; other callers deliver the text as usual.
-  const quietText = stripQuietMarker(text);
-  if (quietText === undefined) return { kind: "deliver", text };
-  return { kind: "deliver", text: quietText, quiet: true };
+  return { kind: "deliver", text };
 }
 
 /** Return destination-visible reply text when the message is deliverable. */

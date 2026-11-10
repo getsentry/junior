@@ -387,6 +387,21 @@ describe("agent invocation conversation work", () => {
       terminal: { outcome: "blocked", type: "turn_completed" },
       subagentOutcome: "blocked",
     },
+    {
+      // A child has no mailbox Turn to keep the note, so it is the result.
+      name: "quiet",
+      output: {
+        type: "toolCall" as const,
+        name: "noReply",
+        arguments: { note: "Bot comment needs no change." },
+      },
+      invocation: {
+        result: "Bot comment needs no change.",
+        status: "completed",
+      },
+      terminal: { outcome: "success", type: "turn_completed" },
+      subagentOutcome: "success",
+    },
   ])(
     "finishes a $name child Turn after saving its result",
     async ({

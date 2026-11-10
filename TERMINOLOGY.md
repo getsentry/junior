@@ -99,8 +99,8 @@ Canonical words for Junior code and docs. One concept, one word.
   and search. **Message update**: later state stored as `message_updated`.
 - **Reply**: a destination-visible Message owned by delivery or reply-policy
   code. Execution code says turn, run, result, outcome, or delivery.
-- **Quiet message**: an Event Turn's assistant Message that the agent marked
-  as routine. Junior stores it but does not deliver it to the Location.
+- **Quiet message**: the `noReply` note of an Event Turn, for a routine
+  outcome. Junior stores it but does not deliver it to the Location.
 - **Transcript**: a reporting view of Messages and history. Not storage.
 - **Quick question**: a hidden, read-only fork that asks about text in one
   Reply. Keep as fork makes it a normal fork.
