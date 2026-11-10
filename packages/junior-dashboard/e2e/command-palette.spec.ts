@@ -149,16 +149,30 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   const questionHeld = new Promise<void>((resolve) => {
     releaseQuestion = resolve;
   });
+  // A third page loads after the reader starts to type.
+  let lastPageSent = false;
+  let releaseLastPage = () => {};
+  const lastPageHeld = new Promise<void>((resolve) => {
+    releaseLastPage = resolve;
+  });
   await page.route(`**/api/review-items?*`, async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
       return route.fallback();
     }
-    if (!url.searchParams.has("cursor")) {
+    const cursor = url.searchParams.get("cursor");
+    if (!cursor) {
       return route.fulfill({ json: { items: [], nextCursor: "page-2" } });
     }
-    await questionHeld;
-    await route.fulfill({ json: { items: [question] } });
+    if (cursor === "page-2") {
+      await questionHeld;
+      return route.fulfill({
+        json: { items: [question], nextCursor: "page-3" },
+      });
+    }
+    await lastPageHeld;
+    await route.fulfill({ json: { items: [] } });
+    lastPageSent = true;
   });
   await page.goto(dashboard.baseURL);
 
@@ -178,6 +192,22 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   });
   await expect(docked).toBeFocused();
   await expect(composer).toBeVisible();
+
+  // The last page does not take the focus back from the message box.
+  await composer.click();
+  await composer.pressSequentially("Hold on");
+  releaseLastPage();
+  await expect.poll(() => lastPageSent).toBe(true);
+  // Let the app render the last page before the next keys.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await composer.pressSequentially(" 1");
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue("Hold on 1");
 });
 
 test("jumps to a page from the command palette", async ({

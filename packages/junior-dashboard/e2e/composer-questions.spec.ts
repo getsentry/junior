@@ -172,15 +172,30 @@ test("steps through several questions with the keyboard", async ({
   await screenshot(page, "conversation-question-picks-and-text", {
     view: "desktop",
   });
+
+  // A pick that fails to save on a hidden question shows that question and
+  // its error. The message waits with the draft.
+  await question.getByRole("button", { name: "Next question" }).click();
+  await expect(question).toContainText("2 of 2", { useInnerText: true });
+  const failing = "**/api/review-items/qa-migration-tables/actions";
+  await page.route(failing, (route) =>
+    route.fulfill({ json: { error: "The batch is locked." }, status: 409 }),
+  );
+  await composer.press("Enter");
+  await expect(question).toContainText("1 of 2", { useInnerText: true });
+  await expect(question.getByText("The batch is locked.")).toBeVisible();
+  await expect(composer).toHaveValue("Write off the negative invoices.");
+  await page.unroute(failing);
+
   await composer.press("Enter");
   await expect(question).toHaveCount(0);
   await expect(composer).toHaveValue("");
   expect(actions).toEqual([
     { action: "submit", answer: { values: { window: ["Tuesday 14:00 UTC"] } } },
-    {
+    ...Array.from({ length: 2 }, () => ({
       action: "submit",
       answer: { values: { owner: ["Riley"], tables: ["invoices"] } },
-    },
+    })),
   ]);
   await expect(
     page.getByRole("region", { name: "Asked Handle the negative invoices" }),

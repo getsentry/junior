@@ -43,13 +43,16 @@ export function useComposerQuestions(conversationId: string) {
   const stale = query.isPlaceholderData;
   // The list pages through every open item, notices too, so a question can
   // sit past the first page. Load every page so each question docks.
-  const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
+  const { fetchNextPage, hasNextPage, isFetching } = query;
   // A failed page stops the loop, so it does not retry without end.
   const failed = query.isFetchNextPageError;
+  // Each page that lands asks for the next one. The fetch flags alone can
+  // end where they started, so the loop would not run again.
+  const pageCount = query.data?.pages.length ?? 0;
   useEffect(() => {
-    if (stale || failed || !hasNextPage || isFetchingNextPage) return;
+    if (stale || failed || !hasNextPage || isFetching) return;
     void fetchNextPage();
-  }, [failed, fetchNextPage, hasNextPage, isFetchingNextPage, stale]);
+  }, [failed, fetchNextPage, hasNextPage, isFetching, pageCount, stale]);
   const questions = useMemo(
     () => (stale ? [] : items.filter(reviewItemWaitsForAnswer)),
     [items, stale],
@@ -123,15 +126,25 @@ export function ComposerQuestion(props: {
   }, [hasAnswers, onAnswersChange]);
   // A send from the message box keeps focus there.
   const sendingFromMessageBoxRef = useRef(false);
+  // A step, or an answer to the shown question, moves the reader to the
+  // next question. A question that docks by itself is not their move.
+  const readerMovedRef = useRef(false);
   useImperativeHandle(props.answersRef, () => ({
     send: async () => {
       sendingFromMessageBoxRef.current = true;
       const sends = props.questions.flatMap((question) => {
         const send = formsRef.current.get(question.id)?.sendPicks();
-        return send ? [send] : [];
+        return send ? [send.then((sent) => ({ id: question.id, sent }))] : [];
       });
       try {
-        return (await Promise.all(sends)).every(Boolean);
+        const failed = (await Promise.all(sends)).find((send) => !send.sent);
+        // A failed pick can sit on a hidden question. Show it, so its error
+        // tells the reader why the message did not go.
+        if (failed && failed.id !== item?.id) {
+          readerMovedRef.current = true;
+          setSelectedId(failed.id);
+        }
+        return !failed;
       } finally {
         sendingFromMessageBoxRef.current = false;
       }
@@ -143,9 +156,6 @@ export function ComposerQuestion(props: {
     props.questions.findIndex((item) => item.id === selectedId),
   );
   const item = props.questions[index];
-  // A step, or an answer to the shown question, moves the reader to the
-  // next question. A question that docks by itself is not their move.
-  const readerMovedRef = useRef(false);
   const shownIdRef = useRef<string>(undefined);
   const { onShow } = props;
   useEffect(() => {

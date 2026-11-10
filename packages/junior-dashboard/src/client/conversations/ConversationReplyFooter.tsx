@@ -254,7 +254,8 @@ function ReplyFooter(props: {
   const draftFrom = props.focusRequest?.draftFrom;
   const questionShown = questions.length > 0;
   useEffect(() => {
-    if (!focusKey || questionsPending) return;
+    // A docked question takes the focus at once, before the reader types.
+    if (!focusKey || (questionsPending && !questionShown)) return;
     onFocusRequestDone(focusKey);
     // A new Conversation opens here after its first send. The reader was
     // typing in its pending reply box, so the text and the cursor move here,
