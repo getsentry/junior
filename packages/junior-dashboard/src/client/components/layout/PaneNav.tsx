@@ -49,6 +49,8 @@ const PANE_EDGE_CLASS =
 // Rows use the pane grid (`SIDEBAR_ROW_GRID_CLASS`), so icons, the logo, and
 // the avatar share one centre axis and every label starts on the
 // conversation title edge.
+const SEARCH_KEY_SHORTCUTS = "Meta+K Control+K";
+
 const ROW_CLASS = cn(
   SIDEBAR_ROW_GRID_CLASS,
   "h-8 w-full min-w-0 items-center rounded-lg border-0 text-left font-sans text-sm font-normal no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 [&_svg]:size-4",
@@ -211,7 +213,7 @@ function PaneSearch() {
   const pane = usePaneNav();
   return (
     <HeaderIconButton
-      keyShortcuts="Meta+K Control+K"
+      keyShortcuts={SEARCH_KEY_SHORTCUTS}
       label={COMMAND_PALETTE_LABEL}
       onClick={pane.onSearch}
       shortcut={COMMAND_PALETTE_SHORTCUT}
@@ -284,22 +286,20 @@ function PaneNavItemRow(props: { item: DashboardHeaderNavItem }) {
 }
 
 /**
- * Head the pane: home, the command palette, the pane toggle, a new
- * Conversation, and the primary destinations as labelled rows. Without
- * `onNewConversation`, new goes home, where the composer takes focus.
+ * Head the pane: home, the pane toggle, then a new Conversation, search
+ * (the command palette), and the primary destinations as labelled rows.
+ * Without `onNewConversation`, new goes home, where the composer takes
+ * focus.
  */
 function PaneNavHeader(props: { onNewConversation?(): void }) {
   const pane = usePaneNav();
   const name = getDashboardAgentName();
   return (
     <div
-      className={cn(
-        "grid gap-0.5 border-b border-b-dashboard-border-subtle px-3 pb-3 max-md:hidden",
-        PANE_EDGE_CLASS,
-      )}
+      className={cn("grid gap-0.5 px-3 pb-3 max-md:hidden", PANE_EDGE_CLASS)}
     >
       {/* Same height and centre line as the page headers. The logo sits on
-          the icon axis and the name on the label edge. The buttons end on
+          the icon axis and the name on the label edge. The toggle ends on
           the right content edge, 24px in, like row dates and counts. */}
       <div className={cn(SIDEBAR_ROW_GRID_CLASS, "h-12 items-center pr-1")}>
         <Link
@@ -312,10 +312,7 @@ function PaneNavHeader(props: { onNewConversation?(): void }) {
             {name}
           </span>
         </Link>
-        <div className="flex shrink-0 items-center gap-1">
-          <PaneSearch />
-          <PaneToggle open />
-        </div>
+        <PaneToggle open />
       </div>
       {props.onNewConversation ? (
         <button
@@ -332,6 +329,18 @@ function PaneNavHeader(props: { onNewConversation?(): void }) {
           New conversation
         </Link>
       )}
+      <button
+        aria-keyshortcuts={SEARCH_KEY_SHORTCUTS}
+        className={cn(ROW_CLASS, IDLE_ROW_CLASS, "cursor-pointer")}
+        onClick={pane.onSearch}
+        type="button"
+      >
+        <Search aria-hidden="true" strokeWidth={1.9} />
+        Search
+        <kbd className="font-sans text-xs text-dashboard-text-faint">
+          {COMMAND_PALETTE_SHORTCUT}
+        </kbd>
+      </button>
       <nav aria-label="Primary" className="grid gap-0.5">
         <PaneRow
           active={pane.workspaceActive}

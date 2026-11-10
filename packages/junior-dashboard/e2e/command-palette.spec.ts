@@ -123,7 +123,7 @@ test("switches conversations from the command palette without a server search", 
   ).toBeFocused();
 
   // The open conversation is not a row, so Enter switches away from it.
-  await page.getByRole("button", { name: "Go to conversation" }).click();
+  await page.getByRole("button", { name: "Search" }).click();
   await expect(input).toBeFocused();
   await expect(
     palette.getByRole("option", { name: /Checkout latency triage/ }),
