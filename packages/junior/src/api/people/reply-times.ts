@@ -10,6 +10,7 @@ import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-r
 import type { ConversationKind } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import { findUserByEmail, readActorIdentity } from "@/chat/plugins/viewer";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { juniorConversationMetrics, juniorConversations } from "@/db/schema";
 import {
   personReplyTimesReportSchema,
@@ -20,6 +21,14 @@ const DAY_MS = 24 * 60 * 60_000;
 // One read replays at most this many of the person's most recent
 // Conversations, so a busy person does not make one slow request.
 const MAX_CONVERSATIONS = 200;
+// Each uncached read replays up to `MAX_CONVERSATIONS` whole histories. A
+// person reloads the profile and switches ranges within minutes, and the
+// replies of a few minutes barely change a histogram of days. So one replay
+// per person and range every 10 minutes is enough.
+const REPLY_TIMES_CACHE_TTL_MS = 10 * 60_000;
+
+const replyTimesCacheKey = (userId: string, days: number) =>
+  `people-reply-times:v1:${userId}:${days}`;
 
 interface ConversationRow {
   conversationId: string;
@@ -77,6 +86,15 @@ export async function readPersonReplyTimes(args: {
 }): Promise<PersonReplyTimesReport | undefined> {
   const subject = await findUserByEmail(args.email);
   if (!subject || subject.id !== args.viewer.id) return undefined;
+  // Read the cache only after the check above, and key it by the verified
+  // User, so a cached report reaches only its person.
+  const state = getStateAdapter();
+  await state.connect();
+  const cacheKey = replyTimesCacheKey(subject.id, args.days);
+  const cached = personReplyTimesReportSchema.safeParse(
+    await state.get(cacheKey),
+  );
+  if (cached.success) return cached.data;
   const nowMs = Date.now();
   const startMs = nowMs - args.days * DAY_MS;
   const conversations = await loadPersonConversations(
@@ -116,7 +134,7 @@ export async function readPersonReplyTimes(args: {
     gaps.map((gap) => repliedBySubject(gap.replyActor)),
   );
   const own = gaps.filter((_, index) => replied[index]);
-  return personReplyTimesReportSchema.parse({
+  const report = personReplyTimesReportSchema.parse({
     days: args.days,
     depths: TURN_DEPTHS.map((depth) => ({
       depth,
@@ -128,4 +146,10 @@ export async function readPersonReplyTimes(args: {
     histogram: gapHistogramReport(own.map((gap) => gap.gapMs)),
     partial: canceledBatches > 0,
   });
+  // A partial report is not stored, so the next read tries the canceled
+  // batches again.
+  if (!report.partial) {
+    await state.set(cacheKey, report, REPLY_TIMES_CACHE_TTL_MS);
+  }
+  return report;
 }

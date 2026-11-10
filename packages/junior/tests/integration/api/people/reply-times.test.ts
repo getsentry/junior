@@ -106,6 +106,17 @@ describe("person reply times API", () => {
       { startMs: 7 * MINUTE, endMs: 10 * MINUTE, count: 1 },
     ]);
 
+    // A second read within the cache TTL serves the stored report.
+    vi.setSystemTime(T0 + 135 * MINUTE);
+    const again = await replyTimes("alice@example.com");
+    expect(await again.json()).toEqual(report);
+    // After the TTL the report is built again.
+    vi.setSystemTime(T0 + 141 * MINUTE);
+    const fresh = personReplyTimesReportSchema.parse(
+      await (await replyTimes("alice@example.com")).json(),
+    );
+    expect(fresh.generatedAt).toBe(new Date(T0 + 141 * MINUTE).toISOString());
+
     const other = await replyTimes("bob@example.com");
     expect(other.status).toBe(404);
     expect(await other.json()).toEqual({ error: "Reply times not found." });
