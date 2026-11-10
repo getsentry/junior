@@ -443,6 +443,7 @@ Attributes on the `cache_warming.warmup` span:
 | `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                        |
 | `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                          |
 | `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                 |
+| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used its parent segment's gaps  |
 | `app.cost.total_usd`                   | double  | cost of the warmup call                                   |
 | `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                   |
 
@@ -452,6 +453,9 @@ Attributes on the `cache_warming.warmup` span:
   pick its gap segment: `user|system:1|2-3|4+:open|done|none`, or
   `archived:open|done|none`. The `cache_warming.warmup.*` and
   `cache_warming.conversation.returned` logs carry them too.
+- A segment with fewer than 20 gaps leans on its parent segment: the
+  `none` segment with the same Actor and Turn depth. `parent_prior` is true
+  when the parent's gaps were in the decision.
 - The decision attributes are absent when the warmup skipped before the
   decision. The cost and usage attributes are absent when no warmup call
   completed.
