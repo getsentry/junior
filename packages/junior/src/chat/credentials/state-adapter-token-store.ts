@@ -4,8 +4,17 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
+import {
+  createEncryptedState,
+  readEncryptedOrPlaintext,
+  type EncryptedState,
+} from "@/chat/encryption/state";
 import { sleep } from "@/chat/sleep";
-import { acquireActiveLock } from "@/chat/state/locks";
+import {
+  acquireActiveLock,
+  MUTATION_LOCK_TTL_MS,
+  withLock,
+} from "@/chat/state/locks";
 
 const KEY_PREFIX = "oauth-token";
 const BUFFER_MS = 24 * 60 * 60 * 1000; // 24h buffer for refresh token lifetime
@@ -23,19 +32,52 @@ function refreshLockKey(userId: string, provider: string): string {
 
 export class StateAdapterTokenStore implements UserTokenStore {
   private readonly state: StateAdapter;
+  private readonly secrets: EncryptedState;
 
   constructor(stateAdapter: StateAdapter) {
     this.state = stateAdapter;
+    this.secrets = createEncryptedState(stateAdapter);
   }
 
   async get(
     userId: string,
     provider: string,
   ): Promise<StoredTokens | undefined> {
-    const stored = await this.state.get<unknown>(tokenKey(userId, provider));
-    return stored === null || stored === undefined
-      ? undefined
-      : storedTokensSchema.parse(stored);
+    const stored = await readEncryptedOrPlaintext(
+      this.state,
+      tokenKey(userId, provider),
+    );
+    if (!stored) return undefined;
+    const tokens = storedTokensSchema.parse(stored.value);
+    if (stored.plaintext) await this.encryptPlaintext(userId, provider);
+    return tokens;
+  }
+
+  /**
+   * Save plaintext tokens again, encrypted. It runs only when the refresh gate
+   * is free, so it cannot write back a refresh token that a refresh replaced.
+   *
+   * TODO(dcramer): Delete with `readEncryptedOrPlaintext`.
+   */
+  private async encryptPlaintext(
+    userId: string,
+    provider: string,
+  ): Promise<void> {
+    await withLock(
+      this.state,
+      refreshLockKey(userId, provider),
+      async () => {
+        const key = tokenKey(userId, provider);
+        const current = await readEncryptedOrPlaintext(this.state, key);
+        if (!current?.plaintext) return;
+        await this.set(
+          userId,
+          provider,
+          storedTokensSchema.parse(current.value),
+        );
+      },
+      { ttlMs: MUTATION_LOCK_TTL_MS },
+    );
   }
 
   async set(
@@ -48,7 +90,7 @@ export class StateAdapterTokenStore implements UserTokenStore {
     const ttlMs = expiresAt
       ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
       : LONG_LIVED_TTL_MS;
-    await this.state.set(tokenKey(userId, provider), parsed, ttlMs);
+    await this.secrets.set(tokenKey(userId, provider), parsed, ttlMs);
   }
 
   async delete(userId: string, provider: string): Promise<void> {

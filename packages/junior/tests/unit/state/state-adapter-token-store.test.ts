@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMemoryState } from "@chat-adapter/state-memory";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 describe("StateAdapterTokenStore", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   function createAdapter(overrides: Partial<StateAdapter> = {}) {
     const adapter = {
       get: async () => null,
@@ -34,10 +39,7 @@ describe("StateAdapterTokenStore", () => {
 
     expect(adapter.set).toHaveBeenCalledWith(
       "oauth-token:U123:notion",
-      {
-        accessToken: "access-token",
-        refreshToken: "refresh-token",
-      },
+      expect.stringMatching(/^jenc:v1:/),
       365 * 24 * 60 * 60 * 1000,
     );
   });
@@ -61,12 +63,7 @@ describe("StateAdapterTokenStore", () => {
 
     expect(adapter.set).toHaveBeenCalledWith(
       "oauth-token:U123:github",
-      {
-        accessToken: "access-token",
-        refreshToken: "refresh-token",
-        expiresAt: new Date("2026-06-24T08:00:00Z").getTime(),
-        refreshTokenExpiresAt: new Date("2026-12-21T00:00:00Z").getTime(),
-      },
+      expect.stringMatching(/^jenc:v1:/),
       181 * 24 * 60 * 60 * 1000,
     );
   });
@@ -93,5 +90,45 @@ describe("StateAdapterTokenStore", () => {
     );
     expect(callback).toHaveBeenCalledTimes(1);
     expect(releaseLock).toHaveBeenCalledWith(lock);
+  });
+
+  it("saves tokens encrypted and reads them back", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const store = new StateAdapterTokenStore(state);
+    const tokens = { accessToken: "access-token", refreshToken: "refresh" };
+
+    await store.set("U123", "notion", tokens);
+
+    const stored = await state.get<string>("oauth-token:U123:notion");
+    expect(stored).toMatch(/^jenc:v1:/);
+    expect(stored).not.toContain("access-token");
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+  });
+
+  it("encrypts plaintext tokens saved before encryption on read", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const tokens = { accessToken: "access-token", refreshToken: "refresh" };
+    await state.set("oauth-token:U123:notion", tokens);
+    const store = new StateAdapterTokenStore(state);
+
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+
+    expect(await state.get("oauth-token:U123:notion")).toMatch(/^jenc:v1:/);
+    await expect(store.get("U123", "notion")).resolves.toEqual(tokens);
+  });
+
+  it("reads tokens saved with a previous JUNIOR_SECRET as missing", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const store = new StateAdapterTokenStore(state);
+    await store.set("U123", "notion", {
+      accessToken: "access-token",
+      refreshToken: "refresh",
+    });
+    vi.stubEnv("JUNIOR_SECRET", "rotated-secret");
+
+    await expect(store.get("U123", "notion")).resolves.toBeUndefined();
   });
 });

@@ -20,6 +20,7 @@ Use this checklist after deployment and when investigating a security issue. Rea
 - The host adds provider credentials only when a request needs them.
 - OAuth links are private to the requesting user.
 - Internal callbacks and sandbox identity are signed with a stable `JUNIOR_SECRET`.
+- Stored provider credentials are encrypted with a key derived from `JUNIOR_SECRET`.
 - Plugins come from explicit app configuration, not dependency scanning.
 
 ## Credentials
@@ -27,7 +28,7 @@ Use this checklist after deployment and when investigating a security issue. Rea
 - Only domains registered by a plugin can receive provider credentials.
 - The sandbox receives placeholders, not reusable tokens.
 - User access belongs to the current user or an exact task delegation.
-- Rotating `JUNIOR_SECRET` invalidates pending callbacks and sandbox identity signed with the old value.
+- Rotating `JUNIOR_SECRET` invalidates pending callbacks and sandbox identity signed with the old value. It also disconnects stored provider accounts, so users must connect them again.
 
 ## Action Review
 

@@ -12,6 +12,10 @@ import {
 import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
+import {
+  createEncryptedState,
+  readEncryptedOrPlaintext,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
@@ -190,12 +194,10 @@ function parseServerSession(value: unknown): McpServerSessionState | undefined {
 function parseStoredCredentials(
   value: unknown,
 ): McpStoredOAuthCredentials | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    // Plaintext values from before encryption are JSON strings.
+    const parsed: unknown =
+      typeof value === "string" ? JSON.parse(value) : value;
     if (!isRecord(parsed)) {
       return undefined;
     }
@@ -358,8 +360,15 @@ export async function getMcpStoredOAuthCredentials(
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
+  // Plaintext values expire within the credential TTL, so they are not
+  // saved again here.
   const stored = parseStoredCredentials(
-    await stateAdapter.get(credentialsKey(userId, provider)),
+    (
+      await readEncryptedOrPlaintext(
+        stateAdapter,
+        credentialsKey(userId, provider),
+      )
+    )?.value,
   );
   if (stored) return stored;
   // TODO(dcramer): Delete after no legacy `dashboard:` MCP credential keys
@@ -367,7 +376,9 @@ export async function getMcpStoredOAuthCredentials(
   const legacyUserId = await findLegacyWebActorUserId(userId);
   if (!legacyUserId) return undefined;
   const legacyKey = credentialsKey(legacyUserId, provider);
-  const legacy = parseStoredCredentials(await stateAdapter.get(legacyKey));
+  const legacy = parseStoredCredentials(
+    (await readEncryptedOrPlaintext(stateAdapter, legacyKey))?.value,
+  );
   if (!legacy) return undefined;
   await putMcpStoredOAuthCredentials(userId, provider, legacy);
   await stateAdapter.delete(legacyKey);
@@ -381,9 +392,9 @@ export async function putMcpStoredOAuthCredentials(
   ttlMs: number = MCP_AUTH_CREDENTIALS_TTL_MS,
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
-  await stateAdapter.set(
+  await createEncryptedState(stateAdapter).set(
     credentialsKey(userId, provider),
-    JSON.stringify(value),
+    value,
     ttlMs,
   );
 }
