@@ -54,7 +54,12 @@ export function readEncryptionKeyring(
     .map((entry) => entry.trim())
     .filter(Boolean);
   if (entries.length === 0) {
-    throw new Error("JUNIOR_ENCRYPTION_KEYS is required");
+    // No default key, not even for local development: each deployment must
+    // generate its own.
+    throw new Error(
+      "JUNIOR_ENCRYPTION_KEYS is required. Generate a key with: " +
+        `node -e "console.log('k1:' + require('node:crypto').randomBytes(32).toString('base64url'))"`,
+    );
   }
   const keys = entries.map(parseKey);
   const ids = new Set(keys.map((key) => key.id));
