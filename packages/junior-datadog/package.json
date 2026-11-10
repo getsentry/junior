@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-datadog",
-  "version": "0.288.0",
+  "version": "0.289.0",
   "private": false,
   "publishConfig": {
     "access": "public"
