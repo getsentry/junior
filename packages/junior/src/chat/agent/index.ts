@@ -414,7 +414,9 @@ async function executeAgentRunInPrivacyContext(
   let shouldTrace = false;
   let getSandboxRef: (() => typeof state.sandboxRef) | undefined;
   const reasoningLevel = policy.reasoningLevel ?? botConfig.reasoningLevel;
-  const activeModelId = botConfig.modelId;
+  // A refusal fallback replaces this for the rest of the run slice, so
+  // compaction limits and input support follow the model that runs.
+  let activeModelId = botConfig.modelId;
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
@@ -1591,13 +1593,12 @@ async function executeAgentRunInPrivacyContext(
                 // later slice or Turn starts again on the main model.
                 refusalFallbackUsed = true;
                 await prepareRetry(refusalFallback.messages);
-                agent!.state.model = resolveGatewayModel(
-                  refusalFallback.modelId,
-                );
                 logWarn("agent.turn.refusal_fallback", {
                   "gen_ai.request.model": activeModelId,
                   "app.ai.refusal_fallback.model": refusalFallback.modelId,
                 });
+                activeModelId = refusalFallback.modelId;
+                agent!.state.model = resolveGatewayModel(activeModelId);
                 run = agent!.continue();
                 continue;
               }
