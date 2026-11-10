@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { displayPlainText } from "../display-text/plainText";
 import { Menu, PanelRight } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
@@ -20,6 +21,8 @@ import {
   type ConversationSubscriptionAction,
 } from "./ConversationHeaderActions";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
+import { BriefOutcomeChip, briefOutcomeLabel } from "./ConversationBrief";
+import type { ConversationBriefReport } from "./conversationGlance";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
 import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -38,6 +41,8 @@ const NO_ANCHOR = { current: null };
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[];
+  /** The current Brief. Its outcome and intent show under the title. */
+  brief?: ConversationBriefReport;
   contextTags?: ReactNode;
   /** A `menu` layout copy action for the `⋯` menu. */
   copyAction?: ReactNode;
@@ -210,7 +215,8 @@ export function ConversationHeader(props: {
     props.subscription.error ||
     props.delivery?.error ||
     Boolean(props.forks) ||
-    Boolean(props.agentTree);
+    Boolean(props.agentTree) ||
+    Boolean(props.brief);
 
   return (
     <>
@@ -306,6 +312,31 @@ export function ConversationHeader(props: {
             )}
           </div>
         </div>
+        {props.brief && props.view === "rich" ? (
+          // One line from the Brief: where the work stands and what it is
+          // for. It opens the Brief, which leads Conversation details.
+          <button
+            aria-label={`Brief: ${briefOutcomeLabel(
+              props.brief.content.outcome.status,
+            )}. ${displayPlainText(props.brief.content.intent, props.brief.mentions)} Open the Brief.`}
+            className="flex w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent px-4 pb-2.5 pt-2 text-left font-sans md:-mt-1.5 md:pl-6 md:pt-0 md:pr-4 group focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            onClick={() => {
+              if (!detailsOpen) props.onDetailsClick();
+            }}
+            type="button"
+          >
+            <BriefOutcomeChip
+              className="shrink-0"
+              status={props.brief.content.outcome.status}
+            />
+            <span className="min-w-0 truncate text-xs text-dashboard-text-muted group-hover:text-dashboard-text">
+              {displayPlainText(
+                props.brief.content.intent,
+                props.brief.mentions,
+              )}
+            </span>
+          </button>
+        ) : null}
         {props.forks ? (
           <div className="hidden px-7 pb-2.5 md:block">{props.forks}</div>
         ) : null}

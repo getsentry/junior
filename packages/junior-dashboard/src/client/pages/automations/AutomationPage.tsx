@@ -332,8 +332,9 @@ function AutomationHeaderLine(props: { automation: AutomationSummary }) {
 
 function BackLink(props: { to: string }) {
   return (
+    // Desktop lists every Automation in the pane, so only phones go back.
     <Link
-      className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
+      className="flex w-fit items-center gap-2 md:hidden font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
       to={props.to}
     >
       <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />

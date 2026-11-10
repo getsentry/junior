@@ -1,8 +1,10 @@
 import {
+  Inbox,
   MessagesSquare,
   PanelLeft,
+  Plus,
   Search,
-  SquarePen,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -10,6 +12,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -18,7 +21,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { Link, useMatch } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
 import { HeaderIconButton } from "../../conversations/ConversationHeaderActions";
@@ -46,20 +49,6 @@ const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 const PANE_EDGE_CLASS =
   "border-r border-dashboard-border bg-dashboard-surface-panel";
 
-// Rows use the pane grid (`SIDEBAR_ROW_GRID_CLASS`), so icons, the logo, and
-// the avatar share one centre axis and every label starts on the
-// conversation title edge.
-const ROW_CLASS = cn(
-  SIDEBAR_ROW_GRID_CLASS,
-  "h-8 w-full min-w-0 items-center rounded-lg border-0 text-left font-sans text-sm font-normal no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 [&_svg]:size-4",
-);
-
-const IDLE_ROW_CLASS =
-  "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text";
-
-const ACTIVE_ROW_CLASS =
-  "bg-dashboard-accent/[0.12] text-dashboard-accent-text hover:bg-dashboard-accent/[0.16]";
-
 type PaneNavValue = {
   navItems: DashboardHeaderNavItem[];
   onSearch(): void;
@@ -73,7 +62,38 @@ type PaneNavValue = {
   /** A toggle mounted by `setOpen` with `focus` takes focus once. */
   takeToggleFocus(): boolean;
   workspaceActive: boolean;
+  /** The last path and search that each tab showed, so a tab reopens there. */
+  tabPaths: Record<PaneTab, string>;
+  /** Scroll offsets of each tab's list, kept while the tab is away. */
+  tabScroll: Map<PaneTab, number>;
+  tabValues: Record<string, string>;
+  setTabValue(key: string, value: string): void;
 };
+
+/** The tabs at the top of the pane. Each tab's list fills the pane. */
+export type PaneTab = "automations" | "conversations" | "inbox";
+
+const TAB_ROOTS: Record<PaneTab, string> = {
+  automations: "/automations",
+  conversations: "/",
+  inbox: "/review",
+};
+
+/** Name the tab that owns a path, if any. */
+export function paneTabForPath(pathname: string): PaneTab | undefined {
+  if (
+    pathname === "/" ||
+    pathname === "/conversations" ||
+    pathname.startsWith("/conversations/")
+  ) {
+    return "conversations";
+  }
+  if (pathname === "/review") return "inbox";
+  if (pathname === "/automations" || pathname.startsWith("/automations/")) {
+    return "automations";
+  }
+  return undefined;
+}
 
 const PaneNavContext = createContext<PaneNavValue | null>(null);
 
@@ -112,6 +132,22 @@ export function PaneNavProvider(props: {
   workspaceActive: boolean;
 }) {
   const focusToggle = useRef(false);
+  const location = useLocation();
+  const [tabPaths, setTabPaths] = useState<Record<PaneTab, string>>(TAB_ROOTS);
+  const [tabValues, setTabValues] = useState<Record<string, string>>({});
+  const tabScroll = useRef(new Map<PaneTab, number>()).current;
+  const setTabValue = useCallback(
+    (key: string, value: string) =>
+      setTabValues((current) => ({ ...current, [key]: value })),
+    [],
+  );
+  // Remember where each tab was, so switching back reopens its selection,
+  // its search, and (through `tabScroll`) its list position.
+  const tab = paneTabForPath(location.pathname);
+  const here = `${location.pathname}${location.search}`;
+  if (tab && tabPaths[tab] !== here) {
+    setTabPaths({ ...tabPaths, [tab]: here });
+  }
   const [width, setWidth] = useState(readSidebarWidth);
   const widthValue = useMemo(() => ({ setWidth, width }), [width]);
   const { onOpenChange, open } = props;
@@ -141,6 +177,10 @@ export function PaneNavProvider(props: {
       profile: props.profile,
       setOpen,
       spend: props.spend,
+      setTabValue,
+      tabPaths,
+      tabScroll,
+      tabValues,
       takeToggleFocus: () => {
         const take = focusToggle.current;
         focusToggle.current = false;
@@ -156,6 +196,10 @@ export function PaneNavProvider(props: {
       props.spend,
       props.workspaceActive,
       setOpen,
+      setTabValue,
+      tabPaths,
+      tabScroll,
+      tabValues,
     ],
   );
   return (
@@ -242,59 +286,196 @@ export function PaneCollapsedControls() {
   );
 }
 
-function PaneRow(props: {
-  active?: boolean;
+const TAB_ICONS: Record<PaneTab, LucideIcon> = {
+  automations: Zap,
+  conversations: MessagesSquare,
+  inbox: Inbox,
+};
+
+/** One pane tab, with where it opens and whether it shows now. */
+export type PaneTabLink = {
+  active: boolean;
   count?: number;
   icon: LucideIcon;
+  key: string;
   label: string;
   to: string;
-}) {
-  const Icon = props.icon;
-  return (
-    <Link
-      aria-current={props.active ? "page" : undefined}
-      className={cn(
-        ROW_CLASS,
-        props.active ? ACTIVE_ROW_CLASS : IDLE_ROW_CLASS,
-      )}
-      to={props.to}
-    >
-      <Icon aria-hidden="true" strokeWidth={1.9} />
-      <span className="truncate">{props.label}</span>
-      {props.count ? (
-        <span className="grid h-5 min-w-5 place-items-center rounded-md bg-dashboard-accent px-1 text-2xs font-semibold tabular-nums text-dashboard-text-inverse">
-          {props.count > 99 ? "99+" : props.count.toLocaleString("en-US")}
-        </span>
-      ) : null}
-    </Link>
+};
+
+/**
+ * Build the pane tabs: Conversations, Inbox, and Automations, then any other
+ * primary destination, such as a plugin page. A tab opens where the reader
+ * left it. A press on the tab that shows now goes back to its root.
+ */
+export function usePaneTabs(): PaneTabLink[] {
+  const pane = usePaneNav();
+  const { pathname } = useLocation();
+  const current = paneTabForPath(pathname);
+  const tab = (key: PaneTab, label: string, count?: number): PaneTabLink => ({
+    active: current === key,
+    count,
+    icon: TAB_ICONS[key],
+    key,
+    label,
+    to: current === key ? TAB_ROOTS[key] : pane.tabPaths[key],
+  });
+  const review = pane.navItems.find((item) => item.key === "review");
+  const automations = pane.navItems.find((item) => item.key === "automations");
+  const others = pane.navItems.filter(
+    (item) => item.key !== "review" && item.key !== "automations",
   );
+  return [
+    tab("conversations", "Conversations"),
+    ...(review ? [tab("inbox", review.label, review.count)] : []),
+    ...(automations ? [tab("automations", automations.label)] : []),
+    ...others.map((item) => ({
+      active: pathname === item.to || pathname.startsWith(`${item.to}/`),
+      icon: navItemIcon(item.key),
+      key: item.key,
+      label: item.label,
+      to: item.to,
+    })),
+  ];
 }
 
-function PaneNavItemRow(props: { item: DashboardHeaderNavItem }) {
-  const active = useMatch({ end: false, path: props.item.to }) !== null;
+/** Show a count on a tab. The Inbox count shows on every tab. */
+export function PaneTabCount(props: { active?: boolean; count?: number }) {
+  if (!props.count) return null;
   return (
-    <PaneRow
-      active={active}
-      count={props.item.count}
-      icon={navItemIcon(props.item.key)}
-      label={props.item.label}
-      to={props.item.to}
-    />
+    <span
+      className={cn(
+        "grid h-4 min-w-4 place-items-center rounded-full px-1 text-2xs font-semibold tabular-nums",
+        props.active
+          ? "bg-dashboard-accent text-dashboard-text-inverse"
+          : "bg-dashboard-accent/80 text-dashboard-text-inverse",
+      )}
+    >
+      {props.count > 99 ? "99+" : props.count.toLocaleString("en-US")}
+    </span>
   );
 }
 
 /**
- * Head the pane: home, the command palette, the pane toggle, a new
- * Conversation, and the primary destinations as labelled rows. Without
- * `onNewConversation`, new goes home, where the composer takes focus.
+ * The pane tabs as one segmented control. Labels show when the pane is wide
+ * enough; a narrow pane shows icons. Destinations past the three tabs, such
+ * as plugin pages, always show as icons.
  */
-function PaneNavHeader(props: { onNewConversation?(): void }) {
-  const pane = usePaneNav();
+export function PaneTabs(props: { className?: string }) {
+  const tabs = usePaneTabs();
+  const main = tabs.slice(0, 3);
+  const extra = tabs.slice(3);
+  return (
+    <nav
+      aria-label="Primary"
+      className={cn(
+        "@container/tabs flex min-w-0 gap-0.5 rounded-xl bg-dashboard-fill-soft p-0.5",
+        props.className,
+      )}
+    >
+      {main.map((tab) => {
+        const Icon = tab.icon;
+        return (
+          <Link
+            aria-current={tab.active ? "page" : undefined}
+            aria-label={
+              tab.count ? `${tab.label}, ${tab.count} waiting` : tab.label
+            }
+            className={cn(
+              "flex h-8 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-[0.625rem] px-2 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+              tab.active
+                ? "bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
+                : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
+            )}
+            key={tab.key}
+            title={tab.label}
+            to={tab.to}
+          >
+            <Icon
+              aria-hidden="true"
+              className="size-4 shrink-0 @[17.5rem]/tabs:hidden"
+              strokeWidth={1.9}
+            />
+            <span className="hidden truncate @[17.5rem]/tabs:inline">
+              {tab.label}
+            </span>
+            <PaneTabCount active={tab.active} count={tab.count} />
+          </Link>
+        );
+      })}
+      {extra.map((tab) => {
+        const Icon = tab.icon;
+        return (
+          <Link
+            aria-current={tab.active ? "page" : undefined}
+            aria-label={tab.label}
+            className={cn(
+              "grid size-8 shrink-0 place-items-center rounded-[0.625rem] no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+              tab.active
+                ? "bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
+                : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
+            )}
+            key={tab.key}
+            title={tab.label}
+            to={tab.to}
+          >
+            <Icon aria-hidden="true" className="size-4" strokeWidth={1.9} />
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** What "New" does on the tab that shows now. */
+export type PaneNewAction = { label: string } & (
+  | { onClick(): void; to?: undefined }
+  | { onClick?: undefined; to: string }
+);
+
+/**
+ * The extended "New" button. In the pane it floats at the bottom right of
+ * the list, never at the page's bottom right, where the composer's Send is.
+ * `inline` puts it in a list header, as phones show it above the list.
+ */
+export function NewButton(props: {
+  action: PaneNewAction;
+  className?: string;
+  inline?: boolean;
+}) {
+  const navigate = useNavigate();
+  return (
+    <button
+      aria-label={props.action.label}
+      className={cn(
+        "inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border-0 bg-dashboard-accent font-sans text-sm font-semibold text-dashboard-text-inverse transition-[background-color,box-shadow,transform] duration-200 hover:bg-dashboard-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus active:scale-[0.97]",
+        props.inline
+          ? "h-9 px-3.5"
+          : "h-10 px-4 shadow-[0_6px_20px_-6px_rgb(0_0_0/0.55),0_1px_2px_rgb(0_0_0/0.25)] hover:shadow-[0_10px_24px_-8px_rgb(0_0_0/0.6),0_1px_2px_rgb(0_0_0/0.25)]",
+        props.className,
+      )}
+      data-new-button=""
+      onClick={() => {
+        if (props.action.onClick) props.action.onClick();
+        else navigate(props.action.to);
+      }}
+      title={props.action.label}
+      type="button"
+    >
+      <Plus aria-hidden="true" className="size-4" strokeWidth={2.4} />
+      New
+    </button>
+  );
+}
+
+/**
+ * Head the pane: home, the command palette, the pane toggle, then the tabs.
+ */
+function PaneNavHeader() {
   const name = getDashboardAgentName();
   return (
     <div
       className={cn(
-        "grid gap-0.5 border-b border-b-dashboard-border-subtle px-3 pb-3 max-md:hidden",
+        "grid gap-1 border-b border-b-dashboard-border-subtle px-3 pb-3 max-md:hidden",
         PANE_EDGE_CLASS,
       )}
     >
@@ -317,34 +498,69 @@ function PaneNavHeader(props: { onNewConversation?(): void }) {
           <PaneToggle open />
         </div>
       </div>
-      {props.onNewConversation ? (
-        <button
-          className={cn(ROW_CLASS, IDLE_ROW_CLASS, "cursor-pointer")}
-          onClick={props.onNewConversation}
-          type="button"
-        >
-          <SquarePen aria-hidden="true" strokeWidth={1.9} />
-          New conversation
-        </button>
-      ) : (
-        <Link className={cn(ROW_CLASS, IDLE_ROW_CLASS)} to="/">
-          <SquarePen aria-hidden="true" strokeWidth={1.9} />
-          New conversation
-        </Link>
-      )}
-      <nav aria-label="Primary" className="grid gap-0.5">
-        <PaneRow
-          active={pane.workspaceActive}
-          icon={MessagesSquare}
-          label="Conversations"
-          to="/"
-        />
-        {pane.navItems.map((item) => (
-          <PaneNavItemRow item={item} key={item.key} />
-        ))}
-      </nav>
+      <PaneTabs />
     </div>
   );
+}
+
+/**
+ * Keep one tab's list scroll position while another tab shows. The list
+ * unmounts on a tab switch, so its offset is saved on scroll and put back
+ * once the list has rows again.
+ */
+function usePaneScrollMemory(tab: PaneTab | undefined) {
+  const pane = usePaneNav();
+  const ref = useRef<HTMLDivElement>(null);
+  const { tabScroll } = pane;
+  useLayoutEffect(() => {
+    const saved = tab ? tabScroll.get(tab) : undefined;
+    if (!saved || !ref.current) return;
+    let frame = 0;
+    let tries = 0;
+    const restore = () => {
+      const scroller = findScroller(ref.current);
+      if (scroller && scroller.scrollHeight - scroller.clientHeight >= saved) {
+        scroller.scrollTop = saved;
+        return;
+      }
+      if (++tries < 30) frame = requestAnimationFrame(restore);
+    };
+    restore();
+    return () => cancelAnimationFrame(frame);
+  }, [tab, tabScroll]);
+  return {
+    onScrollCapture: (event: { target: EventTarget }) => {
+      if (tab && event.target instanceof HTMLElement) {
+        tabScroll.set(tab, event.target.scrollTop);
+      }
+    },
+    ref,
+  };
+}
+
+function findScroller(root: HTMLElement | null): HTMLElement | undefined {
+  if (!root) return undefined;
+  for (const element of root.querySelectorAll<HTMLElement>("*")) {
+    const overflow = getComputedStyle(element).overflowY;
+    if (
+      (overflow === "auto" || overflow === "scroll") &&
+      element.scrollHeight > element.clientHeight
+    ) {
+      return element;
+    }
+  }
+  return undefined;
+}
+
+/** Read and set one value that a tab keeps while it is away, like a search. */
+export function usePaneTabValue(
+  key: string,
+): [string, (value: string) => void] {
+  const pane = usePaneNav();
+  return [
+    pane.tabValues[key] ?? "",
+    (value: string) => pane.setTabValue(key, value),
+  ];
 }
 
 /**
@@ -421,17 +637,20 @@ function PaneResizeHandle() {
 }
 
 /**
- * Lay out one desktop pane: the primary destinations, then the page's own
- * list, then the profile. A page without a list passes no children. Phones
- * show only the list, under the app header. Children draw their own pane
- * edge, like `PANE_EDGE_CLASS`. On desktop the pane takes the shared width.
+ * Lay out one desktop pane: the tabs, then the tab's own list, then the
+ * profile. A page without a list passes no children. Phones show only the
+ * list, under the app header. Children draw their own pane edge, like
+ * `PANE_EDGE_CLASS`. On desktop the pane takes the shared width. `newAction`
+ * floats the "New" button at the bottom right of the list.
  */
 export function ListPane(props: {
   children?: ReactNode;
   className?: string;
-  onNewConversation?(): void;
+  newAction?: PaneNewAction;
+  tab?: PaneTab;
 }) {
   const pane = usePaneNav();
+  const scroll = usePaneScrollMemory(props.tab);
   return (
     <div
       className={cn(
@@ -440,9 +659,22 @@ export function ListPane(props: {
         props.className,
       )}
     >
-      <PaneNavHeader onNewConversation={props.onNewConversation} />
-      <div className={cn("min-h-0 flex-1", !props.children && PANE_EDGE_CLASS)}>
+      <PaneNavHeader />
+      <div
+        className={cn(
+          "relative min-h-0 flex-1",
+          !props.children && PANE_EDGE_CLASS,
+        )}
+        onScrollCapture={scroll.onScrollCapture}
+        ref={scroll.ref}
+      >
         {props.children}
+        {props.newAction ? (
+          <NewButton
+            action={props.newAction}
+            className="absolute right-4 bottom-4 z-20 max-md:hidden"
+          />
+        ) : null}
       </div>
       {pane.profile ? (
         <div className={cn("px-3 pb-3 pt-2 max-md:hidden", PANE_EDGE_CLASS)}>

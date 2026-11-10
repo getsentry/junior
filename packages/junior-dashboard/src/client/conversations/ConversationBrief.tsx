@@ -1,4 +1,13 @@
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
+  CircleHelp,
+  CircleSlash,
+  type LucideIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   ActorIdentity,
@@ -33,6 +42,69 @@ const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
     in_progress: "accent",
     partial: "warning",
   };
+
+type OutcomeStatus = BriefContent["outcome"]["status"];
+
+const outcomeIcons: Record<OutcomeStatus, LucideIcon> = {
+  abandoned: CircleSlash,
+  answered: CircleHelp,
+  blocked: CircleAlert,
+  done: CircleCheck,
+  in_progress: CircleDashed,
+  partial: CircleDot,
+};
+
+const outcomeIconClass: Record<OutcomeStatus, string> = {
+  abandoned: "text-dashboard-text-faint",
+  answered: "text-cyan-300",
+  blocked: "text-rose-300",
+  done: "text-emerald-300",
+  in_progress: "text-dashboard-accent",
+  partial: "text-amber-300",
+};
+
+/** Name a Brief outcome, such as "In progress". */
+export function briefOutcomeLabel(status: OutcomeStatus): string {
+  const label = displayLabel(status);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Show a Brief outcome as a quiet chip, such as "• Blocked". */
+export function BriefOutcomeChip(props: {
+  className?: string;
+  size?: "compact" | "default";
+  status: OutcomeStatus;
+}) {
+  return (
+    <StatusChip
+      className={props.className}
+      size={props.size ?? "compact"}
+      tone={outcomeTones[props.status]}
+    >
+      {displayLabel(props.status)}
+    </StatusChip>
+  );
+}
+
+/** Show a Brief outcome as a small icon, for a dense list row. */
+export function BriefOutcomeMarker(props: {
+  className?: string;
+  status: OutcomeStatus;
+}) {
+  const Icon = outcomeIcons[props.status];
+  return (
+    <Icon
+      aria-label={`Brief: ${briefOutcomeLabel(props.status)}`}
+      className={cn(
+        "size-3.5 shrink-0",
+        outcomeIconClass[props.status],
+        props.className,
+      )}
+      role="img"
+      strokeWidth={2}
+    />
+  );
+}
 
 /** Show a summary in details, or the durable Brief when a transcript expires. */
 export function ConversationBrief(props: {

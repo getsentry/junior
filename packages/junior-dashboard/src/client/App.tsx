@@ -26,7 +26,12 @@ import {
   ListPane,
   PaneCollapsedControls,
   PaneNavProvider,
+  paneTabForPath,
 } from "./components/layout/PaneNav";
+import {
+  AutomationSidebarList,
+  useNewAutomationAction,
+} from "./pages/automations/AutomationSidebarList";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   automationPath,
@@ -251,7 +256,9 @@ export function DashboardShell() {
   // Conversation pages put their own list in the pane. Other pages get the
   // pane with the primary destinations only. The inbox queue expands in
   // place, so it fills the page, not the pane.
-  const ownsPane = workspace;
+  const ownsPane = workspace || location.pathname === "/review";
+  const automationsTab = paneTabForPath(location.pathname) === "automations";
+  const newAutomation = useNewAutomationAction();
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
   // The shell owns the open Conversation's data, and the page reads it. On a
@@ -347,7 +354,13 @@ export function DashboardShell() {
               !paneOpen && "md:hidden",
             )}
           >
-            <ListPane />
+            {automationsTab ? (
+              <ListPane newAction={newAutomation} tab="automations">
+                <AutomationSidebarList />
+              </ListPane>
+            ) : (
+              <ListPane />
+            )}
           </div>
         )}
         <VisualViewportShell

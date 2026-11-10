@@ -1,4 +1,12 @@
 import { memo, useCallback, useMemo, useState } from "react";
+import { displayPlainText } from "../display-text/plainText";
+import { BriefOutcomeChip, BriefOutcomeMarker } from "./ConversationBrief";
+import { useConversationBrief } from "./conversationGlance";
+import {
+  ConversationCast,
+  ConversationDensityToggle,
+  useConversationDensity,
+} from "./conversationDensity";
 import {
   Archive,
   ArchiveRestore,
@@ -195,10 +203,14 @@ export function ConversationSidebar(props: {
     [showActionError],
   );
   return (
-    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
+    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
+      <div className="flex h-8 items-center justify-end px-4 pt-1">
+        <ConversationDensityToggle />
+      </div>
       <ScrollArea
         {...held.holdProps}
-        viewportClassName="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+        // Room under the last row for the floating New button.
+        viewportClassName="px-3 pb-16"
       >
         <ListUpdatesPill count={held.pending} onApply={held.applyPending} />
         {props.error ? (
@@ -454,6 +466,9 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   const pinned = Boolean(props.conversation.pinnedAt);
   const status = visualStatusForConversation(props.conversation);
   const title = conversationDisplayTitle(props.conversation);
+  const [density] = useConversationDensity();
+  const brief = useConversationBrief(props.conversation.id);
+  const comfortable = density === "comfortable";
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const unread = Boolean(props.conversation.unread);
   const emphasized = unread || Boolean(props.waiting);
@@ -519,23 +534,70 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
               />
             ) : null}
           </span>
+          {comfortable ? (
+            <span className="grid min-w-0 gap-1 py-0.5">
+              <span
+                className={cn(
+                  // The title fills its grid column, so the fade reaches only a
+                  // title that does not fit, in place of an ellipsis.
+                  "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
+                  emphasized
+                    ? "font-semibold"
+                    : props.selected && "font-medium",
+                  emphasized || props.selected || status === "active"
+                    ? "text-dashboard-text"
+                    : "text-dashboard-text-muted",
+                )}
+              >
+                {title}
+              </span>
+              {/* The Brief says what the work is; the list has no message
+                  preview to fall back to, so a row without one shows only
+                  who takes part. */}
+              {brief ? (
+                <span className="line-clamp-2 min-w-0 whitespace-normal font-sans text-xs leading-snug text-dashboard-text-muted">
+                  {displayPlainText(
+                    brief.content.summary || brief.content.intent,
+                    brief.mentions,
+                  )}
+                </span>
+              ) : null}
+              <span className="flex min-w-0 items-center gap-2">
+                {brief ? (
+                  <BriefOutcomeChip status={brief.content.outcome.status} />
+                ) : null}
+                <ConversationCast conversation={props.conversation} />
+              </span>
+            </span>
+          ) : (
+            <span
+              className={cn(
+                // The title fills its grid column, so the fade reaches only a
+                // title that does not fit, in place of an ellipsis.
+                "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
+                emphasized ? "font-semibold" : props.selected && "font-medium",
+                emphasized || props.selected || status === "active"
+                  ? "text-dashboard-text"
+                  : "text-dashboard-text-muted",
+              )}
+            >
+              {title}
+            </span>
+          )}
           <span
             className={cn(
-              // The title fills its grid column, so the fade reaches only a
-              // title that does not fit, in place of an ellipsis.
-              "min-w-0 overflow-hidden whitespace-nowrap font-sans text-sm leading-snug [mask-image:linear-gradient(to_left,transparent,black_2rem)]",
-              emphasized ? "font-semibold" : props.selected && "font-medium",
-              emphasized || props.selected || status === "active"
-                ? "text-dashboard-text"
-                : "text-dashboard-text-muted",
+              "flex items-center gap-1.5",
+              comfortable && "self-start pt-0.5",
             )}
           >
-            {title}
+            {brief && !comfortable ? (
+              <BriefOutcomeMarker status={brief.content.outcome.status} />
+            ) : null}
+            <ConversationRowState
+              conversation={props.conversation}
+              status={status}
+            />
           </span>
-          <ConversationRowState
-            conversation={props.conversation}
-            status={status}
-          />
         </Link>
         {canToggleRead ? (
           <Tooltip>

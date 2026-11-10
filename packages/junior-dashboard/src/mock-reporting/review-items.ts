@@ -25,6 +25,11 @@ const viewer = {
 const DEPLOY_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const DIGEST_CONVERSATION_ID = "scheduler:daily-ops-digest";
+const DASHBOARD_CONVERSATION_ID = "internal:dashboard-qa";
+const RELIABILITY_CONVERSATION_ID = "slack:CQA456:1770025200.000700";
+const CHECKOUT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
+const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
+const DAY = 24 * 60;
 
 type MockItemSeed = Pick<
   ReviewItemPayload,
@@ -212,6 +217,98 @@ function seeds(nowMs: number): MockItemSeed[] {
       kind: "notice",
       status: "open",
       title: "Digest skipped two noisy alerts",
+    },
+    // Prototype: older items, so the inbox has Today, This week, and Earlier.
+    {
+      assignedToEveryone: true,
+      body: "Release notes for 0.288.0 are drafted in the release PR.",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(20),
+      id: "qa-release-notes",
+      kind: "notice",
+      status: "open",
+      title: "Release notes drafted",
+    },
+    {
+      body: "GitHub asks you to review **Tabs in the dashboard sidebar**: https://github.com/getsentry/junior/pull/3052",
+      conversationId: DASHBOARD_CONVERSATION_ID,
+      createdAt: at(2 * DAY),
+      id: "qa-review-3052",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/junior/pull/3052",
+        title: "getsentry/junior#3052",
+        url: "https://github.com/getsentry/junior/pull/3052",
+      },
+      title: "Review requested · #3052",
+    },
+    {
+      body: "**Fix the stable list order** merged into main: https://github.com/getsentry/junior/pull/3037",
+      conversationId: DASHBOARD_CONVERSATION_ID,
+      createdAt: at(3 * DAY),
+      id: "qa-merged-3037",
+      kind: "notice",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/junior/pull/3037",
+        title: "getsentry/junior#3037",
+        url: "https://github.com/getsentry/junior/pull/3037",
+      },
+      title: "Merged · #3037",
+    },
+    {
+      assignedToEveryone: true,
+      body: "The weekly reliability summary is in #project-updates.",
+      conversationId: RELIABILITY_CONVERSATION_ID,
+      createdAt: at(4 * DAY),
+      id: "qa-reliability-weekly",
+      kind: "notice",
+      status: "open",
+      title: "Weekly reliability summary posted",
+    },
+    {
+      body: "p95 checkout latency is back under 600 ms for 9 days.",
+      conversationId: CHECKOUT_CONVERSATION_ID,
+      createdAt: at(9 * DAY),
+      id: "qa-latency-alert",
+      request: {
+        question: "Lower the checkout p95 alert from 800 ms to 650 ms?",
+        fields: [
+          {
+            id: "threshold",
+            kind: "choice",
+            label: "Alert threshold",
+            options: [
+              { label: "650 ms", recommended: true },
+              { label: "Keep 800 ms" },
+            ],
+          },
+        ],
+      },
+      status: "open",
+      title: "Tighten the checkout latency alert",
+    },
+    {
+      assignedToEveryone: true,
+      body: "Three sandboxes rebuilt their dependency snapshot after the lockfile change.",
+      conversationId: SANDBOX_CONVERSATION_ID,
+      createdAt: at(11 * DAY),
+      id: "qa-sandbox-snapshot",
+      kind: "notice",
+      status: "open",
+      title: "Sandbox snapshots rebuilt",
+    },
+    {
+      assignedToEveryone: true,
+      body: "The Q3 reliability review doc has comments from two reviewers.",
+      conversationId: RELIABILITY_CONVERSATION_ID,
+      createdAt: at(12 * DAY),
+      id: "qa-reliability-comments",
+      kind: "notice",
+      status: "open",
+      title: "Review doc has new comments",
     },
   ];
 }

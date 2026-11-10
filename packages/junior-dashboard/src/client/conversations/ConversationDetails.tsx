@@ -1,4 +1,4 @@
-import { ArrowLeft, CornerLeftUp } from "lucide-react";
+import { ArrowLeft, CornerLeftUp, History } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type {
   ConversationAgentTreeNode,
@@ -10,7 +10,7 @@ import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { formatRelativeTime, formatTime } from "../format";
 import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
 import { Button } from "../components/ui/button";
-import { ConversationBrief } from "./ConversationBrief";
+import { BriefOutcomeChip, ConversationBrief } from "./ConversationBrief";
 import {
   ConversationTasks,
   ConversationThreads,
@@ -136,31 +136,14 @@ export function ConversationDetails(props: {
           aria-label="Conversation details"
           className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm"
         >
-          {props.brief ? (
-            <>
-              <span className="font-semibold text-dashboard-text">Brief</span>
-              <span aria-hidden="true" className="text-dashboard-text-faint">
-                ·
-              </span>
-              <time
-                className="truncate text-xs font-normal text-dashboard-text-muted"
-                dateTime={props.brief.updatedAt}
-                title={formatTime(props.brief.updatedAt, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              >
-                Updated {formatRelativeTime(props.brief.updatedAt)}
-              </time>
-            </>
-          ) : (
-            <span className="font-semibold text-dashboard-text">Details</span>
-          )}
+          <span className="font-semibold text-dashboard-text">Details</span>
         </h2>
       }
       onClose={props.onClose}
     >
       <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        {/* The Brief leads: what the work is and where it stands. */}
+        {props.brief ? <BriefCard brief={props.brief} /> : null}
         {parent ? (
           <DetailsCard flat title="Parent">
             <DetailsRow
@@ -174,11 +157,6 @@ export function ConversationDetails(props: {
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />
-        {props.brief ? (
-          <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-            <ConversationBrief brief={props.brief} variant="summary" />
-          </div>
-        ) : null}
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
         {props.links.length > 0 || watches.length > 0 ? (
           // A Watch waits on something. It shows with linked work, so the
@@ -235,5 +213,54 @@ export function ConversationDetails(props: {
         ) : null}
       </div>
     </DetailsPanel>
+  );
+}
+
+/**
+ * The Brief at the top of details: its version, outcome, and summary.
+ * History is disabled; it previews the version timeline in #3103.
+ */
+function BriefCard(props: { brief: Brief }) {
+  const { brief } = props;
+  return (
+    <section
+      aria-label="Brief"
+      className="grid min-w-0 gap-2 rounded-lg border border-dashboard-border px-3 py-2.5"
+      id="conversation-brief"
+    >
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <h3 className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm">
+          <span className="font-semibold text-dashboard-text">
+            Brief v{brief.version}
+          </span>
+          <span aria-hidden="true" className="text-dashboard-text-faint">
+            ·
+          </span>
+          <time
+            className="truncate text-xs font-normal text-dashboard-text-muted"
+            dateTime={brief.updatedAt}
+            title={formatTime(brief.updatedAt, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          >
+            Updated {formatRelativeTime(brief.updatedAt)}
+          </time>
+        </h3>
+        <Button
+          className="h-7 gap-1.5 px-2 text-xs"
+          disabled
+          title="Brief history is coming (getsentry/junior#3103)"
+          variant="quiet"
+        >
+          <History aria-hidden="true" className="size-3.5" />
+          History
+        </Button>
+      </div>
+      <BriefOutcomeChip status={brief.content.outcome.status} />
+      <div className="min-w-0 break-words font-sans text-sm leading-relaxed text-dashboard-text-muted">
+        <ConversationBrief brief={brief} variant="summary" />
+      </div>
+    </section>
   );
 }

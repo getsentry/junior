@@ -57,7 +57,12 @@ import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import { useSidebarFits } from "./conversationSidebarLayout";
-import { ListPane, PaneCollapsedControls } from "../components/layout/PaneNav";
+import {
+  ListPane,
+  NewButton,
+  PaneCollapsedControls,
+  usePaneTabValue,
+} from "../components/layout/PaneNav";
 
 const CONVERSATION_PAGE_SIZE = 20;
 
@@ -70,7 +75,8 @@ export function ConversationWorkspace(props: {
   detail: ConversationData;
 }) {
   const [page, setPage] = useState(1);
-  const [query, setQuery] = useState("");
+  // The tab keeps its search while another tab shows.
+  const [query, setQuery] = usePaneTabValue("conversations:search");
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
   const { showArchiveError, showArchived } = useConversationActionToasts();
@@ -251,13 +257,21 @@ export function ConversationWorkspace(props: {
       ) : (
         <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 pt-4 sm:px-6">
           <section aria-label="Conversations" className="grid gap-3">
-            <SearchInput
-              className="w-full sm:ml-auto sm:w-72"
-              label="Search your conversations"
-              onChange={setQuery}
-              placeholder="Search conversations…"
-              value={query}
-            />
+            {/* Phones put New above the list. The composer and its Send
+                own the bottom of the screen. */}
+            <div className="flex items-center gap-2">
+              <SearchInput
+                className="min-w-0 flex-1 sm:ml-auto sm:w-72 sm:flex-none"
+                label="Search your conversations"
+                onChange={setQuery}
+                placeholder="Search conversations…"
+                value={query}
+              />
+              <NewButton
+                action={{ label: "New conversation", onClick: openCreate }}
+                inline
+              />
+            </div>
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
@@ -309,7 +323,10 @@ export function ConversationWorkspace(props: {
       {/* The pane hides itself while the reader hides it, and keeps the
           list mounted so its scroll position stays. */}
       {sidebarFits ? (
-        <ListPane onNewConversation={openCreate}>
+        <ListPane
+          newAction={{ label: "New conversation", onClick: openCreate }}
+          tab="conversations"
+        >
           <ConversationSidebar
             conversations={conversations}
             error={feed.error?.message}

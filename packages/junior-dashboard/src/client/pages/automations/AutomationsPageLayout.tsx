@@ -8,6 +8,11 @@ import {
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
+import { NewButton } from "../../components/layout/PaneNav";
+import {
+  AutomationSidebarList,
+  useNewAutomationAction,
+} from "./AutomationSidebarList";
 
 /** Identify Automation routes whose run list scrolls on its own beside run details. */
 export function hasAutomationDetailsFrame(pathname: string): boolean {
@@ -17,9 +22,9 @@ export function hasAutomationDetailsFrame(pathname: string): boolean {
   );
 }
 
+// The pane lists every Automation, so the list page has no tab here.
 const taskNavigationItems = [
   { end: true, label: "Overview", to: "/automations" },
-  { label: "Automations", to: "/automations/list" },
   { label: "Runs", to: "/automations/runs" },
 ];
 
@@ -41,7 +46,9 @@ function AutomationsNavigation(props: {
 
 /** Place the shared secondary navigation above one Automations page. */
 export function AutomationsPageLayout(props: { children: ReactNode }) {
-  const list = hasAutomationDetailsFrame(useLocation().pathname);
+  const { pathname } = useLocation();
+  const list = hasAutomationDetailsFrame(pathname);
+  const newAutomation = useNewAutomationAction();
   return (
     <AutomationsNavigation
       className={
@@ -53,7 +60,25 @@ export function AutomationsPageLayout(props: { children: ReactNode }) {
       {list ? (
         <div className="min-h-0">{props.children}</div>
       ) : (
-        <PageLayout>{props.children}</PageLayout>
+        <PageLayout>
+          {/* Phones have no pane, so the Automations tab lists them here,
+              with New above the list. */}
+          {pathname === "/automations" ? (
+            <section
+              className="grid gap-2 md:hidden"
+              aria-label="Your automations"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="m-0 font-display text-lg font-medium">
+                  Automations
+                </h2>
+                <NewButton action={newAutomation} inline />
+              </div>
+              <AutomationSidebarList className="-mx-3 h-auto border-r-0 bg-transparent" />
+            </section>
+          ) : null}
+          {props.children}
+        </PageLayout>
       )}
     </AutomationsNavigation>
   );

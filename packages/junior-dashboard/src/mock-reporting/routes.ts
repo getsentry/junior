@@ -1,4 +1,9 @@
 import { mockAutomationCollection } from "./automation-collection";
+import {
+  mockAutomationEventCatalog,
+  readMockAutomationEdit,
+  saveMockAutomationEdit,
+} from "./automation-edit";
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import type { User } from "@sentry/junior-plugin-api";
@@ -781,6 +786,36 @@ export function createMockReportingApi(): Hono<{
       ),
       truncated: false,
     });
+  });
+  app.get("/automations/event-catalog", () =>
+    Response.json(mockAutomationEventCatalog),
+  );
+  const findAutomation = (id: string) =>
+    readMockAutomationList().automations.find(
+      (automation) => automation.id === id,
+    );
+  app.get("/automations/:id/edit", (c) => {
+    const automation = findAutomation(c.req.param("id"));
+    return automation
+      ? Response.json(readMockAutomationEdit(automation))
+      : errorResponse("Automation not found.", 404);
+  });
+  app.post("/automations/:id/preview", async (c) => {
+    const automation = findAutomation(c.req.param("id"));
+    const edit = automation ? readMockAutomationEdit(automation) : undefined;
+    if (!edit || edit.kind !== "scheduled") {
+      return errorResponse("Automation not found.", 404);
+    }
+    return Response.json({
+      nextRunAtMs: edit.nextRunAtMs ?? NOW_MS + 3 * 86_400_000,
+      schedule: edit.schedule,
+    });
+  });
+  app.patch("/automations/:id", async (c) => {
+    const automation = findAutomation(c.req.param("id"));
+    if (!automation) return errorResponse("Automation not found.", 404);
+    const body = (await c.req.json()) as Record<string, unknown>;
+    return Response.json(saveMockAutomationEdit(automation, body));
   });
   app.get("/automations/:id", (c) => {
     const automation = readMockAutomationList().automations.find(

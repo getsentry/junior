@@ -1,6 +1,8 @@
 import { ArrowLeft, Menu, Search, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
-import { Link, NavLink } from "react-router";
+import { Link } from "react-router";
+
+import { PaneTabs } from "./PaneNav";
 
 import { getDashboardAgentName } from "../../agentName";
 import { COMMAND_PALETTE_LABEL } from "../CommandPalette";
@@ -27,15 +29,6 @@ export type DashboardHeaderNavItem = {
 
 const mobileBackClass =
   "grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70";
-
-function NavCount(props: { count?: number }) {
-  if (!props.count) return null;
-  return (
-    <span className="ml-1.5 rounded-full bg-violet-300/20 px-1.5 py-0.5 text-xs text-violet-200">
-      {props.count.toLocaleString("en-US")}
-    </span>
-  );
-}
 
 /**
  * Render the mobile shell header and navigation sheet. Desktop navigation
@@ -193,26 +186,9 @@ export function DashboardHeader(props: {
                   <Search aria-hidden="true" className="size-4" />
                   {COMMAND_PALETTE_LABEL}
                 </Button>
-                <Link
-                  aria-current={props.workspaceActive ? "page" : undefined}
-                  className={sheetLinkClass({
-                    isActive: props.workspaceActive,
-                  })}
-                  to="/"
-                >
-                  Conversations
-                </Link>
-                {props.navItems.map((item) => (
-                  <NavLink
-                    className={sheetLinkClass}
-                    key={item.key}
-                    to={item.to}
-                  >
-                    {item.label}
-                    <NavCount count={item.count} />
-                  </NavLink>
-                ))}
               </nav>
+              {/* The same tabs as the desktop pane. */}
+              <PaneTabs className="mt-2" />
               <MobileSecondaryNavigationSlot />
               {props.mobileProfile ? (
                 <div className="mt-4 border-t border-dashboard-border-subtle pt-3">

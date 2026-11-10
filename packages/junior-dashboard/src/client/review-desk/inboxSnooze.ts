@@ -3,9 +3,10 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import type { InboxBundle } from "./reviewItemFormat";
 
 const STORAGE_KEY = "junior:inbox:snoozed";
+const PIN_STORAGE_KEY = "junior:inbox:pinned";
 const HOUR_MS = 60 * 60 * 1000;
 
-/** One snoozed bundle: until when, and its newest item at the snooze. */
+/** One snoozed row: until when, and its newest item at the snooze. */
 type Snooze = { newestItemId: string; untilMs: number };
 
 /** A snooze choice, such as "Tomorrow". */
@@ -26,7 +27,8 @@ export const snoozeChoices: readonly SnoozeChoice[] = [
 ];
 
 /**
- * Snooze inbox bundles in this browser. A bundle wakes at its time, or as
+ * Snooze inbox rows in this browser. A row is a Conversation bundle or one
+ * item; its `key` names it. A Conversation bundle wakes at its time, or as
  * soon as its Conversation adds a newer item. Prototype: the server has no
  * snooze, so other browsers and the nav count do not see it.
  */
@@ -35,27 +37,72 @@ export function useInboxSnoozes(nowMs: number) {
     STORAGE_KEY,
     {},
   );
-  const isSnoozed = (bundle: InboxBundle) => {
-    const snooze = snoozes[bundle.conversationId];
+  /** True while `key` sleeps and `newestItemId` is still its newest item. */
+  const sleeps = (key: string, newestItemId: string) => {
+    const snooze = snoozes[key];
     return (
       snooze !== undefined &&
       snooze.untilMs > nowMs &&
-      snooze.newestItemId === bundle.newest.id
+      snooze.newestItemId === newestItemId
     );
   };
   const snooze = (bundle: InboxBundle, choice: SnoozeChoice) =>
     setSnoozes({
       ...snoozes,
-      [bundle.conversationId]: {
+      [bundle.key]: {
         newestItemId: bundle.newest.id,
         untilMs: choice.untilMs(nowMs),
       },
     });
+  /** Wake the row and every key in it: its Conversation and its items. */
   const wake = (bundle: InboxBundle) => {
-    const { [bundle.conversationId]: _woken, ...rest } = snoozes;
-    setSnoozes(rest);
+    const keys = new Set([
+      bundle.key,
+      bundle.conversationId,
+      ...bundle.items.map((item) => item.id),
+    ]);
+    setSnoozes(
+      Object.fromEntries(
+        Object.entries(snoozes).filter(([key]) => !keys.has(key)),
+      ),
+    );
   };
   const until = (bundle: InboxBundle) =>
-    snoozes[bundle.conversationId]?.untilMs;
-  return { isSnoozed, snooze, until, wake };
+    Math.max(
+      ...[
+        bundle.key,
+        bundle.conversationId,
+        ...bundle.items.map((i) => i.id),
+      ].map((key) => snoozes[key]?.untilMs ?? 0),
+    );
+  return { sleeps, snooze, until, wake };
+}
+
+/**
+ * Pin inbox rows in this browser, as Google Inbox did. A pinned row stays
+ * at the top, and a sweep leaves it. Prototype: the server has no pins.
+ */
+export function useInboxPins() {
+  const [pins, setPins] = useLocalStorage<Record<string, true>>(
+    PIN_STORAGE_KEY,
+    {},
+  );
+  const pinned = (key: string) => pins[key] === true;
+  const toggle = (bundle: InboxBundle, rowPinned: boolean) => {
+    if (!rowPinned) {
+      setPins({ ...pins, [bundle.key]: true });
+      return;
+    }
+    const keys = new Set([
+      bundle.key,
+      bundle.conversationId,
+      ...bundle.items.map((item) => item.id),
+    ]);
+    setPins(
+      Object.fromEntries(
+        Object.entries(pins).filter(([key]) => !keys.has(key)),
+      ) as Record<string, true>,
+    );
+  };
+  return { pinned, toggle };
 }

@@ -1,3 +1,4 @@
+import { withMockBrief } from "./briefs";
 import { mockAutomationCollection } from "./automation-collection";
 /** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
@@ -726,6 +727,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     lastSeenAt: iso(nowMs, -4 * 60 * 60_000),
     lastProgressAt: iso(nowMs, -4 * 60 * 60_000),
     actorIdentity: actor("dev@example.com", "Morgan Lee", "morgan"),
+    // Comfortable rows show the other human; the child agents count below.
+    participants: [
+      actor("dev@example.com", "Morgan Lee", "morgan"),
+      actor("avery@sentry.io", "Avery Chen", "avery"),
+    ],
     assignedWork: true,
     unfinishedWork: true,
     isPriority: true,
@@ -1699,6 +1705,11 @@ function manyTurnsConversation(nowMs: number): ConversationDetailReport {
     channel: "CQA456",
     startedAt,
     actorIdentity: actor("jordan@example.com", "Jordan Blake", "jordan"),
+    participants: [
+      actor("jordan@example.com", "Jordan Blake", "jordan"),
+      actor("dev@example.com", "Morgan Lee", "morgan"),
+      actor("riley@sentry.io", "Riley Park", "riley"),
+    ],
     events: Array.from({ length: 24 }, (_, turn) => [
       reportEvent(turn * 2, iso(Date.parse(startedAt), turn * 60_000), {
         type: "message" as const,
@@ -2844,7 +2855,7 @@ export function readMockConversationDetail(
   const agentTree = mockAgentTree(conversation);
   // Match the API: only readable root Conversations can be forked.
   const detail = {
-    ...conversation,
+    ...withMockBrief(conversation, NOW_MS),
     ...(agentTree ? { agentTree } : undefined),
     canFork:
       !conversation.parentConversationId &&
@@ -3833,6 +3844,60 @@ function mockTasks(): AutomationSummary[] {
       ],
       title: "Weekly project summary",
       totalRuns: 48,
+    },
+    {
+      createdAt: "2026-07-20T16:00:00.000Z",
+      createdBy: "Morgan",
+      createdByEmail: "dev@example.com",
+      destination: {
+        channelId: "C789",
+        label: "#ops",
+        teamId: "T123",
+        visibility: "public",
+      },
+      id: "scheduled-2",
+      instruction:
+        "Post the daily operations digest: open incidents, noisy alerts, and failed deploys.",
+      kind: "scheduled",
+      lastConversationId: "scheduler:daily-ops-digest",
+      lastRunAt: "2026-08-07T15:00:00.000Z",
+      nextRunAt: "2026-08-08T15:00:00.000Z",
+      credentialMode: "creator",
+      ownedByViewer: true,
+      costUsd: { 1: 0.06, 7: 0.41, 30: 1.77, 90: 5.2 },
+      runs: { 1: 1, 7: 7, 30: 30, 90: 90 },
+      timezone: "America/Los_Angeles",
+      schedule: "Every day at 8:00 AM",
+      status: "active",
+      outcomes: [],
+      title: "Daily operations digest",
+      totalRuns: 90,
+    },
+    {
+      createdAt: "2026-07-10T16:00:00.000Z",
+      createdBy: "Morgan",
+      createdByEmail: "dev@example.com",
+      destination: {
+        channelId: "C456",
+        label: "#releases",
+        teamId: "T123",
+        visibility: "public",
+      },
+      id: "scheduled-3",
+      instruction: "Cut a release if anything is pending since the last one.",
+      kind: "scheduled",
+      lastConversationId: "slack:CQA456:1770021600.000600",
+      lastRunAt: "2026-08-03T16:00:00.000Z",
+      credentialMode: "creator",
+      ownedByViewer: true,
+      costUsd: { 1: 0, 7: 0.22, 30: 0.9, 90: 2.4 },
+      runs: { 1: 0, 7: 1, 30: 4, 90: 12 },
+      timezone: "America/Los_Angeles",
+      schedule: "Every Monday at 9:00 AM",
+      status: "paused",
+      outcomes: [],
+      title: "Release train",
+      totalRuns: 12,
     },
     {
       createdAt: "2026-07-29T16:00:00.000Z",

@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-query";
 import {
   automationListSchema,
-  conversationDetailReportSchema,
   reviewItemCountSchema,
   reviewItemListSchema,
   reviewItemSchema,
@@ -17,7 +16,7 @@ import {
   type ReviewItemActionBody,
 } from "@sentry/junior/api/schema";
 
-import { conversationDetailTitle } from "../format";
+import { conversationGlanceQuery } from "../conversations/conversationGlance";
 import { fetchDashboardJson, post } from "../http";
 
 /** Prefix of every Review item read, for refreshes after a change. */
@@ -88,20 +87,8 @@ export function useLinkedConversationTitles(
   conversationIds: readonly string[],
 ): (string | undefined)[] {
   return useQueries({
-    queries: conversationIds.map((conversationId) => ({
-      queryKey: ["dashboard", "conversation-title", conversationId],
-      queryFn: async ({ signal }: { signal: AbortSignal }) =>
-        conversationDetailTitle(
-          await fetchDashboardJson(
-            conversationDetailReportSchema,
-            `/api/conversations/${encodeURIComponent(conversationId)}?limit=1`,
-            signal,
-          ),
-        ) ?? null,
-      retry: false,
-      staleTime: 5 * 60_000,
-    })),
-  }).map((query) => query.data ?? undefined);
+    queries: conversationIds.map(conversationGlanceQuery),
+  }).map((query) => query.data?.title ?? undefined);
 }
 
 /**
