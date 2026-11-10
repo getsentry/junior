@@ -74,14 +74,14 @@ export async function loadPullRequest(
 }
 
 /**
- * Read the mergeability of many pull requests in one repository with one
- * GraphQL request and a read-only token.
+ * Read one page of a repository's open pull requests by one author, with
+ * their mergeability, through GraphQL search and a read-only token.
  */
-export async function loadPullRequestMergeability(
+export async function searchOpenPullRequestMergeability(
   env: GitHubInstallationEnv,
-  input: { numbers: number[]; repositoryFullName: string },
+  input: { after?: string; author: string; repositoryFullName: string },
 ): Promise<unknown> {
-  const { owner, name } = splitRepository(
+  const { name } = splitRepository(
     input.repositoryFullName,
     "pull request mergeability",
   );
@@ -90,17 +90,14 @@ export async function loadPullRequestMergeability(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  // The numbers come from the database as integers, so the aliases are safe.
-  const fields = input.numbers
-    .map(
-      (number) =>
-        `pr${number}: pullRequest(number: ${number}) { number state mergeable headRefOid baseRefName url }`,
-    )
-    .join(" ");
   return await githubRequest("https://api.github.com", "/graphql", {
     body: {
-      query: `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields} } }`,
-      variables: { name, owner },
+      query:
+        "query($query: String!, $after: String) { search(query: $query, type: ISSUE, first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { ... on PullRequest { number state mergeable headRefOid baseRefName url } } } }",
+      variables: {
+        after: input.after ?? null,
+        query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
+      },
     },
     method: "POST",
     token: token.token,

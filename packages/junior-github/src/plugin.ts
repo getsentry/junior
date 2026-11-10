@@ -18,15 +18,19 @@ import {
 import { createGitHubTools } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
-import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import {
+  MERGE_CONFLICT_CHECK_JOB,
+  runGitHubMergeConflictCheck,
+} from "./merge-conflict-checks/job.js";
+import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestCommitPages,
-  loadPullRequestMergeability,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
+  searchOpenPullRequestMergeability,
 } from "./webhooks/installation-requests.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
@@ -167,6 +171,27 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    jobs: {
+      [MERGE_CONFLICT_CHECK_JOB]: {
+        async run(ctx) {
+          const login = botLoginFromEmail(requireEnv(botEmailEnv));
+          if (!login) {
+            throw new Error(`${botEmailEnv} is not a GitHub bot address`);
+          }
+          await runGitHubMergeConflictCheck({
+            author: `app/${login.replace(/\[bot\]$/, "")}`,
+            events: ctx.events,
+            jobs: ctx.jobs,
+            payload: ctx.payload,
+            search: async (input) =>
+              await searchOpenPullRequestMergeability(
+                { appIdEnv, installationIdEnv, privateKeyEnv },
+                input,
+              ),
+          });
+        },
+      },
+    },
     events: {
       resourceTypes: [
         {
@@ -315,20 +340,6 @@ export function githubPlugin(
       formatMarkdown({ text }) {
         return linkifyGitHubReferences(text);
       },
-      async heartbeat(ctx) {
-        await runGitHubConflictChecks({
-          db: ctx.db as GitHubDb,
-          events: ctx.events,
-          loadMergeability: async (input) =>
-            await loadPullRequestMergeability(
-              { appIdEnv, installationIdEnv, privateKeyEnv },
-              input,
-            ),
-          log: ctx.log,
-          now: new Date(ctx.nowMs),
-          state: ctx.state,
-        });
-      },
       async unfinishedWork(ctx) {
         const db = ctx.db as GitHubDb;
         const [
@@ -389,8 +400,8 @@ export function githubPlugin(
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
+            jobs: ctx.jobs,
             reviewItems: ctx.reviewItems,
-            state: ctx.state,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

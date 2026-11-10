@@ -10,7 +10,7 @@ import type {
   PluginRoute,
   EventInput,
   EventPublisher,
-  PluginState,
+  PluginJobScheduler,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
@@ -188,8 +188,8 @@ export function createGitHubWebhookRoute(args: {
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
+  jobs: PluginJobScheduler;
   reviewItems: PluginConversationReviewItems;
-  state: PluginState;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -221,8 +221,8 @@ export function createGitHubWebhookRoute(args: {
         const scheduled = await scheduleGitHubPushConflictCheck({
           body,
           db: args.db,
+          jobs: args.jobs,
           now: new Date(),
-          state: args.state,
         });
         return new Response(scheduled ? "Accepted" : "Ignored", {
           status: 202,
