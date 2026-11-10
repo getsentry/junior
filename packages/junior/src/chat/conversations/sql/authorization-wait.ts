@@ -1,16 +1,5 @@
-import {
-  and,
-  eq,
-  exists,
-  gt,
-  inArray,
-  notExists,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
-import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 
 /**
@@ -18,16 +7,17 @@ import { juniorConversationEvents, juniorConversations } from "@/db/schema";
  * dashboard connect prompt expire after this time, so the parked Turn cannot
  * resume after it.
  */
-const AUTHORIZATION_WAIT_MS = 24 * 60 * 60 * 1000;
+const AUTHORIZATION_WAIT = sql.raw(`interval '24 hours'`);
 
 /**
- * Events that end an authorization wait: the person connected, or a Turn
- * started or ended after the request. A stop or new input ends the parked
- * Turn with `turn_completed`. A child agent invocation that needs a
+ * The request and the events that end its wait: the person connected, or a
+ * Turn started or ended after the request. A stop or new input ends the
+ * parked Turn with `turn_completed`. A child agent invocation that needs a
  * connection abandons its Turn and ends it as `blocked`, so nothing resumes
  * it and its parent gets the result instead.
  */
-const AUTHORIZATION_WAIT_END_TYPES = [
+const AUTHORIZATION_WAIT_EVENT_TYPES = [
+  "authorization_requested",
   "authorization_completed",
   "turn_started",
   "turn_completed",
@@ -37,43 +27,23 @@ const AUTHORIZATION_WAIT_END_TYPES = [
 /**
  * SQL: the Conversation waits on a person to finish an authorization. A Turn
  * that needs a connection parks with execution `idle`, so only the durable
- * `authorization_requested` event shows the wait. Each lookup reads
- * `junior_conversation_events_type_idx`.
+ * `authorization_requested` event shows the wait: it is the newest of these
+ * events and has not expired.
  */
-function awaitsAuthorization(
-  db: JuniorDatabase,
-  conversationId: AnyPgColumn,
-  now: Date,
-): SQL {
-  const requested = alias(juniorConversationEvents, "authorization_request");
-  const ended = alias(juniorConversationEvents, "authorization_wait_end");
-  return exists(
-    db
-      .select({ seq: requested.seq })
-      .from(requested)
-      .where(
-        and(
-          eq(requested.conversationId, conversationId),
-          eq(requested.type, "authorization_requested"),
-          gt(
-            requested.createdAt,
-            new Date(now.getTime() - AUTHORIZATION_WAIT_MS),
-          ),
-          notExists(
-            db
-              .select({ seq: ended.seq })
-              .from(ended)
-              .where(
-                and(
-                  eq(ended.conversationId, requested.conversationId),
-                  inArray(ended.type, AUTHORIZATION_WAIT_END_TYPES),
-                  gt(ended.seq, requested.seq),
-                ),
-              ),
-          ),
-        ),
-      ),
-  );
+export function awaitsAuthorization(conversationId: AnyPgColumn): SQL<boolean> {
+  const events = juniorConversationEvents;
+  return sql<boolean>`coalesce((
+    select ${events.type} = 'authorization_requested'
+      and ${events.createdAt} > now() - ${AUTHORIZATION_WAIT}
+    from ${events}
+    where ${events.conversationId} = ${conversationId}
+      and ${events.type} in (${sql.join(
+        AUTHORIZATION_WAIT_EVENT_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      )})
+    order by ${events.seq} desc
+    limit 1
+  ), false)`;
 }
 
 /**
@@ -81,50 +51,13 @@ function awaitsAuthorization(
  * person to finish an authorization.
  */
 export function treeAwaitsAuthorization(
-  db: JuniorDatabase,
   rootConversationId: AnyPgColumn,
-  now: Date,
-): SQL {
+): SQL<boolean> {
   const tree = alias(juniorConversations, "authorization_tree");
-  return exists(
-    db
-      .select({ conversationId: tree.conversationId })
-      .from(tree)
-      .where(
-        and(
-          or(
-            eq(tree.conversationId, rootConversationId),
-            eq(tree.rootConversationId, rootConversationId),
-          ),
-          awaitsAuthorization(db, tree.conversationId, now),
-        ),
-      ),
-  );
-}
-
-/**
- * Return the roots, of the given root ids, where the root or a child
- * Conversation waits on a person to finish an authorization.
- */
-export async function readAwaitingAuthorizationRootIds(
-  db: JuniorDatabase,
-  rootConversationIds: string[],
-  now: Date,
-): Promise<Set<string>> {
-  if (rootConversationIds.length === 0) return new Set();
-  const rows = await db
-    .selectDistinct({
-      rootConversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
-    })
-    .from(juniorConversations)
-    .where(
-      and(
-        or(
-          inArray(juniorConversations.conversationId, rootConversationIds),
-          inArray(juniorConversations.rootConversationId, rootConversationIds),
-        ),
-        awaitsAuthorization(db, juniorConversations.conversationId, now),
-      ),
-    );
-  return new Set(rows.map((row) => row.rootConversationId));
+  return sql<boolean>`exists (
+    select 1 from ${juniorConversations} as ${tree}
+    where (${tree.conversationId} = ${rootConversationId}
+        or ${tree.rootConversationId} = ${rootConversationId})
+      and ${awaitsAuthorization(tree.conversationId)}
+  )`;
 }
