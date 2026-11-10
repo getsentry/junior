@@ -35,7 +35,6 @@ function output(overrides: Record<string, unknown> = {}) {
         ],
       },
     ],
-    rootCause: "proven",
     notCovered: [{ hunkId: "h-retry", reason: "Retry count only." }],
     ...overrides,
   });
@@ -52,7 +51,7 @@ describe("findWalkthroughProblems", () => {
     ]);
   });
 
-  it("rejects a proven root cause that cites only prose", () => {
+  it("rejects a cause chapter that cites only prose", () => {
     const problems = findWalkthroughProblems(
       output({
         chapters: [
@@ -77,9 +76,7 @@ describe("findWalkthroughProblems", () => {
       }),
       refs,
     );
-    expect(problems).toEqual([
-      'rootCause is "proven", but the cause chapter cites no hunk or check.',
-    ]);
+    expect(problems).toEqual(["The cause chapter cites no hunk or check."]);
   });
 
   it("rejects prose that cites missing evidence or skips evidence", () => {
@@ -113,7 +110,6 @@ describe("findWalkthroughProblems", () => {
           evidence: [{ kind: "hunk", hunkId: "h-fix" }],
         },
       ],
-      rootCause: undefined,
     });
     expect(findWalkthroughProblems(wrong, refs)).toEqual([
       "Chapter cause uses slot cause, which migration does not have.",

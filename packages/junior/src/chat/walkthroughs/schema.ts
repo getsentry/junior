@@ -188,12 +188,13 @@ export const walkthroughOutputSchema = z
   .object({
     /** The outcome, not the mechanism. */
     title: sentence(100),
-    /** One sentence for a reader with no context. */
+    /**
+     * One sentence that says what kind of change this is before anything
+     * else, such as "This PR fixes a bug where…" or "This stack adds…".
+     */
     intent: sentence(200),
     diagram: diagramSchema,
     chapters: z.array(walkthroughChapterSchema).min(1).max(12),
-    /** Bug fixes only. "proven" needs a hunk or check in the cause chapter. */
-    rootCause: z.enum(["proven", "likely", "not_proven"]).optional(),
     /** A layer that mixes change types, such as a feature and a refactor. */
     splits: z
       .array(

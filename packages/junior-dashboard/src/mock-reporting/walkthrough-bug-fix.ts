@@ -155,7 +155,7 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
     content: {
       title: "Scheduled automations run once, even during a deploy",
       intent:
-        "A deploy made some scheduled automations run twice. This PR keys the run lock by schedule time, not by deployment.",
+        "This PR fixes a bug where a deploy made scheduled automations run twice.",
       diagram: {
         nodes: [
           { id: "scheduler", label: "Scheduler tick", column: 0, row: 0 },
@@ -337,7 +337,6 @@ export function readMockBugFixWalkthrough(): WalkthroughDocument {
           asks: [],
         },
       ],
-      rootCause: "proven",
       splits: [],
       notCovered: [],
     },

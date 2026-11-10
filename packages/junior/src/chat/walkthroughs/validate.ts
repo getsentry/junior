@@ -62,13 +62,10 @@ export function findWalkthroughProblems(
   const bugFixCause = output.chapters.find(
     (c) => c.type === "bug_fix" && c.slot === "cause",
   );
-  if (output.rootCause === "proven") {
-    const proof = bugFixCause?.evidence.some((e) => e.kind !== "source");
-    if (!proof) {
-      problems.push(
-        'rootCause is "proven", but the cause chapter cites no hunk or check.',
-      );
-    }
+  // The reader judges whether the cause is the root cause. They need code or
+  // a check to judge it, not the model's word.
+  if (bugFixCause && !bugFixCause.evidence.some((e) => e.kind !== "source")) {
+    problems.push("The cause chapter cites no hunk or check.");
   }
   problems.push(
     ...coverageProblems(

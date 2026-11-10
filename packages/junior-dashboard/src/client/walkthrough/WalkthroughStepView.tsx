@@ -4,7 +4,6 @@ import type {
   WalkthroughHunk,
 } from "@sentry/junior/api/schema";
 
-import { StatusChip } from "../components/StatusChip";
 import { cn } from "../styles";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
@@ -27,20 +26,6 @@ import {
   type ReviewDecision,
   type WalkthroughStep,
 } from "./walkthroughModel";
-
-type RootCause = NonNullable<WalkthroughDocument["content"]["rootCause"]>;
-
-const rootCauseLabels: Record<RootCause, string> = {
-  likely: "Root cause likely, not proven",
-  not_proven: "Root cause not proven",
-  proven: "Root cause proven",
-};
-
-const rootCauseTones = {
-  likely: "warning",
-  not_proven: "danger",
-  proven: "success",
-} as const satisfies Record<RootCause, string>;
 
 /**
  * Render the step the reader stands on. The heading names the step, prose
@@ -109,14 +94,6 @@ export function WalkthroughStepView(props: {
               #{pr}
             </span>
           ))}
-          {chapter?.slot === "cause" && document.content.rootCause ? (
-            <StatusChip
-              size="compact"
-              tone={rootCauseTones[document.content.rootCause]}
-            >
-              {rootCauseLabels[document.content.rootCause]}
-            </StatusChip>
-          ) : null}
         </div>
         <h2 className="m-0 font-display text-3xl leading-tight font-medium text-dashboard-text">
           {stepTitle(document, step)}

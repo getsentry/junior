@@ -204,7 +204,7 @@ export function readMockWalkthrough(): WalkthroughDocument {
     content: {
       title: "Long Tasks keep working when a GitHub token expires",
       intent:
-        "GitHub user tokens expire after 8 hours. This stack refreshes the token on a 401 and tries the call once more.",
+        "This stack adds a feature: long Tasks refresh an expired GitHub token and retry, with a storage migration and a file move first.",
       diagram: {
         nodes: [
           { id: "task", label: "Task", column: 0, row: 0 },

@@ -337,6 +337,7 @@ export function DashboardShell() {
           enabled={
             workspace ||
             location.pathname === "/review" ||
+            location.pathname.startsWith("/walkthroughs/") ||
             hasAutomationDetailsFrame(location.pathname) ||
             hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
