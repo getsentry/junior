@@ -251,6 +251,24 @@ export function createProviderError(
   });
 }
 
+// Anthropic ends a refused stream with stop reason `refusal` or `sensitive`,
+// for example when its cyber safeguards flag a message. Pi maps both to an
+// error and keeps the provider reason in `rawStopReason`.
+const REFUSAL_STOP_REASONS = new Set(["refusal", "sensitive"]);
+
+/** Normalize a failed Pi assistant message. A provider refusal is a content policy block. */
+export function createAssistantProviderError(
+  message: { errorMessage?: string; rawStopReason?: string },
+  options: ProviderErrorOptions = {},
+): ProviderError {
+  return createProviderError(message.errorMessage ?? "", {
+    ...options,
+    ...(message.rawStopReason && REFUSAL_STOP_REASONS.has(message.rawStopReason)
+      ? { kind: "content_policy" }
+      : undefined),
+  });
+}
+
 /** Return whether a provider-boundary error should be retried. */
 export function isProviderRetryError(error: unknown): error is ProviderError {
   return error instanceof ProviderError && error.retryable;

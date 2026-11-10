@@ -33,7 +33,7 @@ import {
 } from "@/chat/conversation-privacy";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 import {
-  createProviderError,
+  createAssistantProviderError,
   getProviderErrorAttributes,
 } from "@/chat/services/provider-error";
 
@@ -150,7 +150,7 @@ function buildChatEndAttributes(
   }
 
   if (message.stopReason === "error") {
-    const providerError = createProviderError(message.errorMessage ?? "");
+    const providerError = createAssistantProviderError(message);
     Object.assign(attributes, getProviderErrorAttributes(providerError));
     attributes["error.type"] = providerError.kind;
   }
