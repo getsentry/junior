@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import {
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
   type FormEvent,
@@ -36,6 +37,15 @@ const optionClass =
 const choiceButtonClass =
   "group flex w-full cursor-pointer items-center gap-3 rounded-md border border-dashboard-border bg-dashboard-surface-raised px-3 py-2.5 text-left font-sans text-sm transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed disabled:opacity-60 data-[picked]:border-dashboard-accent/60 data-[picked]:bg-dashboard-accent/10 data-[picked]:opacity-100";
 
+/** Sends the picks of a docked form from outside it. */
+export type UserInputFormHandle = {
+  /**
+   * Send the picks and text. Undefined when there is nothing to send;
+   * otherwise resolves false when the send fails.
+   */
+  sendPicks(): Promise<boolean> | undefined;
+};
+
 // Marks the choice that Junior recommends, next to its label.
 function SuggestedLabel(props: { className?: string }) {
   return (
@@ -47,6 +57,20 @@ function SuggestedLabel(props: { className?: string }) {
     >
       Suggested
     </span>
+  );
+}
+
+// Names the number key of a docked choice. The button already says it to
+// screen readers in `aria-keyshortcuts`.
+function ShortcutHint(props: { value?: string }) {
+  if (!props.value) return null;
+  return (
+    <kbd
+      aria-hidden="true"
+      className="grid size-5 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft font-sans text-2xs text-dashboard-text-muted max-md:hidden"
+    >
+      {props.value}
+    </kbd>
   );
 }
 
@@ -197,10 +221,17 @@ function TextField(props: {
  * A failed `onSubmit` lets the reader try again. `secondaryActions`, such as
  * Dismiss, sit after the answer controls. `onUnsentChange` reports whether
  * the form has picks or text that the reader has not sent.
+ *
+ * `docked` is for the question above the message box. The message box takes
+ * the reader's own words and sends the picks, so Other…, the note, and the
+ * form's Send do not show. `ref.sendPicks` sends the picks. Each choice
+ * button names its number key in `aria-keyshortcuts`.
  */
 export function UserInputForm(props: {
+  docked?: boolean;
   onSubmit(answer: UserInputAnswer): Promise<void>;
   onUnsentChange?(unsent: boolean): void;
+  ref?: Ref<UserInputFormHandle>;
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
@@ -225,18 +256,20 @@ export function UserInputForm(props: {
   // The lock stays after a sent answer; only a failed send can retry.
   const sendLock = useRef(false);
 
-  async function send(answer: UserInputAnswer) {
-    if (sendLock.current) return;
+  async function send(answer: UserInputAnswer): Promise<boolean> {
+    if (sendLock.current) return false;
     sendLock.current = true;
     setSending(true);
     setFailed(false);
     try {
       await props.onSubmit(answer);
+      return true;
     } catch {
       sendLock.current = false;
       setSending(false);
       setPicked(undefined);
       setFailed(true);
+      return false;
     }
   }
 
@@ -261,6 +294,9 @@ export function UserInputForm(props: {
   useEffect(() => {
     onUnsentChange?.(unsent);
   }, [onUnsentChange, unsent]);
+  useImperativeHandle(props.ref, () => ({
+    sendPicks: () => (unsent ? send(answer) : undefined),
+  }));
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!isEmptyUserInputAnswer(normalized)) {
@@ -275,11 +311,14 @@ export function UserInputForm(props: {
   ) : null;
   // Slack cards show the same button, so both surfaces take a free-text
   // answer when no choice fits.
-  const otherButton = (
+  const otherButton = props.docked ? null : (
     <Button disabled={sending} onClick={() => setWriteOther(true)}>
       Other…
     </Button>
   );
+  // Number keys pick the first nine choices.
+  const shortcut = (index: number) =>
+    props.docked && index < 9 ? String(index + 1) : undefined;
 
   return (
     <>
@@ -295,6 +334,7 @@ export function UserInputForm(props: {
                 aria-describedby={
                   option.description ? `${choicesId}-${index}` : undefined
                 }
+                aria-keyshortcuts={shortcut(index)}
                 aria-labelledby={`${choicesId}-${index}-label`}
                 className={choiceButtonClass}
                 data-picked={picked === option.label ? "" : undefined}
@@ -303,6 +343,7 @@ export function UserInputForm(props: {
                 onClick={() => pick(buttonField.id, option.label)}
                 type="button"
               >
+                <ShortcutHint value={shortcut(index)} />
                 <span className="grid min-w-0 flex-1 gap-0.5 break-words">
                   <span
                     className="font-medium text-dashboard-text"
@@ -335,12 +376,14 @@ export function UserInputForm(props: {
         </>
       ) : buttonField ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {buttonField.options.map((option) => (
+          {buttonField.options.map((option, index) => (
             <Button
+              aria-keyshortcuts={shortcut(index)}
               disabled={sending}
               key={option.label}
               onClick={() => pick(buttonField.id, option.label)}
             >
+              <ShortcutHint value={shortcut(index)} />
               {option.label}
               {/* The button gap already spaces the label. */}
               {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
@@ -375,29 +418,37 @@ export function UserInputForm(props: {
               />
             ),
           )}
-          <TextField
-            className="min-h-16"
-            description={USER_INPUT_NOTE.description}
-            disabled={sending}
-            label={USER_INPUT_NOTE.label}
-            onChange={setOther}
-            ref={noteRef}
-            value={other}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button disabled={sending} type="submit" variant="primary">
-              Send
-            </Button>
-            {fieldCount > 1 ? (
-              <span
-                aria-live="polite"
-                className="text-xs text-dashboard-text-muted"
-              >
-                {answeredCount} of {fieldCount} answered
-              </span>
-            ) : null}
-            {secondary}
-          </div>
+          {props.docked ? null : (
+            <TextField
+              className="min-h-16"
+              description={USER_INPUT_NOTE.description}
+              disabled={sending}
+              label={USER_INPUT_NOTE.label}
+              onChange={setOther}
+              ref={noteRef}
+              value={other}
+            />
+          )}
+          {/* A docked form sends from the message box, so this row can be
+              empty there. */}
+          {props.docked && fieldCount < 2 && !secondary ? null : (
+            <div className="flex flex-wrap items-center gap-2">
+              {props.docked ? null : (
+                <Button disabled={sending} type="submit" variant="primary">
+                  Send
+                </Button>
+              )}
+              {fieldCount > 1 ? (
+                <span
+                  aria-live="polite"
+                  className="text-xs text-dashboard-text-muted"
+                >
+                  {answeredCount} of {fieldCount} answered
+                </span>
+              ) : null}
+              {secondary}
+            </div>
+          )}
         </form>
       )}
       {failed ? (
