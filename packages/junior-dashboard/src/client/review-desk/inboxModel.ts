@@ -8,14 +8,20 @@ import {
 
 /**
  * The inbox bundles, as in Google Inbox. Every bundle is automatic: All,
- * pull requests, decisions, then one per Conversation. Nothing is tagged by
- * hand.
+ * pull requests, decisions, Automations that need attention, then one per
+ * Conversation. Nothing is tagged by hand.
  */
-export type InboxView = "all" | "prs" | "decisions" | `c:${string}`;
+export type InboxView =
+  | "all"
+  | "automations"
+  | "prs"
+  | "decisions"
+  | `c:${string}`;
 
 /** Read the bundle from the `bundle` search param. The inbox opens on All. */
 export function parseInboxView(value: string | null): InboxView {
-  if (value === "prs" || value === "decisions") return value;
+  if (value === "prs" || value === "decisions" || value === "automations")
+    return value;
   if (value?.startsWith("c:") && value.length > 2) return value as InboxView;
   return "all";
 }
@@ -43,6 +49,8 @@ export function itemsInView(
   if (view === "all") return [...items];
   if (view === "prs") return items.filter(isPullRequestItem);
   if (view === "decisions") return items.filter(isDecisionItem);
+  // Automation attention comes from the Automation list, not Review items.
+  if (view === "automations") return [];
   const id = view.slice(2);
   return items.filter((item) => item.addedByConversationId === id);
 }
@@ -87,9 +95,12 @@ export const TIME_SECTIONS: readonly { key: TimeSection; label: string }[] = [
   { key: "earlier", label: "Earlier" },
 ];
 
-/** Put a row in Today, This week, or Earlier, by its newest item. */
+/**
+ * Put a row in Today, This week, or Earlier, by how long it has waited, so
+ * new activity on an old ask does not move it up.
+ */
 export function timeSectionOf(row: InboxBundle, nowMs: number): TimeSection {
-  const at = Date.parse(row.newest.createdAt);
+  const at = Date.parse(row.waitingSince);
   const startOfToday = new Date(nowMs);
   startOfToday.setHours(0, 0, 0, 0);
   if (at >= startOfToday.getTime()) return "today";

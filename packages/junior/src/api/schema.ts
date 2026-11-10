@@ -87,6 +87,7 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
+export type { ConversationBriefGlance } from "./schema/conversation-brief-glance";
 export {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,

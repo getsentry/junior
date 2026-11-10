@@ -1,6 +1,6 @@
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { conversationDetailReportSchema } from "@sentry/junior/api/schema";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 
 import { conversationDetailTitle } from "../format";
 import { fetchDashboardJson } from "../http";
@@ -34,18 +34,6 @@ export function conversationGlanceQuery(conversationId: string) {
     retry: false,
     staleTime: 5 * 60_000,
   };
-}
-
-/** The Brief of one Conversation, once it loads. */
-export function useConversationBrief(
-  conversationId: string | undefined,
-): ConversationBriefReport | undefined {
-  return (
-    useQuery({
-      ...conversationGlanceQuery(conversationId ?? ""),
-      enabled: Boolean(conversationId),
-    }).data?.brief ?? undefined
-  );
 }
 
 /** The Briefs of some Conversations, in order. */

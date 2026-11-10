@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Clock3, Pin, PinOff } from "lucide-react";
+import { ArrowRight, Check, Clock3, Pin, PinOff, Zap } from "lucide-react";
 import { displayPlainText } from "../display-text/plainText";
 
 import { BriefOutcomeChip } from "../conversations/ConversationBrief";
@@ -108,10 +108,12 @@ export function InboxBundleView(props: {
   return (
     <li
       className={cn(
-        "min-w-0 list-none rounded-xl transition-colors",
+        // Each bundle is a card. An open one lifts out of the stream, as in
+        // Google Inbox: more room above and below, and a deeper shadow.
+        "min-w-0 list-none rounded-xl border transition-[margin,box-shadow,background-color] duration-200",
         props.expanded
-          ? "my-3 border border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-sm"
-          : "border border-transparent",
+          ? "my-4 border-dashboard-border-emphasis bg-dashboard-surface-raised shadow-[0_18px_44px_-14px_rgb(0_0_0/0.75),0_4px_14px_-6px_rgb(0_0_0/0.5)] light:shadow-[0_18px_44px_-14px_rgb(15_15_30/0.28),0_4px_14px_-6px_rgb(15_15_30/0.16)] md:-mx-2"
+          : "border-dashboard-border bg-dashboard-surface-panel shadow-[0_1px_2px_rgb(0_0_0/0.4)] light:shadow-[0_1px_3px_rgb(15_15_30/0.08)]",
       )}
       onFocus={props.onActivate}
     >
@@ -119,7 +121,7 @@ export function InboxBundleView(props: {
         aria-controls={regionId}
         aria-expanded={props.expanded}
         className={cn(
-          "grid w-full min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)_auto] items-start gap-x-3 rounded-xl border-0 bg-transparent px-4 py-3 text-left font-sans text-inherit transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          "grid w-full min-w-0 cursor-pointer grid-cols-[0.875rem_minmax(0,1fr)_auto] items-start gap-x-3 rounded-xl border-0 bg-transparent px-4 py-3 text-left font-sans comfortable:py-4 text-inherit transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           props.active && !props.expanded && "bg-dashboard-fill-soft",
         )}
         data-inbox-bundle={bundle.key}
@@ -186,7 +188,7 @@ export function InboxBundleView(props: {
             />
           ) : null}
           {/* The newest item's time, which also picks the time section. */}
-          {formatRelativeTime(newest.createdAt)}
+          {formatRelativeTime(bundle.waitingSince)}
         </span>
       </button>
       {props.expanded ? (
@@ -249,6 +251,12 @@ export function InboxBundleView(props: {
                 ))}
               </div>
             ) : null}
+            {props.snoozeMenuOpen ? (
+              <SnoozeUntilEvent
+                bundle={bundle}
+                onPick={() => props.onSnoozeMenu(false)}
+              />
+            ) : null}
             <Link
               className="ml-auto inline-flex items-center gap-1.5 font-sans text-sm font-medium text-dashboard-text no-underline hover:underline focus-visible:outline-dashboard-focus"
               to={conversationPath(bundle.conversationId, {
@@ -282,5 +290,43 @@ export function InboxBundleView(props: {
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Prototype only: snooze until something happens, not a time. The choices
+ * show the idea and do nothing yet beyond closing the menu.
+ */
+function SnoozeUntilEvent(props: { bundle: InboxBundle; onPick(): void }) {
+  const pr = props.bundle.items
+    .map((item) => item.subject?.url?.match(/\/pull\/(\d+)/)?.[1])
+    .find(Boolean);
+  const choices = [
+    pr ? `When PR #${pr} merges` : "When PR #91 merges",
+    "When automation Weekly project summary runs",
+    "When this PR opens",
+  ];
+  return (
+    <div
+      aria-label="Snooze until something happens"
+      className="flex basis-full flex-wrap items-center gap-1 pl-0.5"
+      role="group"
+    >
+      <span className="pr-1 font-sans text-xs text-dashboard-text-faint">
+        Or until
+      </span>
+      {choices.map((label) => (
+        <Button
+          className="border-dashed"
+          key={label}
+          onClick={props.onPick}
+          title="Prototype: not wired up yet"
+          variant="quiet"
+        >
+          <Zap aria-hidden="true" size={14} />
+          {label}
+        </Button>
+      ))}
+    </div>
   );
 }

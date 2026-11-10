@@ -879,6 +879,7 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       activityPreview: summary.activityPreview,
+      brief: summary.brief,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
@@ -920,7 +921,20 @@ export function conversationFromDetail(
   detail: ConversationTranscript | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
-  const conversation = buildConversations([detail])[0];
+  // The feed carries a glance at the Brief, not the whole Brief.
+  const { brief, ...summary } = detail;
+  const conversation = buildConversations([
+    brief
+      ? {
+          ...summary,
+          brief: {
+            intent: brief.content.intent,
+            status: brief.content.outcome.status,
+            summary: brief.content.summary,
+          },
+        }
+      : summary,
+  ])[0];
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;

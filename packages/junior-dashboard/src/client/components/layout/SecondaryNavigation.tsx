@@ -11,6 +11,7 @@ import {
   dashboardInteractiveTextClass,
 } from "../../styles";
 import { SecondaryNavigationPortal } from "./DashboardChrome";
+import { usePaneShows } from "./PaneNav";
 
 export type SecondaryNavigationItem = SegmentedNavItem;
 
@@ -25,7 +26,14 @@ export function SecondaryNavigation(props: {
   className?: string;
   children: ReactNode;
   items: SecondaryNavigationItem[];
+  /**
+   * The pane lists these pages (see `AreaSidebar`), so the desktop links
+   * show only while the pane hides, and phones open on the list instead.
+   */
+  listedInPane?: boolean;
 }) {
+  const paneOpen = usePaneShows();
+  const desktopLinks = !props.listedInPane || !paneOpen;
   const menuLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 pl-6 font-sans text-sm font-medium no-underline transition-colors",
@@ -38,13 +46,17 @@ export function SecondaryNavigation(props: {
     <div className={cn("min-w-0", props.className)}>
       <SecondaryNavigationPortal
         desktop={
-          <div className={cn(dashboardContainerClass, "min-w-0 px-4 md:px-8")}>
-            <SegmentedNav
-              ariaLabel={props.ariaLabel}
-              items={props.items}
-              toolbar
-            />
-          </div>
+          desktopLinks ? (
+            <div
+              className={cn(dashboardContainerClass, "min-w-0 px-4 md:px-8")}
+            >
+              <SegmentedNav
+                ariaLabel={props.ariaLabel}
+                items={props.items}
+                toolbar
+              />
+            </div>
+          ) : null
         }
         mobile={
           <nav
@@ -61,9 +73,11 @@ export function SecondaryNavigation(props: {
           </nav>
         }
       />
-      <div className="border-b border-dashboard-border px-4 pt-2 sm:px-8 md:hidden">
-        <SegmentedNav ariaLabel={props.ariaLabel} fill items={props.items} />
-      </div>
+      {props.listedInPane ? null : (
+        <div className="border-b border-dashboard-border px-4 pt-2 sm:px-8 md:hidden">
+          <SegmentedNav ariaLabel={props.ariaLabel} fill items={props.items} />
+        </div>
+      )}
       {props.children}
     </div>
   );

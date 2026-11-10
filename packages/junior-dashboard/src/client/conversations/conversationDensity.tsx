@@ -1,21 +1,56 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 import { useLocalStorage } from "@uidotdev/usehooks";
+import { useEffect } from "react";
 import { Bot, Rows2, Rows3 } from "lucide-react";
 
 import { useDashboardCoreData } from "../api";
 import { ActorAvatar } from "../components/ActorAvatar";
+import {
+  PreferenceToggle,
+  type PreferenceChoice,
+} from "../components/PreferenceToggle";
 import { participantName } from "../components/ParticipantAvatarStack";
-import { cn } from "../styles";
 import type { Conversation } from "../types";
 
-/** How tall Conversation rows are. Comfortable adds who takes part. */
+/** How roomy the dashboard is. Comfortable adds who takes part to rows. */
 export type ConversationDensity = "comfortable" | "compact";
 
-/** The viewer's row density, kept in this browser. */
+const DENSITY_STORAGE_KEY = "junior:density";
+
+/**
+ * The viewer's density, kept in this browser. Rows, inbox bundles, and the
+ * transcript follow it: components read it here, and CSS reads the root's
+ * `data-density` through the `comfortable:` variant.
+ */
 export function useConversationDensity() {
-  return useLocalStorage<ConversationDensity>(
-    "junior:conversations:density",
-    "compact",
+  return useLocalStorage<ConversationDensity>(DENSITY_STORAGE_KEY, "compact");
+}
+
+/** Mirror the density on the root, for the `comfortable:` CSS variant. */
+export function useDensityRoot(): void {
+  const [density] = useConversationDensity();
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+  }, [density]);
+}
+
+const densityChoices = [
+  { Icon: Rows3, label: "Compact", value: "compact" },
+  { Icon: Rows2, label: "Comfortable", value: "comfortable" },
+] as const satisfies ReadonlyArray<PreferenceChoice<ConversationDensity>>;
+
+/** Choose the dashboard density, next to the theme choice. */
+export function DensitySwitcher(props: { className?: string }) {
+  const [density, setDensity] = useConversationDensity();
+  return (
+    <PreferenceToggle<ConversationDensity>
+      choices={densityChoices}
+      className={props.className}
+      itemLabel={(item) => `${item.label} density`}
+      label="Density"
+      onChange={setDensity}
+      value={density}
+    />
   );
 }
 
@@ -101,41 +136,5 @@ export function ConversationCast(props: { conversation: Conversation }) {
         </span>
       ) : null}
     </span>
-  );
-}
-
-/** Switch the list between Compact and Comfortable rows. */
-export function ConversationDensityToggle(props: { className?: string }) {
-  const [density, setDensity] = useConversationDensity();
-  const options = [
-    { Icon: Rows3, label: "Compact", value: "compact" },
-    { Icon: Rows2, label: "Comfortable", value: "comfortable" },
-  ] as const;
-  return (
-    <div
-      aria-label="Row density"
-      className={cn("inline-flex items-center gap-0.5", props.className)}
-      role="radiogroup"
-    >
-      {options.map(({ Icon, label, value }) => (
-        <button
-          aria-checked={density === value}
-          aria-label={label}
-          className={cn(
-            "grid size-6 cursor-pointer place-items-center rounded-md border-0 bg-transparent p-0 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
-            density === value
-              ? "bg-dashboard-fill-strong text-dashboard-text"
-              : "text-dashboard-text-faint hover:text-dashboard-text",
-          )}
-          key={value}
-          onClick={() => setDensity(value)}
-          role="radio"
-          title={label}
-          type="button"
-        >
-          <Icon aria-hidden="true" className="size-3.5" />
-        </button>
-      ))}
-    </div>
   );
 }

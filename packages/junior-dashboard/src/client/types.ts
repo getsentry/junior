@@ -17,7 +17,10 @@ import type {
   ConversationTurnFailureReason,
   ReviewItemChangeRecord,
 } from "@sentry/junior/api/schema";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationDetailReport,
+  ConversationFeedItem,
+} from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
 import type { DashboardConfig, DashboardIdentity } from "../api/schema";
 
@@ -166,6 +169,8 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"];
+  /** A glance at the latest Brief, when the feed has one. */
+  brief?: ConversationFeedItem["brief"];
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;

@@ -39,6 +39,8 @@ import {
   COMMAND_PALETTE_SHORTCUT,
 } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { usePrototypeVariant } from "./prototypeVariant";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import { navItemIcon } from "./navIcons";
 
@@ -62,6 +64,8 @@ type PaneNavValue = {
   /** A toggle mounted by `setOpen` with `focus` takes focus once. */
   takeToggleFocus(): boolean;
   workspaceActive: boolean;
+  /** The tab the reader was on last, for the way back from other pages. */
+  lastTab: PaneTab;
   /** The last path and search that each tab showed, so a tab reopens there. */
   tabPaths: Record<PaneTab, string>;
   /** Scroll offsets of each tab's list, kept while the tab is away. */
@@ -148,6 +152,8 @@ export function PaneNavProvider(props: {
   if (tab && tabPaths[tab] !== here) {
     setTabPaths({ ...tabPaths, [tab]: here });
   }
+  const [lastTab, setLastTab] = useState<PaneTab>("conversations");
+  if (tab && tab !== lastTab) setLastTab(tab);
   const [width, setWidth] = useState(readSidebarWidth);
   const widthValue = useMemo(() => ({ setWidth, width }), [width]);
   const { onOpenChange, open } = props;
@@ -171,6 +177,7 @@ export function PaneNavProvider(props: {
   }, [open, setOpen]);
   const value = useMemo(
     () => ({
+      lastTab,
       navItems: props.navItems,
       onSearch: props.onSearch,
       open,
@@ -189,6 +196,7 @@ export function PaneNavProvider(props: {
       workspaceActive: props.workspaceActive,
     }),
     [
+      lastTab,
       open,
       props.navItems,
       props.onSearch,
@@ -216,9 +224,29 @@ export function PaneNavProvider(props: {
   );
 }
 
+const TAB_LABELS: Record<PaneTab, string> = {
+  automations: "Automations",
+  conversations: "Conversations",
+  inbox: "Inbox",
+};
+
+/** The way back to the tab the reader came from, where it left off. */
+export function usePaneBackToTab(): { label: string; to: string } {
+  const pane = usePaneNav();
+  return { label: TAB_LABELS[pane.lastTab], to: pane.tabPaths[pane.lastTab] };
+}
+
 /** Read whether the desktop pane shows. */
 export function usePaneOpen(): boolean {
   return usePaneNav().open;
+}
+
+/**
+ * Read whether the pane shows, for page chrome that can also render on its
+ * own, such as in tests. False without a pane.
+ */
+export function usePaneShows(): boolean {
+  return useContext(PaneNavContext)?.open ?? false;
 }
 
 /** Show or hide the desktop pane, as its toggles and Cmd/Ctrl+B do. */
@@ -468,6 +496,69 @@ export function NewButton(props: {
 }
 
 /**
+ * Prototype: which New control the pane shows. `?new=fab` (the default) or
+ * `?new=bar`, so reviewers can compare them.
+ */
+function useNewButtonVariant() {
+  return usePrototypeVariant("new", ["fab", "bar"]);
+}
+
+function runNewAction(
+  action: PaneNewAction,
+  navigate: ReturnType<typeof useNavigate>,
+) {
+  if (action.onClick) action.onClick();
+  else navigate(action.to);
+}
+
+/**
+ * Variant A: a round, elevated floating action button over the bottom
+ * right of the list, as in Google Inbox. Its name follows the tab.
+ */
+function NewFab(props: { action: PaneNewAction }) {
+  const navigate = useNavigate();
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-label={props.action.label}
+            className="absolute right-4 bottom-4 z-20 grid size-14 cursor-pointer place-items-center rounded-full border-0 bg-dashboard-accent text-dashboard-text-inverse shadow-[0_8px_24px_-6px_rgb(0_0_0/0.6),0_2px_6px_rgb(0_0_0/0.3)] transition-[background-color,box-shadow,transform] duration-200 hover:bg-dashboard-accent/90 hover:shadow-[0_12px_30px_-6px_rgb(0_0_0/0.65),0_3px_8px_rgb(0_0_0/0.3)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus active:scale-95 max-md:hidden"
+            data-new-button="fab"
+            onClick={() => runNewAction(props.action, navigate)}
+            type="button"
+          >
+            <Plus aria-hidden="true" className="size-6" strokeWidth={2.4} />
+          </button>
+        }
+      />
+      <TooltipContent side="left">{props.action.label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * Variant B: a full-width button pinned under the list, above the profile
+ * footer. It names what it creates, such as "New conversation".
+ */
+function NewBar(props: { action: PaneNewAction }) {
+  const navigate = useNavigate();
+  return (
+    <div className={cn("px-3 pt-2 max-md:hidden", PANE_EDGE_CLASS)}>
+      <button
+        className="flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-dashboard-accent font-sans text-sm font-semibold text-dashboard-text-inverse transition-colors hover:bg-dashboard-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+        data-new-button="bar"
+        onClick={() => runNewAction(props.action, navigate)}
+        type="button"
+      >
+        <Plus aria-hidden="true" className="size-4" strokeWidth={2.4} />
+        {props.action.label}
+      </button>
+    </div>
+  );
+}
+
+/**
  * Head the pane: home, the command palette, the pane toggle, then the tabs.
  */
 function PaneNavHeader() {
@@ -651,6 +742,7 @@ export function ListPane(props: {
 }) {
   const pane = usePaneNav();
   const scroll = usePaneScrollMemory(props.tab);
+  const newVariant = useNewButtonVariant();
   return (
     <div
       className={cn(
@@ -669,13 +761,13 @@ export function ListPane(props: {
         ref={scroll.ref}
       >
         {props.children}
-        {props.newAction ? (
-          <NewButton
-            action={props.newAction}
-            className="absolute right-4 bottom-4 z-20 max-md:hidden"
-          />
+        {props.newAction && newVariant === "fab" ? (
+          <NewFab action={props.newAction} />
         ) : null}
       </div>
+      {props.newAction && newVariant === "bar" ? (
+        <NewBar action={props.newAction} />
+      ) : null}
       {pane.profile ? (
         <div className={cn("px-3 pb-3 pt-2 max-md:hidden", PANE_EDGE_CLASS)}>
           {pane.profile}

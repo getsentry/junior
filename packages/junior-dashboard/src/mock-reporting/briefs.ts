@@ -1,4 +1,7 @@
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationBriefGlance,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 
 type Brief = NonNullable<ConversationDetailReport["brief"]>;
 type Status = Brief["content"]["outcome"]["status"];
@@ -119,6 +122,26 @@ const BRIEFS: Record<string, BriefSpec> = {
     version: 1,
   },
 };
+
+/**
+ * The list-row glance at a Conversation's Brief, as the feed would read it
+ * from the latest Brief version.
+ */
+export function mockBriefGlance(
+  conversation: Pick<ConversationDetailReport, "brief" | "displayTitle">,
+): ConversationBriefGlance | undefined {
+  const content = conversation.brief?.content;
+  if (content)
+    return {
+      intent: content.intent,
+      status: content.outcome.status,
+      summary: content.summary,
+    };
+  const spec = BRIEFS[conversation.displayTitle];
+  return spec
+    ? { intent: spec.intent, status: spec.status, summary: spec.summary }
+    : undefined;
+}
 
 /** Add a mock Brief to a Conversation that has none. */
 export function withMockBrief<

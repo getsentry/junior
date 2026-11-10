@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, TriangleAlert } from "lucide-react";
 import { displayPlainText } from "../display-text/plainText";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
@@ -40,10 +40,11 @@ import {
   type InboxBundleLink,
 } from "./InboxSidebar";
 import { useInboxSweep } from "./useInboxSweep";
+import { automationAttentionReason } from "../pages/automations/automationAttention";
 import { BriefOutcomeChip } from "../conversations/ConversationBrief";
 import { useConversationBriefs } from "../conversations/conversationGlance";
 import {
-  useBlockedAutomationsData,
+  useAutomationAttentionData,
   useLinkedConversationTitles,
   useReviewItemAction,
   useReviewItemData,
@@ -106,10 +107,11 @@ function Section(props: {
 }) {
   if (props.count === 0) return null;
   return (
-    <section aria-label={props.label} className="grid gap-0.5">
-      <div className="flex min-h-9 items-end justify-between gap-3 pr-2 pt-3">
+    <section aria-label={props.label} className="grid gap-2 pt-5 first:pt-1">
+      {/* A strong heading and a rule split the stream of bundle cards. */}
+      <div className="flex min-h-9 items-end justify-between gap-3 border-b border-dashboard-border pr-1 pb-1.5">
         <ConversationSectionHeading
-          className="px-4 pb-1"
+          className="px-1 font-semibold text-dashboard-text [&_*]:text-dashboard-text"
           collapsed={props.collapsed}
           count={props.count}
           label={props.label}
@@ -118,49 +120,61 @@ function Section(props: {
         {props.action}
       </div>
       {props.collapsed ? null : (
-        <ul className="m-0 grid gap-0.5 p-0">{props.children}</ul>
+        <ul className="m-0 grid gap-2 p-0 comfortable:gap-3">
+          {props.children}
+        </ul>
       )}
     </section>
   );
 }
 
-function BlockedAutomationRow(props: { automation: AutomationSummary }) {
+/**
+ * An Automation that needs attention. It says why and opens the editor. A
+ * sweep never clears it; it leaves when the Automation is fixed or resumed.
+ */
+function AutomationAttentionRow(props: { automation: AutomationSummary }) {
+  const { automation } = props;
+  const detail =
+    automation.statusReason ??
+    (automation.kind === "event" ? automation.trigger.problems[0] : undefined);
   return (
-    <li className="list-none">
+    <li className="min-w-0 list-none rounded-xl border border-dashboard-border bg-dashboard-surface-panel shadow-[0_1px_2px_rgb(0_0_0/0.4)] light:shadow-[0_1px_3px_rgb(15_15_30/0.08)]">
       <Link
-        className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-x-3 rounded-xl px-4 py-3 font-sans text-inherit no-underline hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-        to={automationPath(props.automation.id)}
+        className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_auto] items-start gap-x-3 rounded-xl px-4 py-3 font-sans text-inherit no-underline hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus comfortable:py-4"
+        to={automationPath(automation.id, "edit")}
       >
-        <span
+        <TriangleAlert
           aria-hidden="true"
-          className="mt-[0.4rem] size-2 justify-self-center rounded-full bg-amber-300"
+          className="mt-0.5 size-3.5 justify-self-center text-amber-400"
         />
         <span className="grid min-w-0 gap-0.5">
-          <span className="truncate text-sm font-medium text-dashboard-text">
-            {props.automation.title}
+          <span className="truncate text-sm font-semibold leading-snug text-dashboard-text">
+            {automation.title}
           </span>
           <span className="truncate text-xs text-dashboard-text-muted">
-            {props.automation.statusReason ?? "Blocked"}
+            <span className="font-medium text-amber-400 light:text-amber-700">
+              {automationAttentionReason(automation)}
+            </span>
+            {detail ? ` · ${detail}` : null}
           </span>
+        </span>
+        <span className="shrink-0 pt-0.5 text-xs text-dashboard-text-faint">
+          Automation
         </span>
       </Link>
     </li>
   );
 }
 
-type SectionKey =
-  | "blocked"
-  | "earlier"
-  | "pinned"
-  | "snoozed"
-  | "today"
-  | "week";
+type SectionKey = "earlier" | "needs" | "pinned" | "snoozed" | "today" | "week";
 
-const VIEW_LABELS: Record<"all" | "decisions" | "prs", string> = {
-  all: "All",
-  decisions: "Decisions",
-  prs: "Pull requests",
-};
+const VIEW_LABELS: Record<"all" | "automations" | "decisions" | "prs", string> =
+  {
+    all: "All",
+    automations: "Automations",
+    decisions: "Decisions",
+    prs: "Pull requests",
+  };
 
 /**
  * Render the inbox the way Google Inbox did: the pane lists the bundles
@@ -187,11 +201,12 @@ export function ReviewDeskPage() {
     forViewer: true,
     q,
   });
-  const showBlocked = !q && view === "all";
-  const blocked = useBlockedAutomationsData(showBlocked);
-  const blockedAutomations = showBlocked
-    ? (blocked.data?.automations ?? [])
-    : [];
+  // Automations that need attention are asks too: they show in All and in
+  // their own bundle, count toward "need you", and a sweep leaves them.
+  const attention = useAutomationAttentionData(true);
+  const attentionAll = attention.data?.automations ?? [];
+  const attentionAutomations =
+    !q && (view === "all" || view === "automations") ? attentionAll : [];
 
   // A link can name an item that is not open, such as an answered one.
   const itemParam = searchParams.get("item") ?? undefined;
@@ -259,9 +274,23 @@ export function ReviewDeskPage() {
       view: target,
     };
   };
-  const bundleLinks = (["all", "prs", "decisions"] as const).map((key) =>
-    link(key, VIEW_LABELS[key]),
-  );
+  const bundleLinks = (["all", "prs", "decisions"] as const).map((key) => {
+    const bundle = link(key, VIEW_LABELS[key]);
+    return key === "all"
+      ? {
+          ...bundle,
+          count: bundle.count + attentionAll.length,
+          needYou: bundle.needYou + attentionAll.length,
+        }
+      : bundle;
+  });
+  if (attentionAll.length > 0)
+    bundleLinks.push({
+      count: attentionAll.length,
+      label: VIEW_LABELS.automations,
+      needYou: attentionAll.length,
+      view: "automations",
+    });
   const conversationLinks = inboxBundles(awake)
     .sort(
       (a, b) =>
@@ -275,7 +304,10 @@ export function ReviewDeskPage() {
       ),
     );
   const viewLabel =
-    view === "all" || view === "prs" || view === "decisions"
+    view === "all" ||
+    view === "prs" ||
+    view === "decisions" ||
+    view === "automations"
       ? VIEW_LABELS[view]
       : (titleById.get(view.slice(2)) ?? "Conversation");
   const viewConversationId = view.startsWith("c:") ? view.slice(2) : undefined;
@@ -286,12 +318,26 @@ export function ReviewDeskPage() {
   const rows = viewRows(q ? allItems : awake, view);
   const rowPinned = (row: InboxBundle) => row.items.some(isPinned);
   const pinnedRows = q ? [] : rows.filter(rowPinned);
+  // What waits on the viewer leads, longest wait first. The rest follows in
+  // time sections by how long it has waited.
+  const needsRows = q
+    ? []
+    : rows
+        .filter((row) => !rowPinned(row) && row.needsYou)
+        .sort(
+          (a, b) =>
+            Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
+            a.key.localeCompare(b.key),
+        );
   const timeSections = TIME_SECTIONS.map((section) => ({
     ...section,
     rows: q
       ? []
       : rows.filter(
-          (row) => !rowPinned(row) && timeSectionOf(row, nowMs) === section.key,
+          (row) =>
+            !rowPinned(row) &&
+            !row.needsYou &&
+            timeSectionOf(row, nowMs) === section.key,
         ),
   }));
   const snoozedRows = q ? [] : viewRows(sleeping, view);
@@ -310,6 +356,7 @@ export function ReviewDeskPage() {
     ? rows
     : [
         ...(collapsed.has("pinned") ? [] : pinnedRows),
+        ...(collapsed.has("needs") ? [] : needsRows),
         ...timeSections.flatMap((section) =>
           collapsed.has(section.key) ? [] : section.rows,
         ),
@@ -479,8 +526,9 @@ export function ReviewDeskPage() {
     !q &&
     navigable.length === 0 &&
     pinnedRows.length === 0 &&
+    needsRows.length === 0 &&
     timeSections.every((section) => section.rows.length === 0) &&
-    blockedAutomations.length === 0;
+    attentionAutomations.length === 0;
   const rowView = (row: InboxBundle) => (
     <InboxBundleView
       active={row === active}
@@ -548,7 +596,7 @@ export function ReviewDeskPage() {
                 {q ? null : (
                   <SweepButton
                     clear={viewSweep.clear.length}
-                    needYou={viewSweep.needYou}
+                    needYou={viewSweep.needYou + attentionAutomations.length}
                     onSweep={() => sweepRows(rows)}
                     scope={viewLabel}
                   />
@@ -618,6 +666,32 @@ export function ReviewDeskPage() {
               >
                 {pinnedRows.map(rowView)}
               </Section>
+              <Section
+                action={
+                  <SweepButton
+                    clear={0}
+                    needYou={needsRows.reduce(
+                      (total, row) =>
+                        total + row.items.filter(itemNeedsViewer).length,
+                      attentionAutomations.length,
+                    )}
+                    onSweep={() => undefined}
+                    scope="Needs you"
+                  />
+                }
+                collapsed={collapsed.has("needs")}
+                count={needsRows.length + attentionAutomations.length}
+                label="Needs you"
+                onToggle={() => toggleSection("needs")}
+              >
+                {needsRows.map(rowView)}
+                {attentionAutomations.map((automation) => (
+                  <AutomationAttentionRow
+                    automation={automation}
+                    key={automation.id}
+                  />
+                ))}
+              </Section>
               {timeSections.map((section) => {
                 const sweep = sweepOf(section.rows, isPinned);
                 return (
@@ -640,19 +714,6 @@ export function ReviewDeskPage() {
                   </Section>
                 );
               })}
-              <Section
-                collapsed={collapsed.has("blocked")}
-                count={blockedAutomations.length}
-                label="Blocked automations"
-                onToggle={() => toggleSection("blocked")}
-              >
-                {blockedAutomations.map((automation) => (
-                  <BlockedAutomationRow
-                    automation={automation}
-                    key={automation.id}
-                  />
-                ))}
-              </Section>
               <Section
                 collapsed={collapsed.has("snoozed")}
                 count={snoozedRows.length}

@@ -7,6 +7,7 @@ import {
 } from "../components/ui/tooltip";
 import type { WaitingConversation } from "../review-desk/queries";
 import { cn } from "../styles";
+import { NeedsYouMarker } from "../components/NeedsYouMarker";
 import { conversationPath } from "./conversationRoutes";
 import { GitHubMark } from "./GitHubMark";
 import { pluginSource } from "./transcriptSource";
@@ -29,6 +30,8 @@ function WaitingItemMark(props: { plugin?: string }) {
  */
 export function WaitingChip(props: {
   conversationId: string;
+  /** Prototype `?needsYou=marker`: lead with the Needs you marker. */
+  marker?: boolean;
   waiting: WaitingConversation;
 }) {
   const [newest, ...older] = props.waiting.items;
@@ -38,9 +41,10 @@ export function WaitingChip(props: {
       <TooltipTrigger
         render={
           <Link
-            className="mb-1.5 ml-[2.5rem] mr-3 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+            className="mb-1.5 ml-[2.25rem] mr-2 flex min-w-0 items-center gap-1.5 rounded-md border border-dashboard-border-strong bg-dashboard-surface-raised px-2 py-1 font-sans text-xs text-dashboard-text no-underline transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
             to={conversationPath(props.conversationId, { reviewItems: true })}
           >
+            {props.marker ? <NeedsYouMarker /> : null}
             <WaitingItemMark plugin={newest.plugin} />
             <span className="min-w-0 truncate">{newest.title}</span>
             {older.length > 0 ? (

@@ -1,4 +1,4 @@
-import { withMockBrief } from "./briefs";
+import { mockBriefGlance, withMockBrief } from "./briefs";
 import { mockAutomationCollection } from "./automation-collection";
 /** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
@@ -2071,6 +2071,15 @@ function mockThreadPlacement(
   return undefined;
 }
 
+/** A feed row: the summary plus a glance at the latest Brief. */
+function feedItemFromConversation(
+  conversation: MockConversation,
+): ConversationFeedItem {
+  const summary = summaryFromConversation(conversation);
+  const brief = mockBriefGlance(conversation);
+  return brief ? { ...summary, brief } : summary;
+}
+
 /** Group shown mock Threads by where they nest. */
 function mockThreadsByPlacement(
   conversations: readonly MockConversation[],
@@ -2088,7 +2097,7 @@ function mockThreadsByPlacement(
     if (!placement) continue;
     threadsByPlacement.set(placement, [
       ...(threadsByPlacement.get(placement) ?? []),
-      summaryFromConversation(thread),
+      feedItemFromConversation(thread),
     ]);
   }
   return threadsByPlacement;
@@ -2115,7 +2124,7 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
           !isUnlistedMockConversation(conversation.conversationId),
       )
       .map((root) => {
-        const summary = summaryFromConversation(root);
+        const summary = feedItemFromConversation(root);
         return summary.archivedAt ? summary : nest(summary);
       }),
   };
@@ -3861,6 +3870,8 @@ function mockTasks(): AutomationSummary[] {
       kind: "scheduled",
       lastConversationId: "scheduler:daily-ops-digest",
       lastRunAt: "2026-08-07T15:00:00.000Z",
+      // Prototype: a failed last run, for the Inbox's Automations bundle.
+      lastRunStatus: "failed",
       nextRunAt: "2026-08-08T15:00:00.000Z",
       credentialMode: "creator",
       ownedByViewer: true,
@@ -3928,7 +3939,9 @@ function mockTasks(): AutomationSummary[] {
         filters: ["labels includes bug", "repository is api or web"],
         problems: [],
       },
-      status: "active",
+      // Prototype: a blocked Automation, for the Inbox's Automations bundle.
+      status: "blocked",
+      statusReason: "GitHub access expired. Reconnect GitHub to resume.",
     },
     {
       createdAt: "2026-07-30T16:00:00.000Z",

@@ -276,6 +276,9 @@
 
 /* Style one-off values that the token and palette mirror cannot cover. */
 @custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+/* Comfortable density: roomier rows, bundles, and transcript spacing. The
+   root carries `data-density` from the viewer's profile menu choice. */
+@custom-variant comfortable (&:where([data-density="comfortable"] *));
 
 /* Desktop windows tall enough for roomier conversation chrome. Shorter
    windows, such as most laptops, keep it compact so the transcript gets the

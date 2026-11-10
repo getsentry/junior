@@ -4,8 +4,11 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SegmentedNav } from "../../components/SegmentedNav";
+import { usePaneShows } from "../../components/layout/PaneNav";
+import { useSidebarFits } from "../../conversations/conversationSidebarLayout";
 
-const settingsNavigationItems = [
+/** The Settings pages, for the in-page links and the pane list. */
+export const settingsNavigationItems = [
   { end: true, label: "General", to: "/settings" },
   { label: "API Tokens", to: "/settings/api-tokens" },
   { label: "Identities", to: "/settings/connections" },
@@ -22,16 +25,21 @@ export function SettingsPageLayout(props: {
   description: ReactNode;
   title: string;
 }) {
+  const paneOpen = usePaneShows();
+  const sidebarFits = useSidebarFits();
   return (
     <PageLayout>
       <div className="grid w-full max-w-3xl min-w-0 gap-8">
         <PageHeader
           documentTitle={props.title}
+          // The pane lists these pages; phones open on that list.
           navigation={
-            <SegmentedNav
-              ariaLabel="Settings navigation"
-              items={settingsNavigationItems}
-            />
+            sidebarFits && !paneOpen ? (
+              <SegmentedNav
+                ariaLabel="Settings navigation"
+                items={settingsNavigationItems}
+              />
+            ) : undefined
           }
           title="Settings"
         />

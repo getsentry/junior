@@ -130,8 +130,9 @@ export function useConversationsData(search = "") {
 }
 
 /** Fetch repository and code change analytics. */
-export function useCodeOverviewData() {
+export function useCodeOverviewData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),

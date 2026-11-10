@@ -16,6 +16,7 @@ import type { Identity } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { DensitySwitcher } from "../conversations/conversationDensity";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button, buttonVariants } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -329,6 +330,7 @@ export function ProfileMenu({
           Log out
         </button>
         <ThemeSwitcher className="px-3 py-2" />
+        <DensitySwitcher className="px-3 py-2" />
       </nav>
     );
   }
@@ -409,6 +411,7 @@ export function ProfileMenu({
         {identityBlock}
         <div className="grid gap-1 border-b border-dashboard-border-strong px-2.5 py-2">
           <ThemeSwitcher />
+          <DensitySwitcher />
         </div>
         {menuLinks(() => setOpen(false))}
       </PopoverContent>

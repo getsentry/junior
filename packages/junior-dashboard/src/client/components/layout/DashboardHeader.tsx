@@ -37,6 +37,8 @@ const mobileBackClass =
 export function DashboardHeader(props: {
   /** Back target used on mobile conversation detail. */
   mobileBackTo?: string;
+  /** Names where `mobileBackTo` goes. Defaults to the conversations. */
+  mobileBackLabel?: string;
   mobileNavigationOpen: boolean;
   mobileTitle?: string;
   /** Quiet signed-in strip pinned above the sheet version footer. */
@@ -106,7 +108,7 @@ export function DashboardHeader(props: {
           </button>
         ) : conversationMode && props.mobileBackTo ? (
           <Link
-            aria-label="Back to conversations"
+            aria-label={props.mobileBackLabel ?? "Back to conversations"}
             className={mobileBackClass}
             to={props.mobileBackTo}
           >

@@ -15,7 +15,7 @@ import { conversationPath } from "./conversationRoutes";
 
 // Line the first level up with the root title, then step in per level. Deep
 // trees stop stepping in, so titles keep their width.
-const DEPTH_INDENT = ["pl-[2.5rem]", "pl-[3.5rem]", "pl-[4.5rem]"];
+const DEPTH_INDENT = ["pl-[2.25rem]", "pl-[3.25rem]", "pl-[4.25rem]"];
 
 /**
  * Render one Thread under its parent in the sidebar. The row shows a status
@@ -37,7 +37,7 @@ export const ConversationSidebarThreadRow = memo(
         {...prefetch}
         aria-current={props.selected ? "page" : undefined}
         className={cn(
-          "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg py-1 pr-3 text-inherit no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+          "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg py-1 pr-2 text-inherit no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
           DEPTH_INDENT[Math.min(props.depth, DEPTH_INDENT.length - 1)],
           props.selected && "bg-dashboard-surface-active",
         )}
@@ -74,7 +74,7 @@ export function ConversationSidebarThreadToggle(props: {
     <button
       aria-expanded={props.expanded}
       className={cn(
-        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg py-1 pr-3 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+        "group grid min-w-0 cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg py-1 pr-2 text-left font-sans text-xs text-dashboard-text-faint transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
         DEPTH_INDENT[0],
       )}
       onClick={props.onToggle}

@@ -3,6 +3,7 @@ import {
   GitPullRequest,
   Inbox,
   MessageCircleQuestion,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router";
@@ -23,6 +24,7 @@ export type InboxBundleLink = {
 
 const VIEW_ICONS: Partial<Record<InboxView, LucideIcon>> = {
   all: Inbox,
+  automations: Workflow,
   decisions: MessageCircleQuestion,
   prs: GitPullRequest,
 };
