@@ -196,6 +196,18 @@ for (const view of [{ ...desktop, height: 560 }, mobile]) {
     // Without motion the transcript jumps, so each check sees where it ends.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await spreadQuestionTurns(page);
+    // The next record loads its item only after the step asks for it.
+    let releaseTables = () => {};
+    const tablesHeld = new Promise<void>((resolve) => {
+      releaseTables = resolve;
+    });
+    await page.route(
+      "**/api/review-items/qa-migration-tables",
+      async (route) => {
+        await tablesHeld;
+        await route.fallback();
+      },
+    );
     await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
     const question = page.getByRole("region", { name: /^Question:/ });
     const record = (title: string) =>
@@ -210,6 +222,8 @@ for (const view of [{ ...desktop, height: 560 }, mobile]) {
 
     // A step shows the record of the question, and marks it.
     await question.getByRole("button", { name: "Next question" }).click();
+    await expect(question).toContainText("2 of 3", { useInnerText: true });
+    releaseTables();
     await expect(tablesRecord).toBeInViewport();
     await expect(tablesRecord).toHaveAttribute("data-highlighted", "");
     await question.getByRole("button", { name: "Previous question" }).click();
