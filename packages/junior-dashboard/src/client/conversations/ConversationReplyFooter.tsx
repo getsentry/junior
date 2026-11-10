@@ -116,15 +116,20 @@ function ReplyFooter(props: {
       ids: new Set(questions.map((question) => question.id)),
     };
   }
-  const { onShowQuestion } = props;
+  const { conversationId, onShowQuestion } = props;
   const showQuestion = useCallback(
     (item: ReviewItemPayload, byReader: boolean) => {
-      if (byReader) onShowQuestion?.(item, false);
-      else if (!openedWithRef.current?.ids.has(item.id)) {
-        onShowQuestion?.(item, true);
+      if (byReader) {
+        onShowQuestion?.(item, false);
+        return;
       }
+      // A question can dock from an early page before every page is in.
+      // It was open when the Conversation opened, so it did not arrive.
+      const openedWith = openedWithRef.current;
+      if (openedWith?.conversationId !== conversationId) return;
+      if (!openedWith.ids.has(item.id)) onShowQuestion?.(item, true);
     },
-    [onShowQuestion],
+    [conversationId, onShowQuestion],
   );
   const questionRef = useRef<HTMLElement>(null);
   const questionAnswersRef = useRef<ComposerQuestionAnswers>(null);
