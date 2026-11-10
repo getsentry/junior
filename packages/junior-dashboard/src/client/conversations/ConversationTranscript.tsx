@@ -536,33 +536,44 @@ function TranscriptEntryList(
   const shownAskVersion = useRef<number>(undefined);
   const askHighlight = useRef<{ record: Element; timer: number }>(undefined);
   useEffect(() => {
+    const list = listRef.current;
     if (
+      !list ||
       !askReveal ||
       askIndex === undefined ||
       shownAskVersion.current === askReveal.version
     ) {
       return;
     }
-    shownAskVersion.current = askReveal.version;
-    const row = listRef.current?.querySelector(`[data-index="${askIndex}"]`);
-    if (!row || !askReveal.showRow(row, { arrived: askReveal.arrived })) {
-      return;
-    }
-    const record = row.querySelector("[data-review-item-ask]");
-    if (!record) return;
-    const previous = askHighlight.current;
-    if (previous) {
-      window.clearTimeout(previous.timer);
-      previous.record.removeAttribute("data-highlighted");
-    }
-    record.setAttribute("data-highlighted", "");
-    askHighlight.current = {
-      record,
-      timer: window.setTimeout(() => {
-        record.removeAttribute("data-highlighted");
-        askHighlight.current = undefined;
-      }, ASK_HIGHLIGHT_MS),
+    // The row mounts, and its record loads its item, after the request.
+    // Wait until the record is in the DOM, so the scroll sees its place.
+    const show = () => {
+      const row = list.querySelector(`[data-index="${askIndex}"]`);
+      const record = row?.querySelector("[data-review-item-ask]");
+      if (!row || !record) return false;
+      shownAskVersion.current = askReveal.version;
+      if (!askReveal.showRow(row, { arrived: askReveal.arrived })) return true;
+      const previous = askHighlight.current;
+      if (previous) {
+        window.clearTimeout(previous.timer);
+        previous.record.removeAttribute("data-highlighted");
+      }
+      record.setAttribute("data-highlighted", "");
+      askHighlight.current = {
+        record,
+        timer: window.setTimeout(() => {
+          record.removeAttribute("data-highlighted");
+          askHighlight.current = undefined;
+        }, ASK_HIGHLIGHT_MS),
+      };
+      return true;
     };
+    if (show()) return;
+    const observer = new MutationObserver(() => {
+      if (show()) observer.disconnect();
+    });
+    observer.observe(list, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, [askIndex, askReveal]);
   useEffect(() => () => window.clearTimeout(askHighlight.current?.timer), []);
   const anchorKey = props.scrollAnchorKey?.();
