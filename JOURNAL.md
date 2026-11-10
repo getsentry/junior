@@ -107,3 +107,26 @@ Read this first after a sandbox reset or context loss.
     (compose postgres from `pnpm dev`). 32 list/search/migration files pass.
   - Gotcha: the pnpm pre-commit hook is slow; a commit+push in one command can
     time out but still land. Check `git ls-remote` before re-pushing.
+- Slice 4a design (found the tool-scoping answer):
+  - Precedent: `AgentRun.agentInvocationId` is set ONLY by the Agent
+    invocation worker (`chat/agent-invocations/work.ts` → `executeTurn`), and
+    `createTools` registers `reportBlocked` only when
+    `context.agentInvocationId` is set (`chat/tools/index.ts:239`). Same for
+    `ToolRuntimeContext.automation`.
+  - So: add `AgentRun.walkthroughGeneration?` + `ToolRuntimeContext.walkthroughGeneration?`,
+    passed through `chat/agent/tools.ts` commonToolRuntimeContext. createTools
+    registers `submitWalkthrough` only when set. Only the Walkthrough worker
+    (4b) sets it → the tool exists only in generation Turns. No per-Turn DB
+    lookup in the normal Turn path. createTools comment: choose tools from
+    the Conversation — a generation Conversation is all generation Turns.
+  - Skill: built-in skills live in `packages/junior/skills/` (jr-rpc there).
+    Add `skills/walkthrough/SKILL.md` with `disable-model-invocation: true`.
+    The worker invokes it with a `/walkthrough ...` instruction
+    (`parseSkillInvocation` in chat/agent/index.ts:456).
+  - submitWalkthrough execute: load refs (diffs via readPluginCodeChangeDiff →
+    readWalkthroughDiff; head files for head-side citations via
+    readPluginCodeFile; cited message seqs via getConversationEventStore().query
+    + assertCanReadConversationEvents; knownUrls = layer URLs + URLs in PR
+    bodies + cited messages; checkIds empty), validateWalkthrough → problems
+    as ToolInputError so the model retries; else build document + excerpts and
+    completeWalkthroughVersion(context.attachmentStorage, ...).
