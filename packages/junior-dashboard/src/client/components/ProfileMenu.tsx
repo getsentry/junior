@@ -126,6 +126,49 @@ function SpendAmount({ value }: { value?: number }) {
   );
 }
 
+/** Name the 7-day and 30-day spend totals for assistive tech. */
+function personalSpendLabel(spend?: PersonalSpendReport): string {
+  const total = (value?: number) =>
+    value === undefined ? "—" : formatCostSummary({ total: value });
+  return `Personal model spend: 7 days ${total(spend?.sevenDaysUsd)}, 30 days ${total(spend?.thirtyDaysUsd)}`;
+}
+
+/**
+ * Keep the running 7-day and 30-day spend totals in view, in one compact row.
+ * `labelled` names the row as a group; leave it off inside a control that
+ * already says the spend in its own label.
+ */
+export function SpendSummary(props: {
+  labelled?: boolean;
+  spend?: PersonalSpendReport;
+}) {
+  return (
+    <span
+      aria-label={props.labelled ? personalSpendLabel(props.spend) : undefined}
+      className="flex items-center gap-2 whitespace-nowrap font-sans text-xs tabular-nums"
+      role={props.labelled ? "group" : undefined}
+    >
+      <span className="flex items-baseline gap-1">
+        <span className="font-medium tracking-[0.08em] text-dashboard-text-muted">
+          7d
+        </span>
+        <span className="font-semibold text-dashboard-text">
+          <SpendAmount value={props.spend?.sevenDaysUsd} />
+        </span>
+      </span>
+      <span aria-hidden="true" className="h-3 w-px bg-dashboard-fill-strong" />
+      <span className="flex items-baseline gap-1">
+        <span className="font-medium tracking-[0.08em] text-dashboard-text-muted">
+          30d
+        </span>
+        <span className="font-semibold text-dashboard-text">
+          <SpendAmount value={props.spend?.thirtyDaysUsd} />
+        </span>
+      </span>
+    </span>
+  );
+}
+
 const profileLinkClass = buttonVariants({ size: "menu" });
 
 /** Group the signed-in identity, personal profile, and session actions. */
@@ -139,12 +182,6 @@ export function ProfileMenu({
   const [open, setOpen] = useState(false);
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
-  const sevenDaySpend = spend
-    ? formatCostSummary({ total: spend.sevenDaysUsd })
-    : "—";
-  const thirtyDaySpend = spend
-    ? formatCostSummary({ total: spend.thirtyDaysUsd })
-    : "—";
 
   const identityBlock = (
     <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
@@ -233,7 +270,7 @@ export function ProfileMenu({
     // Vertical mobile callout pinned above every sheet destination.
     return (
       <div
-        aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
+        aria-label={personalSpendLabel(spend)}
         className="grid gap-1.5 rounded-lg border border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 font-sans text-xs tabular-nums text-dashboard-text-muted"
       >
         <span className="text-xs font-medium">Spend</span>
@@ -333,15 +370,18 @@ export function ProfileMenu({
       open={open}
     >
       <PopoverTrigger
-        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}`}
+        aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. ${personalSpendLabel(spend)}.`}
         className={cn(
-          "flex h-10 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1.5 text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          "flex h-12 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg border-0 bg-transparent px-1.5 text-left font-sans text-sm text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
           open && "bg-dashboard-fill-hover",
         )}
         {...hoverTrigger}
       >
         <ProfileAvatar user={identity.user} />
-        <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+        <span className="grid min-w-0 flex-1 gap-0.5">
+          <span className="truncate font-medium leading-tight">{name}</span>
+          <SpendSummary spend={spend} />
+        </span>
         <ChevronsUpDown
           aria-hidden="true"
           className="shrink-0 text-dashboard-text-muted"

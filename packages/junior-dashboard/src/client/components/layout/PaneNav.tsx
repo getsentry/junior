@@ -51,6 +51,8 @@ type PaneNavValue = {
   /** False while the reader hides the pane on desktop. */
   open: boolean;
   profile?: ReactNode;
+  /** Spend totals that the page header shows while the pane hides. */
+  spend?: ReactNode;
   /** `focus` moves focus to the toggle that replaces the one pressed. */
   setOpen(open: boolean, options?: { focus?: boolean }): void;
   /** A toggle mounted by `setOpen` with `focus` takes focus once. */
@@ -79,6 +81,7 @@ export function PaneNavProvider(props: {
   onSearch(): void;
   open: boolean;
   profile?: ReactNode;
+  spend?: ReactNode;
   workspaceActive: boolean;
 }) {
   const focusToggle = useRef(false);
@@ -108,6 +111,7 @@ export function PaneNavProvider(props: {
       open,
       profile: props.profile,
       setOpen,
+      spend: props.spend,
       takeToggleFocus: () => {
         const take = focusToggle.current;
         focusToggle.current = false;
@@ -120,6 +124,7 @@ export function PaneNavProvider(props: {
       props.navItems,
       props.onSearch,
       props.profile,
+      props.spend,
       props.workspaceActive,
       setOpen,
     ],
@@ -181,15 +186,20 @@ function PaneSearch() {
 }
 
 /**
- * The controls that stay while the pane is hidden: show it again, and the
- * command palette. Pages put them at the start of their own header.
+ * The controls that stay while the pane is hidden: show it again, the
+ * command palette, and the spend totals. Pages put them at the start of their
+ * own header. Spend shows only where the header has room for it.
  */
 export function PaneCollapsedControls() {
-  if (usePaneOpen()) return null;
+  const pane = usePaneNav();
+  if (pane.open) return null;
   return (
     <div className="hidden items-center gap-0.5 md:flex">
       <PaneToggle open={false} />
       <PaneSearch />
+      {pane.spend ? (
+        <div className="mr-3 ml-2 hidden lg:flex">{pane.spend}</div>
+      ) : null}
     </div>
   );
 }
