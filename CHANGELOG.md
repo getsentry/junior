@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.294.0
+
+Users gain richer review analytics and automation support, fewer refusal and caching issues, while migration execution becomes safer and policy coverage expands.
+
+### New Features ✨
+
+Interactive review questions and reply-time analytics expand dashboards; cache warming better balances conversation data and supports automation-kind inputs.
+
+#### Dashboard
+
+- Ask Review item questions in the composer by @BYK and @dcramer with @sentry-junior in [#3037](https://github.com/getsentry/junior/pull/3037)
+- Show cache warming reply time segments by @BYK with @sentry-junior in [#3076](https://github.com/getsentry/junior/pull/3076)
+
+#### Other
+
+- (cache-warming) Give a Conversation's own gaps less weight by @BYK with @sentry-junior in [#3102](https://github.com/getsentry/junior/pull/3102)
+- (conversations) Accept automation Conversation kind by @dcramer with @sentry-junior in [#3091](https://github.com/getsentry/junior/pull/3091)
+
+### Bug Fixes 🐛
+
+Refusals gain fallback; removed temperature uses defaults for configured non-reasoning models; cache, menus, Slack traces improve; upgrades build indexes per migration.
+
+#### Ai
+
+- Treat provider refusals as content policy blocks by @dcramer with @sentry-junior in [#3117](https://github.com/getsentry/junior/pull/3117)
+- Stop sending temperature to models by @dcramer with @sentry-junior in [#3116](https://github.com/getsentry/junior/pull/3116)
+
+#### Other
+
+- (cache-warming) Expire the completed gap backfill after 30 days by @BYK with @sentry-junior in [#3110](https://github.com/getsentry/junior/pull/3110)
+- (dashboard) Show the same rows in the conversation menu and the row menu by @BYK with @sentry-junior in [#3081](https://github.com/getsentry/junior/pull/3081)
+- (db) Build marked indexes just before their migration runs by @BYK with @sentry-junior in [#3105](https://github.com/getsentry/junior/pull/3105)
+- (slack) Do not log expected reaction errors as Slack action failures by @dcramer with @sentry-junior in [#3114](https://github.com/getsentry/junior/pull/3114)
+
+### Internal Changes 🔧
+
+- (db) Run concurrent index migrations outside a transaction by @BYK with @sentry-junior in [#3113](https://github.com/getsentry/junior/pull/3113)
+- (guardian) Add snapshots from sampled production reviews by @dcramer with @sentry-junior in [#2697](https://github.com/getsentry/junior/pull/2697)
+
 ## 0.293.0
 
 Junior users get clearer automation control, steadier dashboard behavior, richer integrations, accurate activity data, and a required Sentry CLI setup.
