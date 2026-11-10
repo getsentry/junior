@@ -228,8 +228,8 @@ test("the inbox bundles review items by conversation", async ({
 }) => {
   await mockReviewItems(page);
   await page.goto(`${dashboard.baseURL}/review`);
-  const needsYou = page.getByRole("region", { name: "Needs you" });
-  const bundles = needsYou.getByRole("button", { expanded: false });
+  const todo = page.getByRole("region", { name: "To do" });
+  const bundles = todo.getByRole("button", { expanded: false });
   // One bundle per Conversation. The one that waited longest comes first.
   await expect(bundles).toHaveCount(2);
   await expect(bundles.nth(0)).toContainText(audit.title);
@@ -367,10 +367,8 @@ test("bundle keys mark done, snooze, and open the conversation", async ({
     open: [license, audit, rollout],
   });
   await page.goto(`${dashboard.baseURL}/review`);
-  const needsYou = page.getByRole("region", { name: "Needs you" });
-  await expect(needsYou.getByRole("button", { expanded: false })).toHaveCount(
-    2,
-  );
+  const todo = page.getByRole("region", { name: "To do" });
+  await expect(todo.getByRole("button", { expanded: false })).toHaveCount(2);
 
   // h opens the snooze choices, and a number picks one. The next bundle
   // then opens in its place.
@@ -380,7 +378,7 @@ test("bundle keys mark done, snooze, and open the conversation", async ({
   await page.keyboard.press("2");
   const snoozed = page.getByRole("region", { name: "Snoozed" });
   await expect(snoozed).toBeVisible();
-  await expect(needsYou.getByRole("button", { name: /globex/ })).toHaveCount(0);
+  await expect(todo.getByRole("button", { name: /globex/ })).toHaveCount(0);
   await expect(
     page.getByRole("region", {
       name: "Investigate checkout latency: review items",
@@ -543,7 +541,7 @@ test("a search bundles open and archived items together", async ({
   const results = page.getByRole("list", { name: "Search results" });
   const bundle = results.getByRole("button", { expanded: false });
   await expect(bundle).toHaveCount(1);
-  await expect(page.getByRole("region", { name: "Needs you" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "To do" })).toHaveCount(0);
   await bundle.click();
   // A closed item shows its answer.
   await expect(results.getByText("MIT license, no change.")).toBeVisible();
@@ -553,7 +551,7 @@ test("a search bundles open and archived items together", async ({
 test("an empty inbox hides archived items", async ({ dashboard, page }) => {
   await mockReviewItems(page, { open: [] });
   await page.goto(`${dashboard.baseURL}/review`);
-  await expect(page.getByText("Nothing needs you")).toBeVisible();
+  await expect(page.getByText("All caught up")).toBeVisible();
   await expect(page.getByText(answered.title)).toHaveCount(0);
   await screenshot(page, "review-desk-empty", {
     lightTheme: true,
@@ -751,9 +749,11 @@ test("the needs-you link groups waiting items by conversation", async ({
     `${dashboard.baseURL}/review?filter=needs-you&group=conversation`,
   );
   // The count is Conversations, not items. The notice does not wait on you.
-  await expect(
-    page.getByRole("heading", { name: "2 conversations need you" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(
+    "By conversation 2 conversations",
+  );
+  // Everything here involves the viewer, so nothing says "need you".
+  await expect(page.getByText(/needs? you/i)).toHaveCount(0);
   const groups = page.locator("section[aria-label]");
   await expect(groups).toHaveCount(2);
   await expect(groups.nth(1)).toHaveAccessibleName(
@@ -794,11 +794,11 @@ test("an automation row expands in place and only its buttons leave", async ({
     return route.fulfill({ json: { ...editor.value, status: "active" } });
   });
 
-  // All lists the viewer's Automations that need attention in Needs you.
+  // All lists the viewer's Automations that need attention in To do.
   await page.goto(`${dashboard.baseURL}/review`);
-  const needsYou = page.getByRole("region", { name: "Needs you" });
+  const todo = page.getByRole("region", { name: "To do" });
   await expect(
-    needsYou.getByRole("button", { name: /Weekly project summary/ }),
+    todo.getByRole("button", { name: /Weekly project summary/ }),
   ).toBeVisible();
 
   await page
@@ -832,10 +832,10 @@ test("a sweep clears only FYI items, with an Undo", async ({
     open: [license, prReady, digest],
   });
   await page.goto(`${dashboard.baseURL}/review`);
-  // The notice in the bundle that needs you and the FYI digest go; the
+  // The notice in the question's bundle and the FYI digest go; the
   // question stays.
   const sweep = page.getByRole("button", {
-    name: "Clear 2 in All; 1 that need you stay",
+    name: "Clear 2 in All",
   });
   await sweep.click();
   const digestRow = page.getByRole("button", { name: /Digest skipped/ });
@@ -853,9 +853,7 @@ test("a sweep clears only FYI items, with an Undo", async ({
   const pinned = page.getByRole("region", { name: "Pinned" });
   await expect(pinned.getByRole("button", { expanded: false })).toHaveCount(1);
 
-  await page
-    .getByRole("button", { name: "Clear 1 in All; 1 that need you stay" })
-    .click();
+  await page.getByRole("button", { name: "Clear 1 in All" }).click();
   // The sweep closes the items when the Undo window ends.
   await expect
     .poll(() => actions, { timeout: 10_000 })

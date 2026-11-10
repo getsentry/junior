@@ -13,7 +13,8 @@ import { snoozeChoices, type SnoozeChoice } from "./inboxSnooze";
 import { ReviewItemActions } from "./ReviewItemActions";
 import { ReviewItemContext } from "./ReviewItemContext";
 import { ReviewItemSubjectPreview } from "./ReviewItemSubjectPreview";
-import { inboxBundleReason, type InboxBundle } from "./reviewItemFormat";
+import { inboxRowReason } from "./inboxModel";
+import type { InboxBundle } from "./reviewItemFormat";
 
 function Key(props: { children: ReactNode }) {
   return (
@@ -116,7 +117,7 @@ export function InboxBundleView(props: {
       : undefined
     : newest.title;
   const count = bundle.items.length;
-  const reason = inboxBundleReason(bundle);
+  const reason = inboxRowReason(bundle);
   const canDone = bundle.items.some(
     (item) => item.status === "open" && item.canAct,
   );

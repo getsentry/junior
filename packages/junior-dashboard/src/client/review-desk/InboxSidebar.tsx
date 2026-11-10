@@ -17,8 +17,8 @@ export type InboxBundleLink = {
   /** Items in the bundle that a sweep can see. */
   count: number;
   label: string;
-  /** Items in the bundle that wait on the viewer. */
-  needYou: number;
+  /** Items in the bundle that wait on the viewer. They show in accent. */
+  asks: number;
   view: InboxView;
 };
 
@@ -71,7 +71,7 @@ function BundleRow(props: {
             aria-hidden="true"
             className={cn(
               "size-2 justify-self-center rounded-full",
-              bundle.needYou > 0
+              bundle.asks > 0
                 ? "bg-dashboard-accent"
                 : "border border-dashboard-text-faint",
             )}
@@ -80,19 +80,18 @@ function BundleRow(props: {
         <span
           className={cn(
             "truncate",
-            bundle.needYou > 0 ? "font-medium" : "text-dashboard-text-muted",
+            bundle.asks > 0 ? "font-medium" : "text-dashboard-text-muted",
           )}
         >
           {bundle.label}
         </span>
-        {/* What waits on the viewer counts in accent; otherwise how many
-            items the bundle holds. */}
-        {bundle.needYou > 0 ? (
+        {/* The count shows in accent while the bundle waits on the viewer. */}
+        {bundle.asks > 0 ? (
           <span
-            aria-label={`${bundle.needYou} need you`}
+            aria-label={`${bundle.count} items`}
             className="grid h-5 min-w-5 place-items-center rounded-full bg-dashboard-accent/[0.16] px-1.5 text-xs font-semibold tabular-nums text-dashboard-accent-text"
           >
-            {bundle.needYou}
+            {bundle.count}
           </span>
         ) : (
           <span
@@ -181,16 +180,16 @@ export function InboxBundleChips(props: {
           to={viewHref(bundle.view, props.search)}
         >
           <span className="max-w-40 truncate">{bundle.label}</span>
-          {/* Same numbers as the pane: what needs you, else the total. */}
+          {/* Same count and accent as the pane. */}
           <span
             className={cn(
               "text-xs tabular-nums",
-              bundle.needYou > 0
+              bundle.asks > 0
                 ? "font-semibold text-dashboard-accent-text"
                 : "opacity-70",
             )}
           >
-            {bundle.needYou > 0 ? bundle.needYou : bundle.count}
+            {bundle.count}
           </span>
         </Link>
       ))}
@@ -200,34 +199,19 @@ export function InboxBundleChips(props: {
 
 /**
  * Sweep some rows: mark their notices and FYI items done. Questions and
- * approvals that wait on the viewer never sweep, so the label says how many
- * stay, as in "Clear 4 · 2 need you".
+ * approvals never sweep. With nothing to clear, it shows nothing.
  */
 export function SweepButton(props: {
   className?: string;
   clear: number;
-  needYou: number;
   onSweep(): void;
   /** What the rows are, for the accessible name, such as "Today". */
   scope: string;
 }) {
-  if (props.clear === 0) {
-    return props.needYou > 0 ? (
-      <span
-        className={cn(
-          "px-2 font-sans text-xs text-dashboard-text-faint",
-          props.className,
-        )}
-      >
-        {props.needYou} need{props.needYou === 1 ? "s" : ""} you
-      </span>
-    ) : null;
-  }
+  if (props.clear === 0) return null;
   return (
     <Button
-      aria-label={`Clear ${props.clear} in ${props.scope}${
-        props.needYou > 0 ? `; ${props.needYou} that need you stay` : ""
-      }`}
+      aria-label={`Clear ${props.clear} in ${props.scope}`}
       className={cn("h-7 gap-1.5 px-2 text-xs", props.className)}
       onClick={props.onSweep}
       title="Mark notices and FYI items done. Questions and approvals stay."
@@ -235,11 +219,6 @@ export function SweepButton(props: {
     >
       <CheckCheck aria-hidden="true" className="size-3.5" />
       Clear {props.clear}
-      {props.needYou > 0 ? (
-        <span className="font-normal text-dashboard-text-faint">
-          · {props.needYou} need{props.needYou === 1 ? "s" : ""} you
-        </span>
-      ) : null}
     </Button>
   );
 }

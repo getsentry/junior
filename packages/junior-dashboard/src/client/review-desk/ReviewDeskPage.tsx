@@ -141,12 +141,6 @@ type StreamSection = {
 const automationKey = (automation: AutomationSummary) =>
   `automation:${automation.id}`;
 
-function needsYouHeading(conversations: number): string {
-  return `${conversations} conversation${conversations === 1 ? "" : "s"} need${
-    conversations === 1 ? "s" : ""
-  } you`;
-}
-
 /**
  * Render the inbox the way Google Inbox did: the pane lists the bundles
  * (All, Pull requests, Decisions, Automations, then one per Conversation),
@@ -223,7 +217,7 @@ export function ReviewDeskPage() {
     return {
       count: inView.length,
       label,
-      needYou: inView.filter(itemNeedsViewer).length,
+      asks: inView.filter(itemNeedsViewer).length,
       view: target,
     };
   };
@@ -232,14 +226,14 @@ export function ReviewDeskPage() {
     {
       ...allLink,
       count: allLink.count + attentionAll.length,
-      needYou: allLink.needYou + attentionAll.length,
+      asks: allLink.asks + attentionAll.length,
     },
     link("prs", VIEW_LABELS.prs),
     link("decisions", VIEW_LABELS.decisions),
     {
       count: attentionAll.length,
+      asks: attentionAll.length,
       label: VIEW_LABELS.automations,
-      needYou: attentionAll.length,
       view: "automations",
     },
   ];
@@ -269,13 +263,13 @@ export function ReviewDeskPage() {
       ).map((section) => ({ ...section, automations: [] }));
   if (!q && view === "all" && attentionAll.length > 0) {
     // Automations that need attention wait on the viewer, after the asks.
-    const needs = sections.find((section) => section.key === "needs");
-    if (needs) needs.automations = attentionAll;
+    const todo = sections.find((section) => section.key === "todo");
+    if (todo) todo.automations = attentionAll;
     else
       sections.unshift({
         automations: attentionAll,
-        key: "needs",
-        label: "Needs you",
+        key: "todo",
+        label: "To do",
         rows: [],
       });
   }
@@ -296,11 +290,10 @@ export function ReviewDeskPage() {
       rows: pinnedRows,
     });
   const snoozedRows = q ? [] : viewRows(sleeping, view);
-  const needsYouConversations = new Set(rows.map((row) => row.conversationId))
-    .size;
+  const conversationCount = new Set(rows.map((row) => row.conversationId)).size;
   const viewLabel =
     view === "needs-you"
-      ? needsYouHeading(needsYouConversations)
+      ? "By conversation"
       : view.startsWith("c:")
         ? (titleOf(view.slice(2)) ?? "Conversation")
         : VIEW_LABELS[view as keyof typeof VIEW_LABELS];
@@ -364,11 +357,8 @@ export function ReviewDeskPage() {
       if (!closed) return;
     }
   };
-  // `staying` counts the Automations shown with the rows: a sweep leaves them.
-  const sweepRows = (target: readonly InboxBundle[], staying: number) => {
-    const { clear, needYou } = sweepOf(target, isPinned);
-    sweeper.sweep(clear, needYou + staying);
-  };
+  const sweepRows = (target: readonly InboxBundle[]) =>
+    sweeper.sweep(sweepOf(target, isPinned));
 
   // When the open row leaves the queue (answered, done, or snoozed), open
   // the row that took its place, so the reader moves straight on.
@@ -539,8 +529,6 @@ export function ReviewDeskPage() {
     );
   };
   const viewSweep = sweepOf(rows, isPinned);
-  const viewAutomations =
-    view === "all" || view === "automations" ? attentionAll.length : 0;
 
   const page = (
     <ChatLayout
@@ -550,6 +538,15 @@ export function ReviewDeskPage() {
             <div className="flex min-w-0 items-center justify-between gap-4">
               <h2 className="m-0 min-w-0 truncate font-display text-xl font-medium leading-tight tracking-tight">
                 {viewLabel}
+                {view === "needs-you" ? (
+                  <>
+                    {" "}
+                    <span className="ml-2 font-sans text-sm font-normal text-dashboard-text-muted">
+                      {conversationCount} conversation
+                      {conversationCount === 1 ? "" : "s"}
+                    </span>
+                  </>
+                ) : null}
               </h2>
               <div className="flex shrink-0 items-center gap-2">
                 {conversationId ? (
@@ -563,9 +560,8 @@ export function ReviewDeskPage() {
                 ) : null}
                 {q ? null : (
                   <SweepButton
-                    clear={viewSweep.clear.length}
-                    needYou={viewSweep.needYou + viewAutomations}
-                    onSweep={() => sweepRows(rows, viewAutomations)}
+                    clear={viewSweep.length}
+                    onSweep={() => sweepRows(rows)}
                     scope={viewLabel}
                   />
                 )}
@@ -629,11 +625,8 @@ export function ReviewDeskPage() {
                   <Section
                     action={
                       <SweepButton
-                        clear={sweep.clear.length}
-                        needYou={sweep.needYou + section.automations.length}
-                        onSweep={() =>
-                          sweepRows(section.rows, section.automations.length)
-                        }
+                        clear={sweep.length}
+                        onSweep={() => sweepRows(section.rows)}
                         scope={section.label}
                       />
                     }
@@ -690,7 +683,7 @@ export function ReviewDeskPage() {
           {empty ? (
             <p className="m-0 py-12 text-center font-display text-lg font-medium text-dashboard-text">
               {view === "all" || view === "needs-you"
-                ? "Nothing needs you"
+                ? "All caught up"
                 : "Nothing left here"}
             </p>
           ) : null}

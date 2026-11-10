@@ -205,28 +205,3 @@ export function inboxBundles(
       a.conversationId.localeCompare(b.conversationId),
   );
 }
-
-/**
- * Say in one short line why a bundle is in the inbox, after the newest
- * item's title: how many questions wait on the viewer, and the steps that
- * other plugin asks name, such as `Ready to merge · #42`. Other bundles are
- * FYI. Undefined when the newest title already says it all.
- */
-export function inboxBundleReason(bundle: InboxBundle): string | undefined {
-  const waiting = bundle.items.filter(itemNeedsViewer);
-  const questions = waiting.filter((item) => item.request).length;
-  const parts = [
-    ...(questions > 0
-      ? [`${questions} question${questions === 1 ? "" : "s"}`]
-      : []),
-    // A plugin ask's title names the step that it waits for.
-    ...waiting
-      .filter((item) => !item.request && item !== bundle.newest)
-      .map((item) => item.title),
-  ];
-  if (parts.length > 0) return parts.join(" · ");
-  if (bundle.needsYou) return undefined;
-  return bundle.items.some((item) => item.status === "open")
-    ? "FYI"
-    : reviewItemStatusLabel(bundle.newest);
-}
