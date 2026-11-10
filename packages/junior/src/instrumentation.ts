@@ -28,6 +28,12 @@ const MANUAL_GEN_AI_INTEGRATIONS = new Set([
   "VercelAI",
 ]);
 
+// Dedupe drops an error that matches the previous error in the process, even
+// minutes later. Junior shows each captured turn failure's event ID to the
+// person, so a dropped duplicate leaves a reference that Sentry never stored.
+// The SDK still skips a second capture of the same error object without it.
+const REMOVED_INTEGRATIONS = new Set([...MANUAL_GEN_AI_INTEGRATIONS, "Dedupe"]);
+
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const parsed = Number(value);
@@ -138,7 +144,7 @@ export function initSentry(): void {
     beforeSendSpan: scrubPrivateSentrySpan,
     integrations: (defaultIntegrations) =>
       defaultIntegrations.filter(
-        (integration) => !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name),
+        (integration) => !REMOVED_INTEGRATIONS.has(integration.name),
       ),
   });
 
