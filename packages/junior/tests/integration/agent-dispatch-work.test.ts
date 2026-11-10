@@ -93,6 +93,7 @@ describe("agent dispatch conversation work", () => {
       conversationId: getDispatchConversationId(dispatch),
     });
     expect(untitled?.title).toBeUndefined();
+    expect(untitled?.kind).toBe("automation");
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({ text: "Done" }),

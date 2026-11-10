@@ -477,6 +477,9 @@ describe("event automations", () => {
 
       const { conversationId } = queue.sentRecords()[0]!;
       expect(conversationId).toBeDefined();
+      await expect(
+        getConversationStore().get({ conversationId: conversationId! }),
+      ).resolves.toMatchObject({ kind: "automation" });
       const dispatch = await getDispatchRecord(
         conversationId!.replace(/^agent-dispatch:/, ""),
       );
