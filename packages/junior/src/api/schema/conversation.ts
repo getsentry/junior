@@ -15,6 +15,7 @@ import {
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
 import { conversationBriefSchema } from "@/chat/briefs/schema";
+import { conversationFeedBriefSchema } from "./conversation-feed-brief";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import { conversationChildAgentTotalsSchema } from "./child-agent-totals";
 import {
@@ -917,6 +918,7 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
 
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
+  brief?: z.infer<typeof conversationFeedBriefSchema>;
   threads?: ConversationFeedItem[];
 };
 
@@ -926,6 +928,7 @@ export type ConversationFeedItem = ConversationSummaryReport & {
  */
 const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
   conversationSummaryReportSchema.extend({
+    brief: conversationFeedBriefSchema.optional(),
     threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
   });
 

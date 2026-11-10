@@ -64,6 +64,7 @@ import {
   latestMessageSeqQuery,
   readConversationActivityPreviews,
 } from "./activity-preview";
+import { readConversationFeedBriefs } from "./feed-brief";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { attachActivityPreviewMentions } from "./mentions";
 import { readConversationParticipants } from "./participants";
@@ -462,6 +463,7 @@ export async function readConversationFeedFromSql(
       lastUserMessageAt: lastUserMessageAtByConversation,
     },
     activityPreviewByConversation,
+    briefByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     unreadConversationIds,
@@ -495,6 +497,7 @@ export async function readConversationFeedFromSql(
       ),
     })),
     readConversationActivityPreviews(db, conversationIds),
+    readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     filter?.kind === "viewer"
@@ -585,6 +588,10 @@ export async function readConversationFeedFromSql(
       const activityPreview = visibleActivityPreviews.get(
         conversation.conversationId,
       );
+      // Like the preview, the Brief holds private content.
+      const brief = access?.canViewPrivateContent
+        ? briefByConversation.get(conversation.conversationId)
+        : undefined;
       const participants = access?.canViewPrivateContent
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
@@ -600,6 +607,7 @@ export async function readConversationFeedFromSql(
           ? { participants }
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
+        ...(brief ? { brief } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
