@@ -91,17 +91,40 @@ export function readMockReplyTimeSegments(): ReplyTimeSegmentsReport {
   };
 }
 
+// One person's replies: slower after the first Turn, faster deeper in.
+const PERSON_DEPTHS = [
+  { depth: "1", noReply: 1, peakBin: 9, replies: 3 },
+  { depth: "2-3", noReply: 1, peakBin: 7, replies: 4 },
+  { depth: "4+", noReply: 0, peakBin: 5, replies: 2 },
+] as const;
+
+function sumHistograms(histograms: ReplyTimeHistogram[]): ReplyTimeHistogram {
+  return {
+    bins: histograms[0]!.bins.map((bin, index) => ({
+      ...bin,
+      count: histograms.reduce((sum, item) => sum + item.bins[index]!.count, 0),
+    })),
+    noReply: histograms.reduce((sum, item) => sum + item.noReply, 0),
+    total: histograms.reduce((sum, item) => sum + item.total, 0),
+  };
+}
+
 /** Return fixed reply times for one person's own profile. */
 export function readMockPersonReplyTimes(days: number): PersonReplyTimesReport {
   const scale = days === 1 ? 1 : days === 7 ? 5 : days === 30 ? 18 : 41;
+  const depths = PERSON_DEPTHS.map((row) => ({
+    depth: row.depth,
+    histogram: histogram({
+      noReply: row.noReply * scale,
+      peakBin: row.peakBin,
+      replies: row.replies * scale,
+    }),
+  }));
   return {
     days,
+    depths,
     generatedAt: NOW,
-    histogram: histogram({
-      noReply: 2 * scale,
-      peakBin: 7,
-      replies: 9 * scale,
-    }),
+    histogram: sumHistograms(depths.map((row) => row.histogram)),
     partial: false,
   };
 }

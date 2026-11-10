@@ -88,6 +88,18 @@ describe("person reply times API", () => {
     expect(own.status).toBe(200);
     const report = personReplyTimesReportSchema.parse(await own.json());
     expect(report.histogram).toMatchObject({ noReply: 1, total: 2 });
+    // The 7 min reply follows the first Turn, the late one the second.
+    expect(
+      report.depths.map(({ depth, histogram }) => ({
+        depth,
+        noReply: histogram.noReply,
+        total: histogram.total,
+      })),
+    ).toEqual([
+      { depth: "1", noReply: 0, total: 1 },
+      { depth: "2-3", noReply: 1, total: 1 },
+      { depth: "4+", noReply: 0, total: 0 },
+    ]);
     expect(report.histogram.bins.filter((bin) => bin.count > 0)).toEqual([
       { startMs: 7 * MINUTE, endMs: 10 * MINUTE, count: 1 },
     ]);

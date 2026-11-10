@@ -46,6 +46,15 @@ export const personReplyTimesQuerySchema = z
 export const personReplyTimesReportSchema = z
   .object({
     days: z.number().int().positive(),
+    /** Reply times by the Turn depth of the idle period. */
+    depths: z.array(
+      z
+        .object({
+          depth: z.enum(["1", "2-3", "4+"]),
+          histogram: replyTimeHistogramSchema,
+        })
+        .strict(),
+    ),
     generatedAt: z.string().datetime(),
     histogram: replyTimeHistogramSchema,
     /** Some Conversations had too much history to read in time. */

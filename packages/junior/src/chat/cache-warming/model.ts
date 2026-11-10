@@ -186,9 +186,19 @@ export interface GapSegmentInput {
  */
 export function gapSegment(input: GapSegmentInput): string {
   if (input.archived) return `archived:${input.workState}`;
-  const depth =
-    input.endedTurns === 0 ? "1" : input.endedTurns < 3 ? "2-3" : "4+";
+  const depth = turnDepth(input.endedTurns);
   return `${input.userActor ? "user" : "system"}:${depth}:${input.workState}`;
+}
+
+/** Turn depth groups of `gapSegment`, in display order. */
+export const TURN_DEPTHS = ["1", "2-3", "4+"] as const;
+
+/**
+ * Group the number of Turns that ended before an idle period. The first
+ * Turns of a Conversation get replies at other rates than later ones.
+ */
+export function turnDepth(endedTurns: number): (typeof TURN_DEPTHS)[number] {
+  return endedTurns === 0 ? "1" : endedTurns < 3 ? "2-3" : "4+";
 }
 
 /** Each segment that `gapSegment` returns, in display order. */

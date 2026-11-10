@@ -3,6 +3,7 @@ import { parseActor } from "@/chat/actor";
 import {
   IDLE_HORIZON_MS,
   gapHistogramReport,
+  TURN_DEPTHS,
 } from "@/chat/cache-warming/model";
 import {
   loadReplayEventBatches,
@@ -104,12 +105,17 @@ export async function readPersonReplyTimes(args: {
   const replied = await Promise.all(
     gaps.map((gap) => repliedBySubject(gap.replyActor)),
   );
+  const own = gaps.filter((_, index) => replied[index]);
   return personReplyTimesReportSchema.parse({
     days: args.days,
+    depths: TURN_DEPTHS.map((depth) => ({
+      depth,
+      histogram: gapHistogramReport(
+        own.filter((gap) => gap.depth === depth).map((gap) => gap.gapMs),
+      ),
+    })),
     generatedAt: new Date(nowMs).toISOString(),
-    histogram: gapHistogramReport(
-      gaps.filter((_, index) => replied[index]).map((gap) => gap.gapMs),
-    ),
+    histogram: gapHistogramReport(own.map((gap) => gap.gapMs)),
     partial: canceledBatches > 0,
   });
 }

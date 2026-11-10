@@ -10,6 +10,8 @@ import {
   IDLE_HORIZON_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
+  turnDepth,
+  type TURN_DEPTHS,
 } from "./model";
 import { CONVERSATION_STATE_TTL_MS } from "./warmup";
 
@@ -50,6 +52,7 @@ export interface ReplayEvent {
 interface IdlePeriod {
   sinceMs: number;
   segment: string;
+  depth: (typeof TURN_DEPTHS)[number];
   eligible: boolean;
   /** Actor of the instruction that started the next Turn. */
   replyActor?: unknown;
@@ -58,6 +61,8 @@ interface IdlePeriod {
 /** Gap of one idle period that live recording would record. */
 export interface ReplayGap {
   segment: string;
+  /** Turn depth of the idle period, as in its segment. */
+  depth: (typeof TURN_DEPTHS)[number];
   sinceMs: number;
   gapMs: number;
   /**
@@ -197,6 +202,7 @@ export function replayConversation(
     if (!idle.eligible || gapMs <= 0) return;
     gaps.push({
       segment: idle.segment,
+      depth: idle.depth,
       sinceMs: idle.sinceMs,
       // The horizon message records no reply before a later reply can.
       gapMs: gapMs >= IDLE_HORIZON_MS ? NO_REPLY_GAP_MS : gapMs,
@@ -250,6 +256,7 @@ export function replayConversation(
       idle = {
         sinceMs: startedAtMs,
         segment: historySegment(userActor, endedTurns),
+        depth: turnDepth(endedTurns),
         eligible: prefixTokens >= MIN_WARMUP_PREFIX_TOKENS,
       };
       endedTurns += 1;
