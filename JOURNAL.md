@@ -45,3 +45,20 @@ Read this first after a sandbox reset or context loss.
   `sourceConversationId` + `messages`; removed `meta.briefVersion` and the
   unimplemented `moved` skip reason. Head-side code citations may point
   outside the diff.
+- Slice 1 done: draft PR #3087 (`walkthrough/1-schema`, commit 2d1cf2845).
+  Files: `packages/junior/src/chat/walkthroughs/{schema,validate,diff,excerpts}.ts`,
+  tests `packages/junior/tests/unit/walkthroughs/{validate,diff}.test.ts` (14).
+  Key shapes for later slices:
+  - `WalkthroughDiffFile {pr, path, hunks: {head?, base?, lines}[]}` in diff.ts.
+  - `readWalkthroughDiff(pr, changedFiles)` → `{files, skipped}`;
+    `WalkthroughChangedFile {path, previousPath?, status, patch?}` is the
+    shape the slice 2 `readDiff` hook must return per file.
+  - `WalkthroughInputRefs {files, contextFiles: Map<"pr:path", text>,
+    messageSeqs, knownUrls, checkIds}`; `contextFileKey(pr, path)`.
+  - `buildWalkthroughExcerpts(refs, files, contextFiles)`; throws if a ref
+    does not resolve (call only after validation).
+  - Skip reasons: generated, lockfile, no_diff, rename, whitespace.
+  Checks run: unit tests, tsc, oxlint, depcruise, file-length,
+  test-architecture. Pre-commit hooks pass in the main worktree.
+  Not done in slice 1: language detection and permalinks on excerpts
+  (`language`, `url` stay optional; provider permalink can come from slice 2).
