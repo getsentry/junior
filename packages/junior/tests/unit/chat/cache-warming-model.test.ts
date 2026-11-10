@@ -240,7 +240,7 @@ describe("decideWarmup", () => {
       decideWarmup({
         ...input,
         globalGapsMs: [6 * MINUTE],
-        parentGapsMs: gaps(100, 7 * MINUTE),
+        priorGapsMs: [gaps(100, 7 * MINUTE)],
       }),
     ).toMatchObject({ warm: true, reason: "warm", parentPrior: true });
     // A thin parent does not make enough gaps either.
@@ -248,14 +248,14 @@ describe("decideWarmup", () => {
       decideWarmup({
         ...input,
         globalGapsMs: [6 * MINUTE],
-        parentGapsMs: gaps(5, 7 * MINUTE),
+        priorGapsMs: [gaps(5, 7 * MINUTE)],
       }),
     ).toMatchObject({ warm: false, reason: "few_gaps", parentPrior: true });
     // A full segment decides alone.
     const full = { ...input, globalGapsMs: gaps(20, 3 * 60 * MINUTE) };
     const withParent = decideWarmup({
       ...full,
-      parentGapsMs: gaps(100, 7 * MINUTE),
+      priorGapsMs: [gaps(100, 7 * MINUTE)],
     });
     expect(withParent).toMatchObject({
       warm: false,

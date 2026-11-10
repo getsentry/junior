@@ -53,11 +53,41 @@ const finalReply: AssistantMessage = {
 };
 
 // Run one Turn that ends with a final response, like one agent run does.
-async function endTurn(userActor: boolean, id = conversationId) {
+async function endTurn(
+  userActor: boolean,
+  id = conversationId,
+  turnContext = context,
+) {
   const recorder = createCacheWarmingRecorder(id, userActor);
-  recorder.wrap((() => undefined) as never)(model, context, {});
+  recorder.wrap((() => undefined) as never)(model, turnContext, {});
   await recorder.record(finalReply);
 }
+
+// A Turn whose final request follows one batch of tool calls.
+const contextAfterTools = (...names: string[]): Context => ({
+  ...context,
+  messages: [
+    ...context.messages,
+    {
+      ...finalReply,
+      content: names.map((name, index) => ({
+        type: "toolCall" as const,
+        id: `call-${index}`,
+        name,
+        arguments: {},
+      })),
+      stopReason: "toolUse",
+    },
+    ...names.map((name, index) => ({
+      role: "toolResult" as const,
+      toolCallId: `call-${index}`,
+      toolName: name,
+      content: [{ type: "text" as const, text: "ok" }],
+      isError: false,
+      timestamp: 1,
+    })),
+  ],
+});
 
 function scheduledHorizon(): CacheWarmupMessage {
   const message = mocks.sendCacheWarmup.mock.calls
@@ -109,6 +139,9 @@ describe("cache warming gap segments", () => {
     expect(await segmentGaps("system:1:none")).toEqual([NO_REPLY_GAP_MS]);
     expect(await segmentGaps("user:2-3:none")).toEqual([7 * MINUTE]);
     expect(await segmentGaps("user:1:none")).toEqual([]);
+    // Each gap is also kept under how its Turn ended.
+    expect(await segmentGaps("system:1:none:plain")).toEqual([NO_REPLY_GAP_MS]);
+    expect(await segmentGaps("user:2-3:none:plain")).toEqual([7 * MINUTE]);
     // The Conversation's own gaps are kept per segment too.
     expect(
       await segmentGaps(`conversation:${conversationId}:system:1:none`),
@@ -116,6 +149,38 @@ describe("cache warming gap segments", () => {
     expect(
       await segmentGaps(`conversation:${conversationId}:user:2-3:none`),
     ).toEqual([7 * MINUTE]);
+  });
+
+  it("records each gap under the strongest core tool that ended its Turn", async () => {
+    vi.useFakeTimers();
+    // The Automation run finished, but another tool in the same batch kept
+    // the run going to a final reply. Nobody came back.
+    await endTurn(
+      false,
+      conversationId,
+      contextAfterTools("reportProgress", "finishAutomationRun"),
+    );
+    vi.advanceTimersByTime(56 * MINUTE);
+    await runCacheWarmup(scheduledHorizon());
+
+    // A child agent's result starts the next Turn 4 minutes after this one.
+    await endTurn(
+      true,
+      conversationId,
+      contextAfterTools("addReviewItem", "spawnAgent"),
+    );
+    vi.advanceTimersByTime(4 * MINUTE);
+    await endTurn(true);
+
+    expect(await segmentGaps("system:1:none:automation_done")).toEqual([
+      NO_REPLY_GAP_MS,
+    ]);
+    expect(await segmentGaps("user:2-3:none:awaiting_agent")).toEqual([
+      4 * MINUTE,
+    ]);
+    expect(await segmentGaps("user:2-3:none:question")).toEqual([]);
+    // The segment keeps every gap, so a thin ending child can lean on it.
+    expect(await segmentGaps("user:2-3:none")).toContain(4 * MINUTE);
   });
 
   it("records each gap in the segment of the plugin work and archive state when the idle period started", async () => {
@@ -191,7 +256,7 @@ describe("cache warming gap segments", () => {
     expect(await segmentGaps("system:2-3:open")).toEqual([]);
   });
 
-  it("warms a segment with no gaps of its own with the gaps of its parent", async () => {
+  it("warms an ending child and its segment with no gaps of their own with the gaps of the segment's parent", async () => {
     const state = getStateAdapter();
     await createApp({
       dashboard: { disabled: true },
@@ -238,8 +303,10 @@ describe("cache warming gap segments", () => {
       await endTurn(true, openWorkConversationId);
       await runCacheWarmup(scheduledWarmup());
 
+      expect(await segmentGaps("user:1:open:plain")).toEqual([]);
       expect(await segmentGaps("user:1:open")).toEqual([]);
-      // Without the parent's gaps, the empty segment would skip the warmup.
+      // The empty child leans on the empty `open` segment, which leans on
+      // `none`. Without those gaps, the warmup would be skipped.
       expect(warmupRequests).toHaveLength(1);
     } finally {
       await state.delete("junior:cache_warming:gaps:user:1:none");

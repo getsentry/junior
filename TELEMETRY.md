@@ -440,10 +440,11 @@ Attributes on the `cache_warming.warmup` span:
 | `app.cache_warming.cache_ttl_left_ms`  | int     | idle only: time left before the cache expires             |
 | `app.cache_warming.work_state`         | string  | idle only: `open`, `done`, or `none`                      |
 | `app.cache_warming.archived`           | boolean | idle only: the Conversation or its root was archived      |
+| `app.cache_warming.ending`             | string  | idle only: how the Turn ended, a `turnEnding` label       |
 | `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                        |
 | `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                          |
 | `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                 |
-| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used its parent segment's gaps  |
+| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used a parent segment's gaps    |
 | `app.cost.total_usd`                   | double  | cost of the warmup call                                   |
 | `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                   |
 

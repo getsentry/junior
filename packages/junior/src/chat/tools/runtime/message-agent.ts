@@ -23,6 +23,8 @@ const messageAgentOutputSchema = juniorToolOutputSchema.extend({
     ),
 });
 
+export const MESSAGE_AGENT_TOOL_NAME = "messageAgent";
+
 /**
  * Create the tool that sends one message to the parent, a child agent, or
  * another top-level agent.

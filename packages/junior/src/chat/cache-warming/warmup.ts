@@ -35,6 +35,7 @@ import { resolveGatewayModel } from "@/chat/pi/client";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
   decideWarmup,
+  endingGapSegment,
   gapSegment,
   IDLE_HORIZON_MS,
   MINUTE_MS,
@@ -45,6 +46,7 @@ import {
   type GapSegmentInput,
   type WorkState,
 } from "./model";
+import { turnEnding, type TurnEnding } from "./ending";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 import {
   breakerOpen,
@@ -84,6 +86,11 @@ const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 interface WarmState {
   /** The `gapSegment` that this period records its gap in. */
   segment: string;
+  /**
+   * How the Turn ended. The gap is also recorded in the segment's
+   * `endingGapSegment` child, which the decision reads first.
+   */
+  ending?: TurnEnding;
   /** The `parentGapSegment` that a thin `segment` leans on. */
   parentSegment?: string;
   workState: WorkState;
@@ -131,7 +138,16 @@ const gapClaimKey = (conversationId: string, generation: string) =>
 const segmentAttributes = (warm: WarmState) => ({
   "app.cache_warming.work_state": warm.workState,
   "app.cache_warming.archived": warm.archived,
+  ...(warm.ending ? { "app.cache_warming.ending": warm.ending } : undefined),
 });
+
+// Segments that record the gap of an idle period. The segment keeps every
+// gap, so its ending children can lean on it. Idle periods stored before the
+// ending existed have no child.
+const recordedSegments = (warm: WarmState) => [
+  ...(warm.ending ? [endingGapSegment(warm.segment, warm.ending)] : []),
+  warm.segment,
+];
 
 // Send the warmup that refreshes the cache that a request at
 // `requestStartedAtMs` read or wrote.
@@ -189,10 +205,12 @@ async function recordGap(
   if (!claimed) {
     return;
   }
-  await state.appendToList(segmentGapsKey(warm.segment), gapMs, {
-    maxLength: GLOBAL_GAPS_MAX,
-    ttlMs: GLOBAL_GAPS_TTL_MS,
-  });
+  for (const segment of recordedSegments(warm)) {
+    await state.appendToList(segmentGapsKey(segment), gapMs, {
+      maxLength: GLOBAL_GAPS_MAX,
+      ttlMs: GLOBAL_GAPS_TTL_MS,
+    });
+  }
   await state.appendToList(
     conversationGapsKey(conversationId, warm.segment),
     gapMs,
@@ -247,6 +265,7 @@ async function startIdlePeriod(
     ...idle,
     warm: {
       segment: gapSegment(segmentInput),
+      ending: turnEnding(request.context.messages, message),
       ...(parentSegment ? { parentSegment } : undefined),
       ...segmentState,
       modelId: request.model.id,
@@ -527,22 +546,28 @@ export async function runCacheWarmup(
       }
 
       const model = resolveGatewayModel(warm.modelId);
+      // Most specific first: the ending child, its segment, and the parent.
+      const [segment, ...parents] = [
+        ...recordedSegments(warm),
+        ...(warm.parentSegment ? [warm.parentSegment] : []),
+      ];
       const globalGapsMs = await state.getList<number>(
-        segmentGapsKey(warm.segment),
+        segmentGapsKey(segment!),
       );
+      // Only a thin list reads the list of its parent.
+      const priorGapsMs: number[][] = [];
+      for (const parent of parents) {
+        if (!segmentNeedsParent((priorGapsMs.at(-1) ?? globalGapsMs).length)) {
+          break;
+        }
+        priorGapsMs.push(await state.getList<number>(segmentGapsKey(parent)));
+      }
       const decision = decideWarmup({
         conversationGapsMs: await state.getList<number>(
           conversationGapsKey(conversationId, warm.segment),
         ),
         globalGapsMs,
-        // Only a thin segment reads its parent's list.
-        ...(warm.parentSegment && segmentNeedsParent(globalGapsMs.length)
-          ? {
-              parentGapsMs: await state.getList<number>(
-                segmentGapsKey(warm.parentSegment),
-              ),
-            }
-          : undefined),
+        priorGapsMs,
         idleMs: Date.now() - idle.sinceMs,
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,

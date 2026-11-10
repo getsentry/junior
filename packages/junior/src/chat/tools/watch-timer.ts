@@ -5,6 +5,8 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /** Create one heartbeat-backed Watch in the current Conversation. */
+export const WATCH_TIMER_TOOL_NAME = "watchTimer";
+
 export function createWatchTimerTool(context: ToolRuntimeContext) {
   return zodTool({
     annotations: {

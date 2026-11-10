@@ -40,8 +40,9 @@ const GAP_BIN_COUNT = GAP_BIN_EDGES_MS.length;
 
 /**
  * Gaps that a segment needs before its gaps replace its parent segment's
- * gaps (`parentGapSegment`). A new or rare segment starts with its parent's
- * return chances, so it can warm before it has gaps of its own.
+ * gaps (`parentGapSegment`, or the segment of an `endingGapSegment`). A new
+ * or rare segment starts with its parent's return chances, so it can warm
+ * before it has gaps of its own.
  */
 const BLEND_PSEUDOCOUNT = 20;
 
@@ -56,9 +57,9 @@ const CONVERSATION_BLEND_PSEUDOCOUNT = 100;
 
 /**
  * Gaps that a decision needs in total, from the Conversation, its segment,
- * and a thin segment's parent. With fewer, one gap sets the return chance for
- * each Conversation of the segment, such as at launch or after the gap lists
- * expire.
+ * and the parents of a thin segment. With fewer, one gap sets the return
+ * chance for each Conversation of the segment, such as at launch or after the
+ * gap lists expire.
  */
 const MIN_GAP_SAMPLES = 20;
 
@@ -217,6 +218,15 @@ export function parentGapSegment(input: GapSegmentInput): string | undefined {
   return gapSegment({ ...input, workState: "none", archived: false });
 }
 
+/**
+ * Child of a segment by how the Turn ended (`turnEnding`). Its parent is
+ * the segment, so a thin child leans on the segment, and a thin segment on
+ * its own parent.
+ */
+export function endingGapSegment(segment: string, ending: string): string {
+  return `${segment}:${ending}`;
+}
+
 /** Whether a segment has too few gaps to stand without its parent. */
 export function segmentNeedsParent(segmentGaps: number): boolean {
   return segmentGaps < BLEND_PSEUDOCOUNT;
@@ -230,15 +240,16 @@ export interface WarmupDecisionInput {
    */
   conversationGapsMs: readonly number[];
   /**
-   * Recent reply gaps (ms) of the same `gapSegment` across all
-   * conversations, recorded the same way.
+   * Recent reply gaps (ms) of the same segment across all conversations,
+   * recorded the same way.
    */
   globalGapsMs: readonly number[];
   /**
-   * Gaps of the `parentGapSegment`. They count only while the segment is
-   * thin (`segmentNeedsParent`).
+   * Gaps of the segments that a thin segment leans on, nearest parent first.
+   * Each list counts only while the list before it is thin
+   * (`segmentNeedsParent`).
    */
-  parentGapsMs?: readonly number[];
+  priorGapsMs?: readonly (readonly number[])[];
   /** Time since the cached request started. */
   idleMs: number;
   /**
@@ -268,7 +279,7 @@ export interface WarmupDecision {
   /** Best returns per warmup over the plans that `decideWarmup` compares. */
   returnsPerWarmup: number;
   threshold: number;
-  /** The parent segment's gaps filled in for a thin segment. */
+  /** A parent segment's gaps filled in for a thin segment. */
   parentPrior: boolean;
 }
 
@@ -291,14 +302,18 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   const threshold =
     savedPerReturn > 0 ? Math.min(input.cacheReadPrice / savedPerReturn, 1) : 1;
   const conversation = histogramOf(input.conversationGapsMs);
-  const global = histogramOf(input.globalGapsMs);
-  const parent =
-    input.parentGapsMs && segmentNeedsParent(global.total)
-      ? histogramOf(input.parentGapsMs)
-      : undefined;
+  const segments = [histogramOf(input.globalGapsMs)];
+  for (const gapsMs of input.priorGapsMs ?? []) {
+    if (!segmentNeedsParent(segments.at(-1)!.total)) break;
+    segments.push(histogramOf(gapsMs));
+  }
+  const segmentGaps = segments.reduce((sum, list) => sum + list.total, 0);
+  // Each thin list leans on the blend of the lists above it.
   const histogram = blendHistograms(
     conversation,
-    parent ? blendHistograms(global, parent, BLEND_PSEUDOCOUNT) : global,
+    segments.reduceRight((prior, own) =>
+      blendHistograms(own, prior, BLEND_PSEUDOCOUNT),
+    ),
     CONVERSATION_BLEND_PSEUDOCOUNT,
   );
   const probability = returnProbability(
@@ -318,7 +333,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
     returnProbability: probability,
     returnsPerWarmup: perWarmup,
     threshold,
-    parentPrior: (parent?.total ?? 0) > 0,
+    parentPrior: segmentGaps > segments[0]!.total,
   });
   if (input.prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return decision("prefix_too_small");
@@ -329,10 +344,7 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
   if (input.idleMs >= IDLE_HORIZON_MS) {
     return decision("horizon");
   }
-  if (
-    conversation.total + global.total + (parent?.total ?? 0) <
-    MIN_GAP_SAMPLES
-  ) {
+  if (conversation.total + segmentGaps < MIN_GAP_SAMPLES) {
     return decision("few_gaps");
   }
   return decision(perWarmup >= threshold ? "warm" : "unlikely_return");

@@ -193,6 +193,8 @@ function subjectInput(
   };
 }
 
+export const ADD_REVIEW_ITEM_TOOL_NAME = "addReviewItem";
+
 /** Create the tool that adds a Review item or updates the open one. */
 export function createAddReviewItemTool(
   context: ReviewItemToolContext,
