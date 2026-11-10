@@ -51,7 +51,7 @@ export function ReviewItemDetails(props: {
       label="Review item details"
       onClose={props.onClose}
       title={
-        <h2 className="m-0 text-base font-semibold text-dashboard-text">
+        <h2 className="m-0 font-sans text-sm font-semibold text-dashboard-text">
           Details
         </h2>
       }

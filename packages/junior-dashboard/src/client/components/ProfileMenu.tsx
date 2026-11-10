@@ -305,9 +305,6 @@ export function ProfileMenu({
         <Link className={sheetItemClass} to={peoplePath(email)}>
           My profile
         </Link>
-        <Link className={sheetItemClass} to="/settings">
-          Settings
-        </Link>
         {pages.map((page) => (
           <Link className={sheetItemClass} key={page.key} to={page.to}>
             {page.label}
@@ -318,6 +315,9 @@ export function ProfileMenu({
             Admin
           </Link>
         ) : null}
+        <Link className={sheetItemClass} to="/settings">
+          Settings
+        </Link>
         <button
           className={cn(sheetItemClass, "w-full cursor-pointer")}
           data-mobile-nav-dismiss

@@ -190,8 +190,11 @@ export function ReviewDeskSidebar(props: {
           Inbox
         </h2>
       </div>
-      <div className="px-4 pb-2">
+      {/* The field's edge matches the rows. Its icon sits on the pane's icon
+          axis and its text starts on the label edge. */}
+      <div className="px-3 pb-2">
         <SearchInput
+          className="h-8 rounded-lg [&>[data-align=inline-start]]:pl-3 [&_input]:pl-3.5"
           label="Search review items"
           onChange={props.onSearchChange}
           placeholder="Search items…"

@@ -6,6 +6,7 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { StatusChip } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import { ChatLayout } from "../conversations/ChatLayout";
+import { HeaderIconButton } from "../conversations/ConversationHeaderActions";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { formatRelativeTime } from "../format";
@@ -69,6 +70,13 @@ export function ReviewItemView(props: {
   const source = item.automationId ? "Automation" : props.sourceTitle;
   // A notice has no question, so its text is what the card shows.
   const bodyInCard = item.kind === "notice" || !item.request;
+  const meta = (
+    <>
+      {source ? `${source} · ` : null}
+      {formatRelativeTime(item.createdAt)}
+      {item.visibility === "private" ? " · Private" : null}
+    </>
+  );
   const conversationLink = (
     <Link
       className={textLinkClass}
@@ -84,10 +92,34 @@ export function ReviewItemView(props: {
     <ChatLayout
       header={
         <header className="border-b border-dashboard-border bg-dashboard-bg">
-          <div className="flex min-w-0 items-start justify-between gap-4 px-4 py-3 md:px-7 md:py-5">
+          {/* Desktop: one 48px row, like the conversation header. The title
+              starts 24px in and the details button ends 24px from the edge. */}
+          <div className="hidden h-12 min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight">
+                {item.title}
+              </h2>
+              <StatusChip size="compact" tone={open ? "accent" : "neutral"}>
+                {reviewItemStatusLabel(item)}
+              </StatusChip>
+              <span className="min-w-0 truncate text-xs text-dashboard-text-muted">
+                {meta}
+              </span>
+            </div>
+            {props.detailsOpen ? null : (
+              <HeaderIconButton
+                expanded={false}
+                label="Review item details"
+                onClick={props.onDetailsClick}
+              >
+                <PanelRight aria-hidden="true" size={16} strokeWidth={1.9} />
+              </HeaderIconButton>
+            )}
+          </div>
+          <div className="flex min-w-0 items-start justify-between gap-4 px-4 py-3 md:hidden">
             <div className="grid min-w-0 gap-1.5">
               <Link
-                className="inline-flex items-center gap-1 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text md:hidden"
+                className="inline-flex items-center gap-1 font-sans text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
                 to={props.backTo}
               >
                 <ChevronLeft aria-hidden="true" size={14} />
@@ -100,11 +132,7 @@ export function ReviewItemView(props: {
                 <StatusChip size="compact" tone={open ? "accent" : "neutral"}>
                   {reviewItemStatusLabel(item)}
                 </StatusChip>
-                <span>
-                  {source ? `${source} · ` : null}
-                  {formatRelativeTime(item.createdAt)}
-                  {item.visibility === "private" ? " · Private" : null}
-                </span>
+                <span>{meta}</span>
               </p>
             </div>
             <Button

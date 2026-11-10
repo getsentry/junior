@@ -121,7 +121,6 @@ export function DetailsPanel(props: {
           <Button
             ref={closeRef}
             aria-label={closeLabel}
-            className="size-8 rounded-lg"
             data-slot="details-panel-close"
             onClick={onClose}
             size="icon"
