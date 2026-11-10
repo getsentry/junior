@@ -39,13 +39,20 @@ const GAP_BIN_EDGES_MS: readonly number[] = [
 const GAP_BIN_COUNT = GAP_BIN_EDGES_MS.length;
 
 /**
- * Gaps that a list needs before it replaces the list it leans on: the
- * Conversation's gaps replace its segment's gaps, and a segment's gaps
- * replace its parent segment's gaps (`parentGapSegment`). A new or rare
- * segment starts with its parent's return chances, so it can warm before it
- * has gaps of its own.
+ * Gaps that a segment needs before its gaps replace its parent segment's
+ * gaps (`parentGapSegment`). A new or rare segment starts with its parent's
+ * return chances, so it can warm before it has gaps of its own.
  */
 const BLEND_PSEUDOCOUNT = 20;
+
+/**
+ * Gaps that a Conversation needs before its gaps replace its segment's gaps.
+ * One Conversation has few gaps, and a few unusual replies say little about
+ * its next one. A backtest of time-ordered decisions showed that a weight
+ * this slow predicts returns better than both a faster weight and no
+ * Conversation weight at all.
+ */
+const CONVERSATION_BLEND_PSEUDOCOUNT = 100;
 
 /**
  * Gaps that a decision needs in total, from the Conversation, its segment,
@@ -103,13 +110,17 @@ function histogramOf(gapsMs: readonly number[]): GapHistogram {
 
 // A list with few gaps leans on a larger prior list: a Conversation on its
 // segment, or a thin segment on its parent. Each own gap moves the weight by
-// 1/BLEND_PSEUDOCOUNT. The two histograms are mixed as shares, so a much
-// larger prior list does not hide the own gaps.
-function blendHistograms(own: GapHistogram, prior: GapHistogram): GapHistogram {
+// 1/pseudocount. The two histograms are mixed as shares, so a much larger
+// prior list does not hide the own gaps.
+function blendHistograms(
+  own: GapHistogram,
+  prior: GapHistogram,
+  pseudocount: number,
+): GapHistogram {
   if (own.total === 0 || prior.total === 0) {
     return own.total === 0 ? prior : own;
   }
-  const weight = Math.min(own.total / BLEND_PSEUDOCOUNT, 1);
+  const weight = Math.min(own.total / pseudocount, 1);
   return {
     counts: own.counts.map(
       (count, index) =>
@@ -332,7 +343,8 @@ export function decideWarmup(input: WarmupDecisionInput): WarmupDecision {
       : undefined;
   const histogram = blendHistograms(
     conversation,
-    parent ? blendHistograms(global, parent) : global,
+    parent ? blendHistograms(global, parent, BLEND_PSEUDOCOUNT) : global,
+    CONVERSATION_BLEND_PSEUDOCOUNT,
   );
   const probability = returnProbability(
     histogram,
