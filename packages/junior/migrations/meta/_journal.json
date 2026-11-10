@@ -687,6 +687,13 @@
       "when": 1794344562301,
       "tag": "0097_conversation_kind_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1794348643588,
+      "tag": "0098_automation_skill_index",
+      "breakpoints": true
     }
   ]
 }

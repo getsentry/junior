@@ -12,7 +12,7 @@ import type { MigrationConfig } from "drizzle-orm/migrator";
 import { Agent } from "undici";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { forwardInfoMessages } from "./info-messages";
-import { applyMigrations } from "./migrate";
+import { applyMigrations, waitForMigrationLock } from "./migrate";
 import { juniorSqlSchema } from "./schema";
 import { logException } from "@/chat/logging";
 import * as Sentry from "@/chat/sentry";
@@ -333,7 +333,13 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
     const client = await this.pool.connect();
     const lockName = `junior:migrate:${migrationTable}`;
     try {
-      await client.query("SELECT pg_advisory_lock(hashtext($1))", [lockName]);
+      await waitForMigrationLock(async () => {
+        const result = await client.query<{ locked: boolean }>(
+          "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
+          [lockName],
+        );
+        return result.rows[0]?.locked === true;
+      });
       // DDL such as `CREATE INDEX CONCURRENTLY` can outlast an HTTP request,
       // and only a WebSocket session's statement_timeout cancels it.
       return await this.pool.onWebSocket(callback);

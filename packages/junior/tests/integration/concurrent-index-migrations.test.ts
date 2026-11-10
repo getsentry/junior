@@ -12,14 +12,7 @@ import {
 const PLUGIN_NAME = "concurrent-index-test";
 const INDEX_NAME = "concurrent_index_items_group_idx";
 const CREATE_ITEMS = `CREATE TABLE "concurrent_index_items" ("id" integer PRIMARY KEY, "group_id" integer NOT NULL);`;
-// The same guarded shape that core index migrations use.
-const CREATE_GROUP_INDEX = `DO $$
-BEGIN
-  IF to_regclass('${INDEX_NAME}') IS NULL THEN
-    -- junior:concurrent-index
-    CREATE INDEX "${INDEX_NAME}" ON "concurrent_index_items" USING btree ("group_id");
-  END IF;
-END $$;`;
+const CREATE_GROUP_INDEX = `CREATE INDEX CONCURRENTLY IF NOT EXISTS "${INDEX_NAME}" ON "concurrent_index_items" USING btree ("group_id");`;
 
 async function writeMigrations(
   dir: string,
@@ -130,18 +123,21 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
       }
     });
 
-    it("rebuilds an interrupted build and rejects an index that differs", async () => {
+    it("rejects a mixed migration and rebuilds an interrupted build", async () => {
       const fixture = await createEmptyJuniorPostgresFixture();
-      const pending = await createItemsWithPendingMigration(fixture.sql);
+      const pending = await createItemsWithPendingMigration(fixture.sql, {
+        sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;--> statement-breakpoint\n${CREATE_GROUP_INDEX}`,
+        tag: "0001_items_group_index",
+      });
 
       try {
-        await fixture.sql.execute(
-          `CREATE INDEX "${INDEX_NAME}" ON "concurrent_index_items" ("id")`,
-        );
         await expect(pending.migrate()).rejects.toThrow(
-          `Index ${INDEX_NAME} does not match its migration`,
+          "must contain only CREATE [UNIQUE] INDEX CONCURRENTLY IF NOT EXISTS",
         );
-        await fixture.sql.execute(`DROP INDEX "${INDEX_NAME}"`);
+        await writeMigrations(pending.dir, [
+          { sql: CREATE_ITEMS, tag: "0000_items" },
+          { sql: CREATE_GROUP_INDEX, tag: "0001_items_group_index" },
+        ]);
 
         // A failed concurrent build leaves an invalid index with the name.
         await fixture.sql.execute(
