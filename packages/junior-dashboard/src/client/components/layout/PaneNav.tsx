@@ -12,12 +12,21 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { Link, useMatch } from "react-router";
 
 import { getDashboardAgentName } from "../../agentName";
 import { HeaderIconButton } from "../../conversations/ConversationHeaderActions";
+import {
+  readSidebarWidth,
+  saveSidebarWidth,
+  SIDEBAR_WIDTH,
+} from "../../conversations/conversationSidebarLayout";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
 import { cn } from "../../styles";
@@ -64,6 +73,17 @@ type PaneNavValue = {
 
 const PaneNavContext = createContext<PaneNavValue | null>(null);
 
+type PaneWidthValue = { setWidth(width: number): void; width: number };
+
+// Apart from `PaneNavContext`, so a drag renders only the resize handle.
+const PaneWidthContext = createContext<PaneWidthValue | null>(null);
+
+const RESIZE_KEY_STEP = 16;
+
+function clampWidth(width: number): number {
+  return Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width));
+}
+
 function usePaneNav(): PaneNavValue {
   const value = useContext(PaneNavContext);
   if (!value) throw new Error("Pane navigation requires PaneNavProvider");
@@ -72,9 +92,10 @@ function usePaneNav(): PaneNavValue {
 
 /**
  * Own the desktop pane: the primary destinations that every list pane shows
- * at its top, the profile at its bottom, and whether the pane shows. Cmd/Ctrl+B
- * shows or hides it on desktop. Children lay out in one row: the pane, then
- * the page.
+ * at its top, the profile at its bottom, whether the pane shows, and its
+ * width. The pane is part of the layout, so every page shares one width.
+ * Cmd/Ctrl+B shows or hides it on desktop. Children lay out in one row: the
+ * pane, then the page.
  */
 export function PaneNavProvider(props: {
   children: ReactNode;
@@ -87,6 +108,8 @@ export function PaneNavProvider(props: {
   workspaceActive: boolean;
 }) {
   const focusToggle = useRef(false);
+  const [width, setWidth] = useState(readSidebarWidth);
+  const widthValue = useMemo(() => ({ setWidth, width }), [width]);
   const { onOpenChange, open } = props;
   const setOpen = useCallback(
     (next: boolean, options?: { focus?: boolean }) => {
@@ -133,7 +156,14 @@ export function PaneNavProvider(props: {
   );
   return (
     <PaneNavContext.Provider value={value}>
-      <div className="flex min-h-svh w-full">{props.children}</div>
+      <PaneWidthContext.Provider value={widthValue}>
+        <div
+          className="flex min-h-svh w-full"
+          style={{ "--pane-width": `${width}px` } as CSSProperties}
+        >
+          {props.children}
+        </div>
+      </PaneWidthContext.Provider>
     </PaneNavContext.Provider>
   );
 }
@@ -310,10 +340,83 @@ function PaneNavHeader(props: { onNewConversation?(): void }) {
 }
 
 /**
+ * Resize the pane by drag or arrow keys. A drag far past the minimum width
+ * hides the pane, as the toggle does.
+ */
+function PaneResizeHandle() {
+  const pane = usePaneNav();
+  const paneWidth = useContext(PaneWidthContext);
+  if (!paneWidth) throw new Error("Pane resizing requires PaneNavProvider");
+  const { setWidth, width } = paneWidth;
+
+  const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = width;
+    let next = startWidth;
+    const move = (moveEvent: PointerEvent) => {
+      const raw = startWidth + moveEvent.clientX - startX;
+      if (raw < SIDEBAR_WIDTH.min / 2) {
+        end();
+        pane.setOpen(false, { focus: true });
+        return;
+      }
+      next = clampWidth(raw);
+      setWidth(next);
+    };
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+      saveSidebarWidth(next);
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+
+  const stepWidth = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step =
+      event.key === "ArrowLeft"
+        ? -RESIZE_KEY_STEP
+        : event.key === "ArrowRight"
+          ? RESIZE_KEY_STEP
+          : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = clampWidth(width + step);
+    setWidth(next);
+    saveSidebarWidth(next);
+  };
+
+  return (
+    <div
+      aria-label="Resize sidebar"
+      aria-orientation="vertical"
+      aria-valuemax={SIDEBAR_WIDTH.max}
+      aria-valuemin={SIDEBAR_WIDTH.min}
+      aria-valuenow={Math.round(width)}
+      className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize after:absolute after:inset-y-0 after:right-0 after:w-px after:transition-colors hover:after:bg-dashboard-border-interactive focus-visible:outline-none focus-visible:after:bg-dashboard-border-interactive max-md:hidden"
+      onKeyDown={stepWidth}
+      onPointerDown={startDrag}
+      role="separator"
+      tabIndex={0}
+    />
+  );
+}
+
+/**
  * Lay out one desktop pane: the primary destinations, then the page's own
  * list, then the profile. A page without a list passes no children. Phones
  * show only the list, under the app header. Children draw their own pane
- * edge, like `PANE_EDGE_CLASS`.
+ * edge, like `PANE_EDGE_CLASS`. On desktop the pane takes the shared width.
  */
 export function ListPane(props: {
   children?: ReactNode;
@@ -324,7 +427,7 @@ export function ListPane(props: {
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 min-w-0 flex-col overflow-hidden",
+        "relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden md:w-[var(--pane-width)] md:shrink-0",
         !pane.open && "md:hidden",
         props.className,
       )}
@@ -338,6 +441,7 @@ export function ListPane(props: {
           {pane.profile}
         </div>
       ) : null}
+      <PaneResizeHandle />
     </div>
   );
 }

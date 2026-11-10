@@ -51,6 +51,21 @@ test("shows the primary destinations at the top of every desktop pane", async ({
   await expect(profile).toContainText("7d$0.46");
   await expect(profile).toContainText("30d$0.46");
   await screenshot(page, "navigation-pane-automations", { view: "desktop" });
+
+  // The pane is part of the layout: a width set on one page holds on all.
+  const resize = page.getByRole("separator", { name: "Resize sidebar" });
+  const paneWidth = async () =>
+    Number(await resize.getAttribute("aria-valuenow"));
+  const startWidth = await paneWidth();
+  await resize.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(paneWidth).toBe(startWidth + 32);
+  await primary.getByRole("link", { name: "Conversations" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect.poll(paneWidth).toBe(startWidth + 32);
+  await page.reload();
+  await expect.poll(paneWidth).toBe(startWidth + 32);
 });
 
 test("hides the pane and keeps the choice", async ({ page, dashboard }) => {

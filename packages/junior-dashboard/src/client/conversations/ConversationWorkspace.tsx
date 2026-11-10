@@ -9,16 +9,10 @@ import {
   useNavigationType,
   useParams,
 } from "react-router";
-import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
 import { SearchInput } from "../components/SearchInput";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "../components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
@@ -62,21 +56,10 @@ import { FeedThreads, feedThreadsById } from "./feedThreads";
 import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
-import {
-  readSidebarWidth,
-  saveSidebarWidth,
-  SIDEBAR_WIDTH,
-  useSidebarFits,
-} from "./conversationSidebarLayout";
-import {
-  ListPane,
-  PaneCollapsedControls,
-  usePaneOpen,
-  useSetPaneOpen,
-} from "../components/layout/PaneNav";
+import { useSidebarFits } from "./conversationSidebarLayout";
+import { ListPane, PaneCollapsedControls } from "../components/layout/PaneNav";
 
 const CONVERSATION_PAGE_SIZE = 20;
-const SIDEBAR_PANEL_ID = "conversation-list";
 
 /**
  * Render the conversation list beside the create view or one selected
@@ -88,15 +71,11 @@ export function ConversationWorkspace(props: {
 }) {
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_PAGE_SIZE);
   const [query, setQuery] = useState("");
-  const sidebarOpen = usePaneOpen();
-  const setSidebarOpen = useSetPaneOpen();
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
   const { showArchiveError, showArchived } = useConversationActionToasts();
   useConversationPageArchiveResult(showArchived, showArchiveError);
   const sidebarFits = useSidebarFits();
-  const sidebarPanel = useRef<PanelImperativeHandle>(null);
-  const sidebarGroup = useRef<HTMLDivElement>(null);
   // Only the stacked home has a search box. The sidebar lists every
   // conversation; the command palette searches them. Debounce only the typed
   // text, so the sidebar drops a stale search at once.
@@ -260,14 +239,6 @@ export function ConversationWorkspace(props: {
     />
   );
 
-  // The pane toggles and Cmd/Ctrl+B set the open state; the panel follows.
-  // A drag past the minimum width collapses the panel and sets it too.
-  useEffect(() => {
-    const panel = sidebarPanel.current;
-    if (!panel || panel.isCollapsed() !== sidebarOpen) return;
-    if (sidebarOpen) panel.resize(readSidebarWidth());
-    else panel.collapse();
-  }, [sidebarOpen]);
   // One tree for every width, so the create draft and its images survive a
   // resize across the breakpoint: the create view is always the child of the
   // second div.
@@ -348,60 +319,23 @@ export function ConversationWorkspace(props: {
   );
 
   return (
-    <ResizablePanelGroup
-      className="min-h-0 overflow-hidden bg-dashboard-bg"
-      elementRef={sidebarGroup}
-      onLayoutChanged={(layout) => {
-        // Save after the drag ends. A drag that collapses the list passes
-        // the minimum width first, and that width is not the reader's pick.
-        const percent = layout[SIDEBAR_PANEL_ID] ?? 0;
-        const groupWidth = sidebarGroup.current?.offsetWidth ?? 0;
-        if (percent > 0) saveSidebarWidth((percent / 100) * groupWidth);
-      }}
-    >
+    <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
+      {/* The pane hides itself while the reader hides it, and keeps the
+          list mounted so its scroll position stays. */}
       {sidebarFits ? (
-        <>
-          <ResizablePanel
-            collapsible
-            defaultSize={sidebarOpen ? readSidebarWidth() : 0}
-            groupResizeBehavior="preserve-pixel-size"
-            id={SIDEBAR_PANEL_ID}
-            maxSize={SIDEBAR_WIDTH.max}
-            minSize={SIDEBAR_WIDTH.min}
-            onResize={(size) => {
-              // Dragging past the minimum width collapses the list too, so the
-              // panel size is the one source for the open state.
-              const open = size.inPixels > 0;
-              if (open !== sidebarOpen) setSidebarOpen(open);
-            }}
-            panelRef={sidebarPanel}
-          >
-            <div
-              className={cn(
-                "h-full min-h-0 overflow-hidden",
-                !sidebarOpen && "hidden",
-              )}
-            >
-              <ListPane onNewConversation={openCreate}>
-                <ConversationSidebar
-                  conversations={conversations}
-                  error={feed.error?.message}
-                  loading={feed.isPending}
-                  onReorderPins={reorderPins}
-                  selectedId={selectedId}
-                  timeZone={getDashboardTimeZone()}
-                  waitingConversations={waitingConversations}
-                />
-              </ListPane>
-            </div>
-          </ResizablePanel>
-          <ResizableHandle
-            aria-label="Resize conversation list"
-            className="w-px bg-transparent transition-colors after:w-2 focus-visible:ring-dashboard-border-interactive data-[separator=active]:bg-dashboard-border-interactive data-[separator=hover]:bg-dashboard-border-interactive"
+        <ListPane onNewConversation={openCreate}>
+          <ConversationSidebar
+            conversations={conversations}
+            error={feed.error?.message}
+            loading={feed.isPending}
+            onReorderPins={reorderPins}
+            selectedId={selectedId}
+            timeZone={getDashboardTimeZone()}
+            waitingConversations={waitingConversations}
           />
-        </>
+        </ListPane>
       ) : null}
-      <ResizablePanel id="selected-conversation">
+      <div className="h-full min-h-0 min-w-0 flex-1">
         {home ? homePane : null}
         {/* A pending create shows in the same section as the page that
             replaces it, so the swap keeps this element. */}
@@ -442,8 +376,8 @@ export function ConversationWorkspace(props: {
             ) : null}
           </section>
         ) : null}
-      </ResizablePanel>
-    </ResizablePanelGroup>
+      </div>
+    </div>
   );
 }
 

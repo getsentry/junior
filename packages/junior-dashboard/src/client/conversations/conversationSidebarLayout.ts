@@ -8,7 +8,7 @@ const DETAILS_OPEN_KEY = "junior:conversation:details-open";
 const WIDTH_KEY = "junior:conversation:sidebar-width";
 const DETAILS_WIDTH_KEY = "junior:conversation:details-width";
 
-/** Pixel limits for the conversation list beside a selected conversation. */
+/** Pixel limits for the desktop pane, shared by every page. */
 export const SIDEBAR_WIDTH = { default: 320, max: 480, min: 240 } as const;
 
 /** Pixel limits for the details panel beside the transcript. */
@@ -42,12 +42,12 @@ export function saveDetailsOpen(open: boolean) {
   if (hasPanelSpace()) writeStorage(DETAILS_OPEN_KEY, String(open));
 }
 
-/** Read the conversation list width saved in this browser. */
+/** Read the desktop pane width saved in this browser. */
 export function readSidebarWidth(): number {
   return readWidth(WIDTH_KEY, SIDEBAR_WIDTH);
 }
 
-/** Save the conversation list width without a React render per drag step. */
+/** Save the desktop pane width once a resize ends. */
 export function saveSidebarWidth(width: number) {
   writeStorage(WIDTH_KEY, String(Math.round(width)));
 }

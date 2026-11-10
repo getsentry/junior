@@ -43,7 +43,7 @@ function InboxEmpty(props: { className?: string }) {
 export function ReviewDeskLoading() {
   return (
     <div className={shellClass}>
-      <ListPane className="md:w-80">
+      <ListPane>
         <aside
           aria-busy="true"
           aria-label="Loading review items"
@@ -149,7 +149,7 @@ export function ReviewDeskPage() {
 
   return (
     <div className={shellClass}>
-      <ListPane className={cn("md:w-80", itemParam && "max-md:hidden")}>
+      <ListPane className={itemParam ? "max-md:hidden" : undefined}>
         <ReviewDeskSidebar
           blocked={blockedAutomations}
           collapsed={collapsed}
