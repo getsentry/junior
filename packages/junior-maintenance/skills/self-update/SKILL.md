@@ -1,6 +1,7 @@
 ---
 name: self-update
 description: Update this junior-prod app to the latest published Junior release. Use when asked to self-update Junior, bump @sentry/junior and @sentry/junior-* dependencies, run safety checks, and open a PR ready for review.
+disable-model-invocation: true
 ---
 
 ## Workflow
