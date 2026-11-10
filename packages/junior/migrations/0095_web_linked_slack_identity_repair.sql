@@ -4,17 +4,24 @@
 -- poster's User, and the link made the poster a Participant of every root
 -- that the Identity started.
 --
--- An Identity is damaged when all of these are true:
--- - It is a Slack user Identity with a User and a verified email.
+-- A candidate is a Slack user Identity when all of these are true:
+-- - It has a User and a verified email.
 -- - The User's web Identity, with that same email, wrote an event in a
 --   Conversation of a root that the Slack Identity started.
 -- - No instruction that the Slack Identity sent in its own roots carries that
 --   email in its Slack Actor. That Actor has the email from the Slack profile,
 --   and Slack is the only source that may give a Slack Identity its email.
 --
+-- Slack emails are unique in a workspace, so one User has at most one
+-- correct Slack Identity in each team. Repair a candidate only when exactly
+-- one other Slack Identity of its User in its team stays linked. Leave every
+-- other candidate as it is: the data cannot tell the victim of a poster with
+-- no Slack Identity from a person whose own link came through this path.
+--
 -- One statement repairs every table, so each part reads the same rows.
-WITH "damaged" AS (
-  SELECT DISTINCT "slack"."id" AS "identity_id", "slack"."user_id"
+WITH "candidates" AS (
+  SELECT DISTINCT "slack"."id" AS "identity_id", "slack"."user_id",
+    "slack"."provider_tenant_id"
   FROM "junior_identities" AS "slack"
   INNER JOIN "junior_conversations" AS "root"
     ON "root"."actor_identity_id" = "slack"."id"
@@ -51,6 +58,19 @@ WITH "damaged" AS (
         AND lower(btrim("own"."payload"->'provenance'->'actor'->>'email')) = "slack"."email_normalized"
     )
 ),
+"damaged" AS (
+  SELECT "candidate"."identity_id", "candidate"."user_id"
+  FROM "candidates" AS "candidate"
+  WHERE (
+    SELECT count(*)
+    FROM "junior_identities" AS "kept"
+    WHERE "kept"."kind" = 'user'
+      AND "kept"."provider" = 'slack'
+      AND "kept"."user_id" = "candidate"."user_id"
+      AND "kept"."provider_tenant_id" = "candidate"."provider_tenant_id"
+      AND "kept"."id" NOT IN (SELECT "identity_id" FROM "candidates")
+  ) = 1
+),
 -- Remove the Participant rows that the link added. Keep a row when the User
 -- wrote in that root through another of their Identities.
 "removed_participants" AS (
@@ -71,6 +91,26 @@ WITH "damaged" AS (
           OR "c"."conversation_id" = "root"."conversation_id")
         AND "author"."user_id" = "d"."user_id"
         AND "author"."id" NOT IN (SELECT "identity_id" FROM "damaged")
+    )
+),
+-- The link gave the poster's User the starter's name when the User had none.
+-- A User name comes from one of its Identities, so a name that no kept
+-- Identity of the User has came from the damaged one. The next save of a
+-- kept Identity gives the User a name again.
+"renamed_users" AS (
+  UPDATE "junior_users" AS "u"
+  SET "display_name" = NULL,
+    "updated_at" = now()
+  FROM "damaged" AS "d"
+  INNER JOIN "junior_identities" AS "slack" ON "slack"."id" = "d"."identity_id"
+  WHERE "u"."id" = "d"."user_id"
+    AND "u"."display_name" = "slack"."display_name"
+    AND NOT EXISTS (
+      SELECT 1
+      FROM "junior_identities" AS "kept"
+      WHERE "kept"."user_id" = "d"."user_id"
+        AND "kept"."id" NOT IN (SELECT "identity_id" FROM "damaged")
+        AND "kept"."display_name" = "u"."display_name"
     )
 ),
 -- The detail report of these roots shows the root Actor and Participants.
