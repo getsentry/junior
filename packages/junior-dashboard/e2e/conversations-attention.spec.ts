@@ -167,11 +167,16 @@ test.describe("conversation sections", () => {
     await expect(
       waitingRow.getByRole("img", { name: "Waiting on you" }),
     ).toBeVisible();
-    await expect(sidebar.getByText("Needs you", { exact: true })).toBeVisible();
+    await expect(
+      sidebar
+        .getByRole("link", { name: /Ready to merge/ })
+        .getByRole("img", { name: "Waiting on you" }),
+    ).toBeVisible();
+    await expect(sidebar.getByText("Needs you")).toHaveCount(0);
     const section = await sidebarSectionOf(sidebar, /Checkout latency triage/);
     expect(section).toMatch(/^\w/);
     await expect(
-      page.getByRole("link", { name: /^\d+ conversations? needs? you$/ }),
+      page.getByRole("link", { name: "1 in Inbox" }),
     ).toHaveAttribute("href", "/review?filter=needs-you&group=conversation");
     await screenshot(page, "conversations-needs-you");
 

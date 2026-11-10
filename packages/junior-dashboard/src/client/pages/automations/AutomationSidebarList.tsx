@@ -18,7 +18,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { useDebouncedValue } from "../../debouncedValue";
 import { automationPath } from "../../format";
 import { cn } from "../../styles";
-import { NeedsYouMarker } from "../../components/NeedsYouMarker";
+import { WaitingMarker } from "../../components/WaitingMarker";
 import { ConversationSectionHeading } from "../../conversations/ConversationSectionHeading";
 import { automationAttentionReason } from "./automationAttention";
 
@@ -64,7 +64,7 @@ type Group = { key: string; label: string; rows: AutomationSummary[] };
 
 /**
  * Split the list into Active and Paused. Rows that need attention stay in
- * their group and carry the Needs you marker, like Conversations.
+ * their group and carry the waiting marker, like Conversations.
  */
 function groupAutomations(automations: AutomationSummary[]): Group[] {
   return [
@@ -136,7 +136,7 @@ function AutomationSidebarRow(props: {
             {trigger}
           </span>
         </span>
-        {props.needsYou ? <NeedsYouMarker className="mt-0.5" /> : null}
+        {props.needsYou ? <WaitingMarker className="mt-0.5" /> : null}
       </Link>
     </li>
   );

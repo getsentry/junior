@@ -174,7 +174,7 @@ export function ConversationSidebar(props: {
             className="h-full"
             viewportClassName="px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
-            <NeedsYouLink count={props.waitingConversations.size} />
+            <InboxLink count={props.waitingConversations.size} />
             {props.error ? (
               <div className="p-2">
                 <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -288,18 +288,16 @@ function ConversationRowsLoading() {
 /**
  * Lead the list with the count of Conversations that wait on the viewer. It
  * opens the Inbox on their Review items, grouped by Conversation. The rows
- * stay in place and carry the Needs you marker.
+ * stay in place and carry the waiting marker.
  */
-function NeedsYouLink(props: { count: number }) {
+function InboxLink(props: { count: number }) {
   if (props.count === 0) return null;
   return (
     <Link
-      className="mx-0.5 mt-1 mb-1 flex items-center justify-between gap-2 rounded-lg bg-dashboard-accent/10 px-2 py-1.5 font-sans text-xs font-semibold text-dashboard-accent-text no-underline transition-colors hover:bg-dashboard-accent/15 focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      className="mx-0.5 mt-1 mb-1 flex w-fit items-center gap-1 rounded-lg bg-dashboard-accent/10 px-2 py-1.5 font-sans text-xs font-semibold text-dashboard-accent-text no-underline transition-colors hover:bg-dashboard-accent/15 focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       to={NEEDS_YOU_INBOX_PATH}
     >
-      {props.count === 1
-        ? "1 conversation needs you"
-        : `${props.count} conversations need you`}
+      {props.count} in Inbox
       <ArrowRight aria-hidden="true" size={13} />
     </Link>
   );

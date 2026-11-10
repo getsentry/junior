@@ -15,7 +15,7 @@ const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -1 };
  * Previous 7 days, Previous 30 days, then one section per month.
  *
  * A conversation that waits on the viewer stays in its section; its row
- * carries the Needs you marker. Pinned follows the viewer's order. Every
+ * carries the waiting marker. Pinned follows the viewer's order. Every
  * other section lists the newest Message first.
  */
 export function buildConversationSections(
