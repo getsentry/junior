@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.290.0
+
+### Bug Fixes 🐛
+
+- (db) Run each pending migration in its own transaction by @thomasjiangcy with @sentry-junior in [#3067](https://github.com/getsentry/junior/pull/3067)
+
+### Internal Changes 🔧
+
+- (cache-warming) Use a flat 45 second warmup margin by @BYK with @sentry-junior in [#3061](https://github.com/getsentry/junior/pull/3061)
+
 ## 0.289.0
 
 Users gain safer agent controls, clearer dashboards, improved mobile and messaging behavior, faster data handling, and must remove retired dictation settings.
