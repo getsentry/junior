@@ -233,10 +233,6 @@ export function ProfileMenu({
         <UserRound aria-hidden="true" size={16} strokeWidth={2} />
         My profile
       </Link>
-      <Link className={profileLinkClass} onClick={close} to="/settings">
-        <Settings aria-hidden="true" size={16} strokeWidth={2} />
-        Settings
-      </Link>
       {pages.map((page) => {
         const Icon = navItemIcon(page.key);
         return (
@@ -257,6 +253,10 @@ export function ProfileMenu({
           Admin
         </Link>
       ) : null}
+      <Link className={profileLinkClass} onClick={close} to="/settings">
+        <Settings aria-hidden="true" size={16} strokeWidth={2} />
+        Settings
+      </Link>
       <Button
         onClick={() => {
           close();
