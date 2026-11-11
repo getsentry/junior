@@ -3,11 +3,21 @@ import { readEncryptionKeyring } from "@/chat/encryption/keyring";
 import {
   decryptSecret,
   encryptSecret,
-  SecretKeyMismatchError,
+  UnreadableSecretError,
 } from "@/chat/encryption/secret";
 
 const OLD_KEY = "old:yzdMjBLutb3SqjtwO1Lm3Cr2wN7FSGG8tzlRjvJc8Xg";
 const NEW_KEY = "new:Wywm9DZHe0QkHOXon30I5fklwG0gdqLAzMViptFlvtI";
+
+function unreadableReason(read: () => unknown): string | undefined {
+  try {
+    read();
+  } catch (error) {
+    if (error instanceof UnreadableSecretError) return error.reason;
+    throw error;
+  }
+  return undefined;
+}
 
 describe("encryptSecret", () => {
   it("decrypts only with the context it was encrypted for", () => {
@@ -19,8 +29,20 @@ describe("encryptSecret", () => {
       stale: false,
       text: "access-token",
     });
-    expect(() => decryptSecret(envelope, "oauth-token:U2:github")).toThrow(
-      "Unsupported state or unable to authenticate data",
+    expect(
+      unreadableReason(() => decryptSecret(envelope, "oauth-token:U2:github")),
+    ).toBe("invalid");
+  });
+
+  it("rejects malformed and altered envelopes", () => {
+    const envelope = encryptSecret("access-token", "key");
+    const altered = `${envelope.slice(0, -4)}AAAA`;
+
+    expect(unreadableReason(() => decryptSecret(altered, "key"))).toBe(
+      "invalid",
+    );
+    expect(unreadableReason(() => decryptSecret("jenc:v1:test:x", "key"))).toBe(
+      "invalid",
     );
   });
 
@@ -37,9 +59,9 @@ describe("encryptSecret", () => {
       stale: true,
       text: "access-token",
     });
-    expect(() => decryptSecret(envelope, "key", newOnly)).toThrow(
-      SecretKeyMismatchError,
-    );
+    expect(
+      unreadableReason(() => decryptSecret(envelope, "key", newOnly)),
+    ).toBe("unknown_key");
   });
 });
 

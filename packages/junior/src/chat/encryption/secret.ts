@@ -8,8 +8,9 @@
  *
  * New values use the active key. Any listed key decrypts. A value from a key
  * that is not active reports `stale`, so its owner can save it again with the
- * active key. A key id that is not listed gives `SecretKeyMismatchError`, not
- * a tampering failure.
+ * active key. A value that cannot be decrypted gives `UnreadableSecretError`:
+ * `unknown_key` when its key id is not listed, `invalid` when it is malformed,
+ * altered, or bound to another context.
  *
  * There is no per-value salt. The keys are random, not passwords, and each
  * value has a random IV. The storage key in the AAD already names the
@@ -32,11 +33,18 @@ export interface DecryptedSecret {
   text: string;
 }
 
-/** The envelope key id is not in `JUNIOR_ENCRYPTION_KEYS`. */
-export class SecretKeyMismatchError extends Error {
-  constructor() {
-    super("Stored secret was encrypted with a key that is not configured");
-    this.name = "SecretKeyMismatchError";
+/** A stored secret that cannot be decrypted with the configured keys. */
+export class UnreadableSecretError extends Error {
+  readonly reason: "unknown_key" | "invalid";
+
+  constructor(reason: "unknown_key" | "invalid") {
+    super(
+      reason === "unknown_key"
+        ? "Stored secret was encrypted with a key that is not configured"
+        : "Stored secret is malformed or failed authentication",
+    );
+    this.name = "UnreadableSecretError";
+    this.reason = reason;
   }
 }
 
@@ -84,19 +92,32 @@ export function decryptSecret(
   const [iv, ciphertext, tag] = (payload ?? "")
     .split(".")
     .map((part) => Buffer.from(part, "base64url"));
-  if (!keyId || !iv || !ciphertext || !tag || tag.length !== TAG_BYTES) {
-    throw new Error("Stored secret envelope is malformed");
+  if (
+    !keyId ||
+    !iv ||
+    iv.length !== IV_BYTES ||
+    !ciphertext ||
+    !tag ||
+    tag.length !== TAG_BYTES
+  ) {
+    throw new UnreadableSecretError("invalid");
   }
   const match = keyring.keys.find((candidate) => candidate.id === keyId);
-  if (!match) throw new SecretKeyMismatchError();
+  if (!match) throw new UnreadableSecretError("unknown_key");
   const decipher = createDecipheriv(ALGORITHM, match.key, iv, {
     authTagLength: TAG_BYTES,
   });
   decipher.setAAD(additionalData(keyId, context));
   decipher.setAuthTag(tag);
-  const text = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]).toString("utf8");
+  let text: string;
+  try {
+    text = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    // GCM rejects altered ciphertext, a wrong tag, and a wrong context alike.
+    throw new UnreadableSecretError("invalid");
+  }
   return { stale: match.id !== keyring.active.id, text };
 }

@@ -79,15 +79,37 @@ describe("MCP auth session store", () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const state = getStateAdapter();
     await state.connect();
+    const { encryptSecret } = await import("@/chat/encryption/secret");
+    const key = "junior:mcp_oauth_attempt:v2:legacy-auth";
     await state.set(
-      "junior:mcp_oauth_attempt:v2:legacy-auth",
-      JSON.stringify({
-        ...buildSession("legacy-auth"),
-        schemaVersion: 1,
-      }),
+      key,
+      encryptSecret(
+        JSON.stringify({ ...buildSession("legacy-auth"), schemaVersion: 1 }),
+        key,
+      ),
     );
 
     await expect(getMcpAuthSession("legacy-auth")).resolves.toBeUndefined();
+  });
+
+  it("keeps the code verifier encrypted at rest", async () => {
+    const { getMcpAuthSession, putMcpAuthSession } =
+      await import("@/chat/mcp/auth-store");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+
+    await putMcpAuthSession({
+      ...buildSession("auth-pkce"),
+      codeVerifier: "pkce-verifier",
+    });
+
+    const stored = await getStateAdapter().get<string>(
+      "junior:mcp_oauth_attempt:v2:auth-pkce",
+    );
+    expect(stored).toMatch(/^jenc:v1:/);
+    expect(stored).not.toContain("pkce-verifier");
+    await expect(getMcpAuthSession("auth-pkce")).resolves.toEqual(
+      expect.objectContaining({ codeVerifier: "pkce-verifier" }),
+    );
   });
 
   it("keeps bulk deletion working after one sibling session is removed directly", async () => {

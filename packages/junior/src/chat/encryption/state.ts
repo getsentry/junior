@@ -3,8 +3,9 @@ import {
   decryptSecret,
   encryptSecret,
   isEncryptedSecret,
-  SecretKeyMismatchError,
+  UnreadableSecretError,
 } from "@/chat/encryption/secret";
+import { logWarn } from "@/chat/logging";
 
 /** Key-value state that keeps each value encrypted at rest. */
 export interface EncryptedState {
@@ -20,17 +21,20 @@ export interface EncryptedStateRead {
 
 /**
  * Decrypt one stored envelope. The storage key is the encryption context.
- * A value from a key that is no longer configured reads as missing, so the
- * owner asks for the credential again and saves it with the active key.
+ * A value that cannot be decrypted, such as one from a key that is no longer
+ * configured or one that was altered, reads as missing. The owner then asks
+ * for the credential again and saves it with the active key.
  */
 function decode(key: string, envelope: string): EncryptedStateRead | undefined {
+  let decrypted: { stale: boolean; text: string };
   try {
-    const { stale, text } = decryptSecret(envelope, key);
-    return { stale, value: JSON.parse(text) };
+    decrypted = decryptSecret(envelope, key);
   } catch (error) {
-    if (error instanceof SecretKeyMismatchError) return undefined;
-    throw error;
+    if (!(error instanceof UnreadableSecretError)) throw error;
+    logWarn("encryption.secret_unreadable", { "error.type": error.reason });
+    return undefined;
   }
+  return { stale: decrypted.stale, value: JSON.parse(decrypted.text) };
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import { parseDestination } from "@/chat/destination";
 import { isRecord } from "@/chat/coerce";
@@ -92,15 +93,12 @@ function parseSessionIndex(value: unknown): string[] {
 }
 
 function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
-  if (typeof value !== "string") {
+  if (!isRecord(value)) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
+    const parsed = value;
 
     if (
       parsed.schemaVersion !== 2 ||
@@ -224,6 +222,15 @@ function parseStoredCredentials(
   }
 }
 
+// Attempts hold the PKCE code verifier and the user's message, so they are
+// encrypted. The attempt index holds only ids and stays plain.
+function readMcpAuthSession(
+  stateAdapter: StateAdapter,
+  authSessionId: string,
+): Promise<unknown> {
+  return createEncryptedState(stateAdapter).get(sessionKey(authSessionId));
+}
+
 async function getConnectedStateAdapter() {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
@@ -234,7 +241,9 @@ export async function getMcpAuthSession(
   authSessionId: string,
 ): Promise<McpAuthSessionState | undefined> {
   const stateAdapter = await getConnectedStateAdapter();
-  return parseMcpAuthSession(await stateAdapter.get(sessionKey(authSessionId)));
+  return parseMcpAuthSession(
+    await readMcpAuthSession(stateAdapter, authSessionId),
+  );
 }
 
 export async function putMcpAuthSession(
@@ -242,9 +251,9 @@ export async function putMcpAuthSession(
   ttlMs: number = MCP_AUTH_SESSION_TTL_MS,
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
-  await stateAdapter.set(
+  await createEncryptedState(stateAdapter).set(
     sessionKey(session.authSessionId),
-    JSON.stringify(session),
+    session,
     ttlMs,
   );
   const nextIndex = parseSessionIndex(
@@ -292,7 +301,7 @@ export async function deleteMcpAuthSession(
 ): Promise<void> {
   const stateAdapter = await getConnectedStateAdapter();
   const current = parseMcpAuthSession(
-    await stateAdapter.get(sessionKey(authSessionId)),
+    await readMcpAuthSession(stateAdapter, authSessionId),
   );
   await stateAdapter.delete(sessionKey(authSessionId));
   if (!current) {
@@ -342,7 +351,7 @@ export async function getLatestMcpAuthSessionForUserProvider(
   let latestSession: McpAuthSessionState | undefined;
   for (const authSessionId of authSessionIds) {
     const session = parseMcpAuthSession(
-      await stateAdapter.get(sessionKey(authSessionId)),
+      await readMcpAuthSession(stateAdapter, authSessionId),
     );
     if (!session) {
       continue;
