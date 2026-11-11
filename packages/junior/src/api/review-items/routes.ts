@@ -37,6 +37,7 @@ import {
   type ReviewItemPosition,
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
+import { countOwnedAutomationsNeedingAttention } from "@/chat/automations/collection";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -260,9 +261,11 @@ export function createReviewItemRoutes(services: {
   );
   app.get("/count", requireViewer, async (context) => {
     const viewer = context.get("viewer");
-    return jsonResponse(reviewItemCountSchema, {
-      needsViewer: await countReviewItemsNeedingUser(getDb(), viewer.id),
-    });
+    const [needsViewer, automations] = await Promise.all([
+      countReviewItemsNeedingUser(getDb(), viewer.id),
+      countOwnedAutomationsNeedingAttention(viewer),
+    ]);
+    return jsonResponse(reviewItemCountSchema, { automations, needsViewer });
   });
   app.get("/waiting-conversations", requireViewer, async (context) => {
     const viewer = context.get("viewer");

@@ -293,7 +293,7 @@ describe("review item actions API", () => {
     });
 
     const anaCount = await (await api(fixture, ana).get("/count")).json();
-    expect(anaCount).toEqual({ needsViewer: 1 });
+    expect(anaCount).toEqual({ automations: 0, needsViewer: 1 });
     // The Conversations of the action item wait on Ana, but not on Cal.
     expect(
       await (await api(fixture, ana).get("/waiting-conversations")).json(),
@@ -375,6 +375,7 @@ describe("review item actions API", () => {
       (await api(fixture, ben).act(id, { action: "dismiss" })).status,
     ).toBe(409);
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
+      automations: 0,
       needsViewer: 0,
     });
     expect(
@@ -432,6 +433,7 @@ describe("review item actions API", () => {
     expect((await api(fixture, ana).get("?status=open,done")).status).toBe(400);
     // Closed items never count.
     expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
+      automations: 0,
       needsViewer: 0,
     });
   });
@@ -453,6 +455,7 @@ describe("review item actions API", () => {
     expect(list.items).toMatchObject([{ id, canAct: true, canTake: true }]);
     // An item for Everyone needs no one until a person takes it.
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
+      automations: 0,
       needsViewer: 0,
     });
     expect(
@@ -504,6 +507,7 @@ describe("review item actions API", () => {
       status: "open",
     });
     expect(await (await api(fixture, cal).get("/count")).json()).toEqual({
+      automations: 0,
       needsViewer: 1,
     });
     expect(

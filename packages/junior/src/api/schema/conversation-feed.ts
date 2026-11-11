@@ -38,6 +38,8 @@ const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
 export const conversationFeedSchema = z
   .object({
     conversations: z.array(conversationFeedItemSchema),
+    /** Reads the next page. A page without it is the last one. */
+    nextCursor: z.string().optional(),
     source: z.literal("conversation_index"),
     generatedAt: z.string(),
   })

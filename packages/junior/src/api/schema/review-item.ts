@@ -114,9 +114,14 @@ export const reviewItemListSchema = z
   })
   .strict();
 
-/** The count of Review items for the nav. */
+/** The counts behind the Inbox badge, which shows their sum. */
 export const reviewItemCountSchema = z
   .object({
+    /**
+     * The viewer's own Automations that need attention, as the Inbox lists
+     * them (`scope=attention&owner=me`).
+     */
+    automations: z.number().int().nonnegative(),
     /**
      * Open action items assigned to the viewer as a User
      * (`reviewItemNeedsUser`). Notices and items for Everyone do not count.
