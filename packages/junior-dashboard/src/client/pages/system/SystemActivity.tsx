@@ -2,13 +2,7 @@ import type {
   ConversationMetricDay,
   ConversationStatsReport,
 } from "@sentry/junior/api/schema";
-import {
-  CircleCheck,
-  CircleDollarSign,
-  GitMerge,
-  MessageSquare,
-  Sigma,
-} from "lucide-react";
+import { CircleDollarSign, MessageSquare, Sigma } from "lucide-react";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import {
@@ -23,34 +17,21 @@ import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 import { ConversationActivityChart } from "./ConversationActivityChart";
 import { GuardianActivity } from "./GuardianActivity";
+import { OutcomeCostChart } from "./OutcomeCostChart";
 
 function periodTotals(days: ConversationMetricDay[]) {
   return days.reduce(
     (total, day) => ({
       conversations: total.conversations + day.conversations,
       costUsd: total.costUsd + (day.costUsd ?? 0),
-      mergedCodeChangeCostUsd:
-        total.mergedCodeChangeCostUsd + (day.mergedCodeChangeCostUsd ?? 0),
-      mergedCodeChanges: total.mergedCodeChanges + (day.mergedCodeChanges ?? 0),
-      outcomeCostUsd: total.outcomeCostUsd + (day.outcomeCostUsd ?? 0),
-      outcomes: total.outcomes + (day.outcomes ?? 0),
       tokens: total.tokens + (day.tokens ?? 0),
     }),
     {
       conversations: 0,
       costUsd: 0,
-      mergedCodeChangeCostUsd: 0,
-      mergedCodeChanges: 0,
-      outcomeCostUsd: 0,
-      outcomes: 0,
       tokens: 0,
     },
   );
-}
-
-/** Mean cost of one unit, or a dash when the period has no units. */
-function unitCost(costUsd: number, units: number): string {
-  return units > 0 ? formatCostSummary({ total: costUsd / units }) : "—";
 }
 
 /** Present selectable daily runtime and model-usage trends. */
@@ -123,23 +104,7 @@ export function SystemActivity(props: {
           value={formatCostSummary({ total: totals.costUsd })}
         />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <StatCard
-          detail={`${formatCompactNumber(totals.mergedCodeChanges)} merged changes and ${formatCompactNumber(totals.outcomes - totals.mergedCodeChanges)} answered or done conversations`}
-          icon={CircleCheck}
-          label="Cost per outcome"
-          value={unitCost(totals.outcomeCostUsd, totals.outcomes)}
-        />
-        <StatCard
-          detail={`Conversation cost split across ${formatCompactNumber(totals.mergedCodeChanges)} merged changes`}
-          icon={GitMerge}
-          label="Cost per merged change"
-          value={unitCost(
-            totals.mergedCodeChangeCostUsd,
-            totals.mergedCodeChanges,
-          )}
-        />
-      </div>
+      <OutcomeCostChart bucketUnit={bucketUnit} days={days} />
       <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />
       <ConversationActivityChart bucketUnit={bucketUnit} days={days} />
       <GuardianActivity bucketUnit={bucketUnit} days={guardianDays} />
