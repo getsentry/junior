@@ -209,7 +209,7 @@ async function startIdlePeriod(
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
-  const { stored, ...snapshot } = await saveSnapshot(
+  const { skipReason, ...snapshot } = await saveSnapshot(
     state,
     conversationId,
     snapshotKey(conversationId, idle.generation),
@@ -220,7 +220,7 @@ async function startIdlePeriod(
   // snapshot, so the limit can be tuned.
   const metricOptions = {
     unit: "byte",
-    attributes: { "app.cache_warming.stored": stored },
+    attributes: { "app.cache_warming.stored": skipReason === undefined },
   };
   metrics.distribution(
     "cache_warming.snapshot.bytes",
@@ -232,10 +232,10 @@ async function startIdlePeriod(
     snapshot.imageBytes,
     metricOptions,
   );
-  if (!stored) {
+  if (skipReason) {
     // A warning, so production keeps this idle period that Junior cannot warm.
     logWarn("cache_warming.snapshot.skipped", {
-      "app.cache_warming.skip_reason": "snapshot_too_large",
+      "app.cache_warming.skip_reason": skipReason,
       "app.cache_warming.prefix_tokens": prefixTokens,
       ...snapshotAttributes(snapshot),
     });
@@ -539,12 +539,13 @@ export function createCacheWarmingRecorder(
  * Idle warmups carry the sizes of the idle period's snapshot:
  * `snapshot_bytes` (compressed, without images), `snapshot_image_count`
  * (distinct images stored under hash keys), and `snapshot_image_bytes`
- * (their base64 data). A snapshot that is still over the limit stores
- * nothing and warns `cache_warming.snapshot.skipped` with `skip_reason`
- * `snapshot_too_large`, `prefix_tokens`, and the same sizes. Each snapshot
- * also records the unsampled distribution metrics
+ * (their base64 data). A snapshot over a limit stores nothing and warns
+ * `cache_warming.snapshot.skipped` with `prefix_tokens`, the same sizes, and
+ * `skip_reason` `snapshot_too_large` (still over the limit without its
+ * images) or `images_too_large` (its images are over their limit). Each
+ * snapshot also records the unsampled distribution metrics
  * `cache_warming.snapshot.bytes` and `cache_warming.snapshot.image_bytes`,
- * with `app.cache_warming.stored` false for a snapshot over the limit.
+ * with `app.cache_warming.stored` false for a snapshot over a limit.
  *
  * `work_state` and `archived` are read when the idle period starts and pick
  * its `gapSegment`. `turn_ending` is `reply` or `no_reply`: how the Turn

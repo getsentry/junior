@@ -7,7 +7,7 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { AnswerSummary } from "./ReviewItemActions";
-import { useReviewItemData } from "./queries";
+import { useConversationReviewItemData } from "./queries";
 import { answerLine, assigneeLabel, reviewItemPath } from "./reviewItemFormat";
 
 const CHANGE_VERBS = {
@@ -56,10 +56,14 @@ function ChangeRow(props: {
  * later answer. Shows `fallback` when the viewer cannot read the item.
  */
 export function ReviewItemChangeRow(props: {
+  conversationId: string;
   fallback: ReactNode;
   record: ReviewItemChangeRecord;
 }) {
-  const { data, isError } = useReviewItemData(props.record.reviewItemId);
+  const { data, isError } = useConversationReviewItemData(
+    props.conversationId,
+    props.record.reviewItemId,
+  );
   if (isError) return props.fallback;
   // The row replaces the text, so wait for the item before showing it.
   if (!data) return null;
@@ -71,10 +75,14 @@ export function ReviewItemChangeRow(props: {
  * Shows `fallback` until the item loads or when the viewer cannot read it.
  */
 export function ReviewItemChangeLabel(props: {
+  conversationId: string;
   fallback: ReactNode;
   record: ReviewItemChangeRecord;
 }) {
-  const { data } = useReviewItemData(props.record.reviewItemId);
+  const { data } = useConversationReviewItemData(
+    props.conversationId,
+    props.record.reviewItemId,
+  );
   if (!data) return props.fallback;
   return (
     <>
@@ -103,10 +111,14 @@ function askOutcome(item: ReviewItemPayload): string | undefined {
  * when the viewer cannot read the item.
  */
 export function ReviewItemAskRow(props: {
+  conversationId: string;
   fallback: ReactNode;
   itemId: string;
 }) {
-  const { data: item, isError } = useReviewItemData(props.itemId);
+  const { data: item, isError } = useConversationReviewItemData(
+    props.conversationId,
+    props.itemId,
+  );
   if (isError) return props.fallback;
   if (!item) return null;
   const verb = item.kind === "action" ? "Asked" : "Added";

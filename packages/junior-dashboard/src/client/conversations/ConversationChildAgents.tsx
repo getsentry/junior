@@ -17,6 +17,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import type { StatusChipTone } from "../components/StatusChip";
+import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
 import {
   formatConversationCostTotal,
@@ -25,7 +26,7 @@ import {
   formatUsageTotal,
 } from "../format";
 import { fetchDashboardJson } from "../http";
-import { conversationSideReadQueryKey } from "./queries";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
 import { cn } from "../styles";
@@ -162,13 +163,13 @@ function useShowArchived(children: readonly ConversationChildAgent[]) {
   return {
     action:
       archivedCount > 0 ? (
-        <button
-          className="cursor-pointer rounded-md px-1.5 py-0.5 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        <Button
+          className="rounded-md px-1.5 py-0.5 text-xs"
           onClick={() => setShowArchived((value) => !value)}
-          type="button"
+          variant="ghost"
         >
           {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
-        </button>
+        </Button>
       ) : null,
     items: showArchived
       ? children

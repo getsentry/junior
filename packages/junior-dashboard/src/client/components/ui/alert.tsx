@@ -11,6 +11,11 @@ const alertVariants = cva(
           "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text",
         destructive:
           "border-rose-300/20 bg-rose-300/[0.08] text-rose-100 *:data-[slot=alert-description]:text-rose-100/70 *:[svg]:text-rose-300",
+        warning:
+          "border-amber-300/25 bg-amber-300/5 text-dashboard-text *:[svg]:text-amber-300",
+        /** Full-width strip at the edge of the page. Callers set its tone colors. */
+        banner:
+          "flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-none border-0 border-t px-3 py-1.5 text-center font-sans text-xs",
       },
     },
     defaultVariants: {

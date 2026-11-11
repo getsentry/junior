@@ -11,6 +11,7 @@ import {
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
 import { loadableSkills } from "@/chat/agent/skills";
+import { renderTaskInput } from "@/chat/task-input";
 
 async function writeSkillFile(
   rootDir: string,
@@ -145,6 +146,20 @@ describe("skills", () => {
     ).toEqual({
       skillName: "weather-lookup",
     });
+  });
+
+  it("parses $skill inside Automation task input and Slack code", () => {
+    // A scheduled run's text starts with the instruction inside its tag.
+    expect(
+      parseSkillInvocation(
+        renderTaskInput({ instructions: "$weather-lookup San Francisco" }),
+        stubSkills,
+      ),
+    ).toEqual({ skillName: "weather-lookup" });
+    expect(
+      parseSkillInvocation("run `$brief` github: octocat", stubSkills),
+    ).toEqual({ skillName: "brief" });
+    expect(parseSkillInvocation("costs US$brief", stubSkills)).toBeNull();
   });
 
   it("ignores environment variables and keeps scanning for a skill", () => {

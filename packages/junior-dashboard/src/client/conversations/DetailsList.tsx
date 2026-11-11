@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { CollapsibleTrigger } from "../components/ui/collapsible";
+import { Button } from "../components/ui/button";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { OutboundIcon } from "../components/OutboundLink";
 
@@ -84,11 +85,11 @@ export function DetailsList<T>(props: {
       ))}
       {hidden > 0 ? (
         <li>
-          <button
+          <Button
             aria-expanded={expanded}
-            className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+            className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 focus-visible:-outline-offset-2"
             onClick={() => setExpanded((value) => !value)}
-            type="button"
+            variant="ghost"
           >
             <span className="grid size-5 shrink-0 place-items-center">
               <ChevronRight
@@ -97,7 +98,7 @@ export function DetailsList<T>(props: {
               />
             </span>
             {expanded ? "Show fewer" : `Show ${hidden} more`}
-          </button>
+          </Button>
         </li>
       ) : null}
     </ul>

@@ -30,7 +30,7 @@ test("finds an old archived conversation by title and restores it", async ({
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
@@ -157,7 +157,7 @@ for (const outcome of ["success", "error"] as const) {
     // Home must report the result even with the list hidden.
     await page.getByRole("button", { name: "Hide conversation list" }).click();
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("button", { name: "Archive", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
 
     // Home shows before the archive request finishes.
     await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
@@ -195,7 +195,7 @@ test("confirms a child archive and archives its children too", async ({
     `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:advisor-plan")}`,
   );
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
 
   const confirm = page.getByRole("alertdialog", {
     name: "Also archive its child conversations?",
@@ -223,7 +223,7 @@ test("shows why a child restore is refused", async ({ page, dashboard }) => {
     `${dashboard.baseURL}/conversations/${encodeURIComponent("junior:internal:dashboard-qa:archived-thread")}`,
   );
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
   await expect(page.getByText(error)).toBeVisible();
 });
 

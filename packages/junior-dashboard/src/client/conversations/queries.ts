@@ -29,7 +29,6 @@ import {
   stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
-import { REVIEW_ITEMS_QUERY_KEY } from "../review-desk/queries";
 import { postWebMessage } from "./attachmentUploads";
 import { readResponseJson } from "../sentry";
 import {
@@ -53,6 +52,7 @@ import {
   type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
+import { refreshSideReadsOnChange } from "./conversationSideReads";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -121,45 +121,6 @@ function isOpenPrefetch(snapshot: ConversationSnapshot | undefined) {
     snapshot?.prefetchedAtMs &&
     Date.now() - snapshot.prefetchedAtMs < PREFETCH_OPEN_WINDOW_MS,
   );
-}
-
-const CONVERSATION_SIDE_READS = ["agents", "memories", "watches"] as const;
-
-/**
- * Key a read that shows beside the detail report, such as in the details
- * panel. A detail change refreshes it.
- */
-export function conversationSideReadQueryKey(
-  conversationId: string,
-  read: (typeof CONVERSATION_SIDE_READS)[number],
-) {
-  return ["conversation", conversationId, read] as const;
-}
-
-/**
- * Refresh the side reads and Review items when a fetch brings a new ETag.
- * Side reads do not poll. A new ETag means the Conversation changed, so the
- * details panel may be stale too. Only mounted reads refetch.
- */
-export function refreshSideReadsOnChange(
-  client: QueryClient,
-  conversationId: string,
-  previous: ConversationSnapshot | undefined,
-  next: ConversationSnapshot,
-) {
-  if (
-    !previous?.detailEtag ||
-    !next.detailEtag ||
-    previous.detailEtag === next.detailEtag
-  ) {
-    return;
-  }
-  for (const read of CONVERSATION_SIDE_READS) {
-    void client.invalidateQueries({
-      queryKey: conversationSideReadQueryKey(conversationId, read),
-    });
-  }
-  void client.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
 }
 
 /**

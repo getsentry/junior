@@ -166,7 +166,7 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   // A Thread archive is for everyone and takes its nested Thread with it, so
   // it asks first. The page goes home like any archive.
   await openMenu.click();
-  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await expect(openMenus).toHaveCount(0);
   await page
     .getByRole("alertdialog", { name: "Also archive its child conversations?" })
@@ -208,7 +208,7 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   // An archived Thread stays readable, and Restore brings its row back.
   await page.goto(threadUrl);
   await openMenu.click();
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
   await expect(threadRow).toBeVisible();
   await expect(nestedRow).toBeVisible();
   await expect(openMenus).toHaveCount(0);
@@ -240,7 +240,7 @@ test("archives a nested Thread without its parent", async ({
   await page
     .getByRole("button", { name: "Conversation menu", exact: true })
     .click();
-  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await page
     .getByRole("alertdialog", { name: "Archive for everyone?" })
     .getByRole("button", { name: "Archive" })
@@ -265,6 +265,47 @@ test("archives a nested Thread without its parent", async ({
   );
   expect(rowNames[parentIndex + 1]).toContain("Recheck pin order in Safari");
   restore.release();
+});
+
+test("archives a Thread from its sidebar row", async ({ page, dashboard }) => {
+  const archive = await holdArchives(page);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
+  );
+  const sidebar = page.getByRole("navigation", { name: "Your conversations" });
+  const threadRow = sidebar.getByRole("link", {
+    name: /Check pinned row order/,
+  });
+  const nestedRow = sidebar.getByRole("link", {
+    name: /Recheck pin order in Safari/,
+  });
+
+  // The row action shows on hover. It asks first, like the Thread page.
+  await threadRow.hover();
+  await sidebar
+    .getByRole("button", { name: "Archive Check pinned row order" })
+    .click();
+  await page
+    .getByRole("alertdialog", { name: "Also archive its child conversations?" })
+    .getByRole("button", { name: "Archive" })
+    .click();
+  await expect
+    .poll(() => archive.calls)
+    .toEqual([
+      {
+        applyToChildren: true,
+        archived: true,
+        url: `${dashboard.baseURL}/api/conversations/${encodeURIComponent(THREAD_ID)}/archive`,
+      },
+    ]);
+  await expect(threadRow).toHaveCount(0);
+  await expect(nestedRow).toHaveCount(0);
+  // The root page stays open.
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
+  );
+  archive.release();
 });
 
 test("hides the composer on a Task page", async ({ page, dashboard }) => {

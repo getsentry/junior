@@ -712,8 +712,15 @@
     {
       "idx": 101,
       "version": "7",
-      "when": 1794405493512,
-      "tag": "0101_attachment_uploads",
+      "when": 1794414686731,
+      "tag": "0101_drop_legacy_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794421597272,
+      "tag": "0102_attachment_uploads",
       "breakpoints": true
     }
   ]

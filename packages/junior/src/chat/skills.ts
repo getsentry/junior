@@ -440,7 +440,10 @@ export function parseSkillInvocation(
   const trimmed = messageText.trim();
   const escapePattern = (value: string) =>
     value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const dollarPattern = /(?:^|\s)\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
+  // Any non-word character can come before `$`, so `$name` also matches
+  // after a tag, such as `<instructions>$name` in an Automation run, or in
+  // Slack code. A word before it, such as `US$5`, is not a reference.
+  const dollarPattern = /(?<![\w$])\$([a-z0-9]+(?:-[a-z0-9]+)*)/gi;
   for (const match of trimmed.matchAll(dollarPattern)) {
     const skillName = match[1]?.toLowerCase();
     if (!skillName) {
