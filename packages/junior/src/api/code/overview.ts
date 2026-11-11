@@ -6,6 +6,7 @@ import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import {
   codeOverviewReportSchema,
   codePersonReportSchema,
+  codeRepositoryActivityDaySchema,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
@@ -17,6 +18,8 @@ const ACTIVITY_DAYS = 90;
  * stale open change is not cut off by newer completed changes.
  */
 const PERSON_CHANGE_LIMIT = 100;
+/** Days of per-repository activity on one People profile. */
+const REPOSITORY_ACTIVITY_DAYS = 7;
 
 const summaryRowSchema = z
   .object({
@@ -484,6 +487,48 @@ export async function readCodeOverview(nowMs = Date.now()) {
   });
 }
 
+/** Read one person's code activity per UTC day and repository. */
+async function readPersonRepositoryActivity(args: {
+  nowMs: number;
+  userId: string;
+}) {
+  const changes = juniorCodeChanges;
+  const start = startOfUtcDay(
+    args.nowMs - (REPOSITORY_ACTIVITY_DAYS - 1) * DAY_MS,
+  );
+  const owned = ownedByUserSql(sql`${changes.conversationIds}`, args.userId);
+  const result = await getDb().execute(sql`
+    SELECT
+      to_char(date_trunc('day', events.event_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS "date",
+      repositories.name AS "repository",
+      count(*) FILTER (WHERE events.kind = 'created')::integer AS "created",
+      count(*) FILTER (WHERE events.kind = 'merged')::integer AS "merged",
+      count(*) FILTER (WHERE events.kind = 'closed')::integer AS "closed"
+    FROM (
+      SELECT ${changes.repositoryId} AS repository_id, ${changes.openedAt} AS event_at, 'created'::text AS kind
+      FROM ${changes}
+      WHERE ${changes.openedAt} >= ${start} AND ${owned}
+      UNION ALL
+      SELECT ${changes.repositoryId}, ${changes.mergedAt}, 'merged'::text
+      FROM ${changes}
+      WHERE ${changes.mergedAt} >= ${start} AND ${owned}
+      UNION ALL
+      SELECT ${changes.repositoryId}, ${changes.closedAt}, 'closed'::text
+      FROM ${changes}
+      WHERE ${changes.state} = 'closed'
+        AND ${changes.closedAt} >= ${start}
+        AND ${owned}
+    ) AS events
+    INNER JOIN ${juniorCodeRepositories} AS repositories
+      ON repositories.id = events.repository_id
+    GROUP BY 1, 2
+    ORDER BY 1, 2
+  `);
+  return queryRows(result).map((row) =>
+    codeRepositoryActivityDaySchema.parse(row),
+  );
+}
+
 /**
  * Read person-scoped code activity and recent code changes linked through
  * conversation actors on Junior-owned code changes.
@@ -494,8 +539,9 @@ export async function readPersonCodeOverview(args: {
 }) {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
-  const [windows, changes] = await Promise.all([
+  const [windows, repositoryDays, changes] = await Promise.all([
     readCodeWindows({ nowMs, userId: args.userId }),
+    readPersonRepositoryActivity({ nowMs, userId: args.userId }),
     db
       .select(codeChangeReportColumns)
       .from(juniorCodeChanges)
@@ -513,6 +559,7 @@ export async function readPersonCodeOverview(args: {
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
+    activityRepositoryDays: repositoryDays,
     activitySixHours: windows.activitySixHours,
     changes: changes.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),

@@ -40,6 +40,7 @@ export {
   codeChangeSummarySchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
+  codeRepositoryActivityDaySchema,
   codeRepositoryParamsSchema,
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
@@ -49,6 +50,7 @@ export type {
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodePersonReport,
+  CodeRepositoryActivityDay,
   CodeRepositoryReport,
   CodeRepositorySummary,
 } from "./schema/code";

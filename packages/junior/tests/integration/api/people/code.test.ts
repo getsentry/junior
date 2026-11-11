@@ -125,6 +125,22 @@ describe("people code API", () => {
           url: "https://github.com/getsentry/junior/pull/11",
         }),
       ]);
+      expect(report.activityRepositoryDays).toEqual([
+        {
+          closed: 0,
+          created: 1,
+          date: "2026-08-20",
+          merged: 0,
+          repository: "getsentry/junior",
+        },
+        {
+          closed: 0,
+          created: 0,
+          date: "2026-08-22",
+          merged: 1,
+          repository: "getsentry/junior",
+        },
+      ]);
       expect(report.activityDays).toHaveLength(90);
       expect(report.activityDays.at(-3)).toEqual({
         closed: 0,

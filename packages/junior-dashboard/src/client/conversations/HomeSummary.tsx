@@ -1,12 +1,14 @@
 import type {
   CodeActivityDay,
   CodeChangeSummaryReport,
+  CodeRepositoryActivityDay,
 } from "@sentry/junior/api/schema";
-import { ArrowDown, ArrowUp, GitPullRequest } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useActorCodeData, useDashboardCoreData } from "../api";
+import { ActivityTooltipRows } from "../components/charts/ActivityChart";
 import {
   contributionLevel,
   contributionLevelClass,
@@ -73,7 +75,12 @@ export function HomeSummary() {
     <section aria-label="Your week" className="grid gap-8">
       <div className="grid grid-cols-3 gap-3">
         <SummaryCard
-          aside={<DayStrip days={merges.days} />}
+          aside={
+            <DayStrip
+              days={merges.days}
+              repositoryDays={code.data.activityRepositoryDays}
+            />
+          }
           detail={<MergeDelta {...merges} />}
           label="Merged this week"
           value={merges.thisWeek}
@@ -106,18 +113,7 @@ export function HomeSummary() {
           value={needsViewer}
         />
       </div>
-      {open.length > 0 ? (
-        <>
-          {ROW_STYLES.map((rowStyle) => (
-            <OpenChangeList
-              changes={open}
-              key={rowStyle}
-              nowMs={nowMs}
-              rowStyle={rowStyle}
-            />
-          ))}
-        </>
-      ) : null}
+      {open.length > 0 ? <OpenChangeList changes={open} nowMs={nowMs} /> : null}
     </section>
   );
 }
@@ -168,59 +164,79 @@ function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
   );
 }
 
-/** One cell per day in GitHub greens. Hover shows the day's merges. */
-function DayStrip(props: { days: CodeActivityDay[] }) {
+/** One cell per day in GitHub greens. Hover shows the day per repository. */
+function DayStrip(props: {
+  days: CodeActivityDay[];
+  repositoryDays: CodeRepositoryActivityDay[];
+}) {
   const max = Math.max(1, ...props.days.map((day) => day.merged));
   return (
     <div className="flex gap-0.5" role="list" aria-label="Merges per day">
-      {props.days.map((day) => (
-        <Tooltip key={day.date}>
-          <TooltipTrigger
-            render={
-              <span
-                aria-label={`${formatDay(day.date)}: ${mergeCount(day.merged)}`}
-                className={cn(
-                  "size-[7px] rounded-[1.5px] outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
-                  contributionLevelClass(contributionLevel(day.merged, max)),
-                )}
-                role="listitem"
-                tabIndex={0}
-              />
-            }
-          />
-          <TooltipContent sideOffset={6}>
-            <TooltipTitle>{formatDay(day.date)}</TooltipTitle>
-            <div className="text-dashboard-text">{mergeCount(day.merged)}</div>
-          </TooltipContent>
-        </Tooltip>
-      ))}
+      {props.days.map((day) => {
+        const repositories = props.repositoryDays.filter(
+          (row) => row.date === day.date,
+        );
+        const summary = activitySummary(sumActivity(repositories));
+        return (
+          <Tooltip key={day.date}>
+            <TooltipTrigger
+              render={
+                <span
+                  aria-label={`${formatDay(day.date)}: ${summary}`}
+                  className={cn(
+                    "size-[7px] rounded-[1.5px] outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
+                    contributionLevelClass(contributionLevel(day.merged, max)),
+                  )}
+                  role="listitem"
+                  tabIndex={0}
+                />
+              }
+            />
+            <TooltipContent sideOffset={6}>
+              <TooltipTitle>{formatDay(day.date)}</TooltipTitle>
+              <div className="text-dashboard-text">{summary}</div>
+              {repositories.length > 0 ? (
+                <div className="mt-2 border-t border-dashboard-border-subtle pt-2">
+                  <ActivityTooltipRows
+                    rows={repositories.map((row) => [
+                      row.repository,
+                      activitySummary(row),
+                    ])}
+                  />
+                </div>
+              ) : null}
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
 
-/** Temporary: row styles to compare. Keep one before merge. */
-type RowStyle =
-  | "pr-icon"
-  | "pr-icon-number"
-  | "pr-icon-muted"
-  | "plain"
-  | "meta-icon";
+type ActivityCounts = Pick<
+  CodeRepositoryActivityDay,
+  "closed" | "created" | "merged"
+>;
 
-const ROW_STYLES: RowStyle[] = [
-  "pr-icon",
-  "pr-icon-number",
-  "pr-icon-muted",
-  "plain",
-  "meta-icon",
-];
+function sumActivity(rows: ActivityCounts[]): ActivityCounts {
+  return rows.reduce(
+    (total, row) => ({
+      closed: total.closed + row.closed,
+      created: total.created + row.created,
+      merged: total.merged + row.merged,
+    }),
+    { closed: 0, created: 0, merged: 0 },
+  );
+}
 
-const ROW_STYLE_LABELS: Record<RowStyle, string> = {
-  "meta-icon": "D · PR icon before the repository",
-  plain: "C · No icon",
-  "pr-icon": "A · Open PR icon",
-  "pr-icon-number": "E · A with the PR number by the title, repository only",
-  "pr-icon-muted": "B · Grey PR icon, green on hover",
-};
+function activitySummary(counts: ActivityCounts): string {
+  const parts = [
+    counts.merged > 0 ? `${counts.merged} merged` : undefined,
+    counts.created > 0 ? `${counts.created} opened` : undefined,
+    counts.closed > 0 ? `${counts.closed} closed` : undefined,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "No activity";
+}
 
 /**
  * Open code changes, oldest first. The label row holds the only control, a
@@ -229,7 +245,6 @@ const ROW_STYLE_LABELS: Record<RowStyle, string> = {
 function OpenChangeList(props: {
   changes: CodeChangeSummaryReport[];
   nowMs: number;
-  rowStyle: RowStyle;
 }) {
   const [newestFirst, setNewestFirst] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -238,9 +253,6 @@ function OpenChangeList(props: {
   const SortIcon = newestFirst ? ArrowUp : ArrowDown;
   return (
     <div className="grid gap-2">
-      <div className="font-mono text-2xs text-dashboard-accent-text">
-        {ROW_STYLE_LABELS[props.rowStyle]}
-      </div>
       <div className="flex h-4 items-center justify-between gap-4">
         <h3 className="m-0 font-sans text-xs font-medium leading-4 text-dashboard-text-muted">
           Waiting to merge
@@ -259,12 +271,7 @@ function OpenChangeList(props: {
       </div>
       <ul className="m-0 grid list-none gap-0.5 p-0">
         {(expanded ? sorted : sorted.slice(0, OPEN_LIMIT)).map((change) => (
-          <OpenChangeRow
-            change={change}
-            key={change.id}
-            nowMs={props.nowMs}
-            rowStyle={props.rowStyle}
-          />
+          <OpenChangeRow change={change} key={change.id} nowMs={props.nowMs} />
         ))}
         {hidden > 0 ? (
           <li className={rowClass}>
@@ -292,41 +299,22 @@ const quietButtonClass =
 function OpenChangeRow(props: {
   change: CodeChangeSummaryReport;
   nowMs: number;
-  rowStyle: RowStyle;
 }) {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
-  const numberByTitle = props.rowStyle === "pr-icon-number";
-  // The owner repeats on most rows, so E shows only the repository name.
-  const repositoryName = change.repository.split("/").at(-1);
   return (
-    <li className={cn(rowClass, "group")}>
+    <li className={rowClass}>
       <div className="flex min-w-0 items-center gap-2.5 font-sans text-sm text-dashboard-text">
-        {props.rowStyle === "pr-icon" || numberByTitle ? (
-          <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
-        ) : null}
-        {props.rowStyle === "pr-icon-muted" ? (
-          <GitPullRequest
-            aria-hidden="true"
-            className="shrink-0 text-dashboard-text-faint transition-colors group-hover:text-[#3fb950] light:group-hover:text-[#1a7f37]"
-            size={14}
-            strokeWidth={2.25}
-          />
-        ) : null}
+        <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
         {change.url ? (
-          // The row reads as a PR without the outbound icon; it still opens
-          // GitHub in a new tab.
+          // The PR icon marks the row, so the link has no outbound icon. It
+          // still opens GitHub in a new tab.
           <a
             className="min-w-0 truncate text-inherit no-underline underline-offset-2 hover:underline"
             href={change.url}
             rel="noreferrer"
             target="_blank"
           >
-            {numberByTitle ? (
-              <span className="text-dashboard-text-muted tabular-nums">
-                (#{change.number}){" "}
-              </span>
-            ) : null}
             {title}
           </a>
         ) : (
@@ -334,21 +322,8 @@ function OpenChangeRow(props: {
         )}
       </div>
       <div className="flex shrink-0 items-center gap-4 font-sans text-xs text-dashboard-text-muted tabular-nums">
-        <span className="hidden items-center gap-1.5 sm:inline-flex">
-          {props.rowStyle === "meta-icon" ? (
-            <SidebarAnnotationIcon
-              decorative
-              icon="git-pull-request"
-              size={12}
-            />
-          ) : null}
-          {numberByTitle ? (
-            <span title={change.repository}>{repositoryName}</span>
-          ) : (
-            <>
-              {change.repository} #{change.number}
-            </>
-          )}
+        <span className="hidden sm:inline">
+          {change.repository} #{change.number}
         </span>
         <span className="w-10 text-right">
           <AgeText nowMs={props.nowMs} openedAt={change.openedAt} />
@@ -404,10 +379,6 @@ function HomeSummaryLoading() {
       </div>
     </div>
   );
-}
-
-function mergeCount(count: number): string {
-  return count === 1 ? "1 merge" : `${count} merges`;
 }
 
 function formatDay(date: string): string {

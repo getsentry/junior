@@ -3568,8 +3568,34 @@ export function readMockPeopleCode(
     title,
     url: `https://github.com/${repository}/pull/${number}`,
   });
+  // Per-repository rows for the last 7 days. Merges match `merges` above.
+  const week = activityDays.slice(-7).map((day) => day.date);
+  const repositoryDay = (
+    dayIndex: number,
+    repository: string,
+    counts: { closed?: number; created?: number; merged?: number },
+  ) => ({
+    closed: counts.closed ?? 0,
+    created: counts.created ?? 0,
+    date: week[dayIndex]!,
+    merged: counts.merged ?? 0,
+    repository,
+  });
+  const activityRepositoryDays = [
+    repositoryDay(0, "getsentry/junior", { created: 1, merged: 1 }),
+    repositoryDay(1, "getsentry/payments", { created: 1 }),
+    repositoryDay(2, "getsentry/junior", { merged: 1 }),
+    repositoryDay(2, "getsentry/sentry-docs", { created: 1 }),
+    repositoryDay(2, "getsentry/sentry-mcp", { merged: 1 }),
+    repositoryDay(4, "getsentry/junior", { merged: 1 }),
+    repositoryDay(4, "getsentry/payments", { closed: 1 }),
+    repositoryDay(5, "getsentry/junior", { created: 2 }),
+    repositoryDay(5, "getsentry/sentry-docs", { merged: 1 }),
+    repositoryDay(6, "getsentry/junior", { created: 1 }),
+  ];
   return {
     activityDays,
+    activityRepositoryDays,
     changes: [
       openChange(
         2440,
