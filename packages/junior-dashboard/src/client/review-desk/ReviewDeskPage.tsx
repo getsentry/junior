@@ -151,12 +151,36 @@ export function ReviewDeskPage() {
   const attention = useAutomationAttentionData(true);
   const attentionAll = attention.data?.automations ?? [];
 
-  // A link can name an item that is not open, such as an answered one.
+  // A link can name an item that is not in the list: an open one on a later
+  // page, or a closed one, such as an answered one.
   const itemParam = searchParams.get("item") ?? undefined;
   const listed = list.some((item) => item.id === itemParam);
   const direct = useReviewItemData(listed ? undefined : itemParam);
-  // An open item that left the list was just closed; its cached copy is old.
-  const linked = direct.data?.status === "open" ? undefined : direct.data;
+  // How the link first loaded. A linked item that was in the list, or was
+  // open, leaves the queue when it closes, like any other row. Only an item
+  // that was closed when the link opened stays shown.
+  const [linkStart, setLinkStart] = useState<{
+    closed: boolean;
+    id: string;
+    listed: boolean;
+  }>();
+  if (itemParam && linkStart?.id !== itemParam && (listed || direct.data)) {
+    setLinkStart({
+      closed: !listed && direct.data?.status !== "open",
+      id: itemParam,
+      listed,
+    });
+  }
+  const start = linkStart?.id === itemParam ? linkStart : undefined;
+  const linked =
+    direct.data &&
+    // A failed fetch keeps its last copy, which can be old.
+    !direct.error &&
+    start &&
+    !start.listed &&
+    (start.closed || direct.data.status === "open")
+      ? direct.data
+      : undefined;
   const allItems = useMemo(
     () =>
       linked && !list.some((item) => item.id === linked.id)
@@ -334,17 +358,18 @@ export function ReviewDeskPage() {
   const [activeKey, setActiveKey] = useState<string>();
   const [snoozeMenuKey, setSnoozeMenuKey] = useState<string>();
   const [replyKey, setReplyKey] = useState<string>();
+  // Another bundle starts with nothing open. This runs before the link
+  // effect, so a cached list on mount keeps the linked row open.
+  useEffect(() => {
+    setExpandedKey(undefined);
+    setSnoozeMenuKey(undefined);
+  }, [view]);
   // A link opens its row once it loads.
   useEffect(() => {
     if (!linkedKey) return;
     setExpandedKey(linkedKey);
     setActiveKey(linkedKey);
   }, [linkedKey]);
-  // Another bundle starts with nothing open.
-  useEffect(() => {
-    setExpandedKey(undefined);
-    setSnoozeMenuKey(undefined);
-  }, [view]);
 
   const action = useReviewItemAction();
   const done = async (bundle: InboxBundle) => {
@@ -503,8 +528,17 @@ export function ReviewDeskPage() {
   const loaded = Boolean(items.data);
   // Done pages its own list.
   const listQuery = isDone ? doneQuery : items;
+  // All and Automations show the viewer's Automations. Until they load, or
+  // when they fail, those views are not empty.
+  const showsAutomations = view === "all" || view === "automations";
+  const automationsMissing = showsAutomations && !attention.data;
   const empty =
-    loaded && !q && !isDone && navigable.length === 0 && sections.length === 0;
+    loaded &&
+    !q &&
+    !isDone &&
+    !automationsMissing &&
+    navigable.length === 0 &&
+    sections.length === 0;
   // A single-item row names its Conversation unless a heading already does.
   const itemRow =
     view === "all"
@@ -631,6 +665,11 @@ export function ReviewDeskPage() {
               Could not close every item. Try again.
             </InlineError>
           ) : null}
+          {showsAutomations && attention.error && !attention.data ? (
+            <InlineError className="px-4 py-2">
+              Could not load your Automations.
+            </InlineError>
+          ) : null}
           {isDone ? (
             doneQuery.error && !doneQuery.data ? (
               <InlineError className="px-4 py-3">
@@ -659,7 +698,7 @@ export function ReviewDeskPage() {
             <InlineError className="px-4 py-3">
               Could not load review items.
             </InlineError>
-          ) : !loaded ? (
+          ) : !loaded || (view === "automations" && attention.isPending) ? (
             <BundleRowsLoading />
           ) : q ? (
             <ul aria-label="Search results" className="m-0 grid gap-2 p-0">

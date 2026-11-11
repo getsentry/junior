@@ -9,9 +9,12 @@ import { REVIEW_ITEMS_QUERY_KEY } from "./queries";
 
 const UNDO_MS = 6_000;
 
-/** Close swept items, then refresh the inbox. */
-function commitSweep(queryClient: QueryClient, items: ReviewItemPayload[]) {
-  return Promise.allSettled(
+/** Close swept items, refresh the inbox, and return the ids that stay open. */
+async function commitSweep(
+  queryClient: QueryClient,
+  items: ReviewItemPayload[],
+): Promise<string[]> {
+  const results = await Promise.allSettled(
     items.map((item) =>
       post(
         reviewItemSchema,
@@ -19,9 +22,11 @@ function commitSweep(queryClient: QueryClient, items: ReviewItemPayload[]) {
         { action: "dismiss" },
       ),
     ),
-  ).then(() =>
-    queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY }),
   );
+  await queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });
+  return items
+    .filter((_, index) => results[index]!.status === "rejected")
+    .map((item) => item.id);
 }
 
 /**
@@ -49,6 +54,13 @@ export function useInboxSweep() {
     // The cleanup runs once, when the inbox unmounts.
   }, [queryClient]);
 
+  const unsweep = (ids: readonly string[]) =>
+    setSwept((current) => {
+      const next = new Set(current);
+      for (const itemId of ids) next.delete(itemId);
+      return next;
+    });
+
   const sweep = (items: ReviewItemPayload[]) => {
     if (items.length === 0) return;
     const id = `inbox-sweep-${items[0]!.id}-${items.length}`;
@@ -56,18 +68,23 @@ export function useInboxSweep() {
     setSwept((current) => new Set([...current, ...ids]));
     const timer = window.setTimeout(() => {
       pending.current.delete(id);
-      void commitSweep(queryClient, items);
+      // Items that did not close come back, so the inbox shows what is
+      // still open on the server.
+      void commitSweep(queryClient, items).then((failed) => {
+        if (failed.length === 0) return;
+        unsweep(failed);
+        add({
+          title: `Could not clear ${failed.length} item${failed.length === 1 ? "" : "s"}`,
+          type: "error",
+        });
+      });
     }, UNDO_MS);
     pending.current.set(id, { items, timer });
     const undo = () => {
       const entry = pending.current.get(id);
       if (entry) window.clearTimeout(entry.timer);
       pending.current.delete(id);
-      setSwept((current) => {
-        const next = new Set(current);
-        for (const itemId of ids) next.delete(itemId);
-        return next;
-      });
+      unsweep(ids);
       close(id);
     };
     add({
