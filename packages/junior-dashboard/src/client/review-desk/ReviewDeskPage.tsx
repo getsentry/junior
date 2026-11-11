@@ -383,7 +383,9 @@ export function ReviewDeskPage() {
     expandedKey &&
     expandedIndex === -1 &&
     lastExpanded?.key === expandedKey &&
-    // A row in a collapsed section is hidden, not gone.
+    // Done is read-only, so its rows never leave. A row in a collapsed
+    // section is hidden, not gone.
+    !isDone &&
     !rowByKey.has(expandedKey) &&
     !automationByKey.has(expandedKey)
   ) {
