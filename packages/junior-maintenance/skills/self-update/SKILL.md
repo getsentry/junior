@@ -1,6 +1,6 @@
 ---
 name: self-update
-description: Update this junior-prod app to the latest published Junior release. Use when asked to self-update Junior, bump @sentry/junior and @sentry/junior-* dependencies, run safety checks, and open a draft PR.
+description: Update this junior-prod app to the latest published Junior release. Use when asked to self-update Junior, bump @sentry/junior and @sentry/junior-* dependencies, run safety checks, and open a PR ready for review.
 ---
 
 ## Workflow
@@ -51,7 +51,7 @@ pnpm view '@sentry/junior@><old_version> <=<target_version>' version --json
 gh release view <version> --repo getsentry/junior --json tagName,name,body,publishedAt,url
 ```
 
-Collect the corresponding release bodies. Stop if any expected GitHub release is missing; do not substitute another source. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
+Collect the corresponding release bodies. Stop if any expected GitHub release is missing; do not substitute another source. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, call out manual review, but continue the update.
 
 ### 4. Create or reuse branch
 
@@ -125,9 +125,9 @@ Update the Junior runtime and plugin packages to <target> and refresh the pnpm l
 
 Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
-### 10. Push and open/update draft PR
+### 10. Push and open/update PR
 
-Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Do not put `Checks`, `Verification`, `Test plan`, or similar validation sections in the PR body; put local check results in the final user report only. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open the PR ready for review, not as a draft. If an existing update PR is a draft, mark it ready for review. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Do not put `Checks`, `Verification`, `Test plan`, or similar validation sections in the PR body; put local check results in the final user report only. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
 
