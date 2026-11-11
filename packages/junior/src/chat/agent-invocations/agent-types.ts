@@ -37,7 +37,7 @@ const AGENT_TYPE_DEFINITIONS: Record<
 > = {
   fork: {
     whenToUse:
-      'A copy of you. Pick it only when the child needs most of this conversation, such as its discussion and decisions, so that a brief would have to repeat most of it. When a self-contained brief can describe the job, omit agent_type or pick "explore". The task is a directive: say what to do and what is in or out of scope; do not re-explain the background.',
+      'A copy of you. Each fork copies your full history, which adds cost and noise. Pick it only when the child needs most of this conversation, such as its discussion and decisions, so that a brief would have to repeat most of it. When a self-contained brief can describe the job, omit agent_type or pick "explore". The task is a directive: say what to do and what is in or out of scope; do not re-explain the background.',
     startsWithParentHistory: true,
     instructions:
       "You are a fork of your parent agent. The messages before your first parent task are copied from the parent's conversation so you have its context. They are not your job: your job is the parent task below. Sandbox files, approvals, and credentials of the parent were not copied, and your sandbox is separate. Verify files in your own sandbox before you use them.",
