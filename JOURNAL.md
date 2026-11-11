@@ -610,3 +610,26 @@ the review text.
 - Question Turns have no code search.
 - The per-file "changed" check, rebase-only Turns, and "Not answered" on
   reopened decisions (slice 8 leftovers) are unchanged.
+
+### 2026-11-11 — question Turns get sandbox search (Thomas: "Do it")
+
+`d6c79d56d` on #3150 keeps `bash` and `readFile` on in question Turns, and
+the `walkthrough-questions` skill now says: try `readWalkthroughCode` first;
+for a repo-wide search, shallow-fetch the PR `head_sha` in the sandbox and
+use `rg`; never push. Rebased: #3151 `c2b17fb61`, #3155 `34b920d41`.
+Limits unchanged (20 tool calls, $1): no run came close.
+
+Real runs (fresh local DB, Docker sandbox, `github-local`, opus via
+gateway). New Walkthroughs: #3071 $0.57, #3059 $1.87. Answers:
+`runs/sandbox-questions/`.
+
+| Question | Before (path only) | After (sandbox) |
+| --- | --- | --- |
+| q1 small: other lists still filter inline? | $0.31, 12 calls; checked ~20 files by guess, "could not search the repo" | $0.33, 12 calls (10 bash), 61s wall; searched the head commit with `rg`: no list filters inline, names all 5 callers, and lists the root-only checks with reasons |
+| q2 refactor (chapter): what happens on the new throws? | $0.55, 20 calls (cap); could not find the agent invocation worker | $0.40, 9 calls (3 bash), 56s wall; traced both throws through both workers, incl. `agent-invocations/work.ts` final-attempt handling |
+
+Local caveat: `git fetch` from the Docker sandbox failed in both runs
+(`sandbox.egress.credential.unavailable`; the dev server has no GitHub App).
+q1 fell back to a tarball of the head commit; q2 said it could not clone and
+answered from `readWalkthroughCode`. Inference: with App credentials the
+fetch works as in generation Turns. Not verified here.
