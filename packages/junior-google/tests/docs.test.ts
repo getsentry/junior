@@ -357,15 +357,30 @@ describe("Google Docs write tools", () => {
     const forbidden = () =>
       Response.json({ error: { message: "Denied" } }, { status: 403 });
 
-    const transferFailed = docTools([created(), forbidden()]).run(
-      "createGoogleDoc",
-      { title: "Plan" },
+    // A Doc that was not handed over is deleted, so it never stays readable
+    // through the shared account.
+    const transferFailed = docTools([
+      created(),
+      forbidden(),
+      new Response(null, { status: 204 }),
+    ]);
+    await expect(
+      transferFailed.run("createGoogleDoc", { title: "Plan" }),
+    ).rejects.toThrow(
+      `Could not hand Google Doc "Plan" (${DOC_LINK}) to ${REQUESTER}: Google google.drive.permission.create failed with HTTP 403: Denied. The Doc was deleted.`,
     );
-    await expect(transferFailed).rejects.toThrow(
-      `Created Google Doc "Plan" (${DOC_LINK}), but could not make ${REQUESTER} its owner`,
-    );
-    await expect(transferFailed).rejects.toThrow(
-      "Your own Google account still owns it, so the Doc is not private",
+    const deleted = (await transferFailed.calls())[2]!;
+    expect(deleted.operation).toBe("google.drive.file.delete");
+    expect(deleted.url.pathname).toBe(`/drive/v3/files/${DOC_ID}`);
+
+    const deleteFailed = docTools([
+      created(),
+      Response.json({ documentId: DOC_ID, replies: [] }),
+      forbidden(),
+      forbidden(),
+    ]).run("createGoogleDoc", { content: "Secret", title: "Plan" });
+    await expect(deleteFailed).rejects.toThrow(
+      "The Doc could not be deleted either. Your own Google account still owns it, so it is not private",
     );
 
     const removeFailed = docTools([

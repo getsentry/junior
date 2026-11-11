@@ -130,6 +130,12 @@ export const GOOGLE_OPERATIONS = {
     method: "POST",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
   },
+  "google.drive.file.delete": {
+    access: "write",
+    host: GOOGLE_API_DOMAIN,
+    method: "DELETE",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/,
+  },
   "google.drive.permission.delete": {
     access: "write",
     host: GOOGLE_API_DOMAIN,

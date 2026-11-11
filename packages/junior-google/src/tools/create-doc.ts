@@ -93,9 +93,9 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
       const reason = (error: unknown) =>
         error instanceof Error ? error.message : String(error);
 
-      // Write before the hand-over, while Junior's account can still edit.
-      if (converted) {
-        try {
+      try {
+        // Write before the hand-over, while Junior's account can still edit.
+        if (converted) {
           // A new Doc body is one empty paragraph that starts at index 1.
           await batchUpdateDoc(
             ctx,
@@ -107,15 +107,7 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
             }),
             created.revisionId,
           );
-        } catch (error) {
-          throw new Error(
-            `Created ${doc}, but could not write its content: ${reason(error)}. The Doc is empty, your own Google account still owns it, and the requester has no access to it.`,
-            { cause: error },
-          );
         }
-      }
-
-      try {
         // Google requires the email for an ownership transfer. Junior's
         // account becomes a writer.
         await googleFileRequest(ctx, ref, {
@@ -125,8 +117,20 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
           query: { supportsAllDrives: "true", transferOwnership: "true" },
         });
       } catch (error) {
+        // Until the hand-over, the Doc lives only in Junior's shared account,
+        // where anyone who can talk to Junior can read it. Delete it instead.
+        const deleted = await googleApiRequest(ctx, {
+          operation: "google.drive.file.delete",
+          path: `/drive/v3/files/${ref.fileId}`,
+          query: { supportsAllDrives: "true" },
+        }).then(
+          (removed) => removed.status === 204 || removed.status === 200,
+          () => false,
+        );
         throw new Error(
-          `Created ${doc}, but could not make ${requester} its owner: ${reason(error)}. Your own Google account still owns it, so the Doc is not private, and the requester has no access to it.`,
+          deleted
+            ? `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc was deleted.`
+            : `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc could not be deleted either. Your own Google account still owns it, so it is not private; delete it from that account's Drive.`,
           { cause: error },
         );
       }
