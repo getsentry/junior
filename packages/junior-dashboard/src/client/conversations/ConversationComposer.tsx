@@ -697,8 +697,10 @@ function readStoredDraft(storageKey: string): ConversationDraft {
             // a retry after reload still reuses it.
             text.trim();
       return {
+        // Drafts saved before web files were named `hasImages`.
         idempotencyKey:
-          "hasFiles" in draft && draft.hasFiles
+          ("hasFiles" in draft && draft.hasFiles) ||
+          ("hasImages" in draft && draft.hasImages)
             ? crypto.randomUUID()
             : draft.idempotencyKey,
         lastSubmittedText,
