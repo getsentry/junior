@@ -171,8 +171,9 @@ function createGatewayRequestTimingHandlers(): Record<
  * - High `queue_ms` on a reused socket, or high
  *   `app.ai.event_loop.utilization`: the process was busy or the pool was
  *   full. With a new socket, `queue_ms` includes the connect time.
- * - High `connect_ms`: DNS, TCP, or TLS was slow. It is best effort and is
- *   absent on a reused socket.
+ * - High `connect_ms`: DNS, TCP, or TLS was slow. It is absent on a reused
+ *   socket. It is best effort: overlapping connects to the same host usually
+ *   record none.
  * - High `body_send_ms`: the upload was slow.
  * - `response_wait_ms` much larger than the gateway time to first token,
  *   with small Junior phases: the delay was in the network or at the Vercel

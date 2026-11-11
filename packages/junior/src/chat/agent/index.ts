@@ -1576,6 +1576,9 @@ async function executeAgentRunInPrivacyContext(
                 // later slice or Turn starts again on the main model.
                 refusalFallbackUsed = true;
                 await prepareRetry(refusalFallback.messages);
+                // `gen_ai.request.model` is the main model that refused.
+                // `app.ai.refusal_fallback.model` is the model of the next
+                // `gen_ai.chat` span.
                 logWarn("agent.turn.refusal_fallback", {
                   "gen_ai.request.model": activeModelId,
                   "app.ai.refusal_fallback.model": refusalFallback.modelId,
