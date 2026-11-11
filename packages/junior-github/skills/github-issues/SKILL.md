@@ -5,7 +5,7 @@ description: Create, update, comment on, label, and inspect GitHub issues with c
 
 # GitHub Issue Operations
 
-Create issues with `github_createIssue`. Read one issue with `github_getIssue`. Update issue title, body, or state with `github_updateIssue`. Comment with `github_commentOnIssue`. Use `gh` for reading comments, labels, and issue lists.
+Create issues with `github_createIssue`. Read one issue with `github_getIssue`. Update issue title, body, or state with `github_updateIssue`. Comment with `github_commentOnIssue`, and edit your own comment with `github_updateIssueComment`. Use `gh` for reading comments, labels, and issue lists.
 Use only for GitHub issues. For pull requests, branches, pushes, or PR creation order questions, load `github-code` instead.
 
 ## Reference loading

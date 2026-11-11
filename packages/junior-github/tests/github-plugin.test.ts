@@ -2449,6 +2449,42 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
+  it("routes issue comment edits and issue reactions to typed tools", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).rejects.toThrow("must use the github_updateIssueComment tool");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
+      }),
+    ).rejects.toThrow("must use the github_reactToIssue tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.issue.reaction.create",
+        url: "https://api.github.com/repos/getsentry/junior/issues/3037/reactions",
+      }),
+    ).resolves.toMatchObject({ name: "installation-write", access: "write" });
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        operation: "github.issue.comment.update",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/99",
+      }),
+    ).rejects.toThrow("This GitHub write request is not supported.");
+  });
+
   it("denies raw issue and pull request metadata updates", async () => {
     await expect(
       grantForEgress({
