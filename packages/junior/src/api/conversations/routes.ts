@@ -15,11 +15,11 @@ import {
   conversationEventPageSchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "../schema/conversation";
+import { conversationFeedSchema } from "../schema/conversation-feed";
 import {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,

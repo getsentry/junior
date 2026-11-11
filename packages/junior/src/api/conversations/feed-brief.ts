@@ -4,7 +4,7 @@ import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import {
   conversationFeedBriefSchema,
   type ConversationFeedBrief,
-} from "../schema/conversation-feed-brief";
+} from "../schema/conversation-feed";
 
 /**
  * Read the latest Brief version of each Conversation on a feed page, in one

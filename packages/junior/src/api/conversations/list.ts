@@ -46,8 +46,8 @@ import {
 } from "./record";
 import { readFeedThreads } from "./threads";
 import { readUnreadConversationIds, unreadReplySql } from "./unread";
-import { conversationFeedSchema } from "../schema/conversation";
-import type { ConversationFeed } from "../schema/conversation";
+import { conversationFeedSchema } from "../schema/conversation-feed";
+import type { ConversationFeed } from "../schema/conversation-feed";
 import {
   childAgentTotalsReport,
   readConversationTreeMetricsFromSql,
