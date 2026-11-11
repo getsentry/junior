@@ -24,6 +24,16 @@ not use the Google credentials of the people it helps.
    `junior google connect`.
 
 Anyone who can talk to Junior can read what the Junior account can see. Share
-calendars and files with that account only when that is acceptable.
+calendars and files with that account only when that is acceptable. Given a
+link, Junior opens any Doc, Sheet, or Slides file shared with its account.
+Search finds only files that any employee could already find in Drive, and
+files shared with the requester by name. Files shared by link, or only with
+other people, never show up in search.
+
+Google Meet shares transcripts and Gemini notes with every invitee, Junior's
+account too. The file tools refuse files whose titles end in "- Transcript" or
+"- Notes by Gemini". Only `readMeetingTranscript` reads them, and only for
+people invited to the meeting. The title match is a conservative exclusion: it
+misses a renamed record.
 
 Plugin setup: https://junior.sentry.dev/extend/

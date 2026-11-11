@@ -130,6 +130,13 @@ const driveFileSchema = z.object({
   webViewLink: z.string().optional(),
 });
 
+// Google Meet names its records like "Weekly - 2026/10/12 14:01 CEST -
+// Transcript". Meet shares them with every invitee, Junior's account too, so
+// the file tools refuse them and leave them to readMeetingTranscript and its
+// invite check. Matching titles is a conservative exclusion: a renamed record
+// is not caught, and an ordinary file with such a title is refused.
+const MEET_RECORD_TITLE = / - (Transcript|Notes by Gemini)$/;
+
 /**
  * Read the Drive metadata of one file, and require one of the given types.
  *
@@ -155,6 +162,11 @@ export async function readGoogleFile(
     const expected = types.map((item) => FILE_TYPES[item].label).join(" or ");
     throw new PluginToolInputError(
       `"${metadata.name}" is not a ${expected} (${metadata.mimeType}).`,
+    );
+  }
+  if (MEET_RECORD_TITLE.test(metadata.name)) {
+    throw new PluginToolInputError(
+      `"${metadata.name}" looks like a Google Meet record. Use readMeetingTranscript with the meeting's event, which checks that the requester was invited.`,
     );
   }
   return { ...metadata, type };

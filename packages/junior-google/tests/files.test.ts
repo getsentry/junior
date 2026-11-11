@@ -5,13 +5,19 @@ import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
 
+const REQUESTER = "alice@example.com";
+
 function docsTools(...responses: Response[]) {
+  return toolsFor(REQUESTER, ...responses);
+}
+
+function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
   const tools = googlePlugin().hooks!.tools!({
     egress: { fetch },
     users: {
-      resolveActor: async () => undefined,
+      resolveActor: async () => (email ? { user: { email } } : undefined),
       resolveTimezone: async () => "America/Los_Angeles",
     },
   } as never);
@@ -98,7 +104,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const searchUrl = new URL(fetch.mock.calls[0]![0].request.url);
     expect(searchUrl.pathname).toBe("/drive/v3/files");
     expect(searchUrl.searchParams.get("q")).toBe(
-      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'",
+      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan' and (visibility = 'domainCanFind' or visibility = 'anyoneCanFind' or 'alice@example.com' in readers or 'alice@example.com' in writers or 'alice@example.com' in owners)",
     );
     expect(search).toMatchObject({
       files: [{ file_id: DOC_ID, title: "Q4 plan", type: "document" }],
@@ -151,6 +157,38 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       file_id: DOC_ID,
       next_page_token: "page-2",
     });
+  });
+
+  it("searches only with the requester's terms, and leaves Meet records to readMeetingTranscript", async () => {
+    const unknown = toolsFor(undefined);
+    await expect(
+      run(unknown.tools, "searchGoogleFiles", { query: "plan" }),
+    ).resolves.toMatchObject({
+      files: [],
+      message: expect.stringContaining("paste a link"),
+    });
+    // Without the requester's email, Junior never searches.
+    expect(unknown.fetch).not.toHaveBeenCalled();
+
+    const { fetch, tools } = docsTools(
+      Response.json({ error: { message: "Invalid Value" } }, { status: 400 }),
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Exec sync - 2026/10/12 14:01 CEST - Notes by Gemini",
+      }),
+    );
+    await expect(
+      run(tools, "searchGoogleFiles", { query: "plan" }),
+    ).resolves.toMatchObject({
+      files: [],
+      message: expect.stringContaining("Google rejected the search."),
+    });
+    // A rejected query is not retried without the requester's terms.
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await expect(
+      run(tools, "readGoogleDoc", { document: DOC_ID }),
+    ).rejects.toThrow("Use readMeetingTranscript");
   });
 
   it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {
