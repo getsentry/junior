@@ -96,6 +96,12 @@ export const GOOGLE_OPERATIONS = {
     method: "GET",
     path: /^\/drive\/v3\/files$/,
   },
+  "google.drive.permissions.list": {
+    access: "read",
+    host: GOOGLE_API_DOMAIN,
+    method: "GET",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
+  },
   "google.sheets.spreadsheet.get": {
     access: "read",
     host: GOOGLE_SHEETS_API_DOMAIN,

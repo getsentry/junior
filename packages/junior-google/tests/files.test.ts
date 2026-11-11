@@ -4,19 +4,41 @@ import { googlePlugin } from "../src";
 import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
+const REQUESTER = "alice@example.com";
 
 function docsTools(...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
+  return { fetch, tools: toolsWith(fetch, REQUESTER) };
+}
+
+function toolsWith(fetch: ReturnType<typeof vi.fn>, email?: string) {
+  return googlePlugin().hooks!.tools!({
     egress: { fetch },
     users: {
-      resolveActor: async () => undefined,
+      resolveActor: async () => (email ? { user: { email } } : undefined),
       resolveTimezone: async () => "America/Los_Angeles",
     },
   } as never);
-  return { fetch, tools };
 }
+
+/** Drive file metadata, as Junior's account sees a file it can share. */
+function driveFile(id: string, mimeType: string, name: string) {
+  return Response.json({
+    capabilities: { canShare: true },
+    id,
+    mimeType,
+    name,
+  });
+}
+
+/** A Drive permission list. */
+function permissions(...items: Record<string, string>[]) {
+  return Response.json({ permissions: items });
+}
+
+const requesterCanOpen = () =>
+  permissions({ emailAddress: "Alice@Example.com", type: "user" });
 
 /** Slides API text with one run. */
 function slidesText(content: string) {
@@ -47,6 +69,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       Response.json({
         files: [
           {
+            capabilities: { canShare: true },
             id: DOC_ID,
             mimeType: "application/vnd.google-apps.document",
             modifiedTime: "2026-10-01T10:00:00Z",
@@ -56,19 +79,14 @@ describe("Google Docs, Sheets, and Slides tools", () => {
         ],
         nextPageToken: "more",
       }),
-      Response.json({
-        id: DOC_ID,
-        mimeType: "application/vnd.google-apps.document",
-        name: "Q4 plan",
-      }),
+      requesterCanOpen(),
+      driveFile(DOC_ID, "application/vnd.google-apps.document", "Q4 plan"),
+      requesterCanOpen(),
       new Response("# Q4 plan\n\nShip it.", {
         headers: { "content-type": "text/markdown" },
       }),
-      Response.json({
-        id: DOC_ID,
-        mimeType: "application/vnd.google-apps.document",
-        name: "Q4 plan",
-      }),
+      driveFile(DOC_ID, "application/vnd.google-apps.document", "Q4 plan"),
+      requesterCanOpen(),
       Response.json({
         comments: [
           {
@@ -102,19 +120,23 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     );
     expect(search).toMatchObject({
       files: [{ file_id: DOC_ID, title: "Q4 plan", type: "document" }],
+      hidden: 0,
       truncated: true,
     });
 
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
     const doc = await run(tools, "readGoogleDoc", { document: link });
-    const [get, exported] = [fetch.mock.calls[1]![0], fetch.mock.calls[2]![0]];
+    const [get, listed, exported] = fetch.mock.calls
+      .slice(2, 5)
+      .map(([call]) => call);
     expect(get.operation).toBe("google.drive.file.get");
+    expect(listed.operation).toBe("google.drive.permissions.list");
     expect(exported.operation).toBe("google.drive.file.export");
     expect(new URL(exported.request.url).pathname).toBe(
       `/drive/v3/files/${DOC_ID}/export`,
     );
     // Google needs the resource key of an older Doc shared by link.
-    for (const call of [get, exported]) {
+    for (const call of [get, listed, exported]) {
       expect(call.request.headers.get("X-Goog-Drive-Resource-Keys")).toBe(
         `${DOC_ID}/0-key`,
       );
@@ -129,8 +151,9 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const comments = await run(tools, "listGoogleFileComments", {
       file: DOC_ID,
     });
-    expect(fetch.mock.calls.slice(3).map(([call]) => call.operation)).toEqual([
+    expect(fetch.mock.calls.slice(5).map(([call]) => call.operation)).toEqual([
       "google.drive.file.get",
+      "google.drive.permissions.list",
       "google.drive.comments.list",
     ]);
     expect(comments).toEqual({
@@ -185,15 +208,84 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     ).rejects.toThrow("An admin must reconnect it");
   });
 
+  it("reads a file only for a requester who can open it, and hides the rest from search", async () => {
+    const DOC = "application/vnd.google-apps.document";
+    const viewOnly = () =>
+      Response.json({
+        capabilities: { canShare: false },
+        id: DOC_ID,
+        mimeType: DOC,
+        name: "Salaries",
+      });
+    const { tools } = docsTools(
+      viewOnly(),
+      driveFile(DOC_ID, DOC, "Board notes"),
+      permissions({ emailAddress: "bob@example.com", type: "user" }),
+      driveFile(DOC_ID, DOC, "Board notes"),
+      Response.json({
+        nextPageToken: "page-2",
+        permissions: [{ emailAddress: "staff@example.com", type: "group" }],
+      }),
+      permissions({ emailAddress: "bob@example.com", type: "user" }),
+    );
+
+    const refused = [
+      `Your Google account (${ACCOUNT_EMAIL}) can only view "Salaries", so you cannot check that ${REQUESTER} may open it. Ask the owner to share it with ${ACCOUNT_EMAIL} as an editor.`,
+      `${REQUESTER} cannot open "Board notes".`,
+      "It is shared with a Google group, and group membership is not checked.",
+    ];
+    for (const message of refused) {
+      const read = run(tools, "readGoogleDoc", { document: DOC_ID });
+      await expect(read).rejects.toThrow(PluginToolInputError);
+      await expect(read).rejects.toThrow(message);
+    }
+    await expect(
+      run(toolsWith(vi.fn()), "searchGoogleFiles", { query: "plan" }),
+    ).rejects.toThrow("The requester's email is unknown");
+
+    // Results are checked at once, so answer by file id, not by call order.
+    const access: Record<string, Response | undefined> = {
+      domainDoc: permissions({ domain: "Example.com", type: "domain" }),
+      groupDoc: permissions({
+        emailAddress: "staff@example.com",
+        type: "group",
+      }),
+      linkDoc: permissions({ type: "anyone" }),
+    };
+    const fetch = vi.fn(async ({ request }: { request: Request }) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/drive/v3/files") {
+        return Response.json({
+          files: ["domainDoc", "groupDoc", "linkDoc", "viewOnlyDoc"].map(
+            (id) => ({
+              capabilities: { canShare: id !== "viewOnlyDoc" },
+              id: `${id}-0123456789`,
+              mimeType: DOC,
+              name: id,
+            }),
+          ),
+        });
+      }
+      const id = url.pathname.split("/")[4]!.replace("-0123456789", "");
+      return access[id] ?? new Response(null, { status: 500 });
+    });
+    const search = await run(toolsWith(fetch, REQUESTER), "searchGoogleFiles", {
+      query: "plan",
+    });
+    expect(search).toMatchObject({
+      files: [{ title: "domainDoc" }, { title: "linkDoc" }],
+      hidden: 2,
+    });
+    // A file that Junior can only view costs no permission check.
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
   it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {
     const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
     const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
     const { fetch, tools } = docsTools(
-      Response.json({
-        id: SHEET_ID,
-        mimeType: "application/vnd.google-apps.spreadsheet",
-        name: "Budget",
-      }),
+      driveFile(SHEET_ID, "application/vnd.google-apps.spreadsheet", "Budget"),
+      requesterCanOpen(),
       Response.json({
         sheets: [
           { properties: { sheetType: "GRID", title: "Q4" } },
@@ -213,11 +305,12 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           { range: "'Bob''s tab'!A1:A1", values: [['Say "hi"']] },
         ],
       }),
-      Response.json({
-        id: SLIDES_ID,
-        mimeType: "application/vnd.google-apps.presentation",
-        name: "Kickoff",
-      }),
+      driveFile(
+        SLIDES_ID,
+        "application/vnd.google-apps.presentation",
+        "Kickoff",
+      ),
+      requesterCanOpen(),
       Response.json({
         slides: [
           {
@@ -261,7 +354,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const sheet = await run(tools, "readGoogleSheet", {
       spreadsheet: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=0`,
     });
-    const batchGet = new URL(fetch.mock.calls[2]![0].request.url);
+    const batchGet = new URL(fetch.mock.calls[3]![0].request.url);
     expect(batchGet.host).toBe("sheets.googleapis.com");
     expect(batchGet.searchParams.getAll("ranges")).toEqual([
       "'Q4'",
@@ -289,7 +382,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const slides = await run(tools, "readGoogleSlides", {
       presentation: `https://docs.google.com/presentation/d/${SLIDES_ID}/edit`,
     });
-    expect(new URL(fetch.mock.calls[4]![0].request.url).host).toBe(
+    expect(new URL(fetch.mock.calls[6]![0].request.url).host).toBe(
       "slides.googleapis.com",
     );
     expect(slides).toMatchObject({

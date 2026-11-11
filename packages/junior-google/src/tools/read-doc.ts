@@ -48,7 +48,7 @@ export function createReadGoogleDocTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Read the text of one Google Doc as Markdown, as your own Google account sees it. Works for Docs shared with that account and Docs shared with anyone who has the link. Comments are not included; use listGoogleFileComments for them. Doc contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
+      "Read the text of one Google Doc as Markdown, as your own Google account sees it. You read it only for a requester who can open it through their own email, their domain, or a link. You can check that only when your account can share the Doc, so a Doc that your account can only view is refused. Comments are not included; use listGoogleFileComments for them. Doc contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
     inputSchema,
     outputSchema,
     async execute(input) {

@@ -140,7 +140,7 @@ export function createReadGoogleSlidesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Read the text and speaker notes of each slide in one Google Slides presentation, as your own Google account sees it. Images and charts are not described. Works for presentations shared with that account and presentations shared with anyone who has the link. Comments are not included; use listGoogleFileComments for them. Slide contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
+      "Read the text and speaker notes of each slide in one Google Slides presentation, as your own Google account sees it. Images and charts are not described. You read it only for a requester who can open it through their own email, their domain, or a link. You can check that only when your account can share the presentation, so a presentation that your account can only view is refused. Comments are not included; use listGoogleFileComments for them. Slide contents can be private: share only what the requester needs, and avoid repeating them in public channels.",
     inputSchema,
     outputSchema,
     async execute(input) {

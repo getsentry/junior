@@ -1,9 +1,11 @@
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { emailDomain } from "../config";
 import type { GoogleOperation } from "../credentials";
 import {
   googleApiError,
   googleApiRequest,
+  requesterEmail,
   type GoogleToolContext,
 } from "./shared";
 
@@ -123,6 +125,7 @@ export async function googleFileRequest(
 }
 
 const driveFileSchema = z.object({
+  capabilities: z.object({ canShare: z.boolean().optional() }).optional(),
   id: z.string(),
   mimeType: z.string(),
   modifiedTime: z.string().optional(),
@@ -130,11 +133,105 @@ const driveFileSchema = z.object({
   webViewLink: z.string().optional(),
 });
 
+const permissionPageSchema = z.object({
+  nextPageToken: z.string().optional(),
+  permissions: z
+    .array(
+      z.object({
+        domain: z.string().optional(),
+        emailAddress: z.string().optional(),
+        type: z.string(),
+      }),
+    )
+    .default([]),
+});
+
+/** How the requester can open a file, as Junior can check it. */
+export type RequesterAccess = "open" | "group" | "none" | "unchecked";
+
 /**
- * Read the Drive metadata of one file, and require one of the given types.
+ * Check that the requester can open a file themselves, through their own
+ * email, their domain, or a link.
+ *
+ * Junior's account sees every file shared with it, and anyone who can talk
+ * to Junior uses that account. Drive lists a file's permissions only to
+ * accounts that can share it, so a file that Junior can only view is
+ * "unchecked". Access through a Google group is not resolved.
+ */
+export async function requesterAccess(
+  ctx: GoogleToolContext,
+  file: FileReference & { canShare?: boolean },
+  requester: string,
+): Promise<RequesterAccess> {
+  if (file.canShare !== true) return "unchecked";
+  const domain = emailDomain(requester);
+  let group = false;
+  let pageToken: string | undefined;
+  do {
+    const response = await googleFileRequest(ctx, file, {
+      operation: "google.drive.permissions.list",
+      path: `/drive/v3/files/${file.fileId}/permissions`,
+      query: {
+        fields: "nextPageToken,permissions(domain,emailAddress,type)",
+        pageSize: "100",
+        supportsAllDrives: "true",
+        ...(pageToken ? { pageToken } : undefined),
+      },
+    });
+    const page = permissionPageSchema.parse(response.body);
+    for (const permission of page.permissions) {
+      if (
+        permission.type === "anyone" ||
+        (permission.type === "domain" &&
+          permission.domain?.toLowerCase() === domain) ||
+        (permission.type === "user" &&
+          permission.emailAddress?.toLowerCase() === requester)
+      ) {
+        return "open";
+      }
+      if (permission.type === "group") group = true;
+    }
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return group ? "group" : "none";
+}
+
+/** Return the requester's email, or refuse a read when it is unknown. */
+export async function requireRequesterEmail(
+  ctx: GoogleToolContext,
+): Promise<string> {
+  const requester = await requesterEmail(ctx);
+  if (!requester) {
+    throw new PluginToolInputError(
+      "The requester's email is unknown, so the tool cannot check that they may open Google files.",
+    );
+  }
+  return requester;
+}
+
+/** Refuse a read unless the requester can open the file themselves. */
+async function requireRequesterAccess(
+  ctx: GoogleToolContext,
+  file: FileReference & { canShare?: boolean; name: string },
+): Promise<void> {
+  const requester = await requireRequesterEmail(ctx);
+  const access = await requesterAccess(ctx, file, requester);
+  if (access === "open") return;
+  throw new PluginToolInputError(
+    access === "unchecked"
+      ? `Your Google account (${ctx.accountEmail}) can only view "${file.name}", so you cannot check that ${requester} may open it. Ask the owner to share it with ${ctx.accountEmail} as an editor.`
+      : access === "group"
+        ? `${requester} has no access to "${file.name}" through their own email, their domain, or a link. It is shared with a Google group, and group membership is not checked. Ask the owner to share it with ${requester} directly or with their domain.`
+        : `${requester} cannot open "${file.name}". You read a file only for people who can open it themselves. Ask the owner to share it with ${requester} or with their domain.`,
+  );
+}
+
+/**
+ * Read the Drive metadata of one file, require one of the given types, and
+ * require that the requester can open it.
  *
  * `drive.readonly` can read any Drive file, so each tool checks the type
- * before it reads content or comments.
+ * and the requester's access before it reads content or comments.
  */
 export async function readGoogleFile(
   ctx: GoogleToolContext,
@@ -145,7 +242,8 @@ export async function readGoogleFile(
     operation: "google.drive.file.get",
     path: `/drive/v3/files/${file.fileId}`,
     query: {
-      fields: "id,mimeType,modifiedTime,name,webViewLink",
+      fields:
+        "capabilities(canShare),id,mimeType,modifiedTime,name,webViewLink",
       supportsAllDrives: "true",
     },
   });
@@ -157,6 +255,11 @@ export async function readGoogleFile(
       `"${metadata.name}" is not a ${expected} (${metadata.mimeType}).`,
     );
   }
+  await requireRequesterAccess(ctx, {
+    ...file,
+    canShare: metadata.capabilities?.canShare,
+    name: metadata.name,
+  });
   return { ...metadata, type };
 }
 

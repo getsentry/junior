@@ -23,7 +23,17 @@ not use the Google credentials of the people it helps.
 7. Connect the account on **Admin → Google account** in the dashboard, or run
    `junior google connect`.
 
-Anyone who can talk to Junior can read what the Junior account can see. Share
-calendars and files with that account only when that is acceptable.
+Junior reads a Doc, Sheet, or Slides file, or its comments, only for a
+requester who can open it through their own email, their domain, or a link.
+Search leaves out the other files. Junior can check this only on files that
+its account can share, because Google shows a file's permissions only to
+people who can share it. Share files with the Junior account as an editor.
+Junior refuses files that it can only view. Access through a Google group is
+not checked. Meet transcripts keep their own check: the requester must be
+invited to the meeting.
+
+Calendar reads are not checked this way. Anyone who can talk to Junior can
+read the calendars that the Junior account can see. Share calendars with that
+account only when that is acceptable.
 
 Plugin setup: https://junior.sentry.dev/extend/

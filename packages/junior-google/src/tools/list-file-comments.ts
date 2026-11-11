@@ -103,7 +103,7 @@ export function createListGoogleFileCommentsTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. Works for files shared with that account and files shared with anyone who has the link. Returns up to 100 comments per call; pass next_page_token as page_token to read more. Comments can be private: share only what the requester needs.",
+      "List the comments and replies on one Google Doc, Sheet, or Slides presentation, as your own Google account sees them. Each comment gives its author, text, the file text it is attached to, and whether it is resolved. You read it only for a requester who can open it through their own email, their domain, or a link. You can check that only when your account can share the file, so a file that your account can only view is refused. Returns up to 100 comments per call; pass next_page_token as page_token to read more. Comments can be private: share only what the requester needs.",
     inputSchema,
     outputSchema,
     async execute(input) {
