@@ -419,7 +419,7 @@ function githubToolsContext(input?: {
     },
     embedder: {},
     ...(input?.conversationLink
-      ? { slack: { conversationLink: { url: input.conversationLink } } }
+      ? { conversationLink: { url: input.conversationLink } }
       : undefined),
     egress: {
       async fetch(request: {

@@ -708,9 +708,6 @@ export function getPluginTools(
             channelCapabilities: resolveChannelCapabilities(
               slackToolContext.locationChannelId,
             ),
-            ...(dashboardConversationUrl
-              ? { conversationLink: { url: dashboardConversationUrl } }
-              : undefined),
             ...(credentialSubject ? { credentialSubject } : undefined),
           }
         : undefined;
@@ -783,6 +780,9 @@ export function getPluginTools(
       annotations,
       ...(automationUrl
         ? { automationLink: { url: automationUrl } }
+        : undefined),
+      ...(dashboardConversationUrl
+        ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
       conversationId: context.conversationId,
       locationId: context.locationId,
