@@ -235,11 +235,13 @@ export function CodeReference(props: {
           </span>
         ) : null}
       </figcaption>
-      <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-1.5 font-mono text-sm leading-relaxed">
+      {/* Wrap long lines: a reviewer should not scroll sideways to read
+          the cited code. */}
+      <pre className="m-0 min-w-0 rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-1.5 font-mono text-sm leading-relaxed">
         {excerpt.lines.map((line, index) => (
           <div
             className={cn(
-              "flex min-w-max gap-3 px-3",
+              "flex gap-3 px-3",
               line.kind === "add" &&
                 "bg-emerald-400/10 text-emerald-200 light:text-emerald-800",
               line.kind === "remove" &&
@@ -257,7 +259,9 @@ export function CodeReference(props: {
             <span aria-hidden="true" className="w-3 shrink-0 select-none">
               {line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}
             </span>
-            <code>{line.content}</code>
+            <code className="min-w-0 break-words whitespace-pre-wrap">
+              {line.content}
+            </code>
           </div>
         ))}
       </pre>
