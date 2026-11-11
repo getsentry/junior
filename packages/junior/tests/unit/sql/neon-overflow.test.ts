@@ -79,7 +79,7 @@ function createExecutor() {
   });
 }
 
-const POOL_IDLE_TIMEOUT_MS = 60_000;
+const POOL_IDLE_TIMEOUT_MS = 600_000;
 
 describe("Neon pool overflow", () => {
   let executor: ReturnType<typeof createNeonJuniorSqlExecutor>;
@@ -198,7 +198,11 @@ describe("Neon pool overflow", () => {
     await Promise.all([executor.query("select 1"), executor.query("select 2")]);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
 
-    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS);
+    // Clients that a burst opened stay open past one minute.
+    const oneMinuteMs = 60_000;
+    vi.advanceTimersByTime(oneMinuteMs);
+    expect(wire.clientsClosed).toBe(0);
+    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS - oneMinuteMs);
 
     expect(wire.clientsClosed).toBe(2);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(3));
