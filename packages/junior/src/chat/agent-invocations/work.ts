@@ -24,7 +24,6 @@ import {
   AgentRunError,
   executeTurn,
   finishTurn,
-  type SavedTurnResult,
 } from "@/chat/runtime/turn-execution";
 import {
   getPersistedSandboxState,
@@ -54,8 +53,6 @@ import {
 import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
-import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenPersonTurn } from "./thread-turn";
@@ -97,9 +94,13 @@ import type {
   TerminalAgentInvocation,
 } from "./types";
 import { recordSubagentEnded, recordSubagentStarted } from "./markers";
+import {
+  agentInvocationTurnEnd,
+  savedTurnEnd,
+  type SendReply,
+} from "./turn-end";
 import { stopChildAgentsOf } from "./stop";
 import { resumeStoppedConversationTree } from "@/chat/conversations/session-stop";
-import { readBlockedReport } from "./blocked-report";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -392,34 +393,6 @@ function createAgentMessageSteeringDrain(
   };
 }
 
-/**
- * How a terminal agent invocation ends its child Turn. The live save and the
- * recovery paths both use this, so a status cannot end the Turn two ways.
- */
-function agentInvocationTurnEnd(
-  terminal: TerminalAgentInvocation,
-): SavedTurnResult {
-  const finishedAtMs = terminal.terminalAtMs;
-  switch (terminal.status) {
-    case "completed":
-      return {
-        finishedAtMs,
-        outcome: terminal.result.trim() ? "success" : "no_reply",
-      };
-    case "stopped":
-      return { finishedAtMs, outcome: "cancelled" };
-    // A blocked child reported what it needs. That is a result, not a failure.
-    case "blocked":
-      return { finishedAtMs, outcome: "blocked" };
-    case "failed":
-      return {
-        failureCode: "model_execution_failed",
-        finishedAtMs,
-        outcome: "failed",
-      };
-  }
-}
-
 /** Project the terminal invocation into the idempotent turn lifecycle. */
 async function persistTerminalLifecycle(
   terminal: TerminalAgentInvocation,
@@ -485,37 +458,21 @@ async function projectTerminalTurn(
       return undefined;
     }
   }
-  if (turn.state === "paused") {
+  const end = savedTurnEnd(turn);
+  if (!end) {
     return undefined;
   }
-  const result = getTerminalAssistantMessages(turn.piMessages)
-    .map(getAssistantReplyText)
-    .filter((text): text is string => text !== undefined)
-    .join("\n\n");
-  const failed = turn.state !== "completed" || Boolean(turn.errorMessage);
-  // Read the report only from this Turn. A Turn record without a start index
-  // cannot tell this Turn from earlier history of a named child.
-  const blocked =
-    turn.turnStartMessageIndex === undefined
-      ? undefined
-      : readBlockedReport(turn.piMessages.slice(turn.turnStartMessageIndex));
+  if (turn.state === "paused") {
+    // Its saved `reply` ended the task, so nothing may resume the Turn.
+    await abandonTurnRecord({
+      conversationId: turn.conversationId,
+      turnId: turn.turnId,
+    });
+  }
   return await completeAgentInvocation({
     ...completeOptions,
     invocationId: invocation.invocationId,
-    ...(failed
-      ? {
-          errorMessage: turn.errorMessage ?? "Agent invocation failed",
-          status: "failed" as const,
-        }
-      : blocked
-        ? {
-            errorMessage: blocked.missing,
-            status: "blocked" as const,
-          }
-        : {
-            result,
-            status: "completed" as const,
-          }),
+    ...end,
   });
 }
 
@@ -608,14 +565,22 @@ function isInvocationInputCommitLost(error: unknown): boolean {
   return isTurnInputCommitLostError(cause);
 }
 
-/** Save one completed agent result on its child agent invocation. */
+/**
+ * Save one completed agent result on its child agent invocation. A `reply`
+ * goes to the parent before the Turn is saved, so a lost worker cannot save
+ * the Turn and drop its reply.
+ */
 async function saveAgentInvocationResult(args: {
   invocation: AgentInvocation;
   result: AgentRunResult;
   sandboxRef?: SandboxRef;
+  sendReply?: SendReply;
   turnId: string;
 }) {
   const failed = args.result.diagnostics.outcome !== "success";
+  if (args.result.reply) {
+    await args.sendReply?.(args.invocation, args.result.reply);
+  }
   await persistThreadStateById(args.invocation.childConversationId, {
     sandboxRef: args.result.sandboxRef ?? args.sandboxRef,
   });
@@ -672,7 +637,9 @@ async function saveAgentInvocationResult(args: {
             status: "blocked" as const,
           }
         : {
-            result: args.result.text || (args.result.noReply?.note ?? ""),
+            // The reply already reached the parent. The stored text gives the
+            // Turn its outcome.
+            result: args.result.reply?.text ?? "",
             status: "completed" as const,
           }),
   });
@@ -696,6 +663,7 @@ export function createAgentInvocationWorker(
   options: {
     enqueueResult?: (invocation: TerminalAgentInvocation) => Promise<void>;
     maxAgentDepth?: number;
+    sendReply?: SendReply;
   } = {},
 ) {
   // Every child has depth 1 or more, so with 0 no child can spawn. With more,
@@ -900,6 +868,7 @@ export function createAgentInvocationWorker(
             onInputCommitted: acknowledge,
             shouldYield: context.shouldYield,
             checkIn: context.checkIn,
+            checkStop: context.checkStop,
             onSandboxRefChanged: async (nextSandboxRef) => {
               sandboxRef = nextSandboxRef;
               await persistThreadStateById(invocation.childConversationId, {
@@ -908,13 +877,20 @@ export function createAgentInvocationWorker(
             },
           },
         },
-        async (result) =>
-          await saveAgentInvocationResult({
+        async (result) => {
+          // A stop aborts the run, which then reads as failed. It ends as
+          // stopped instead.
+          if (result.diagnostics.outcome !== "success") {
+            stopSignal?.throwIfAborted();
+          }
+          return await saveAgentInvocationResult({
             invocation,
             result,
             sandboxRef,
+            sendReply: options.sendReply,
             turnId,
-          }),
+          });
+        },
       );
     } catch (error) {
       // A save error has no AgentRunError wrapper. On the final attempt it

@@ -5,11 +5,24 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { replyTextSchema } from "@/chat/turn-answer";
 
+const DESCRIPTIONS = {
+  parent: {
+    tool: "Send the reply of this Turn to your parent agent when the Turn ends. The parent reads it as your result.",
+    text: "The finished result for your parent agent, with everything it needs to continue.",
+  },
+  automation: {
+    tool: "Post the reply of this Turn when the Turn ends. When the run starts, the reply goes to its stored destinations. After the run posts, a reply goes to the run's Slack thread.",
+    text: "The finished message, such as a reminder, digest, or alert.",
+  },
+} as const;
+
 /**
- * Create the tool that sets the reply of one gated Turn. The runtime posts the
- * reply after the Turn ends.
+ * Create the tool that sets the reply of one gated Turn. The runtime sends
+ * the reply after the Turn ends. `parent`: to the parent agent's inbox.
+ * `automation`: to the Automation run's Destination or Slack thread.
  */
-export function createReplyTool() {
+export function createReplyTool(target: "parent" | "automation") {
+  const descriptions = DESCRIPTIONS[target];
   return zodTool({
     annotations: {
       destructiveHint: false,
@@ -17,16 +30,11 @@ export function createReplyTool() {
       openWorldHint: true,
       readOnlyHint: false,
     },
-    description:
-      "Post the reply of this Turn when the Turn ends. When the run starts, the reply goes to its stored destinations. After the run posts, a reply goes to the run's Slack thread.",
+    description: descriptions.tool,
     exposure: "modelOnly",
     inputSchema: z
       .object({
-        text: z
-          .string()
-          .describe(
-            "The finished message, such as a reminder, digest, or alert.",
-          ),
+        text: z.string().describe(descriptions.text),
       })
       .strict(),
     outputSchema: juniorToolOutputSchema.extend({ text: z.string() }),

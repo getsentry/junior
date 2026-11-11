@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createWebSource } from "@sentry/junior-plugin-api";
 import {
   completeAgentInvocation,
@@ -28,6 +29,9 @@ import { expect } from "vitest";
 /** Compose production Conversation work with a Slack root. */
 export async function createHarness() {
   const { conversationStore, fixture } = await prepareSlackParentConversation();
+  // The name keys the Thread's Conversation id. Work that an earlier test
+  // left running can still write that Conversation, so each test has its own.
+  const agentName = `researcher-${randomUUID().slice(0, 8)}`;
   // Integration tests do not run the agent. The runner checks each run as
   // the agent does first, reads it, and stops it. The test finishes each
   // Agent invocation itself, or ends its runs with `onInvocationRun`.
@@ -63,6 +67,7 @@ export async function createHarness() {
   const process = async (conversationId: string) =>
     await work.process(work.queue.takeMessageFor(conversationId));
   return {
+    agentName,
     close: async () => await fixture.close(),
     conversationStore,
     /** Run every queued wake of one Conversation, as the queue does. */
@@ -112,9 +117,10 @@ export async function finishInvocation(
   const invocation =
     await getActiveAgentInvocationForConversation(childConversationId);
   if (!invocation) throw new Error("Expected an open Agent invocation");
+  // A Turn that ended without a `reply` saves no result text.
   await completeAgentInvocation({
     invocationId: invocation.invocationId,
-    result: "Found it.",
+    result: "",
     status: "completed",
   });
   await expect(harness.process(childConversationId)).resolves.toMatchObject({
@@ -134,7 +140,7 @@ export async function startThread(
     {
       ...slackInvocationInput,
       ...input,
-      agentName: "researcher",
+      agentName: harness.agentName,
       idempotencyKey,
       kind: "thread",
     },

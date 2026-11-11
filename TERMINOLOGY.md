@@ -88,8 +88,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Mailbox delivery**: `interrupt` (next safe boundary) or `defer` (in order).
 - **Turn**: one request-to-final-response cycle. Not one model call.
 - **Answer**: the tool call that ends a gated Turn: `reply`, `noReply`, or
-  `reportBlocked`. A Turn on kind `automation` that a person did not open is
-  gated, and its final response is not delivered.
+  `reportBlocked`. A Turn that a person did not open is gated on kinds
+  `automation`, `thread`, and `task`. Its final response is not delivered.
 - **Run**: one bounded attempt to advance a Turn. A later Run may resume the
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
@@ -110,7 +110,8 @@ Canonical words for Junior code and docs. One concept, one word.
   Reply. Keep as fork makes it a normal fork.
 - **Agent binding**: a parent-scoped name for one child Conversation.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
-  its terminal result. Never shorten to "invocation".
+  its terminal result. Only a `reply`, or a failed, blocked, or stopped
+  result, reaches the parent. Never shorten to "invocation".
 - **Agent message**: `messageAgent` text to a parent, a child, or another
   top-level agent (the agent of a root Conversation). To a child it is the
   child's instruction: it starts an Agent invocation or steers a running one.

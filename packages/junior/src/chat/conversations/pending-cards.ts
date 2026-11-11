@@ -4,6 +4,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
   getAgentInvocationTurnId,
   parseAgentInvocationResultMessageId,
+  parseAgentReplyMessageId,
 } from "@/chat/agent-invocations/ids";
 import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import {
@@ -70,8 +71,8 @@ async function selectTurnCards(
 }
 
 /**
- * Add the cards of child agents whose results started this Turn. A child
- * cannot reply to people, so its parent's reply delivers its cards.
+ * Add the cards of child agents whose replies or results started this Turn.
+ * A child cannot reply to people, so its parent's reply delivers its cards.
  */
 async function selectChildResultCards(
   inputMessageIds: readonly string[],
@@ -79,7 +80,9 @@ async function selectChildResultCards(
 ): Promise<void> {
   const events = getConversationEventStore();
   for (const messageId of [...inputMessageIds].reverse()) {
-    const invocationId = parseAgentInvocationResultMessageId(messageId);
+    const replyInvocationId = parseAgentReplyMessageId(messageId);
+    const invocationId =
+      replyInvocationId ?? parseAgentInvocationResultMessageId(messageId);
     const invocation = invocationId
       ? await getAgentInvocation(invocationId)
       : undefined;
@@ -90,11 +93,13 @@ async function selectChildResultCards(
       invocation.childConversationId,
       `turn:${turnId}:terminal`,
     );
-    if (!terminal) continue;
+    // A `reply` ends the child's Turn, but it can reach the parent before the
+    // child records that end. Then its cards are the newest ones.
+    if (!terminal && !replyInvocationId) continue;
     await selectTurnCards(
       invocation.childConversationId,
       selection,
-      terminal.seq,
+      terminal?.seq,
     );
   }
 }

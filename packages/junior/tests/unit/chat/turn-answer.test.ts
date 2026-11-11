@@ -93,13 +93,13 @@ describe("turn answer", () => {
           message: "The digest.",
         }),
       ]),
-    ).toEqual({ reply: { text: "The digest." } });
+    ).toEqual({ reply: { text: "The digest.", toolCallId: "tool-1" } });
   });
 });
 
 describe("reply", () => {
   function call(text: string) {
-    const tool = createReplyTool();
+    const tool = createReplyTool("automation");
     return tool.execute!(tool.prepareArguments!({ text }), {});
   }
 
