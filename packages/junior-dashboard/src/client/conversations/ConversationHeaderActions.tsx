@@ -5,7 +5,14 @@ import {
   type Ref,
   type RefObject,
 } from "react";
-import { Info, MessagesSquare, ScrollText, Search, X } from "lucide-react";
+import {
+  Info,
+  Maximize2,
+  MessagesSquare,
+  ScrollText,
+  Search,
+  X,
+} from "lucide-react";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { Separator } from "../components/ui/separator";
@@ -39,8 +46,11 @@ export function ConversationHeaderActions(props: {
   onSearchClick(): void;
   placement: "desktop" | "mobile";
   searchOpen: boolean;
+  /** Present on desktop, where Zen mode exists. */
+  zen?: { active: boolean; onToggle(): void; shortcut: string };
 }) {
   const groups = useConversationMenuItems(props.menu);
+  const { zen } = props;
   const mobile = props.placement === "mobile";
   // Search, details, and the app menu need the page, so the sidebar row menu
   // does not show them. Every other row comes from `useConversationMenuItems`.
@@ -60,6 +70,19 @@ export function ConversationHeaderActions(props: {
           ) : (
             <Search aria-hidden="true" size={16} strokeWidth={2} />
           )}
+        </MenuActionButton>
+      ) : null}
+      {zen ? (
+        <MenuActionButton
+          label="Zen mode"
+          onClick={() => {
+            props.close();
+            zen.onToggle();
+          }}
+          pressed={zen.active}
+          shortcut={zen.shortcut}
+        >
+          <Maximize2 aria-hidden="true" size={16} strokeWidth={2} />
         </MenuActionButton>
       ) : null}
       {mobile ? (
@@ -265,6 +288,8 @@ function MenuActionButton(props: {
   label: string;
   onClick(): void;
   pressed?: boolean;
+  /** Keycap text for the row's shortcut, such as `⌥⌘Y`. */
+  shortcut?: string;
 }) {
   return (
     <Button
@@ -277,6 +302,11 @@ function MenuActionButton(props: {
     >
       {props.children}
       <span>{props.label}</span>
+      {props.shortcut ? (
+        <kbd className="ml-auto rounded border border-dashboard-border px-1.5 py-0.5 font-sans text-2xs text-dashboard-text-faint">
+          {props.shortcut}
+        </kbd>
+      ) : null}
     </Button>
   );
 }

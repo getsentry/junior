@@ -29,6 +29,7 @@ import {
   readSidebarWidth,
   saveSidebarWidth,
   SIDEBAR_WIDTH,
+  useSidebarFits,
 } from "../../conversations/conversationSidebarLayout";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
@@ -44,6 +45,12 @@ import { navItemIcon } from "./navIcons";
 
 const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 
+/**
+ * Shortcut text for Zen mode. It follows Zed's `workspace::ToggleAllDocks`;
+ * VS Code's `⌘K Z` would clash with the command palette.
+ */
+export const ZEN_MODE_SHORTCUT = platformShortcut("y", { alt: true });
+
 // The pane edge that the page lists draw too, so the nav, the list, and the
 // profile read as one column.
 const PANE_EDGE_CLASS =
@@ -52,7 +59,7 @@ const PANE_EDGE_CLASS =
 type PaneNavValue = {
   navItems: DashboardHeaderNavItem[];
   onSearch(): void;
-  /** False while the reader hides the pane on desktop. */
+  /** False while the reader hides the pane on desktop, or in Zen mode. */
   open: boolean;
   profile?: ReactNode;
   /** Spend totals that the page header shows while the pane hides. */
@@ -70,6 +77,19 @@ type PaneNavValue = {
   tabScroll: Map<PaneTab, number>;
   tabValues: Record<string, string>;
   setTabValue(key: string, value: string): void;
+  zen: ZenMode;
+};
+
+/**
+ * Zen mode hides the pane and Conversation details, so the conversation
+ * header, transcript, and composer fill the window. It overlays the pane and
+ * details choices without changing them, so leaving it restores both. It
+ * lasts for the session and exists only on a desktop conversation page.
+ */
+type ZenMode = {
+  active: boolean;
+  available: boolean;
+  toggle(): void;
 };
 
 /** The tabs at the top of the pane. Each tab's list fills the pane. */
@@ -120,7 +140,8 @@ function usePaneNav(): PaneNavValue {
  * Own the desktop pane: the primary destinations that every list pane shows
  * at its top, the profile at its bottom, whether the pane shows, and its
  * width. The pane is part of the layout, so every page shares one width.
- * Cmd/Ctrl+B shows or hides it on desktop. Children lay out in one row: the
+ * Cmd/Ctrl+B shows or hides it on desktop, and Option/Alt+Cmd/Ctrl+Y
+ * toggles Zen mode on a conversation page. Children lay out in one row: the
  * pane, then the page.
  */
 export function PaneNavProvider(props: {
@@ -132,8 +153,14 @@ export function PaneNavProvider(props: {
   profile?: ReactNode;
   spend?: ReactNode;
   workspaceActive: boolean;
+  /** A conversation page shows, so Zen mode can apply. */
+  zenAvailable: boolean;
 }) {
   const focusToggle = useRef(false);
+  const desktop = useSidebarFits();
+  const [zenOn, setZenOn] = useState(false);
+  const zenAvailable = props.zenAvailable && desktop;
+  const zenActive = zenOn && zenAvailable;
   const location = useLocation();
   const [tabPaths, setTabPaths] = useState<Record<PaneTab, string>>(TAB_ROOTS);
   const [tabValues, setTabValues] = useState<Record<string, string>>({});
@@ -154,7 +181,8 @@ export function PaneNavProvider(props: {
   if (tab && tab !== lastTab) setLastTab(tab);
   const [width, setWidth] = useState(readSidebarWidth);
   const widthValue = useMemo(() => ({ setWidth, width }), [width]);
-  const { onOpenChange, open } = props;
+  const { onOpenChange } = props;
+  const open = props.open && !zenActive;
   const setOpen = useCallback(
     (next: boolean, options?: { focus?: boolean }) => {
       focusToggle.current = Boolean(options?.focus);
@@ -162,17 +190,34 @@ export function PaneNavProvider(props: {
     },
     [onOpenChange],
   );
+  const toggleZen = useCallback(() => setZenOn((current) => !current), []);
+  const zen = useMemo(
+    () => ({
+      active: zenActive,
+      available: zenAvailable,
+      toggle: toggleZen,
+    }),
+    [toggleZen, zenActive, zenAvailable],
+  );
   useEffect(() => {
-    const toggle = (event: KeyboardEvent) => {
-      if (!isPlatformShortcut(event, "b") || event.repeat) return;
-      // Phones have no pane to toggle.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      // Phones have no pane to toggle and no Zen mode.
       if (!window.matchMedia(DESKTOP_LAYOUT_QUERY).matches) return;
-      event.preventDefault();
-      setOpen(!open);
+      if (isPlatformShortcut(event, "y", { alt: true })) {
+        if (!zenAvailable) return;
+        event.preventDefault();
+        toggleZen();
+      } else if (isPlatformShortcut(event, "b")) {
+        event.preventDefault();
+        // In Zen mode the pane toggle leaves it, back to the pane as it was.
+        if (zenActive) toggleZen();
+        else setOpen(!open);
+      }
     };
-    window.addEventListener("keydown", toggle);
-    return () => window.removeEventListener("keydown", toggle);
-  }, [open, setOpen]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, setOpen, toggleZen, zenActive, zenAvailable]);
   const value = useMemo(
     () => ({
       lastTab,
@@ -192,6 +237,7 @@ export function PaneNavProvider(props: {
         return take;
       },
       workspaceActive: props.workspaceActive,
+      zen,
     }),
     [
       lastTab,
@@ -206,6 +252,7 @@ export function PaneNavProvider(props: {
       tabPaths,
       tabScroll,
       tabValues,
+      zen,
     ],
   );
   return (
@@ -245,6 +292,16 @@ export function usePaneOpen(): boolean {
  */
 export function usePaneShows(): boolean {
   return useContext(PaneNavContext)?.open ?? false;
+}
+
+const NO_ZEN: ZenMode = { active: false, available: false, toggle() {} };
+
+/**
+ * Read Zen mode, for the conversation page, its menu, and the palette. A
+ * page that renders on its own, such as in tests, has no Zen mode.
+ */
+export function useZenMode(): ZenMode {
+  return useContext(PaneNavContext)?.zen ?? NO_ZEN;
 }
 
 /** Show or hide the desktop pane, as its toggles and Cmd/Ctrl+B do. */
@@ -298,7 +355,8 @@ function PaneSearch() {
  */
 export function PaneCollapsedControls() {
   const pane = usePaneNav();
-  if (pane.open) return null;
+  // Zen mode leaves only the conversation. Its shortcut or menu row leaves.
+  if (pane.open || pane.zen.active) return null;
   return (
     // `-ml-2` puts the toggle's icon on the pane's icon axis, 24px from the
     // edge, as the page title starts there without these controls.

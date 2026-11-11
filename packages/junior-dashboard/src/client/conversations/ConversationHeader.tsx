@@ -29,6 +29,10 @@ import {
   type TranscriptSearchMatch,
 } from "./transcriptSearch";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { isPlatformShortcut, platformShortcut } from "../keyboard";
+import { useZenMode, ZEN_MODE_SHORTCUT } from "../components/layout/PaneNav";
+
+const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
 const NO_ANCHOR = { current: null };
 
@@ -79,6 +83,29 @@ export function ConversationHeader(props: {
   const searchOpenVisible =
     props.view === "rich" && (searchOpen || props.search.length > 0);
   const openMobileNavigation = useOpenMobileNavigation();
+  const zen = useZenMode();
+  const { onDetailsClick } = props;
+  // In Zen mode, showing details leaves it first.
+  const openDetails = () => {
+    if (zen.active) zen.toggle();
+    if (!detailsOpen) onDetailsClick();
+  };
+
+  // Option/Alt+Cmd/Ctrl+B shows or hides details, like VS Code's secondary
+  // side bar. In Zen mode it leaves Zen mode, back to details as they were.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isPlatformShortcut(event, "b", { alt: true }) || event.repeat) {
+        return;
+      }
+      if (window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
+      event.preventDefault();
+      if (zen.active) zen.toggle();
+      else onDetailsClick();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onDetailsClick, zen]);
 
   useEffect(() => {
     if (
@@ -130,6 +157,15 @@ export function ConversationHeader(props: {
       onSearchClick={toggleSearch}
       placement={placement}
       searchOpen={searchOpenVisible}
+      zen={
+        placement === "desktop" && zen.available
+          ? {
+              active: zen.active,
+              onToggle: zen.toggle,
+              shortcut: ZEN_MODE_SHORTCUT,
+            }
+          : undefined
+      }
     />
   );
 
@@ -177,9 +213,7 @@ export function ConversationHeader(props: {
     props.brief && props.view === "rich"
       ? {
           brief: props.brief,
-          onOpen: () => {
-            if (!detailsOpen) props.onDetailsClick();
-          },
+          onOpen: openDetails,
         }
       : undefined;
 
@@ -279,8 +313,10 @@ export function ConversationHeader(props: {
               <HeaderIconButton
                 ref={detailsButtonRef}
                 expanded={false}
+                keyShortcuts="Meta+Alt+B Control+Alt+B"
                 label="Conversation details"
-                onClick={props.onDetailsClick}
+                onClick={openDetails}
+                shortcut={DETAILS_TOGGLE_SHORTCUT}
               >
                 <PanelRight aria-hidden="true" size={16} strokeWidth={1.9} />
               </HeaderIconButton>

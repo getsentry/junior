@@ -52,7 +52,16 @@ type PaletteItem = {
   score: number;
   /** Navigation state for the destination page. */
   state?: typeof FOCUS_REPLY_STATE;
-  to: string;
+} & ({ run(): void; to?: undefined } | { run?: undefined; to: string });
+
+/** A command that acts on the page, such as Zen mode, rather than going somewhere. */
+type PaletteAction = {
+  icon: LucideIcon;
+  id: string;
+  label: string;
+  /** Shortcut text, such as `⌥⌘Y`. */
+  shortcut?: string;
+  run(): void;
 };
 
 /**
@@ -61,6 +70,7 @@ type PaletteItem = {
  * shell call `onOpenChange`.
  */
 export function CommandPalette(props: {
+  actions?: PaletteAction[];
   /** Left out of the rows: the viewer is already there. */
   currentConversationId?: string;
   navItems: DashboardHeaderNavItem[];
@@ -85,6 +95,7 @@ export function CommandPalette(props: {
       title={COMMAND_PALETTE_LABEL}
     >
       <CommandPaletteBody
+        actions={props.actions ?? []}
         currentConversationId={props.currentConversationId}
         navItems={props.navItems}
         onClose={() => onOpenChange(false)}
@@ -95,6 +106,7 @@ export function CommandPalette(props: {
 
 /** Mounted only while open, so the server search runs only then. */
 function CommandPaletteBody(props: {
+  actions: PaletteAction[];
   currentConversationId?: string;
   navItems: DashboardHeaderNavItem[];
   onClose(): void;
@@ -114,6 +126,7 @@ function CommandPaletteBody(props: {
   const items = useMemo(
     () =>
       paletteItems({
+        actions: props.actions,
         currentConversationId: props.currentConversationId,
         feed: buildConversations(feed.data?.conversations ?? []),
         navItems: props.navItems,
@@ -124,6 +137,7 @@ function CommandPaletteBody(props: {
       }),
     [
       feed.data?.conversations,
+      props.actions,
       props.currentConversationId,
       props.navItems,
       query,
@@ -168,8 +182,9 @@ function CommandPaletteBody(props: {
                 <CommandItem
                   key={item.id}
                   onSelect={() => {
-                    navigate(item.to, { state: item.state });
                     props.onClose();
+                    if (item.run) item.run();
+                    else navigate(item.to, { state: item.state });
                   }}
                   value={item.id}
                 >
@@ -199,6 +214,7 @@ function CommandPaletteBody(props: {
  * outside the feed. The open conversation is never a row.
  */
 function paletteItems(input: {
+  actions: PaletteAction[];
   currentConversationId?: string;
   feed: Conversation[];
   navItems: DashboardHeaderNavItem[];
@@ -231,6 +247,15 @@ function paletteItems(input: {
     score: 0,
     to: page.to,
   });
+  const actionItem = (action: PaletteAction): PaletteItem => ({
+    group: "Actions",
+    icon: action.icon,
+    id: `action-${action.id}`,
+    label: action.label,
+    meta: action.shortcut,
+    run: action.run,
+    score: 0,
+  });
 
   if (!input.query) {
     // The feed puts pins first. Recency puts the last active conversation
@@ -239,7 +264,11 @@ function paletteItems(input: {
       .sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt))
       .slice(0, RECENT_LIMIT)
       .map((conversation) => conversationItem(conversation, "Recent"));
-    return [...recent, ...pages.map(pageItem)];
+    return [
+      ...recent,
+      ...input.actions.map(actionItem),
+      ...pages.map(pageItem),
+    ];
   }
 
   // Sort is stable, so equal scores keep the feed's order.
@@ -251,13 +280,9 @@ function paletteItems(input: {
     ),
   );
   const matchedPages = ranked(
-    pages.map((page) => {
-      const match = quickOpenMatch(page.label, input.query);
-      return {
-        ...pageItem(page),
-        matches: match?.indices,
-        score: match?.score ?? 0,
-      };
+    [...input.actions.map(actionItem), ...pages.map(pageItem)].map((item) => {
+      const match = quickOpenMatch(item.label, input.query);
+      return { ...item, matches: match?.indices, score: match?.score ?? 0 };
     }),
   );
   const shown = new Set(input.feed.map((conversation) => conversation.id));

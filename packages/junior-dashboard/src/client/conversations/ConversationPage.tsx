@@ -51,6 +51,7 @@ import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import { readDetailsOpen, saveDetailsOpen } from "./conversationSidebarLayout";
+import { useZenMode } from "../components/layout/PaneNav";
 import { useDetailsPanel } from "../components/DetailsPanel";
 import {
   ConversationMemoryContext,
@@ -235,6 +236,10 @@ export function ConversationPage(props: {
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
+  // Zen mode hides details without changing the choice, so leaving it
+  // brings them back.
+  const zen = useZenMode();
+  const detailsShown = showDetails && !zen.active;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -627,7 +632,7 @@ export function ConversationPage(props: {
 
   const sidePanel = (
     <>
-      {showDetails ? (
+      {detailsShown ? (
         <ConversationDetailsPanel
           conversation={conversation}
           conversationId={conversationId}
@@ -694,7 +699,7 @@ export function ConversationPage(props: {
     >
       <ConversationSidePanelLayout
         side={
-          showDetails || showEvent || turnContext || showQuickQuestion
+          detailsShown || showEvent || turnContext || showQuickQuestion
             ? sidePanel
             : undefined
         }

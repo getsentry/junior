@@ -17,6 +17,7 @@ import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
+import { Maximize2 } from "lucide-react";
 import { CommandPalette } from "./components/CommandPalette";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
 import {
@@ -24,6 +25,8 @@ import {
   PaneCollapsedControls,
   PaneNavProvider,
   paneTabForPath,
+  useZenMode,
+  ZEN_MODE_SHORTCUT,
 } from "./components/layout/PaneNav";
 import { useDensityRoot } from "./conversations/conversationDensity";
 import { useArea } from "./areas";
@@ -304,8 +307,9 @@ export function DashboardShell() {
           ) : undefined
         }
         workspaceActive={workspace}
+        zenAvailable={Boolean(conversationId)}
       >
-        <CommandPalette
+        <ShellCommandPalette
           currentConversationId={conversationId}
           navItems={[...primaryNavItems, ...profileNavItems]}
           onOpenChange={setCommandPaletteOpen}
@@ -796,6 +800,31 @@ function LegacyAutomationsRedirect() {
     <Navigate
       replace
       to={`/automations${suffix}${location.search}${location.hash}`}
+    />
+  );
+}
+
+/** The command palette, with Zen mode among its actions where it exists. */
+function ShellCommandPalette(
+  props: Omit<Parameters<typeof CommandPalette>[0], "actions">,
+) {
+  const zen = useZenMode();
+  return (
+    <CommandPalette
+      {...props}
+      actions={
+        zen.available
+          ? [
+              {
+                icon: Maximize2,
+                id: "zen-mode",
+                label: zen.active ? "Leave Zen mode" : "Zen mode",
+                run: zen.toggle,
+                shortcut: ZEN_MODE_SHORTCUT,
+              },
+            ]
+          : []
+      }
     />
   );
 }

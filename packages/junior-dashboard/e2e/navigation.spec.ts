@@ -144,3 +144,45 @@ test("keeps the density choice", async ({ page, dashboard }) => {
   await page.reload();
   await expect(root).toHaveAttribute("data-density", "comfortable");
 });
+
+test("hides and restores the panels with the shortcuts and Zen mode", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+  );
+  const pane = page.getByRole("navigation", { name: "Primary" });
+  const details = page.getByRole("complementary", {
+    exact: true,
+    name: "Conversation details",
+  });
+  const title = page.getByRole("heading", { name: "Checkout latency triage" });
+  await expect(pane).toBeVisible();
+  await expect(details).toBeVisible();
+
+  await page.keyboard.press("ControlOrMeta+Alt+KeyB");
+  await expect(details).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+Alt+KeyB");
+  await expect(details).toBeVisible();
+
+  // Zen mode hides both and leaves the conversation.
+  await page.keyboard.press("ControlOrMeta+Alt+KeyY");
+  await expect(pane).toBeHidden();
+  await expect(details).toBeHidden();
+  await expect(title).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+Alt+KeyY");
+  await expect(pane).toBeVisible();
+  await expect(details).toBeVisible();
+
+  // Leaving it restores the panels as they were, here with details hidden.
+  await page.keyboard.press("ControlOrMeta+Alt+KeyB");
+  await expect(details).toBeHidden();
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await page.getByRole("button", { name: "Zen mode" }).click();
+  await expect(pane).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+Alt+KeyY");
+  await expect(pane).toBeVisible();
+  await expect(details).toBeHidden();
+});
