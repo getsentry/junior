@@ -198,19 +198,19 @@ function FilterOptionButton(props: {
   subtle: boolean;
 }) {
   return (
-    <button
+    <Button
       aria-pressed={props.selected}
       className={cn(
-        "flex min-h-8 w-full cursor-pointer items-center justify-between gap-3 rounded-md border-0 px-2 py-1 text-left font-sans text-sm transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
-        !props.selected
-          ? "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text"
-          : props.subtle
-            ? "bg-transparent text-dashboard-text hover:bg-dashboard-fill-hover"
-            : "bg-dashboard-accent/[0.12] font-medium text-dashboard-accent-text hover:bg-dashboard-accent/[0.16]",
+        "flex min-h-8 w-full items-center justify-between gap-3 rounded-md px-2 py-1 text-left text-sm hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2",
+        props.selected &&
+          (props.subtle
+            ? "text-dashboard-text"
+            : "bg-dashboard-accent/[0.12] font-medium text-dashboard-accent-text hover:bg-dashboard-accent/[0.16] hover:text-dashboard-accent-text"),
       )}
       onClick={props.onClick}
+      size="bare"
       title={props.label}
-      type="button"
+      variant="ghost"
     >
       <span className="min-w-0 truncate">
         <MatchedLabel label={props.label} matches={props.matches} />
@@ -218,6 +218,6 @@ function FilterOptionButton(props: {
       {props.selected && !props.subtle ? (
         <Check aria-hidden="true" className="shrink-0" size={14} />
       ) : null}
-    </button>
+    </Button>
   );
 }

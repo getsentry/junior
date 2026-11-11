@@ -70,14 +70,15 @@ function MemoryCard(props: {
           <span />
         )}
         {turnId ? (
-          <button
-            className="-mr-1.5 inline-flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent px-1.5 py-1 font-sans text-xs font-medium text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
+          <Button
+            className="-mr-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-dashboard-fill-hover focus-visible:-outline-offset-2"
             onClick={() => props.onSelect({ ...entry, turnId })}
-            type="button"
+            size="bare"
+            variant="ghost"
           >
             Go to message
             <ArrowRight aria-hidden="true" size={13} />
-          </button>
+          </Button>
         ) : null}
       </div>
     </li>
