@@ -505,7 +505,7 @@ export function createGitHubPullRequestTool(
             parsedInput,
             ctx,
             requester,
-            ctx.slack?.conversationLink?.url,
+            ctx.conversationLink?.url,
           );
           const pendingState: CreatePullRequestState = {
             status: "pending",

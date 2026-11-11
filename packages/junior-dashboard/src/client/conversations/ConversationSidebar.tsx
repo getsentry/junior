@@ -37,6 +37,11 @@ import {
 } from "./ConversationSidebarThreadRow";
 import { sidebarThreads } from "./sidebarThreads";
 import {
+  ROW_ACTION_BUTTON_CLASS,
+  ROW_ACTIONS_FADE_CLASS,
+  ROW_ACTIONS_REVEAL_CLASS,
+} from "./sidebarRowActions";
+import {
   prefetchConversationDetail,
   usePrefetchConversation,
 } from "./conversationPrefetch";
@@ -77,14 +82,6 @@ type ConversationSidebarEntry =
       kind: "thread-toggle";
       rootId: string;
     };
-
-const ROW_ACTION_BUTTON_CLASS =
-  "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed";
-
-// While the row actions show, the row content fades out under them, so the
-// title does not end in a hard cut. --row-actions-width is set per row.
-const ROW_ACTIONS_FADE_CLASS =
-  "sm:group-hover:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))] sm:group-focus-within:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]";
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
@@ -195,6 +192,9 @@ export function ConversationSidebar(props: {
                     <ConversationSidebarThreadRow
                       conversation={entry.conversation}
                       depth={entry.depth}
+                      onArchiveError={showArchiveError}
+                      onArchived={showArchived}
+                      onRowAction={releaseHold}
                       selected={entry.conversation.id === props.selectedId}
                       waiting={props.waitingConversations.has(
                         entry.conversation.id,
@@ -502,7 +502,12 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
         {/* Mobile rows pin from the conversation menu, so only the archive
           button takes row space there. Archived rows restore before they pin. */}
         {participant ? (
-          <div className="absolute top-0.5 right-1.5 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
+          <div
+            className={cn(
+              "absolute top-0.5 right-1.5",
+              ROW_ACTIONS_REVEAL_CLASS,
+            )}
+          >
             {archived ? null : (
               <Tooltip>
                 <TooltipTrigger
