@@ -15,6 +15,9 @@ function filterOption(page: Page, filter: string, option: string) {
     .getByRole("button", { name: option, exact: true });
 }
 
+/** A link from run details to its Automation, not to one of its versions. */
+const AUTOMATION_LINK = 'a[href^="/automations/"]:not([href*="/versions"])';
+
 test("opens scheduled and event automations in the native Automations view", async ({
   page,
   dashboard,
@@ -168,8 +171,12 @@ test("opens scheduled and event automations in the native Automations view", asy
   );
   const recentDetails = page.getByRole("dialog", { name: "Run details" });
   await expect(
-    recentDetails.getByRole("region", { name: "Result" }),
-  ).toContainText("Completed");
+    recentDetails.getByText("completed", { exact: true }),
+  ).toBeVisible();
+  // Details show the run's Conversation, not only its numbers.
+  await expect(
+    recentDetails.getByText("Scheduled operation completed successfully."),
+  ).toBeVisible();
   await screenshot(page, "automation-overview-run-details", {
     view: "desktop",
   });
@@ -588,7 +595,7 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   );
   const details = page.getByRole("dialog", { name: "Run details" });
   // The Runs list spans Automations, so details name the Automation.
-  await expect(details.getByText("Automation", { exact: true })).toBeVisible();
+  await expect(details.locator(AUTOMATION_LINK)).toHaveCount(1);
   await expect(
     details.getByRole("link", { name: "Open conversation" }),
   ).toBeVisible();
@@ -662,7 +669,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   await expect(
     details.getByRole("heading", { name: "Ship notes for the release train" }),
   ).toBeVisible();
-  await expect(details.getByText("Automation", { exact: true })).toHaveCount(0);
+  await expect(details.locator(AUTOMATION_LINK)).toHaveCount(0);
   await expect(
     details.getByText("Slack rejected the result message: channel_not_found."),
   ).toBeVisible();
@@ -684,7 +691,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   await page.keyboard.press("ArrowDown");
   await expect(page).toHaveURL(/run=scheduled-1-run-3$/);
   await expect(
-    details.getByText("Not recorded", { exact: true }),
+    details.getByText("No Conversation was recorded for this run."),
   ).toBeVisible();
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("ArrowUp");

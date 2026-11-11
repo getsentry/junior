@@ -1,20 +1,13 @@
 import type { AutomationRun } from "@sentry/junior/api/schema";
-import {
-  CalendarClock,
-  CircleAlert,
-  CircleCheck,
-  CircleX,
-  MessageSquareText,
-  Zap,
-} from "lucide-react";
-import { useEffect, useRef } from "react";
+import { CalendarClock, MessageSquareText, Zap } from "lucide-react";
+import { Children, Fragment, useEffect, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { CopyButton } from "../../components/CopyButton";
 import { DetailsPanel } from "../../components/DetailsPanel";
-import { Fact, FactList, FactSection } from "../../components/FactSection";
+import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
-import { statusDotToneClass } from "../../components/StatusDot";
+import { StatusChip } from "../../components/StatusChip";
 import { buttonVariants } from "../../components/ui/button";
 import {
   Tooltip,
@@ -22,13 +15,15 @@ import {
   TooltipTrigger,
 } from "../../components/ui/tooltip";
 import { conversationPath } from "../../conversations/conversationRoutes";
+import { useConversationData } from "../../conversations/queries";
+import { TranscriptLoading } from "../../conversations/TranscriptLoading";
+import { Transcript } from "../../conversations/TranscriptView";
 import {
   automationPath,
   formatCompactNumber,
   formatCostSummary,
   formatRelativeTime,
   formatRuntime,
-  formatTime,
 } from "../../format";
 import { cn, dashboardInlineLinkClass } from "../../styles";
 import {
@@ -102,19 +97,6 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
   return { close, listRef, runId, toggle };
 }
 
-// The panel scrolls on an element that stays mounted, so start each run at
-// its top. Stop at the panel so the page behind it keeps its place.
-function scrollPanelToTop(node: HTMLElement | null) {
-  const panel = node?.closest("[data-dashboard-modal]");
-  for (
-    let el = node?.parentElement;
-    el && panel?.contains(el);
-    el = el.parentElement
-  ) {
-    el.scrollTop = 0;
-  }
-}
-
 /** Open a run's Conversation from its row without opening run details. */
 export function RunConversationLink(props: { conversationId?: string }) {
   if (!props.conversationId) return <span aria-hidden="true" />;
@@ -136,7 +118,10 @@ export function RunConversationLink(props: { conversationId?: string }) {
   );
 }
 
-/** Show what one run did, what it cost, and why it failed. */
+/**
+ * Show one run as its Conversation, so you read what Junior did. The result,
+ * cost, and setup sit above the transcript; the error leads when it failed.
+ */
 export function AutomationRunDetails(props: {
   loading: boolean;
   onClose(): void;
@@ -159,6 +144,8 @@ export function AutomationRunDetails(props: {
           </Link>
         ) : undefined
       }
+      // The summary sticks above the transcript, so this view owns padding.
+      flush
       label="Run details"
       onClose={props.onClose}
       // Run details slide over the page, so the page keeps its layout.
@@ -172,263 +159,172 @@ export function AutomationRunDetails(props: {
     >
       {/* Up and Down swap the run inside the open panel, so reset only the
           content, not the panel and its slide-in. */}
-      <div
-        className="p-4 [overflow-wrap:anywhere]"
-        key={run?.executionId}
-        ref={scrollPanelToTop}
-      >
+      <div className="min-w-0 [overflow-wrap:anywhere]" key={run?.executionId}>
         {run ? (
-          <AutomationRunContent
-            run={run}
-            showAutomation={props.showAutomation}
-          />
-        ) : props.loading ? (
-          <PageContentSkeleton label="Loading run details" variant="panel" />
+          <>
+            {/* The transcript opens at its latest message, so the result
+                and the error stay in view above it. */}
+            <div className="sticky top-0 z-10 grid gap-3 border-b border-dashboard-border-subtle bg-dashboard-bg-elevated px-4 py-3 md:px-5">
+              <RunSummary run={run} showAutomation={props.showAutomation} />
+              {run.error ? <RunError run={run} /> : null}
+            </div>
+            <div className="px-4 py-4 md:px-5">
+              {run.conversationId ? (
+                <RunConversation conversationId={run.conversationId} />
+              ) : (
+                <EmptyTelemetry>
+                  No Conversation was recorded for this run.
+                </EmptyTelemetry>
+              )}
+            </div>
+          </>
         ) : (
-          <p className="m-0 text-sm text-dashboard-text-muted">
-            This run is not in the loaded runs.
-          </p>
+          <div className="p-4 md:px-5">
+            {props.loading ? (
+              <PageContentSkeleton
+                label="Loading run details"
+                variant="panel"
+              />
+            ) : (
+              <p className="m-0 text-sm text-dashboard-text-muted">
+                This run is not in the loaded runs.
+              </p>
+            )}
+          </div>
         )}
       </div>
     </DetailsPanel>
   );
 }
 
-function AutomationRunContent(props: {
-  run: AutomationRun;
-  showAutomation: boolean;
-}) {
+/** Result and cost on one line; the setup that ran on the next. */
+function RunSummary(props: { run: AutomationRun; showAutomation: boolean }) {
   const { run } = props;
-  return (
-    <div className="grid min-w-0 gap-4">
-      <RunOutcome run={run} />
-      <RunMetrics run={run} />
-      <RunTimeline run={run} />
-      <FactSection title="Details">
-        <FactList>
-          {props.showAutomation ? (
-            <Fact label="Automation">
-              <Link
-                className={dashboardInlineLinkClass}
-                to={automationPath(run.automationId)}
-              >
-                {run.automationTitle}
-              </Link>
-            </Fact>
-          ) : null}
-          <Fact label="Trigger">
-            <span className="inline-flex items-center gap-1.5">
-              {run.kind === "scheduled" ? (
-                <CalendarClock aria-hidden="true" size={13} />
-              ) : (
-                <Zap aria-hidden="true" size={13} />
-              )}
-              {run.kind === "scheduled" ? "Schedule" : "Event"}
-            </span>
-          </Fact>
-          {run.automationVersion ? (
-            <Fact label="Version">
-              <Link
-                className={dashboardInlineLinkClass}
-                to={`${automationPath(run.automationId, "versions")}?version=${run.automationVersion}`}
-              >
-                Version {run.automationVersion}
-              </Link>
-            </Fact>
-          ) : null}
-          {run.credentialMode ? (
-            <Fact label="Accounts">
-              {run.credentialMode === "creator"
-                ? "Creator’s connected accounts"
-                : "Junior’s accounts only"}
-            </Fact>
-          ) : null}
-          {run.conversationId ? null : (
-            <Fact label="Conversation">
-              <span className="text-dashboard-text-muted">Not recorded</span>
-            </Fact>
-          )}
-          <Fact label="Run ID">
-            <span className="font-mono">{run.executionId}</span>
-          </Fact>
-        </FactList>
-      </FactSection>
-    </div>
-  );
-}
-
-const OUTCOME = {
-  blocked: {
-    className: "border-amber-300/30 bg-amber-300/[0.08]",
-    icon: CircleAlert,
-    iconClassName: "text-amber-300",
-    label: "Blocked",
-  },
-  completed: {
-    className: "border-emerald-300/25 bg-emerald-300/[0.06]",
-    icon: CircleCheck,
-    iconClassName: "text-emerald-300",
-    label: "Completed",
-  },
-  failed: {
-    className: "border-rose-300/30 bg-rose-300/[0.08]",
-    icon: CircleX,
-    iconClassName: "text-rose-300",
-    label: "Failed",
-  },
-} satisfies Record<AutomationRun["status"], unknown>;
-
-/** The result first, in its status color, with the reason when there is one. */
-function RunOutcome({ run }: { run: AutomationRun }) {
-  const outcome = OUTCOME[run.status];
-  const Icon = outcome.icon;
-  return (
-    <section
-      aria-label="Result"
-      className={cn(
-        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2.5 rounded-lg border px-4 py-3",
-        outcome.className,
+  const usage = [
+    formatRuntime(run.durationMs),
+    run.totalTokens === undefined
+      ? ""
+      : `${formatCompactNumber(run.totalTokens)} tokens`,
+    run.costUsd === undefined ? "" : formatCostSummary({ total: run.costUsd }),
+  ].filter(Boolean);
+  const setup: ReactNode[] = [
+    props.showAutomation ? (
+      <Link
+        className={dashboardInlineLinkClass}
+        key="automation"
+        to={automationPath(run.automationId)}
+      >
+        {run.automationTitle}
+      </Link>
+    ) : null,
+    run.automationVersion ? (
+      <Link
+        className={dashboardInlineLinkClass}
+        key="version"
+        to={`${automationPath(run.automationId, "versions")}?version=${run.automationVersion}`}
+      >
+        Version {run.automationVersion}
+      </Link>
+    ) : null,
+    <span className="inline-flex items-center gap-1" key="trigger">
+      {run.kind === "scheduled" ? (
+        <CalendarClock aria-hidden="true" size={13} />
+      ) : (
+        <Zap aria-hidden="true" size={13} />
       )}
-    >
-      <Icon
-        aria-hidden="true"
-        className={outcome.iconClassName}
-        size={20}
-        strokeWidth={2}
-      />
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-        <span className="font-display text-lg font-medium text-dashboard-text">
-          {outcome.label}
-        </span>
+      {run.kind === "scheduled" ? "Schedule" : "Event"}
+    </span>,
+    run.credentialMode ? (
+      <span key="accounts">
+        {run.credentialMode === "creator"
+          ? "Creator’s connected accounts"
+          : "Junior’s accounts only"}
+      </span>
+    ) : null,
+  ].filter(Boolean);
+  return (
+    <div className="grid min-w-0 gap-1.5 text-xs">
+      <MetaLine>
+        <StatusChip size="compact" tone={automationRunStatusTone(run.status)}>
+          {run.status}
+        </StatusChip>
         <time
-          className="text-xs text-dashboard-text-muted"
+          className="text-dashboard-text"
           dateTime={run.executedAt}
           title={formatAutomationRunTime(run.executedAt)}
         >
           {formatRelativeTime(run.executedAt)}
         </time>
-      </div>
-      {run.error ? (
-        <CopyButton getText={() => run.error ?? ""} label="Copy error" />
-      ) : (
-        <span />
-      )}
-      {run.error ? (
-        <p className="col-span-3 m-0 whitespace-pre-wrap rounded-md bg-dashboard-overlay-soft px-3 py-2.5 font-mono text-xs leading-relaxed text-dashboard-text-subtle">
-          {run.error}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-/** Duration, tokens, and cost as large values, so they read at a glance. */
-function RunMetrics({ run }: { run: AutomationRun }) {
-  const metrics: Array<[string, string]> = [
-    ["Duration", formatRuntime(run.durationMs) || "—"],
-    [
-      "Tokens",
-      run.totalTokens === undefined
-        ? "—"
-        : formatCompactNumber(run.totalTokens),
-    ],
-    [
-      "Cost",
-      run.costUsd === undefined
-        ? "—"
-        : formatCostSummary({ total: run.costUsd }),
-    ],
-  ];
-  return (
-    <dl className="m-0 grid min-w-0 grid-cols-3 divide-x divide-dashboard-border-subtle rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel">
-      {metrics.map(([label, value]) => (
-        <div className="grid min-w-0 gap-1.5 px-4 py-3" key={label}>
-          <dt className="text-xs text-dashboard-text-muted">{label}</dt>
-          <dd className="m-0 truncate font-display text-xl font-medium tabular-nums text-dashboard-text">
+        {usage.map((value) => (
+          <span className="tabular-nums" key={value}>
             {value}
-          </dd>
-        </div>
-      ))}
-    </dl>
+          </span>
+        ))}
+      </MetaLine>
+      <MetaLine>{setup}</MetaLine>
+    </div>
   );
 }
 
-const STEP_TIME: Intl.DateTimeFormatOptions = {
-  hour: "numeric",
-  minute: "2-digit",
-  second: "2-digit",
-};
-const STEP_DATE: Intl.DateTimeFormatOptions = {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-};
-
-/**
- * Scheduled, started, and finished on one line each. The gap beside a step
- * is the time since the step before it, so a slow queue or a long run shows.
- */
-function RunTimeline({ run }: { run: AutomationRun }) {
-  const steps = [
-    run.scheduledFor ? { at: run.scheduledFor, label: "Scheduled" } : null,
-    run.startedAt ? { at: run.startedAt, label: "Started" } : null,
-    { at: run.executedAt, label: OUTCOME[run.status].label },
-  ].filter((step) => step !== null);
-  const date = formatTime(steps[0]!.at, STEP_DATE);
-  const tone = automationRunStatusTone(run.status);
+/** Items in one muted row, split by dots. */
+function MetaLine(props: { children: ReactNode }) {
+  const items = Children.toArray(props.children);
   return (
-    <FactSection
-      action={<span className="text-dashboard-text-muted">{date}</span>}
-      title="Timeline"
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-dashboard-text-muted">
+      {items.map((item, index) => (
+        <Fragment key={index}>
+          {index > 0 ? (
+            <span aria-hidden="true" className="opacity-45">
+              ·
+            </span>
+          ) : null}
+          {item}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** Why the run failed or was blocked, in its status color. */
+function RunError({ run }: { run: AutomationRun }) {
+  return (
+    <div
+      className={cn(
+        "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-lg border py-2.5 pr-1.5 pl-3",
+        run.status === "blocked"
+          ? "border-amber-300/30 bg-amber-300/[0.08]"
+          : "border-rose-300/30 bg-rose-300/[0.08]",
+      )}
     >
-      <ol className="m-0 grid list-none p-0">
-        {steps.map((step, index) => {
-          const last = index === steps.length - 1;
-          const previous = steps[index - 1];
-          const gap = previous
-            ? formatRuntime(Date.parse(step.at) - Date.parse(previous.at))
-            : "";
-          const stepDate = formatTime(step.at, STEP_DATE);
-          return (
-            <li
-              className="relative grid grid-cols-[0.625rem_minmax(0,1fr)_auto] items-center gap-x-3 pb-3.5 text-xs last:pb-0"
-              key={step.label}
-            >
-              {last ? null : (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-2 -bottom-2 left-[0.28rem] w-px bg-dashboard-border-heavy"
-                />
-              )}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "relative size-2.5 rounded-full",
-                  last
-                    ? statusDotToneClass[tone]
-                    : "border border-dashboard-border-heavy bg-dashboard-bg-elevated",
-                )}
-              />
-              <span className="min-w-0 truncate text-dashboard-text">
-                {step.label}
-                {gap ? (
-                  <span className="ml-2 tabular-nums text-dashboard-text-faint">
-                    +{gap}
-                  </span>
-                ) : null}
-              </span>
-              <time
-                className="tabular-nums text-dashboard-text-muted"
-                dateTime={step.at}
-                title={formatAutomationRunTime(step.at)}
-              >
-                {stepDate === date ? "" : `${stepDate}, `}
-                {formatTime(step.at, STEP_TIME)}
-              </time>
-            </li>
-          );
-        })}
-      </ol>
-    </FactSection>
+      <p className="thin-scrollbar m-0 max-h-24 self-center overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-dashboard-text">
+        {run.error}
+      </p>
+      <CopyButton getText={() => run.error ?? ""} label="Copy error" />
+    </div>
+  );
+}
+
+/** The run's Conversation, loaded through the ordinary detail API. */
+function RunConversation(props: { conversationId: string }) {
+  const query = useConversationData(props.conversationId);
+  const detail = query.data;
+  if (query.isPending) return <TranscriptLoading />;
+  if (!detail) {
+    return (
+      <EmptyTelemetry>
+        This Conversation could not be loaded. Use Open conversation to view it
+        on its own page.
+      </EmptyTelemetry>
+    );
+  }
+  return (
+    <Transcript
+      hasPreviousPage={query.hasPreviousPage}
+      historyError={query.historyError}
+      historyVersion={query.historyVersion}
+      loadingPreviousPage={query.isLoadingPreviousPage}
+      onLoadPreviousPage={query.loadPreviousPage}
+      transcript={detail}
+    />
   );
 }
