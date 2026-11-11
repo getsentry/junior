@@ -276,23 +276,12 @@ export function archiveConversationMutationOptions(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : null;
-      // Match the API: archive also marks it read for this viewer; restore
-      // keeps the read state, because auto-archive does not mark it read.
-      const viewerMarks = args.archived
-        ? { archivedAt, unread: undefined }
-        : { archivedAt };
+      const viewerMarks = { archivedAt };
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
-      const snapshot =
+      const archivedSnapshot =
         buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
         previousArchivedSnapshot;
-      const archivedSnapshot =
-        snapshot && args.archived
-          ? {
-              ...snapshot,
-              conversation: { ...snapshot.conversation, unread: undefined },
-            }
-          : snapshot;
 
       previousFeeds.forEach(([queryKey, feed]) => {
         if (!feed) return;

@@ -16,19 +16,14 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  conversationReadReportSchema,
+  conversationReadPositionSchema,
   type ConversationDetailReport,
   type ConversationEventPage,
-  type ConversationFeed,
   type ConversationReadPosition,
 } from "@sentry/junior/api/schema";
 import { CONVERSATION_START_POSITION_STORAGE_KEY as START_POSITION_STORAGE_KEY } from "../../conversation-open";
 import { put } from "../http";
-import {
-  conversationDetailQueryKey,
-  conversationReadScope,
-  conversationUnreadMutationKey,
-} from "./queries";
+import { conversationDetailQueryKey, conversationReadScope } from "./queries";
 import { scrollRootFor } from "./transcriptBottomPinning";
 
 const READ_REPORT_DELAY_MS = 750;
@@ -187,57 +182,14 @@ export function useMarkConversationRead(conversationId: string) {
     scope: conversationReadScope(conversationId),
     mutationFn: (lastReadSeq: number) =>
       put(
-        conversationReadReportSchema,
+        conversationReadPositionSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/read-position`,
         { lastReadSeq },
       ),
-    onSuccess: async ({ unreadReply, ...readPosition }) => {
-      const detailQueryKey = conversationDetailQueryKey(conversationId);
-      const feeds = { queryKey: ["dashboard", "conversations"] };
-      // A Mark as read or unread queued after this report owns the flag.
-      const clearsUnread =
-        !unreadReply &&
-        queryClient.isMutating({
-          mutationKey: conversationUnreadMutationKey(conversationId),
-        }) === 0 &&
-        (queryClient.getQueryData<ConversationDetailReport>(detailQueryKey)
-          ?.unread ||
-          queryClient
-            .getQueriesData<ConversationFeed>(feeds)
-            .some(([, feed]) =>
-              feed?.conversations.some(
-                (conversation) =>
-                  conversation.conversationId === conversationId &&
-                  conversation.unread,
-              ),
-            ));
-      if (clearsUnread) {
-        // A poll that started before this read would put the unread flag
-        // back. The next poll reads after the write.
-        await Promise.all([
-          queryClient.cancelQueries(feeds),
-          queryClient.cancelQueries({ exact: true, queryKey: detailQueryKey }),
-        ]);
-        queryClient.setQueriesData<ConversationFeed>(feeds, (feed) =>
-          feed
-            ? {
-                ...feed,
-                conversations: feed.conversations.map((conversation) =>
-                  conversation.conversationId === conversationId
-                    ? { ...conversation, unread: undefined }
-                    : conversation,
-                ),
-              }
-            : feed,
-        );
-      }
+    onSuccess: (readPosition) => {
       queryClient.setQueryData<ConversationDetailReport>(
-        detailQueryKey,
-        (detail) =>
-          detail && {
-            ...withReadPosition(detail, readPosition),
-            ...(clearsUnread ? { unread: undefined } : undefined),
-          },
+        conversationDetailQueryKey(conversationId),
+        (detail) => detail && withReadPosition(detail, readPosition),
       );
     },
   });
@@ -247,14 +199,6 @@ export function useMarkConversationRead(conversationId: string) {
         conversationDetailQueryKey(conversationId),
       )?.readPosition?.lastReadSeq;
       if (stored !== undefined && lastReadSeq <= stored) return;
-      // A row seen before Mark as unread must not read the conversation again.
-      if (
-        queryClient.isMutating({
-          mutationKey: conversationUnreadMutationKey(conversationId),
-        }) > 0
-      ) {
-        return;
-      }
       mutate(lastReadSeq);
     },
     [conversationId, mutate, queryClient],

@@ -23,8 +23,8 @@ const DEPTH_INDENT = ["pl-[2.125rem]", "pl-[3.125rem]", "pl-[4.125rem]"];
 /**
  * Render one Thread under its parent in the sidebar. The row shows a status
  * icon, the title, and its age. A running Thread shows only its spinner and
- * no age, so the feed token skips its activity. Threads have no pin,
- * archive, or unread state here: archive applies to everyone, so it stays on
+ * no age, so the feed token skips its activity. Threads have no pin or
+ * archive here: archive applies to everyone, so it stays on
  * the Thread.
  */
 export const ConversationSidebarThreadRow = memo(

@@ -380,7 +380,6 @@ describe("dashboard canonical-event components", () => {
               delivery: () => {},
               eventLog: () => {},
               pin: () => {},
-              read: () => {},
               rename: () => {},
               subscription: () => {},
             },
@@ -392,7 +391,6 @@ describe("dashboard canonical-event components", () => {
               archive: false,
               delivery: false,
               pin: false,
-              read: false,
               subscription: false,
             },
           }}
