@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { ObjectIcon } from "../components/ObjectIcon";
+import { Badge } from "../components/ui/badge";
 import { slackLocationLabel } from "../format";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
@@ -49,10 +50,6 @@ function ContextTag(props: {
   label: string;
   title?: string;
 }) {
-  const className = cn(
-    "group/context-tag inline-flex h-6 min-w-0 items-center gap-1 rounded-md border border-dashboard-border-subtle px-1.5 font-sans text-2xs font-medium text-dashboard-text-muted",
-    props.className,
-  );
   const content = (
     <>
       {props.icon}
@@ -67,21 +64,18 @@ function ContextTag(props: {
     </>
   );
 
-  return props.href ? (
-    <OutboundLink
+  return (
+    <Badge
       className={cn(
-        className,
-        "no-underline transition-colors hover:border-dashboard-border-strong hover:bg-dashboard-fill-soft hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus",
+        "group/context-tag inline-flex h-6 min-w-0 items-center gap-1 font-medium",
+        props.className,
       )}
-      href={props.href}
-      title={props.title ?? props.label}
+      render={props.href ? <OutboundLink href={props.href} /> : undefined}
+      title={props.href ? (props.title ?? props.label) : props.label}
+      variant="outline"
     >
       {content}
-    </OutboundLink>
-  ) : (
-    <span className={className} title={props.label}>
-      {content}
-    </span>
+    </Badge>
   );
 }
 

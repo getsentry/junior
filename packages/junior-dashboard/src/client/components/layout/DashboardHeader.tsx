@@ -9,6 +9,7 @@ import {
 } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
 import { Kbd } from "../ui/kbd";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
@@ -36,9 +37,9 @@ const mobileBackClass =
 function NavCount(props: { count?: number }) {
   if (!props.count) return null;
   return (
-    <span className="ml-1.5 rounded-full bg-violet-300/20 px-1.5 py-0.5 text-xs text-violet-200">
+    <Badge className="ml-1.5 py-0.5" variant="highlight">
       {props.count.toLocaleString("en-US")}
-    </span>
+    </Badge>
   );
 }
 
