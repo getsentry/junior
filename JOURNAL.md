@@ -835,3 +835,66 @@ unchanged before and after `gh stack push`. No real model runs.
   wording, the old question no longer shows on the new card.
 - The concern label "Why it is worth checking:" is a guess at wording.
 
+
+## Slice 13: consistency (`walkthrough/13-consistency`)
+
+Thomas's notes on the slice 12 preview: chapter 1's header differs from the
+others, "Made in Conversation" makes no sense, the Usage accordion is an
+extra step, the claim card has no type hierarchy, and he wanted to see a
+single PR.
+
+#### What changed
+
+- **One header bar on every chapter:** title (wraps), `N PRs ▾` or the PR
+  link, cost, versions and Review. The scroll observer and the expandable
+  title are gone.
+- **The intent opens chapter 1** as story text (`text-base leading-7`, the
+  prose style), above the chapter's own header. "What changed since you
+  looked" stays above it in the story.
+- **Source:** `From: <Conversation title>` as an underlined link, under the
+  intent lead. It is not in the header, so the bar stays one line. The
+  title comes from the existing Conversation detail query. Nothing shows
+  while it loads or when the viewer cannot read it.
+- **Cost popover:** `ConversationUsageTables` is the breakdown without the
+  Collapsible. Conversation details still uses `ConversationUsageBreakdown`,
+  which wraps the same tables. `defaultOpen` is gone. The popover title is
+  "What it cost to make this Walkthrough: $X".
+- **Claim card:** two sizes. `text-sm` for the "Claim" label, status and
+  actions; `text-base leading-7` (the prose size) for the claim (medium) and
+  the concern (regular, with a muted "Why it's worth checking:" lead-in).
+  One action row: Agree, Request change, Skip, then a quiet "Ask about
+  this". The chosen button is filled and has a check. An answered card folds
+  to `Claim · ✓ Agreed · Change answer` above the claim. Once asked, "Ask
+  about this" gives way to "You asked about this claim… Read the answer".
+  "Does this answer your feedback?" uses the same card.
+- **Review panel:** chapter headings are `text-xs` muted (were faint), rows
+  are `text-sm` in the main text color, and an answered row names its status
+  under the claim.
+
+#### Diagram bug (#3071)
+
+The fixture had 9 nodes and **0 edges**. The 5-dashboard fixture had 8
+edges; the v2 conversion in 9-polish dropped them. The renderer was fine.
+The fixture gets its 8 edges back. The validator accepted an edgeless
+diagram, so it now rejects a diagram with more than one node and no edges.
+
+#### Single-PR check
+
+The header and claim card now read the same on #3071 as on the stack. The
+page still feels heavy on a single PR because of:
+- the Questions panel (24rem) always open, with one suggestion in it;
+- the 18rem rail for 3 chapters;
+- the left-to-right diagram, which scales its labels down to about 9px.
+
+#### Screenshots (`screenshots/consistency/`, desktop 1600×1000, mock mode, 128 colours)
+
+- before/after `-single-` (#3071) and `-stack-`: 01 chapter 1, 02 cost
+  popover, 03 chapter 2.
+- single 04 claim open, 05 agreed (folded), 06 asking, 07 asked
+  (after only), 08 review panel (after only).
+- stack 04 review panel, 05 review panel after agreeing (after only).
+
+#### Open
+
+- The mock source Conversation for both fixtures is "Investigate checkout
+  latency", which has nothing to do with the PRs.
