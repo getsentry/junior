@@ -35,9 +35,9 @@ pnpm view <package>@<target> version
 
 Allow for npm security scanning and propagation delays after publication:
 
-- If a version or tarball is missing, retry affected packages after 30, 60, and 120 seconds. Keep the same target; do not retry auth failures as publication delays.
-- Confirm missing versions with cache-busted npm metadata and the direct version endpoint. Continue only when every package's exact target version and tarball are available.
-- If still unavailable, leave app files unchanged and do not open an update PR. Report "not yet available on npm" with the target, affected packages, and checks. Missing packages alone do not prove a failed publish or a scanning delay; do not republish or cut another release.
+- Confirm missing versions with cache-busted npm metadata and the direct version endpoint. Continue only when every package's exact target version and tarball are available. Do not retry auth failures as publication delays.
+- If any package is missing, leave app files unchanged. Call `watchTimer` with `after_ms: 900000` (15 minutes) and an intent that names the target, the missing packages, and the wait number. End the Turn without a reply. When the timer fires, check the same target again.
+- Wait at most 4 times (one hour). If a package is still missing after the fourth wait, do not open an update PR. Report "not yet available on npm" with the target, affected packages, and checks. Missing packages alone do not prove a failed publish or a scanning delay; do not republish or cut another release.
 
 ### 3. Build release context
 
@@ -134,7 +134,7 @@ When PR creation returns a subscribable resource hint, watch the PR for suggeste
 
 ## Stop conditions
 
-- Any Junior package still lacks the target version or tarball after the bounded availability checks in step 2.
+- Any Junior package still lacks the target version or tarball after one hour of waits in step 2.
 - Any npm version in `(old_version, target_version]` lacks a matching GitHub release.
 - `pnpm install --frozen-lockfile` fails after repair.
 - Checks fail for non-pre-existing, non-environment reasons and no safe config fix is available from step 7.
