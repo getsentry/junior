@@ -14,6 +14,7 @@
  * The live deployment accepts personal tokens only for GET and HEAD, so live
  * data is read-only.
  */
+import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { exampleDashboardAuthRequired } from "./dashboard";
 
@@ -33,7 +34,12 @@ const DROPPED_RESPONSE_HEADERS = [
   "set-cookie",
   "transfer-encoding",
 ];
-const FORWARDED_REQUEST_HEADERS = ["accept", "if-none-match", "range"];
+const FORWARDED_REQUEST_HEADERS = [
+  "accept",
+  "if-none-match",
+  "range",
+  CONVERSATION_DETAIL_VERSION_HEADER,
+];
 
 function escapeHtml(value: string): string {
   return value
@@ -74,12 +80,14 @@ async function proxyRequest(
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // Follow redirects here: the browser would follow them to the live
+  // deployment without the token. `fetch` drops the token on a redirect to
+  // another origin.
   const upstream = await fetch(
     new URL(`${url.pathname}${url.search}`, origin),
     {
       headers,
       method: request.method,
-      redirect: "manual",
       signal: request.signal,
     },
   );
@@ -125,7 +133,6 @@ async function startLivePreview(
   if (token) {
     const me = await fetch(new URL("/api/me", origin), {
       headers: { authorization: `Bearer ${token}` },
-      redirect: "manual",
     });
     if (me.ok) return Response.redirect(new URL("/", url), 302);
   }

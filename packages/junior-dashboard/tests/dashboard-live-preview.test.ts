@@ -23,6 +23,11 @@ beforeAll(async () => {
       response.end(JSON.stringify({ error: "unauthenticated" }));
       return;
     }
+    if (request.url === "/api/moved") {
+      response.writeHead(302, { location: "/api/conversations" });
+      response.end();
+      return;
+    }
     response.writeHead(200, {
       "content-type": "application/json",
       "set-cookie": "live=1",
@@ -95,7 +100,11 @@ describe("dashboard live preview", () => {
 
     const api = await app.fetch(
       new Request("http://preview/api/conversations?q=deploy", {
-        headers: { ...basic(TOKEN), cookie: "preview=1" },
+        headers: {
+          ...basic(TOKEN),
+          cookie: "preview=1",
+          "x-junior-detail-version": "v1",
+        },
       }),
     );
     const page = await app.fetch(
@@ -108,8 +117,21 @@ describe("dashboard live preview", () => {
     expect(api.headers.get("x-junior-version")).toBe(JUNIOR_VERSION);
     expect(liveRequests[0]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
     expect(liveRequests[0]?.headers.cookie).toBeUndefined();
+    expect(liveRequests[0]?.headers["x-junior-detail-version"]).toBe("v1");
     expect(html).toContain("You are seeing a preview of");
     expect(html).toContain("delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__");
+  });
+
+  it("follows live redirects with the token", async () => {
+    const app = dashboard();
+
+    const response = await app.fetch(
+      new Request("http://preview/api/moved", { headers: basic(TOKEN) }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ url: "/api/conversations" });
+    expect(liveRequests[1]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
   });
 
   it("keeps live data read-only", async () => {
