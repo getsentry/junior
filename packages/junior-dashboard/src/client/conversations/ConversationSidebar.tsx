@@ -3,7 +3,7 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "./conversationDensity";
-import { Archive, ArchiveRestore, ArrowRight, Pin } from "lucide-react";
+import { Archive, ArchiveRestore, Pin } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -84,8 +84,6 @@ type ConversationSidebarEntry =
       kind: "thread-toggle";
       rootId: string;
     };
-
-const NEEDS_YOU_INBOX_PATH = "/review?filter=needs-you&group=conversation";
 
 // Denser than the pane chrome, like a Slack or Linear sidebar: 8px row
 // padding in a 6px list inset. Labels start 36px into the list; section
@@ -170,7 +168,6 @@ export function ConversationSidebar(props: {
             className="h-full"
             viewportClassName="px-1.5 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
-            <InboxLink count={props.waitingConversations.size} />
             {props.error ? (
               <div className="p-2">
                 <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -277,29 +274,6 @@ function ConversationRowsLoading() {
     <div aria-busy="true" aria-live="polite" role="status">
       <span className="sr-only">Loading your conversations</span>
       <ConversationRowSkeletons />
-    </div>
-  );
-}
-
-/**
- * Float the count of Conversations that wait on the viewer at the right of
- * the first section heading, so it takes no row. It scrolls with the list,
- * so it never covers a row. It opens the Inbox on their Review items,
- * grouped by Conversation. The rows stay in place and carry the waiting
- * marker.
- */
-function InboxLink(props: { count: number }) {
-  if (props.count === 0) return null;
-  return (
-    // A zero-height anchor at the top of the scrolled content.
-    <div className="relative h-0">
-      <Link
-        className="absolute top-1 right-1.5 z-10 flex items-center gap-1 rounded-lg bg-dashboard-surface-raised px-2 py-0.5 font-sans text-xs font-semibold text-dashboard-accent-text no-underline shadow-sm ring-1 ring-dashboard-accent/30 transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-        to={NEEDS_YOU_INBOX_PATH}
-      >
-        {props.count} in Inbox
-        <ArrowRight aria-hidden="true" size={13} />
-      </Link>
     </div>
   );
 }

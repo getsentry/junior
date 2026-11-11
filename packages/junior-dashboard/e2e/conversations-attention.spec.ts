@@ -175,9 +175,6 @@ test.describe("conversation sections", () => {
     await expect(sidebar.getByText("Needs you")).toHaveCount(0);
     const section = await sidebarSectionOf(sidebar, /Checkout latency triage/);
     expect(section).toMatch(/^\w/);
-    await expect(
-      page.getByRole("link", { name: "1 in Inbox" }),
-    ).toHaveAttribute("href", "/review?filter=needs-you&group=conversation");
     await screenshot(page, "conversations-needs-you");
 
     const heading = sidebar.locator("button[aria-expanded]", {
