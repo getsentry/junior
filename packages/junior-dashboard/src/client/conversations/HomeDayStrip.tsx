@@ -16,10 +16,16 @@ import { cn } from "../styles";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
 
 // Section order in the tooltip. Icons match the PR states in Conversations.
+// `count` names the day field that holds the full count for the kind.
 const ACTIVITY_KINDS = [
-  { icon: "git-merge", kind: "merged", label: "Merged" },
-  { icon: "git-pull-request", kind: "opened", label: "Opened" },
-  { icon: "circle-x", kind: "closed", label: "Closed" },
+  { count: "merged", icon: "git-merge", kind: "merged", label: "Merged" },
+  {
+    count: "created",
+    icon: "git-pull-request",
+    kind: "opened",
+    label: "Opened",
+  },
+  { count: "closed", icon: "circle-x", kind: "closed", label: "Closed" },
 ] as const;
 
 type ActivityKind = (typeof ACTIVITY_KINDS)[number]["kind"];
@@ -51,7 +57,7 @@ export function HomeDayStrip(props: {
             <TooltipTrigger
               render={
                 <span
-                  aria-label={`${formatDay(day.date)}: ${activitySummary(events)}`}
+                  aria-label={`${formatDay(day.date)}: ${activitySummary(day)}`}
                   className={cn(
                     "size-[7px] rounded-[1.5px] outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
                     contributionLevelClass(contributionLevel(day.merged, max)),
@@ -62,7 +68,7 @@ export function HomeDayStrip(props: {
               }
             />
             <TooltipContent className="w-80 p-0 leading-5" sideOffset={8}>
-              <DayActivity date={day.date} events={events} />
+              <DayActivity day={day} events={events} />
             </TooltipContent>
           </Tooltip>
         );
@@ -71,17 +77,24 @@ export function HomeDayStrip(props: {
   );
 }
 
-// Three tiers: section label, then PR title, then repository and number.
-function DayActivity(props: { date: string; events: ActivityEvent[] }) {
+/**
+ * Three tiers: section label, then PR title, then repository and number.
+ * Counts come from the day, which counts every PR. Names come from the code
+ * report, which is capped, so a section can name fewer PRs than it counts.
+ */
+function DayActivity(props: { day: CodeActivityDay; events: ActivityEvent[] }) {
   const sections = ACTIVITY_KINDS.map((kind) => ({
     ...kind,
-    events: props.events.filter((event) => event.kind === kind.kind),
-  })).filter((section) => section.events.length > 0);
+    events: props.events
+      .filter((event) => event.kind === kind.kind)
+      .slice(0, SECTION_LIMIT),
+    total: props.day[kind.count],
+  })).filter((section) => section.total > 0);
   return (
     <>
       <div className="px-3.5 py-2.5">
         <div className="font-medium text-dashboard-text">
-          {formatDay(props.date)}
+          {formatDay(props.day.date)}
         </div>
         {sections.length === 0 ? (
           <div className="text-dashboard-text-muted">No PR activity</div>
@@ -101,12 +114,12 @@ function DayActivity(props: { date: string; events: ActivityEvent[] }) {
                   {section.label}
                 </span>
                 <span className="text-dashboard-text-faint tabular-nums">
-                  {section.events.length}
+                  {section.total}
                 </span>
               </div>
               {/* pl-5 lines titles up with the label text after the icon. */}
               <ul className="m-0 grid list-none p-0 pl-5">
-                {section.events.slice(0, SECTION_LIMIT).map((event) => (
+                {section.events.map((event) => (
                   <li
                     className="flex min-w-0 items-baseline justify-between gap-3"
                     key={event.change.id}
@@ -123,9 +136,10 @@ function DayActivity(props: { date: string; events: ActivityEvent[] }) {
                     </span>
                   </li>
                 ))}
-                {section.events.length > SECTION_LIMIT ? (
+                {section.events.length > 0 &&
+                section.total > section.events.length ? (
                   <li className="text-dashboard-text-faint">
-                    +{section.events.length - SECTION_LIMIT} more
+                    +{section.total - section.events.length} more
                   </li>
                 ) : null}
               </ul>
@@ -160,9 +174,9 @@ function groupByDay(events: ActivityEvent[]) {
   return byDay;
 }
 
-function activitySummary(events: ActivityEvent[]): string {
+function activitySummary(day: CodeActivityDay): string {
   const parts = ACTIVITY_KINDS.map((kind) => ({
-    count: events.filter((event) => event.kind === kind.kind).length,
+    count: day[kind.count],
     kind: kind.kind,
   }))
     .filter((part) => part.count > 0)
