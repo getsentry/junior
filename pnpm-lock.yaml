@@ -125,7 +125,7 @@ importers:
         version: file:packages/junior-github
       '@sentry/junior-google':
         specifier: workspace:*
-        version: link:../../packages/junior-google
+        version: file:packages/junior-google
       '@sentry/junior-hex':
         specifier: workspace:*
         version: link:../../packages/junior-hex
@@ -337,7 +337,7 @@ importers:
         version: file:packages/junior-memory(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)
+        version: file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -553,7 +553,7 @@ importers:
         version: file:packages/junior-github
       '@sentry/junior-google':
         specifier: workspace:*
-        version: link:../junior-google
+        version: file:packages/junior-google
       '@sentry/junior-memory':
         specifier: workspace:*
         version: file:packages/junior-memory
@@ -565,7 +565,7 @@ importers:
         version: link:../junior-sentry
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing
+        version: file:packages/junior-testing(vitest@4.1.12(msw@2.14.6(typescript@7.0.2))(tsx@4.22.3))
       '@sentry/junior-vercel':
         specifier: workspace:*
         version: link:../junior-vercel
@@ -628,7 +628,7 @@ importers:
         version: 1.79.0
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing
+        version: file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@7.0.2))(tsx@4.22.3))
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -667,7 +667,7 @@ importers:
         version: 14.0.3
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2
+        version: 0.45.2(@types/pg@8.15.6)(pg@8.21.0)
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -677,16 +677,22 @@ importers:
         version: 1.79.0
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing
+        version: link:../junior-testing
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
       oxlint:
         specifier: ^1.79.0
         version: 1.79.0
+      pg:
+        specifier: ^8.16.3
+        version: 8.21.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(tsx@4.22.3)(typescript@7.0.2)
@@ -713,7 +719,7 @@ importers:
         version: 1.79.0
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing
+        version: file:packages/junior-testing(vitest@4.1.12(@types/node@25.9.1)(tsx@4.22.3))
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -745,7 +751,7 @@ importers:
         version: 14.0.3
       drizzle-orm:
         specifier: 'catalog:'
-        version: 0.45.2
+        version: 0.45.2(@types/pg@8.15.6)(pg@8.21.0)
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -755,16 +761,22 @@ importers:
         version: 1.79.0
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing
+        version: link:../junior-testing
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
+      '@types/pg':
+        specifier: ^8.15.6
+        version: 8.15.6
       drizzle-kit:
         specifier: 'catalog:'
         version: 0.31.10
       oxlint:
         specifier: ^1.79.0
         version: 1.79.0
+      pg:
+        specifier: ^8.16.3
+        version: 8.21.0
       tsdown:
         specifier: 0.23.1
         version: 0.23.1(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
@@ -819,7 +831,7 @@ importers:
         version: 1.79.0
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing
+        version: file:packages/junior-testing(vitest@4.1.12(@types/node@25.9.1)(tsx@4.22.3))
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -860,6 +872,9 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+      vitest:
+        specifier: ^4.1.12
+        version: 4.1.12(@types/node@25.9.1)(tsx@4.22.3)
 
   packages/junior-tts: {}
 
@@ -877,7 +892,7 @@ importers:
         version: 1.79.0
       '@sentry/junior-testing':
         specifier: workspace:*
-        version: file:packages/junior-testing
+        version: file:packages/junior-testing(vitest@4.1.12(@types/node@25.9.1)(tsx@4.22.3))
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -4423,6 +4438,9 @@ packages:
   '@sentry/junior-github@file:packages/junior-github':
     resolution: {directory: packages/junior-github, type: directory}
 
+  '@sentry/junior-google@file:packages/junior-google':
+    resolution: {directory: packages/junior-google, type: directory}
+
   '@sentry/junior-memory@file:packages/junior-memory':
     resolution: {directory: packages/junior-memory, type: directory}
 
@@ -4431,6 +4449,8 @@ packages:
 
   '@sentry/junior-testing@file:packages/junior-testing':
     resolution: {directory: packages/junior-testing, type: directory}
+    peerDependencies:
+      vitest: ^4.1.12
 
   '@sentry/junior@file:packages/junior':
     resolution: {directory: packages/junior, type: directory}
@@ -8134,6 +8154,7 @@ packages:
 
   node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
+    deprecated: This package is no longer needed on supported Node.js versions. Node.js 16+ includes AbortController and AbortSignal as built-in globals. All Node.js versions requiring this polyfill are end-of-life. Use the built-in globals instead.
 
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
@@ -13641,6 +13662,43 @@ snapshots:
       - sql.js
       - sqlite3
 
+  '@sentry/junior-google@file:packages/junior-google':
+    dependencies:
+      '@sentry/junior-plugin-api': file:packages/junior-plugin-api
+      commander: 14.0.3
+      drizzle-orm: 0.45.2
+      zod: 4.5.4
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@electric-sql/pglite'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
   '@sentry/junior-memory@file:packages/junior-memory':
     dependencies:
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
@@ -13722,11 +13780,12 @@ snapshots:
       commander: 14.0.3
       zod: 4.5.4
 
-  '@sentry/junior-testing@file:packages/junior-testing':
+  '@sentry/junior-testing@file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)':
     dependencies:
       '@electric-sql/pglite': 0.4.6
-      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(pg@8.21.0)
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       pg: 8.21.0
+      vitest: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(@vitest/coverage-v8@4.1.12)(jiti@2.7.0)(msw@2.14.6(@types/node@25.9.1)(typescript@7.0.2))(tsx@4.22.3)(yaml@2.9.0)
       zod: 4.5.4
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -13758,11 +13817,86 @@ snapshots:
       - sql.js
       - sqlite3
 
-  '@sentry/junior-testing@file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)':
+  '@sentry/junior-testing@file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@7.0.2))(tsx@4.22.3))':
     dependencies:
       '@electric-sql/pglite': 0.4.6
-      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(@types/pg@8.15.6)(pg@8.21.0)
       pg: 8.21.0
+      vitest: 4.1.12(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@7.0.2))(tsx@4.22.3)
+      zod: 4.5.4
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg-native
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
+  '@sentry/junior-testing@file:packages/junior-testing(vitest@4.1.12(@types/node@25.9.1)(tsx@4.22.3))':
+    dependencies:
+      '@electric-sql/pglite': 0.4.6
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(pg@8.21.0)
+      pg: 8.21.0
+      vitest: 4.1.12(@types/node@25.9.1)(tsx@4.22.3)
+      zod: 4.5.4
+    transitivePeerDependencies:
+      - '@aws-sdk/client-rds-data'
+      - '@cloudflare/workers-types'
+      - '@libsql/client'
+      - '@libsql/client-wasm'
+      - '@neondatabase/serverless'
+      - '@op-engineering/op-sqlite'
+      - '@opentelemetry/api'
+      - '@planetscale/database'
+      - '@prisma/client'
+      - '@tidbcloud/serverless'
+      - '@types/better-sqlite3'
+      - '@types/pg'
+      - '@types/sql.js'
+      - '@upstash/redis'
+      - '@vercel/postgres'
+      - '@xata.io/client'
+      - better-sqlite3
+      - bun-types
+      - expo-sqlite
+      - gel
+      - knex
+      - kysely
+      - mysql2
+      - pg-native
+      - postgres
+      - prisma
+      - sql.js
+      - sqlite3
+
+  '@sentry/junior-testing@file:packages/junior-testing(vitest@4.1.12(msw@2.14.6(typescript@7.0.2))(tsx@4.22.3))':
+    dependencies:
+      '@electric-sql/pglite': 0.4.6
+      drizzle-orm: 0.45.2(@electric-sql/pglite@0.4.6)(pg@8.21.0)
+      pg: 8.21.0
+      vitest: 4.1.12(msw@2.14.6(typescript@7.0.2))(tsx@4.22.3)
       zod: 4.5.4
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
