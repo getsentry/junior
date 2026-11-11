@@ -5,7 +5,7 @@
  * each request needs. Junior-owned issue, pull request, review, and push
  * writes never fall back to user OAuth. Merge, fork, branch deletion, REST ref
  * writes, and administration stay unsupported; unknown REST writes and
- * GraphQL mutations are denied.
+ * GraphQL mutations are denied. Git pushes never touch the default branch.
  */
 import {
   EgressPolicyDenied,
@@ -15,6 +15,8 @@ import {
   type PluginGrantAccess,
 } from "@sentry/junior-plugin-api";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
+import { assertGitHubPushAllowed } from "./receive-pack-policy.js";
+import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
 import {
   CREATE_TOOL_ROUTING_GUIDANCE,
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
@@ -24,6 +26,7 @@ import {
   isRecord,
   type GitHubGrant,
   type GitHubGrantName,
+  type GitHubRepository,
   type GitHubGrantReason,
 } from "./credential-support.js";
 
@@ -649,9 +652,10 @@ function grantForAccess(
   };
 }
 
-function requireRepositoryTarget(upstreamUrl: URL): void {
-  if (githubRepositoryFromUrl(upstreamUrl)) {
-    return;
+function requireRepositoryTarget(upstreamUrl: URL): GitHubRepository {
+  const repository = githubRepositoryFromUrl(upstreamUrl);
+  if (repository) {
+    return repository;
   }
   throw new EgressPolicyDenied(
     "GitHub write request has no repository in its URL. Use a /repos/{owner}/{repo}/... URL or a GitHub tool for the operation.",
@@ -664,14 +668,16 @@ function requireRepositoryTarget(upstreamUrl: URL): void {
  */
 export async function githubGrantForEgress(
   ctx: EgressHookContext,
+  env: GitHubInstallationEnv,
 ): Promise<GitHubGrant> {
   const upstreamUrl = new URL(ctx.request.url);
-  const grant = await selectGitHubGrant(ctx, upstreamUrl);
+  const grant = await selectGitHubGrant(ctx, env, upstreamUrl);
   const repository = githubRepositoryFromUrl(upstreamUrl);
   return repository
     ? {
         ...grant,
         auditAttributes: {
+          ...grant.auditAttributes,
           "app.github.repository": `${repository.owner}/${repository.name}`,
         },
       }
@@ -680,6 +686,7 @@ export async function githubGrantForEgress(
 
 async function selectGitHubGrant(
   ctx: EgressHookContext,
+  env: GitHubInstallationEnv,
   upstreamUrl: URL,
 ): Promise<GitHubGrant> {
   const method = ctx.request.method.toUpperCase();
@@ -700,12 +707,27 @@ async function selectGitHubGrant(
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
     if (smartHttpAccess === "write") {
-      requireRepositoryTarget(upstreamUrl);
-      return grantForAccess(
+      const repository = requireRepositoryTarget(upstreamUrl);
+      const grant = grantForAccess(
         "write",
         "github.installation-write",
         "installation-write",
       );
+      if (
+        method !== "POST" ||
+        !upstreamUrl.pathname.toLowerCase().endsWith("/git-receive-pack")
+      ) {
+        return grant;
+      }
+      return {
+        ...grant,
+        auditAttributes: await assertGitHubPushAllowed({
+          cache: ctx.cache,
+          env,
+          gitPush: ctx.request.gitPush,
+          repository,
+        }),
+      };
     }
     return grantForAccess(
       smartHttpAccess,

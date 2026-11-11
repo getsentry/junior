@@ -2,6 +2,7 @@ import {
   credentialAccount,
   credentialAuditAttributes,
 } from "@/chat/credentials/audit";
+import { isGitReceivePack, readGitPush } from "@/chat/egress/git-push";
 import { logAudit, logException, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
@@ -28,6 +29,7 @@ import {
 import {
   EgressAuthRequired,
   EgressPolicyDenied,
+  pluginAuditAttributesSchema,
 } from "@sentry/junior-plugin-api";
 
 // Module overview: own credentialed provider forwarding after a caller has
@@ -91,17 +93,7 @@ export type CredentialedEgressHttpInterceptor = (input: {
 
 /** Runtime dependencies for the credentialed provider forwarding step. */
 export interface CredentialedEgressDeps {
-  clearCredentialLease?: (
-    provider: string,
-    grant: SandboxEgressCredentialLease["grant"],
-    credentialContext: SandboxEgressCredentialContext,
-  ) => Promise<void>;
   fetch?: typeof fetch;
-  issueCredentialLease?: (
-    provider: string,
-    selection: SandboxEgressGrantSelection,
-    credentialContext: SandboxEgressCredentialContext,
-  ) => Promise<SandboxEgressCredentialLease>;
   interceptHttp?: CredentialedEgressHttpInterceptor;
   recordAuthRequired?: (input: {
     authorization?: SandboxEgressCredentialLease["authorization"];
@@ -110,14 +102,6 @@ export interface CredentialedEgressDeps {
     kind?: "auth_required" | "unavailable";
     message: string;
     provider: string;
-  }) => Promise<void>;
-  recordPermissionDenied?: (input: {
-    credentialContext: SandboxEgressCredentialContext;
-    lease: SandboxEgressCredentialLease;
-    message: string;
-    provider: string;
-    upstream: Response;
-    upstreamUrl: URL;
   }) => Promise<void>;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
@@ -578,6 +562,23 @@ async function recordSandboxPermissionDenied(input: {
   });
 }
 
+async function recordSandboxPolicyDenied(input: {
+  credentialContext: SandboxEgressCredentialContext;
+  message: string;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): Promise<void> {
+  await setSandboxEgressPermissionDeniedSignal(input.credentialContext, {
+    message: input.message,
+    method: input.request.method.toUpperCase(),
+    provider: input.provider,
+    source: "policy",
+    upstreamHost: input.upstreamUrl.hostname,
+    upstreamPath: displayedUpstreamPath(input.upstreamUrl),
+  });
+}
+
 /**
  * Forward one verified sandbox egress request with host-managed credentials.
  *
@@ -644,6 +645,9 @@ export async function executeCredentialedEgressRequest(input: {
         request,
         upstreamUrl,
       }),
+      ...(isGitReceivePack(request.method, upstreamUrl)
+        ? { gitPush: readGitPush(body) }
+        : undefined),
       ...(operation ? { operation } : undefined),
       provider,
       method: request.method,
@@ -662,26 +666,29 @@ export async function executeCredentialedEgressRequest(input: {
         }),
         ...routingAttributes(request, upstreamUrl),
         ...credentialAuditAttributes(credentialContext.source),
+        ...pluginAuditAttributesSchema.safeParse(error.auditAttributes).data,
         ...egressDecisionAttributes("denied", error.message),
+      });
+      // Sandbox commands read this signal. Host plugin tools read the 403.
+      await recordSandboxPolicyDenied({
+        credentialContext,
+        message: error.message,
+        provider,
+        request,
+        upstreamUrl,
       });
       return policyDeniedResponse(error);
     }
     throw error;
   }
-  const issueCredentialLease =
-    deps.issueCredentialLease ?? sandboxEgressCredentialLease;
-  const clearCredentialLease =
-    deps.clearCredentialLease ?? clearSandboxEgressCredentialLease;
   const recordAuthRequired =
     deps.recordAuthRequired ?? recordSandboxAuthRequired;
-  const recordPermissionDenied =
-    deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
   async function resolveLease(): Promise<
     SandboxEgressCredentialLease | Response
   > {
     try {
-      return await issueCredentialLease(
+      return await sandboxEgressCredentialLease(
         provider,
         grantSelection,
         credentialContext,
@@ -816,7 +823,11 @@ export async function executeCredentialedEgressRequest(input: {
       if (!isEgressAuthRequired(error)) {
         throw error;
       }
-      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
       await recordAuthRequired({
         credentialContext,
         provider,
@@ -855,7 +866,11 @@ export async function executeCredentialedEgressRequest(input: {
         "app.sandbox.egress.www_authenticate":
           upstream.headers.get("www-authenticate") ?? undefined,
       });
-      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
       await recordAuthRequired({
         credentialContext,
         provider,
@@ -877,7 +892,11 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
       });
-      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
       await upstream.body?.cancel().catch(() => undefined);
       logWarn("sandbox.egress.upstream_auth.retrying", {
         ...attributes(lease, upstream.status),
@@ -894,8 +913,12 @@ export async function executeCredentialedEgressRequest(input: {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status),
       });
-      await clearCredentialLease(provider, lease.grant, credentialContext);
-      await recordPermissionDenied({
+      await clearSandboxEgressCredentialLease(
+        provider,
+        lease.grant,
+        credentialContext,
+      );
+      await recordSandboxPermissionDenied({
         credentialContext,
         provider,
         lease,
@@ -918,7 +941,7 @@ export async function executeCredentialedEgressRequest(input: {
     }
 
     if (pluginPermissionDenied) {
-      await recordPermissionDenied({
+      await recordSandboxPermissionDenied({
         credentialContext,
         provider,
         lease,
