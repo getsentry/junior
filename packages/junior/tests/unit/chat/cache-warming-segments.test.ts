@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
@@ -397,6 +398,79 @@ describe("cache warming gap segments", () => {
     } finally {
       mocks.sendCacheWarmup.mockImplementation(async () => {});
       await state.delete("junior:cache_warming:gaps:user:1:none");
+    }
+  });
+
+  it("warms an idle period whose request holds an image over the snapshot limit", async () => {
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mocks.sendCacheWarmup.mockClear();
+    // Random bytes do not compress, like a screenshot.
+    const data = randomBytes(1024 * 1024).toString("base64");
+    const imageKey = `junior:cache_warming:image:${conversationId}:${createHash(
+      "sha256",
+    )
+      .update(data)
+      .digest("hex")}`;
+    const imageContext: Context = {
+      ...context,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "What is in this screenshot?" },
+            { type: "image", data, mimeType: "image/png" },
+          ],
+          timestamp: 1,
+        },
+      ],
+    };
+    const requests: Array<Record<string, unknown>> = [];
+    mockTitleModel("", {
+      onRequest: (request) => requests.push(request as Record<string, unknown>),
+    });
+    try {
+      // The Turn sends its request to the model service, like a run does.
+      const recorder = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        runPrompt,
+      );
+      await (await recorder.wrap()(model, imageContext, {})).result();
+      await recorder.record(finalReply);
+      const warmup = scheduledWarmup();
+      await runCacheWarmup(warmup);
+
+      // The warmup sends the cached prefix of the Turn's request unchanged.
+      expect(requests).toHaveLength(2);
+      const [turnRequest, warmupRequest] = requests;
+      expect(JSON.stringify(warmupRequest!.messages)).toContain(data);
+      for (const field of ["system", "messages", "tools"]) {
+        expect(JSON.stringify(warmupRequest![field])).toBe(
+          JSON.stringify(turnRequest![field]),
+        );
+      }
+
+      // The next idle period lost its image, so its warmup sends nothing.
+      await endTurn(true, conversationId, imageContext);
+      const next = scheduledWarmup();
+      await state.delete(imageKey);
+      await runCacheWarmup(next);
+      expect(requests).toHaveLength(2);
+      expect(
+        await state.get(
+          `junior:cache_warming:snapshot:${conversationId}:${next.generation}`,
+        ),
+      ).toBeNull();
+    } finally {
+      await state.delete(imageKey);
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
     }
   });
 

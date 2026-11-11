@@ -17,22 +17,16 @@
  * Work for an old idle period then cannot change a newer one.
  */
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
-import {
-  constants as zlibConstants,
-  zstdCompress as zstdCompressCallback,
-  zstdDecompress as zstdDecompressCallback,
-} from "node:zlib";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   streamSimple,
   type AssistantMessage,
-  type Context,
 } from "@earendil-works/pi-ai/compat";
 import type { Platform } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import { metrics } from "@/chat/sentry";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
   buildDeploymentSystemPrompt,
@@ -65,18 +59,9 @@ import {
   type ConnectedState,
   type ModelRequest,
 } from "./request";
+import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
 import { createToolWaitWarmer } from "./tool-wait";
 import { readSegmentState } from "./work-state";
-
-// Compress off the event loop, so a large snapshot does not delay other work.
-const zstdCompress = promisify(zstdCompressCallback);
-const zstdDecompress = promisify(zstdDecompressCallback);
-// Compute matters more than size here. On sample contexts, level 1 is the
-// fastest level that keeps the snapshot within about 10% of level 3's size.
-// Negative levels are no faster and much larger.
-const SNAPSHOT_ZSTD_PARAMS = {
-  params: { [zlibConstants.ZSTD_c_compressionLevel]: 1 },
-};
 
 /** Gaps kept in each segment list. */
 export const GLOBAL_GAPS_MAX = 2_000;
@@ -85,7 +70,6 @@ export const GLOBAL_GAPS_TTL_MS = 30 * 24 * 60 * MINUTE_MS;
 const CONVERSATION_GAPS_MAX = 50;
 /** The Turn count of a Conversation resets after this long with no call. */
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
-const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
   /** The `gapSegment` that this period records its gap in. */
@@ -103,6 +87,8 @@ interface WarmState {
   prefixTokens: number;
   cacheTtlMs: number;
   reasoning?: ThinkingLevel;
+  /** Unset in idle periods from before it was stored. */
+  snapshot?: SnapshotSize;
 }
 
 interface IdlePeriod {
@@ -143,6 +129,11 @@ const segmentAttributes = (warm: WarmState) => ({
   "app.cache_warming.work_state": warm.workState,
   "app.cache_warming.archived": warm.archived,
 });
+const snapshotAttributes = (size: SnapshotSize) => ({
+  "app.cache_warming.snapshot_bytes": size.bytes,
+  "app.cache_warming.snapshot_image_count": size.imageCount,
+  "app.cache_warming.snapshot_image_bytes": size.imageBytes,
+});
 
 // Send the warmup that refreshes the cache that a request at
 // `requestStartedAtMs` read or wrote.
@@ -159,28 +150,6 @@ async function scheduleWarmup(
     warm.cacheTtlMs,
   );
   await sendCacheWarmup({ ...message, cacheExpiresAtMs }, delayMs);
-}
-
-// Keep only the tool fields that Pi sends to the provider.
-function snapshotContext(context: Context): Context {
-  return {
-    ...(context.systemPrompt !== undefined
-      ? { systemPrompt: context.systemPrompt }
-      : undefined),
-    messages: context.messages,
-    ...(context.tools
-      ? {
-          tools: context.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-            ...(tool.constrainedSampling !== undefined
-              ? { constrainedSampling: tool.constrainedSampling }
-              : undefined),
-          })),
-        }
-      : undefined),
-  };
 }
 
 // The reply and the horizon can run at the same time. Only the first one to
@@ -231,28 +200,41 @@ async function startIdlePeriod(
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
-  // State values are JSON, so the compressed bytes are stored as base64.
-  const snapshot = (
-    await zstdCompress(
-      JSON.stringify(snapshotContext(request.context)),
-      SNAPSHOT_ZSTD_PARAMS,
-    )
-  ).toString("base64");
-  if (snapshot.length > MAX_SNAPSHOT_BYTES) {
-    logInfo("cache_warming.snapshot.skipped", {
+  const { stored, ...snapshot } = await saveSnapshot(
+    state,
+    conversationId,
+    snapshotKey(conversationId, idle.generation),
+    request.context,
+    IDLE_HORIZON_MS,
+  );
+  // Spans are sampled. These metrics show the size distribution of every
+  // snapshot, so the limit can be tuned.
+  const metricOptions = {
+    unit: "byte",
+    attributes: { "app.cache_warming.stored": stored },
+  };
+  metrics.distribution(
+    "cache_warming.snapshot.bytes",
+    snapshot.bytes,
+    metricOptions,
+  );
+  metrics.distribution(
+    "cache_warming.snapshot.image_bytes",
+    snapshot.imageBytes,
+    metricOptions,
+  );
+  if (!stored) {
+    // A warning, so production keeps this idle period that Junior cannot warm.
+    logWarn("cache_warming.snapshot.skipped", {
+      "app.cache_warming.skip_reason": "snapshot_too_large",
       "app.cache_warming.prefix_tokens": prefixTokens,
-      "app.cache_warming.snapshot_bytes": snapshot.length,
+      ...snapshotAttributes(snapshot),
     });
     return idle;
   }
   // Read here, not on each model call: only a period that Junior can warm
   // records a gap.
   const segmentState = await readSegmentState(conversationId, Date.now());
-  await state.set(
-    snapshotKey(conversationId, idle.generation),
-    snapshot,
-    IDLE_HORIZON_MS,
-  );
   const segmentInput = { ...turn, ...segmentState };
   const parentSegment = parentGapSegment(segmentInput);
   return {
@@ -273,6 +255,7 @@ async function startIdlePeriod(
       prefixTokens,
       cacheTtlMs: ttlMs,
       ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
+      snapshot,
     },
   };
 }
@@ -507,7 +490,18 @@ export function createCacheWarmingRecorder(
  * - `skipped`: `skip_reason` is `cache_expired`, `breaker_open`,
  *   `prompt_changed` (a deploy changed the system prompt, so the idle period
  *   stops), `stopped` (warming stopped or the tools returned first; no log),
- *   or a `decideWarmup` reason.
+ *   `image_missing` (an image key of the snapshot expired, so the idle period
+ *   stops), or a `decideWarmup` reason.
+ *
+ * Idle warmups carry the sizes of the idle period's snapshot:
+ * `snapshot_bytes` (compressed, without images), `snapshot_image_count`
+ * (distinct images stored under hash keys), and `snapshot_image_bytes`
+ * (their base64 data). A snapshot that is still over the limit stores
+ * nothing and warns `cache_warming.snapshot.skipped` with `skip_reason`
+ * `snapshot_too_large`, `prefix_tokens`, and the same sizes. Each snapshot
+ * also records the unsampled distribution metrics
+ * `cache_warming.snapshot.bytes` and `cache_warming.snapshot.image_bytes`,
+ * with `app.cache_warming.stored` false for a snapshot over the limit.
  *
  * `work_state` and `archived` are read when the idle period starts and pick
  * its `gapSegment`. Decision attributes are absent when the warmup skipped
@@ -545,6 +539,7 @@ export async function runCacheWarmup(
     "app.cache_warming.prefix_tokens": warm.prefixTokens,
     "app.cache_warming.trigger": "idle",
     ...segmentAttributes(warm),
+    ...(warm.snapshot ? snapshotAttributes(warm.snapshot) : undefined),
     // Queue delay shows as a smaller time left than the warmup margin.
     "app.cache_warming.cache_ttl_left_ms":
       message.cacheExpiresAtMs - Date.now(),
@@ -636,19 +631,20 @@ export async function runCacheWarmup(
         return;
       }
 
-      // Warming stopped, or the idle period ended.
-      const snapshot = await state.get<string>(
+      const context = await loadSnapshot(
+        state,
+        conversationId,
         snapshotKey(conversationId, generation),
       );
-      if (!snapshot) {
+      // Warming stopped, or the idle period ended.
+      if (context === "stopped") {
         setOutcome("skipped", { "app.cache_warming.skip_reason": "stopped" });
         return;
       }
-      const context = JSON.parse(
-        (await zstdDecompress(Buffer.from(snapshot, "base64"))).toString(
-          "utf8",
-        ),
-      ) as Context;
+      if (context === "image_missing") {
+        await skip("image_missing");
+        return;
+      }
       const startedAtMs = Date.now();
       const warmup = await sendWarmup(state, {
         conversationId,
