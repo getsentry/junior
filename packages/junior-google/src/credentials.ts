@@ -22,11 +22,13 @@ import {
 
 /** Calendar and Drive API host. */
 export const GOOGLE_API_DOMAIN = "www.googleapis.com";
+const GOOGLE_DOCS_API_DOMAIN = "docs.googleapis.com";
 const GOOGLE_SHEETS_API_DOMAIN = "sheets.googleapis.com";
 const GOOGLE_SLIDES_API_DOMAIN = "slides.googleapis.com";
 /** Every host that receives Junior's Google access token. */
 export const GOOGLE_API_DOMAINS = [
   GOOGLE_API_DOMAIN,
+  GOOGLE_DOCS_API_DOMAIN,
   GOOGLE_SHEETS_API_DOMAIN,
   GOOGLE_SLIDES_API_DOMAIN,
 ];
@@ -72,6 +74,24 @@ export const GOOGLE_OPERATIONS = {
     method: "POST",
     path: /^\/calendar\/v3\/freeBusy$/,
   },
+  "google.docs.document.batchUpdate": {
+    access: "write",
+    host: GOOGLE_DOCS_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/documents\/[A-Za-z0-9_-]+:batchUpdate$/,
+  },
+  "google.docs.document.create": {
+    access: "write",
+    host: GOOGLE_DOCS_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/documents$/,
+  },
+  "google.docs.document.get": {
+    access: "read",
+    host: GOOGLE_DOCS_API_DOMAIN,
+    method: "GET",
+    path: /^\/v1\/documents\/[A-Za-z0-9_-]+$/,
+  },
   "google.drive.comments.list": {
     access: "read",
     host: GOOGLE_API_DOMAIN,
@@ -95,6 +115,19 @@ export const GOOGLE_OPERATIONS = {
     host: GOOGLE_API_DOMAIN,
     method: "GET",
     path: /^\/drive\/v3\/files$/,
+  },
+  // `drive.file` limits this to files Junior's OAuth client created.
+  "google.drive.permission.create": {
+    access: "write",
+    host: GOOGLE_API_DOMAIN,
+    method: "POST",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
+  },
+  "google.drive.permissions.list": {
+    access: "read",
+    host: GOOGLE_API_DOMAIN,
+    method: "GET",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
   },
   "google.sheets.spreadsheet.get": {
     access: "read",

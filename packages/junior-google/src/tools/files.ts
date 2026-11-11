@@ -93,6 +93,7 @@ export async function googleFileRequest(
   ctx: GoogleToolContext,
   file: FileReference,
   input: {
+    body?: unknown;
     headers?: Record<string, string>;
     operation: GoogleOperation;
     path: string;
@@ -123,6 +124,7 @@ export async function googleFileRequest(
 }
 
 const driveFileSchema = z.object({
+  capabilities: z.object({ canEdit: z.boolean().optional() }).optional(),
   id: z.string(),
   mimeType: z.string(),
   modifiedTime: z.string().optional(),
@@ -145,7 +147,7 @@ export async function readGoogleFile(
     operation: "google.drive.file.get",
     path: `/drive/v3/files/${file.fileId}`,
     query: {
-      fields: "id,mimeType,modifiedTime,name,webViewLink",
+      fields: "capabilities(canEdit),id,mimeType,modifiedTime,name,webViewLink",
       supportsAllDrives: "true",
     },
   });

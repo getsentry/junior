@@ -1,17 +1,19 @@
 # @sentry/junior-google
 
 Proof of concept. Junior uses its own Google Workspace account, such as
-`junior@example.com`, to schedule meetings, read Meet transcripts, and read
-Google Docs, Sheets, and Slides that are shared with that account. Junior does
+`junior@example.com`, to schedule meetings, read Meet transcripts, read
+Google Docs, Sheets, and Slides that are shared with that account, and create
+and edit Google Docs. Junior does
 not use the Google credentials of the people it helps.
 
 ## Setup
 
 1. In the Google Cloud project of the dashboard OAuth client, enable the
-   Calendar, Drive, Sheets, and Slides APIs.
+   Calendar, Docs, Drive, Sheets, and Slides APIs.
 2. Use an **Internal** consent screen. Add the scopes
    `calendar.events.freebusy`, `calendar.events.readonly`,
-   `calendar.events.owned`, and `drive.readonly`.
+   `calendar.events.owned`, `documents`, `drive.file`, and `drive.readonly`.
+   After you add a scope, reconnect the account in step 7.
 3. Add the redirect URIs
    `https://<junior host>/api/plugins/google/oauth/callback` and
    `http://127.0.0.1:8765/oauth/callback` (CLI).
@@ -24,6 +26,9 @@ not use the Google credentials of the people it helps.
    `junior google connect`.
 
 Anyone who can talk to Junior can read what the Junior account can see. Share
-calendars and files with that account only when that is acceptable.
+calendars and files with that account only when that is acceptable. Junior
+edits a Doc only for a requester who can edit it through their own email,
+their domain, or an editable link. Access through a Google group is not
+checked. Junior shares a Doc it creates only with the requester.
 
 Plugin setup: https://junior.sentry.dev/extend/
