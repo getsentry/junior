@@ -20,13 +20,23 @@ Read this first after a sandbox reset or context loss.
 - Slice 3: new tables only; pass #3070 lock check; index the column the
   `listedConversation()` exclusion reads; check the query plan.
 - Slice 4a: skill uses `disable-model-invocation: true`; `submitWalkthrough`
-  must exist only in generation Turns (mechanism TBD, first task of 4a).
+  exists only in generation Turns via `turnBehavior` WALKTHROUGH_GENERATION.
 - Slice 4b: on/off switch, off by default, blocks routes (404); step and
   dollar limits. Slice 5 entry points use the same switch.
 
-## Open questions
+## Current state (2026-11-11)
 
-- None.
+- Stack #3089 on main: #3087 (1-schema) → #3088 (2-code-change-hooks) →
+  #3090 (3-storage, migration 0100) → #3124 (4a-generation-tool). All drafts,
+  all mergeable. Use `gh stack rebase` / `gh stack push` to update.
+- Next: slice 4b (see the last log entry for scope).
+
+## Open questions (decide in 4b)
+
+- Generation Conversation visibility: a public generation Conversation
+  cannot read a private source Conversation.
+- Stacks API can list merged layers: skip them or include them?
+- Read #3052 before writing the worker.
 
 ## Log
 
