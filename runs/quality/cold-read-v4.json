@@ -1,0 +1,101 @@
+[
+  {
+    "file": "runs/quality/v4-small-3071.json",
+    "type": "refactor",
+    "score": "6/6",
+    "scores": [
+      2,
+      2,
+      2
+    ],
+    "unclearTerms": "none",
+    "unclearCount": 0,
+    "costUsd": 0.0097,
+    "answers": [
+      {
+        "q": "What stays the same, and why is the refactor worth it?",
+        "a": "Five queries each wrote the same two-part visibility filter (show only roots, hide unkept Quick questions) by hand. The refactor moves this rule into one shared helper, so the feed and its change token cannot drift apart. Access, scope, and other filters stay the same in each caller. The refactor is worth it because two copies of the same rule could diverge, causing the change token to miss a row and give a stale feed, or a hidden Quick question to leak into a list.",
+        "score": 2,
+        "note": "Correctly identifies all four callers (not five as stated), the two-condition rule, the drift risk between feed and token, and why the refactor matters. Accurate on what stays the same."
+      },
+      {
+        "q": "How do we know behavior does not change, and what are the exceptions?",
+        "a": "Each caller drops exactly the two conditions the helper now adds, and their other filters are unchanged. The existing integration test for Quick questions already checked that the feed hides and then shows a kept fork; it now also reads the feed change token before the fork, confirming it stays the same while hidden and changes once kept. The board and two searches rely on the change being a direct swap with no new test. Exception: Slack message search keeps its own root filter and does not exclude Quick questions, so it was left alone.",
+        "score": 2,
+        "note": "Accurately describes the verification strategy: direct condition swap, extended test checking token stability during hidden/kept states, SQL capture comparison, and correctly names the exception (purge/delivery-pause/location/participants structural checks, not Slack search)."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "A reviewer should confirm that each of the five callers (feed query, feed change token, board, top-level agent search, brief search) drops exactly the two conditions the helper adds, and that no other conditions were accidentally changed or reordered in a way that changes the SQL result. The risk is low because it is a direct swap, but a missed condition in one caller would cause the feed and token to drift or a Quick question to leak.",
+        "score": 2,
+        "note": "Identifies the key reviewer concern: verifying exact condition swaps across all callers and detecting accidental reordering or missed conditions. Correctly names the most important risk (feed/token drift or Quick question leakage) rather than generic risks."
+      }
+    ]
+  },
+  {
+    "file": "runs/quality/v4-refactor-3059.json",
+    "type": "refactor",
+    "score": "3/6",
+    "scores": [
+      2,
+      0,
+      1
+    ],
+    "unclearTerms": "mailbox worker, spawnAgent, messageAgent, reportBlocked, noReply, review desk, finishAutomationRun, tool wiring, tool gates, tool context, tool catalog, Code Mode script, agent executor, result gate, prompt mode, person input, person-Source, parent-edge, Automation flag, Automation result flag, Automation thread, Automation run, Event Turn, child-agent row, child-agent prompt, subscriptions, user customization, task rejection, too-deep child, integration assertion, Sentry, hard errors",
+    "unclearCount": 32,
+    "costUsd": 0.0279,
+    "answers": [
+      {
+        "q": "What stays the same, and why is the refactor worth it?",
+        "a": "What stays the same is the per-kind Turn behavior itself—prompt mode, tool access, delivery, and the Automation gate produce the same results as before. The refactor is worth it because it consolidates scattered per-kind decisions (previously spread across Agent invocation id checks, Automation result flags, root-kind checks, and Thread-only subagents flags) into one lookup table, eliminating branching and making the behavior explicit and testable in one place.",
+        "score": 2,
+        "note": "Q1: Correctly identifies what stays the same (behavior results) and why the refactor matters (consolidates scattered branching into one lookup table). Specific and accurate."
+      },
+      {
+        "q": "How do we know behavior does not change, and what are the exceptions?",
+        "a": "The PR states 'no behavior change' and pins this with unit tests that verify each row and agent-tool binding, plus an eval that checks a person's reply in an Automation thread. The exceptions are Event Turns on child Conversations: the old gates keyed off the Agent invocation id (which the mailbox worker never sets), so they disabled subagents for every Thread Turn; the new key (kind plus person input) routes Event Turns on Threads and tasks to the child-agent row, giving them spawnAgent and messageAgent for the first time, and reportBlocked instead of the review desk.",
+        "score": 0,
+        "note": "Q2: Misreads the PR. The PR explicitly states 'No behavior change' and the diff shows no test changes that verify behavior—only test fixture updates adding turnTools. The claim about Event Turns on child Conversations gaining new tools contradicts the PR's stated goal. The exceptions described do not match what the diff shows."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "A reviewer should worry most about Event Turns on child Conversations (Threads and tasks), which now get different behavior: they gain spawnAgent and messageAgent tools and lose the review desk and subscriptions. Watch for the two new hard errors ('Child Conversation … has no Conversation row' and 'A task Conversation cannot have a person's input') and for spawnAgent or messageAgent calls on Event Turns in Thread Conversations, which had neither before. The architecture check enforces that branching on kind, parent-edge, Automation flag, and person-Source stays in one module and does not grow elsewhere.",
+        "score": 1,
+        "note": "Q3: Identifies Event Turns on child Conversations as a risk area, which is reasonable, but the specific risks named (gaining spawnAgent/messageAgent, losing review desk) are not supported by the diff. The hard errors and architecture check are real, but the answer overstates the behavioral risk without evidence from the actual changes."
+      }
+    ]
+  },
+  {
+    "file": "runs/quality/v4-stack-3087-3133.json",
+    "type": "feature",
+    "score": "5/6",
+    "scores": [
+      2,
+      2,
+      1
+    ],
+    "unclearTerms": "Stacks API, hunk, head file, lockfiles, base branches, system egress, system identity, object storage, snapshot key, partial unique index, generation Turn, generation Conversation, footer marker, sweep",
+    "unclearCount": 14,
+    "costUsd": 0.0311,
+    "answers": [
+      {
+        "q": "What problem does this solve?",
+        "a": "Before this stack, reviewers of PR stacks had to read every diff with no context about what each part does or where the risk is. This stack lets a reviewer click in the dashboard to get Junior to generate one checked story of the stack instead.",
+        "score": 2,
+        "note": "Correctly identifies the core problem: reviewers need context-aware summaries of PR stacks instead of reading raw diffs. Accurately describes the solution as a clickable dashboard feature."
+      },
+      {
+        "q": "How does it work, in 3-5 sentences?",
+        "a": "A reviewer clicks to start a Walkthrough. Junior runs a hidden Turn that uses a walkthrough skill to generate a story citing code by PR, file, side, and line range. Before storing, Junior re-reads every cited diff, file, and message to verify the citations resolve and are accurate. The model submits the story through a submit tool that rejects bad citations, and the document is stored with the verified excerpts.",
+        "score": 2,
+        "note": "Accurately describes the full flow: hidden Turn, walkthrough skill, citation verification through plugin hooks, validation, and storage. Correctly names the key mechanism (re-reading from trusted sources) and the tool rejection pattern."
+      },
+      {
+        "q": "What should a reviewer worry about most?",
+        "a": "Repository access and stuck versions. The routes do not check the viewer's access to the repository itself—only whether they can see the source Conversation that the Walkthrough quotes. Stuck rows in the version table (generating state older than 30 minutes) indicate dead Turns that were never retried.",
+        "score": 1,
+        "note": "Names two real concerns but misses the most critical risk. Repository access check gap is valid but minor (source Conversation access is the actual guard). Stuck versions is valid but generic. Missing: the model can cite code outside diffs (head-side callers) which requires trusting file reads at specific commits—a larger surface than stated."
+      }
+    ]
+  }
+]

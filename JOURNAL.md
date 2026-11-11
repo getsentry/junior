@@ -898,3 +898,107 @@ page still feels heavy on a single PR because of:
 
 - The mock source Conversation for both fixtures is "Investigate checkout
   latency", which has nothing to do with the PRs.
+
+## Slice 14: quality (`walkthrough/14-quality`)
+
+Thomas: the stack Walkthrough is accurate, but a reader can't follow it on
+its own. It has no why and no map. It puts identifiers before behavior, is
+too dense, buries the risk, has inventory chapters, and doesn't explain
+feature terms. His correction: the opening comes from the change type, not
+from a generic orientation rule.
+
+#### Skill (`walkthrough/SKILL.md`)
+
+- A table gives each type its opening and what a reviewer must check:
+  - bug fix: what broke and the root cause / is it the root cause, side effects;
+  - feature: the problem and what changes for the user / the gap, how it is tested;
+  - refactor: what stays the same and why it is worth it / proof, exceptions;
+  - migration: why / safe to run, rollback;
+  - performance: hot path and numbers / are the numbers real;
+  - dependency: what changed upstream / blast radius;
+  - UI: before and after / states and edge cases.
+- Every Walkthrough has two chapters:
+  - the opening comes first, with `role: "opening"`. It is written in the
+    reader's terms: what was wrong or missing before, then what changes. A
+    stack or a mixed change also gets a map of its parts, the diagram, and
+    where the risk is.
+  - "how we know it works", with `role: "proof"`.
+- The target reader knows the repository and TERMINOLOGY.md, but not this
+  change.
+- Writing rules:
+  - define new terms and feature names;
+  - say what a thing does before naming it, and never start a sentence
+    with an identifier;
+  - one idea per chapter;
+  - cite where a citation backs a point, using 1–3 items, at most 4;
+  - weight chapters by risk, and write no inventory chapters;
+  - make claims only for decisions, with the tradeoff stated;
+  - after it ships, name the signal and the value that means trouble.
+
+#### Validator: what changed
+
+| Rule | Before | After |
+| --- | --- | --- |
+| Chapter role | none | `role` is `opening`, `proof` or `other` (default `other`, so stored documents still parse) |
+| Opening first | none | the first chapter must be `opening`, and no `opening` may follow another role |
+| Proof chapter | none | at least one `proof` chapter |
+| Evidence minimum | 1 per chapter (schema) | 0 for an opening; 1 for other chapters (validator) |
+| Evidence maximum | 6 (schema) | 4 for new chapters (validator); the schema keeps 6 so stored documents parse |
+| Coverage | every hunk overlaps a citation, or its file is in `also_changed` | every file has a citation, or is in `also_changed` |
+
+Unchanged: citation resolution, unique labels and captions, claims that
+are not questions, the chapter cap, diagram rules, and the update rules.
+Kept in the skill only: what each type's opening says, the per-type
+checks, defining terms, behavior before identifiers, no inventory
+chapters, and after-ship signals.
+
+#### Cold-reader check (`cost-run-setup/cold-read.mjs`)
+
+- The reader (haiku 4.5) sees only the title, the intent and each
+  chapter's label, caption and body, plus TERMINOLOGY.md. It answers 3
+  questions picked by the first type, then "which terms were unclear".
+- The grader (haiku 4.5) sees the PR bodies and diffs (snapshots and
+  lockfiles left out, 60k chars at most) and scores each answer 0–2.
+- Each run costs about $0.01–0.03.
+- Caveat: the score is noisy and saturates. Run to run, the same document
+  moved ±2. For #3059 the grader works from a cut-down diff, so it can't
+  verify the exceptions. The list of unclear terms is the more useful
+  signal.
+
+#### Runs (fresh versions, Docker sandbox, `github-local`, opus via gateway)
+
+Files are under `runs/quality/`. `iter1-*` is the first skill draft (6
+evidence items, no "reader's terms" wording); `v4-*` is the final.
+
+| Case | v3 cost | v4 cost | v3 ch | v4 ch | v3 rej | v4 rej | evidence per chapter v3 → v4 | cold read v3 → v4 | unclear terms v3 → v4 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| #3071 | $0.61 | $0.47 | 5 | 5 | 1 | 0 | 1–4 → 0–4 | 6/6 → 6/6 | 10 → 0 |
+| #3059 | $1.43 | $2.33 | 8 | 8 | 1 | 1 (1 problem) | 4–6 → 1–4 | 4/6 → 3/6 | 21 → 32 |
+| stack | $2.12 | $2.16 | 10 | 10 | 1 | 0 | 3–6 → 0–4 | 5/6 → 5/6 | 13 → 14 |
+
+(Iteration 1 costs: $0.66, $1.39 and $1.60.)
+
+- Stack, v3 unclear terms: `turnBehavior`, `WALKTHROUGH_GENERATION`,
+  `submitWalkthrough`, `WalkthroughOutput`, `listedConversation`, …
+- Stack, v4 unclear terms: Stacks API, hunk, head file, lockfiles, base
+  branches, system egress, system identity, object storage, snapshot key,
+  partial unique index, generation Turn, generation Conversation, footer
+  marker, sweep. These are almost all plain-language ideas now, not code
+  identifiers.
+- #3059's opening is better, but the reader lists 32 internal names
+  (mailbox worker, Code Mode, child-agent row, …).
+
+#### The stack's new first chapter
+
+**Why Walkthroughs** — Reviewing a stack meant reading every diff cold; this stack lets a person ask Junior for one checked story instead.
+
+Before this stack, a reviewer of a PR stack read every diff with nothing to say what each part is for or where the risk is. Now a person clicks in the dashboard, Junior runs a hidden Turn with the walkthrough skill, and the model submits a story whose every citation Junior checks again. Map: #3087 defines the document and its checker, #3088 lets plugins read stacks and diffs, #3090 stores versions, #3124 adds the submit tool and its Turn behavior, #3133 wires the API behind the `walkthroughs` experiment. Review risk sits in repository access and stuck versions.
+
+#### Open
+
+- #3059 still uses many internal names without explaining them. A
+  refactor of internals may need a "terms" line in its opening.
+- The stack's risk line names repository access and stuck versions. It
+  dropped "check evidence can't pass yet", which iteration 1 had as a
+  claim.
+- No eval covers this. The cold read is a journal script.
