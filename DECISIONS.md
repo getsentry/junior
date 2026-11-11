@@ -289,3 +289,10 @@ PR-opened event pointer, explainer videos (fframes vs Remotion).
   closed. The whole stack is the review unit, and merged work is done.
 - **Cost: from Conversation metrics**, not a column. One source of truth;
   covers every slice of a resumed Turn.
+
+### 2026-11-11 — Update Turn sees change-request decision ids (Thomas)
+
+The update Turn gets the ids of decisions that any reviewer marked "Request
+change", and nothing else: no notes, no reviewer. The generation Conversation
+is public, so anyone who opens it can see that some reviewer pushed back on
+those decisions. Thomas approved this. Notes stay private.
