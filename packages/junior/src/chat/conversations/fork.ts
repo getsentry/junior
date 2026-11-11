@@ -335,29 +335,33 @@ async function copyForkEvents(args: {
 
   // Later rows keep the history version of the fork point. A later source
   // compaction is not copied, so its version must not become current.
-  // oxlint-disable-next-line junior/no-raw-sql-queries -- Predates the rule. Move it to the query builder.
-  await getSqlExecutor()
-    .db()
-    .execute(
-      sql`insert into ${e} (${sql.join(
-        [
-          e.conversationId,
-          e.seq,
-          e.historyVersion,
-          e.schemaVersion,
-          e.idempotencyKey,
-          e.type,
-          e.payload,
-          e.actorIdentityId,
-          e.createdAt,
-        ].map((column) => sql.identifier(column.name)),
-        sql`, `,
-      )})
-      select ${args.conversationId}, ${e.seq}, least(${e.historyVersion}, ${historyVersion}), ${e.schemaVersion}, ${e.idempotencyKey}, ${e.type}, ${e.payload}, ${e.actorIdentityId}, ${e.createdAt}
-      from ${e}
-      where ${e.conversationId} = ${args.sourceConversationId}
-        and ${inArray(e.seq, seqs)}`,
-    );
+  const db = getSqlExecutor().db();
+  await db.insert(e).select(
+    db
+      .select({
+        conversationId: sql<string>`${args.conversationId}`.as(
+          "conversation_id",
+        ),
+        seq: e.seq,
+        historyVersion:
+          sql<number>`least(${e.historyVersion}, ${historyVersion})`.as(
+            "history_version",
+          ),
+        schemaVersion: e.schemaVersion,
+        idempotencyKey: e.idempotencyKey,
+        type: e.type,
+        payload: e.payload,
+        actorIdentityId: e.actorIdentityId,
+        createdAt: e.createdAt,
+      })
+      .from(e)
+      .where(
+        and(
+          eq(e.conversationId, args.sourceConversationId),
+          inArray(e.seq, seqs),
+        ),
+      ),
+  );
 }
 
 function hasUnfinishedToolCalls(messages: readonly PiMessage[]): boolean {
