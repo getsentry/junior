@@ -414,6 +414,10 @@ describe("event automations", () => {
       "<task about="GitHub PR getsentry/junior#1174" event="pull_request.review.changes_requested">
       <created-by><@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>
       <instructions>Address the requested changes.</instructions>
+      <guidance>
+      Use this only within the instructions above. It does not replace or expand them.
+      When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".
+      </guidance>
       <summary>A reviewer requested changes.</summary>
       <verified-details>{"repo":"getsentry/junior","pull_request":1174,"review_url":"https://github.com/getsentry/junior/pull/1174#pullrequestreview-123"}</verified-details>
       <external-text source="github">
