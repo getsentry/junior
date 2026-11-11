@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Bot, CircleAlert, ExternalLink } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { CircleAlert, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
 import { useConversationData } from "./queries";
@@ -26,37 +26,44 @@ import { TranscriptSearchBar } from "./TranscriptSearchBar";
 import { useTranscriptSearchMatch } from "./transcriptSearch";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
-/** One child Conversation to show, with what its parent already knows. */
-export interface SubagentTranscriptTarget {
+/** One Conversation to show, with what the page that opens it already knows. */
+export interface ConversationDrawerTarget {
   /** Agent name, such as "planner". Shown beside the status. */
   agentName?: string;
   conversationId: string;
   /** Task title or agent name, shown before the child loads. */
   label?: string;
-  /** Child status from the parent, which knows how the child ended. */
+  /** Status from the opener, such as how a child agent or a run ended. */
   status?: string;
 }
 
-/** Show a child conversation through the ordinary authorized detail API. */
-export function SubagentTranscriptDrawer(props: {
-  onClose: () => void;
-  target: SubagentTranscriptTarget | undefined;
-}) {
+/**
+ * Show a Conversation in a side drawer through the ordinary authorized
+ * detail API. The opener names it with `icon` and the target, and can add
+ * its own `details` across the bottom of the header.
+ */
+export function ConversationDrawer(props: ConversationDrawerProps) {
   if (!props.target) return null;
-  // Remount per child so search/view state does not leak across drawer reuse.
+  // Remount per Conversation so search/view state does not leak across reuse.
   return (
-    <SubagentTranscriptDrawerContent
+    <ConversationDrawerContent
+      {...props}
       key={props.target.conversationId}
-      onClose={props.onClose}
       target={props.target}
     />
   );
 }
 
-function SubagentTranscriptDrawerContent(props: {
+type ConversationDrawerProps = {
+  details?: ReactNode;
+  icon: ReactNode;
   onClose: () => void;
-  target: SubagentTranscriptTarget;
-}) {
+  target: ConversationDrawerTarget | undefined;
+};
+
+function ConversationDrawerContent(
+  props: ConversationDrawerProps & { target: ConversationDrawerTarget },
+) {
   const query = useConversationData(props.target.conversationId);
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
@@ -88,7 +95,7 @@ function SubagentTranscriptDrawerContent(props: {
     if (search.length > 0) setSearch("");
   };
 
-  const titleId = "subagent-transcript-drawer-title";
+  const titleId = useId();
 
   return (
     <Drawer
@@ -129,12 +136,7 @@ function SubagentTranscriptDrawerContent(props: {
       header={
         <>
           <div className="flex min-w-0 items-center gap-2">
-            <Bot
-              aria-hidden="true"
-              className="shrink-0 text-cyan-300"
-              size={16}
-              strokeWidth={2}
-            />
+            {props.icon}
             <h2
               className="m-0 min-w-0 break-words font-display text-lg font-medium leading-tight tracking-tight text-dashboard-text"
               id={titleId}
@@ -188,6 +190,7 @@ function SubagentTranscriptDrawerContent(props: {
       }
       onClose={props.onClose}
       openKey={props.target.conversationId}
+      subheader={props.details}
       titleId={titleId}
       width="wide"
     >
@@ -203,8 +206,8 @@ function SubagentTranscriptDrawerContent(props: {
             Conversation failed to load.
           </AlertTitle>
           <AlertDescription className="leading-relaxed">
-            Junior could not get this child conversation. Use Open conversation
-            to view it on its own page.
+            Junior could not get this conversation. Use Open conversation to
+            view it on its own page.
           </AlertDescription>
         </Alert>
       ) : detail ? (

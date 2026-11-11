@@ -157,7 +157,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     exact: true,
   });
   await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
-  // A recent run opens its details over the Overview, not on the Runs tab.
+  // A recent run opens its Conversation over the Overview, not on the Runs tab.
   const recentRun = recentRuns.getByRole("link", {
     name: /^Open completed run/,
   });
@@ -169,7 +169,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page).toHaveURL(
     /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
   );
-  const recentDetails = page.getByRole("dialog", { name: "Run details" });
+  const recentDetails = page.getByRole("dialog");
   await expect(
     recentDetails.getByText("completed", { exact: true }),
   ).toBeVisible();
@@ -180,9 +180,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await screenshot(page, "automation-overview-run-details", {
     view: "desktop",
   });
-  await recentDetails
-    .getByRole("button", { name: "Close run details" })
-    .click();
+  await recentDetails.getByRole("button", { name: "Close transcript" }).click();
   await expect(recentDetails).toHaveCount(0);
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/scheduled-1`);
   await expect(recentRun).toBeFocused();
@@ -593,14 +591,14 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/runs?status=failed&run=${encodeURIComponent(runId!)}`,
   );
-  const details = page.getByRole("dialog", { name: "Run details" });
+  const details = page.getByRole("dialog");
   // The Runs list spans Automations, so details name the Automation.
   await expect(details.locator(AUTOMATION_LINK)).toHaveCount(1);
   await expect(
     details.getByRole("link", { name: "Open conversation" }),
   ).toBeVisible();
   await screenshot(page, "automations-runs-filters", { view: "desktop" });
-  await details.getByRole("button", { name: "Close run details" }).click();
+  await details.getByRole("button", { name: "Close transcript" }).click();
   await expect(details).toHaveCount(0);
   await expect(filters).toBeVisible();
   await expect(page).toHaveURL(
@@ -665,7 +663,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
     `${dashboard.baseURL}/automations/scheduled-1/runs?range=90&run=scheduled-1-run-2`,
   );
   await expect(failedRun).toHaveAttribute("aria-expanded", "true");
-  const details = page.getByRole("dialog", { name: "Run details" });
+  const details = page.getByRole("dialog");
   await expect(
     details.getByRole("heading", { name: "Ship notes for the release train" }),
   ).toBeVisible();
@@ -700,7 +698,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
     name: /Weekly project summary/,
   });
 
-  await page.getByRole("button", { name: "Close run details" }).click();
+  await page.getByRole("button", { name: "Close transcript" }).click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/scheduled-1/runs?range=90`,
   );
@@ -725,7 +723,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
     details.getByText("Ship notes for the release train").first(),
   ).toBeVisible();
   await expect(details.getByText(/not in the loaded runs/)).toHaveCount(0);
-  await page.getByRole("button", { name: "Close run details" }).click();
+  await page.getByRole("button", { name: "Close transcript" }).click();
   await result.getByRole("tab", { name: /^Failed/ }).click();
   await result.getByRole("tab", { name: /^All/ }).click();
   await expect(page).not.toHaveURL(/[?&]result=/);

@@ -19,9 +19,9 @@ import {
 } from "../src/client/conversations/queries";
 import { ConversationTranscriptView } from "../src/client/conversations/ConversationTranscript";
 import {
-  SubagentTranscriptDrawer,
-  type SubagentTranscriptTarget,
-} from "../src/client/conversations/SubagentTranscriptDrawer";
+  ConversationDrawer,
+  type ConversationDrawerTarget,
+} from "../src/client/conversations/ConversationDrawer";
 import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
 import {
@@ -1166,7 +1166,7 @@ describe("dashboard canonical-event components", () => {
       { conversationId: "child-1", displayTitle: "Advisor review" },
     );
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-1",
       status: "completed",
     };
@@ -1174,7 +1174,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1194,7 +1194,7 @@ describe("dashboard canonical-event components", () => {
       status: "completed",
     });
     client.setQueryData(conversationDetailQueryKey("child-1"), child);
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-1",
       status: "error",
     };
@@ -1202,7 +1202,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1243,7 +1243,8 @@ describe("dashboard canonical-event components", () => {
     const drawerHtml = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={client}>
-          <SubagentTranscriptDrawer
+          <ConversationDrawer
+            icon={null}
             target={{
               conversationId: "child-1",
               status: "running",
@@ -1283,7 +1284,7 @@ describe("dashboard canonical-event components", () => {
         status: "error",
       },
     );
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-error",
       status: "error",
     };
@@ -1291,7 +1292,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={errorClient}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );
@@ -1326,7 +1327,7 @@ describe("dashboard canonical-event components", () => {
       fetchStatus: "idle",
       status: "error",
     });
-    const target: SubagentTranscriptTarget = {
+    const target: ConversationDrawerTarget = {
       conversationId: "child-stale",
       status: "running",
     };
@@ -1334,7 +1335,7 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <QueryClientProvider client={staleClient}>
-          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+          <ConversationDrawer icon={null} target={target} onClose={() => {}} />
         </QueryClientProvider>
       </MemoryRouter>,
     );

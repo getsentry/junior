@@ -37,8 +37,6 @@ export function DetailsPanel(props: {
   sheetTitle?: string;
   /** Nested details stay modal inside an existing drawer. */
   overlay?: boolean;
-  /** Remove the overlay drawer's body inset, so content owns its padding. */
-  flush?: boolean;
 }) {
   const { onClose, overlay } = props;
   const closeLabel = `Close ${props.label.toLowerCase()}`;
@@ -96,7 +94,6 @@ export function DetailsPanel(props: {
       <Drawer
         actions={props.actions}
         closeLabel={closeLabel}
-        flush={props.flush}
         header={props.title}
         label={props.label}
         onClose={onClose}
