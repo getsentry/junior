@@ -687,3 +687,80 @@ after-11 generation Conversation with usage open.
 - The menu counts do not show skips.
 - No real generation run under the new view rule yet.
 
+### 2026-11-11 — story-first chapters (walkthrough/11-story-first, on #3159 `e4f10560e`)
+
+Thomas: "ok proceed" (story-first on top, fold later), journal writes OK.
+Design: DECISIONS.md "Story-first chapters". Head `2b8954e13`.
+
+Format v3 (schema 3, prompt v4), hard cutover:
+- Chapter: `{id, label, caption, body ≤600, view?, evidence 1–6, decisions,
+  asks}`. No `type`/`slot`. `label` (≤40) is the title; labels and captions
+  must be unique.
+- `types` (1–3) on the Walkthrough. Nothing in the UI or update logic reads
+  a per-chapter type, so it moved up. `splits` is gone.
+- `also_changed: [{reason, files: [{pr, path}]}]` replaces `not_covered`, also
+  in updates. Coverage: a changed hunk is cited or its file is listed there.
+- Validator: dropped the slot/type and bug-fix cause checks. Cap 8 chapters
+  for one PR, 10 for a stack.
+- Skill: one story for the whole change; PRs and commits are evidence; never
+  one chapter per PR or commit; suggested chapters per type; no "newest
+  first" reading rule; a readable source Conversation tells the intent.
+
+UI: prose first. A citation opens its evidence beside the prose (wide
+column, click or focus) or in a drawer (narrow, click only: a modal on focus
+would trap tabbing). The diagram sits in that side column when no evidence
+is open. "Also changed" is a closed section after the last chapter, with
+mechanical-file counts. Truncation removed: rail captions, review lines and
+headings, answered decision line, "About:" chip (now shows the label), PR
+popover titles (own rows, not `ConversationLinkRow`).
+
+Fixtures: `convert-v3.mjs`. The stack fixture is one 8-chapter story; old
+chapter, decision and excerpt ids kept where a chapter survives.
+
+#### Cost runs (fresh DB, Docker sandbox, `github-local`, opus via gateway)
+
+Docs: `runs/story-first/`. Chapter map: `cost-run-setup/chapter-map.mjs`.
+
+| Case | v2 cost | v3 cost | v2 chapters | v3 chapters | v2 rejections | v3 rejections | v3 time |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| #3071 | $0.34 | $0.61 | 5 | 5 | 1 (coverage) | 1 (coverage, 7 problems) | 1.8m |
+| #3059 | $1.78 | $1.43 | 9 | 8 | 3 | 1 (28 coverage + 1 decision index) | 3.9m |
+| stack #3087–#3133 | $1.94 | $2.12 | 12 | 10 | 0 | 1 ("cite code from at most 30 files") | 7.9m |
+
+Labels:
+- #3071: The shared filter · Feed rows and change token · Board and searches
+  · Proof behavior holds · Left out on purpose.
+- #3059: One table per Turn · Prompt mode and answer gate · Tool gates read
+  turnTools · Agent tools bind late · Delivery rules · Where behavior can
+  shift · Guard against new branches · How it is tested.
+- Stack: Starting a Walkthrough · Reading the stack · One version per
+  snapshot · Hidden generation Conversations · The generation Turn · What the
+  model writes · Every citation is re-checked · Storing and serving ·
+  Failure and retry · Tests and watch items.
+
+One-to-one with a PR (chapter cites one PR and no other chapter cites it):
+none in v3 or v2. Chapters that cite only one PR: v2 12/12, in PR order;
+v3 3/10, ordered by the flow (click → read → store → Turn → check → serve →
+fail). The stack used all 10 chapters but no run hit the cap, so it stays.
+Costs are within run-to-run noise of v2 (earlier full runs of #3059 ranged
+$1.44–$2.34).
+
+Screenshots (`screenshots/story-first/`, desktop, mock mode unless noted):
+before-01/02 stack chapters, 03 review list, 04 PR popover. after-01 prose
+only, 02 citation open beside the prose, 03/04 Also changed closed/open,
+05 review list wrapping, 06 PR popover, 07 narrow drawer (1280px), 08
+"About:" chip, 09 update with a changed chapter, 10 single PR, 11 the real
+v3 stack run.
+
+#### Truncation kept
+
+None in the Walkthrough UI. Diagram node labels still shrink to fit their
+node (dagre layout needs a fixed node box); that is scaling, not clipping.
+
+#### Open
+
+- Update Turns: `added_chapters` labels are not checked against the parent
+  version's labels.
+- The 30-file head-code cap (from 4a) cost the stack one round.
+- The citation mark's open state is a faint background; may need a stronger
+  mark.
