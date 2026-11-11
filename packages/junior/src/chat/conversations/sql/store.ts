@@ -180,13 +180,11 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove the awaiting_resume name after the release that stops
-// writing it is the oldest deployed worker. Migration 0089 renamed older rows.
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
+    value === "paused" ||
     value === "pending" ||
     value === "running"
   ) {

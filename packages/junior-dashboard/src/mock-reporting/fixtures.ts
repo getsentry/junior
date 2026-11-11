@@ -3643,11 +3643,99 @@ export function readMockPeopleCode(
   );
   if (!person) return undefined;
   const overview = readMockCodeOverview();
+  // Two weeks of merges and several open changes, so the home summary shows
+  // a weekly delta and a stale change.
+  const merges = [0, 1, 0, 1, 0, 1, 0, 1, 0, 2, 0, 1, 1, 0];
+  const activityDays = overview.activityDays.map((day, index) => ({
+    ...day,
+    merged: merges[index - (overview.activityDays.length - merges.length)] ?? 0,
+  }));
+  const daysAgo = (days: number) =>
+    new Date(NOW_MS - days * 86_400_000).toISOString();
+  const openChange = (
+    number: number,
+    repository: string,
+    title: string,
+    days: number,
+  ) => ({
+    id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+    number,
+    openedAt: daysAgo(days),
+    provider: "github",
+    repository,
+    state: "open" as const,
+    title,
+    url: `https://github.com/${repository}/pull/${number}`,
+  });
+  const doneChange = (
+    number: number,
+    repository: string,
+    title: string,
+    openedDays: number,
+    done: { closed: number } | { merged: number },
+  ) => ({
+    ...openChange(number, repository, title, openedDays),
+    ...("merged" in done
+      ? { mergedAt: daysAgo(done.merged), state: "merged" as const }
+      : { closedAt: daysAgo(done.closed), state: "closed" as const }),
+  });
+  const openChanges = [
+    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
+    openChange(42, "getsentry/payments", "Reduce checkout latency", 3),
+    openChange(
+      2391,
+      "getsentry/junior",
+      "Retry Slack uploads after a rate limit",
+      6,
+    ),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12),
+    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1),
+    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2),
+    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5),
+    openChange(61, "getsentry/payments", "Drop legacy refund path", 8),
+    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10),
+    openChange(2350, "getsentry/junior", "Migrate memory schema", 320),
+  ];
+  // Merges land on the days that `merges` counts in the last 7 days.
+  const doneThisWeek = [
+    doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
+      merged: 6,
+    }),
+    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+      merged: 4,
+    }),
+    doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {
+      merged: 4,
+    }),
+    doneChange(2384, "getsentry/junior", "Fix sandbox snapshot reuse", 3, {
+      merged: 2,
+    }),
+    doneChange(58, "getsentry/payments", "Try a shorter retry policy", 4, {
+      closed: 2,
+    }),
+    doneChange(85, "getsentry/sentry-mcp", "Pin Node 22 in CI", 2, {
+      merged: 1,
+    }),
+  ];
+  // Older changes stay off the home day strip, so its counts match `merges`.
+  const weekStartMs = Date.parse(activityDays.at(-7)!.date);
+  const beforeWeek = (change: (typeof overview.changes)[number]) =>
+    [change.openedAt, change.mergedAt, change.closedAt].every(
+      (at) => at === undefined || Date.parse(at) < weekStartMs,
+    );
   return {
-    activityDays: overview.activityDays,
-    changes: overview.changes,
+    activityDays,
+    changes: [
+      ...openChanges,
+      ...doneThisWeek,
+      ...overview.changes.filter(
+        (change) => change.state !== "open" && beforeWeek(change),
+      ),
+    ],
     generatedAt: overview.generatedAt,
-    summary: overview.summary,
+    summary: { ...overview.summary, open: openChanges.length },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
   };

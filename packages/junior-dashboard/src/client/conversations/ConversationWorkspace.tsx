@@ -57,6 +57,7 @@ import { FeedThreads, feedThreadsById } from "./feedThreads";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useSidebarFits } from "./conversationSidebarLayout";
 import { ListPane, PaneCollapsedControls } from "../components/layout/PaneNav";
+import { HomeSummary } from "./HomeSummary";
 
 /**
  * The Inbox: its entries in the pane, and in the main area the list of the
@@ -238,9 +239,11 @@ export function ConversationWorkspace(props: {
         <PaneCollapsedControls />
         <BackToList />
       </div>
-      {/* The bottom pad matches the header row, so the create view sits in
-          the middle of the pane. */}
-      <div className="grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 pb-13 sm:px-6">
+      {/* The tall bottom pad lifts the create view above the middle, so the
+          summary that hangs below it fits in the pane. Gutters on both edges
+          keep it centered when the summary grows enough to show a
+          scrollbar. */}
+      <div className="grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 pb-48 [scrollbar-gutter:stable_both-edges] sm:px-6">
         {createView}
       </div>
     </main>
@@ -401,11 +404,12 @@ function NewConversationView(props: {
   ): Promise<void>;
 }) {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
+  const wide = useSidebarFits();
 
   return (
     <section
       aria-label="New conversation"
-      className="mx-auto grid w-full max-w-3xl gap-3"
+      className="relative mx-auto grid w-full max-w-3xl gap-3"
     >
       <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
         What do you need?
@@ -440,6 +444,13 @@ function NewConversationView(props: {
           props.onSubmit(message, idempotencyKey, visibility, images)
         }
       />
+      {wide ? (
+        // Hangs below the composer and takes no layout space, so the
+        // composer stays centered while the summary loads. Phones skip it.
+        <div className="absolute inset-x-0 top-full pt-8">
+          <HomeSummary />
+        </div>
+      ) : null}
     </section>
   );
 }
