@@ -113,10 +113,14 @@ export interface CreateToolsOptions {
   pluginSandbox?: PluginSandbox;
 }
 
-// Tools that a question about a Walkthrough may call. Each one only reads.
+// Tools that a question about a Walkthrough may call. Each one only reads
+// outside the sandbox. `bash` and `readFile` let the Turn clone the repo at a
+// head commit and search code that the change does not touch.
 const WALKTHROUGH_QUESTION_TOOLS: ReadonlySet<string> = new Set([
   READ_WALKTHROUGH_TOOL_NAME,
   READ_WALKTHROUGH_CODE_TOOL_NAME,
+  "bash",
+  "readFile",
   "readConversationEvent",
   "searchConversationEvents",
   "reportProgress",
@@ -433,7 +437,7 @@ export function createTools(
       // drop it and the provider would get a tool with no parameters.
       tools[name] = Object.assign(Object.create(tool) as typeof tool, {
         disabledReason:
-          "A question about a Walkthrough only reads the Walkthrough, its code changes, and Conversations.",
+          "A question about a Walkthrough only reads the Walkthrough, its code, and Conversations.",
       });
     }
   }

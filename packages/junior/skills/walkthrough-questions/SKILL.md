@@ -23,7 +23,19 @@ Walkthrough. Say that questions start from the Walkthrough page, and stop.
    number returns that code change's diff. Add a `path` to read one file at
    its head commit, also a file that the change does not touch, such as a
    caller.
-4. Read the source Conversation (`source_conversation_id`) only for intent
+4. When the answer needs a search, such as other callers or code that no
+   PR in the Walkthrough touches, clone the repository at the PR's
+   `head_sha` in the sandbox and search it with `rg`. Clone once per Turn,
+   and only when `readWalkthroughCode` cannot answer. Fetch only that
+   commit. For `github`:
+
+   ```sh
+   git init repo && cd repo
+   git remote add origin https://github.com/<repository>.git
+   git fetch --depth 1 origin <head_sha> && git checkout -q FETCH_HEAD
+   ```
+
+5. Read the source Conversation (`source_conversation_id`) only for intent
    that the Walkthrough and the code do not show. Use
    `searchConversationEvents` and `readConversationEvent`. If you cannot read
    it, answer from the code.
@@ -40,5 +52,6 @@ Walkthrough. Say that questions start from the Walkthrough page, and stop.
 ## Limits
 
 - This Conversation only reads. You cannot change code, comment, review,
-  approve, or reach other people. If the reviewer asks for that, say what
+  approve, or reach other people. Never push, and never change anything
+  outside the sandbox. If the reviewer asks for that, say what
   they can do on the Walkthrough page or in the provider.

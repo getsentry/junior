@@ -274,7 +274,8 @@ describe("Walkthrough generation", () => {
       }).tools,
       walkthroughQuestions: run!.questions!,
     } satisfies ToolRuntimeContext);
-    expect(tools.bash?.disabledReason).toBeDefined();
+    expect(tools.bash?.disabledReason).toBeUndefined();
+    expect(tools.writeFile?.disabledReason).toBeDefined();
     expect(tools.readWalkthrough?.disabledReason).toBeUndefined();
     await expect(
       tools.readWalkthrough!.execute!({}, { toolCallId: "doc" }),
