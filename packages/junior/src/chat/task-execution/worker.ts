@@ -8,6 +8,7 @@ import {
   setSpanAttributes,
   withLogContext,
 } from "@/chat/logging";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -56,6 +57,11 @@ export interface ConversationWorkerContext {
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
   stopSignal?(): AbortSignal;
+  /**
+   * Read the stored stop of the Conversation once, and abort `stopSignal`
+   * when it stopped during this attempt. A Run calls it at each step.
+   */
+  checkStop?(): Promise<void>;
 }
 
 export interface InboxAttempt {
@@ -289,12 +295,17 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
-/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
+/**
+ * Poll the run-scoped stop marker only when an adapter observes remote stops.
+ * The stored stop time of the Conversation is the source of truth. The stop
+ * marker only makes a running model call end sooner.
+ */
 function createConversationStopSignal(args: {
   conversationId: string;
   initiallyStopped: boolean;
   options: ProcessConversationWorkOptions;
   runId: string;
+  startedAtMs: number;
 }) {
   const controller = new AbortController();
   let checking = false;
@@ -330,6 +341,13 @@ function createConversationStopSignal(args: {
   };
 
   return {
+    async checkStored(): Promise<void> {
+      if (controller.signal.aborted) return;
+      const stoppedAtMs = await getConversationStoppedAtMs(args.conversationId);
+      if (stoppedAtMs !== undefined && stoppedAtMs >= args.startedAtMs) {
+        requestStop();
+      }
+    },
     close(): void {
       if (timer) clearInterval(timer);
     },
@@ -644,6 +662,7 @@ async function processConversationWorkInContext(
         }),
         options,
         runId,
+        startedAtMs: now(options),
       });
       const workerContext: ConversationWorkerContext = {
         attempt: {
@@ -661,6 +680,7 @@ async function processConversationWorkInContext(
         destination,
         shouldYield,
         stopSignal: stop.signal,
+        checkStop: stop.checkStored,
         checkIn,
       };
 

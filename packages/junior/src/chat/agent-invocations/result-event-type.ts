@@ -15,3 +15,6 @@ export function agentInvocationResultEventType(
 export function isAgentInvocationResultEventType(eventType: string): boolean {
   return eventType.startsWith(AGENT_INVOCATION_RESULT_EVENT_TYPE_PREFIX);
 }
+
+/** Event type of the `reply` that ends a child agent's Turn. */
+export const AGENT_REPLY_EVENT_TYPE = "agent.reply";
