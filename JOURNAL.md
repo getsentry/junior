@@ -29,7 +29,8 @@ Read this first after a sandbox reset or context loss.
 - Stack #3089 on main: #3087 (1-schema) → #3088 (2-code-change-hooks) →
   #3090 (3-storage, migration 0100) → #3124 (4a-generation-tool). All drafts,
   all mergeable. Use `gh stack rebase` / `gh stack push` to update.
-- Next: slice 4b (see the last log entry for scope).
+- #3133 (4b-generation-worker) → #3147 (5-dashboard, head 450adaa6b).
+- Next: slice 6 (answers / review panel).
 
 ## Open questions (decide in 4b)
 
@@ -292,3 +293,35 @@ the coverage rule (uncited hunks). Cheap tune for later: tell the skill to
 decide `not_covered` before writing chapters. Not changing it in 4b.
 
 Setup files for these runs: cost-run-setup/ (not in the repo).
+
+### 2026-11-11 — slice 5 (dashboard page + entry points)
+
+Draft PR #3147 (`walkthrough/5-dashboard`, 450adaa6b), stacked on #3133.
+
+- Page `/walkthroughs/:id`: client code is in
+  `junior-dashboard/src/client/walkthrough/`. It has the ready, generating
+  (3 s poll), and failed ("Try again") states. Each of the 3 panes scrolls by
+  itself. The chat panel is a disabled placeholder (`WalkthroughQuestions`).
+- Entry points: a footer button on `ObjectCard` and an icon on Linked work
+  rows (`WalkthroughAction`). `/api/config` `walkthroughs` controls both.
+  Mock mode always turns it on.
+- The dashboard finds the PR from `code_change` facts `repository` + `number`,
+  which are new in plugin-api and set by `githubObjectAnnotation`. Older
+  annotations have no entry point.
+- Mock: `mock-reporting/walkthroughs.ts` serves cost runs 1 and 4. It sets the
+  provider to `github` and links `sourceConversationId` to the active fixture
+  Conversation. Fixed ids `6b0e8f1e-…0001` / `…0002` show generating / failed.
+- Decisions made without Thomas:
+  - When a slot repeats, the rail shows the caption under the title.
+  - Commas separate superscript marks.
+  - Long diagram labels shrink to text-xs, then squeeze to fit the node.
+  - The "Made in" row says only "Conversation", because the API returns no
+    source title.
+- Open:
+  - The stack diagram is hard to read in the narrow column.
+  - The sandbox has no mono font, so the screenshots show code in sans.
+  - Decisions and lineage UI wait for slices 6 and 8.
+- Dev tip: after `build:client`, restart `pnpm dev`
+  (`/tmp/restart-dev.sh` pattern). A hot rebuild leaves the shell stuck on
+  "Loading".
+- Screenshots: `screenshots/slice-5/` on this branch.
