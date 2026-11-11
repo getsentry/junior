@@ -545,13 +545,6 @@
           "id": "token-matches",
           "caption": "The feed change token and the feed rows now use the same filter",
           "body": "The token query that tells clients the feed changed now calls the same helper as the feed rows [1]. The fork test reads the reader's token before a Quick question exists [2]. It checks that the token stays the same while the Quick question is unkept and changes after Keep [3].",
-          "view": {
-            "pr": 3071,
-            "show": ["feed-rows", "feed-token", "listed", "conversations"],
-            "highlight": ["feed-rows", "feed-token"],
-            "added": [],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",
@@ -592,13 +585,6 @@
           "id": "board-and-left-out",
           "caption": "The Board changes condition order, and root-only queries stay as they are",
           "body": "The Board query swaps its two inline conditions for the helper, so the archived check now comes after it [1][2]. The order of AND conditions does not change the result. The helper's comment says that structural root checks, such as retention, do not use it [3]. Stats and location counts also still check only for a root.",
-          "view": {
-            "pr": 3071,
-            "show": ["board", "listed", "conversations", "stats", "structural"],
-            "highlight": ["board", "stats", "structural"],
-            "added": [],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",

@@ -3960,13 +3960,6 @@
           "id": "format",
           "caption": "A pure validator, diff parser, and excerpt builder decide what may be stored.",
           "body": "validateWalkthrough returns problems: unresolved citations, uncited markers, wrong slots, a cause with no code, and any hunk neither cited nor in not_covered [1]. Mechanical files are dropped before the model sees them and only counted [2]. Excerpts are copied from the provider diff, not from model output [3].",
-          "view": {
-            "pr": 3087,
-            "show": ["submit", "validator", "storage", "e-check", "e-store"],
-            "highlight": ["validator"],
-            "added": ["validator"],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",
@@ -4047,13 +4040,6 @@
           "id": "github-reads",
           "caption": "GitHub reads the open stack around a PR and diffs exact commits.",
           "body": "readStack asks the Stacks API, falls back to walking base branches, and drops merged or closed layers except the one asked for [1]. The walk stops at the trunk, a fork in the chain, or 10 levels [2][4]. readDiff compares the exact base and head SHAs, so a later push cannot change what is described [3].",
-          "view": {
-            "pr": 3088,
-            "show": ["route", "hooks", "e-stack"],
-            "highlight": ["hooks"],
-            "added": [],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",
@@ -4163,13 +4149,6 @@
           "id": "safe-to-run",
           "caption": "The migration only adds a table, but every list query gains one NOT EXISTS probe.",
           "body": "The migration only adds a table and indexes. Its one live effect: listedConversation adds a NOT EXISTS probe on generation_conversation_id to every list and search [1], served by that column's unique index. A test shows a generation Conversation drops out of the list [2]. To roll back, revert code first: the filter needs the table.",
-          "view": {
-            "pr": 3090,
-            "show": ["version", "lists", "e-hide"],
-            "highlight": ["lists", "e-hide"],
-            "added": ["e-hide"],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",
@@ -4277,13 +4256,6 @@
           "id": "isolation",
           "caption": "Only a generation Turn gets the submit tool, and it cannot reach people or agents.",
           "body": "A new WALKTHROUGH_GENERATION behavior is the only one with submitWalkthrough on. It also turns off agents, the review desk, subscriptions, user customization and noReply [1][2]. The tool is built only when that flag and AgentRun.walkthroughGeneration are both set [3][4], and only the Turn worker sets that field.",
-          "view": {
-            "pr": 3124,
-            "show": ["turn", "submit", "e-submit"],
-            "highlight": ["turn"],
-            "added": [],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",
@@ -4458,13 +4430,6 @@
           "id": "limits",
           "caption": "Generation Turns get their own cap of 80 tool calls and $5.",
           "body": "TurnBehavior gains optional limits, and the generation behavior sets 80 tool calls and $5 [1][2]. The agent run reads them and falls back to the app defaults [3], then uses them in the existing limit gate and error messages [4]. Other Turns keep the same limits as before.",
-          "view": {
-            "pr": 3133,
-            "show": ["turn"],
-            "highlight": ["turn"],
-            "added": [],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",
@@ -4516,13 +4481,6 @@
           "id": "after-ship",
           "caption": "Version status, failure reason, and summed cost show whether generations work.",
           "body": "GET /api/walkthroughs/:id returns status, failure reason, and cost summed from the generation Conversation's cost_usd metric rows, and returns 404 if the source turns private [1][2]. After enabling experimental.walkthroughs, watch ready versus failed rows and their cost; a Turn that ends without a Walkthrough shows as failed [3].",
-          "view": {
-            "pr": 3133,
-            "show": ["route", "version", "storage"],
-            "highlight": ["version"],
-            "added": [],
-            "broken": []
-          },
           "evidence": [
             {
               "kind": "code",

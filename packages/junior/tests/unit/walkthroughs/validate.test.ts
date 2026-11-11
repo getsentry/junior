@@ -222,7 +222,7 @@ describe("validateWalkthrough", () => {
     ]);
   });
 
-  it("rejects repeated captions, question decisions, and diagrams that do not fit the stack", () => {
+  it("rejects repeated captions, question decisions, repeated views, and diagrams that do not fit the stack", () => {
     const evidence = [
       { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
     ];
@@ -249,6 +249,12 @@ describe("validateWalkthrough", () => {
             id: "cause-again",
             view: { pr: 3152, show: ["retry"] },
           },
+          {
+            ...causeChapter(evidence),
+            id: "lock-again",
+            caption: "The lock is checked once more.",
+            view: { pr: 3150, show: ["lock"] },
+          },
         ],
       }),
       refs,
@@ -258,6 +264,7 @@ describe("validateWalkthrough", () => {
       "Chapters cause and cause-again have the same caption. Make each caption unique.",
       "Decision lock-ttl is a question. Write the claim as a statement, and put the doubt in concern.",
       "Chapter cause-again shows the diagram for PR #3152, which has none.",
+      "Chapter lock-again shows only parts of the PR #3150 diagram that an earlier chapter showed. Remove its view, or show a part the reader has not seen.",
     ]);
   });
 

@@ -34,7 +34,7 @@ const MOCK_WALKTHROUGH_IDS = {
 function readyVersion(run: unknown): WalkthroughVersionResponse {
   // The cost runs read GitHub through a local plugin and had no readable
   // source Conversation. Use the real plugin and link a Conversation, so the
-  // "Made in" row shows.
+  // "Made in Conversation" link shows.
   const version = {
     ...walkthroughVersionSchema.parse(run),
     provider: "github",
@@ -213,10 +213,10 @@ export function createMockWalkthroughRoutes(options: { send: MockSend }): Hono<{
   app.put("/:id/answers/:decisionId", async (c) => {
     const id = c.req.param("id");
     if (!ready.has(id)) return c.json({ error: "Walkthrough not found." }, 404);
-    const body = (await c.req.json()) as {
-      value: "agree" | "change";
-      note?: string;
-    };
+    const body = (await c.req.json()) as Pick<
+      WalkthroughAnswerResponse,
+      "note" | "value"
+    >;
     const answer = walkthroughAnswerSchema.parse({
       ...body,
       decisionId: c.req.param("decisionId"),

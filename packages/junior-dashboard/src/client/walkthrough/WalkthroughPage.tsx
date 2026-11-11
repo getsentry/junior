@@ -20,11 +20,6 @@ import { ShimmerText } from "../components/ShimmerText";
 import { PageHeader } from "../components/layout/PageHeader";
 import { PageLayout } from "../components/layout/PageLayout";
 import { Button } from "../components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { useDocumentTitle } from "../documentTitle";
 import { DisplayText } from "../display-text/DisplayText";
 import {
@@ -32,6 +27,7 @@ import {
   WalkthroughVersions,
 } from "./WalkthroughChanges";
 import { WalkthroughChapterView } from "./WalkthroughChapterView";
+import { WalkthroughMeta } from "./WalkthroughMeta";
 import { WalkthroughQuestions } from "./WalkthroughQuestions";
 import { WalkthroughRail } from "./WalkthroughRail";
 import { WalkthroughReview } from "./WalkthroughReview";
@@ -154,21 +150,23 @@ function ReadyWalkthrough(props: {
           type="button"
         >
           Review
-          {open ? (
-            <CountBadge count={open} label={`${open} to answer`} />
-          ) : null}
+          {open ? <CountBadge count={open} label={`${open} open`} /> : null}
         </Button>
       }
       intent={<DisplayText inline text={document.content.intent} />}
       mainRef={mainRef}
+      meta={
+        <WalkthroughMeta
+          sourceConversationId={document.sourceConversationId}
+          version={version}
+        />
+      }
       rail={
         <WalkthroughRail
           activeIndex={index}
           chapters={chapters}
           marks={marks}
           onSelect={openChapter}
-          sourceConversationId={document.sourceConversationId}
-          version={version}
         />
       }
       side={
@@ -266,7 +264,8 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
 
   return (
     <WalkthroughFrame
-      rail={<WalkthroughRail chapters={[]} version={version} />}
+      meta={<WalkthroughMeta version={version} />}
+      rail={<WalkthroughRail chapters={[]} />}
       side={<WalkthroughQuestionsPanel />}
       title={title}
       version={version}
@@ -331,12 +330,13 @@ function WalkthroughFrame(props: {
   children: ReactNode;
   intent?: ReactNode;
   mainRef?: Ref<HTMLElement>;
+  /** Pull requests, source, and cost: one quiet line under the title. */
+  meta: ReactNode;
   rail: ReactNode;
   side: ReactNode;
   title: string;
   version: WalkthroughVersionResponse;
 }) {
-  const cost = props.version.costUsd;
   return (
     <div className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg lg:grid-cols-[18rem_minmax(0,1fr)]">
       {props.rail}
@@ -351,26 +351,10 @@ function WalkthroughFrame(props: {
                 {props.intent}
               </p>
             ) : null}
+            {props.meta}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <WalkthroughVersions version={props.version} />
-            {cost !== undefined ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    // Same box as the buttons beside it, without a hover.
-                    <span className="inline-flex h-9 items-center rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 text-sm font-medium leading-none tabular-nums text-dashboard-text-muted">
-                      ${cost.toFixed(2)}
-                    </span>
-                  }
-                />
-                <TooltipContent>
-                  {props.version.status === "generating"
-                    ? "What this Walkthrough has cost so far"
-                    : "What it cost to make this Walkthrough"}
-                </TooltipContent>
-              </Tooltip>
-            ) : null}
             {props.action}
           </div>
         </header>

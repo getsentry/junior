@@ -145,18 +145,19 @@ function ChevronSpace(props: { children: ReactNode }) {
 /** A row with the actions its object supports, such as a Walkthrough. */
 function LinkRowWithActions(props: { link: ConversationLink }) {
   const walkthrough = useWalkthroughTarget(props.link.plugin, props.link.facts);
-  if (!walkthrough) return <LinkRow link={props.link} />;
+  if (!walkthrough) return <ConversationLinkRow link={props.link} />;
   return (
     <div className="flex min-w-0 items-start gap-0.5">
       <div className="min-w-0 flex-1">
-        <LinkRow link={props.link} />
+        <ConversationLinkRow link={props.link} />
       </div>
       <WalkthroughAction target={walkthrough} variant="icon" />
     </div>
   );
 }
 
-function LinkRow(props: { link: ConversationLink }) {
+/** One linked-work row: the object's icon, label, and description. */
+export function ConversationLinkRow(props: { link: ConversationLink }) {
   const { link } = props;
   const status = linkStatusLabel(link.status);
   const icon = (

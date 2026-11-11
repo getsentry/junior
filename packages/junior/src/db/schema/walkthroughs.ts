@@ -77,8 +77,11 @@ export const juniorWalkthroughVersions = pgTable(
   ],
 );
 
-/** How a reviewer answered one decision. */
-export type WalkthroughAnswerValue = "agree" | "change";
+/**
+ * How a reviewer answered one decision. `skip` parks it without an answer:
+ * it no longer counts as open, and the copied review leaves it out.
+ */
+export type WalkthroughAnswerValue = "agree" | "change" | "skip";
 
 /**
  * One reviewer's answer to one decision in one version. Answers are not

@@ -60,7 +60,7 @@ export function WalkthroughChapterView(props: {
   // reviewer judges again.
   const changed = props.changes.length > 0;
   const decisionList = props.decisions.length ? (
-    <section aria-label="Decisions" className="grid max-w-3xl gap-2">
+    <section aria-label="Decisions" className="grid max-w-3xl gap-3">
       {props.decisions.map((decision) => (
         <WalkthroughDecision
           answer={props.answers[decision.id]}
@@ -116,7 +116,8 @@ export function WalkthroughChapterView(props: {
         </section>
       ) : null}
 
-      {/* Story first. A diagram sits beside it when the column is wide. */}
+      {/* Story first. A diagram sits beside it when the column is wide.
+          Without one, the story takes the full reading width. */}
       <div
         className={cn(
           "grid gap-6",
@@ -124,7 +125,7 @@ export function WalkthroughChapterView(props: {
             "@3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @3xl:items-start",
         )}
       >
-        <div className="grid max-w-2xl gap-3">
+        <div className={cn("grid gap-3", diagram ? "max-w-2xl" : "max-w-3xl")}>
           <CitedProse
             className="text-base leading-7 text-dashboard-text-subtle"
             refs={refs}

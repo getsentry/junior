@@ -61,7 +61,7 @@ export const walkthroughAnswerParamsSchema = z
 /** A reviewer's answer to one decision. */
 export const walkthroughAnswerBodySchema = z
   .object({
-    value: z.enum(["agree", "change"]),
+    value: z.enum(["agree", "change", "skip"]),
     note: z.string().max(2000).optional(),
   })
   .strict();

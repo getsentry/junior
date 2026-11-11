@@ -42,6 +42,13 @@ const decisions: ReviewDecision[] = [
     location: { label: "src/db/schema/walkthroughs.ts:39" },
   },
   {
+    id: "later",
+    claim: "The retry count can wait.",
+    chapterId: "versions-table",
+    chapterIndex: 2,
+    prs: [3088],
+  },
+  {
     id: "other-layer",
     claim: "This belongs in #3090.",
     chapterId: "submit-tool",
@@ -51,7 +58,7 @@ const decisions: ReviewDecision[] = [
 ];
 
 describe("Walkthrough review text", () => {
-  it("puts the comment first, then requested changes with code links, then agreements", () => {
+  it("puts the comment first, then requested changes with code links, then agreements, and leaves skips out", () => {
     expect(
       reviewMarkdown({
         answers: {
@@ -68,6 +75,7 @@ describe("Walkthrough review text", () => {
             versionId,
             updatedAt,
           },
+          later: { decisionId: "later", value: "skip", versionId, updatedAt },
           "other-layer": {
             decisionId: "other-layer",
             value: "change",
@@ -116,6 +124,14 @@ describe("Walkthrough answers after an update", () => {
     ]);
     // The change request that the update answers asks for a verdict.
     expect(Object.keys(result.feedback)).toEqual(["no-fk"]);
+
+    // A skip judged nothing, so changed code leaves the decision open.
+    const skipped = reviewAnswers(document, reviewDecisions(document), {
+      ...answers,
+      "runs-as-clicker": { ...answers["runs-as-clicker"]!, value: "skip" },
+    });
+    expect(Object.keys(skipped.current)).toEqual(["fork-prs"]);
+    expect(Object.keys(skipped.reopened)).toEqual(["no-fk"]);
   });
 
   it("lists what changed since the reviewer last answered", () => {

@@ -1,72 +1,28 @@
-import { MessagesSquare } from "lucide-react";
-import type {
-  WalkthroughChapter,
-  WalkthroughVersionResponse,
-} from "@sentry/junior/api/schema";
+import type { WalkthroughChapter } from "@sentry/junior/api/schema";
 
-import { ConversationLinkedWork } from "../conversations/ConversationLinkedWork";
-import { DetailsRow } from "../conversations/DetailsList";
-import { conversationPath } from "../conversations/conversationRoutes";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { chapterSlotLabel, chapterTitle, typeLabels } from "./walkthroughModel";
 
-const NO_WATCHES = new Map();
-
 /** How a chapter differs from what the reviewer last saw. */
 export type ChapterMark = "changed" | "new";
 
-const railHeadingClass =
-  "m-0 font-sans text-sm font-semibold text-dashboard-text";
-
-/** The pull requests, the Conversation that made them, then the chapters. */
+/**
+ * The chapters, and nothing else. Pull requests and the source Conversation
+ * sit in one line under the title, so the story gets the space.
+ */
 export function WalkthroughRail(props: {
   activeIndex?: number;
   chapters: readonly WalkthroughChapter[];
   /** Chapters that changed or were added since the reviewer looked. */
   marks?: ReadonlyMap<string, ChapterMark>;
   onSelect?(index: number): void;
-  /** The Conversation that made the PR, when the viewer may read it. */
-  sourceConversationId?: string;
-  version: WalkthroughVersionResponse;
 }) {
-  const { version } = props;
-  // Layers are stored bottom first. Read the stack top down, like GitHub.
-  const links = [...version.codeChanges].reverse().map((change) => ({
-    // Same shape as a code change annotation, so the row matches Linked
-    // work in the Conversation details panel.
-    description: change.title,
-    key: `${version.provider}:${change.number}`,
-    label: `${version.repository}#${change.number}`,
-    objectType: "code_change" as const,
-    plugin: version.provider,
-    status: "open",
-    url: change.url,
-  }));
-
   return (
     <nav
-      aria-label="Walkthrough"
-      className="thin-scrollbar grid min-h-0 content-start gap-6 overflow-y-auto overscroll-contain border-r border-dashboard-border bg-dashboard-surface-panel px-4 py-5 max-lg:hidden"
+      aria-label="Chapters"
+      className="thin-scrollbar grid min-h-0 content-start overflow-y-auto overscroll-contain border-r border-dashboard-border bg-dashboard-surface-panel px-4 py-5 max-lg:hidden"
     >
-      <section className="grid gap-2">
-        <h2 className={railHeadingClass}>
-          {links.length > 1 ? "Pull requests" : "Pull request"}
-        </h2>
-        <ConversationLinkedWork links={links} watchesByUrl={NO_WATCHES} />
-      </section>
-      {props.sourceConversationId ? (
-        <section className="grid gap-2">
-          <h2 className={railHeadingClass}>Made in</h2>
-          <div className="-mx-1.5">
-            <DetailsRow
-              icon={<MessagesSquare aria-hidden="true" size={14} />}
-              title="Conversation"
-              to={conversationPath(props.sourceConversationId)}
-            />
-          </div>
-        </section>
-      ) : null}
       {props.chapters.length ? (
         <ChapterList
           activeIndex={props.activeIndex}

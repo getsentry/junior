@@ -93,6 +93,10 @@ write the story again.
   and how they connect. Junior lays the diagram out.
 - A chapter `view` names the `pr` of the diagram that it shows and the node
   and edge ids to show. The other parts fade.
+- Most chapters have no view. Add one where a code change comes in, and
+  again only when a chapter shows a part of the flow that the reader has not
+  seen yet, or marks a broken part. Junior rejects a view that shows only
+  parts an earlier chapter showed.
 
 ## Evidence
 

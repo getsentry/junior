@@ -75,7 +75,7 @@ export function WalkthroughSidePanel(props: {
           {props.openCount ? (
             <CountBadge
               count={props.openCount}
-              label={`${props.openCount} to answer`}
+              label={`${props.openCount} open`}
             />
           ) : null}
         </TabsTrigger>
@@ -83,10 +83,8 @@ export function WalkthroughSidePanel(props: {
       <TabsContent className="grid min-h-0" value="questions">
         {props.questions}
       </TabsContent>
-      <TabsContent
-        className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
-        value="review"
-      >
+      {/* The review owns its scroll, so Copy review stays at the bottom. */}
+      <TabsContent className="grid min-h-0 min-w-0" value="review">
         {props.review}
       </TabsContent>
     </Tabs>

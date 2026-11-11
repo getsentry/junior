@@ -109,6 +109,7 @@ export function validateWalkthrough(
   for (const chapter of output.chapters) {
     problems.push(...chapterProblems(chapter, refs, diagrams));
   }
+  problems.push(...repeatedViewProblems(output.chapters));
   const bugFixCause = output.chapters.find(
     (c) => c.type === "bug_fix" && c.slot === "cause",
   );
@@ -291,6 +292,31 @@ function chapterProblems(
         );
       }
     }
+  }
+  return problems;
+}
+
+/**
+ * A diagram shows where its code change comes in. A later chapter shows it
+ * again only to bring in a part the reader has not seen, or to mark a broken
+ * part. Otherwise every chapter repeats a picture the reader already has.
+ */
+function repeatedViewProblems(
+  chapters: readonly WalkthroughChapter[],
+): string[] {
+  const seen = new Map<number, Set<string>>();
+  const problems: string[] = [];
+  for (const chapter of chapters) {
+    const view = chapter.view;
+    if (!view) continue;
+    const shown = seen.get(view.pr);
+    const ids = [...view.show, ...view.added];
+    if (shown && view.broken.length === 0 && ids.every((id) => shown.has(id))) {
+      problems.push(
+        `Chapter ${chapter.id} shows only parts of the PR #${view.pr} diagram that an earlier chapter showed. Remove its view, or show a part the reader has not seen.`,
+      );
+    }
+    seen.set(view.pr, new Set([...(shown ?? []), ...ids]));
   }
   return problems;
 }

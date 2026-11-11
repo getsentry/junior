@@ -215,7 +215,8 @@ export function reviewDecisions(
  * Split the viewer's answers on this lineage into the ones that still hold
  * and the ones that an update reopened. A reopened answer is context: the
  * code it judged changed. A change request that an update answers reopens
- * too, so the reviewer can say whether the change answers it.
+ * too, so the reviewer can say whether the change answers it. A skip judged
+ * nothing, so once its code changes the decision is simply open again.
  */
 export function reviewAnswers(
   document: WalkthroughDocument,
@@ -238,7 +239,7 @@ export function reviewAnswers(
       item ||
       answerState(document, decision.chapterId, answer) === "reopened"
     ) {
-      reopened[decision.id] = answer;
+      if (answer.value !== "skip") reopened[decision.id] = answer;
     } else {
       current[decision.id] = answer;
     }
@@ -246,7 +247,7 @@ export function reviewAnswers(
   return { current, reopened, feedback };
 }
 
-/** Decisions the viewer has not answered yet. */
+/** Decisions the viewer has not answered or skipped yet. */
 export function openDecisionCount(
   decisions: readonly ReviewDecision[],
   answers: AnswerMap,
@@ -257,6 +258,7 @@ export function openDecisionCount(
 /**
  * One layer's review as GitHub Markdown. It pastes into the PR's review box
  * as is: code locations link to the cited line at the reviewed commit.
+ * Skipped decisions stay out.
  */
 export function reviewMarkdown(args: {
   answers: AnswerMap;
