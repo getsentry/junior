@@ -30,6 +30,8 @@ import {
   FieldDescription,
   FieldError,
   FieldLabel,
+  FieldLegend,
+  FieldSet,
 } from "../../components/ui/field";
 import { NativeSelect } from "../../components/ui/native-select";
 import { FormNotice } from "../../components/FormNotice";
@@ -262,20 +264,22 @@ export function AutomationEventFields(props: {
               </FieldDescription>
             </Field>
           )}
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold">
+          <FieldSet className="gap-0">
+            <FieldLegend className="mb-2" variant="label">
               Run on these events
-            </legend>
+            </FieldLegend>
             <div className="divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-emphasis">
               {choices.events.map((event) => (
-                <label
+                <Field
                   key={event}
-                  className="flex min-h-11 cursor-pointer items-start gap-3 px-3 py-3 text-sm"
+                  className="min-h-11 items-start pl-3"
+                  orientation="horizontal"
                 >
                   <Checkbox
-                    className="mt-0.5"
+                    className="mt-3.5"
                     checked={props.value.events.includes(event)}
                     disabled={props.disabled}
+                    id={`trigger-event-${event}`}
                     onCheckedChange={() =>
                       props.onChange({
                         ...props.value,
@@ -285,7 +289,12 @@ export function AutomationEventFields(props: {
                       })
                     }
                   />
-                  <span className="min-w-0 break-words">
+                  {/* The label fills the row, so the whole row stays a touch
+                      target. Block, so the reach text wraps inline. */}
+                  <FieldLabel
+                    className="block min-w-0 self-stretch py-3 pr-3 font-normal break-words"
+                    htmlFor={`trigger-event-${event}`}
+                  >
                     {eventTypeText(event)}
                     {anyResource && reachText(source, event) ? (
                       <span className="text-dashboard-text-muted">
@@ -293,14 +302,16 @@ export function AutomationEventFields(props: {
                         · {reachText(source, event)}
                       </span>
                     ) : null}
-                  </span>
-                </label>
+                  </FieldLabel>
+                </Field>
               ))}
             </div>
-          </fieldset>
+          </FieldSet>
           {matchFields.length ? (
-            <fieldset className="grid gap-4">
-              <legend className="mb-3 text-sm font-semibold">Filters</legend>
+            <FieldSet>
+              <FieldLegend className="mb-3" variant="label">
+                Filters
+              </FieldLegend>
               <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted">
                 Every filter must match. Leave a filter blank to match any
                 value.
@@ -375,7 +386,7 @@ export function AutomationEventFields(props: {
                   </Field>
                 );
               })}
-            </fieldset>
+            </FieldSet>
           ) : null}
         </>
       ) : null}
