@@ -1,5 +1,6 @@
 import {
   CheckCheck,
+  CircleCheck,
   GitPullRequest,
   Inbox,
   MessageCircleQuestion,
@@ -14,8 +15,8 @@ import type { InboxView } from "./inboxModel";
 
 /** One bundle in the Inbox list, with its counts. */
 export type InboxBundleLink = {
-  /** Items in the bundle that a sweep can see. */
-  count: number;
+  /** Items in the bundle that a sweep can see. Done has no count. */
+  count?: number;
   label: string;
   /** Items in the bundle that wait on the viewer. They show in accent. */
   asks: number;
@@ -26,7 +27,15 @@ const VIEW_ICONS: Partial<Record<InboxView, LucideIcon>> = {
   all: Inbox,
   automations: Workflow,
   decisions: MessageCircleQuestion,
+  done: CircleCheck,
   prs: GitPullRequest,
+};
+
+/** Done lists the closed items. It comes last, after the Conversations. */
+export const DONE_LINK: InboxBundleLink = {
+  asks: 0,
+  label: "Done",
+  view: "done",
 };
 
 function viewHref(view: InboxView, search: string): string {
@@ -93,7 +102,7 @@ function BundleRow(props: {
           >
             {bundle.count}
           </span>
-        ) : (
+        ) : bundle.count === undefined ? null : (
           <span
             aria-label={`${bundle.count} items`}
             className="px-1.5 text-xs tabular-nums text-dashboard-text-faint"
@@ -108,7 +117,7 @@ function BundleRow(props: {
 
 /**
  * The Inbox bundle list: All, Pull requests, Decisions, Automations, then
- * one bundle per Conversation. Every bundle is automatic. Accent numbers count
+ * one bundle per Conversation, then Done. Every bundle is automatic. Accent numbers count
  * what waits on the viewer; faint numbers count everything.
  */
 export function InboxSidebar(props: {
@@ -149,6 +158,13 @@ export function InboxSidebar(props: {
           </ul>
         </>
       ) : null}
+      <ul className="m-0 mt-4 grid gap-0.5 border-t border-dashboard-border p-0 pt-3">
+        <BundleRow
+          bundle={DONE_LINK}
+          search={props.search}
+          selected={props.selected === "done"}
+        />
+      </ul>
     </aside>
   );
 }
@@ -181,16 +197,18 @@ export function InboxBundleChips(props: {
         >
           <span className="max-w-40 truncate">{bundle.label}</span>
           {/* Same count and accent as the pane. */}
-          <span
-            className={cn(
-              "text-xs tabular-nums",
-              bundle.asks > 0
-                ? "font-semibold text-dashboard-accent-text"
-                : "opacity-70",
-            )}
-          >
-            {bundle.count}
-          </span>
+          {bundle.count === undefined ? null : (
+            <span
+              className={cn(
+                "text-xs tabular-nums",
+                bundle.asks > 0
+                  ? "font-semibold text-dashboard-accent-text"
+                  : "opacity-70",
+              )}
+            >
+              {bundle.count}
+            </span>
+          )}
         </Link>
       ))}
     </nav>

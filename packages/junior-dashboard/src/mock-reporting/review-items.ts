@@ -33,7 +33,12 @@ type MockItemSeed = Pick<
   ReviewItemPayload,
   "answer" | "body" | "id" | "request" | "status" | "subject" | "title"
 > &
-  Partial<Pick<ReviewItemPayload, "assignedToEveryone" | "kind">> & {
+  Partial<
+    Pick<
+      ReviewItemPayload,
+      "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
+    >
+  > & {
     conversationId: string;
     createdAt: string;
     /** The plugin that added the item. Plugin items have no Turn. */
@@ -51,6 +56,7 @@ function seeds(nowMs: number): MockItemSeed[] {
         values: {},
       },
       body: "The canary takes about 2% of traffic.",
+      closedAt: at(50),
       conversationId: MOCK_QUESTION_CONVERSATION_ID,
       createdAt: at(58),
       id: "qa-canary-region",
@@ -288,6 +294,27 @@ function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       title: "Tighten the checkout latency alert",
     },
+    // Closed items, for Done: one this week, one earlier.
+    {
+      body: "The release job failed once on a network timeout.",
+      closeReason: "The next run passed, so no retry is needed.",
+      closedAt: at(2 * DAY),
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(2 * DAY + 90),
+      id: "qa-release-retry",
+      status: "dismissed",
+      title: "Retry the failed release job",
+    },
+    {
+      body: "The on-call handoff notes for last week are in the runbook.",
+      closedAt: at(12 * DAY),
+      conversationId: DEPLOY_CONVERSATION_ID,
+      createdAt: at(13 * DAY),
+      id: "qa-handoff-notes",
+      kind: "notice",
+      status: "done",
+      title: "On-call handoff notes posted",
+    },
     {
       assignedToEveryone: true,
       body: "Three sandboxes rebuilt their dependency snapshot after the lockfile change.",
@@ -329,27 +356,37 @@ function payload(seed: MockItemSeed): ReviewItemPayload {
     kind: seed.kind ?? "action",
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",
-    ...(item.status !== "open" && !item.closedAt
-      ? { closedAt: seed.createdAt, closedBy: viewer }
+    ...(item.status !== "open"
+      ? {
+          closedAt: item.closedAt ?? seed.createdAt,
+          closedBy: item.closedBy ?? viewer,
+        }
       : undefined),
   };
 }
 
-/** List the mock items, open first and oldest first, like the API. */
+/**
+ * List the mock items, open first and oldest first, like the API. `closed`
+ * lists the done and dismissed items instead, newest closed first.
+ */
 export function readMockReviewItems(
   nowMs: number,
-  filters: { conversationId?: string; q?: string },
+  filters: { closed?: boolean; conversationId?: string; q?: string },
 ): ReviewItemPayload[] {
   const q = filters.q?.toLowerCase();
-  return seeds(nowMs)
+  const items = seeds(nowMs)
     .filter(
       (seed) =>
         (!filters.conversationId ||
           seed.conversationId === filters.conversationId) &&
         (!q || seed.title.toLowerCase().includes(q)),
     )
-    .map(payload)
-    .filter((item) => item.status === "open" || q !== undefined);
+    .map(payload);
+  if (filters.closed)
+    return items
+      .filter((item) => item.status !== "open")
+      .sort((a, b) => Date.parse(b.closedAt!) - Date.parse(a.closedAt!));
+  return items.filter((item) => item.status === "open" || q !== undefined);
 }
 
 /** Read one mock item. */

@@ -62,7 +62,8 @@ export type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
 /**
  * Review desk list filters. The list has the open items that the viewer can
  * see, one page at a time. A search or `include=archived` also finds done and
- * dismissed items, after the open ones.
+ * dismissed items, after the open ones. `status` lists closed items instead,
+ * with the same visibility.
  */
 export const reviewItemListQuerySchema = z
   .object({
@@ -79,6 +80,22 @@ export const reviewItemListQuerySchema = z
     /** Also list the newest done and dismissed items, with the first page. */
     include: z.enum(["archived"]).optional(),
     q: z.string().trim().max(200).optional(),
+    /**
+     * `open` (the default), or closed statuses, comma separated, such as
+     * `done,dismissed`. Closed items page newest closed first.
+     */
+    status: z
+      .string()
+      .default("open")
+      .transform((value) => [...new Set(value.split(","))])
+      .pipe(
+        z
+          .array(z.enum(["open", "done", "dismissed"]))
+          .refine(
+            (statuses) => !statuses.includes("open") || statuses.length === 1,
+            "List open items on their own.",
+          ),
+      ),
   })
   .strict();
 

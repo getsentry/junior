@@ -104,6 +104,18 @@ const answered = {
   title: "Review the initech license entry",
 };
 
+const dismissedNotice = {
+  ...base,
+  body: "The nightly digest skipped two noisy alerts.",
+  closeReason: "Muted both alerts.",
+  closedAt: "2026-08-07T09:50:00.000Z",
+  closedBy: viewer,
+  id: "item-digest",
+  kind: "notice" as const,
+  status: "dismissed" as const,
+  title: "Digest skipped two alerts",
+};
+
 // The agent added this item in the Conversation, so a message there closes it.
 const migration = {
   ...license,
@@ -179,7 +191,7 @@ async function mockReviewItems(
     prReady,
     migration,
   ]) as (typeof license)[];
-  const archived = [answered];
+  const archived = [answered, dismissedNotice];
   await page.route("**/api/review-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
@@ -187,8 +199,16 @@ async function mockReviewItems(
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       const linked = url.searchParams.get("conversationId");
-      // A search also finds archived items, after the open ones.
-      const list = (q ? [...open, ...archived] : open).filter(
+      // A search also finds archived items, after the open ones. A status
+      // list has only closed items, newest closed first.
+      const closed = (url.searchParams.get("status") ?? "open") !== "open";
+      const list = (
+        closed
+          ? [...archived].sort((a, b) => b.closedAt.localeCompare(a.closedAt))
+          : q
+            ? [...open, ...archived]
+            : open
+      ).filter(
         (i) =>
           i.title.toLowerCase().includes(q) &&
           (!linked || i.conversationIds.includes(linked)),
@@ -699,6 +719,7 @@ test("each bundle groups its rows the way its filter reads", async ({
     /^Investigate checkout latency/,
     // A Conversation with no title is named after its newest item.
     new RegExp(`^${audit.title}`),
+    /^Done$/,
   ]);
 
   // Pull requests group by state.
@@ -822,6 +843,36 @@ test("an automation row expands in place and only its buttons leave", async ({
     .toEqual([{ action: "resume", revision: editor.value.revision }]);
   await details.getByRole("link", { name: "Open editor" }).click();
   await expect(page).toHaveURL(/\/automations\/scheduled-1\/edit$/);
+});
+
+test("Done lists closed items, and a row expands in place", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/review`);
+  await page
+    .getByRole("complementary", { name: "Inbox bundles" })
+    .getByRole("link", { name: "Done", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/review\?bundle=done$/);
+  // Each row shows its answer or why it closed, and who closed it.
+  const done = page.getByRole("button", { name: /initech license entry/ });
+  await expect(done).toContainText("Approve · MIT license, no change.");
+  await expect(done).toContainText("Dashboard User");
+  await expect(done).not.toContainText("Dismissed");
+  const dismissed = page.getByRole("button", { name: /Digest skipped/ });
+  await expect(dismissed).toContainText("Dismissed");
+  await expect(dismissed).toContainText("Muted both alerts.");
+
+  const url = page.url();
+  await done.click();
+  await expect(
+    page.getByRole("region", {
+      name: "Review the initech license entry: how it closed",
+    }),
+  ).toContainText("Dashboard User closed this");
+  expect(page.url()).toBe(url);
 });
 
 test("a sweep clears only FYI items, with an Undo", async ({

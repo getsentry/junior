@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   AutomationSummary,
@@ -13,7 +13,6 @@ import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { ChatLayout } from "../conversations/ChatLayout";
-import { ConversationSectionHeading } from "../conversations/ConversationSectionHeading";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { useDocumentTitle } from "../documentTitle";
 import { automationPath, formatRelativeTime } from "../format";
@@ -21,6 +20,8 @@ import { useDebouncedSearchParam } from "../searchParams";
 import { cn } from "../styles";
 import { InboxAutomationRow } from "./InboxAutomationRow";
 import { InboxBundleView } from "./InboxBundleView";
+import { doneKeys, InboxDoneView } from "./InboxDoneView";
+import { InboxSection } from "./InboxSection";
 import {
   automationSections,
   conversationView,
@@ -33,6 +34,7 @@ import {
   type InboxView,
 } from "./inboxModel";
 import {
+  DONE_LINK,
   InboxBundleChips,
   InboxSidebar,
   SweepButton,
@@ -68,8 +70,14 @@ const VIEW_LABELS = {
   all: "All",
   automations: "Automations",
   decisions: "Decisions",
+  done: "Done",
   prs: "Pull requests",
 } as const;
+
+// Done is read-only, so only moving, opening, and leaving apply.
+const DONE_KEY_HINTS = KEY_HINTS.filter(([, label]) =>
+  ["move", "open", "conversation"].includes(label),
+);
 
 function BundleRowsLoading() {
   return (
@@ -100,36 +108,6 @@ export function ReviewDeskLoading() {
   );
 }
 
-function Section(props: {
-  /** Shows at the end of the heading, such as the section's sweep. */
-  action?: ReactNode;
-  children: ReactNode;
-  collapsed: boolean;
-  count: number;
-  label: string;
-  onToggle(): void;
-}) {
-  if (props.count === 0) return null;
-  return (
-    <section aria-label={props.label} className="grid gap-2 pt-5 first:pt-1">
-      {/* A bold heading and a rule split the stream of cards. */}
-      <div className="flex min-h-9 items-end justify-between gap-3 border-b border-dashboard-border pr-1 pb-1.5">
-        <ConversationSectionHeading
-          className="px-1 font-semibold text-dashboard-text [&_*]:text-dashboard-text"
-          collapsed={props.collapsed}
-          count={props.count}
-          label={props.label}
-          onToggle={props.onToggle}
-        />
-        {props.action}
-      </div>
-      {props.collapsed ? null : (
-        <ul className="m-0 grid gap-2 p-0">{props.children}</ul>
-      )}
-    </section>
-  );
-}
-
 /** One group in the stream: Review item rows, then Automations. */
 type StreamSection = {
   automations: AutomationSummary[];
@@ -143,10 +121,10 @@ const automationKey = (automation: AutomationSummary) =>
 
 /**
  * Render the inbox the way Google Inbox did: the pane lists the bundles
- * (All, Pull requests, Decisions, Automations, then one per Conversation),
- * and the page groups the chosen bundle the way its filter reads best. A
- * click on any row expands it in place; only labelled buttons leave the
- * inbox. Each section sweeps its notices and FYI items with an Undo;
+ * (All, Pull requests, Decisions, Automations, one per Conversation, then
+ * Done), and the page groups the chosen bundle the way its filter reads
+ * best. A click on any row expands it in place; only labelled buttons leave
+ * the inbox. Each section sweeps its notices and FYI items with an Undo;
  * what needs the viewer stays. Keys follow Gmail and Linear.
  */
 export function ReviewDeskPage() {
@@ -161,6 +139,13 @@ export function ReviewDeskPage() {
     moreArchived,
     query: items,
   } = useReviewItemsData({ forViewer: true, q });
+  const isDone = view === "done";
+  const { items: doneItems, query: doneQuery } = useReviewItemsData({
+    closed: true,
+    enabled: isDone,
+    forViewer: true,
+    q,
+  });
   // The viewer's Automations that need attention are asks too: they lead
   // All and fill their own bundle. A sweep leaves them.
   const attention = useAutomationAttentionData(true);
@@ -185,8 +170,12 @@ export function ReviewDeskPage() {
   const pins = useInboxPins();
   const sweeper = useInboxSweep();
   const conversationIds = useMemo(
-    () => [...new Set(allItems.map((item) => item.addedByConversationId))],
-    [allItems],
+    () => [
+      ...new Set(
+        [...allItems, ...doneItems].map((item) => item.addedByConversationId),
+      ),
+    ],
+    [allItems, doneItems],
   );
   const titles = useLinkedConversationTitles(conversationIds);
   const titleById = new Map(
@@ -212,7 +201,7 @@ export function ReviewDeskPage() {
   const awake = live.filter((item) => !asleep(item));
   const sleeping = live.filter(asleep);
 
-  const link = (target: InboxView, label: string): InboxBundleLink => {
+  const link = (target: InboxView, label: string) => {
     const inView = itemsInView(awake, target);
     return {
       count: inView.length,
@@ -312,16 +301,18 @@ export function ReviewDeskPage() {
   const automationByKey = new Map(
     attentionAll.map((automation) => [automationKey(automation), automation]),
   );
-  const navigable = q
-    ? rows.map((row) => row.key)
-    : sections.flatMap((section) =>
-        collapsed.has(section.key)
-          ? []
-          : [
-              ...section.rows.map((row) => row.key),
-              ...section.automations.map(automationKey),
-            ],
-      );
+  const navigable = isDone
+    ? doneKeys(doneItems, nowMs, collapsed)
+    : q
+      ? rows.map((row) => row.key)
+      : sections.flatMap((section) =>
+          collapsed.has(section.key)
+            ? []
+            : [
+                ...section.rows.map((row) => row.key),
+                ...section.automations.map(automationKey),
+              ],
+        );
 
   const linkedKey = itemParam
     ? rows.find((row) => row.items.some((item) => item.id === itemParam))?.key
@@ -415,6 +406,9 @@ export function ReviewDeskPage() {
     activeKey && navigable.includes(activeKey) ? activeKey : navigable[0];
   const activeRow = activeId ? rowByKey.get(activeId) : undefined;
   const activeAutomation = activeId ? automationByKey.get(activeId) : undefined;
+  const activeDone = isDone
+    ? doneItems.find((item) => item.id === activeId)
+    : undefined;
   const toggle = (key: string) => {
     setActiveKey(key);
     setSnoozeMenuKey(undefined);
@@ -468,6 +462,12 @@ export function ReviewDeskPage() {
     open() {
       if (activeAutomation)
         navigate(automationPath(activeAutomation.id, "edit"));
+      else if (activeDone)
+        navigate(
+          conversationPath(activeDone.addedByConversationId, {
+            turnId: activeDone.addedByTurnId,
+          }),
+        );
       else if (activeRow)
         navigate(
           conversationPath(activeRow.conversationId, {
@@ -483,7 +483,10 @@ export function ReviewDeskPage() {
   });
 
   const loaded = Boolean(items.data);
-  const empty = loaded && !q && navigable.length === 0 && sections.length === 0;
+  // Done pages its own list.
+  const listQuery = isDone ? doneQuery : items;
+  const empty =
+    loaded && !q && !isDone && navigable.length === 0 && sections.length === 0;
   // A single-item row names its Conversation unless a heading already does.
   const itemRow =
     view === "all"
@@ -558,7 +561,7 @@ export function ReviewDeskPage() {
                     <ArrowUpRight aria-hidden="true" size={14} />
                   </Link>
                 ) : null}
-                {q ? null : (
+                {q || isDone ? null : (
                   <SweepButton
                     clear={viewSweep.length}
                     onSweep={() => sweepRows(rows)}
@@ -568,7 +571,7 @@ export function ReviewDeskPage() {
               </div>
             </div>
             <InboxBundleChips
-              bundles={[...bundleLinks, ...conversationLinks]}
+              bundles={[...bundleLinks, ...conversationLinks, DONE_LINK]}
               search={location.search}
               selected={view}
             />
@@ -585,7 +588,7 @@ export function ReviewDeskPage() {
                 aria-label="Keyboard shortcuts"
                 className="m-0 flex shrink-0 flex-wrap justify-end gap-x-3 gap-y-1 font-sans text-xs text-dashboard-text-faint max-lg:hidden"
               >
-                {KEY_HINTS.map(([keys, label]) => (
+                {(isDone ? DONE_KEY_HINTS : KEY_HINTS).map(([keys, label]) => (
                   <span key={label}>
                     <kbd className="font-sans text-dashboard-text-muted">
                       {keys}
@@ -607,7 +610,31 @@ export function ReviewDeskPage() {
               Could not close every item. Try again.
             </InlineError>
           ) : null}
-          {items.error && !items.data ? (
+          {isDone ? (
+            doneQuery.error && !doneQuery.data ? (
+              <InlineError className="px-4 py-3">
+                Could not load done items.
+              </InlineError>
+            ) : !doneQuery.data ? (
+              <BundleRowsLoading />
+            ) : doneItems.length === 0 ? (
+              <p className="m-0 py-12 text-center font-display text-lg font-medium text-dashboard-text">
+                {q ? `No done items match "${q}".` : "Nothing done yet"}
+              </p>
+            ) : (
+              <InboxDoneView
+                activeKey={activeId}
+                collapsed={collapsed}
+                expandedKey={expandedKey}
+                items={doneItems}
+                nowMs={nowMs}
+                onActivate={setActiveKey}
+                onToggle={toggle}
+                onToggleSection={toggleSection}
+                titleOf={titleOf}
+              />
+            )
+          ) : items.error && !items.data ? (
             <InlineError className="px-4 py-3">
               Could not load review items.
             </InlineError>
@@ -622,7 +649,7 @@ export function ReviewDeskPage() {
               {sections.map((section) => {
                 const sweep = sweepOf(section.rows, isPinned);
                 return (
-                  <Section
+                  <InboxSection
                     action={
                       <SweepButton
                         clear={sweep.length}
@@ -638,10 +665,10 @@ export function ReviewDeskPage() {
                   >
                     {section.rows.map(rowView)}
                     {section.automations.map(automationView)}
-                  </Section>
+                  </InboxSection>
                 );
               })}
-              <Section
+              <InboxSection
                 collapsed={collapsed.has("snoozed")}
                 count={snoozedRows.length}
                 label="Snoozed"
@@ -667,15 +694,15 @@ export function ReviewDeskPage() {
                     </Button>
                   </li>
                 ))}
-              </Section>
+              </InboxSection>
             </>
           )}
-          {moreArchived ? (
+          {moreArchived && !isDone ? (
             <p className="m-0 px-4 py-2 text-xs text-dashboard-text-muted">
               Narrow the search to find older archived items.
             </p>
           ) : null}
-          {loaded && q && rows.length === 0 ? (
+          {loaded && q && !isDone && rows.length === 0 ? (
             <p className="m-0 px-4 py-8 text-center text-sm text-dashboard-text-muted">
               No items match "{q}".
             </p>
@@ -689,11 +716,13 @@ export function ReviewDeskPage() {
           ) : null}
           <LoadMorePagination
             className="mx-4 mt-2"
-            hasMore={!items.isPlaceholderData && Boolean(items.hasNextPage)}
-            loading={items.isFetchingNextPage}
-            onLoadMore={() => void items.fetchNextPage()}
+            hasMore={
+              !listQuery.isPlaceholderData && Boolean(listQuery.hasNextPage)
+            }
+            loading={listQuery.isFetchingNextPage}
+            onLoadMore={() => void listQuery.fetchNextPage()}
           />
-          {items.isFetchNextPageError ? (
+          {listQuery.isFetchNextPageError ? (
             <InlineError className="px-4 py-2">
               Could not load more items. Try again.
             </InlineError>

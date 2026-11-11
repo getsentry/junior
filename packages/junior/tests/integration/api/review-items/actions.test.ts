@@ -393,6 +393,47 @@ describe("review item actions API", () => {
       { kind: "notice" },
       { id, status: "done" },
     ]);
+
+    // The Done list pages the closed items, newest closed first, with the
+    // same visibility as open items.
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const notice = calList.items.find((item: any) => item.kind === "notice");
+    expect(
+      (await api(fixture, ana).act(notice.id, { action: "dismiss" })).status,
+    ).toBe(200);
+    const closedPage = await (
+      await api(fixture, ana).get("?status=done,dismissed&limit=1")
+    ).json();
+    expect(closedPage.items).toMatchObject([
+      { id: notice.id, status: "dismissed" },
+    ]);
+    const closedCursor = encodeURIComponent(closedPage.nextCursor);
+    const nextClosed = await (
+      await api(fixture, ana).get(
+        `?status=done,dismissed&limit=1&cursor=${closedCursor}`,
+      )
+    ).json();
+    expect(nextClosed.items).toMatchObject([{ id, status: "done" }]);
+    expect(nextClosed.nextCursor).toBeUndefined();
+    // A cursor pages only its own list.
+    expect(
+      (await api(fixture, ana).get(`?limit=1&cursor=${closedCursor}`)).status,
+    ).toBe(400);
+    expect(
+      (await (await api(fixture, ana).get("?status=dismissed")).json()).items,
+    ).toMatchObject([{ id: notice.id }]);
+    expect(
+      (
+        await (
+          await api(fixture, outsider).get("?status=done,dismissed")
+        ).json()
+      ).items,
+    ).toEqual([]);
+    expect((await api(fixture, ana).get("?status=open,done")).status).toBe(400);
+    // Closed items never count.
+    expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
+      needsViewer: 0,
+    });
   });
 
   it("lets anyone take an item assigned to Everyone", async () => {

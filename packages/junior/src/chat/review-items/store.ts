@@ -9,6 +9,7 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
   notLike,
   or,
   sql,
@@ -510,6 +511,15 @@ export interface ReviewItemPosition {
   id: string;
 }
 
+/**
+ * A position in the newest-closed-first order: the last closed item of a
+ * page. Search returns the items closed before it.
+ */
+export interface ReviewItemClosedPosition {
+  closedAt: Date;
+  id: string;
+}
+
 /** Filters for Review item search. Every filter is optional. */
 export interface ReviewItemFilters {
   /**
@@ -521,6 +531,11 @@ export interface ReviewItemFilters {
   /** One assigned User, or Everyone. */
   assignee?: { everyone: true } | { userId: string };
   automationId?: string;
+  /**
+   * Return only the items closed before this position. Use it with
+   * `order: "closed"` and closed statuses.
+   */
+  closedBefore?: ReviewItemClosedPosition;
   conversationId?: string;
   /**
    * Drop the items that are assigned only to other people
@@ -531,10 +546,11 @@ export interface ReviewItemFilters {
   /** Words to find in the title or body. */
   query?: string;
   /**
-   * `oldest` sorts by creation, oldest first. By default the newest change
-   * comes first.
+   * `oldest` sorts by creation, oldest first. `closed` sorts closed items by
+   * when they closed, newest first. By default the newest change comes
+   * first.
    */
-  order?: "oldest";
+  order?: "closed" | "oldest";
   statuses: readonly ReviewItemStatus[];
   subjectId?: string;
 }
@@ -554,6 +570,17 @@ function searchConditions(
         and(
           eq(juniorReviewItems.createdAt, filters.after.createdAt),
           gt(juniorReviewItems.id, filters.after.id),
+        ),
+      )!,
+    );
+  }
+  if (filters.closedBefore) {
+    conditions.push(
+      or(
+        lt(juniorReviewItems.closedAt, filters.closedBefore.closedAt),
+        and(
+          eq(juniorReviewItems.closedAt, filters.closedBefore.closedAt),
+          lt(juniorReviewItems.id, filters.closedBefore.id),
         ),
       )!,
     );
@@ -623,7 +650,9 @@ export function reviewItemsNeedingUserVersionQuery(
  * the limit never drops an open item for a closed one. Then the newest
  * change comes first: `updated_at`, then `id`, both descending. With
  * `order: "oldest"`, the oldest item comes first: `created_at`, then `id`,
- * both ascending. `after` pages through that order.
+ * both ascending. `after` pages through that order. With `order: "closed"`,
+ * the item closed last comes first: `closed_at`, then `id`, both
+ * descending. `closedBefore` pages through that order.
  */
 export async function searchReviewItems(
   db: JuniorDatabase,
@@ -638,7 +667,9 @@ export async function searchReviewItems(
       desc(eq(juniorReviewItems.status, "open")),
       ...(filters.order === "oldest"
         ? [asc(juniorReviewItems.createdAt), asc(juniorReviewItems.id)]
-        : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
+        : filters.order === "closed"
+          ? [desc(juniorReviewItems.closedAt), desc(juniorReviewItems.id)]
+          : [desc(juniorReviewItems.updatedAt), desc(juniorReviewItems.id)]),
     )
     .limit(filters.limit);
   return await hydrate(db, rows);
