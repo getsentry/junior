@@ -26,6 +26,7 @@ import type { Platform } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import { metrics } from "@/chat/sentry";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
   buildDeploymentSystemPrompt,
@@ -205,6 +206,22 @@ async function startIdlePeriod(
     snapshotKey(conversationId, idle.generation),
     request.context,
     IDLE_HORIZON_MS,
+  );
+  // Spans are sampled. These metrics show the size distribution of every
+  // snapshot, so the limit can be tuned.
+  const metricOptions = {
+    unit: "byte",
+    attributes: { "app.cache_warming.stored": stored },
+  };
+  metrics.distribution(
+    "cache_warming.snapshot.bytes",
+    snapshot.bytes,
+    metricOptions,
+  );
+  metrics.distribution(
+    "cache_warming.snapshot.image_bytes",
+    snapshot.imageBytes,
+    metricOptions,
   );
   if (!stored) {
     // A warning, so production keeps this idle period that Junior cannot warm.
@@ -481,7 +498,10 @@ export function createCacheWarmingRecorder(
  * (distinct images stored under hash keys), and `snapshot_image_bytes`
  * (their base64 data). A snapshot that is still over the limit stores
  * nothing and warns `cache_warming.snapshot.skipped` with `skip_reason`
- * `snapshot_too_large`, `prefix_tokens`, and the same sizes.
+ * `snapshot_too_large`, `prefix_tokens`, and the same sizes. Each snapshot
+ * also records the unsampled distribution metrics
+ * `cache_warming.snapshot.bytes` and `cache_warming.snapshot.image_bytes`,
+ * with `app.cache_warming.stored` false for a snapshot over the limit.
  *
  * `work_state` and `archived` are read when the idle period starts and pick
  * its `gapSegment`. Decision attributes are absent when the warmup skipped
