@@ -61,9 +61,10 @@ class OverflowPool extends Pool {
       max: POOL_MAX,
       // Keeps clients that a burst opened warm for the next burst. Idle
       // clients to the Neon pooler hold no Postgres backend, and neither
-      // Neon's proxy nor its PgBouncer closes them on a timer. When the server
-      // closes one, pg-pool removes it before a query can take it.
-      idleTimeoutMillis: 600_000,
+      // Neon's proxy nor its PgBouncer closes them on a timer. The driver
+      // sends no keepalive, so stay under common NAT idle limits (about
+      // 350 s), which drop a silent connection without closing it.
+      idleTimeoutMillis: 300_000,
       // Keeps the client that `reconnectWhenEmpty()` opens. Alone, `min` does
       // not keep a client open after a burst.
       min: 1,

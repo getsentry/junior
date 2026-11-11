@@ -79,7 +79,7 @@ function createExecutor() {
   });
 }
 
-const POOL_IDLE_TIMEOUT_MS = 600_000;
+const POOL_IDLE_TIMEOUT_MS = 300_000;
 
 describe("Neon pool overflow", () => {
   let executor: ReturnType<typeof createNeonJuniorSqlExecutor>;
