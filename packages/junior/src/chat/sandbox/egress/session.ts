@@ -79,7 +79,7 @@ function authSignalKey(
  */
 function permissionSignalKey(
   egressId: string,
-  access: SandboxEgressPermissionDeniedSignal["grant"]["access"],
+  access: SandboxEgressCredentialLease["grant"]["access"],
 ): string {
   return `${SANDBOX_EGRESS_PERMISSION_SIGNAL_PREFIX}:${egressId}:${access}`;
 }
@@ -300,18 +300,28 @@ export async function setSandboxEgressAuthRequiredSignal(
   );
 }
 
+type PermissionDeniedSignalInput<T> = T extends unknown
+  ? Omit<T, "createdAtMs">
+  : never;
+
 /**
- * Record that the provider rejected an issued credential with permission denial.
+ * Record that the provider rejected an issued credential, or that Junior's
+ * egress policy refused the request before it chose a credential.
  */
 export async function setSandboxEgressPermissionDeniedSignal(
   context: SandboxEgressCredentialContext,
-  signal: Omit<SandboxEgressPermissionDeniedSignal, "createdAtMs">,
+  signal: PermissionDeniedSignalInput<SandboxEgressPermissionDeniedSignal>,
 ): Promise<void> {
   const ttlMs = Math.max(1, context.expiresAtMs - Date.now());
   const state = getStateAdapter();
   await state.connect();
   await state.set(
-    permissionSignalKey(context.egressId, signal.grant.access),
+    // A policy denial has no grant. It takes the write slot, which the
+    // command runner reads first.
+    permissionSignalKey(
+      context.egressId,
+      signal.source === "upstream" ? signal.grant.access : "write",
+    ),
     {
       ...signal,
       createdAtMs: Date.now(),

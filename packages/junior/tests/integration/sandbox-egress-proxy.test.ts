@@ -41,6 +41,7 @@ const MANAGED_PROVIDER_SUBDOMAIN = "api.managed-egress.example.test";
 const OAUTH_BROKER_PROVIDER_HOST = "oauth-broker.example.test";
 const GITHUB_API_HOST = "api.github.com";
 const GITHUB_UPLOAD_HOST = "uploads.github.com";
+const GITHUB_GIT_HOST = "github.com";
 
 const managedEgressReadResultSchema = pluginToolOutputSchema.extend({
   body: z.string(),
@@ -279,6 +280,31 @@ function mockGitHubInstallationToken() {
     ),
   );
   return requests;
+}
+
+function mockGitHubDefaultBranch() {
+  mswServer.use(
+    http.get("https://api.github.com/repos/getsentry/junior", () =>
+      HttpResponse.json({ default_branch: "main" }),
+    ),
+  );
+}
+
+/** A Git push body: one ref update, the flush packet, then binary pack data. */
+function gitPushBody(ref: string): Uint8Array<ArrayBuffer> {
+  const command = `${"1".repeat(40)} ${"2".repeat(40)} ${ref}\0report-status side-band-64k`;
+  const commands = `${(command.length + 4).toString(16).padStart(4, "0")}${command}0000`;
+  return new Uint8Array([
+    ...new TextEncoder().encode(commands),
+    ...new TextEncoder().encode("PACK"),
+    0x00,
+    0x00,
+    0x00,
+    0x02,
+    0x9c,
+    0xff,
+    0x80,
+  ]);
 }
 
 describe("sandbox egress proxy integration", () => {
@@ -1220,6 +1246,132 @@ describe("sandbox egress proxy integration", () => {
       "app.source.kind": "scheduled_automation",
       "app.task.id": "auto-1",
       "app.task.run.id": "run-1",
+    });
+  });
+
+  it("forwards a Git branch push with its pack bytes and records its refs", async () => {
+    configureGitHubAppEnv();
+    mockGitHubDefaultBranch();
+    await registerGitHubPlugin({ appPermissions: { contents: "write" } });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      GITHUB_GIT_HOST,
+    );
+    const body = gitPushBody("refs/heads/feat/x");
+    const upstreamFetch = vi.fn(
+      async (_url: URL | string, init?: RequestInit) => {
+        await expect(
+          new Response(init?.body).arrayBuffer(),
+        ).resolves.toStrictEqual(body.buffer);
+        return new Response("", { status: 200 });
+      },
+    );
+
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        body,
+        forwardURL,
+        headers: {
+          "content-type": "application/x-git-receive-pack-request",
+        },
+        method: "POST",
+        upstreamHost: GITHUB_GIT_HOST,
+        upstreamPath: "/getsentry/junior.git/git-receive-pack",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    unregister();
+
+    expect(response.status).toBe(200);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(
+      records.find(
+        (record) => record.eventName === "sandbox.egress.upstream.requested",
+      )?.attributes,
+    ).toMatchObject({
+      "app.credential.account": "app",
+      "app.github.default_branch": "main",
+      "app.github.default_branch_targeted": false,
+      "app.github.refs": ["refs/heads/feat/x"],
+      "app.github.repository": "getsentry/junior",
+      "app.grant.name": "installation-write",
+    });
+  });
+
+  it("denies a Git push to the default branch with a policy signal", async () => {
+    configureGitHubAppEnv();
+    mockGitHubDefaultBranch();
+    await registerGitHubPlugin({ appPermissions: { contents: "write" } });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { platform: "system", name: "scheduler" } },
+      egressId: EGRESS_ID,
+      source: { kind: "scheduled_automation", automationId: "auto-1" },
+      ttlMs: 60_000,
+    });
+    const forwardURL = forwardUrlFor(
+      buildVercelNetworkPolicy({ credentialToken }),
+      GITHUB_GIT_HOST,
+    );
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.vercel.proxyVercelSandboxEgressRequest(
+      proxiedRequest({
+        body: gitPushBody("refs/heads/main"),
+        forwardURL,
+        headers: {
+          "content-type": "application/x-git-receive-pack-request",
+        },
+        method: "POST",
+        upstreamHost: GITHUB_GIT_HOST,
+        upstreamPath: "/getsentry/junior.git/git-receive-pack",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+    unregister();
+
+    expect(response.status).toBe(403);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    await expect(
+      modules.session.consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
+    ).resolves.toMatchObject({
+      message: expect.stringContaining(
+        "The runtime never pushes to the default branch (main) of getsentry/junior.",
+      ),
+      method: "POST",
+      provider: "github",
+      source: "policy",
+      upstreamHost: GITHUB_GIT_HOST,
+      upstreamPath: "/getsentry/junior.git/git-receive-pack",
+    });
+    expect(
+      records.find(
+        (record) => record.eventName === "sandbox.egress.policy.denied",
+      )?.attributes,
+    ).toMatchObject({
+      "app.egress.policy.decision": "denied",
+      "app.github.default_branch_targeted": true,
+      "app.github.refs": ["refs/heads/main"],
+      "app.source.kind": "scheduled_automation",
+      "app.task.id": "auto-1",
     });
   });
 

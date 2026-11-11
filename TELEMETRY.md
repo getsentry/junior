@@ -49,9 +49,11 @@ move to the domain below.
   deployment key. `app.egress.policy.decision` is `allowed`.
   `app.source.kind`, `app.task.id`, and `app.task.run.id` name the run
   Source and its Automation run. A plugin can add its own `app.<provider>.*`
-  facts, such as `app.github.repository`.
-- `sandbox.egress.policy.denied` is a warning. Junior did not forward the
-  request.
+  facts, such as `app.github.repository`. A Git push also has
+  `app.github.refs`, `app.github.default_branch`, and
+  `app.github.default_branch_targeted`.
+- `sandbox.egress.policy.denied` is a warning with the same Source and plugin
+  facts. Junior did not forward the request.
 - `mcp.tool_call.completed` is an audit event for each successful MCP tool
   call. `app.credential.account` is `service_account` or `actor`.
   `mcp.tool_call.failed` is a warning with the same run Source facts.

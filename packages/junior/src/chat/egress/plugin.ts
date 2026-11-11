@@ -96,7 +96,6 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
               provider: signal.provider,
             });
           },
-          recordPermissionDenied: async () => {},
           tracePropagation: {},
         },
         operation,

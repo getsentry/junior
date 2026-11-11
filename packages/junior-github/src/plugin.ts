@@ -450,7 +450,11 @@ export function githubPlugin(
         );
       },
       grantForEgress(ctx) {
-        return githubGrantForEgress(ctx);
+        return githubGrantForEgress(ctx, {
+          appIdEnv,
+          installationIdEnv,
+          privateKeyEnv,
+        });
       },
       async onEgressResponse(ctx) {
         if (ctx.response.status === 403) {

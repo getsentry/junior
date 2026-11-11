@@ -121,6 +121,7 @@
     {
       "files": [
         "**/junior-github/src/credential-support.ts",
+        "**/junior-github/src/default-branch.ts",
         "**/junior-github/src/github-status.ts",
         "**/junior-github/src/webhooks/**/*.ts"
       ],

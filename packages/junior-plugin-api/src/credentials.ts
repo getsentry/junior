@@ -47,20 +47,21 @@ export const pluginStoredTokensSchema = z
   })
   .strict();
 
+/**
+ * Provider facts for egress audit events, such as the target repository.
+ * Keys use the plugin's `app.<provider>.*` names. Telemetry only.
+ */
+export const pluginAuditAttributesSchema = z.record(
+  z.string().regex(/^app\.[a-z0-9_]+(?:\.[a-z0-9_]+)+$/),
+  z.union([z.string(), z.boolean(), z.array(z.string())]),
+);
+
 /** Runtime schema for a plugin-defined outbound credential grant. */
 export const pluginGrantSchema = z
   .object({
     access: pluginGrantAccessSchema,
-    /**
-     * Provider facts for the write audit event, such as the target repository.
-     * Keys use the plugin's `app.<provider>.*` names. Telemetry only.
-     */
-    auditAttributes: z
-      .record(
-        z.string().regex(/^app\.[a-z0-9_]+(?:\.[a-z0-9_]+)+$/),
-        z.union([z.string(), z.boolean(), z.array(z.string())]),
-      )
-      .optional(),
+    /** Provider facts for the write audit event. */
+    auditAttributes: pluginAuditAttributesSchema.optional(),
     leaseScope: nonBlankStringSchema.optional(),
     name: pluginGrantNameSchema,
     reason: nonBlankStringSchema.optional(),
@@ -139,11 +140,25 @@ export class EgressAuthRequired extends Error {
 
 /** Deny provider egress before Junior issues credentials for a disallowed operation. */
 export class EgressPolicyDenied extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /** Provider facts for the policy denial event. */
+  readonly auditAttributes?: PluginAuditAttributes;
+
+  constructor(
+    message: string,
+    options?: { auditAttributes?: PluginAuditAttributes; cause?: unknown },
+  ) {
     super(message, { cause: options?.cause });
     this.name = "EgressPolicyDenied";
+    if (options?.auditAttributes) {
+      this.auditAttributes = options.auditAttributes;
+    }
   }
 }
+
+/** Provider facts for egress audit events. */
+export type PluginAuditAttributes = z.output<
+  typeof pluginAuditAttributesSchema
+>;
 
 /** Provider account identity resolved by a plugin OAuth hook. */
 export type PluginProviderAccount = z.output<
@@ -153,10 +168,39 @@ export type PluginProviderAccount = z.output<
 /** Plugin-defined grant required before Junior can forward one outbound request. */
 export type PluginGrant = z.output<typeof pluginGrantSchema>;
 
+/** One ref update command in a Git push. */
+export interface PluginGitRefUpdate {
+  /** True when the push deletes the ref: its new object id is all zeros. */
+  deletes: boolean;
+  /** Full ref name, such as `refs/heads/main`. */
+  ref: string;
+}
+
+/** Why the host could not read the ref updates of a Git push. */
+export type PluginGitPushUnreadableReason =
+  | "gzip"
+  | "malformed"
+  | "signed"
+  | "unterminated";
+
+/**
+ * Ref updates of a Git smart HTTP push (`git-receive-pack`), which the host
+ * reads from the body before the pack data. An `unreadable` push changes
+ * refs that the host cannot name.
+ */
+export type PluginGitPush =
+  | { kind: "commands"; updates: PluginGitRefUpdate[] }
+  | { kind: "unreadable"; reason: PluginGitPushUnreadableReason };
+
 /** Request details available while selecting the grant for sandbox egress. */
 export interface PluginEgressRequest {
-  /** Capped request body text when the host exposes it for provider-specific grant classification. */
+  /**
+   * Capped request body text when the host exposes it for provider-specific
+   * grant classification.
+   */
   bodyText?: string;
+  /** Set for every Git `git-receive-pack` POST. */
+  gitPush?: PluginGitPush;
   method: string;
   /** Plugin-declared operation this request performs, used for grant classification and diagnostics. */
   operation?: string;
@@ -177,7 +221,7 @@ export interface PluginEgressResponse {
 export interface EgressResponseHookContext extends PluginContext {
   grant: PluginGrant;
   permissionDenied(message: string): void;
-  request: Omit<PluginEgressRequest, "bodyText">;
+  request: Omit<PluginEgressRequest, "bodyText" | "gitPush">;
   response: PluginEgressResponse;
 }
 

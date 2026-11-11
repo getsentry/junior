@@ -104,7 +104,8 @@ type LoadInstallationReadPermissions = (input: {
   installationId: number;
 }) => Promise<Record<string, "read">>;
 
-interface GitHubRepository {
+/** A GitHub repository named by owner and name. */
+export interface GitHubRepository {
   name: string;
   owner: string;
 }
