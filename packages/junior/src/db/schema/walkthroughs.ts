@@ -7,7 +7,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
 /** One code change of a Walkthrough, as the provider described it at its commits. */
@@ -48,12 +47,11 @@ export const juniorWalkthroughVersions = pgTable(
       .notNull(),
     /**
      * The hidden Conversation whose Turn generates this version. Lists hide
-     * Conversations that appear here.
+     * Conversations that appear here. No foreign key: the version claims
+     * its snapshot before the Conversation exists, so two clicks never
+     * create two Conversations.
      */
-    generationConversationId: text("generation_conversation_id").references(
-      () => juniorConversations.conversationId,
-      { onDelete: "set null" },
-    ),
+    generationConversationId: text("generation_conversation_id"),
     /** The Conversation that opened the code change, when it was readable. */
     sourceConversationId: text("source_conversation_id"),
     status: text("status").$type<WalkthroughVersionStatus>().notNull(),
