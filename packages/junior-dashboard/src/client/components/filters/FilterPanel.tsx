@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, X } from "lucide-react";
 
 import { BottomSheet } from "../BottomSheet";
@@ -57,6 +57,11 @@ export function FilterPanel(props: {
 }) {
   const { onClose } = props;
   const beside = useDetailsPanel();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // The toggle that opened the panel hides beside it, so focus moves here.
+  useEffect(() => {
+    if (beside) closeRef.current?.focus();
+  }, [beside]);
   const clear = props.onClear ? (
     <Button onClick={props.onClear} variant="quiet">
       Clear all
@@ -92,7 +97,12 @@ export function FilterPanel(props: {
         </h2>
         <div className="flex items-center gap-0.5">
           {clear}
-          <Button aria-label="Close filters" onClick={onClose} size="icon">
+          <Button
+            aria-label="Close filters"
+            onClick={onClose}
+            ref={closeRef}
+            size="icon"
+          >
             <X aria-hidden="true" size={15} />
           </Button>
         </div>

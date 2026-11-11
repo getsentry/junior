@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 
 import { useDetailsPanel } from "../DetailsPanel";
@@ -36,6 +36,17 @@ export function FilterToolbar(props: {
 }) {
   const { filters } = props;
   const beside = useDetailsPanel();
+  const open = filters?.open ?? false;
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    // Closing the panel beside the list removes its focused close button.
+    // Return focus to the toggle unless something else took it.
+    if (wasOpen.current && !open && document.activeElement === document.body) {
+      toggleRef.current?.focus();
+    }
+    wasOpen.current = open;
+  }, [open]);
   const chips =
     filters && filters.active.length > 0 && !(filters.open && beside)
       ? filters.active
@@ -64,6 +75,7 @@ export function FilterToolbar(props: {
                   }
                   className="relative w-9 shrink-0 px-0"
                   onClick={filters.onToggle}
+                  ref={toggleRef}
                 >
                   <SlidersHorizontal aria-hidden="true" size={15} />
                   {filters.active.length ? (

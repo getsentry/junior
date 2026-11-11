@@ -238,6 +238,13 @@ test("opens scheduled and event automations in the native Automations view", asy
     .click();
   await expect(deleteButton).toBeFocused();
   await page.getByRole("link", { name: "Back to automations" }).click();
+  // The toggle hides beside the open panel, so focus moves to its close
+  // button and comes back when the panel closes.
+  await page.getByRole("button", { name: /^Filters/ }).press("Enter");
+  const closeFilters = page.getByRole("button", { name: "Close filters" });
+  await expect(closeFilters).toBeFocused();
+  await closeFilters.press("Enter");
+  await expect(page.getByRole("button", { name: /^Filters/ })).toBeFocused();
   await page.getByRole("button", { name: /^Filters/ }).click();
   await filterOption(page, "type", "Event").click();
   await filterOption(page, "creator", "Morgan").click();
