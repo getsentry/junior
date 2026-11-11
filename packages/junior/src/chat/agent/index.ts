@@ -1125,6 +1125,11 @@ async function executeAgentRunInPrivacyContext(
           !isError &&
           !override
         ) {
+          // People often answer a Turn that posted nothing, so it warms like
+          // a reply. An Automation run that ends almost never gets one.
+          if (toolCall.name === NO_REPLY_TOOL_NAME && !behavior.gated) {
+            cacheWarming.noReplyEnded();
+          }
           return { terminate: true };
         }
         return override;
