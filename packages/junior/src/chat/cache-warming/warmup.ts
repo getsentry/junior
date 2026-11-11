@@ -86,10 +86,15 @@ const CONVERSATION_GAPS_MAX = 50;
 /** The Turn count of a Conversation resets after this long with no call. */
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
+/** How the Turn before an idle period ended. */
+type TurnEnding = "reply" | "no_reply";
+
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
   /** The `gapSegment` that this period records its gap in. */
   segment: string;
+  /** Unset in idle periods from before it was stored. */
+  turnEnding?: TurnEnding;
   /** The `parentGapSegment` that a thin `segment` leans on. */
   parentSegment?: string;
   /**
@@ -142,6 +147,9 @@ const gapClaimKey = (conversationId: string, generation: string) =>
 const segmentAttributes = (warm: WarmState) => ({
   "app.cache_warming.work_state": warm.workState,
   "app.cache_warming.archived": warm.archived,
+  ...(warm.turnEnding
+    ? { "app.cache_warming.turn_ending": warm.turnEnding }
+    : undefined),
 });
 
 // Send the warmup that refreshes the cache that a request at
@@ -221,6 +229,7 @@ async function startIdlePeriod(
   message: AssistantMessage,
   turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
   systemPrompt: SystemPromptKey,
+  turnEnding: TurnEnding,
 ): Promise<IdlePeriod> {
   const idle: IdlePeriod = {
     generation: randomUUID(),
@@ -259,6 +268,7 @@ async function startIdlePeriod(
     ...idle,
     warm: {
       segment: gapSegment(segmentInput),
+      turnEnding,
       ...(parentSegment ? { parentSegment } : undefined),
       ...(request.context.systemPrompt !== undefined
         ? {
@@ -283,6 +293,7 @@ async function recordModelCall(
   systemPrompt: SystemPromptKey,
   request: ModelRequest,
   message: AssistantMessage,
+  turnEnding: TurnEnding | undefined,
 ): Promise<void> {
   const state = await connectedState();
   const previous = await state.get<ConversationCacheState>(
@@ -313,20 +324,20 @@ async function recordModelCall(
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.
   const endedTurns = previous?.endedTurns ?? 0;
-  const next: ConversationCacheState =
-    message.stopReason === "stop"
-      ? {
-          endedTurns: endedTurns + 1,
-          idle: await startIdlePeriod(
-            state,
-            conversationId,
-            request,
-            message,
-            { userActor, endedTurns },
-            systemPrompt,
-          ),
-        }
-      : { endedTurns };
+  const next: ConversationCacheState = turnEnding
+    ? {
+        endedTurns: endedTurns + 1,
+        idle: await startIdlePeriod(
+          state,
+          conversationId,
+          request,
+          message,
+          { userActor, endedTurns },
+          systemPrompt,
+          turnEnding,
+        ),
+      }
+    : { endedTurns };
   if (!idle && !next.idle) {
     return;
   }
@@ -383,6 +394,11 @@ export interface CacheWarmingRecorder {
   record(message: AssistantMessage): Promise<void>;
   /** Mark that the tools of the last request returned. */
   toolsReturned(): void;
+  /**
+   * Mark that a `noReply` call of the last request ended the run. Then `stop`
+   * starts the idle period from that request, as a final response would.
+   */
+  noReplyEnded(): void;
   /** Stop the warmups of this run. Call it when the run ends. */
   stop(): Promise<void>;
 }
@@ -407,6 +423,11 @@ export function createCacheWarmingRecorder(
   systemPrompt: SystemPromptKey,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
+  // The last finished call, for an idle period that `noReply` starts.
+  let lastCall:
+    | { request: ModelRequest; message: AssistantMessage }
+    | undefined;
+  let noReplyEnded = false;
   // After the first call of the run ends the idle period, the next mid-turn
   // calls have nothing to record. This keeps them free of state reads.
   let idleEnded = false;
@@ -456,11 +477,11 @@ export function createCacheWarmingRecorder(
             error instanceof Error ? error.message : String(error),
         });
       }
-      if (
-        message.stopReason === "error" ||
-        message.stopReason === "aborted" ||
-        (idleEnded && message.stopReason !== "stop")
-      ) {
+      if (message.stopReason === "error" || message.stopReason === "aborted") {
+        return;
+      }
+      lastCall = { request, message };
+      if (idleEnded && message.stopReason !== "stop") {
         return;
       }
       idleEnded = message.stopReason !== "stop";
@@ -471,6 +492,7 @@ export function createCacheWarmingRecorder(
           systemPrompt,
           request,
           message,
+          message.stopReason === "stop" ? "reply" : undefined,
         );
       } catch (error) {
         logWarn("cache_warming.model_call.record_failed", {
@@ -480,11 +502,32 @@ export function createCacheWarmingRecorder(
       }
     },
     toolsReturned: toolWait.toolsReturned,
+    noReplyEnded: () => {
+      noReplyEnded = true;
+    },
     stop: async () => {
       try {
         await toolWait.end();
       } catch (error) {
         logWarn("cache_warming.tool_wait.record_failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+      }
+      // The `noReply` call stopped the run, so no final response came. Its
+      // request holds the prefix that the next Turn reads.
+      if (!noReplyEnded || !lastCall) return;
+      try {
+        await recordModelCall(
+          conversationId,
+          userActor,
+          systemPrompt,
+          lastCall.request,
+          lastCall.message,
+          "no_reply",
+        );
+      } catch (error) {
+        logWarn("cache_warming.model_call.record_failed", {
           "exception.message":
             error instanceof Error ? error.message : String(error),
         });
@@ -510,8 +553,10 @@ export function createCacheWarmingRecorder(
  *   or a `decideWarmup` reason.
  *
  * `work_state` and `archived` are read when the idle period starts and pick
- * its `gapSegment`. Decision attributes are absent when the warmup skipped
- * before the decision. Cost and usage are absent when no call completed.
+ * its `gapSegment`. `turn_ending` is `reply` or `no_reply`: how the Turn
+ * before the idle period ended. The `conversation.returned` log has the same
+ * three. Decision attributes are absent when the warmup skipped before the
+ * decision. Cost and usage are absent when no call completed.
  */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,

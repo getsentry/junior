@@ -69,6 +69,27 @@ async function endTurn(
   await recorder.record(finalReply);
 }
 
+const toolCall = (name: string): AssistantMessage => ({
+  ...finalReply,
+  content: [{ type: "toolCall", id: name, name, arguments: {} }],
+  stopReason: "toolUse",
+});
+
+// Run one Turn that calls a tool and then `noReply`, like one agent run does.
+// The agent marks `noReplyEnded` only outside an Automation run.
+async function endTurnWithNoReply(noReplyEnded: boolean) {
+  const recorder = createCacheWarmingRecorder(conversationId, true, runPrompt);
+  const stream = recorder.wrap((() => undefined) as never);
+  stream(model, context, {});
+  await recorder.record(toolCall("systemTime"));
+  recorder.toolsReturned();
+  vi.advanceTimersByTime(MINUTE);
+  stream(model, context, {});
+  await recorder.record(toolCall("noReply"));
+  if (noReplyEnded) recorder.noReplyEnded();
+  await recorder.stop();
+}
+
 function scheduledHorizon(): CacheWarmupMessage {
   const message = mocks.sendCacheWarmup.mock.calls
     .map(([sent]) => sent as CacheWarmupMessage)
@@ -126,6 +147,21 @@ describe("cache warming gap segments", () => {
     expect(
       await segmentGaps(`conversation:${conversationId}:user:2-3:none`),
     ).toEqual([7 * MINUTE]);
+  });
+
+  it("starts an idle period from the noReply call of a Turn", async () => {
+    vi.useFakeTimers();
+    mocks.sendCacheWarmup.mockClear();
+    await endTurnWithNoReply(false);
+    expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
+
+    await endTurnWithNoReply(true);
+    scheduledWarmup();
+    // The person returns 4 minutes after the `noReply` call.
+    vi.advanceTimersByTime(4 * MINUTE);
+    await endTurn(true);
+
+    expect(await segmentGaps("user:1:none")).toEqual([4 * MINUTE]);
   });
 
   it("records each gap in the segment of the plugin work and archive state when the idle period started", async () => {
