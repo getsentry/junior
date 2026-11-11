@@ -192,6 +192,61 @@ export type PluginGitPush =
   | { kind: "commands"; updates: PluginGitRefUpdate[] }
   | { kind: "unreadable"; reason: PluginGitPushUnreadableReason };
 
+/** One field that a GraphQL operation selects. */
+export interface PluginGraphqlField {
+  /** Names of the arguments that the field passes. */
+  arguments: string[];
+  /** Schema field name. An alias does not replace it. */
+  name: string;
+}
+
+/** The GraphQL operation that one request runs. */
+export interface PluginGraphqlOperation {
+  /**
+   * Each distinct field that the operation selects at any depth, also through
+   * fragments.
+   */
+  fields: PluginGraphqlField[];
+  name?: string;
+  /**
+   * Field names at the operation root, also through fragments. There is one
+   * entry for each field selection, so an aliased repeat shows twice.
+   */
+  rootFields: string[];
+  type: "mutation" | "query" | "subscription";
+}
+
+/**
+ * Why the host could not read the operation of a GraphQL request:
+ *
+ * - `document`: the query does not parse, or it spreads a fragment that it
+ *   does not define.
+ * - `gzip`: the body is compressed.
+ * - `json`: the body is not a JSON object or a JSON array of objects.
+ * - `operation`: `operationName` names no operation, or the document has more
+ *   than one operation and no `operationName`.
+ * - `query`: the body has no `query` string, such as a persisted query hash.
+ * - `too-large`: the body is larger than the host reads before it issues
+ *   credentials.
+ */
+export type PluginGraphqlUnreadableReason =
+  | "document"
+  | "gzip"
+  | "json"
+  | "operation"
+  | "query"
+  | "too-large";
+
+/**
+ * The operations of a GraphQL POST, which the host reads from the JSON body.
+ * A `batch` is a JSON array of requests. An `unreadable` request can run any
+ * operation, mutations included.
+ */
+export type PluginGraphqlRequest =
+  | { kind: "batch"; operations: PluginGraphqlOperation[] }
+  | { kind: "operation"; operation: PluginGraphqlOperation }
+  | { kind: "unreadable"; reason: PluginGraphqlUnreadableReason };
+
 /** Request details available while selecting the grant for sandbox egress. */
 export interface PluginEgressRequest {
   /**
@@ -201,6 +256,8 @@ export interface PluginEgressRequest {
   bodyText?: string;
   /** Set for every Git `git-receive-pack` POST. */
   gitPush?: PluginGitPush;
+  /** Set for every POST to a URL path that ends in `/graphql`. */
+  graphql?: PluginGraphqlRequest;
   method: string;
   /** Plugin-declared operation this request performs, used for grant classification and diagnostics. */
   operation?: string;
@@ -221,7 +278,7 @@ export interface PluginEgressResponse {
 export interface EgressResponseHookContext extends PluginContext {
   grant: PluginGrant;
   permissionDenied(message: string): void;
-  request: Omit<PluginEgressRequest, "bodyText" | "gitPush">;
+  request: Omit<PluginEgressRequest, "bodyText" | "gitPush" | "graphql">;
   response: PluginEgressResponse;
 }
 
