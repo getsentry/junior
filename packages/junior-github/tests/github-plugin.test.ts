@@ -1815,10 +1815,15 @@ Conversation: \`local:test:old-conversation\`
             );
           }
           if (operation === "github.pull.list") {
-            // Only feat/bottom has an open pull request, so main is the trunk.
+            // An open sync pull request from main must not join the stack.
+            const head = new URL(request.url).searchParams.get("head");
+            if (head === "getsentry:main") {
+              return Response.json([
+                { number: 600, base: { ref: "feat/long-lived" } },
+              ]);
+            }
             return Response.json(
-              new URL(request.url).searchParams.get("head") ===
-                "getsentry:feat/bottom"
+              head === "getsentry:feat/bottom"
                 ? [{ number: 700, base: { ref: "main" } }]
                 : [],
             );
