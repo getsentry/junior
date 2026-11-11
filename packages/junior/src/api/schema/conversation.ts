@@ -918,28 +918,6 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
   .strict()
   .superRefine(validateConversationEvents);
 
-/** A feed row, with its visible Threads nested under their parents. */
-export type ConversationFeedItem = ConversationSummaryReport & {
-  threads?: ConversationFeedItem[];
-};
-
-/**
- * A root in the feed, or one of its visible Threads. A Thread nests under
- * its nearest visible Thread ancestor, or under the root. Tasks never show.
- */
-const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
-  conversationSummaryReportSchema.extend({
-    threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
-  });
-
-export const conversationFeedSchema = z
-  .object({
-    conversations: z.array(conversationFeedItemSchema),
-    source: z.literal("conversation_index"),
-    generatedAt: z.string(),
-  })
-  .strict();
-
 export type ConversationReportStatus = z.infer<
   typeof conversationReportStatusSchema
 >;
@@ -984,7 +962,6 @@ export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema
 >;
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
-export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
 export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
