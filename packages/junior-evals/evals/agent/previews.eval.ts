@@ -3,8 +3,8 @@ import { slackMention } from "@junior-evals/fixture/inputs";
 import { completedToolCalls, toolOutput } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
-// This suite has no fixture skills. A workspace skill that says "make only the
-// requested change" would hide whether Junior shares a preview by itself.
+// This suite has no fixture skills, so this case covers a request with no repo.
+// `evals/coding/previews.eval.ts` covers a UI change in a repo checkout.
 describe("Previews", () => {
   test("when asked to build a web page, share a preview URL without being asked", async ({
     run,

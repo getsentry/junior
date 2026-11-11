@@ -46,7 +46,8 @@ was exercised.
 ## Dashboard UI QA
 
 For dashboard UI changes that depend on reporting payload shape, use the typed
-mock reporting overlay before relying on ad-hoc local conversations:
+mock reporting overlay before relying on ad-hoc local conversations. Start it
+as **Share a Preview** shows, so the same server also gives the preview:
 
 ```sh
 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
@@ -78,13 +79,14 @@ tests when the changed contract crosses those boundaries.
 
 ### Share a Preview
 
-When a person wants to open the UI that you changed, send a preview URL:
+Serve the dashboard so that a person can open your change:
 
 1. Push the branch, so a later Turn can make the preview again.
 2. Start the server in the background on all interfaces:
    `(HOST=0.0.0.0 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true JUNIOR_DASHBOARD_LIVE_ORIGIN=https://junior-prod.sentry.dev JUNIOR_BOT_NAME="junior (Preview)" setsid nohup pnpm dev > /tmp/dev.log 2>&1 &)`
    `JUNIOR_BOT_NAME` replaces the `junior-example` name from `.env.example`
    in the tab title.
+   Use this server for your own browser QA too.
 3. Wait until `curl -s -o /dev/null -w '%{http_code}' localhost:3000/` returns
    `200`.
 4. Call `createPreview` with port `3000`, and send the URL.
@@ -96,6 +98,8 @@ Rules:
   Never ask for a token, and never put one in the Sandbox.
 - Live data uses the API of the live deployment. When the change touches an
   API, tell the person that only mock data shows it.
+- Keep the server running when the Turn ends. `pnpm test:e2e:dashboard`
+  starts its own server, so do not stop this one for it.
 - After more edits, run the `curl` check first. If it returns `200`, do not
   restart the server. It rebuilds `packages/junior` edits by itself. It does
   not rebuild the dashboard browser bundle, so after edits in
@@ -317,7 +321,7 @@ insufficient and name the runtime surface that still needs manual coverage.
 Report:
 
 - the exact `pnpm cli -- ...` commands run
-- for dashboard mock QA, the dev-server command, URL, mock conversation or page
+- for dashboard mock QA, the preview URL, the mock conversation or page
   inspected, and the visible UI evidence
 - exit status and the key output that proves the behavior
 - whether `apps/example` loaded the expected app/plugin/skill path
