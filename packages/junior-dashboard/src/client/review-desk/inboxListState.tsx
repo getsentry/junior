@@ -20,7 +20,17 @@ const INBOX_PAGE_SIZE = 25;
 /** Where the reader is in one list. */
 type ListPlace = { expandedKey: string; loaded: number };
 
+/**
+ * Items that a link opened past the loaded pages: an open one joins every
+ * list, and a closed one joins Done.
+ */
+type LinkedItems = { closed?: string; open?: string };
+
 type InboxListValue = {
+  linkedItems: readonly [
+    LinkedItems,
+    (update: (current: LinkedItems) => LinkedItems) => void,
+  ];
   /** Mark that the composer shows; true the first time this session. */
   showComposer(): boolean;
   /** The feed pages after the first that the lists have loaded. */
@@ -28,12 +38,13 @@ type InboxListValue = {
     OlderConversationPages,
     (pages: OlderConversationPages) => void,
   ];
-  places: Readonly<Record<string, ListPlace>>;
+  /** Places by list, so `/` and `/?view=inbox` share the Inbox's. */
+  places: Readonly<Partial<Record<InboxView, ListPlace>>>;
   /** The list that Back returns to: the last one shown. */
   returnPath: string;
   /** Scroll offsets by list, kept without a render. */
-  scroll: Map<string, number>;
-  setPlace(listPath: string, place: Partial<ListPlace>): void;
+  scroll: Map<InboxView, number>;
+  setPlace(view: InboxView, place: Partial<ListPlace>): void;
   setReturnPath(listPath: string): void;
 };
 
@@ -43,12 +54,15 @@ const NEW_PLACE: ListPlace = { expandedKey: "", loaded: INBOX_PAGE_SIZE };
 
 /**
  * Keep the place of each Inbox list for the session: its entry, scroll
- * position, expanded row, how many rows it shows, and the older feed pages
- * it loaded. Opening a Conversation replaces the list, and Back brings it
+ * position, expanded row, how many rows it shows, the older feed pages it
+ * loaded, and the items that links added. Opening a Conversation replaces the list, and Back brings it
  * back as it was.
  */
 export function InboxListProvider(props: { children: ReactNode }) {
-  const [places, setPlaces] = useState<Readonly<Record<string, ListPlace>>>({});
+  const [places, setPlaces] = useState<
+    Readonly<Partial<Record<InboxView, ListPlace>>>
+  >({});
+  const [linkedItems, setLinkedItems] = useState<LinkedItems>({});
   const [returnPath, setReturnPath] = useState("/");
   const [olderPages, setOlderPages] = useState<OlderConversationPages>({
     after: undefined,
@@ -60,17 +74,28 @@ export function InboxListProvider(props: { children: ReactNode }) {
     composerShown.current = true;
     return first;
   }, []);
-  const scroll = useRef(new Map<string, number>()).current;
+  const scroll = useRef(new Map<InboxView, number>()).current;
   const setPlace = useCallback(
-    (listPath: string, place: Partial<ListPlace>) =>
-      setPlaces((current) => ({
-        ...current,
-        [listPath]: { ...NEW_PLACE, ...current[listPath], ...place },
-      })),
+    (view: InboxView, place: Partial<ListPlace>) =>
+      setPlaces((current) => {
+        const next = { ...NEW_PLACE, ...current[view], ...place };
+        const shown = current[view];
+        // An unchanged place keeps its object, so effects that set it on
+        // each render, such as an item link's, do not render again.
+        if (
+          shown &&
+          shown.expandedKey === next.expandedKey &&
+          shown.loaded === next.loaded
+        ) {
+          return current;
+        }
+        return { ...current, [view]: next };
+      }),
     [],
   );
   const value = useMemo(
     () => ({
+      linkedItems: [linkedItems, setLinkedItems] as const,
       olderPages: [olderPages, setOlderPages] as const,
       places,
       returnPath,
@@ -79,7 +104,15 @@ export function InboxListProvider(props: { children: ReactNode }) {
       setReturnPath,
       showComposer,
     }),
-    [olderPages, places, returnPath, scroll, setPlace, showComposer],
+    [
+      linkedItems,
+      olderPages,
+      places,
+      returnPath,
+      scroll,
+      setPlace,
+      showComposer,
+    ],
   );
   return (
     <InboxListContext.Provider value={value}>
@@ -114,30 +147,34 @@ export function useInboxListState(ready: boolean) {
   const view: InboxView = parseInboxView(
     new URLSearchParams(location.search).get("view"),
   );
-  const place = list.places[listPath] ?? NEW_PLACE;
+  const place = list.places[view] ?? NEW_PLACE;
   const { scroll, setPlace, setReturnPath } = list;
 
   useEffect(() => setReturnPath(listPath), [listPath, setReturnPath]);
 
+  // Stable, because the item link effect depends on it.
+  const setExpandedKey = useCallback(
+    (expandedKey: string) => setPlace(view, { expandedKey }),
+    [setPlace, view],
+  );
+
   const scroller = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (ready && scroller.current)
-      scroller.current.scrollTop = scroll.get(listPath) ?? 0;
-  }, [listPath, ready, scroll]);
+      scroller.current.scrollTop = scroll.get(view) ?? 0;
+  }, [listPath, ready, scroll, view]);
 
   return {
     expandedKey: place.expandedKey,
     listPath,
     loaded: place.loaded,
     onScroll: (event: { currentTarget: HTMLElement }) =>
-      scroll.set(listPath, event.currentTarget.scrollTop),
+      scroll.set(view, event.currentTarget.scrollTop),
     scroller,
-    setExpandedKey: (expandedKey: string) =>
-      setPlace(listPath, { expandedKey }),
-    showMore: () =>
-      setPlace(listPath, { loaded: place.loaded + INBOX_PAGE_SIZE }),
+    setExpandedKey,
+    showMore: () => setPlace(view, { loaded: place.loaded + INBOX_PAGE_SIZE }),
     toggle: (key: string) =>
-      setPlace(listPath, {
+      setPlace(view, {
         expandedKey: place.expandedKey === key ? "" : key,
       }),
     view,
@@ -156,6 +193,14 @@ export function useInboxReturnPath(): string {
  */
 export function useOlderConversationPagesState() {
   return useInboxListContext().olderPages;
+}
+
+/**
+ * The items that links added past the loaded pages, for the session. A tab
+ * switch or a remount keeps them, so a linked row stays in its list.
+ */
+export function useLinkedInboxItems() {
+  return useInboxListContext().linkedItems;
 }
 
 /**

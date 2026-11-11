@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { mockReviewItems, rollout } from "./inbox-fixture";
+import { audit, mockReviewItems, rollout } from "./inbox-fixture";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -197,6 +197,56 @@ test("the list loads older Conversations as it scrolls", async ({
   await expect(page).toHaveURL(/\/\?view=conversations$/);
   await expect(older).toBeVisible();
   expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
+});
+
+test("an item link and the Inbox tab share one place", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page);
+  await page.setViewportSize({ height: 560, width: 1440 });
+  // An item link names the Inbox entry, so phones open the list.
+  await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
+  await expect(page).toHaveURL(/\/\?view=inbox$/);
+  const asks = page.getByRole("region", { name: `${checkout}: asks` });
+  await expect(asks).toContainText(rollout.title);
+  const scroller = page
+    .getByRole("region", { name: "Inbox" })
+    .locator(".overflow-y-auto")
+    .first();
+  await scroller.evaluate((node) => (node.scrollTop = 120));
+  const top = await scroller.evaluate((node) => node.scrollTop);
+  expect(top).toBeGreaterThan(0);
+
+  // The Inbox tab opens `/`, the same list in the same place.
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: /^Inbox/ })
+    .click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(asks).toContainText(rollout.title);
+  await expect
+    .poll(() => scroller.evaluate((node) => node.scrollTop))
+    .toBe(top);
+});
+
+test("a linked item past the loaded page stays after a tab switch", async ({
+  dashboard,
+  page,
+}) => {
+  // The linked item is past the first page, so its row loads on its own.
+  await mockReviewItems(page, { open: [audit, rollout], pageSize: 1 });
+  await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
+  const asks = page.getByRole("region", { name: `${checkout}: asks` });
+  await expect(asks).toContainText(rollout.title);
+
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  await primary.getByRole("link", { name: /^Automations/ }).click();
+  await expect(page).toHaveURL(/\/automations/);
+  await primary.getByRole("link", { name: /^Inbox/ }).click();
+  // `/` and `/?view=inbox` are one list with one place.
+  await expect(page).toHaveURL(/\/(\?view=inbox)?$/);
+  await expect(asks).toContainText(rollout.title);
 });
 
 test("a failed page still lets another list show its loaded rows", async ({

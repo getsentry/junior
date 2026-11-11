@@ -8,10 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
-import type {
-  AutomationSummary,
-  ReviewItemPayload,
-} from "@sentry/junior/api/schema";
+import type { AutomationSummary } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
@@ -33,7 +30,7 @@ import {
   type InboxFeedPages,
 } from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
-import { useInboxListState } from "./inboxListState";
+import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   automationSections,
   INBOX_VIEW_LABELS,
@@ -182,8 +179,10 @@ export function InboxList(props: {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const linkedId = params.get("item") ?? undefined;
-  // Done shows a linked closed item that is past its first page too.
-  const [linkedClosed, setLinkedClosed] = useState<ReviewItemPayload>();
+  // Done shows a linked closed item that is past its first page too. The
+  // list state keeps it, so a tab switch or a remount keeps its row.
+  const [linkedItems, setLinkedItems] = useLinkedInboxItems();
+  const linkedClosed = useReviewItemData(linkedItems.closed).data;
   const doneItems =
     linkedClosed && !done.items.some((item) => item.id === linkedClosed.id)
       ? [linkedClosed, ...done.items]
@@ -247,7 +246,8 @@ export function InboxList(props: {
       if (includedId !== linkedId) includeItem(linkedId);
       else navigate(listPath, { replace: true });
     } else if (view === "done") {
-      setLinkedClosed(linked.data);
+      const closedId = linked.data.id;
+      setLinkedItems((current) => ({ ...current, closed: closedId }));
     } else {
       navigate(inboxViewPath("done", { itemId: linkedId }), { replace: true });
     }
@@ -262,6 +262,7 @@ export function InboxList(props: {
     listPath,
     navigate,
     setExpandedKey,
+    setLinkedItems,
     snoozedKey,
     view,
   ]);

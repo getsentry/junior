@@ -1,8 +1,8 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
-  useState,
   type ReactNode,
 } from "react";
 import type { ReviewItemPayload } from "@sentry/junior/api/schema";
@@ -10,6 +10,7 @@ import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 import { pinnedFirst } from "../conversations/conversationSections";
 import type { Conversation } from "../types";
 import { itemsInView, type InboxView } from "./inboxModel";
+import { useLinkedInboxItems } from "./inboxListState";
 import { useInboxSnoozes } from "./inboxSnooze";
 import {
   useAutomationAttentionData,
@@ -61,9 +62,15 @@ function useBuildInboxData(input: {
     enabled: signedIn,
     forViewer: true,
   });
-  // A link can name an open item past the loaded page. It joins the list.
-  const [linkedId, includeItem] = useState<string>();
+  // A link can name an open item past the loaded page. It joins the list
+  // for the session, so a tab switch or a remount keeps its row.
+  const [linkedItems, setLinkedItems] = useLinkedInboxItems();
+  const linkedId = linkedItems.open;
   const linked = useReviewItemData(linkedId).data;
+  const includeItem = useCallback(
+    (id: string) => setLinkedItems((current) => ({ ...current, open: id })),
+    [setLinkedItems],
+  );
   const list = useMemo(
     () =>
       linked?.status === "open" && !loaded.some((item) => item.id === linked.id)
