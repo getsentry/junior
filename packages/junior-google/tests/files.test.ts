@@ -69,7 +69,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       Response.json({
         files: [
           {
-            capabilities: { canShare: true },
             id: DOC_ID,
             mimeType: "application/vnd.google-apps.document",
             modifiedTime: "2026-10-01T10:00:00Z",
@@ -79,7 +78,6 @@ describe("Google Docs, Sheets, and Slides tools", () => {
         ],
         nextPageToken: "more",
       }),
-      requesterCanOpen(),
       driveFile(DOC_ID, "application/vnd.google-apps.document", "Q4 plan"),
       requesterCanOpen(),
       new Response("# Q4 plan\n\nShip it.", {
@@ -116,18 +114,17 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const searchUrl = new URL(fetch.mock.calls[0]![0].request.url);
     expect(searchUrl.pathname).toBe("/drive/v3/files");
     expect(searchUrl.searchParams.get("q")).toBe(
-      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'",
+      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan' and (visibility != 'limited' or 'alice@example.com' in readers or 'alice@example.com' in writers or 'alice@example.com' in owners)",
     );
     expect(search).toMatchObject({
       files: [{ file_id: DOC_ID, title: "Q4 plan", type: "document" }],
-      hidden: 0,
       truncated: true,
     });
 
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
     const doc = await run(tools, "readGoogleDoc", { document: link });
     const [get, listed, exported] = fetch.mock.calls
-      .slice(2, 5)
+      .slice(1, 4)
       .map(([call]) => call);
     expect(get.operation).toBe("google.drive.file.get");
     expect(listed.operation).toBe("google.drive.permissions.list");
@@ -151,7 +148,7 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     const comments = await run(tools, "listGoogleFileComments", {
       file: DOC_ID,
     });
-    expect(fetch.mock.calls.slice(5).map(([call]) => call.operation)).toEqual([
+    expect(fetch.mock.calls.slice(4).map(([call]) => call.operation)).toEqual([
       "google.drive.file.get",
       "google.drive.permissions.list",
       "google.drive.comments.list",
@@ -208,17 +205,25 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     ).rejects.toThrow("An admin must reconnect it");
   });
 
-  it("reads a file only for a requester who can open it, and hides the rest from search", async () => {
+  it("reads a file only for a requester who can open it, even when your account can only view it", async () => {
     const DOC = "application/vnd.google-apps.document";
-    const viewOnly = () =>
+    const viewOnly = (name: string) =>
       Response.json({
         capabilities: { canShare: false },
         id: DOC_ID,
         mimeType: DOC,
-        name: "Salaries",
+        name,
       });
-    const { tools } = docsTools(
-      viewOnly(),
+    const { fetch, tools } = docsTools(
+      viewOnly("Company plan"),
+      Response.json({ files: [{ id: DOC_ID }] }),
+      new Response("Plan", { headers: { "content-type": "text/markdown" } }),
+      viewOnly("Salaries"),
+      Response.json({
+        files: [{ id: "1OtherDocId0123" }],
+        nextPageToken: "p2",
+      }),
+      Response.json({ files: [] }),
       driveFile(DOC_ID, DOC, "Board notes"),
       permissions({ emailAddress: "bob@example.com", type: "user" }),
       driveFile(DOC_ID, DOC, "Board notes"),
@@ -229,8 +234,17 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       permissions({ emailAddress: "bob@example.com", type: "user" }),
     );
 
+    // Drive search answers for a file that your account can only view.
+    await expect(
+      run(tools, "readGoogleDoc", { document: DOC_ID }),
+    ).resolves.toMatchObject({ content: "Plan" });
+    const searched = new URL(fetch.mock.calls[1]![0].request.url);
+    expect(searched.searchParams.get("q")).toBe(
+      `name = 'Company plan' and (visibility != 'limited' or '${REQUESTER}' in readers or '${REQUESTER}' in writers or '${REQUESTER}' in owners)`,
+    );
+
     const refused = [
-      `Your Google account (${ACCOUNT_EMAIL}) can only view "Salaries", so you cannot check that ${REQUESTER} may open it. Ask the owner to share it with ${ACCOUNT_EMAIL} as an editor.`,
+      `Google shows no access for ${REQUESTER} to "Salaries" through their own email, their domain, or a link.`,
       `${REQUESTER} cannot open "Board notes".`,
       "It is shared with a Google group, and group membership is not checked.",
     ];
@@ -242,42 +256,21 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     await expect(
       run(toolsWith(vi.fn()), "searchGoogleFiles", { query: "plan" }),
     ).rejects.toThrow("The requester's email is unknown");
+  });
 
-    // Results are checked at once, so answer by file id, not by call order.
-    const access: Record<string, Response | undefined> = {
-      domainDoc: permissions({ domain: "Example.com", type: "domain" }),
-      groupDoc: permissions({
-        emailAddress: "staff@example.com",
-        type: "group",
-      }),
-      linkDoc: permissions({ type: "anyone" }),
-    };
-    const fetch = vi.fn(async ({ request }: { request: Request }) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/drive/v3/files") {
-        return Response.json({
-          files: ["domainDoc", "groupDoc", "linkDoc", "viewOnlyDoc"].map(
-            (id) => ({
-              capabilities: { canShare: id !== "viewOnlyDoc" },
-              id: `${id}-0123456789`,
-              mimeType: DOC,
-              name: id,
-            }),
-          ),
-        });
-      }
-      const id = url.pathname.split("/")[4]!.replace("-0123456789", "");
-      return access[id] ?? new Response(null, { status: 500 });
-    });
-    const search = await run(toolsWith(fetch, REQUESTER), "searchGoogleFiles", {
+  it("finds only files that the requester can open, and counts a domain share only in your own domain", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ files: [] }));
+    await run(toolsWith(fetch, "bob@partner.com"), "searchGoogleFiles", {
       query: "plan",
+      types: ["document"],
     });
-    expect(search).toMatchObject({
-      files: [{ title: "domainDoc" }, { title: "linkDoc" }],
-      hidden: 2,
-    });
-    // A file that Junior can only view costs no permission check.
-    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(
+      new URL(fetch.mock.calls[0]![0].request.url).searchParams.get("q"),
+    ).toBe(
+      "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'plan' and (visibility = 'anyoneCanFind' or visibility = 'anyoneWithLink' or 'bob@partner.com' in readers or 'bob@partner.com' in writers or 'bob@partner.com' in owners)",
+    );
+    // Search results need no check of their own.
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {

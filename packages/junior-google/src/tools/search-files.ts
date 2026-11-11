@@ -4,11 +4,12 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  driveQueryString,
   fileOutputFields,
   GOOGLE_FILE_TYPES,
   googleFileMimeType,
   googleFileType,
-  requesterAccess,
+  requesterAccessQuery,
   requireRequesterEmail,
 } from "./files";
 import {
@@ -47,12 +48,6 @@ const outputSchema = pluginToolOutputSchema.extend({
       url: z.string().optional(),
     }),
   ),
-  hidden: z
-    .number()
-    .int()
-    .describe(
-      "Matching files left out because the requester cannot open them through their own email, their domain, or a link, or because your account can only view them and cannot check. Never guess what they hold.",
-    ),
   truncated: z
     .boolean()
     .describe(
@@ -64,7 +59,6 @@ const fileListSchema = z.object({
   files: z
     .array(
       z.object({
-        capabilities: z.object({ canShare: z.boolean().optional() }).optional(),
         id: z.string(),
         mimeType: z.string(),
         modifiedTime: z.string().optional(),
@@ -77,14 +71,9 @@ const fileListSchema = z.object({
   nextPageToken: z.string().optional(),
 });
 
-/** Quote a value for a Drive search query. */
-function driveQueryString(value: string): string {
-  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-}
-
 /**
  * Find Docs, Sheets, and Slides that Junior's account and the requester can
- * both open. Each result costs one permission check.
+ * both open. The requester's access terms are part of the Drive query.
  */
 export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -95,7 +84,7 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       readOnlyHint: true,
     },
     description:
-      "Find Google Docs, Sheets, and Slides shared with your own Google account, by words in the title or text. Only files that the requester can open through their own email, their domain, or a link are returned; hidden counts the rest. Files that are only shared by public link are not found; ask for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
+      "Find Google Docs, Sheets, and Slides shared with your own Google account, by words in the title or text. Only files that the requester can open through their own email, their domain, or a link are returned; files they can open only through a Google group are left out. Files that are only shared by public link are not found; ask for their link instead. Returns file ids for readGoogleDoc, readGoogleSheet, readGoogleSlides, and listGoogleFileComments.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -109,10 +98,10 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
         query: {
           corpora: "allDrives",
           fields:
-            "files(capabilities(canShare),id,mimeType,modifiedTime,name,webViewLink),incompleteSearch,nextPageToken",
+            "files(id,mimeType,modifiedTime,name,webViewLink),incompleteSearch,nextPageToken",
           includeItemsFromAllDrives: "true",
           pageSize: String(input.max_results),
-          q: `(${mimeTypes}) and trashed = false and fullText contains ${driveQueryString(input.query)}`,
+          q: `(${mimeTypes}) and trashed = false and fullText contains ${driveQueryString(input.query)} and ${requesterAccessQuery(ctx, requester)}`,
           supportsAllDrives: "true",
         },
       });
@@ -122,29 +111,21 @@ export function createSearchGoogleFilesTool(ctx: GoogleToolContext) {
       const { files, incompleteSearch, nextPageToken } = fileListSchema.parse(
         response.body,
       );
-      const results = await Promise.all(
-        files.map(async (file) => {
-          const type = googleFileType(file.mimeType);
-          if (!type) return undefined;
-          const access = await requesterAccess(
-            ctx,
-            { canShare: file.capabilities?.canShare, fileId: file.id },
-            requester,
-          );
-          return access === "open"
-            ? {
-                file_id: file.id,
-                ...fileOutputFields(file),
-                title: file.name,
-                type,
-              }
-            : "hidden";
-        }),
-      );
       return {
         target: "searchGoogleFiles" as const,
-        files: results.filter((result) => typeof result === "object"),
-        hidden: results.filter((result) => result === "hidden").length,
+        files: files.flatMap((file) => {
+          const type = googleFileType(file.mimeType);
+          return type
+            ? [
+                {
+                  file_id: file.id,
+                  ...fileOutputFields(file),
+                  title: file.name,
+                  type,
+                },
+              ]
+            : [];
+        }),
         truncated: nextPageToken !== undefined || incompleteSearch === true,
       };
     },

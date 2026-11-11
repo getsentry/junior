@@ -25,12 +25,13 @@ not use the Google credentials of the people it helps.
 
 Junior reads a Doc, Sheet, or Slides file, or its comments, only for a
 requester who can open it through their own email, their domain, or a link.
-Search leaves out the other files. Junior can check this only on files that
-its account can share, because Google shows a file's permissions only to
-people who can share it. Share files with the Junior account as an editor.
-Junior refuses files that it can only view. Access through a Google group is
-not checked. Meet transcripts keep their own check: the requester must be
-invited to the meeting.
+Search leaves out the other files. When the Junior account can share a file,
+Junior reads the file's permissions. Otherwise it asks Drive search whether
+the file is shared with the requester, with anyone, or with a domain. Drive
+search does not say which domain, so a file shared with another domain counts
+as open to requesters in the Junior account's domain. Access through a Google
+group is not checked. Meet transcripts keep their own check: the requester
+must be invited to the meeting.
 
 Calendar reads are not checked this way. Anyone who can talk to Junior can
 read the calendars that the Junior account can see. Share calendars with that

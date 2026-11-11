@@ -146,24 +146,46 @@ const permissionPageSchema = z.object({
     .default([]),
 });
 
-/** How the requester can open a file, as Junior can check it. */
-export type RequesterAccess = "open" | "group" | "none" | "unchecked";
+const fileIdPageSchema = z.object({
+  files: z.array(z.object({ id: z.string() })).default([]),
+  nextPageToken: z.string().optional(),
+});
+
+/** Quote a value for a Drive search query. */
+export function driveQueryString(value: string): string {
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+}
 
 /**
- * Check that the requester can open a file themselves, through their own
- * email, their domain, or a link.
+ * Drive search terms that match files the requester can open through their
+ * own email, a link, or the domain of Junior's account.
  *
- * Junior's account sees every file shared with it, and anyone who can talk
- * to Junior uses that account. Drive lists a file's permissions only to
- * accounts that can share it, so a file that Junior can only view is
- * "unchecked". Access through a Google group is not resolved.
+ * `visibility` does not say which domain a domain share is for. A file
+ * shared with another domain counts as shared with Junior's domain, so a
+ * requester in Junior's domain is assumed to open it. Group members are not
+ * matched.
  */
-export async function requesterAccess(
+export function requesterAccessQuery(
   ctx: GoogleToolContext,
-  file: FileReference & { canShare?: boolean },
   requester: string,
-): Promise<RequesterAccess> {
-  if (file.canShare !== true) return "unchecked";
+): string {
+  const email = driveQueryString(requester);
+  const visibility =
+    emailDomain(requester) === emailDomain(ctx.accountEmail)
+      ? "visibility != 'limited'"
+      : "visibility = 'anyoneCanFind' or visibility = 'anyoneWithLink'";
+  return `(${visibility} or ${email} in readers or ${email} in writers or ${email} in owners)`;
+}
+
+/**
+ * Read the file's permissions, which Drive lists only to accounts that can
+ * share the file. Exact, except that group members are not matched.
+ */
+async function listedAccess(
+  ctx: GoogleToolContext,
+  file: FileReference,
+  requester: string,
+): Promise<"open" | "group" | "none"> {
   const domain = emailDomain(requester);
   let group = false;
   let pageToken: string | undefined;
@@ -196,6 +218,40 @@ export async function requesterAccess(
   return group ? "group" : "none";
 }
 
+/**
+ * Search for the file by its exact name with the requester's access terms.
+ * Works when Junior's account can only view the file.
+ */
+async function searchedAccess(
+  ctx: GoogleToolContext,
+  file: FileReference & { name: string },
+  requester: string,
+): Promise<boolean> {
+  let pageToken: string | undefined;
+  do {
+    const response = await googleApiRequest(ctx, {
+      operation: "google.drive.files.list",
+      path: "/drive/v3/files",
+      query: {
+        corpora: "allDrives",
+        fields: "files(id),nextPageToken",
+        includeItemsFromAllDrives: "true",
+        pageSize: "100",
+        q: `name = ${driveQueryString(file.name)} and ${requesterAccessQuery(ctx, requester)}`,
+        supportsAllDrives: "true",
+        ...(pageToken ? { pageToken } : undefined),
+      },
+    });
+    if (response.status !== 200) {
+      throw googleApiError("google.drive.files.list", response);
+    }
+    const page = fileIdPageSchema.parse(response.body);
+    if (page.files.some((found) => found.id === file.fileId)) return true;
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return false;
+}
+
 /** Return the requester's email, or refuse a read when it is unknown. */
 export async function requireRequesterEmail(
   ctx: GoogleToolContext,
@@ -209,20 +265,29 @@ export async function requireRequesterEmail(
   return requester;
 }
 
-/** Refuse a read unless the requester can open the file themselves. */
+/**
+ * Refuse a read unless the requester can open the file themselves, through
+ * their own email, their domain, or a link. Junior's account sees every file
+ * shared with it, and anyone who can talk to Junior uses that account.
+ */
 async function requireRequesterAccess(
   ctx: GoogleToolContext,
   file: FileReference & { canShare?: boolean; name: string },
 ): Promise<void> {
   const requester = await requireRequesterEmail(ctx);
-  const access = await requesterAccess(ctx, file, requester);
-  if (access === "open") return;
+  const fix = `Ask the owner to share it with ${requester} directly or with their domain.`;
+  if (file.canShare === true) {
+    const access = await listedAccess(ctx, file, requester);
+    if (access === "open") return;
+    throw new PluginToolInputError(
+      access === "group"
+        ? `${requester} has no access to "${file.name}" through their own email, their domain, or a link. It is shared with a Google group, and group membership is not checked. ${fix}`
+        : `${requester} cannot open "${file.name}". You read a file only for people who can open it themselves. ${fix}`,
+    );
+  }
+  if (await searchedAccess(ctx, file, requester)) return;
   throw new PluginToolInputError(
-    access === "unchecked"
-      ? `Your Google account (${ctx.accountEmail}) can only view "${file.name}", so you cannot check that ${requester} may open it. Ask the owner to share it with ${ctx.accountEmail} as an editor.`
-      : access === "group"
-        ? `${requester} has no access to "${file.name}" through their own email, their domain, or a link. It is shared with a Google group, and group membership is not checked. Ask the owner to share it with ${requester} directly or with their domain.`
-        : `${requester} cannot open "${file.name}". You read a file only for people who can open it themselves. Ask the owner to share it with ${requester} or with their domain.`,
+    `Google shows no access for ${requester} to "${file.name}" through their own email, their domain, or a link. You read a file only for people who can open it themselves. Access through a Google group is not checked. ${fix}`,
   );
 }
 
