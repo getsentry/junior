@@ -18,7 +18,11 @@ const LAST_RUN_LABELS = {
 } as const;
 
 function lastRunLine(automation: AutomationSummary): string | undefined {
-  if (!automation.lastRunStatus) return undefined;
+  // A run with no recorded result still says when it ran.
+  if (!automation.lastRunStatus)
+    return automation.lastRunAt
+      ? `Ran ${formatRelativeTime(automation.lastRunAt)}`
+      : undefined;
   const when = automation.lastRunAt
     ? ` ${formatRelativeTime(automation.lastRunAt)}`
     : "";
