@@ -164,7 +164,13 @@ export function ReviewDeskPage() {
     id: string;
     listed: boolean;
   }>();
-  if (itemParam && linkStart?.id !== itemParam && (listed || direct.data)) {
+  // Wait for the open list, so `listed` says where the item really is.
+  if (
+    itemParam &&
+    linkStart?.id !== itemParam &&
+    items.data &&
+    (listed || direct.data)
+  ) {
     setLinkStart({
       closed: !listed && direct.data?.status !== "open",
       id: itemParam,
@@ -698,7 +704,10 @@ export function ReviewDeskPage() {
             <InlineError className="px-4 py-3">
               Could not load review items.
             </InlineError>
-          ) : !loaded || (view === "automations" && attention.isPending) ? (
+          ) : !loaded ||
+            (showsAutomations &&
+              attention.isPending &&
+              navigable.length === 0) ? (
             <BundleRowsLoading />
           ) : q ? (
             <ul aria-label="Search results" className="m-0 grid gap-2 p-0">
