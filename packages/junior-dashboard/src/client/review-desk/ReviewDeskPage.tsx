@@ -511,7 +511,8 @@ export function ReviewDeskPage() {
     !isDone &&
     !automationsMissing &&
     navigable.length === 0 &&
-    sections.length === 0;
+    sections.length === 0 &&
+    snoozedRows.length === 0;
   // A single-item row names its Conversation unless a heading already does.
   const itemRow =
     view === "all"

@@ -41,6 +41,8 @@ export function useInboxSweep() {
   const pending = useRef(
     new Map<string, { items: ReviewItemPayload[]; timer: number }>(),
   );
+  // Each sweep gets its own toast and timer, so Undo cancels only its own.
+  const sweeps = useRef(0);
 
   useEffect(() => {
     const open = pending.current;
@@ -63,7 +65,8 @@ export function useInboxSweep() {
 
   const sweep = (items: ReviewItemPayload[]) => {
     if (items.length === 0) return;
-    const id = `inbox-sweep-${items[0]!.id}-${items.length}`;
+    sweeps.current += 1;
+    const id = `inbox-sweep-${sweeps.current}`;
     const ids = items.map((item) => item.id);
     setSwept((current) => new Set([...current, ...ids]));
     const timer = window.setTimeout(() => {

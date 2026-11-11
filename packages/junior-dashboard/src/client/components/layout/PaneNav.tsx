@@ -480,8 +480,12 @@ function finalTabBox(nav: HTMLElement, target: HTMLElement) {
   const gap = parseFloat(style.columnGap) || 0;
   const tabs = [...nav.querySelectorAll<HTMLElement>("a")];
   // Each tab at its content width without the label, as the other tabs
-  // end up. The tab that showed before may hold free space as well.
+  // end up. The tab that showed before may hold free space as well. Plugin
+  // tabs have no label and keep their size.
+  const labelled = (tab: HTMLElement) =>
+    Boolean(tab.querySelector("[data-tab-label]"));
   const closed = tabs.map((tab) => {
+    if (!labelled(tab)) return tab.offsetWidth;
     const pad = getComputedStyle(tab);
     return [...tab.children].reduce(
       (sum, child) => {
@@ -505,7 +509,11 @@ function finalTabBox(nav: HTMLElement, target: HTMLElement) {
     (sum, width, at) => (at === index ? sum : sum + width + gap),
     0,
   );
-  return { left: start + before, width: inner - others };
+  // A shown labelled tab takes the rest of the row.
+  return {
+    left: start + before,
+    width: labelled(target) ? inner - others : target.offsetWidth,
+  };
 }
 
 /**
@@ -554,6 +562,8 @@ function useTabHighlight(shown: string | undefined) {
     switching.current = true;
     const timer = window.setTimeout(() => {
       switching.current = false;
+      // Settle on the tab's real box, in case the prediction missed.
+      place(false);
     }, SWITCH_MS);
     return () => {
       window.clearTimeout(timer);
