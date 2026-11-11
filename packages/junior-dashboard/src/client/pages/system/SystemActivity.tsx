@@ -3,11 +3,10 @@ import type {
   ConversationStatsReport,
 } from "@sentry/junior/api/schema";
 import {
+  CircleCheck,
   CircleDollarSign,
   GitMerge,
   MessageSquare,
-  MessagesSquare,
-  Repeat,
   Sigma,
 } from "lucide-react";
 
@@ -33,16 +32,18 @@ function periodTotals(days: ConversationMetricDay[]) {
       mergedCodeChangeCostUsd:
         total.mergedCodeChangeCostUsd + (day.mergedCodeChangeCostUsd ?? 0),
       mergedCodeChanges: total.mergedCodeChanges + (day.mergedCodeChanges ?? 0),
+      outcomeCostUsd: total.outcomeCostUsd + (day.outcomeCostUsd ?? 0),
+      outcomes: total.outcomes + (day.outcomes ?? 0),
       tokens: total.tokens + (day.tokens ?? 0),
-      turns: total.turns + (day.turns ?? 0),
     }),
     {
       conversations: 0,
       costUsd: 0,
       mergedCodeChangeCostUsd: 0,
       mergedCodeChanges: 0,
+      outcomeCostUsd: 0,
+      outcomes: 0,
       tokens: 0,
-      turns: 0,
     },
   );
 }
@@ -121,20 +122,16 @@ export function SystemActivity(props: {
           label="Model spend"
           value={formatCostSummary({ total: totals.costUsd })}
         />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <StatCard
-          detail={`Across ${formatCompactNumber(totals.turns)} Turns`}
-          icon={Repeat}
-          label="Cost per Turn"
-          value={unitCost(totals.costUsd, totals.turns)}
+          detail={`${formatCompactNumber(totals.mergedCodeChanges)} merged changes and ${formatCompactNumber(totals.outcomes - totals.mergedCodeChanges)} answered or done conversations`}
+          icon={CircleCheck}
+          label="Cost per outcome"
+          value={unitCost(totals.outcomeCostUsd, totals.outcomes)}
         />
         <StatCard
-          detail={`Across ${formatCompactNumber(totals.conversations)} conversations`}
-          icon={MessagesSquare}
-          label="Cost per conversation"
-          value={unitCost(totals.costUsd, totals.conversations)}
-        />
-        <StatCard
-          detail={`Linked conversation cost of ${formatCompactNumber(totals.mergedCodeChanges)} merged changes`}
+          detail={`Conversation cost split across ${formatCompactNumber(totals.mergedCodeChanges)} merged changes`}
           icon={GitMerge}
           label="Cost per merged change"
           value={unitCost(

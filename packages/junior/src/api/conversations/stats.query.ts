@@ -9,15 +9,12 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import {
-  readMergedCodeChangeBuckets,
-  type MergedCodeChangeBucket,
-} from "../code/merged-buckets";
 import { conversationAggregateColumns } from "./aggregate";
 import {
   readConversationMetricBuckets,
   type ConversationMetricBucket,
 } from "./metric-buckets";
+import { readOutcomeBuckets, type OutcomeBucket } from "./outcome-buckets";
 import type {
   ConversationMetricDay,
   ConversationStatsItem,
@@ -173,8 +170,9 @@ type MetricRow = {
   inputTokens: number | null;
   mergedCodeChangeCostUsd: number | null;
   mergedCodeChanges: number | null;
+  outcomeCostUsd: number | null;
+  outcomes: number | null;
   tokens: number | null;
-  turns: number | null;
 };
 
 function emptyMetricRow(date: string): MetricRow {
@@ -188,15 +186,16 @@ function emptyMetricRow(date: string): MetricRow {
     inputTokens: null,
     mergedCodeChangeCostUsd: null,
     mergedCodeChanges: null,
+    outcomeCostUsd: null,
+    outcomes: null,
     tokens: null,
-    turns: null,
   };
 }
 
 function applyMetricBuckets(
   rows: Array<Pick<MetricRow, "conversations" | "date">>,
   metrics: ConversationMetricBucket[],
-  merged: MergedCodeChangeBucket[],
+  outcomes: OutcomeBucket[],
 ): MetricRow[] {
   const byDate = new Map<string, MetricRow>(
     rows.map((row) => [
@@ -204,10 +203,12 @@ function applyMetricBuckets(
       { ...emptyMetricRow(row.date), conversations: row.conversations },
     ]),
   );
-  for (const bucket of merged) {
+  for (const bucket of outcomes) {
     const row = byDate.get(bucket.date) ?? emptyMetricRow(bucket.date);
-    row.mergedCodeChanges = bucket.merged;
-    row.mergedCodeChangeCostUsd = bucket.costUsd;
+    row.mergedCodeChanges = bucket.mergedCodeChanges;
+    row.mergedCodeChangeCostUsd = bucket.mergedCodeChangeCostUsd;
+    row.outcomes = bucket.outcomes;
+    row.outcomeCostUsd = bucket.outcomeCostUsd;
     byDate.set(bucket.date, row);
   }
   for (const metric of metrics) {
@@ -219,10 +220,7 @@ function applyMetricBuckets(
     } else if (metric.metric === "cost_usd") {
       row.costUsd = metric.value;
     } else if (metric.metric === "duration_ms") {
-      // Every Turn with metrics records a duration, so its row count is the
-      // Turn count.
       row.durationMs = metric.value;
-      row.turns = metric.count;
     } else if (metric.metric === "input_tokens") {
       row.inputTokens = metric.value;
     } else if (metric.metric === "total_tokens") {
@@ -254,8 +252,9 @@ function metricPoint(
         inputTokens?: number | null;
         mergedCodeChangeCostUsd?: number | null;
         mergedCodeChanges?: number | null;
+        outcomeCostUsd?: number | null;
+        outcomes?: number | null;
         tokens?: number | null;
-        turns?: number | null;
       }
     | undefined,
 ): ConversationMetricDay {
@@ -276,20 +275,19 @@ function metricPoint(
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }
       : undefined),
-    ...(row?.mergedCodeChanges !== null && row?.mergedCodeChanges !== undefined
+    ...(row?.outcomes !== null && row?.outcomes !== undefined
       ? {
           mergedCodeChangeCostUsd: addUsd(
             undefined,
             row.mergedCodeChangeCostUsd ?? 0,
           ),
-          mergedCodeChanges: row.mergedCodeChanges,
+          mergedCodeChanges: row.mergedCodeChanges ?? 0,
+          outcomeCostUsd: addUsd(undefined, row.outcomeCostUsd ?? 0),
+          outcomes: row.outcomes,
         }
       : undefined),
     ...(row?.tokens !== null && row?.tokens !== undefined
       ? { tokens: row.tokens }
-      : undefined),
-    ...(row?.turns !== null && row?.turns !== undefined
-      ? { turns: row.turns }
       : undefined),
   };
 }
@@ -455,8 +453,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     metricHourRows,
     dayMetrics,
     hourMetrics,
-    dayMerged,
-    hourMerged,
+    dayOutcomes,
+    hourOutcomes,
   ] = await Promise.all([
     db
       .select(treeAggregateColumns)
@@ -568,14 +566,18 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       start: hourStart,
       end,
     }),
-    readMergedCodeChangeBuckets(db, { bucket: "day", start, end }),
-    readMergedCodeChangeBuckets(db, { bucket: "hour", start: hourStart, end }),
+    readOutcomeBuckets(db, { bucket: "day", start, end }),
+    readOutcomeBuckets(db, { bucket: "hour", start: hourStart, end }),
   ]);
   return {
     actorRows,
     locationRows,
-    metricHourRows: applyMetricBuckets(metricHourRows, hourMetrics, hourMerged),
-    metricRows: applyMetricBuckets(metricRows, dayMetrics, dayMerged),
+    metricHourRows: applyMetricBuckets(
+      metricHourRows,
+      hourMetrics,
+      hourOutcomes,
+    ),
+    metricRows: applyMetricBuckets(metricRows, dayMetrics, dayOutcomes),
     totals: totalsRows[0],
   };
 }

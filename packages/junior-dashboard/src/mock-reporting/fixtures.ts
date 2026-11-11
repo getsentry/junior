@@ -2151,18 +2151,18 @@ function windowBounds(nowMs: number) {
   };
 }
 
-/** Add mock Turns to one stats bucket. */
-function addMockTurns(
+/** Count a completed mock conversation as an answered or done outcome. */
+function addMockOutcome(
   bucket: ConversationStatsReport["metricDays"][number],
   summary: ConversationSummaryReport,
 ) {
-  // Mock about one Turn per 90 seconds of runtime.
-  bucket.turns =
-    (bucket.turns ?? 0) +
-    Math.max(1, Math.round(summary.cumulativeDurationMs / 90_000));
+  if (summary.status !== "completed") return;
+  bucket.outcomes = (bucket.outcomes ?? 0) + 1;
+  bucket.outcomeCostUsd =
+    (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
 }
 
-/** Add two mock merged code changes, with linked conversation cost. */
+/** Add two mock merged code changes, with split conversation cost. */
 function addMockMergedCodeChanges(
   buckets: Map<string, ConversationStatsReport["metricDays"][number]>,
   nowMs: number,
@@ -2177,6 +2177,8 @@ function addMockMergedCodeChanges(
     bucket.mergedCodeChanges = (bucket.mergedCodeChanges ?? 0) + 1;
     bucket.mergedCodeChangeCostUsd =
       (bucket.mergedCodeChangeCostUsd ?? 0) + change.costUsd;
+    bucket.outcomes = (bucket.outcomes ?? 0) + 1;
+    bucket.outcomeCostUsd = (bucket.outcomeCostUsd ?? 0) + change.costUsd;
   }
 }
 
@@ -2197,7 +2199,7 @@ function conversationMetricDays(
     if (!day) continue;
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    addMockTurns(day, summary);
+    addMockOutcome(day, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -2238,7 +2240,7 @@ function conversationMetricHours(
     if (!hour) continue;
     hour.conversations += 1;
     hour.durationMs += summary.cumulativeDurationMs;
-    addMockTurns(hour, summary);
+    addMockOutcome(hour, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) hour.tokens = (hour.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;

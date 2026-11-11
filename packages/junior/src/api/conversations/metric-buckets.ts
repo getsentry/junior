@@ -4,14 +4,12 @@ import { juniorConversationMetrics } from "@/db/schema";
 import type { ConversationMetric } from "@/db/schema/conversation-metrics";
 
 export interface ConversationMetricBucket {
-  /** Turns with a row for this metric. */
-  count: number;
   date: string;
   metric: ConversationMetric;
   value: number;
 }
 
-/** Sum and count all Conversation metrics into UTC day or hour buckets. */
+/** Sum all Conversation metrics into UTC day or hour buckets. */
 export async function readConversationMetricBuckets(
   db: JuniorDatabase,
   options: {
@@ -26,7 +24,6 @@ export async function readConversationMetricBuckets(
       : sql<string>`to_char(${juniorConversationMetrics.occurredAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
   return await db
     .select({
-      count: sql<number>`count(*)::integer`,
       date,
       metric: juniorConversationMetrics.metric,
       value: sql<number>`sum(${juniorConversationMetrics.value})::double precision`,

@@ -29,13 +29,18 @@ export const conversationMetricDaySchema = z
     date: conversationMetricBucketSchema,
     durationMs: z.number(),
     inputTokens: z.number().optional(),
-    /** Summed linked conversation cost of `mergedCodeChanges`. */
+    /** Conversation cost split to `mergedCodeChanges`. */
     mergedCodeChangeCostUsd: z.number().optional(),
-    /** Code changes merged in this bucket. */
+    /** Code changes merged in this bucket. They are also `outcomes`. */
     mergedCodeChanges: z.number().optional(),
+    /** Conversation cost of `outcomes`. */
+    outcomeCostUsd: z.number().optional(),
+    /**
+     * Merged code changes, plus root Conversations without code changes
+     * whose latest Brief is `done` or `answered`.
+     */
+    outcomes: z.number().optional(),
     tokens: z.number().optional(),
-    /** Turns that recorded metrics in this bucket. */
-    turns: z.number().optional(),
   })
   .strict();
 
