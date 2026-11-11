@@ -35,6 +35,7 @@ import {
   dashboardConfigSchema,
   dashboardIdentitySchema,
   dashboardProfileUpdateSchema,
+  LIVE_PREVIEW_PARAM,
   type DashboardBootstrap,
   type DashboardConfig,
   type DashboardIdentity,
@@ -49,6 +50,12 @@ import {
   type DashboardSession,
 } from "./auth";
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
+import {
+  livePreviewToken,
+  proxyLivePreviewRequest,
+  readLivePreviewOrigin,
+  startLivePreview,
+} from "./live-preview";
 import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
 import { resetMockReviewItems } from "./mock-reporting/review-items";
@@ -559,6 +566,29 @@ export function createDashboardApp(
     return undefined;
   };
 
+  const liveOrigin = readLivePreviewOrigin(authRequired);
+  if (liveOrigin) {
+    app.use("*", async function livePreview(c, next) {
+      const url = new URL(c.req.url);
+      if (
+        url.pathname === basePath &&
+        url.searchParams.has(LIVE_PREVIEW_PARAM)
+      ) {
+        return startLivePreview(c.req.raw, liveOrigin, basePath);
+      }
+      const token = livePreviewToken(c.req.raw);
+      if (
+        token &&
+        url.pathname.startsWith("/api/") &&
+        url.pathname !== authPath &&
+        !url.pathname.startsWith(`${authPath}/`)
+      ) {
+        return proxyLivePreviewRequest(c.req.raw, liveOrigin, token);
+      }
+      await next();
+      return undefined;
+    });
+  }
   app.use("*", requireAuth);
   // Core detail reads set a version token before they build the report. Mock
   // reporting has no stored version, so it revalidates on content instead.
@@ -603,11 +633,18 @@ export function createDashboardApp(
       return undefined;
     }
   };
-  const renderPage = async (c: Context<{ Variables: Variables }>) =>
-    renderDashboard(basePath, agentName, {
-      bootstrap: await readPageBootstrap(c.get("authSession")),
+  const renderPage = async (c: Context<{ Variables: Variables }>) => {
+    const live = Boolean(liveOrigin && livePreviewToken(c.req.raw));
+    return renderDashboard(basePath, agentName, {
+      // Live data has its own identity, which the client reads from the
+      // live deployment.
+      bootstrap: live
+        ? undefined
+        : await readPageBootstrap(c.get("authSession")),
+      preview: liveOrigin ? { live, liveOrigin } : undefined,
       sentry: getBrowserSentryConfig(),
     });
+  };
   for (const { nested, path } of dashboardPagePaths(basePath)) {
     app.get(path, renderPage);
     if (nested) {

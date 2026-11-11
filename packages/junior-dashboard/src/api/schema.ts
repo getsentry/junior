@@ -67,7 +67,16 @@ export const dashboardBootstrapSchema = z
   .object({ config: dashboardConfigSchema, me: dashboardIdentitySchema })
   .strict();
 
+/** Query parameter on the base path that asks for live data in a Preview. */
+export const LIVE_PREVIEW_PARAM = "live";
+
+/** Which data a Preview shows, and the live deployment it can read. */
+export const dashboardPreviewSchema = z
+  .object({ live: z.boolean(), liveOrigin: z.string().url() })
+  .strict();
+
 export type DashboardSession = z.infer<typeof dashboardSessionSchema>;
 export type DashboardIdentity = z.infer<typeof dashboardIdentitySchema>;
 export type DashboardConfig = z.infer<typeof dashboardConfigSchema>;
 export type DashboardBootstrap = z.infer<typeof dashboardBootstrapSchema>;
+export type DashboardPreview = z.infer<typeof dashboardPreviewSchema>;
