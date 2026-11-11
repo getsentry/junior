@@ -276,13 +276,6 @@ export const conversationSummaryReportSchema = z
     pinnedAt: z.string().datetime().nullable().optional(),
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
     pinPosition: z.number().int().optional(),
-    /**
-     * True when the conversation is idle and Junior's latest reply that the
-     * transcript shows is after the viewer's read position. Quiet replies do
-     * not count. Opening the conversation does not move the position; reading
-     * in it, replying, archiving, or Mark as read does.
-     */
-    unread: z.boolean().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),

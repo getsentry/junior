@@ -185,7 +185,6 @@ describe("dashboard shell routes", () => {
     });
 
     for (const path of [
-      "/board",
       "/code",
       "/code/00000000-0000-4000-8000-000000000003/changes",
       "/conversations",

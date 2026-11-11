@@ -147,8 +147,6 @@ const DASHBOARD_QA_NESTED_THREAD_ID =
 const mockPinnedConversationIds = new Set<string>();
 /** Process-local Pinned order from drag reorders. */
 const mockPinPositions = new Map<string, number>();
-/** Process-local conversations that the viewer marked unread. */
-const mockUnreadConversationIds = new Set<string>();
 
 /** Process-local renames so rename can be exercised in visual QA. */
 const mockTitles = new Map<string, string>();
@@ -177,13 +175,12 @@ const mockSlackChannelByConversationId = new Map<
 >();
 
 /**
- * Restore process-local archive, pin, unread, and auto-archive state so
+ * Restore process-local archive, pin, and auto-archive state so
  * tests sharing a worker do not leak state.
  */
 export function resetMockConversationViewerState(): void {
   mockPinnedConversationIds.clear();
   mockPinPositions.clear();
-  mockUnreadConversationIds.clear();
   mockTitles.clear();
   mockAutoArchiveByConversationId.clear();
   mockUnsubscribedConversationIds.clear();
@@ -195,7 +192,7 @@ export function resetMockConversationViewerState(): void {
 }
 
 /**
- * Add the mock archive, the viewer's pin and unread marks, and any rename to
+ * Add the mock archive, the viewer's pin, and any rename to
  * one conversation. Like the API, a child reports the pin of its root.
  */
 function withMockViewerState<
@@ -207,20 +204,14 @@ function withMockViewerState<
   archivedAt: string | undefined;
   pinnedAt: string | null;
   pinPosition?: number;
-  unread?: true;
 } {
   const pinPosition = mockPinPositions.get(pinConversationId);
-  // Match the API: only idle conversations are unread.
-  const unread =
-    (report.status === "completed" || report.status === "stopped") &&
-    mockUnreadConversationIds.has(report.conversationId);
   return {
     ...report,
     displayTitle: mockTitles.get(report.conversationId) ?? report.displayTitle,
     archivedAt: mockArchivedAt.get(report.conversationId),
     pinnedAt: mockPinnedConversationIds.has(pinConversationId) ? NOW : null,
     ...(pinPosition === undefined ? undefined : { pinPosition }),
-    ...(unread ? { unread: true as const } : undefined),
   };
 }
 
@@ -2401,8 +2392,6 @@ export function setMockConversationArchived(
     for (const id of [conversationId, ...unarchived]) {
       mockArchivedAt.set(id, archivedAt);
     }
-    // Match the API: archive also marks it read.
-    mockUnreadConversationIds.delete(conversationId);
     return { archivedAt };
   }
   // Name the topmost archived ancestor, like the API.
@@ -2460,23 +2449,6 @@ export function setMockConversationPinned(
     mockPinnedConversationIds.delete(conversationId);
   }
   return { pinnedAt: pinned ? NOW : null };
-}
-
-/**
- * Set the feed's unread flag of one mock conversation for local dashboard
- * visual QA. The mock read position moves on its own, in `read-positions`.
- */
-export function setMockConversationUnread(
-  conversationId: string,
-  unread: boolean,
-): boolean {
-  const exists = mockConversations(NOW_MS).some(
-    (conversation) => conversation.conversationId === conversationId,
-  );
-  if (!exists) return false;
-  if (unread) mockUnreadConversationIds.add(conversationId);
-  else mockUnreadConversationIds.delete(conversationId);
-  return true;
 }
 
 /** Rename one mock conversation for local dashboard visual QA. */
@@ -3597,8 +3569,11 @@ export function readMockPeopleCode(
     repository: string,
     title: string,
     days: number,
+    idleHours?: number,
   ) => ({
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
+    lastActivityAt:
+      idleHours === undefined ? undefined : daysAgo(idleHours / 24),
     number,
     openedAt: daysAgo(days),
     provider: "github",
@@ -3620,23 +3595,30 @@ export function readMockPeopleCode(
       : { closedAt: daysAgo(done.closed), state: "closed" as const }),
   });
   const openChanges = [
-    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
-    openChange(42, "getsentry/payments", "Reduce checkout latency", 3),
+    openChange(
+      2440,
+      "getsentry/junior",
+      "Show your week on the home page",
+      0,
+      1,
+    ),
+    openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
     openChange(
       2391,
       "getsentry/junior",
       "Retry Slack uploads after a rate limit",
       6,
+      144,
     ),
-    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12),
-    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1),
-    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1),
-    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2),
-    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4),
-    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5),
-    openChange(61, "getsentry/payments", "Drop legacy refund path", 8),
-    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10),
-    openChange(2350, "getsentry/junior", "Migrate memory schema", 320),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 288),
+    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
+    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1, 26),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 48),
+    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 120),
+    openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10, 216),
+    openChange(2350, "getsentry/junior", "Migrate memory schema", 320, 2),
   ];
   // Merges land on the days that `merges` counts in the last 7 days.
   const doneThisWeek = [

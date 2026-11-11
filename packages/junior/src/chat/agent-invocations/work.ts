@@ -56,11 +56,8 @@ import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurn } from "./thread-turn";
-import {
-  agentTypeInstructions,
-  agentTypeStartsWithParentHistory,
-} from "./agent-types";
-import { loadForkHistory } from "./fork-history";
+import { agentTypeInstructions } from "./agent-types";
+import { FORK_INSTRUCTIONS, loadForkHistory } from "./fork-history";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
@@ -240,14 +237,20 @@ function invocationIdFromMessages(
  * child's own child agents already have their own tag.
  */
 export function agentInvocationInputText(
-  invocation: Pick<AgentInvocation, "agentType" | "input" | "parentToolCallId">,
+  invocation: Pick<
+    AgentInvocation,
+    "agentType" | "fork" | "input" | "parentToolCallId"
+  >,
 ): string {
   if (!invocation.parentToolCallId) {
     return invocation.input;
   }
-  const typeInstructions = agentTypeInstructions(invocation.agentType);
+  const instructions = [
+    invocation.fork ? FORK_INSTRUCTIONS : undefined,
+    agentTypeInstructions(invocation.agentType),
+  ].filter((text) => text !== undefined);
   return renderTag("parent-agent-task", {}, [
-    ...(typeInstructions ? [escapeClosingTags(typeInstructions), ""] : []),
+    ...instructions.flatMap((text) => [escapeClosingTags(text), ""]),
     escapeClosingTags(invocation.input),
   ]);
 }
@@ -803,11 +806,10 @@ export function createAgentInvocationWorker(
         }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
-      // Some types start with the parent's history. Later agent invocations
+      // A fork starts with the parent's history. Later agent invocations
       // read it from the child's own Conversation.
       history =
-        agentTypeStartsWithParentHistory(invocation.agentType) &&
-        projection.messages.length === 0
+        invocation.fork && projection.messages.length === 0
           ? await loadForkHistory(invocation)
           : projection.messages;
       location = child?.location;

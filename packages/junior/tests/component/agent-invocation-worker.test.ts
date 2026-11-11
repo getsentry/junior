@@ -21,6 +21,7 @@ import {
   createAgentInvocationWorker,
   agentInvocationInputText,
 } from "@/chat/agent-invocations/work";
+import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
 import { commitMessages } from "@/chat/conversations/projection";
 import { stopConversation } from "@/chat/conversations/stop";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -477,7 +478,7 @@ describe("agent invocation worker", () => {
                 id: "call-fork",
                 name: "spawnAgent",
                 arguments: {
-                  agent_type: "fork",
+                  fork: true,
                   task: "Check the other path.",
                 },
               },
@@ -488,7 +489,7 @@ describe("agent invocation worker", () => {
       });
       const created = await createAgentInvocation({
         ...INVOCATION_INPUT,
-        agentType: "fork",
+        fork: true,
         idempotencyKey: "fork-task",
         input: "Check the other path.",
         parentToolCallId: "call-fork",
@@ -539,6 +540,7 @@ describe("agent invocation worker", () => {
       expect(histories).toEqual([
         readRound.map((item) => expect.objectContaining(item)),
       ]);
+      expect(agentInvocationInputText(created)).toContain(FORK_INSTRUCTIONS);
     } finally {
       await fixture.close();
     }

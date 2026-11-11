@@ -23,7 +23,8 @@ consistent.
   Small muted text is for field and subsection labels only.
 - Filtered lists use `filters/FilterToolbar` (search, a Filters button, and
   chips) and a `filters/FilterPanel` with one `FilterOptions` per filter.
-  `FilteredList` puts the panel beside the list, so the list narrows. Row
+  `FilteredList` puts the panel beside the toolbar and the list, so both
+  narrow. A long `FilterOptions` list gets a search box, not "show more". Row
   details open in an overlay `DetailsPanel` that slides over the list and
   filters. On small screens both are modal sheets. Do not put page filters
   in popovers or native selects.

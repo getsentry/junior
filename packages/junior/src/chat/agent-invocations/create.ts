@@ -40,6 +40,7 @@ type NewAgentInvocation = Pick<
   | "childConversationId"
   | "credentialContext"
   | "destination"
+  | "fork"
   | "input"
   | "invocationId"
   | "parentConversationId"
@@ -63,6 +64,7 @@ async function insertAgentInvocation(
       ...invocation,
       agentName: invocation.agentName ?? null,
       agentType: invocation.agentType ?? null,
+      fork: invocation.fork ?? false,
       credentialContext: invocation.credentialContext ?? null,
       parentToolCallId: invocation.parentToolCallId ?? null,
       reasoningLevel: invocation.reasoningLevel ?? null,
@@ -92,6 +94,7 @@ function sameCreateInput(
     invocation.agentName === input.agentName &&
     invocation.input === input.input &&
     invocation.agentType === input.agentType &&
+    invocation.fork === input.fork &&
     invocation.reasoningLevel === input.reasoningLevel &&
     JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
     JSON.stringify(invocation.credentialContext) ===
@@ -228,6 +231,7 @@ export async function createAgentInvocation(
         childConversationId,
         credentialContext: input.credentialContext,
         destination: input.destination,
+        fork: input.fork,
         input: input.input,
         invocationId,
         parentConversationId: input.parentConversationId,

@@ -39,6 +39,8 @@ export const juniorCodeChanges = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
+    /** Latest push, review, or comment by a person, from the code plugin. */
+    lastActivityAt: timestamptz("last_activity_at"),
     mergedAt: timestamptz("merged_at"),
     number: integer("number").notNull(),
     openedAt: timestamptz("opened_at").notNull(),
