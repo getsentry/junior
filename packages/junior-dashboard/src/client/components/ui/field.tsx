@@ -60,8 +60,10 @@ const fieldVariants = cva(
       orientation: {
         vertical: "flex-col *:w-full [&>.sr-only]:w-auto",
         // Dashboard checkbox and radio rows keep a wider gap to their text.
+        // The row is the click area of its label, so the control and other
+        // buttons in the row stay above the label, inside the row.
         horizontal:
-          "flex-row items-center gap-3 has-[>[data-slot=field-content]]:items-start *:data-[slot=field-label]:flex-auto has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px",
+          "relative isolate flex-row items-center gap-3 [&>:is(button,[role=checkbox],[role=radio])]:relative [&>:is(button,[role=checkbox],[role=radio])]:z-10 has-[>[data-slot=field-content]]:items-start *:data-[slot=field-label]:flex-auto has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px",
         responsive:
           "flex-col *:w-full @md/field-group:flex-row @md/field-group:items-center @md/field-group:*:w-auto @md/field-group:has-[>[data-slot=field-content]]:items-start @md/field-group:*:data-[slot=field-label]:flex-auto [&>.sr-only]:w-auto @md/field-group:has-[>[data-slot=field-content]]:[&>[role=checkbox],[role=radio]]:mt-px",
       },
@@ -116,11 +118,13 @@ function FieldLabel({ className, ...props }: ComponentProps<typeof Label>) {
   return (
     <Label
       data-slot="field-label"
-      // A label in a horizontal field names a checkbox or radio, so it takes
-      // the click. Choice cards use the dashboard panel and accent tints, like
-      // the other selectable rows.
+      // A label in a horizontal field names a checkbox or radio. It covers
+      // the whole row, so the gap and the description select the control
+      // too, like a label that wraps the row. Choice cards use the dashboard
+      // panel and accent tints, like the other selectable rows, and dim as a
+      // whole when disabled.
       className={cn(
-        "group/field-label peer/field-label flex w-fit gap-2 leading-snug font-semibold text-foreground group-data-[disabled=true]/field:opacity-50 group-data-[orientation=horizontal]/field:cursor-pointer has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:cursor-pointer has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-border has-[>[data-slot=field]]:bg-card has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:hover:bg-accent has-[>[data-slot=field]]:has-[:focus-visible]:border-ring has-[>[data-slot=field]]:has-[:focus-visible]:ring-3 has-[>[data-slot=field]]:has-[:focus-visible]:ring-ring/50 has-[>[data-slot=field]]:has-data-checked:border-dashboard-accent/60 has-[>[data-slot=field]]:has-data-checked:bg-dashboard-accent/10 *:data-[slot=field]:p-2.5",
+        "group/field-label peer/field-label flex w-fit gap-2 leading-snug font-semibold text-foreground group-data-[disabled=true]/field:opacity-50 group-data-[orientation=horizontal]/field:cursor-pointer group-data-[orientation=horizontal]/field:after:absolute group-data-[orientation=horizontal]/field:after:inset-0 has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:cursor-pointer has-[>[data-slot=field]]:has-[:disabled,[data-disabled]]:cursor-not-allowed has-[>[data-slot=field]]:has-[:disabled,[data-disabled]]:opacity-60 has-[>[data-slot=field]]:rounded-lg has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-border has-[>[data-slot=field]]:bg-card has-[>[data-slot=field]]:not-has-[:disabled,[data-disabled]]:hover:bg-accent has-[>[data-slot=field]]:has-[:focus-visible]:border-ring has-[>[data-slot=field]]:has-[:focus-visible]:ring-3 has-[>[data-slot=field]]:has-[:focus-visible]:ring-ring/50 has-[>[data-slot=field]]:has-data-checked:border-dashboard-accent/60 has-[>[data-slot=field]]:has-data-checked:bg-dashboard-accent/10 *:data-[slot=field]:p-2.5",
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
         className,
       )}

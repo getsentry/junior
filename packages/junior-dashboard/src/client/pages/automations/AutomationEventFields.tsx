@@ -272,11 +272,11 @@ export function AutomationEventFields(props: {
               {choices.events.map((event) => (
                 <Field
                   key={event}
-                  className="min-h-11 items-start pl-3"
+                  className="min-h-11 items-start px-3 py-3"
                   orientation="horizontal"
                 >
                   <Checkbox
-                    className="mt-3.5"
+                    className="mt-0.5"
                     checked={props.value.events.includes(event)}
                     disabled={props.disabled}
                     id={`trigger-event-${event}`}
@@ -289,10 +289,9 @@ export function AutomationEventFields(props: {
                       })
                     }
                   />
-                  {/* The label fills the row, so the whole row stays a touch
-                      target. Block, so the reach text wraps inline. */}
+                  {/* Block, not the label flex row, so the reach text wraps inline. */}
                   <FieldLabel
-                    className="block min-w-0 self-stretch py-3 pr-3 font-normal break-words"
+                    className="block min-w-0 font-normal break-words"
                     htmlFor={`trigger-event-${event}`}
                   >
                     {eventTypeText(event)}

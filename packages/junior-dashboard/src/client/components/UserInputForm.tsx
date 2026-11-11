@@ -81,16 +81,12 @@ function ShortcutHint(props: { value?: string }) {
 // at a glance. The control inside keeps its own focus ring.
 function ChoiceOption(props: {
   control: ReactNode;
-  disabled: boolean;
   option: { description?: string; label: string; recommended?: boolean };
 }) {
   const { option } = props;
   return (
     <FieldLabel>
-      <Field
-        data-disabled={props.disabled || undefined}
-        orientation="horizontal"
-      >
+      <Field orientation="horizontal">
         {props.control}
         <FieldContent className="min-w-0 break-words">
           <FieldTitle>
@@ -145,7 +141,6 @@ function ChoiceField(props: {
           {field.options.map((option) => (
             <ChoiceOption
               control={<RadioGroupItem value={option.label} />}
-              disabled={props.disabled}
               key={option.label}
               option={option}
             />
@@ -174,7 +169,6 @@ function ChoiceField(props: {
                 }
               />
             }
-            disabled={props.disabled}
             key={option.label}
             option={option}
           />
