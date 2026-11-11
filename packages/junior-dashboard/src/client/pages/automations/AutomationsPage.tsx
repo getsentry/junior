@@ -18,7 +18,7 @@ import {
   AutomationFilterPanel,
 } from "./AutomationFilters";
 import { InlineError } from "../../components/InlineError";
-import { ListPanelFrame } from "../../components/layout/ListPanelFrame";
+import { FilteredList } from "../../components/filters/FilterPanel";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -102,21 +102,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
     pathWithSearch(automationPath(id), location.search);
 
   return (
-    <ListPanelFrame
-      details={
-        filtersOpen ? (
-          <AutomationFilterPanel
-            data={query.data}
-            filters={filters}
-            onChange={setFilter}
-            onClear={clearFilters}
-            onClose={() => setFiltersOpen(false)}
-          />
-        ) : null
-      }
-      label="Automations list"
-      narrow
-    >
+    <>
       <PageHeader title="Automations" />
       <FilterToolbar
         filters={{
@@ -132,44 +118,58 @@ export function AutomationsPage(props: { enabled: boolean }) {
           value: searchText,
         }}
       />
-      {loading ? (
-        <PageContentSkeleton label="Loading automations" variant="list" />
-      ) : null}
-      {query.error ? (
-        <InlineError>
-          Automations could not be loaded.{" "}
-          <Button onClick={() => void query.refetch()}>Try again</Button>
-        </InlineError>
-      ) : null}
-      {query.data && automations.length === 0 ? (
-        <Card padding="md">
-          <p className="m-0 text-sm text-dashboard-text-muted">
-            {LANDING_FILTERS.some((key) => searchParams.has(key))
-              ? "No automations matched these filters."
-              : "No automations yet. Ask Junior in Slack to do something on a schedule or when something happens."}
+      <FilteredList
+        filters={
+          filtersOpen ? (
+            <AutomationFilterPanel
+              data={query.data}
+              filters={filters}
+              onChange={setFilter}
+              onClear={clearFilters}
+              onClose={() => setFiltersOpen(false)}
+            />
+          ) : null
+        }
+      >
+        {loading ? (
+          <PageContentSkeleton label="Loading automations" variant="list" />
+        ) : null}
+        {query.error ? (
+          <InlineError>
+            Automations could not be loaded.{" "}
+            <Button onClick={() => void query.refetch()}>Try again</Button>
+          </InlineError>
+        ) : null}
+        {query.data && automations.length === 0 ? (
+          <Card padding="md">
+            <p className="m-0 text-sm text-dashboard-text-muted">
+              {LANDING_FILTERS.some((key) => searchParams.has(key))
+                ? "No automations matched these filters."
+                : "No automations yet. Ask Junior in Slack to do something on a schedule or when something happens."}
+            </p>
+          </Card>
+        ) : null}
+        {query.isFetching && query.data ? (
+          <span className="sr-only" role="status">
+            Updating results…
+          </span>
+        ) : null}
+        {groups.map((group) => (
+          <AutomationGroupSection
+            group={group}
+            key={group.key}
+            onSelect={(id) => navigate(pagePath(id))}
+            pagePath={pagePath}
+          />
+        ))}
+        {query.data && query.data.total > automations.length ? (
+          <p className="m-0 text-xs text-dashboard-text-muted">
+            Showing {automations.length} of {query.data.total}. Search or filter
+            to find the rest.
           </p>
-        </Card>
-      ) : null}
-      {query.isFetching && query.data ? (
-        <span className="sr-only" role="status">
-          Updating results…
-        </span>
-      ) : null}
-      {groups.map((group) => (
-        <AutomationGroupSection
-          group={group}
-          key={group.key}
-          onSelect={(id) => navigate(pagePath(id))}
-          pagePath={pagePath}
-        />
-      ))}
-      {query.data && query.data.total > automations.length ? (
-        <p className="m-0 text-xs text-dashboard-text-muted">
-          Showing {automations.length} of {query.data.total}. Search or filter
-          to find the rest.
-        </p>
-      ) : null}
-    </ListPanelFrame>
+        ) : null}
+      </FilteredList>
+    </>
   );
 }
 

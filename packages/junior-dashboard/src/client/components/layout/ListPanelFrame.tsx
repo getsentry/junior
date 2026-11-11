@@ -4,26 +4,20 @@ import { cn } from "../../styles";
 import { PageLayout } from "./PageLayout";
 
 /**
- * Scroll a list on its own, beside one panel, such as row details or a
- * `FilterPanel`. Filters need less width, so they pass `narrow`. Below `xl`
- * the panel is a modal sheet, so the list keeps the full width.
+ * Scroll a list on its own, beside one panel, such as row details. Below
+ * `xl` the panel is a modal sheet, so the list keeps the full width.
  */
 export function ListPanelFrame(props: {
   children: ReactNode;
   details: ReactNode;
   label: string;
   listRef?: RefObject<HTMLDivElement | null>;
-  narrow?: boolean;
 }) {
   return (
     <div
       className={cn(
         "grid h-full min-h-0 min-w-0",
-        props.details
-          ? props.narrow
-            ? "xl:grid-cols-[minmax(0,1fr)_19rem]"
-            : "xl:grid-cols-[minmax(0,1fr)_25rem]"
-          : undefined,
+        props.details ? "xl:grid-cols-[minmax(0,1fr)_25rem]" : undefined,
       )}
     >
       <div

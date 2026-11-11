@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Check, X } from "lucide-react";
 
-import { DetailsPanel } from "../DetailsPanel";
+import { BottomSheet } from "../BottomSheet";
+import { useDetailsPanel } from "../DetailsPanel";
 import { Button } from "../ui/button";
 import { cn } from "../../styles";
 
@@ -12,9 +13,31 @@ export type FilterOption = { label: string; value: string };
 const COLLAPSED_OPTIONS = 6;
 
 /**
+ * Lay out a list with its open `FilterPanel` on the right. The panel takes
+ * room from the list, so the list narrows instead of being covered.
+ */
+export function FilteredList(props: {
+  children: ReactNode;
+  /** The open `FilterPanel`, or null while filters are closed. */
+  filters: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid min-w-0 items-start gap-6",
+        props.filters ? "xl:grid-cols-[minmax(0,1fr)_16rem]" : undefined,
+      )}
+    >
+      <div className="grid min-w-0 gap-6">{props.children}</div>
+      {props.filters}
+    </div>
+  );
+}
+
+/**
  * Edit page filters in a column beside the list on wide screens, and in a
  * modal sheet elsewhere. Put one `FilterOptions` in it per filter. Render it
- * as the `details` of a `ListPanelFrame`.
+ * as the `filters` of a `FilteredList`.
  */
 export function FilterPanel(props: {
   children: ReactNode;
@@ -22,27 +45,67 @@ export function FilterPanel(props: {
   onClear?(): void;
   onClose(): void;
 }) {
-  return (
-    <DetailsPanel
-      actions={
-        props.onClear ? (
-          <Button onClick={props.onClear} variant="quiet">
-            Clear all
-          </Button>
-        ) : undefined
+  const { onClose } = props;
+  const beside = useDetailsPanel();
+  useEffect(() => {
+    if (!beside) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !document.querySelector("[data-dashboard-modal]")
+      ) {
+        event.preventDefault();
+        onClose();
       }
-      label="Filters"
-      onClose={props.onClose}
-      title={
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [beside, onClose]);
+  const clear = props.onClear ? (
+    <Button onClick={props.onClear} variant="quiet">
+      Clear all
+    </Button>
+  ) : null;
+  const options = (
+    <div className="grid divide-y divide-dashboard-border-subtle px-3">
+      {props.children}
+    </div>
+  );
+  if (!beside) {
+    return (
+      <BottomSheet label="Filters" onClose={onClose} title="Filters">
+        <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+          <div className="min-h-0 overflow-y-auto">{options}</div>
+          {clear ? (
+            <div className="flex justify-end border-t border-dashboard-border px-4 py-2">
+              {clear}
+            </div>
+          ) : null}
+        </div>
+      </BottomSheet>
+    );
+  }
+  return (
+    <aside
+      aria-label="Filters"
+      className="sticky top-4 grid max-h-[calc(100dvh-2rem)] min-h-0 grid-rows-[auto_minmax(0,1fr)] rounded-lg border border-dashboard-border-subtle bg-dashboard-surface-panel"
+    >
+      <header className="flex items-center justify-between gap-2 border-b border-dashboard-border-subtle py-1.5 pl-4 pr-1.5">
         <h2 className="m-0 font-display text-base font-medium text-dashboard-text">
           Filters
         </h2>
-      }
-    >
-      <div className="grid divide-y divide-dashboard-border-subtle px-3">
-        {props.children}
+        <div className="flex items-center gap-0.5">
+          {clear}
+          <Button aria-label="Close filters" onClick={onClose} size="icon">
+            <X aria-hidden="true" size={15} />
+          </Button>
+        </div>
+      </header>
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain">
+        {options}
       </div>
-    </DetailsPanel>
+    </aside>
   );
 }
 

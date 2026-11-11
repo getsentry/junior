@@ -19,10 +19,10 @@ consistent.
 - Own page filters and secondary nav in one shared layout control. Sections
   must not each own a copy.
 - Filtered lists use `filters/FilterToolbar` (search, a Filters button, and
-  chips) and `filters/FilterPanel` with one `FilterOptions` per filter, in
-  a `layout/ListPanelFrame`. The panel is a column on wide screens and a
-  modal sheet elsewhere. Do not put page filters in popovers or native
-  selects.
+  chips) and a `filters/FilterPanel` with one `FilterOptions` per filter.
+  `FilteredList` puts the panel beside the list in the page content, so
+  the list narrows. On small screens the panel is a modal sheet. Do not
+  put page filters in popovers or native selects.
 - Check a changed shared component on a real page with
   `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` and the dashboard E2E
   screenshots.
