@@ -3,16 +3,12 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "./conversationDensity";
-import {
-  Archive,
-  ArchiveRestore,
-  ArrowRight,
-  Pin,
-} from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRight, Pin } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useArchiveConversation } from "./conversationArchive";
+import { BriefOutcomeMarker } from "./ConversationBrief";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { usePinConversation } from "./usePinConversation";
@@ -462,10 +458,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
   // Unread and waiting rows read like unread mail: a dot and a bold title.
   const unread = Boolean(props.conversation.unread);
   const emphasized = unread || Boolean(props.waiting);
+  // The feed carries each row's latest Brief, so rows need no fetch of
+  // their own. Without one, the row shows the newest message.
+  const brief = props.conversation.brief;
   const preview = props.conversation.activityPreview;
-  const secondLine = preview
-    ? displayPlainText(preview.text, preview.mentions)
-    : undefined;
+  const secondLine = brief
+    ? displayPlainText(brief.summary || brief.intent)
+    : preview
+      ? displayPlainText(preview.text, preview.mentions)
+      : undefined;
   const drag = props.drag;
   // Unread tracks idle conversations only.
   const canMarkUnread = isIdleConversation(props.conversation);
@@ -555,7 +556,6 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
               >
                 {title}
               </span>
-              {/* The newest message, as on the phone list. */}
               {secondLine ? (
                 <span className="line-clamp-2 font-sans text-xs leading-snug text-dashboard-text-muted">
                   {secondLine}
@@ -584,6 +584,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(
               comfortable && "self-start pt-0.5",
             )}
           >
+            {brief ? <BriefOutcomeMarker status={brief.status} /> : null}
             <ConversationRowState
               conversation={props.conversation}
               status={status}

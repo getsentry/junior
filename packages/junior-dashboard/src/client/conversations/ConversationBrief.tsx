@@ -1,4 +1,13 @@
-import { ChevronRight } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
+  CircleHelp,
+  CircleSlash,
+  type LucideIcon,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   ActorIdentity,
@@ -7,7 +16,11 @@ import type {
 
 import { ClampedPreview } from "../components/ClampedPreview";
 import { Detail, DetailList } from "../components/DetailList";
-import { StatusChip, type StatusChipTone } from "../components/StatusChip";
+import {
+  StatusChip,
+  statusToneClass,
+  type StatusChipTone,
+} from "../components/StatusChip";
 import {
   Collapsible,
   CollapsibleContent,
@@ -38,6 +51,31 @@ const outcomeTones: Record<BriefContent["outcome"]["status"], StatusChipTone> =
   };
 
 type OutcomeStatus = BriefContent["outcome"]["status"];
+
+const outcomeIcons: Record<OutcomeStatus, LucideIcon> = {
+  abandoned: CircleSlash,
+  answered: CircleHelp,
+  blocked: CircleAlert,
+  done: CircleCheck,
+  in_progress: CircleDashed,
+  partial: CircleDot,
+};
+
+/** Show a Brief outcome as a small icon, for a dense list row. */
+export function BriefOutcomeMarker(props: { status: OutcomeStatus }) {
+  const Icon = outcomeIcons[props.status];
+  return (
+    <Icon
+      aria-label={`Brief: ${briefOutcomeLabel(props.status)}`}
+      className={cn(
+        "size-3.5 shrink-0",
+        statusToneClass[outcomeTones[props.status]],
+      )}
+      role="img"
+      strokeWidth={2}
+    />
+  );
+}
 
 /** Name a Brief outcome, such as "In progress". */
 export function briefOutcomeLabel(status: OutcomeStatus): string {

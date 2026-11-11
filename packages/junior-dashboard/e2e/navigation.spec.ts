@@ -137,10 +137,16 @@ test("keeps the density choice", async ({ page, dashboard }) => {
   const root = page.locator("html");
   await page.goto(dashboard.baseURL);
   await expect(root).toHaveAttribute("data-density", "compact");
+  // A row with a Brief shows its status; Comfortable adds its summary.
+  const row = page.getByRole("link", { name: /^Checkout latency triage/ });
+  const summary = row.getByText(/traced to payments-v42/);
+  await expect(row.getByRole("img", { name: "Brief: Done" })).toBeVisible();
+  await expect(summary).toHaveCount(0);
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("button", { name: "Comfortable density" }).click();
   await expect(root).toHaveAttribute("data-density", "comfortable");
+  await expect(summary).toBeVisible();
   await page.reload();
   await expect(root).toHaveAttribute("data-density", "comfortable");
 });

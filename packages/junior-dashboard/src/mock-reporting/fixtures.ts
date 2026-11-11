@@ -2038,6 +2038,23 @@ function mockThreadPlacement(
 }
 
 /** Group shown mock Threads by where they nest. */
+/** A feed row: the summary plus the short form of its latest Brief. */
+function feedItemFromConversation(
+  conversation: MockConversation,
+): ConversationFeedItem {
+  const summary = summaryFromConversation(conversation);
+  const brief = conversation.brief?.content;
+  if (!brief) return summary;
+  return {
+    ...summary,
+    brief: {
+      intent: brief.intent,
+      status: brief.outcome.status,
+      summary: brief.summary,
+    },
+  };
+}
+
 function mockThreadsByPlacement(
   conversations: readonly MockConversation[],
 ): Map<string, ConversationFeedItem[]> {
@@ -2054,7 +2071,7 @@ function mockThreadsByPlacement(
     if (!placement) continue;
     threadsByPlacement.set(placement, [
       ...(threadsByPlacement.get(placement) ?? []),
-      summaryFromConversation(thread),
+      feedItemFromConversation(thread),
     ]);
   }
   return threadsByPlacement;
@@ -2081,8 +2098,8 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
           !isUnlistedMockConversation(conversation.conversationId),
       )
       .map((root) => {
-        const summary = summaryFromConversation(root);
-        return summary.archivedAt ? summary : nest(summary);
+        const item = feedItemFromConversation(root);
+        return item.archivedAt ? item : nest(item);
       }),
   };
 }
