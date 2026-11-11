@@ -245,8 +245,8 @@ export function useTranscriptReadReporter(input: {
   const engagedInputRef = useRef(input.engaged);
   engagedInputRef.current = input.engaged;
 
-  // Mark as unread moves the stored position back. A cached copy at open can
-  // also be ahead of the fetched one. Rows after it must report again.
+  // A cached copy at open can be ahead of the fetched position. Rows after
+  // the fetched one must report again.
   useEffect(() => {
     if (
       input.lastReadSeq !== undefined &&
