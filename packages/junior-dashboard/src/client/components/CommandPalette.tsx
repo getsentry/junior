@@ -150,6 +150,11 @@ function CommandPaletteBody(props: {
     q: search,
   });
   const automations = useAutomationsData(true, AUTOMATION_LIST_SEARCH);
+  // The list holds the first 100, and the server matches instructions too.
+  const automationsSearched = useAutomationsData(
+    Boolean(search),
+    new URLSearchParams({ pageSize: "20", q: search }).toString(),
+  );
   const navigate = useNavigate();
   const list = useRef<HTMLDivElement>(null);
   // Hide server rows until they match the typed text, so stale or
@@ -160,12 +165,19 @@ function CommandPaletteBody(props: {
     Boolean(search) &&
     query.trim() === search &&
     !inboxSearched.query.isPlaceholderData;
+  const automationsSearchedCurrent =
+    Boolean(search) &&
+    query.trim() === search &&
+    !automationsSearched.isPlaceholderData;
   const items = useMemo(
     () =>
       paletteItems({
         actions: props.actions,
         activeTab: props.activeTab,
         automations: automations.data?.automations ?? [],
+        automationsSearched: automationsSearchedCurrent
+          ? (automationsSearched.data?.automations ?? [])
+          : [],
         currentConversationId: props.currentConversationId,
         feed: buildConversations(feed.data?.conversations ?? []),
         inbox: inbox.items,
@@ -178,6 +190,8 @@ function CommandPaletteBody(props: {
       }),
     [
       automations.data?.automations,
+      automationsSearched.data?.automations,
+      automationsSearchedCurrent,
       feed.data?.conversations,
       inbox.items,
       inboxSearched.items,
@@ -265,6 +279,8 @@ function paletteItems(input: {
   actions: PaletteAction[];
   activeTab?: PaletteTab;
   automations: AutomationSummary[];
+  /** Server matches on title, instruction, skill, and resource. */
+  automationsSearched: AutomationSummary[];
   currentConversationId?: string;
   feed: Conversation[];
   inbox: ReviewItemPayload[];
@@ -366,20 +382,26 @@ function paletteItems(input: {
     .map((conversation) =>
       conversationItem(conversation, "More conversations", query),
     );
-  // Title matches rank first; server matches on body text follow. The
-  // Inbox opens only open items, so closed matches stay out.
-  const titleMatched = ranked(inbox);
-  const matchedInbox = [
-    ...titleMatched,
-    ...input.inboxSearched
-      .filter(
-        (item) =>
-          item.status === "open" &&
-          !titleMatched.some((row) => row.id === `review-item-${item.id}`),
-      )
+  // Title matches in the cached list rank first; server matches on other
+  // text, or past the list, follow.
+  const withServerMatches = (local: PaletteItem[], server: PaletteItem[]) =>
+    [
+      ...local,
+      ...server.filter((row) => !local.some((item) => item.id === row.id)),
+    ].slice(0, MORE_LIMIT);
+  // The Inbox opens only open items, so closed matches stay out.
+  const matchedInbox = withServerMatches(
+    ranked(inbox),
+    input.inboxSearched
+      .filter((item) => item.status === "open")
       .map((item) => inboxItem(item, query)),
-  ].slice(0, MORE_LIMIT);
-  const matchedAutomations = ranked(automations).slice(0, MORE_LIMIT);
+  );
+  const matchedAutomations = withServerMatches(
+    ranked(automations),
+    input.automationsSearched.map((automation) =>
+      automationItem(automation, query),
+    ),
+  );
   const pagesFirst =
     (matchedPages[0]?.score ?? 0) > (conversations[0]?.score ?? 0);
   return lead(

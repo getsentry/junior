@@ -1,6 +1,7 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
+import { mockLandingAutomationApis } from "./automation-landing-fixture";
 import { mockReviewItems, rollout } from "./review-desk-fixture";
 import { expect, test } from "./test";
 
@@ -238,6 +239,7 @@ test("jumps to a page from the command palette", async ({
 test("ranks the active tab's results first", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 800, width: 1280 });
   await mockReviewItems(page);
+  await mockLandingAutomationApis(page);
   const palette = page.getByRole("dialog", { name: "Go to conversation" });
   for (const [path, group] of [
     ["/automations", "Automations"],
@@ -250,6 +252,18 @@ test("ranks the active tab's results first", async ({ page, dashboard }) => {
     );
     await page.keyboard.press("Escape");
   }
+
+  // A match in an Automation's instruction comes from the server.
+  await page.goto(`${dashboard.baseURL}/automations`);
+  await page.keyboard.press("ControlOrMeta+k");
+  await palette.getByRole("combobox").fill("announcement post");
+  const automations = palette.getByRole("group").first();
+  await expect(automations).toHaveAccessibleName("Automations");
+  await expect(automations.getByRole("option").first()).toHaveAccessibleName(
+    /Fair Source PR review/,
+  );
+  await page.keyboard.press("Escape");
+  await page.goto(`${dashboard.baseURL}/review`);
 
   // On the Inbox, a match in an item's body text leads, and picking it
   // opens the Inbox with that item expanded.

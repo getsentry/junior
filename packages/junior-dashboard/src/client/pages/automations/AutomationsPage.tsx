@@ -23,6 +23,7 @@ import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { automationPath } from "../../format";
+import { COMMAND_PALETTE_SHORTCUT } from "../../components/CommandPalette";
 import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
@@ -153,8 +154,8 @@ export function AutomationsPage(props: { enabled: boolean }) {
         ))}
         {query.data && query.data.total > automations.length ? (
           <p className="m-0 text-xs text-dashboard-text-muted">
-            Showing {automations.length} of {query.data.total}. Search or filter
-            to find the rest.
+            Showing {automations.length} of {query.data.total}. Filter, or
+            search with {COMMAND_PALETTE_SHORTCUT}, to find the rest.
           </p>
         ) : null}
       </FilteredList>
