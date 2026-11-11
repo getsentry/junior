@@ -25,7 +25,7 @@ import {
   formatUsageTotal,
 } from "../format";
 import { fetchDashboardJson } from "../http";
-import { conversationSideReadQueryKey } from "./queries";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
 import { cn } from "../styles";

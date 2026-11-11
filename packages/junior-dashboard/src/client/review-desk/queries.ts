@@ -23,27 +23,44 @@ import { fetchDashboardJson, post } from "../http";
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 
-/**
- * List the open Review items that the viewer can see, one page at a time.
- * A search also finds archived items, with the first page. `items` holds the
- * items of every loaded page, and `query` loads more. `forViewer` drops the
- * items that are assigned only to other people.
- */
-export function useReviewItemsData(filters: {
+/** Prefix of every single Review item read. */
+export const REVIEW_ITEM_DETAIL_QUERY_KEY = [
+  ...REVIEW_ITEMS_QUERY_KEY,
+  "detail",
+] as const;
+
+type ReviewItemListFilters = {
   conversationId?: string;
   forViewer?: boolean;
   q?: string;
-}) {
+};
+
+function reviewItemListSearch(filters: ReviewItemListFilters) {
   const params = new URLSearchParams();
   if (filters.conversationId) {
     params.set("conversationId", filters.conversationId);
   }
   if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
-  const search = params.toString();
+  return params.toString();
+}
+
+/** Key the Review item list that these filters read. */
+export function reviewItemListQueryKey(filters: ReviewItemListFilters) {
+  return [...REVIEW_ITEMS_QUERY_KEY, "list", reviewItemListSearch(filters)];
+}
+
+/**
+ * List the open Review items that the viewer can see, one page at a time.
+ * A search also finds archived items, with the first page. `items` holds the
+ * items of every loaded page, and `query` loads more. `forViewer` drops the
+ * items that are assigned only to other people.
+ */
+export function useReviewItemsData(filters: ReviewItemListFilters) {
+  const search = reviewItemListSearch(filters);
   const query = useInfiniteQuery({
     initialPageParam: undefined as string | undefined,
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list", search],
+    queryKey: reviewItemListQueryKey(filters),
     queryFn: ({ pageParam, signal }) => {
       const pageParams = new URLSearchParams(search);
       if (pageParam) pageParams.set("cursor", pageParam);
@@ -69,7 +86,7 @@ export function useReviewItemsData(filters: {
 export function useReviewItemData(id: string | undefined) {
   return useQuery({
     enabled: Boolean(id),
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+    queryKey: [...REVIEW_ITEM_DETAIL_QUERY_KEY, id],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemSchema,
