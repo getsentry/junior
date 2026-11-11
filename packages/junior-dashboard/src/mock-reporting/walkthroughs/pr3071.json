@@ -638,7 +638,51 @@
             { "id": "stats", "label": "Stats & location counts" },
             { "id": "structural", "label": "Purge & other root checks" }
           ],
-          "edges": []
+          "edges": [
+            {
+              "id": "e-rows",
+              "from": "feed-rows",
+              "to": "listed"
+            },
+            {
+              "id": "e-token",
+              "from": "feed-token",
+              "to": "listed"
+            },
+            {
+              "id": "e-board",
+              "from": "board",
+              "to": "listed"
+            },
+            {
+              "id": "e-brief",
+              "from": "brief-search",
+              "to": "listed"
+            },
+            {
+              "id": "e-agent",
+              "from": "agent-search",
+              "to": "listed"
+            },
+            {
+              "id": "e-listed",
+              "from": "listed",
+              "to": "conversations",
+              "label": "root, not unkept QQ"
+            },
+            {
+              "id": "e-stats",
+              "from": "stats",
+              "to": "conversations",
+              "label": "root only"
+            },
+            {
+              "id": "e-struct",
+              "from": "structural",
+              "to": "conversations",
+              "label": "root only"
+            }
+          ]
         }
       ],
       "types": ["refactor"],

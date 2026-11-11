@@ -36,7 +36,7 @@ const answeredLabels = {
 
 /**
  * One claim the reviewer agrees with, asks to change, or skips. Once
- * answered it folds to one line. After an update, a reopened claim shows the
+ * answered it folds to its status and the claim. After an update, a reopened claim shows the
  * earlier answer, and a change request that the update answers asks whether
  * the change answers it.
  */
@@ -67,63 +67,71 @@ export function WalkthroughDecision(props: {
     props.onAnswer({ decisionId: decision.id, value });
   };
 
+  const heading = feedback ? "Does this answer your feedback?" : "Claim";
+
+  // Two sizes only: small for labels, status, and actions; the chapter's body
+  // size for the claim and its concern, so the card reads as part of the story.
   if (answer && !expanded && !editing) {
     return (
       <Accent status={status}>
-        <p className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm text-dashboard-text-muted">
-          <span className="inline-flex shrink-0 items-center gap-1 self-center font-medium text-dashboard-text-subtle">
-            {answer.value === "agree" ? (
-              <Check aria-hidden="true" className="size-3.5" />
-            ) : null}
-            {answeredLabels[answer.value]}
-          </span>
-          <span className="min-w-0 break-words">
-            <DisplayText
-              inline
-              links={false}
-              text={
-                answer.value === "change" && answer.note
-                  ? answer.note
-                  : decision.claim
-              }
-            />
-          </span>
-          <span aria-hidden="true">·</span>
-          <TextAction onClick={() => setExpanded(true)}>Change</TextAction>
-        </p>
+        <div className="grid gap-1">
+          <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-dashboard-text-muted">
+            <span className="font-medium">{heading}</span>
+            <span aria-hidden="true">·</span>
+            <span className="inline-flex items-center gap-1 font-medium text-dashboard-text">
+              {answer.value === "agree" ? (
+                <Check aria-hidden="true" className="size-3.5" />
+              ) : null}
+              {answeredLabels[answer.value]}
+            </span>
+            <span aria-hidden="true">·</span>
+            <TextAction onClick={() => setExpanded(true)}>
+              Change answer
+            </TextAction>
+          </p>
+          <p className="m-0 text-base leading-7 text-dashboard-text-subtle">
+            <DisplayText inline links={false} text={decision.claim} />
+          </p>
+          {answer.value === "change" && answer.note ? (
+            <p className="m-0 text-sm text-dashboard-text-muted">
+              Your note: <DisplayText inline links={false} text={answer.note} />
+            </p>
+          ) : null}
+          {asked ? (
+            <AskedLine asked={asked} onShow={props.onShowQuestion} />
+          ) : null}
+        </div>
       </Accent>
     );
   }
 
   return (
     <Accent status={status}>
-      <div className="grid gap-2">
-        {/* Three parts, each named: the claim under review, why it is worth
-            a look, and what the reviewer can do about it. */}
-        <p className="m-0 text-xs font-medium text-dashboard-text-muted">
-          {feedback
-            ? "Does this answer your feedback?"
-            : "Claim to review: do you agree?"}
-        </p>
-        <p className="m-0 text-base leading-7 text-dashboard-text">
-          <DisplayText inline text={decision.claim} />
-        </p>
-        {decision.concern && !feedback ? (
-          <p className="m-0 text-sm leading-6 text-dashboard-text-subtle">
-            <span className="font-medium text-dashboard-text">
-              Why it is worth checking:
-            </span>{" "}
-            <DisplayText inline text={decision.concern} />
+      <div className="grid gap-3">
+        <div className="grid gap-1">
+          <p className="m-0 text-sm font-medium text-dashboard-text-muted">
+            {heading}
           </p>
-        ) : null}
-        {reopened && !answer ? (
-          <p className="m-0 text-xs text-dashboard-text-muted">
-            {reopenedText(reopened, Boolean(feedback))}
+          <p className="m-0 text-base leading-7 font-medium text-dashboard-text">
+            <DisplayText inline text={decision.claim} />
           </p>
-        ) : null}
+          {decision.concern && !feedback ? (
+            <p className="m-0 text-base leading-7 text-dashboard-text-subtle">
+              <span className="text-dashboard-text-muted">
+                Why it's worth checking:
+              </span>{" "}
+              <DisplayText inline text={decision.concern} />
+            </p>
+          ) : null}
+          {reopened && !answer ? (
+            <p className="m-0 text-sm text-dashboard-text-muted">
+              {reopenedText(reopened, Boolean(feedback))}
+            </p>
+          ) : null}
+        </div>
         {editing ? (
           <form
-            className="grid gap-2 pt-1"
+            className="grid gap-2"
             onSubmit={(event) => {
               event.preventDefault();
               const note = draft.trim();
@@ -158,7 +166,7 @@ export function WalkthroughDecision(props: {
             </div>
           </form>
         ) : (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2">
             <AnswerButton
               current={answer?.value === "agree"}
               onClick={() => save("agree")}
@@ -180,33 +188,43 @@ export function WalkthroughDecision(props: {
             >
               Skip
             </AnswerButton>
-            <Button
-              className="h-8 px-3 text-sm"
-              onClick={props.onAsk}
-              type="button"
-              variant="quiet"
-            >
-              <MessageCircleQuestion aria-hidden="true" className="size-4" />
-              Ask about this
-            </Button>
+            {asked ? null : (
+              <Button
+                className="h-8 px-3 text-sm"
+                onClick={props.onAsk}
+                type="button"
+                variant="quiet"
+              >
+                <MessageCircleQuestion aria-hidden="true" className="size-4" />
+                Ask about this
+              </Button>
+            )}
           </div>
         )}
         {asked ? (
-          <p className="m-0 text-sm text-dashboard-text-muted">
-            {asked.answered
-              ? "You asked about this claim, and it has an answer."
-              : "You asked about this claim. The answer is on its way."}{" "}
-            <button
-              className="cursor-pointer rounded-sm border-0 bg-transparent p-0 text-sm text-dashboard-text underline underline-offset-4 hover:text-dashboard-text-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-              onClick={props.onShowQuestion}
-              type="button"
-            >
-              {asked.answered ? "Read the answer" : "See the question"}
-            </button>
-          </p>
+          <AskedLine asked={asked} onShow={props.onShowQuestion} />
         ) : null}
       </div>
     </Accent>
+  );
+}
+
+/** The reviewer's question about the claim, and whether it has an answer. */
+function AskedLine(props: { asked: ClaimQuestion; onShow(): void }) {
+  return (
+    <p className="m-0 flex flex-wrap items-center gap-x-1.5 text-sm text-dashboard-text-muted">
+      <MessageCircleQuestion aria-hidden="true" className="size-4 shrink-0" />
+      {props.asked.answered
+        ? "You asked about this claim. It has an answer."
+        : "You asked about this claim. The answer is on its way."}
+      <button
+        className="cursor-pointer rounded-sm border-0 bg-transparent p-0 text-sm text-dashboard-text underline underline-offset-4 hover:text-dashboard-text-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+        onClick={props.onShow}
+        type="button"
+      >
+        {props.asked.answered ? "Read the answer" : "See the question"}
+      </button>
+    </p>
   );
 }
 
@@ -233,7 +251,8 @@ function AnswerButton(props: {
       aria-pressed={props.current}
       className={cn(
         "h-8 px-3 text-sm",
-        props.current && "border-dashboard-border-emphasis font-medium",
+        props.current &&
+          "border-dashboard-text-muted bg-dashboard-fill-strong font-medium text-dashboard-text",
       )}
       onClick={props.onClick}
       type="button"

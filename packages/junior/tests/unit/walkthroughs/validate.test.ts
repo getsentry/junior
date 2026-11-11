@@ -210,14 +210,21 @@ describe("validateWalkthrough", () => {
     ]);
   });
 
-  it("rejects repeated labels and captions, question decisions, repeated views, and diagrams that do not fit the stack", () => {
+  it("rejects repeated labels and captions, question decisions, repeated views, edgeless diagrams, and diagrams that do not fit the stack", () => {
     const evidence = [
       { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
     ];
     const problems = validateWalkthrough(
       output({
         diagrams: [
-          { pr: 3150, nodes: [{ id: "lock", label: "Run lock" }], edges: [] },
+          {
+            pr: 3150,
+            nodes: [
+              { id: "lock", label: "Run lock" },
+              { id: "tick", label: "Tick" },
+            ],
+            edges: [],
+          },
           { pr: 3151, nodes: [{ id: "retry", label: "Retry" }], edges: [] },
         ],
         chapters: [
@@ -249,6 +256,7 @@ describe("validateWalkthrough", () => {
       refs,
     );
     expect(problems).toEqual([
+      "The diagram for PR #3150 has no edges. Add the edges that show how its nodes connect.",
       "A diagram is for PR #3151, which is not in the stack.",
       "Chapters cause and cause-again have the same label. Make each label unique.",
       "Chapters cause and cause-again have the same caption. Make each caption unique.",

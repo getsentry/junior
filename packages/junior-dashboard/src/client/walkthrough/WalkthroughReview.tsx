@@ -90,7 +90,7 @@ export function WalkthroughReview(props: {
               }
               key={group.chapterIndex}
             >
-              <h3 className="m-0 px-2 font-sans text-xs font-medium break-words text-dashboard-text-faint">
+              <h3 className="m-0 px-2 font-sans text-xs font-medium break-words text-dashboard-text-muted">
                 <DisplayText
                   inline
                   links={false}
@@ -156,7 +156,7 @@ function ClaimRow(props: {
   const status = props.answer?.value ?? "open";
   return (
     <button
-      className="flex w-full cursor-pointer items-start gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-left text-sm leading-snug text-dashboard-text-subtle hover:bg-dashboard-surface-hover hover:text-dashboard-text"
+      className="flex w-full cursor-pointer items-start gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-left text-sm leading-snug text-dashboard-text hover:bg-dashboard-surface-hover"
       onClick={props.onOpen}
       type="button"
     >
@@ -164,9 +164,18 @@ function ClaimRow(props: {
       <span aria-hidden="true" className="flex h-[1lh] shrink-0 items-center">
         <span className={cn("size-2 rounded-full", dotClasses[status])} />
       </span>
-      <span className="sr-only">{statusLabels[status]}:</span>
-      <span className="min-w-0 flex-1 break-words">
-        <DisplayText inline links={false} text={props.decision.claim} />
+      <span className="grid min-w-0 flex-1 gap-0.5">
+        <span className="break-words">
+          <DisplayText inline links={false} text={props.decision.claim} />
+        </span>
+        {/* Open is the default, so only an answer is named. */}
+        {status === "open" ? (
+          <span className="sr-only">Open</span>
+        ) : (
+          <span className="text-xs text-dashboard-text-muted">
+            {statusLabels[status]}
+          </span>
+        )}
       </span>
     </button>
   );

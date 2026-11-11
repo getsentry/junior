@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { Link } from "react-router";
+import { useQuery } from "@tanstack/react-query";
 import type { WalkthroughVersionResponse } from "@sentry/junior/api/schema";
 
 import { OutboundLink } from "../components/OutboundLink";
@@ -10,6 +11,8 @@ import {
   PopoverTrigger,
 } from "../components/ui/popover";
 import { conversationPath } from "../conversations/conversationRoutes";
+import { conversationDetailQueryOptions } from "../conversations/queries";
+import { conversationDetailTitle } from "../format";
 import { cn } from "../styles";
 import { WalkthroughCost } from "./WalkthroughCost";
 
@@ -17,25 +20,16 @@ const linkClass =
   "rounded-sm text-dashboard-text-subtle no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus";
 
 /**
- * One quiet line about the Walkthrough: its pull requests, the Conversation
- * that made them, when given, and what it cost. The cost opens its usage.
- * The chapters get the attention.
+ * One quiet line about the Walkthrough: its pull requests and what it cost.
+ * The cost opens its usage. The chapters get the attention.
  */
 export function WalkthroughMeta(props: {
-  /** The Conversation that made the PR, when the viewer may read it. */
-  sourceConversationId?: string;
   version: WalkthroughVersionResponse;
 }) {
   const { version } = props;
   const items: { key: string; node: ReactNode }[] = [
     { key: "prs", node: <PullRequests version={version} /> },
   ];
-  if (props.sourceConversationId) {
-    items.push({
-      key: "source",
-      node: <WalkthroughSource conversationId={props.sourceConversationId} />,
-    });
-  }
   if (version.costUsd !== undefined) {
     items.push({
       key: "cost",
@@ -54,15 +48,26 @@ export function WalkthroughMeta(props: {
   );
 }
 
-/** The Conversation that made the PRs, as a link. */
+/**
+ * The Conversation where the change was made, named by its title. It shows
+ * nothing until the title loads, and nothing when the viewer cannot read it.
+ */
 export function WalkthroughSource(props: { conversationId: string }) {
+  const detail = useQuery(
+    conversationDetailQueryOptions(props.conversationId),
+  ).data;
+  const title = conversationDetailTitle(detail);
+  if (!title) return null;
   return (
-    <span>
-      Made in{" "}
-      <Link className={linkClass} to={conversationPath(props.conversationId)}>
-        Conversation
+    <p className="m-0 text-sm text-dashboard-text-muted">
+      From:{" "}
+      <Link
+        className="rounded-sm break-words text-dashboard-text-subtle underline decoration-dashboard-border-heavy underline-offset-2 hover:text-dashboard-text hover:decoration-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+        to={conversationPath(props.conversationId)}
+      >
+        {title}
       </Link>
-    </span>
+    </p>
   );
 }
 

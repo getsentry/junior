@@ -19,6 +19,7 @@ import { WalkthroughChangeSummaryView } from "./WalkthroughChanges";
 import { WalkthroughAlsoChanged } from "./WalkthroughAlsoChanged";
 import { WalkthroughChapterView } from "./WalkthroughChapterView";
 import { WalkthroughFrame } from "./WalkthroughFrame";
+import { WalkthroughSource } from "./WalkthroughMeta";
 import {
   useClaimQuestions,
   WalkthroughQuestions,
@@ -159,9 +160,6 @@ function ReadyWalkthrough(props: {
           {open ? <CountBadge count={open} label={`${open} open`} /> : null}
         </Button>
       }
-      intent={<DisplayText inline text={document.content.intent} />}
-      chapterId={chapter.id}
-      intro={index === 0}
       mainRef={mainRef}
       rail={
         <WalkthroughRail
@@ -206,7 +204,6 @@ function ReadyWalkthrough(props: {
           tab={tab}
         />
       }
-      sourceConversationId={document.sourceConversationId}
       title={document.content.title}
       version={version}
     >
@@ -217,6 +214,19 @@ function ReadyWalkthrough(props: {
             onOpenChapter={openChapter}
             summary={summary}
           />
+        ) : null}
+        {index === 0 ? (
+          // The intent opens the story, in the type of the prose after it.
+          <div className="grid max-w-3xl gap-2">
+            <p className="m-0 text-base leading-7 text-dashboard-text-subtle">
+              <DisplayText inline text={document.content.intent} />
+            </p>
+            {document.sourceConversationId ? (
+              <WalkthroughSource
+                conversationId={document.sourceConversationId}
+              />
+            ) : null}
+          </div>
         ) : null}
         <WalkthroughChapterView
           added={marks.get(chapter.id) === "new"}
@@ -277,7 +287,6 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
 
   return (
     <WalkthroughFrame
-      intro
       mainRef={mainRef}
       rail={<WalkthroughRail chapters={[]} />}
       side={<WalkthroughQuestionsPanel />}

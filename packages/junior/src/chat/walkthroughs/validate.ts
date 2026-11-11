@@ -195,7 +195,10 @@ export function validateWalkthroughUpdate(
   return problems;
 }
 
-/** Each diagram belongs to one code change, and its edges join its nodes. */
+/**
+ * Each diagram belongs to one code change, connects its nodes, and its edges
+ * join its nodes.
+ */
 function diagramProblems(
   diagrams: readonly WalkthroughDiagram[],
   refs: WalkthroughInputRefs,
@@ -214,6 +217,12 @@ function diagramProblems(
       );
     }
     seen.add(diagram.pr);
+    // A diagram shows how parts connect. Boxes with no edges are a list.
+    if (diagram.nodes.length > 1 && diagram.edges.length === 0) {
+      problems.push(
+        `The diagram for PR #${diagram.pr} has no edges. Add the edges that show how its nodes connect.`,
+      );
+    }
     const nodeIds = new Set(diagram.nodes.map((node) => node.id));
     for (const edge of diagram.edges) {
       if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {

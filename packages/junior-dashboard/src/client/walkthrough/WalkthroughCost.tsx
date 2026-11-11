@@ -10,7 +10,7 @@ import {
   PopoverTrigger,
 } from "../components/ui/popover";
 import {
-  ConversationUsageBreakdown,
+  ConversationUsageTables,
   hasConversationUsageBreakdown,
 } from "../conversations/ConversationUsageBreakdown";
 import { conversationPath } from "../conversations/conversationRoutes";
@@ -19,9 +19,9 @@ import { conversationFromDetail } from "../format";
 import { cn } from "../styles";
 
 /**
- * What this version cost. The number opens the same usage breakdown that
- * Conversation details shows for the generation Conversation, with a link
- * to its transcript.
+ * What this version cost. The number opens the usage tables that
+ * Conversation details shows for the generation Conversation, already open,
+ * with a link to its transcript.
  */
 export function WalkthroughCost(props: {
   className: string;
@@ -62,7 +62,9 @@ export function WalkthroughCost(props: {
         }
       />
       <PopoverContent align="start" className="grid w-96 gap-3">
-        <PopoverTitle>{label}</PopoverTitle>
+        <PopoverTitle>
+          {label}: <span className="tabular-nums">{cost}</span>
+        </PopoverTitle>
         {open ? <GenerationUsage conversationId={generationId} /> : null}
         <Link
           className="w-fit text-sm text-dashboard-text underline underline-offset-4"
@@ -94,10 +96,6 @@ function GenerationUsage(props: { conversationId: string }) {
     );
   }
   return (
-    <ConversationUsageBreakdown
-      conversation={conversation}
-      defaultOpen
-      detail={detail}
-    />
+    <ConversationUsageTables conversation={conversation} detail={detail} />
   );
 }

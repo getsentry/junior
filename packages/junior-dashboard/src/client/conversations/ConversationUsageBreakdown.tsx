@@ -240,18 +240,56 @@ export function hasConversationUsageBreakdown(props: {
   );
 }
 
+type UsageProps = {
+  conversation: Conversation | undefined;
+  detail?: ConversationDetailReport;
+};
+
 /**
  * Summarize usage and let the reader inspect the breakdown by agent, model,
  * and auxiliary operation.
  */
-export function ConversationUsageBreakdown(props: {
-  conversation: Conversation | undefined;
-  /** Start open, where the breakdown is the reason the reader came. */
-  defaultOpen?: boolean;
-  detail?: ConversationDetailReport;
-}) {
+export function ConversationUsageBreakdown(props: UsageProps) {
+  const usage = usageBreakdown(props);
+  if (!usage) return null;
+  const { live, usageTotal, tables } = usage;
+  return (
+    <Collapsible className="min-w-0 border-t border-dashboard-border-subtle">
+      <h3 className="m-0">
+        <CollapsibleTrigger className="group flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1 py-2 text-left font-sans text-xs font-semibold text-dashboard-text transition-colors hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={cn(
+              dashboardDisclosureChevronClass,
+              "text-dashboard-text-muted",
+            )}
+          />
+          Usage
+          {usageTotal ? (
+            <span className="ml-auto font-normal tabular-nums text-dashboard-text-muted">
+              <ShimmerText active={live}>{usageTotal}</ShimmerText>
+            </span>
+          ) : null}
+        </CollapsibleTrigger>
+      </h3>
+      <CollapsibleContent hiddenUntilFound>{tables}</CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * The usage tables alone, for a place where the breakdown is the reason the
+ * reader came, such as the cost of a Walkthrough.
+ */
+export function ConversationUsageTables(props: UsageProps) {
+  return usageBreakdown(props)?.tables ?? null;
+}
+
+function usageBreakdown(
+  props: UsageProps,
+): { live: boolean; usageTotal: string; tables: ReactNode } | undefined {
   if (!hasConversationUsageBreakdown(props) || !props.conversation) {
-    return null;
+    return undefined;
   }
   const modelUsage = props.detail?.modelUsage ?? [];
   const auxiliaryCosts =
@@ -445,29 +483,5 @@ export function ConversationUsageBreakdown(props: {
     .filter(Boolean)
     .join(" · ");
 
-  return (
-    <Collapsible
-      className="min-w-0 border-t border-dashboard-border-subtle"
-      defaultOpen={props.defaultOpen}
-    >
-      <h3 className="m-0">
-        <CollapsibleTrigger className="group flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1 py-2 text-left font-sans text-xs font-semibold text-dashboard-text transition-colors hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus">
-          <ChevronRight
-            aria-hidden="true"
-            className={cn(
-              dashboardDisclosureChevronClass,
-              "text-dashboard-text-muted",
-            )}
-          />
-          Usage
-          {summary ? (
-            <span className="ml-auto font-normal tabular-nums text-dashboard-text-muted">
-              <ShimmerText active={live}>{summary}</ShimmerText>
-            </span>
-          ) : null}
-        </CollapsibleTrigger>
-      </h3>
-      <CollapsibleContent hiddenUntilFound>{breakdown}</CollapsibleContent>
-    </Collapsible>
-  );
+  return { live, usageTotal: summary, tables: breakdown };
 }
