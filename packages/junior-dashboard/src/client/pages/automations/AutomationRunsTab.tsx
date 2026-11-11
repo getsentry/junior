@@ -10,6 +10,7 @@ import { useAutomationExecutionsData } from "../../api";
 import { Button } from "../../components/ui/button";
 import { FilterTabList } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
+import { ListPanelFrame } from "../../components/layout/ListPanelFrame";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusDot } from "../../components/StatusDot";
@@ -29,7 +30,6 @@ import { cn } from "../../styles";
 import { AutomationExecutionStatusChart } from "./AutomationExecutionStatusChart";
 import {
   AutomationRunDetails,
-  AutomationListFrame,
   RunConversationLink,
   useAutomationRunSelection,
 } from "./AutomationRunDetails";
@@ -85,7 +85,7 @@ export function AutomationRunsTab(props: {
     executions.map((execution) => execution.executionId),
   );
   return (
-    <AutomationListFrame
+    <ListPanelFrame
       details={
         selection.runId ? (
           <AutomationRunDetails
@@ -120,7 +120,7 @@ export function AutomationRunsTab(props: {
       ) : (
         <PageContentSkeleton label="Loading runs" variant="list" />
       )}
-    </AutomationListFrame>
+    </ListPanelFrame>
   );
 }
 

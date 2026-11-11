@@ -1,18 +1,12 @@
 import type { AutomationRun } from "@sentry/junior/api/schema";
 import { MessageSquareText } from "lucide-react";
-import {
-  useRef,
-  type KeyboardEvent,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useRef, type KeyboardEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { DetailsPanel } from "../../components/DetailsPanel";
 import { Fact, FactList, FactSection } from "../../components/FactSection";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatusChip } from "../../components/StatusChip";
-import { PageLayout } from "../../components/layout/PageLayout";
 import { buttonVariants } from "../../components/ui/button";
 import {
   Tooltip,
@@ -81,42 +75,6 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
     rowButton(next)?.focus();
   };
   return { close, listRef, onRowsKeyDown, runId, toggle };
-}
-
-/**
- * Scroll a list on its own, beside one panel: run details, or the filters of
- * the Automations list, which need less width.
- */
-export function AutomationListFrame(props: {
-  children: ReactNode;
-  details: ReactNode;
-  label: string;
-  listRef?: RefObject<HTMLDivElement | null>;
-  narrow?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid h-full min-h-0 min-w-0",
-        props.details
-          ? props.narrow
-            ? "xl:grid-cols-[minmax(0,1fr)_19rem]"
-            : "xl:grid-cols-[minmax(0,1fr)_25rem]"
-          : undefined,
-      )}
-    >
-      <div
-        aria-label={props.label}
-        className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-        ref={props.listRef}
-        role="region"
-        tabIndex={0}
-      >
-        <PageLayout>{props.children}</PageLayout>
-      </div>
-      {props.details}
-    </div>
-  );
 }
 
 /** Open a run's Conversation from its row without opening run details. */

@@ -12,12 +12,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../../components/ui/collapsible";
+import { FilterToolbar } from "../../components/filters/FilterToolbar";
 import {
+  activeAutomationFilters,
   AutomationFilterPanel,
-  AutomationFilterToolbar,
 } from "./AutomationFilters";
-import { AutomationListFrame } from "./AutomationRunDetails";
 import { InlineError } from "../../components/InlineError";
+import { ListPanelFrame } from "../../components/layout/ListPanelFrame";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -101,7 +102,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
     pathWithSearch(automationPath(id), location.search);
 
   return (
-    <AutomationListFrame
+    <ListPanelFrame
       details={
         filtersOpen ? (
           <AutomationFilterPanel
@@ -117,14 +118,19 @@ export function AutomationsPage(props: { enabled: boolean }) {
       narrow
     >
       <PageHeader title="Automations" />
-      <AutomationFilterToolbar
-        data={query.data}
-        filters={filters}
-        onChange={setFilter}
-        onSearch={setSearchText}
-        onToggle={() => setFiltersOpen((open) => !open)}
-        open={filtersOpen}
-        searchText={searchText}
+      <FilterToolbar
+        filters={{
+          active: activeAutomationFilters({ data: query.data, filters }),
+          onRemove: (key) => setFilter(key, ""),
+          onToggle: () => setFiltersOpen((open) => !open),
+          open: filtersOpen,
+        }}
+        search={{
+          label: "Search automations",
+          onChange: setSearchText,
+          placeholder: "Search automations",
+          value: searchText,
+        }}
       />
       {loading ? (
         <PageContentSkeleton label="Loading automations" variant="list" />
@@ -163,7 +169,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
           to find the rest.
         </p>
       ) : null}
-    </AutomationListFrame>
+    </ListPanelFrame>
   );
 }
 

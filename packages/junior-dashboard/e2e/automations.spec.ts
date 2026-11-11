@@ -533,8 +533,7 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
   await expect(page.getByLabel("Search runs")).toBeVisible();
   await screenshot(page, "automations-runs");
-  await expect(page.getByRole("group", { name: "Type" })).toBeVisible();
-  await expect(page.getByRole("group", { name: "Status" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Filters/ })).toBeVisible();
   await expect(page.getByText("Weekly project summary").first()).toBeVisible();
   await expect(page.getByText("$0.42").first()).toBeVisible();
   await expect(page.getByText("42s").first()).toBeVisible();
@@ -564,12 +563,14 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(
     details.getByRole("link", { name: "Open conversation" }),
   ).toBeVisible();
-  await page
-    .getByRole("group", { name: "Status" })
-    .getByRole("button", { name: "failed" })
-    .click();
+  // Filters take the panel from run details and keep the selected run.
+  await page.getByRole("button", { name: /^Filters/ }).click();
+  await expect(details).toHaveCount(0);
+  await filterOption(page, "status", "Failed").click();
   await expect(page).toHaveURL(/status=failed/);
-  // A filter keeps the selected run open.
+  await expect(page).toHaveURL(/[?&]run=/);
+  await screenshot(page, "automations-runs-filters", { view: "desktop" });
+  await page.getByRole("button", { name: "Close filters" }).click();
   await expect(details).toBeVisible();
   await page.getByRole("button", { name: "Close run details" }).click();
   await expect(page).toHaveURL(
@@ -858,7 +859,7 @@ test("groups automations by what needs attention on the landing page", async ({
   await expect(
     page.getByRole("link", { name: "Open automation: CVE sweep" }),
   ).toHaveCount(0);
-  await screenshot(page, "automations-filters", { view: "desktop" });
+  await screenshot(page, "automations-filters");
   await filters.getByRole("button", { name: "Clear all", exact: true }).click();
   await expect(page).not.toHaveURL(/[?&]type=/);
 
