@@ -199,10 +199,16 @@ function DayStrip(props: { days: CodeActivityDay[] }) {
 }
 
 /** Temporary: row styles to compare. Keep one before merge. */
-type RowStyle = "pr-icon" | "pr-icon-muted" | "plain" | "meta-icon";
+type RowStyle =
+  | "pr-icon"
+  | "pr-icon-number"
+  | "pr-icon-muted"
+  | "plain"
+  | "meta-icon";
 
 const ROW_STYLES: RowStyle[] = [
   "pr-icon",
+  "pr-icon-number",
   "pr-icon-muted",
   "plain",
   "meta-icon",
@@ -212,6 +218,7 @@ const ROW_STYLE_LABELS: Record<RowStyle, string> = {
   "meta-icon": "D · PR icon before the repository",
   plain: "C · No icon",
   "pr-icon": "A · Open PR icon",
+  "pr-icon-number": "E · A with the PR number by the title, repository only",
   "pr-icon-muted": "B · Grey PR icon, green on hover",
 };
 
@@ -289,10 +296,13 @@ function OpenChangeRow(props: {
 }) {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
+  const numberByTitle = props.rowStyle === "pr-icon-number";
+  // The owner repeats on most rows, so E shows only the repository name.
+  const repositoryName = change.repository.split("/").at(-1);
   return (
     <li className={cn(rowClass, "group")}>
       <div className="flex min-w-0 items-center gap-2.5 font-sans text-sm text-dashboard-text">
-        {props.rowStyle === "pr-icon" ? (
+        {props.rowStyle === "pr-icon" || numberByTitle ? (
           <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
         ) : null}
         {props.rowStyle === "pr-icon-muted" ? (
@@ -312,6 +322,11 @@ function OpenChangeRow(props: {
             rel="noreferrer"
             target="_blank"
           >
+            {numberByTitle ? (
+              <span className="text-dashboard-text-muted tabular-nums">
+                (#{change.number}){" "}
+              </span>
+            ) : null}
             {title}
           </a>
         ) : (
@@ -327,7 +342,13 @@ function OpenChangeRow(props: {
               size={12}
             />
           ) : null}
-          {change.repository} #{change.number}
+          {numberByTitle ? (
+            <span title={change.repository}>{repositoryName}</span>
+          ) : (
+            <>
+              {change.repository} #{change.number}
+            </>
+          )}
         </span>
         <span className="w-10 text-right">
           <AgeText nowMs={props.nowMs} openedAt={change.openedAt} />
