@@ -475,7 +475,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
-              // An answer or a dismiss steers in as its Review item tag.
+              // An answer steers in as its Review item tag.
               const reviewItemInput = await loadReviewItemInput(
                 getMessageReviewItemChange(queued.message),
               );

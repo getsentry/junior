@@ -131,7 +131,7 @@ describe("Review desk", () => {
     expect(itemOutput(closes[0]!).item.status).toMatch(/^(done|dismissed)$/);
   });
 
-  test("when one Turn batches two answers, a dismiss, and a typed message, act on each answer for its own item and answer the typed message as its own request", async ({
+  test("when one Turn batches two answers and a typed message after a dismiss, act on each answer for its own item, answer the typed message as its own request, and leave the dismissed work alone", async ({
     run,
   }) => {
     const conversation = await run(
@@ -157,7 +157,8 @@ describe("Review desk", () => {
     );
 
     // The answers and the typed message arrive before the Turn starts, so
-    // one Turn handles them all, and the agent does not ask again.
+    // one Turn handles them all, and the agent does not ask again. The
+    // dismiss starts no Turn: the agent sees it only in the thread history.
     expect(conversation.turns).toHaveLength(1);
     expect(toolCallsOf("addReviewItem", conversation)).toEqual([]);
     expect(conversation.replies.map((entry) => entry.text).join("\n")).toMatch(
