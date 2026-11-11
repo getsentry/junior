@@ -15,7 +15,8 @@ import {
   createConversationId,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { getConversationStore } from "@/chat/db";
+import { readCodeChangeRootConversations } from "@/chat/code/store";
+import { getConversationStore, getDb } from "@/chat/db";
 import {
   canReadCodeChanges,
   readPluginCodeChangeStack,
@@ -35,33 +36,50 @@ import {
   type WalkthroughVersion,
 } from "./store";
 
-const CONVERSATION_ID_MARKER = /<!-- junior-conversation-id:([^\s>]+) -->/;
-
 /**
- * The public Conversation that opened one of the code changes. Junior writes
- * this marker in the footer of a pull request it opens. A private
- * Conversation stays out: the public generation Conversation cannot read it.
+ * The public root Conversations that code changes in the stack came from,
+ * most shared first, then by the lowest layer. Junior links each code change
+ * it opens to its Conversations; a sub-agent's root is the Conversation where
+ * a person asked for the work. A private root stays out: the public
+ * generation Conversation cannot read it.
  */
-async function findSourceConversationId(
-  bodies: string[],
-): Promise<string | undefined> {
-  for (const body of bodies) {
-    const encoded = CONVERSATION_ID_MARKER.exec(body)?.[1];
-    if (!encoded) continue;
-    let conversationId: string;
-    try {
-      conversationId = decodeURIComponent(encoded);
-    } catch {
-      continue;
-    }
-    const conversation = await getConversationStore().get({ conversationId });
-    if (conversation?.visibility === "public") return conversationId;
+async function findSourceConversationIds(input: {
+  provider: string;
+  repository: string;
+  numbers: number[];
+}): Promise<string[]> {
+  const links = await readCodeChangeRootConversations(getDb(), input);
+  const roots = new Map<string, { layers: Set<number>; lowest: number }>();
+  for (const link of links) {
+    const layer = input.numbers.indexOf(link.number);
+    const root = roots.get(link.rootConversationId) ?? {
+      layers: new Set<number>(),
+      lowest: layer,
+    };
+    root.layers.add(layer);
+    root.lowest = Math.min(root.lowest, layer);
+    roots.set(link.rootConversationId, root);
   }
-  return undefined;
+  const ranked = [...roots.entries()]
+    .sort(
+      ([, a], [, b]) => b.layers.size - a.layers.size || a.lowest - b.lowest,
+    )
+    .map(([conversationId]) => conversationId);
+  const conversations = await Promise.all(
+    ranked.map((conversationId) =>
+      getConversationStore().get({ conversationId }),
+    ),
+  );
+  return ranked.filter(
+    (_, index) => conversations[index]?.visibility === "public",
+  );
 }
 
 /** The first message of a generation Conversation. */
-function generationInstruction(version: WalkthroughVersion): string {
+function generationInstruction(
+  version: WalkthroughVersion,
+  otherSourceConversationIds: string[],
+): string {
   return [
     "$walkthrough",
     "",
@@ -74,6 +92,9 @@ function generationInstruction(version: WalkthroughVersion): string {
     ...(version.sourceConversationId
       ? [`Source Conversation: ${version.sourceConversationId}`]
       : []),
+    ...otherSourceConversationIds.map(
+      (conversationId) => `Other source Conversation: ${conversationId}`,
+    ),
     ...(version.parentVersionId
       ? ["", "This Turn updates the previous version of this Walkthrough."]
       : []),
@@ -114,13 +135,15 @@ export async function startWalkthrough(input: {
     found && found.snapshotKey !== walkthroughSnapshotKey(stack.codeChanges)
       ? found
       : undefined;
+  const sourceConversationIds = await findSourceConversationIds({
+    provider: input.provider,
+    repository: input.repository,
+    numbers: stack.codeChanges.map((change) => change.number),
+  });
   // An update keeps the parent's messages, so it keeps the parent's source
   // and its read check, even after that source turned private.
   const sourceConversationId =
-    parent?.sourceConversationId ??
-    (await findSourceConversationId(
-      stack.codeChanges.map((change) => change.body),
-    ));
+    parent?.sourceConversationId ?? sourceConversationIds[0];
   const idempotencyKey = `walkthrough:${randomUUID()}`;
   const { version, started } = await startWalkthroughVersion({
     provider: input.provider,
@@ -141,7 +164,12 @@ export async function startWalkthrough(input: {
       {
         actor,
         idempotencyKey,
-        message: generationInstruction(version),
+        message: generationInstruction(
+          version,
+          sourceConversationIds.filter(
+            (conversationId) => conversationId !== version.sourceConversationId,
+          ),
+        ),
         title: `Walkthrough of #${input.number}`,
         visibility: "public",
       },

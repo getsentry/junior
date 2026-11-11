@@ -1,11 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   codeChangeInputSchema,
   type CodeChangeInput,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
+import {
+  juniorCodeChanges,
+  juniorCodeRepositories,
+  juniorConversations,
+} from "@/db/schema";
 
 /** Record the latest details for one code change created by Junior. */
 export async function recordCodeChange(
@@ -123,6 +127,37 @@ export async function associateCodeChangeConversations(
       and(
         eq(juniorCodeChanges.provider, provider),
         eq(juniorCodeChanges.providerId, input.providerId),
+      ),
+    );
+}
+
+/**
+ * The root of each Conversation linked to code changes in one repository.
+ * A code change that Junior never recorded has no rows.
+ */
+export async function readCodeChangeRootConversations(
+  db: JuniorDatabase,
+  input: { provider: string; repository: string; numbers: number[] },
+): Promise<Array<{ number: number; rootConversationId: string }>> {
+  return db
+    .select({
+      number: juniorCodeChanges.number,
+      rootConversationId: sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorConversations.conversationId})`,
+    })
+    .from(juniorCodeChanges)
+    .innerJoin(
+      juniorCodeRepositories,
+      eq(juniorCodeRepositories.id, juniorCodeChanges.repositoryId),
+    )
+    .innerJoin(
+      juniorConversations,
+      sql`${juniorConversations.conversationId} = ANY(${juniorCodeChanges.conversationIds})`,
+    )
+    .where(
+      and(
+        eq(juniorCodeChanges.provider, input.provider),
+        eq(juniorCodeRepositories.name, input.repository),
+        inArray(juniorCodeChanges.number, input.numbers),
       ),
     );
 }

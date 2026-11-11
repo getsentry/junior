@@ -15,7 +15,9 @@ structure: never write one chapter per PR or per commit.
 
 The instruction gives the repository, the code changes (bottom first, with
 base and head commits), and sometimes a source Conversation ID: the
-Conversation that opened the code change.
+Conversation where a person asked for the code changes. `Other source
+Conversation` lines name more of them. Read those too, but cite messages
+only from the source Conversation.
 
 If `submitWalkthrough` is not in your tools, this Turn is not a Walkthrough
 generation. Say that Walkthroughs start from the dashboard, and stop.

@@ -15,6 +15,7 @@ import {
   createConversationFixture,
 } from "../fixtures/conversation";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { recordCodeChange } from "@/chat/code/store";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore, getDb } from "@/chat/db";
 import { createTools } from "@/chat/tools";
@@ -202,6 +203,30 @@ describe("Walkthrough generation", () => {
 
   it("starts one generation per snapshot in a Conversation that lists hide", async () => {
     const { app, fixture, post } = await setup(true);
+    // A sub-agent opened the PR; the person asked for it in a public root.
+    const rootId = "local:web:walkthrough-public-root";
+    const agentId = "agent:walkthrough-opener";
+    await getConversationStore().recordActivity({
+      conversationId: rootId,
+      destination: { platform: "local", conversationId: rootId },
+      actor: { email: fixture.actor.email! },
+      source: "web",
+      visibility: "public",
+    });
+    await getConversationStore().createChild({
+      childConversationId: agentId,
+      kind: "task",
+      parentConversationId: rootId,
+    });
+    await recordCodeChange(getDb(), "github", {
+      conversationIds: [agentId],
+      number: 3088,
+      openedAt: new Date(),
+      providerId: "PR_3088",
+      repository: { name: "getsentry/junior", providerId: "R_junior" },
+      state: "open",
+      updatedAt: new Date(),
+    });
 
     expect((await post({ ...START, number: 1 })).status).toBe(404);
     expect((await post({ ...START, provider: "gitlab" })).status).toBe(404);
@@ -215,12 +240,13 @@ describe("Walkthrough generation", () => {
     // One Turn is queued, and its Conversation stays out of the list.
     expect(fixture.queue.queuedMessages()).toHaveLength(1);
     const feed = (await (await app.request("/api/conversations")).json()) as {
-      conversations: unknown[];
+      conversations: Array<{ conversationId: string }>;
     };
-    expect(feed.conversations).toEqual([]);
+    expect(feed.conversations.map((c) => c.conversationId)).toEqual([rootId]);
 
     // The Turn of that Conversation is a generation Turn for the version.
     const version = await getWalkthroughVersion(started.id);
+    expect(version?.sourceConversationId).toBe(rootId);
     const run = await readWalkthroughRun(version!.generationConversationId!);
     expect(run?.generation).toMatchObject({
       versionId: started.id,
