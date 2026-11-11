@@ -239,3 +239,26 @@ Read this first after a sandbox reset or context loss.
   - 4a uses WalkthroughCodeChange for layers (c7e9591b8).
 - #3052 (open, dcramer): same-Destination private access; web Conversations
   each have their own Destination, so it does not change the decision above.
+
+### 2026-11-11 — slice 4b opened: #3133
+
+- Branch `walkthrough/4b-generation-worker` (2178be57a), draft PR
+  https://github.com/getsentry/junior/pull/3133, in stack #3089.
+- POST /api/walkthroughs → readStack → source Conversation from the PR
+  footer marker (public only) → claim version → create public web
+  Conversation with `$walkthrough` instruction → mailbox Turn.
+- Worker: `readWalkthroughRun(conversationId)` in conversation-turn.ts
+  (4 lines; file is at 998/1000 lines — next edit there must split the file).
+  Turn end → `finish()` fails a still-generating version.
+- Stale generating > 30 min fails on next click (store).
+- Limits via `TurnBehavior.limits`: 80 tool calls, $5 (agent/index.ts reads
+  them; defaults are 1000 / $100).
+- Cost = SUM(cost_usd) metric rows of the generation Conversation.
+- GET 404s when the source Conversation is not readable by the viewer.
+- Slice 3 lost the FK on generation_conversation_id (version claims the
+  snapshot first; FK would orphan Conversations on lost races).
+- Test rule: tests in packages/junior/tests must not run the agent. The e2e
+  (faux model → submitWalkthrough → ready) passed locally, then was removed.
+  Real cost runs cover that path.
+- Known gap: a Turn that throws (not a completed outcome) leaves the version
+  generating until the 30-minute timeout.
