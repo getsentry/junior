@@ -15,6 +15,7 @@ import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore } from "@/chat/db";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   getEventBatchDelayMs,
   listActiveMailboxTurns,
@@ -51,6 +52,7 @@ import {
   getAgentReplyMessageId,
   getTurnReplyKey,
   isAgentReplyMessageId,
+  parseTurnReplyMessageId,
 } from "./ids";
 import {
   getLatestAgentInvocationForConversation,
@@ -508,7 +510,35 @@ export function createEndStoppedChildWork(options: {
     ) {
       return;
     }
-    const [turn] = await listActiveMailboxTurns(conversationId);
+    const turns = await listActiveMailboxTurns(conversationId);
+    // A Turn sends its `reply` before it saves, so a lost worker can follow
+    // a reply that the parent already has. Its Turn id comes from its record
+    // or, before the first save, from its input.
+    const turnIds = new Set([
+      ...turns.map((turn) => turn.turnId),
+      ...inboundMessageIds.map(buildDeterministicTurnId),
+    ]);
+    const sender =
+      await getLatestAgentInvocationForConversation(conversationId);
+    if (
+      sender &&
+      (
+        await readParentInboundMessageIds(
+          sender.parentConversationId,
+          undefined,
+        )
+      ).some((messageId) => {
+        const turnId = parseTurnReplyMessageId(messageId);
+        return (
+          turnId !== undefined &&
+          turnIds.has(turnId) &&
+          isAgentReplyMessageId(messageId, sender.invocationId)
+        );
+      })
+    ) {
+      return;
+    }
+    const [turn] = turns;
     await deliverToParent({
       actor: turn?.actor ?? EVENT_SYSTEM_ACTOR,
       result: {

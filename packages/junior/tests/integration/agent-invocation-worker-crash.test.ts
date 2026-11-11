@@ -7,12 +7,20 @@ import {
   createAgentInvocation,
   createAgentInvocationForMessage,
 } from "@/chat/agent-invocations/create";
-import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
+import {
+  getAgentInvocationTurnId,
+  getAgentReplyMessageId,
+} from "@/chat/agent-invocations/ids";
 import {
   completeAgentInvocation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import {
+  createDeliverToParent,
+  enqueueChildResultToParent,
+} from "@/chat/agent-invocations/result";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   buildAgentInvocationInboundMessage,
   createAndEnqueueAgentInvocation,
@@ -169,13 +177,14 @@ describe("agent invocation worker crash", () => {
 
   // A child Turn on the Conversation loop has no agent invocation to fail.
   // When every try is killed, a Task's parent learns it, and a Thread keeps
-  // the stored failure.
+  // the stored failure. A Task that already replied sent its answer.
   it.each([
-    { kind: "task" as const, notices: 1 },
-    { kind: "thread" as const, notices: 0 },
+    { kind: "task" as const, notices: 1, replied: false },
+    { kind: "task" as const, notices: 0, replied: true },
+    { kind: "thread" as const, notices: 0, replied: false },
   ])(
-    "tells only a Task's parent when every try of its Conversation loop Turn is killed ($kind)",
-    async ({ kind, notices }) => {
+    "tells only a Task's parent when every try of its Conversation loop Turn is killed ($kind, replied: $replied)",
+    async ({ kind, notices, replied }) => {
       vi.useFakeTimers({
         now: 1_800_000_000_000,
         toFake: ["Date", "setInterval", "clearInterval"],
@@ -212,6 +221,20 @@ describe("agent invocation worker crash", () => {
           state,
         });
         vi.setSystemTime(Date.now() + 60_000);
+        if (replied) {
+          // The Turn sent its `reply`, and then its worker was lost.
+          await createDeliverToParent({ queue, state })({
+            actor: EVENT_SYSTEM_ACTOR,
+            conversationId: child.childConversationId,
+            result: {
+              kind: "reply",
+              reply: { text: "Answer.", toolCallId: "call-answer" },
+            },
+            turnId: buildDeterministicTurnId(
+              getAgentReplyMessageId(helper.invocationId, "helper-reply"),
+            ),
+          });
+        }
         for (let tries = 1; tries <= CONVERSATION_WORK_MAX_RETRIES; tries++) {
           // Injected fault: the worker of this try is killed mid-run.
           await killWorker(queue.takeMessageFor(child.childConversationId));
