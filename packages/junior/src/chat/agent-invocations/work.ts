@@ -61,7 +61,6 @@ import {
   agentTypeStartsWithParentHistory,
 } from "./agent-types";
 import { loadForkHistory } from "./fork-history";
-import { readTurnAnswer } from "@/chat/turn-answer";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
@@ -95,7 +94,11 @@ import type {
   TerminalAgentInvocation,
 } from "./types";
 import { recordSubagentEnded, recordSubagentStarted } from "./markers";
-import { agentInvocationTurnEnd, type SendReply } from "./turn-end";
+import {
+  agentInvocationTurnEnd,
+  savedTurnEnd,
+  type SendReply,
+} from "./turn-end";
 import { stopChildAgentsOf } from "./stop";
 import { resumeStoppedConversationTree } from "@/chat/conversations/session-stop";
 
@@ -455,35 +458,21 @@ async function projectTerminalTurn(
       return undefined;
     }
   }
-  if (turn.state === "paused") {
+  const end = savedTurnEnd(turn);
+  if (!end) {
     return undefined;
   }
-  // Read the answer only from this Turn. A Turn record without a start index
-  // cannot tell this Turn from earlier history of a named child. Its reply
-  // reached the parent before the Turn was saved.
-  const answer =
-    turn.turnStartMessageIndex === undefined
-      ? undefined
-      : readTurnAnswer(turn.piMessages.slice(turn.turnStartMessageIndex));
-  // A Turn that saved a `reply` answered its task, even when a newer Turn or a
-  // lost worker ended it after that.
-  const failed =
-    (turn.state !== "completed" || Boolean(turn.errorMessage)) &&
-    !(answer && "reply" in answer);
+  if (turn.state === "paused") {
+    // Its saved `reply` ended the task, so nothing may resume the Turn.
+    await abandonTurnRecord({
+      conversationId: turn.conversationId,
+      turnId: turn.turnId,
+    });
+  }
   return await completeAgentInvocation({
     ...completeOptions,
     invocationId: invocation.invocationId,
-    ...(failed
-      ? {
-          errorMessage: turn.errorMessage ?? "Agent invocation failed",
-          status: "failed" as const,
-        }
-      : answer && "blocked" in answer
-        ? { errorMessage: answer.blocked.missing, status: "blocked" as const }
-        : {
-            result: answer && "reply" in answer ? answer.reply.text : "",
-            status: "completed" as const,
-          }),
+    ...end,
   });
 }
 

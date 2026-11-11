@@ -40,13 +40,17 @@ describe("agent invocation left over from earlier work", () => {
   // A child with an active invocation left over from earlier work gets new
   // mailbox input. Only the new invocation may be active when it runs.
   it.each([
-    { state: "running" as const, replied: false },
-    { state: "paused" as const, replied: false },
+    { state: "running" as const, saved: "nothing" as const },
+    { state: "paused" as const, saved: "nothing" as const },
     // Its `reply` reached the parent before the newer work ended its Turn.
-    { state: "running" as const, replied: true },
+    { state: "running" as const, saved: "reply" as const },
+    { state: "paused" as const, saved: "reply" as const },
+    // A Turn saved before `reply` existed ends with its final text.
+    { state: "completed" as const, saved: "text" as const },
   ])(
-    "ends a leftover $state child invocation (replied: $replied) before new mailbox input runs",
-    async ({ state: orphanState, replied }) => {
+    "ends a leftover $state child invocation that saved $saved before new mailbox input runs",
+    async ({ state: orphanState, saved }) => {
+      const replied = saved === "reply";
       const { conversationStore, fixture } = await prepareParentConversation();
       const activeAtRun: unknown[] = [];
       // Integration tests do not run the agent. The runner reads the run and
@@ -96,6 +100,15 @@ describe("agent invocation left over from earlier work", () => {
               role: "user",
               content: [{ type: "text", text: invocationInput.input }],
             },
+            ...(saved === "text"
+              ? [
+                  {
+                    role: "assistant",
+                    content: [{ type: "text", text: "Legacy finding" }],
+                    stopReason: "stop",
+                  },
+                ]
+              : []),
             ...(replied
               ? [
                   {
@@ -155,9 +168,13 @@ describe("agent invocation left over from earlier work", () => {
             status: "running",
           }),
         ]);
-        await expect(
-          getTurnRecord(childConversationId, orphanTurnId),
-        ).resolves.not.toMatchObject({ state: orphanState });
+        const orphanTurn = await getTurnRecord(
+          childConversationId,
+          orphanTurnId,
+        );
+        expect(
+          orphanTurn?.state === "running" || orphanTurn?.state === "paused",
+        ).toBe(false);
         // The newer work does not continue the earlier task, so the earlier
         // agent invocation sends its own result before the newer one ends.
         // One that already replied completes and sends nothing more.
@@ -165,7 +182,7 @@ describe("agent invocation left over from earlier work", () => {
           getAgentInvocation(orphan.invocationId),
         ).resolves.toMatchObject({
           parentMailboxStatus: "appended",
-          status: replied ? "completed" : "failed",
+          status: saved === "nothing" ? "failed" : "completed",
         });
         const orphanResult = expect.objectContaining({
           inboundMessageId: replied
@@ -175,9 +192,11 @@ describe("agent invocation left over from earlier work", () => {
             text: expect.stringMatching(
               replied
                 ? /^<agent-result [^>]*status="completed"[\s\S]*\nOrphan found it\n/
-                : orphanState === "paused"
-                  ? /^<agent-result [^>]*status="failed"[\s\S]*\nThis task was not resumed\. Newer work for this child agent started/
-                  : /^<agent-result [^>]*status="failed"[\s\S]*\nAgent invocation lost its worker/,
+                : saved === "text"
+                  ? /^<agent-result [^>]*status="completed"[\s\S]*\nLegacy finding\n/
+                  : orphanState === "paused"
+                    ? /^<agent-result [^>]*status="failed"[\s\S]*\nThis task was not resumed\. Newer work for this child agent started/
+                    : /^<agent-result [^>]*status="failed"[\s\S]*\nAgent invocation lost its worker/,
             ),
           }),
         });

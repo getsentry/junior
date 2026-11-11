@@ -1207,6 +1207,7 @@ async function appendInboundMessageWithAdmission(args: {
   exclusive: boolean;
   message: InboundMessage;
   nowMs?: number;
+  renderText?: RenderInboundText;
   state?: StateAdapter;
 }): Promise<AppendExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
@@ -1251,6 +1252,15 @@ async function appendInboundMessageWithAdmission(args: {
       if (args.exclusive && hasRunnableWork(current)) {
         return { status: "active" };
       }
+      const message: InboundMessage = args.renderText
+        ? {
+            ...args.message,
+            input: {
+              ...args.message.input,
+              text: await args.renderText(current.execution.inboundMessageIds),
+            },
+          }
+        : args.message;
 
       let status: ExecutionStatus;
       if (current.execution.lease) {
@@ -1283,7 +1293,7 @@ async function appendInboundMessageWithAdmission(args: {
             ],
             pendingMessages: [
               ...current.execution.pendingMessages,
-              args.message,
+              message,
             ].sort(compareMessages),
           },
           nowMs,
@@ -1294,10 +1304,20 @@ async function appendInboundMessageWithAdmission(args: {
   );
 }
 
+/**
+ * Render the text of one inbound message from the ids that already reached
+ * its mailbox. It runs under the mailbox lock, so two appends that depend on
+ * each other see each other.
+ */
+export type RenderInboundText = (
+  inboundMessageIds: readonly string[],
+) => Promise<string>;
+
 /** Persist one inbound message idempotently in its conversation mailbox. */
 export async function appendInboundMessage(args: {
   message: InboundMessage;
   nowMs?: number;
+  renderText?: RenderInboundText;
   state?: StateAdapter;
 }): Promise<AppendInboundMessageResult> {
   const result = await appendInboundMessageWithAdmission({

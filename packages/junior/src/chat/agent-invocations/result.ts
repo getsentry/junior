@@ -21,6 +21,7 @@ import {
   appendAndEnqueueInboundMessage,
   getConversationWorkState,
   type InboundMessage,
+  type RenderInboundText,
 } from "@/chat/task-execution/store";
 import type {
   ConversationWorkerContext,
@@ -144,11 +145,47 @@ function siblingLabel(sibling: ChildAgent): string {
   return sibling.agentName ?? sibling.title ?? sibling.childConversationId;
 }
 
-/** Build the parent Inbound message for one terminal agent invocation. */
+/**
+ * Render one `<agent-result>` under the parent's mailbox lock. `waiting_on`
+ * then sees every `reply` that reached the parent, also one that a sibling
+ * sent at the same moment, so two siblings cannot each name the other.
+ */
+function renderResultUnderLock(
+  sender: AgentInvocation,
+  result: { output: string; status: TerminalAgentInvocation["status"] },
+): RenderInboundText {
+  return async (parentInboundMessageIds) =>
+    renderResultInput(
+      sender,
+      result,
+      await listUnreportedSiblingAgents(
+        sender.parentConversationId,
+        sender.childConversationId,
+        parentInboundMessageIds,
+      ),
+    );
+}
+
+function terminalResult(invocation: TerminalAgentInvocation): {
+  output: string;
+  status: TerminalAgentInvocation["status"];
+} {
+  return {
+    output:
+      invocation.status === "completed"
+        ? invocation.result
+        : invocation.errorMessage,
+    status: invocation.status,
+  };
+}
+
+/**
+ * Build the parent Inbound message for one terminal agent invocation. Its
+ * text names no siblings: `renderResultUnderLock` adds `waiting_on`.
+ */
 function buildResultInboundMessage(
   invocation: TerminalAgentInvocation,
   nowMs: number,
-  openSiblings: readonly ChildAgent[],
 ): InboundMessage {
   const summary = trustedSummary(invocation, childAgentLabel(invocation));
   const metadata: EventMailboxMetadata = {
@@ -173,17 +210,7 @@ function buildResultInboundMessage(
       // An agent wrote the result, so the system Identity is its author.
       authorIdentityId: SYSTEM_IDENTITY_ID,
       metadata,
-      text: renderResultInput(
-        invocation,
-        {
-          output:
-            invocation.status === "completed"
-              ? invocation.result
-              : invocation.errorMessage,
-          status: invocation.status,
-        },
-        openSiblings,
-      ),
+      text: renderResultInput(invocation, terminalResult(invocation), []),
     },
     receivedAtMs: nowMs,
     source: "event",
@@ -227,13 +254,9 @@ export async function enqueueAgentInvocationResult(
     );
     return;
   }
-  const openSiblings = await listUnreportedSiblingAgents(
-    invocation.parentConversationId,
-    invocation.childConversationId,
-    parentInboundMessageIds,
-  );
   await appendAndEnqueueInboundMessage({
-    message: buildResultInboundMessage(invocation, nowMs, openSiblings),
+    message: buildResultInboundMessage(invocation, nowMs),
+    renderText: renderResultUnderLock(invocation, terminalResult(invocation)),
     queue: options.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: options.state,
@@ -346,14 +369,7 @@ export async function enqueueAgentReplyToParent(args: {
     args.sender.invocationId,
     args.reply.toolCallId,
   );
-  const openSiblings = await listUnreportedSiblingAgents(
-    args.sender.parentConversationId,
-    args.sender.childConversationId,
-    await readParentInboundMessageIds(
-      args.sender.parentConversationId,
-      args.state,
-    ),
-  );
+  const result = { output: args.reply.text, status: "completed" as const };
   const metadata: EventMailboxMetadata = {
     kind: "event",
     event: {
@@ -374,15 +390,12 @@ export async function enqueueAgentReplyToParent(args: {
         authorId: resultAuthorId(args.sender.actor),
         authorIdentityId: SYSTEM_IDENTITY_ID,
         metadata,
-        text: renderResultInput(
-          args.sender,
-          { output: args.reply.text, status: "completed" },
-          openSiblings,
-        ),
+        text: renderResultInput(args.sender, result, []),
       },
       receivedAtMs: nowMs,
       source: "event",
     },
+    renderText: renderResultUnderLock(args.sender, result),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: args.state,

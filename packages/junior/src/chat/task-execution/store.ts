@@ -6,6 +6,8 @@ import {
   type ConversationWorkQueue,
 } from "./queue";
 import * as workState from "./state";
+
+export type { RenderInboundText } from "./state";
 export {
   CONVERSATION_ACTIVE_INDEX_KEY,
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
@@ -342,6 +344,8 @@ export async function appendAndEnqueueInboundMessage(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   queueDelayMs?: number;
+  /** Render the message text under the mailbox lock. */
+  renderText?: workState.RenderInboundText;
   replaceExistingWake?: true;
   state?: StateAdapter;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
@@ -351,6 +355,7 @@ export async function appendAndEnqueueInboundMessage(args: {
     appendResult: await workState.appendInboundMessage({
       message: args.message,
       nowMs,
+      renderText: args.renderText,
       state: args.state,
     }),
     nowMs,

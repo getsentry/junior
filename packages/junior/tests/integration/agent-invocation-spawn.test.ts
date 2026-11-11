@@ -615,4 +615,55 @@ describe("agent invocation spawn and result delivery", () => {
       await fixture.close();
     }
   });
+
+  it("names a sibling that replies at the same moment in only one reply", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      const siblings = await Promise.all(
+        ["analyst", "auditor"].map((agentName, index) =>
+          createAgentInvocation(
+            {
+              ...slackInvocationInput,
+              agentName,
+              idempotencyKey: `fan-out-${agentName}`,
+            },
+            2_000 + index,
+          ),
+        ),
+      );
+      for (const sibling of siblings) {
+        await markAgentInvocationRunning(sibling.invocationId);
+      }
+      // Both replies start before either reaches the parent's mailbox.
+      await Promise.all(
+        siblings.map((sender) =>
+          enqueueAgentReplyToParent({
+            queue,
+            reply: { text: "Finding.", toolCallId: "call-reply" },
+            sender,
+            state,
+          }),
+        ),
+      );
+
+      const parentWork = await getConversationWorkState({
+        conversationId: slackParentConversationId,
+        state,
+      });
+      const texts = (parentWork?.messages ?? []).map(
+        (message) => message.input.text,
+      );
+      expect(texts).toHaveLength(2);
+      // The first reply waits for the other sibling. The second sees the
+      // first one's reply, so it waits for nobody.
+      expect(texts.filter((text) => text.includes("waiting_on="))).toEqual([
+        expect.stringMatching(/ waiting_on="(analyst|auditor)"/),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });

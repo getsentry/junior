@@ -797,7 +797,8 @@ describe("agent invocation conversation work", () => {
       turnOutcome: "success",
     },
     {
-      // Final text is not a reply, so it stays in the child.
+      // A Turn saved before `reply` existed ends with its final text, for
+      // one release.
       name: "final text",
       tail: [
         {
@@ -805,8 +806,8 @@ describe("agent invocation conversation work", () => {
           content: [{ type: "text", text: "Recovered final text" }],
         },
       ],
-      expected: { result: "", status: "completed" },
-      turnOutcome: "no_reply",
+      expected: { result: "Recovered final text", status: "completed" },
+      turnOutcome: "success",
     },
     {
       name: "a blocked report",
