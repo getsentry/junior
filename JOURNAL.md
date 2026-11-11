@@ -30,7 +30,8 @@ Read this first after a sandbox reset or context loss.
   #3090 (3-storage, migration 0100) → #3124 (4a-generation-tool). All drafts,
   all mergeable. Use `gh stack rebase` / `gh stack push` to update.
 - #3133 (4b-generation-worker) → #3147 (5-dashboard, head 450adaa6b).
-- #3149 (6) → #3150 (7) → #3151 (8) → walkthrough/9-polish (format v2).
+- #3149 (6) → #3150 (7) → #3151 (8) → #3155 (9-polish, format v2) →
+  walkthrough/10-review-ux (Thomas's three nitpicks).
 - Next: posting the review as the user.
 
 ## Open questions (decide in 4b)
@@ -633,3 +634,46 @@ Local caveat: `git fetch` from the Docker sandbox failed in both runs
 q1 fell back to a tarball of the head commit; q2 said it could not clone and
 answered from `readWalkthroughCode`. Inference: with App credentials the
 fetch works as in generation Turns. Not verified here.
+
+### 2026-11-11 — review UX (walkthrough/10-review-ux, on #3155 `34b920d41`)
+
+Thomas: PR list and Conversation link steal space; every chapter has a
+diagram; the review cards overload. Head `4ad5ca7fc`. Lower heads unchanged.
+
+- Rail: chapters only. Header line: `N PRs ▾ · Made in Conversation · $cost`.
+  The PR popover lists every PR (no "Show more"); one PR is one link.
+- Diagrams: validator rejects a view whose `show`/`added` ids an earlier
+  view of the same PR already showed, unless it marks `broken`. This is
+  stricter than "same as the previous chapter": under that rule no fixture
+  view failed, since each zooms to a different subset. Skill: most chapters
+  have no view. Fixtures: #3071 3 → 1 view, stack 12 → 6 (4 fail the rule;
+  `safe-to-run` and `after-ship` dropped by hand, they add one node each).
+- Review panel: `X of Y open`, Open/All, one line per claim with a status
+  dot, grouped by chapter caption; one comment (localStorage, per version);
+  Copy review at the bottom. Stack: split button `Copy review for #N` + a
+  PR menu with counts. Default PR: the current chapter's first claim PR,
+  else the top layer. Same markdown as before; the comment goes in every PR.
+- Card: left accent, "Do you agree?", claim, concern muted, text actions
+  `Agree · Request change · Skip`. Answered: one line, "✓ Agreed <claim> ·
+  Change". "Change" reopens the actions. No "undo" to open: that needs a
+  DELETE route, and an answer from an earlier version cannot be removed on
+  this one.
+- Skip: `value` is `text` (0102), validated by zod and a TS type. No
+  migration. Not open; left out of copy; changed code drops a skip so the
+  claim is plain open (no "Reopened" note). Update Turn: only `change` ids.
+
+Checks: tsc (junior, dashboard, github, plugin-api), oxlint, dashboard tests
+(442), walkthrough unit + integration + kind-behavior (40), file-length,
+test-architecture, dashboard-style, skills.
+
+Screenshots (`screenshots/review-ux/`, mock mode, desktop): before-01..03,
+after-01 rail/header, 02 PR popover, 03 chapter without diagram, 04 review
+Open, 05 card open, 06 card answered, 07 review All, 08 Open after answers,
+09 Copy review menu, 10 single PR.
+
+#### Open
+
+- Update Turns: `added_chapters` views are not checked against old views.
+- The menu counts do not show skips.
+- No real generation run under the new view rule yet.
+
