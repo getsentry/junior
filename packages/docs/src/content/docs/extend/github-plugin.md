@@ -517,14 +517,17 @@ An inline review comment was added. Trusted data includes `senderId`, `senderLog
 <details class="event">
 <summary><code>pull_request.merged</code></summary>
 
-The pull request was merged.
+The pull request was merged. For a pull request that Junior opened, when
+GitHub does not send this webhook, Junior finds the merge within about two
+days and sends this event then. A Watch gets each merge once.
 
 </details>
 
 <details class="event">
 <summary><code>pull_request.closed_unmerged</code></summary>
 
-The pull request closed without merging.
+The pull request closed without merging. Junior finds a missed close the
+same way as a missed merge.
 
 </details>
 

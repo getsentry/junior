@@ -200,7 +200,6 @@
     "packages/junior/src/chat/briefs/task.ts": 1,
     "packages/junior/src/chat/cache-warming/backfill.ts": 1,
     "packages/junior/src/chat/conversations/delivery-pause.ts": 1,
-    "packages/junior/src/chat/conversations/event-access.ts": 2,
     "packages/junior/src/chat/conversations/fork.ts": 1,
     "packages/junior/src/chat/conversations/lineage.ts": 1,
     "packages/junior/src/chat/conversations/sql/conversation-row.ts": 1,

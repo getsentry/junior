@@ -64,10 +64,12 @@ function parentRun(): AgentRun {
 async function topLevelConversation(args: {
   channelId: string;
   teamId?: string;
+  threadTs?: string;
   visibility: "private" | "public";
 }): Promise<string> {
   const teamId = args.teamId ?? "T123";
-  const conversationId = `slack:${args.channelId}:1712345.0001`;
+  const threadTs = args.threadTs ?? "1712345.0001";
+  const conversationId = `slack:${args.channelId}:${threadTs}`;
   await getConversationStore().recordActivity({
     conversationId,
     destination: { channelId: args.channelId, platform: "slack", teamId },
@@ -75,7 +77,7 @@ async function topLevelConversation(args: {
     sessionSource: createSlackSource({
       channelId: args.channelId,
       teamId,
-      threadTs: "1712345.0001",
+      threadTs,
       visibility: args.visibility,
     }),
     source: "slack",
@@ -423,7 +425,7 @@ describe("messageAgent", () => {
     }
   });
 
-  it("lets only public top-level agents message each other", async () => {
+  it("lets public agents, and agents in one private channel, message each other", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const runner = readRunsAgentRunner();
     const harness = await createConversationWorkHarness(runner.agentRunner);
@@ -448,6 +450,11 @@ describe("messageAgent", () => {
       });
       const privateOther = await topLevelConversation({
         channelId: "CPRIV3",
+        visibility: "private",
+      });
+      const privateNeighbor = await topLevelConversation({
+        channelId: "CPRIV1",
+        threadTs: "1712345.0002",
         visibility: "private",
       });
       // The person behind the Slack Actor is a participant of one private
@@ -546,6 +553,16 @@ describe("messageAgent", () => {
       await expect(send(fromPrivate, publicTarget)).rejects.toThrow(
         "is a public conversation and this conversation is private",
       );
+      // Another thread in the same private channel has the same audience.
+      await expect(
+        send(fromPrivate, privateNeighbor, "call-private-neighbor"),
+      ).resolves.toEqual({
+        conversation_id: privateNeighbor,
+        delivery: "queued",
+      });
+      await expect(send(fromPublic, privateNeighbor)).rejects.toThrow(
+        "a top-level agent that you can message",
+      );
 
       // A child agent reaches only its own tree.
       const child = await createAgentInvocation({
@@ -571,7 +588,7 @@ describe("messageAgent", () => {
     }
   });
 
-  it("finds only public top-level agents", async () => {
+  it("finds public top-level agents and agents in the same private channel", async () => {
     const { fixture } = await prepareSlackParentConversation();
     try {
       const publicTarget = await topLevelConversation({
@@ -589,6 +606,11 @@ describe("messageAgent", () => {
       });
       const privateMember = await topLevelConversation({
         channelId: "CPRIV2",
+        visibility: "private",
+      });
+      const privateNeighbor = await topLevelConversation({
+        channelId: "CPRIV1",
+        threadTs: "1712345.0002",
         visibility: "private",
       });
       const ana = await resolveViewerUserFromSql(getDb(), "ana@example.com");
@@ -642,11 +664,16 @@ describe("messageAgent", () => {
         };
         return result.agents.map((agent) => agent.conversation_id).sort();
       };
-      // A private Conversation is never found, also one that the person
-      // started.
+      // A private Conversation in another channel is never found, also one
+      // that the person started. One in the same private channel is found.
       // A public Conversation in another workspace is found too.
       await expect(searchTopLevel(privateSender)).resolves.toEqual(
-        [publicTarget, slackParentConversationId, otherWorkspace].sort(),
+        [
+          publicTarget,
+          slackParentConversationId,
+          otherWorkspace,
+          privateNeighbor,
+        ].sort(),
       );
       await expect(searchTopLevel(slackParentConversationId)).resolves.toEqual(
         [publicTarget, otherWorkspace].sort(),
@@ -654,7 +681,12 @@ describe("messageAgent", () => {
       await expect(
         searchTopLevel(privateSender, {}, EVENT_SYSTEM_ACTOR),
       ).resolves.toEqual(
-        [publicTarget, slackParentConversationId, otherWorkspace].sort(),
+        [
+          publicTarget,
+          slackParentConversationId,
+          otherWorkspace,
+          privateNeighbor,
+        ].sort(),
       );
       await expect(
         searchTopLevel(privateSender, {

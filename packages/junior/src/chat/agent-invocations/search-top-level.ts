@@ -1,7 +1,8 @@
 /**
  * Search the top-level agents that one root Conversation may find: public
- * root Conversations of any surface. Private Conversations are never
- * returned, so no result leaks private data into the requester.
+ * root Conversations of any surface, and root Conversations at the
+ * requester's own Destination. No other private Conversation is returned, so
+ * no result leaks private data into the requester.
  */
 import {
   and,
@@ -29,7 +30,7 @@ import {
   juniorDestinations,
 } from "@/db/schema";
 
-/** One public top-level agent that the requester may find. */
+/** One top-level agent that the requester may find. */
 export interface TopLevelAgent {
   /** The Conversation is archived, for everyone. */
   archived: boolean;
@@ -54,8 +55,9 @@ export interface TopLevelAgentSearch {
 }
 
 /**
- * Search public root Conversations other than `requesterConversationId`.
- * Newest activity first, or best match for a query.
+ * Search the root Conversations, other than `requesterConversationId`, that
+ * it may find under `policies/conversation-access.md`. Newest activity first,
+ * or best match for a query.
  */
 export async function searchTopLevelAgents(args: {
   requesterConversationId: string;
@@ -66,6 +68,7 @@ export async function searchTopLevelAgents(args: {
 
   const briefs = juniorConversationBriefs;
   const newer = alias(juniorConversationBriefs, "newer_briefs");
+  const requester = alias(juniorConversations, "requester_conversations");
   const query = search.query?.trim() || undefined;
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
   const searchVector = sql`to_tsvector('english', ${briefs.searchText})`;
@@ -78,7 +81,17 @@ export async function searchTopLevelAgents(args: {
     ),
     isNull(juniorConversations.transcriptPurgedAt),
     ne(juniorConversations.conversationId, requesterConversationId),
-    eq(juniorDestinations.visibility, "public"),
+    or(
+      eq(juniorDestinations.visibility, "public"),
+      // Conversations share a Destination only when they share an audience.
+      eq(
+        juniorConversations.destinationId,
+        db
+          .select({ destinationId: requester.destinationId })
+          .from(requester)
+          .where(eq(requester.conversationId, requesterConversationId)),
+      ),
+    ),
     search.annotation
       ? treeHasAnnotationKey(
           juniorConversations.conversationId,
