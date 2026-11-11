@@ -150,7 +150,7 @@ describe("agent dispatch recovery", () => {
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
         run,
-        // Pause the first slice after the declared result is saved.
+        // Pause the first slice after the `reply` result is saved.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
       });

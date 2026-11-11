@@ -20,10 +20,10 @@ import {
 } from "@/chat/pi/transcript";
 import { sanitizeAssistantText } from "@/chat/services/assistant-reply";
 
-/** Model-facing tool that declares the reply of a gated Turn. */
+/** Model-facing tool that sets the reply of a gated Turn. */
 export const REPLY_TOOL_NAME = "reply";
 
-/** The reply that a gated Turn declared. */
+/** The `reply` call of a gated Turn. */
 export type Reply = { text: string };
 
 /** The answer that ended a gated Turn. */
@@ -32,7 +32,7 @@ export type TurnAnswer =
   | { noReply: NoReply }
   | { blocked: BlockedReport };
 
-/** The declared reply gets the same cleanup as a chat reply. */
+/** The `reply` text gets the same cleanup as a chat reply. */
 export const replyTextSchema = z
   .string()
   .transform(sanitizeAssistantText)

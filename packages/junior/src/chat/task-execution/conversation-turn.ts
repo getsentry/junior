@@ -1,4 +1,5 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import { blockRunAutomation } from "@/chat/automations/block-run";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   readMessageAttachments,
@@ -452,7 +453,6 @@ export function createConversationTurnWorker(
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
     // Only an Event Turn delivers here, and an Event has no person.
     const postsToProvider = Boolean(conversationLocation) && isEventTurn;
-    // A gated Turn posts only its declared reply, not its final response.
     const deliverToProvider =
       postsToProvider &&
       turnBehavior({
@@ -782,6 +782,8 @@ export function createConversationTurnWorker(
                 await deliverAssistantMessage(reply.reply.text, {
                   reply: true,
                 });
+              } else if (reply.blocked) {
+                await blockRunAutomation(context.conversationId, reply.blocked);
               } else if (reply.noReply?.note && isEventTurn) {
                 // The note of a no-reply Event Turn is its Quiet message.
                 await deliverAssistantMessage(reply.noReply.note, {

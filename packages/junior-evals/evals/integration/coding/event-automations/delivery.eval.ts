@@ -80,7 +80,7 @@ describe("Event automation delivery", () => {
       task: "If the reviewer asks for more tests, post a reminder here to add them. Otherwise post nothing.",
     },
     {
-      // Tasks written before declared results spell out the silence marker.
+      // Tasks written before the `noReply` tool spell out the silence marker.
       silence: "with the old marker",
       task: "If the reviewer asks for more tests, post a reminder here to add them. Otherwise reply with exactly [[NO_REPLY]].",
     },

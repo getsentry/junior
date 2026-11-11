@@ -1,8 +1,14 @@
 import { describe, expect } from "vitest";
-import { githubWebhook, slackMention } from "@junior-evals/fixture/inputs";
+import {
+  githubWebhook,
+  heartbeat,
+  slackMention,
+} from "@junior-evals/fixture/inputs";
 import {
   insertLinkedGitHubIdentity,
+  insertScheduledAutomation,
   insertWatch,
+  slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
@@ -286,6 +292,34 @@ describe("Watches", () => {
     );
 
     expect(delivery.replies).toHaveLength(1);
+  });
+
+  test("when a watched PR merges after an Automation run, post with reply", async ({
+    run,
+  }) => {
+    await insertScheduledAutomation({
+      credentialMode: "system",
+      destination: slackChannel(),
+      due: true,
+      once: true,
+      task: `Post this reminder: ${pullRequest} is waiting for review.`,
+    });
+    const delivery = await run(heartbeat());
+    expect(delivery.replies).toHaveLength(1);
+    await insertWatch({
+      conversation: delivery,
+      events: ["pull_request.merged"],
+      identifier: pullRequest,
+      intent: "Tell this thread when the pull request merges.",
+      label: `GitHub PR ${pullRequest}`,
+      resourceType: "pull_request",
+    });
+
+    const merged = await delivery.continue(mergedWebhook());
+
+    // Final text on an Automation run is not delivered, so only reply posts.
+    expect(completedToolCalls("reply", merged)).toHaveLength(1);
+    expect(merged.replies).toHaveLength(1);
   });
 
   test("when the merge guidance says to tell the person who asked, post it", async ({

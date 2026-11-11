@@ -30,7 +30,7 @@ function endsRun(message: PiMessage): boolean {
 /**
  * Return the durable tool-result boundary for one additional agent
  * continuation when an ask rejection has no destination-visible reply. A run
- * that a blocked report or a declared reply ended gets none.
+ * that a blocked report or a `reply` call ended gets none.
  */
 export function actionConfirmationRetryMessages(
   messages: readonly PiMessage[],

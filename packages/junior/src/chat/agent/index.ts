@@ -1678,7 +1678,10 @@ async function executeAgentRunInPrivacyContext(
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
       ...(behavior.gated
-        ? { answer: readTurnAnswer(turnMessages()) ?? "missing" }
+        ? {
+            answer: readTurnAnswer(turnMessages()) ?? "missing",
+            missingAnswerFails: Boolean(run.dispatch),
+          }
         : undefined),
     });
     return {

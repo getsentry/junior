@@ -16,7 +16,7 @@ export type RunDispatch =
 /**
  * Return the text to post after a run ends, if any. A chat Turn already
  * delivered a successful reply, so it posts only its failure reply. An
- * Automation run posts only a declared message. It never posts a failure
+ * Automation run posts only its `reply` text. It never posts a failure
  * reply to its outcomes. The failed execution shows on the Automation.
  */
 export function finishedRunReply(

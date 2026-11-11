@@ -47,10 +47,10 @@ export interface AgentTurnDiagnostics {
 export interface AgentRunResult {
   /**
    * Sanitized terminal text for diagnostics and failure fallback, not success
-   * delivery. A gated Turn that declared a reply carries that text.
+   * delivery. A gated Turn that called `reply` carries that text.
    */
   text: string;
-  /** Reply that a gated Turn declared. The runtime posts it. */
+  /** Text of the `reply` call of a gated Turn. The runtime posts it. */
   reply?: Reply;
   /** Blocked report of a child agent run. */
   blocked?: BlockedReport;
@@ -79,6 +79,11 @@ export interface TurnResultInput {
    * for a Turn that is not gated.
    */
   answer?: TurnAnswer | "missing";
+  /**
+   * The dispatch Turn of an Automation run fails without an answer, so the
+   * run history shows it. Other gated Turns stay quiet.
+   */
+  missingAnswerFails?: boolean;
 }
 
 /** Process raw agent messages into a structured AgentRunResult. */
@@ -268,11 +273,22 @@ function buildGatedTurnResult(
   const stopReason = lastAssistant?.stopReason;
   const answered = answer !== "missing";
   // An answer decides the outcome, even when a later slice errs.
-  const outcome: AgentTurnDiagnostics["outcome"] =
-    !answered && stopReason === "error" ? "provider_error" : "success";
+  const outcome: AgentTurnDiagnostics["outcome"] = answered
+    ? "success"
+    : stopReason === "error"
+      ? "provider_error"
+      : input.missingAnswerFails
+        ? "execution_failure"
+        : "success";
+  const errorMessage =
+    outcome === "provider_error"
+      ? lastAssistant?.errorMessage
+      : outcome === "execution_failure"
+        ? "Automation run ended without an answer."
+        : undefined;
   const reply = answered && "reply" in answer ? answer.reply : undefined;
 
-  if (outcome === "success" && !answered) {
+  if (!answered && stopReason !== "error") {
     logWarn("agent.turn.answer.missing", {});
   }
   if (input.shouldTrace) {
@@ -298,8 +314,7 @@ function buildGatedTurnResult(
       outcome,
       usedPrimaryText: Boolean(reply),
       stopReason,
-      errorMessage:
-        outcome === "provider_error" ? lastAssistant?.errorMessage : undefined,
+      errorMessage,
       lastAssistant,
     }),
   };

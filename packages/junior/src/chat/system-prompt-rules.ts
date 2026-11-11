@@ -192,11 +192,12 @@ const FAILURE_REPORTING_RULES = [
 
 /**
  * Block 6, `<failure-reporting>` for automation runs. No person reads the run,
- * so a failure that stops the job goes in the answer, never in the reply.
+ * so a failure that stops the job goes in `noReply` or `reportBlocked`, never
+ * in the reply.
  */
 const AUTOMATION_FAILURE_REPORTING_RULES = [
   "- Keep commands, error output, raw tool payloads, and internal routing metadata out of the message.",
-  `- When a failure stops the job, put its cause in the \`${NO_REPLY_TOOL_NAME}\` note or the \`${REPORT_BLOCKED_TOOL_NAME}\` reason, not in the reply.`,
+  `- When a failure stops the job, put its cause in the \`note\` of \`${NO_REPLY_TOOL_NAME}\` or the \`missing\` field of \`${REPORT_BLOCKED_TOOL_NAME}\`, not in the reply.`,
 ];
 
 /**
