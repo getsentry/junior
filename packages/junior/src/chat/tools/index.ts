@@ -429,11 +429,12 @@ export function createTools(
   if (turnTools.walkthroughQuestions) {
     for (const [name, tool] of Object.entries(tools)) {
       if (WALKTHROUGH_QUESTION_TOOLS.has(name)) continue;
-      tools[name] = {
-        ...tool,
+      // Plugin tools keep their schema on the prototype, so a spread would
+      // drop it and the provider would get a tool with no parameters.
+      tools[name] = Object.assign(Object.create(tool) as typeof tool, {
         disabledReason:
           "A question about a Walkthrough only reads the Walkthrough, its code changes, and Conversations.",
-      };
+      });
     }
   }
   return tools;
