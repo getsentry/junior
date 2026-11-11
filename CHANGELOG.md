@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.295.0
+
+Junior now protects credentials, strengthens automation and review workflows, documents safer deployment, and hardens testing and CI while requiring deployment preparation.
+
+### Breaking Changes 🛠
+
+- (credentials) Encrypt stored credentials at rest by @dcramer with @sentry-junior in [#3109](https://github.com/getsentry/junior/pull/3109)
+
+### New Features ✨
+
+Automations, dashboard ordering, audit visibility, GitHub protection, and model metrics improve; stop configuring removed audit-tools and invoke $self-update explicitly.
+
+#### Automations
+
+- Default new Automations to system credentials by @dcramer with @sentry-junior in [#3118](https://github.com/getsentry/junior/pull/3118)
+- Store Automation runs as automation Conversations by @dcramer with @sentry-junior in [#3125](https://github.com/getsentry/junior/pull/3125)
+
+#### Dashboard
+
+- Show skill text from every $skill-name reference by @dcramer with @sentry-junior in [#3131](https://github.com/getsentry/junior/pull/3131)
+- Keep the conversation list order stable by @BYK with @sentry-junior in [#3047](https://github.com/getsentry/junior/pull/3047)
+
+#### Other
+
+- (cache-warming) Stop warming after the system prompt changes by @BYK with @sentry-junior in [#3099](https://github.com/getsentry/junior/pull/3099)
+- (conversations) Show each feed row's latest Brief by @BYK with @sentry-junior in [#3121](https://github.com/getsentry/junior/pull/3121)
+- (egress) Audit every egress decision and MCP tool call by @dcramer with @sentry-junior in [#3108](https://github.com/getsentry/junior/pull/3108)
+- (github) Refuse Git pushes to the default branch by @sentry-junior in [#3111](https://github.com/getsentry/junior/pull/3111)
+- (maintenance) Make self-update skill manual-only by @dcramer with @sentry-junior in [#3123](https://github.com/getsentry/junior/pull/3123)
+- (telemetry) Add per-call prompt cache hit ratio to model spans by @dcramer with @sentry-junior in [#3127](https://github.com/getsentry/junior/pull/3127)
+
+### Bug Fixes 🐛
+
+Legacy Automations recover, creation rules tighten, search and review queues improve, and pull-request feedback now covers more review activity.
+
+#### Automations
+
+- Repair Automation tasks the old runtime wrote after 0096 by @dcramer with @sentry-junior in [#3143](https://github.com/getsentry/junior/pull/3143)
+- Stop writing delivery into automation instructions by @dcramer with @sentry-junior in [#3135](https://github.com/getsentry/junior/pull/3135)
+
+#### Dashboard
+
+- Rank skill name matches first and highlight search hits by @dcramer with @sentry-junior in [#3132](https://github.com/getsentry/junior/pull/3132)
+- Show only Review items that wait on you in Needs you by @BYK and @dcramer with @sentry-junior in [#3046](https://github.com/getsentry/junior/pull/3046)
+
+#### Other
+
+- (github) React to pull request review bodies by @dcramer with @sentry-junior in [#3126](https://github.com/getsentry/junior/pull/3126)
+- (self-update) Open update PRs ready for review by @dcramer with @sentry-junior in [#3130](https://github.com/getsentry/junior/pull/3130)
+
+### Documentation 📚
+
+- (policies) Keep a breach in the system where it happened by @dcramer with @sentry-junior in [#3137](https://github.com/getsentry/junior/pull/3137)
+
+### Internal Changes 🔧
+
+GitHub tests now share a Postgres harness with worker database copies and reset helpers, and comment reactions use one flow with REST for ordinary comments and GraphQL for review bodies; output no longer includes reaction\_id. CI pins external actions to commit SHAs, requires zizmor 1.32.0 workflow checks, disables checkout credential persistence except the release workflow, and centralizes secret reads. The secret rules cover the encryption keys and Junior signing secrets.
+
+#### Github
+
+- Run GitHub plugin tests on the shared Postgres harness by @dcramer with @sentry-junior in [#3129](https://github.com/getsentry/junior/pull/3129)
+- Share one feedback reaction flow for every comment kind by @dcramer with @sentry-junior in [#3136](https://github.com/getsentry/junior/pull/3136)
+
+#### Security
+
+- Pin actions to SHAs and lint workflows with zizmor by @dcramer with @sentry-junior in [#3140](https://github.com/getsentry/junior/pull/3140)
+- Cover encryption keys in the secret env rule by @sentry-junior in [#3142](https://github.com/getsentry/junior/pull/3142)
+- Read signing and encryption secrets in one module by @dcramer with @sentry-junior in [#3141](https://github.com/getsentry/junior/pull/3141)
+
 ## 0.294.0
 
 Users gain richer review analytics and automation support, fewer refusal and caching issues, while migration execution becomes safer and policy coverage expands.
