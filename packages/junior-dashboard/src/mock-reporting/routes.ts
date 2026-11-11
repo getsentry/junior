@@ -20,7 +20,6 @@ import {
   conversationDeliveryResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
-  markConversationUnreadBodySchema,
   reorderPinnedConversationsBodySchema,
   reorderPinnedConversationsResponseSchema,
   renameConversationBodySchema,
@@ -39,8 +38,6 @@ import {
   continueConversationInSlackBodySchema,
   continueConversationInSlackResponseSchema,
   conversationReadPositionSchema,
-  conversationReadReportSchema,
-  conversationUnreadSchema,
   conversationOutlineSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
@@ -86,7 +83,6 @@ import {
 } from "./review-items";
 import {
   markMockConversationRead,
-  setMockConversationReadState,
   withMockReadPosition,
 } from "./read-positions";
 import {
@@ -482,7 +478,7 @@ export function createMockReportingApi(): Hono<{
       body.data.lastReadSeq,
     );
     return result
-      ? jsonResponse(conversationReadReportSchema, result)
+      ? jsonResponse(conversationReadPositionSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   app.post("/conversations/:conversationId/catch-up", async (c) => {
@@ -589,23 +585,6 @@ export function createMockReportingApi(): Hono<{
     if (!result) return errorResponse("Conversation not found.", 404);
     if ("error" in result) return errorResponse(result.error, 409);
     return jsonResponse(conversationDeliveryResponseSchema, result);
-  });
-  app.patch("/conversations/:conversationId/unread", async (c) => {
-    const params = conversationParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    const body = markConversationUnreadBodySchema.safeParse(await c.req.json());
-    if (!body.success) {
-      return errorResponse("Invalid request body.", 400);
-    }
-    const result = setMockConversationReadState(
-      params.data.conversationId,
-      body.data.unread,
-    );
-    return result
-      ? jsonResponse(conversationUnreadSchema, result)
-      : errorResponse("Conversation not found.", 404);
   });
   app.patch("/conversations/:conversationId/title", async (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());

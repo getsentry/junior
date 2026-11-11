@@ -104,7 +104,7 @@ async function mockLongConversation(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
       await route.fulfill({
-        json: { ...route.request().postDataJSON(), unreadReply: false },
+        json: route.request().postDataJSON(),
       });
     },
   );

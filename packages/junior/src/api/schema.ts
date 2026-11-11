@@ -122,14 +122,8 @@ export type {
   ContinueConversationInSlackResponse,
 } from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export {
-  conversationReadPositionSchema,
-  conversationReadReportSchema,
-} from "./schema/conversation-read-position";
-export type {
-  ConversationReadPosition,
-  ConversationReadReport,
-} from "./schema/conversation-read-position";
+export { conversationReadPositionSchema } from "./schema/conversation-read-position";
+export type { ConversationReadPosition } from "./schema/conversation-read-position";
 export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -166,14 +160,6 @@ export type {
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
-export {
-  conversationUnreadSchema,
-  markConversationUnreadBodySchema,
-} from "./schema/conversation-unread";
-export type {
-  ConversationUnread,
-  MarkConversationUnreadBody,
-} from "./schema/conversation-unread";
 export {
   CONVERSATION_OUTLINE_TEXT_LENGTH,
   conversationOutlineSchema,

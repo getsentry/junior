@@ -375,8 +375,7 @@ describe("versions API", () => {
       "conversations",
     ]);
 
-    // Scrolling moves the read position, but the feed row shows only
-    // whether the reply is unread.
+    // Reading moves the read position, which no feed row shows.
     const [reply] = await getDb()
       .select({ seq: max(juniorConversationEvents.seq) })
       .from(juniorConversationEvents)
@@ -397,17 +396,9 @@ describe("versions API", () => {
           },
         )
       ).json();
-    expect(await reportRead(reply!.seq! - 1)).toEqual({
-      lastReadSeq: reply!.seq! - 1,
-      unreadReply: true,
+    expect(await reportRead(reply!.seq!)).toEqual({
+      lastReadSeq: reply!.seq!,
     });
-    const scrolled = await read();
-    expect(changed(withReply, scrolled)).toEqual([]);
-    expect(await reportRead(reply!.seq!)).toMatchObject({
-      unreadReply: false,
-    });
-    const cleared = await read();
-    expect(changed(scrolled, cleared)).toEqual(["conversations"]);
-    expect(feedMoved(scrolled, cleared)).toEqual(["unread"]);
+    expect(changed(withReply, await read())).toEqual([]);
   });
 });

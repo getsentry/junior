@@ -53,7 +53,6 @@ function projectConversationDetail(args: {
   /** Events hold only the events after the request's `after` cursor. */
   appended?: boolean;
   pinnedAtMs?: number;
-  unreadReply?: boolean;
   automationTitle?: string;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   brief?: ConversationDetailReport["brief"];
@@ -87,7 +86,6 @@ function projectConversationDetail(args: {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
       pinnedAtMs: args.pinnedAtMs,
-      unreadReply: args.unreadReply,
       automationTitle: args.automationTitle,
       auxiliaryCosts: args.auxiliaryCosts,
       ...(args.childAgentTotals
@@ -314,7 +312,6 @@ async function readConversationDetailFromSql(
           }),
         }),
     ...state.viewerMarks,
-    unreadReply: state.unreadReply,
     automationTitle: automationTitleByConversation.get(conversationId),
     annotations,
     sidebarAnnotations,
