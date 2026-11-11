@@ -1,7 +1,13 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
-import type { EventInput } from "@sentry/junior-plugin-api";
+import type {
+  EventInput,
+  EventPublisher,
+  HeartbeatHookContext,
+  PluginState,
+} from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { juniorGitHubPullRequests } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
@@ -70,6 +76,43 @@ describe("merge conflict check on webhook events", () => {
   let watchesConflicts: boolean;
   let reactions: number;
 
+  let stored: Map<string, unknown>;
+  const state: PluginState = {
+    async delete(key) {
+      stored.delete(key);
+    },
+    async get<T>(key: string) {
+      return stored.get(key) as T | undefined;
+    },
+    async set(key, value) {
+      stored.set(key, structuredClone(value));
+    },
+    async setIfNotExists(key, value) {
+      if (stored.has(key)) return false;
+      stored.set(key, structuredClone(value));
+      return true;
+    },
+    async withLock(_key, _ttlMs, callback) {
+      return await callback();
+    },
+  };
+
+  const events: EventPublisher = {
+    // The Watch made after Junior creates a pull request.
+    async hasMatch(candidates) {
+      return candidates.some(
+        (event) =>
+          event.identifier === "getsentry/junior#946" &&
+          (event.eventType === "pull_request.merge_conflict"
+            ? watchesConflicts
+            : watchesComments),
+      );
+    },
+    async publish(event) {
+      published.push(event);
+    },
+  };
+
   async function deliver(
     deliveryId: string,
     request: Request = commentRequest(deliveryId),
@@ -93,26 +136,14 @@ describe("merge conflict check on webhook events", () => {
       },
       codeChanges: {
         async associateConversations() {},
+        async recordActivity() {},
         async record() {},
       },
       db: fixture.db(),
-      events: {
-        // The Watch made after Junior creates a pull request.
-        async hasMatch(events) {
-          return events.some(
-            (event) =>
-              event.identifier === "getsentry/junior#946" &&
-              (event.eventType === "pull_request.merge_conflict"
-                ? watchesConflicts
-                : watchesComments),
-          );
-        },
-        async publish(event) {
-          published.push(event);
-        },
-      },
+      events,
       log: { error() {}, info() {}, warn() {} },
       plugin: { name: "github" },
+      state,
       users: {
         async readIdentity() {
           return undefined;
@@ -130,6 +161,7 @@ describe("merge conflict check on webhook events", () => {
 
   beforeEach(async () => {
     fixture = await createGitHubFixture();
+    stored = new Map();
     published = [];
     pullRequestReads = 0;
     watchesComments = true;
@@ -279,5 +311,183 @@ describe("merge conflict check on webhook events", () => {
       expect.stringContaining(":3333333333333333333333333333333333333333"),
       expect.stringContaining(":3333333333333333333333333333333333333333"),
     ]);
+  });
+
+  describe("after a push to the default branch", () => {
+    const pushedAt = Date.parse("2026-11-09T12:00:00.000Z");
+    const minute = 60_000;
+    let searches: string[];
+    let mergeability: Record<number, string>;
+    let duringRead: (() => Promise<void>) | undefined;
+
+    async function heartbeat(nowMs: number): Promise<void> {
+      const unused = () => {
+        throw new Error("The GitHub heartbeat does not use this");
+      };
+      const context: HeartbeatHookContext = {
+        agent: { dispatch: unused, get: unused },
+        cache: {
+          async getOrLoad(_key, load) {
+            return (await load()).value;
+          },
+        },
+        db: fixture.db(),
+        embedder: { embedTexts: unused, model: "unused", provider: "unused" },
+        events,
+        log: { error() {}, info() {}, warn() {} },
+        nowMs,
+        plugin: { name: "github" },
+        state,
+      };
+      await githubPlugin().hooks!.heartbeat!(context);
+    }
+
+    function pushRequest(ref: string, repo = "getsentry/junior"): Request {
+      return signedRequest({
+        deliveryId: `push-${repo}-${ref}`,
+        eventName: "push",
+        body: {
+          installation: { id: 456 },
+          ref,
+          repository: { default_branch: "main", full_name: repo },
+        },
+      });
+    }
+
+    beforeEach(async () => {
+      vi.useFakeTimers({ now: pushedAt, toFake: ["Date"] });
+      searches = [];
+      mergeability = { 946: "CONFLICTING", 947: "MERGEABLE" };
+      duringRead = undefined;
+      vi.stubEnv(
+        "GITHUB_APP_BOT_EMAIL",
+        "1234+sentry-junior[bot]@users.noreply.github.com",
+      );
+      mswServer.use(
+        http.post("https://api.github.com/graphql", async ({ request }) => {
+          const { variables } = (await request.json()) as {
+            variables: { query: string };
+          };
+          searches.push(variables.query);
+          await duringRead?.();
+          return HttpResponse.json({
+            data: {
+              search: {
+                nodes: [946, 947].map((number) => ({
+                  baseRefName: "main",
+                  headRefOid: "1111111111111111111111111111111111111111",
+                  mergeable: mergeability[number],
+                  number,
+                  state: "OPEN",
+                  url: `https://github.com/getsentry/junior/pull/${number}`,
+                })),
+                pageInfo: { endCursor: null, hasNextPage: false },
+              },
+            },
+          });
+        }),
+      );
+      const row = (number: number, state: "merged" | "open") => ({
+        number,
+        openedAt: new Date(pushedAt - 60 * minute),
+        pullRequestId: `${number}0`,
+        repositoryFullName: "getsentry/junior",
+        repositoryId: "1",
+        state,
+        updatedAt: new Date(pushedAt - 60 * minute),
+      });
+      await fixture
+        .db()
+        .insert(juniorGitHubPullRequests)
+        .values([row(946, "open"), row(947, "open"), row(948, "merged")]);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("publishes a conflict with one search for a burst of pushes", async () => {
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      vi.setSystemTime(pushedAt + minute);
+      await deliver("push-2", pushRequest("refs/heads/main"));
+      // The push webhook makes no GitHub call.
+      expect(searches).toHaveLength(0);
+
+      await heartbeat(pushedAt + minute);
+      expect(searches).toHaveLength(0);
+
+      await heartbeat(pushedAt + 2 * minute);
+      // One search for the open Junior pull requests.
+      expect(searches).toEqual([
+        "repo:getsentry/junior is:pr is:open author:app/sentry-junior",
+      ]);
+      expect(conflicts()).toEqual([
+        expect.objectContaining({
+          data: {
+            baseBranch: "main",
+            headSha: "1111111111111111111111111111111111111111",
+            pullRequest: 946,
+            repo: "getsentry/junior",
+            url: "https://github.com/getsentry/junior/pull/946",
+          },
+          identifier: "getsentry/junior#946",
+        }),
+        expect.objectContaining({ identifier: "getsentry/junior" }),
+      ]);
+      expect(pullRequestReads).toBe(0);
+
+      await heartbeat(pushedAt + 10 * minute);
+      expect(searches).toHaveLength(1);
+    });
+
+    it("reads again while GitHub calculates mergeability", async () => {
+      mergeability[946] = "UNKNOWN";
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toHaveLength(1);
+      expect(conflicts()).toEqual([]);
+
+      mergeability[946] = "CONFLICTING";
+      await heartbeat(pushedAt + 3 * minute);
+      expect(searches).toHaveLength(2);
+      expect(conflicts()).toHaveLength(2);
+    });
+
+    it("keeps a push that arrives during a check", async () => {
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      vi.setSystemTime(pushedAt + 2 * minute);
+      duringRead = async () => {
+        duringRead = undefined;
+        await deliver("push-2", pushRequest("refs/heads/main"));
+      };
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toHaveLength(1);
+
+      await heartbeat(pushedAt + 4 * minute);
+      expect(searches).toHaveLength(2);
+    });
+
+    it("does not check after a push to another branch", async () => {
+      await deliver("push-1", pushRequest("refs/heads/feat/other"));
+      await heartbeat(pushedAt + 10 * minute);
+      expect(searches).toHaveLength(0);
+    });
+
+    it("does not check a repository without open Junior pull requests", async () => {
+      await deliver(
+        "push-1",
+        pushRequest("refs/heads/main", "getsentry/other"),
+      );
+      await heartbeat(pushedAt + 10 * minute);
+      expect(searches).toHaveLength(0);
+    });
+
+    it("publishes no conflict that nothing wants", async () => {
+      watchesConflicts = false;
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toHaveLength(1);
+      expect(conflicts()).toEqual([]);
+    });
   });
 });

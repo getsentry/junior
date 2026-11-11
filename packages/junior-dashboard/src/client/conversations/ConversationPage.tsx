@@ -12,6 +12,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationDetailReport,
   ConversationFeed,
+  ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
@@ -25,20 +26,22 @@ import {
 } from "./conversationArchive";
 import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
-import { useMarkConversationUnread } from "./useMarkConversationUnread";
+import { useConversationDelivery } from "./useConversationDelivery";
+import { useRenameConversation } from "./useRenameConversation";
+import { RenameConversationDialog } from "./RenameConversationDialog";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
   useConversationCatchUp,
 } from "./conversationCatchUpState";
 import { buildConversationMarkdown } from "../markdownExport";
-import { CopyButton } from "../components/CopyButton";
 import {
   CONVERSATION_EVENT_PARAM,
   CONVERSATION_REVIEW_OPEN,
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  readOpenEventLog,
   readReplyFocus,
   turnStartedEventSeq,
 } from "./conversationRoutes";
@@ -79,6 +82,7 @@ import {
   childConversationStatus,
 } from "./ChildConversationStatus";
 import { useWaitingConversations } from "../review-desk/queries";
+import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -91,7 +95,6 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
-  isIdleConversation,
   visualStatusForConversation,
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
@@ -111,6 +114,7 @@ import {
   useQuickQuestionThread,
 } from "./QuickQuestion";
 import { Transcript } from "./TranscriptView";
+import type { TranscriptAskReveal } from "./ConversationTranscript";
 import {
   readConversationStartPosition,
   useMarkConversationRead,
@@ -208,6 +212,11 @@ export function ConversationPage(props: {
   // memory or outline jump stay mounted, so the jump finds its row and the
   // popover keeps it.
   const [revealSeq, setRevealSeq] = useState<number>();
+  // The docked question whose transcript row shows, and the Turn that
+  // asked it, so a row outside the loaded pages can load.
+  const [askReveal, setAskReveal] = useState<
+    TranscriptAskReveal & { turnId?: string }
+  >();
   // The page stays mounted across Conversations. Memory state belongs to one.
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -217,6 +226,7 @@ export function ConversationPage(props: {
     setMemoryPopover(undefined);
     setMemoryJump(undefined);
     setRevealSeq(undefined);
+    setAskReveal(undefined);
   }
   const quickQuestion = useQuickQuestionThread(props.conversationId);
   // Event details and turn context also show over a Quick question.
@@ -232,9 +242,18 @@ export function ConversationPage(props: {
       ?.querySelector<HTMLButtonElement>('[data-slot="details-panel-close"]')
       ?.focus({ preventScroll: true });
   }, [showDetails]);
+  // A sidebar row menu opens the event log with navigation state. The page
+  // can be open already, so each new navigation asks once.
+  const location = useLocation();
+  const eventLogRequested = readOpenEventLog(location.state);
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
-    eventOpen ? "raw" : "rich",
+    eventOpen || eventLogRequested ? "raw" : "rich",
   );
+  const [eventLogLocationKey, setEventLogLocationKey] = useState(location.key);
+  if (eventLogRequested && eventLogLocationKey !== location.key) {
+    setEventLogLocationKey(location.key);
+    setView("raw");
+  }
   const view = eventOpen ? "raw" : viewState;
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
@@ -304,7 +323,9 @@ export function ConversationPage(props: {
   };
   const pin = usePinConversation(conversationId);
   const subscription = useConversationSubscription(conversationId);
-  const markUnread = useMarkConversationUnread(conversationId);
+  const delivery = useConversationDelivery(conversationId);
+  const rename = useRenameConversation(conversationId);
+  const [renaming, setRenaming] = useState(false);
   const markRead = useMarkConversationRead(conversationId);
   // Focus or a click in the composer counts as reading, like transcript input.
   const [composerEngaged, setComposerEngaged] = useState(false);
@@ -385,7 +406,6 @@ export function ConversationPage(props: {
     conversationFromDetail(detail.data) ?? feedConversation,
     props.pendingArchiveUpdate,
   );
-  const unread = Boolean(conversation?.unread);
   const conversationDetail = detail.data;
   const links = conversationLinks(conversationDetail);
   const title =
@@ -401,7 +421,6 @@ export function ConversationPage(props: {
     detail.data.kind !== "task";
   // A navigation can ask for the reply box. Ask the footer once for it, so
   // coming back from the event log does not focus it again.
-  const location = useLocation();
   const [replyFocusDoneKey, setReplyFocusDoneKey] = useState<string>();
   const replyFocus = readReplyFocus(location.state);
   const replyFocusRequest =
@@ -477,6 +496,39 @@ export function ConversationPage(props: {
     if (start) setLinkStart(start);
     return Boolean(start);
   });
+  const showQuestion = useCallback(
+    (item: ReviewItemPayload, arrived: boolean) =>
+      setAskReveal((current) => ({
+        arrived,
+        itemId: item.id,
+        // A child Conversation can add an item to this one. Its Turn is not
+        // in this transcript.
+        turnId:
+          item.addedByConversationId === conversationId
+            ? item.addedByTurnId
+            : undefined,
+        version: (current?.version ?? 0) + 1,
+      })),
+    [conversationId],
+  );
+  // A question that the reader moves to can sit outside the loaded rows.
+  // Then the transcript opens at the page around its Turn, like a link. A
+  // question that arrives by itself is at the latest, so it needs no page.
+  const openAskTurn = useEffectEvent((itemId: string, turnId: string) => {
+    const held = history.data?.events.some(
+      (event) =>
+        event.data.type === "tool_calls" &&
+        event.data.calls.some(
+          (call) => reviewItemIdFromToolCall(call) === itemId,
+        ),
+    );
+    if (!held) openLink({ turn: turnId });
+  });
+  useEffect(() => {
+    if (askReveal?.turnId && !askReveal.arrived) {
+      openAskTurn(askReveal.itemId, askReveal.turnId);
+    }
+  }, [askReveal]);
   useEffect(() => {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
@@ -650,18 +702,21 @@ export function ConversationPage(props: {
             <ConversationHeader
               agentTree={conversationDetail?.agentTree}
               contextTags={conversationContextTags(conversation)}
-              conversationId={conversationId}
-              continueInSlack={
-                detail.data?.canContinueInSlack
-                  ? {
-                      // The API refuses while a Turn runs.
-                      disabled: live,
-                      onClick: () => setContinueInSlackOpen(true),
-                    }
-                  : undefined
-              }
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
+              errors={[
+                // A refused restore names the archived ancestor to restore
+                // first.
+                archive.error
+                  ? (archive.error instanceof DashboardApiError &&
+                      archive.error.apiError) ||
+                    "Could not update archive state."
+                  : "",
+                pin.error ? "Could not update pin." : "",
+                rename.error ? "Could not rename." : "",
+                subscription.error ? "Could not update subscription." : "",
+                delivery.error ? "Could not change Slack updates." : "",
+              ].filter(Boolean)}
               onDetailsClick={() => {
                 if (eventOpen) setSelectedEventSeq(undefined);
                 setTurnContext(undefined);
@@ -686,69 +741,44 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              copyAction={
-                <CopyButton
-                  label="Copy as Markdown"
-                  copyingLabel="Preparing Markdown"
-                  key={conversationDetail?.conversationId ?? "loading"}
-                  layout="menu"
-                  getText={
-                    conversationDetail
-                      ? async () =>
-                          buildConversationMarkdown(
-                            await detail.loadCompleteTranscript(),
-                            conversation,
-                          )
-                      : undefined
-                  }
-                />
-              }
               linkedWork={
                 links.length ? <ConversationAnnotations links={links} /> : null
               }
-              pin={{
-                // The API lets only participants pin a root, the same as
-                // archive. A child page has an agent tree.
-                disabled:
-                  !conversation ||
-                  !detail.data?.isParticipant ||
-                  isChildConversation(conversationDetail) ||
-                  pin.isPending,
-                error: Boolean(pin.error),
-                onClick: () => pin.mutate(!conversation?.pinnedAt),
-                pinned: Boolean(conversation?.pinnedAt),
-              }}
-              read={{
-                // Unread tracks idle conversations only, like the sidebar row.
-                disabled:
-                  !conversation ||
-                  !detail.data?.isParticipant ||
-                  markUnread.isPending ||
-                  (!unread && !isIdleConversation(conversation)),
-                error: Boolean(markUnread.error),
-                onClick: () => markUnread.mutate(!unread),
-                unread,
-              }}
-              archive={{
-                archived: Boolean(conversation?.archivedAt),
-                disabled: !conversation || archive.isPending,
-                // A refused restore names the archived ancestor to restore
-                // first.
-                error: archive.error
-                  ? (archive.error instanceof DashboardApiError &&
-                      archive.error.apiError) ||
-                    "Could not update archive state."
-                  : undefined,
-                onClick: () => {
-                  if (conversation?.archivedAt) {
-                    setArchived(false);
-                  } else if (conversation!.kind === "root") {
-                    setArchived(true);
-                  } else {
-                    setConfirmChildArchive(true);
-                  }
+              menu={{
+                actions: {
+                  archive: () => {
+                    if (conversation?.archivedAt) {
+                      setArchived(false);
+                    } else if (!conversation!.parentConversationId) {
+                      setArchived(true);
+                    } else {
+                      setConfirmChildArchive(true);
+                    }
+                  },
+                  continueInSlack: () => setContinueInSlackOpen(true),
+                  delivery: (paused) => delivery.mutate(paused),
+                  eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
+                  pin: (pinned) => pin.mutate(pinned),
+                  rename: () => setRenaming(true),
+                  subscription: (subscribed) => subscription.mutate(subscribed),
                 },
-                pending: archive.isPending,
+                conversation,
+                conversationId,
+                detail: conversationDetail,
+                eventLogOpen: view === "raw",
+                getMarkdown: conversationDetail
+                  ? async () =>
+                      buildConversationMarkdown(
+                        await detail.loadCompleteTranscript(),
+                        conversation,
+                      )
+                  : undefined,
+                pending: {
+                  archive: archive.isPending,
+                  delivery: delivery.isPending,
+                  pin: pin.isPending,
+                  subscription: subscription.isPending,
+                },
               }}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
@@ -759,7 +789,6 @@ export function ConversationPage(props: {
               }
               search={search}
               searchMatch={searchMatch}
-              sentryConversationUrl={detail.data?.sentryConversationUrl}
               sidebarToggle={props.sidebarToggle}
               status={
                 isChildConversation(conversationDetail) && conversation ? (
@@ -768,16 +797,6 @@ export function ConversationPage(props: {
                   />
                 ) : null
               }
-              subscription={{
-                // Only participants have a subscription. A child uses its
-                // root's.
-                disabled:
-                  detail.data?.subscribed === undefined ||
-                  subscription.isPending,
-                error: Boolean(subscription.error),
-                onClick: () => subscription.mutate(!detail.data?.subscribed),
-                subscribed: detail.data?.subscribed ?? false,
-              }}
               title={title}
               view={view}
             />
@@ -837,6 +856,7 @@ export function ConversationPage(props: {
                           history.newer ? undefined : detail.inlineMessages
                         }
                         pinRequestVersion={pinRequestVersion}
+                        revealAsk={askReveal}
                         revealSeq={revealSeq}
                         responding={
                           !detail.error &&
@@ -877,6 +897,7 @@ export function ConversationPage(props: {
                   live={live}
                   onFocusRequestDone={setReplyFocusDoneKey}
                   onPinRequest={requestPin}
+                  onShowQuestion={showQuestion}
                   ref={replyRef}
                 />
               </div>
@@ -909,6 +930,13 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
+      {renaming ? (
+        <RenameConversationDialog
+          onClose={() => setRenaming(false)}
+          onSave={(next) => rename.mutate(next)}
+          title={title}
+        />
+      ) : null}
       {continueInSlackOpen ? (
         <ContinueInSlackDialog
           conversationId={conversationId}

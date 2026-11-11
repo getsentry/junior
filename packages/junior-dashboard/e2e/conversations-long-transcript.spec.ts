@@ -104,7 +104,7 @@ async function mockLongConversation(
     `**/api/conversations/${conversationId}/read-position`,
     async (route) => {
       await route.fulfill({
-        json: { ...route.request().postDataJSON(), unreadReply: false },
+        json: route.request().postDataJSON(),
       });
     },
   );
@@ -378,6 +378,36 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
   await expect(item).toHaveAttribute("aria-current", "location");
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+});
+
+test("points at the outline item under a still pointer while the list scrolls", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 900, width: 1920 });
+  const mock = await mockLongConversation(page, {
+    lastReadSeq: EVENT_COUNT - 1,
+    paged: true,
+  });
+  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const outline = page.getByRole("navigation", {
+    name: "Conversation outline",
+  });
+  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
+  // The list scrolls to the active item near its end, so a wheel up has
+  // room to scroll.
+  await expect(outline.locator("button[aria-current]")).toBeInViewport();
+  await outline.getByRole("list").hover({ position: { x: 4, y: 200 } });
+  const pointed = outline.locator("button[data-highlighted]");
+  const title = page.locator('[data-slot="message-outline-preview-title"]');
+  const before = (await pointed.getAttribute("aria-label"))!;
+  await expect(title).toHaveText(before);
+
+  // A wheel scrolls the list without a pointer move. The pointed item and
+  // its preview follow the item that is now under the pointer.
+  await page.mouse.wheel(0, -400);
+  await expect(pointed).not.toHaveAttribute("aria-label", before);
+  await expect(title).toHaveText((await pointed.getAttribute("aria-label"))!);
 });
 
 test("holds the top row while earlier pages load above it", async ({

@@ -489,7 +489,7 @@ async function generateLocalReply(
     ...rest,
   });
   if (outcome.status !== "completed") {
-    throw new Error(`Expected final reply, got ${outcome.status}`);
+    throw new Error(`Expected final response, got ${outcome.status}`);
   }
   return outcome.result;
 }

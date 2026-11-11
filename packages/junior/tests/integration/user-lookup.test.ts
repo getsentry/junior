@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
@@ -12,6 +13,11 @@ import {
   queueSlackApiResponse,
   queueSlackApiError,
 } from "../msw/handlers/slack-api";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -795,6 +801,7 @@ describe("userLookup", () => {
         [],
         {},
         {
+          turnTools: rootTurnTools,
           conversationId: "slack:C0TEST:1700000000.100000",
           source: createSlackSource({
             teamId: "T0TEST",

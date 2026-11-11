@@ -86,6 +86,12 @@
       }
     },
     {
+      "files": ["src/**/*.ts", "**/src/**/*.ts"],
+      "rules": {
+        "junior/no-raw-sql-queries": "error"
+      }
+    },
+    {
       "files": ["**/junior-github/src/**/*.ts"],
       "rules": {
         "junior/use-github-api": "error",
@@ -121,6 +127,7 @@
     {
       "files": [
         "**/junior-github/src/credential-support.ts",
+        "**/junior-github/src/default-branch.ts",
         "**/junior-github/src/github-status.ts",
         "**/junior-github/src/webhooks/**/*.ts"
       ],

@@ -10,9 +10,6 @@ const nativeSelectVariants = cva(
       variant: {
         /** Form field. Touch screens get the taller target. */
         form: "min-h-11 rounded-md border border-dashboard-border-emphasis bg-dashboard-ink py-2 pl-3 text-base text-dashboard-text focus:border-dashboard-focus focus:outline-none aria-invalid:border-rose-300 sm:min-h-10 sm:text-sm",
-        /** Compact control in a filter bar. */
-        filter:
-          "h-9 rounded-lg border border-dashboard-border-emphasis bg-dashboard-control pl-2 text-sm text-dashboard-text transition-colors hover:border-dashboard-border-interactive focus:border-dashboard-focus focus:outline-none focus:ring-1 focus:ring-dashboard-focus/25",
         /** Borderless sort control that fills its frame. */
         sort: "h-full bg-dashboard-control pl-2 font-sans text-xs text-dashboard-text-muted outline-none",
       },

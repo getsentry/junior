@@ -32,12 +32,7 @@ import {
 } from "@/chat/conversation-privacy";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
-import {
-  logInfo,
-  logWarn,
-  setSpanAttributes,
-  withLogContext,
-} from "@/chat/logging";
+import { logWarn, setSpanAttributes, withLogContext } from "@/chat/logging";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
@@ -307,11 +302,6 @@ async function requestAboveMark(args: {
     return;
   }
   await args.queue.send(message);
-  logInfo("context_compaction.background.requested", {
-    "app.compaction.mark_seq": markSeq,
-    "app.compaction.history_version": historyVersion,
-    "app.compaction.input.size": args.inputSize,
-  });
 }
 
 /** A fixed label for a failed summary. Never raw exception text. */
@@ -329,6 +319,11 @@ function failureLabel(error: unknown, signal: AbortSignal): string {
   return providerError ? `provider_${providerError.kind}` : "summary_error";
 }
 
+/**
+ * `app.compaction.outcome` of a job. `stale`: the History was replaced before
+ * the job ran. `duplicate`: the request already has a result. Both write
+ * nothing. A `failed` job sets `error.type` to its failure label.
+ */
 type JobOutcome = "ready" | "failed" | "stale" | "duplicate";
 
 /**

@@ -172,13 +172,18 @@ function route(
   errors: string[] = [],
   failures = { close: 0 },
 ): PluginRoute {
+  // Other review desk items, such as review requests, have their own tests.
+  const isReady = (dedupeKey: string) =>
+    dedupeKey.startsWith("pull-request-ready:");
   const reviewItems: PluginConversationReviewItems = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
+          if (!isReady(notice.dedupeKey)) return;
           calls.push({ conversationId, kind: "upsert", notice });
         },
         async close(input) {
+          if (!isReady(input.dedupeKey)) return;
           if (failures.close > 0) {
             failures.close -= 1;
             throw new Error("review desk is down");
@@ -202,6 +207,7 @@ function route(
     },
     codeChanges: {
       async associateConversations() {},
+      async recordActivity() {},
       async record() {},
     },
     db: fixture.db(),
@@ -215,6 +221,7 @@ function route(
     plugin: { name: "github" },
     events: { hasMatch: async () => false, async publish() {} },
     reviewItems,
+    users: { readIdentity: async () => undefined },
   });
   return webhook!;
 }
@@ -311,7 +318,9 @@ describe("ready to merge notice", () => {
             title: "getsentry/junior#946",
             url: PULL_URL,
           },
-          title: "Ready to merge: getsentry/junior#946",
+          title: "Ready to merge · #946",
+          // The merge is the requester's step, so the item waits on them.
+          waitsOnAssignees: true,
         },
       };
       expect(calls).toEqual([notice]);

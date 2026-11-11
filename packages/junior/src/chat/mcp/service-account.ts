@@ -22,6 +22,10 @@ import { isRecord } from "@/chat/coerce";
 import { logWarn } from "@/chat/logging";
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import {
+  createEncryptedState,
+  readEncryptedState,
+} from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 
@@ -46,14 +50,17 @@ function serviceAccountKey(provider: string): string {
   return `${SERVICE_ACCOUNT_KEY_PREFIX}:${provider}`;
 }
 
+function updateLockKey(provider: string): string {
+  return `${serviceAccountKey(provider)}:update`;
+}
+
 function parseCredentials(
   value: unknown,
 ): McpServiceAccountCredentials | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
   try {
-    const parsed = JSON.parse(value) as unknown;
+    // Plaintext values from before encryption are JSON strings.
+    const parsed: unknown =
+      typeof value === "string" ? JSON.parse(value) : value;
     if (
       !isRecord(parsed) ||
       !isRecord(parsed.clientInformation) ||
@@ -88,8 +95,34 @@ function parseCredentials(
 export async function getMcpServiceAccountCredentials(
   provider: string,
 ): Promise<McpServiceAccountCredentials | undefined> {
-  return parseCredentials(
-    await getStateAdapter().get(serviceAccountKey(provider)),
+  const state = getStateAdapter();
+  const stored = await readEncryptedState(state, serviceAccountKey(provider));
+  const credentials = parseCredentials(stored?.value);
+  if (credentials && stored?.stale) {
+    await saveStaleCredentials(provider);
+  }
+  return credentials;
+}
+
+/**
+ * Save stale credentials again with the active key. It runs only when the
+ * update lock is free, so it cannot write back a refresh token that an
+ * update replaced.
+ */
+async function saveStaleCredentials(provider: string): Promise<void> {
+  const state = getStateAdapter();
+  await withLock(
+    state,
+    updateLockKey(provider),
+    async (lock) => {
+      const key = serviceAccountKey(provider);
+      const current = await readEncryptedState(state, key);
+      const credentials = parseCredentials(current?.value);
+      if (!current?.stale || !credentials) return;
+      await fenceLock(state, lock);
+      await putMcpServiceAccountCredentials(provider, credentials);
+    },
+    { ttlMs: MUTATION_LOCK_TTL_MS },
   );
 }
 
@@ -98,9 +131,9 @@ export async function putMcpServiceAccountCredentials(
   provider: string,
   credentials: McpServiceAccountCredentials,
 ): Promise<void> {
-  await getStateAdapter().set(
+  await createEncryptedState(getStateAdapter()).set(
     serviceAccountKey(provider),
-    JSON.stringify(credentials),
+    credentials,
   );
 }
 
@@ -152,7 +185,7 @@ export function createMcpServiceAccountClientProvider(
     const state = getStateAdapter();
     const result = await withLock(
       state,
-      `${serviceAccountKey(provider)}:update`,
+      updateLockKey(provider),
       async (lock) => await run(() => fenceLock(state, lock)),
       { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: UPDATE_LOCK_WAIT_MS },
     );
@@ -274,39 +307,30 @@ function signInKey(state: string): string {
 }
 
 function parseSignIn(value: unknown): McpServiceAccountSignIn | undefined {
-  if (typeof value !== "string") {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.clientInformation) ||
+    typeof value.codeVerifier !== "string" ||
+    typeof value.provider !== "string" ||
+    typeof value.redirectUrl !== "string"
+  ) {
     return undefined;
   }
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (
-      !isRecord(parsed) ||
-      !isRecord(parsed.clientInformation) ||
-      typeof parsed.codeVerifier !== "string" ||
-      typeof parsed.provider !== "string" ||
-      typeof parsed.redirectUrl !== "string"
-    ) {
-      return undefined;
-    }
-    return {
-      clientInformation:
-        parsed.clientInformation as OAuthClientInformationMixed,
-      codeVerifier: parsed.codeVerifier,
-      ...(isRecord(parsed.discoveryState)
-        ? {
-            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
-          }
-        : undefined),
-      provider: parsed.provider,
-      redirectUrl: parsed.redirectUrl,
-      ...(typeof parsed.startedBy === "string"
-        ? { startedBy: parsed.startedBy }
-        : undefined),
-    };
-  } catch {
-    return undefined;
-  }
+  return {
+    clientInformation: value.clientInformation as OAuthClientInformationMixed,
+    codeVerifier: value.codeVerifier,
+    ...(isRecord(value.discoveryState)
+      ? {
+          // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+          discoveryState: value.discoveryState as OAuthDiscoveryState,
+        }
+      : undefined),
+    provider: value.provider,
+    redirectUrl: value.redirectUrl,
+    ...(typeof value.startedBy === "string"
+      ? { startedBy: value.startedBy }
+      : undefined),
+  };
 }
 
 /** Result of finishing a sign-in. A failure message is safe to show the Admin. */
@@ -397,16 +421,16 @@ export async function startMcpServiceAccountSignIn(input: {
   if (!authorizationUrl || !clientInformation || !codeVerifier) {
     throw new Error(`${provider} did not return an authorization URL`);
   }
-  await getStateAdapter().set(
+  await createEncryptedState(getStateAdapter()).set(
     signInKey(state),
-    JSON.stringify({
+    {
       clientInformation,
       codeVerifier,
       ...(discoveryState ? { discoveryState } : undefined),
       provider,
       redirectUrl: input.redirectUrl,
       ...(input.startedBy ? { startedBy: input.startedBy } : undefined),
-    } satisfies McpServiceAccountSignIn),
+    } satisfies McpServiceAccountSignIn,
     SIGN_IN_TTL_MS,
   );
   return { authorizationUrl };
@@ -427,7 +451,9 @@ export async function finishMcpServiceAccountSignIn(input: {
   const provider = input.plugin.manifest.name;
   const state = input.callback.get("state");
   const pending = state
-    ? parseSignIn(await getStateAdapter().get(signInKey(state)))
+    ? parseSignIn(
+        await createEncryptedState(getStateAdapter()).get(signInKey(state)),
+      )
     : undefined;
   if (
     !state ||

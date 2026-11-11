@@ -3,15 +3,24 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNeonJuniorSqlExecutor } from "@/db/neon";
 import { juniorConversations } from "@/db/schema";
+import { ErrorEvent } from "undici";
+import { logException } from "@/chat/logging";
 import { mswServer } from "../../msw/server";
 
 const CONNECTION_STRING =
   "postgresql://junior:secret@ep-overflow-test.test.aws.neon.tech/neondb";
 
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logException: vi.fn(),
+}));
+
 const wire = vi.hoisted(() => ({
   clientsOpened: 0,
   clientsReady: 0,
+  clientsClosed: 0,
   failNextConnect: false,
+  connectError: undefined as unknown,
   websocketQueries: [] as string[],
   httpQueries: [] as string[],
 }));
@@ -24,13 +33,13 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
   class FakeClient extends EventEmitter {
     _queryable = true;
     _ending = false;
-    connect(callback: (error?: Error) => void) {
+    connect(callback: (error?: unknown) => void) {
       wire.clientsOpened++;
       const failed = wire.failNextConnect;
       wire.failNextConnect = false;
       setImmediate(() => {
         if (failed) {
-          callback(new Error("connection refused"));
+          callback(wire.connectError ?? new Error("connection refused"));
           return;
         }
         wire.clientsReady++;
@@ -41,6 +50,9 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
       const config = typeof input === "string" ? { text: input } : input;
       wire.websocketQueries.push(config.text);
       await new Promise((resolve) => setImmediate(resolve));
+      if (config.text.includes("pg_try_advisory_lock")) {
+        return { command: "SELECT", rowCount: 1, rows: [{ locked: true }] };
+      }
       return {
         command: "SELECT",
         rowCount: 1,
@@ -52,6 +64,7 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
       };
     }
     end(callback?: () => void) {
+      wire.clientsClosed++;
       this._ending = true;
       callback?.();
     }
@@ -67,13 +80,25 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
   return { ...neon, Pool };
 });
 
+function createExecutor() {
+  return createNeonJuniorSqlExecutor({
+    connectionString: CONNECTION_STRING,
+    statementTimeoutMs: 30_000,
+  });
+}
+
+const POOL_IDLE_TIMEOUT_MS = 300_000;
+
 describe("Neon pool overflow", () => {
   let executor: ReturnType<typeof createNeonJuniorSqlExecutor>;
 
   beforeEach(() => {
     wire.clientsOpened = 0;
     wire.clientsReady = 0;
+    wire.clientsClosed = 0;
     wire.failNextConnect = false;
+    wire.connectError = undefined;
+    vi.mocked(logException).mockClear();
     wire.websocketQueries.length = 0;
     wire.httpQueries.length = 0;
     // The driver sends HTTP queries to the regional API host.
@@ -91,13 +116,11 @@ describe("Neon pool overflow", () => {
         });
       }),
     );
-    executor = createNeonJuniorSqlExecutor({
-      connectionString: CONNECTION_STRING,
-      statementTimeoutMs: 30_000,
-    });
+    executor = createExecutor();
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await executor.close();
   });
 
@@ -161,7 +184,9 @@ describe("Neon pool overflow", () => {
 
   it("keeps a failed background connect from failing queries", async () => {
     await executor.query("select 'warm'");
+    const cause = new Error("getaddrinfo ENOTFOUND ep-overflow-test");
     wire.failNextConnect = true;
+    wire.connectError = new ErrorEvent("error", { message: "", error: cause });
 
     const [first, second] = await Promise.all([
       executor.query<{ transport: string }>("select 1"),
@@ -172,11 +197,71 @@ describe("Neon pool overflow", () => {
       "http",
     ]);
     await vi.waitFor(() => expect(wire.clientsOpened).toBe(2));
+    await vi.waitFor(() =>
+      expect(logException).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: `WebSocket connect failed: ${cause.message}`,
+          cause,
+        }),
+        "db.pool.client.connect_failed",
+        expect.anything(),
+      ),
+    );
 
     // The pool still serves queries, and the next overflow grows it again.
     await Promise.all([executor.query("select 3"), executor.query("select 4")]);
     await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
     expect(wire.clientsOpened).toBe(3);
+  });
+
+  it("opens one client again after every client idles out", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await executor.query("select 'warm'");
+    await Promise.all([executor.query("select 1"), executor.query("select 2")]);
+    await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
+
+    // Clients that a burst opened stay open past one minute.
+    const oneMinuteMs = 60_000;
+    vi.advanceTimersByTime(oneMinuteMs);
+    expect(wire.clientsClosed).toBe(0);
+    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS - oneMinuteMs);
+
+    expect(wire.clientsClosed).toBe(2);
+    await vi.waitFor(() => expect(wire.clientsReady).toBe(3));
+
+    // The reopened client stays open past the next idle timeout.
+    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(wire.clientsClosed).toBe(2);
+    const [row] = await executor.query<{ transport: string }>("select 3");
+    expect(row?.transport).toBe("websocket");
+    expect(wire.clientsOpened).toBe(3);
+
+    // Closing the pool removes the last client without opening another.
+    const closing = executor;
+    executor = createExecutor();
+    await closing.close();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(wire.clientsClosed).toBe(3);
+    expect(wire.clientsOpened).toBe(3);
+  });
+
+  it("tries one reconnect when it fails", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await executor.query("select 'warm'");
+    await Promise.all([executor.query("select 1"), executor.query("select 2")]);
+    await vi.waitFor(() => expect(wire.clientsReady).toBe(2));
+    wire.failNextConnect = true;
+
+    vi.advanceTimersByTime(POOL_IDLE_TIMEOUT_MS);
+
+    await vi.waitFor(() => expect(wire.clientsOpened).toBe(3));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(wire.clientsOpened).toBe(3);
+    // The empty pool opens its next client inline.
+    const [row] = await executor.query<{ transport: string }>("select 3");
+    expect(row?.transport).toBe("websocket");
+    expect(wire.clientsOpened).toBe(4);
   });
 
   it("uses a free client while pg-pool hands another one over", async () => {
@@ -244,7 +329,7 @@ describe("Neon pool overflow", () => {
 
     expect(wire.clientsOpened).toBe(2);
     expect(wire.websocketQueries).toEqual([
-      "SELECT pg_advisory_lock(hashtext($1))",
+      "SELECT pg_try_advisory_lock(hashtext($1)) AS locked",
       "CREATE INDEX CONCURRENTLY example ON t (c)",
     ]);
     expect(wire.httpQueries).toEqual([]);

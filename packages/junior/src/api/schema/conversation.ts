@@ -36,7 +36,7 @@ export const conversationReportStatusSchema = z.enum([
 ]);
 
 /** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
-const conversationKindSchema = z.enum(["root", "thread", "task"]);
+const conversationKindSchema = z.enum(["root", "automation", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",
@@ -262,6 +262,9 @@ export const conversationSummaryReportSchema = z
     startedAt: z.string(),
     lastSeenAt: z.string(),
     lastProgressAt: z.string(),
+    // Feed rows only: the newest Message that a reader would notice
+    // (`refreshLastMessageAt`). The dashboard sorts and groups rows by it.
+    lastMessageAt: z.string().datetime().optional(),
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
     participants: z.array(actorIdentitySchema).optional(),
@@ -273,13 +276,6 @@ export const conversationSummaryReportSchema = z
     pinnedAt: z.string().datetime().nullable().optional(),
     /** The viewer's place in Pinned. Unset until they reorder their pins. */
     pinPosition: z.number().int().optional(),
-    /**
-     * True when the conversation is idle and Junior's latest reply that the
-     * transcript shows is after the viewer's read position. Quiet replies do
-     * not count. Opening the conversation does not move the position; reading
-     * in it, replying, archiving, or Mark as read does.
-     */
-    unread: z.boolean().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
@@ -308,6 +304,12 @@ export const conversationSummaryReportSchema = z
      */
     isPriority: z.boolean().optional(),
     unfinishedWork: z.boolean().optional(),
+    /**
+     * True on the conversation feed when a Turn in the conversation or a
+     * child waits on a person to finish an authorization that has not
+     * expired.
+     */
+    awaitingAuthorization: z.boolean().optional(),
   })
   .strict();
 
@@ -846,6 +848,11 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
     /** The viewer can move this dashboard conversation to a Slack thread. */
     canContinueInSlack: z.literal(true).optional(),
     /**
+     * Event Turn replies stay out of the Location. Set only for a root with
+     * a Location, when the viewer is a participant, who can change it.
+     */
+    deliveryPaused: z.boolean().optional(),
+    /**
      * The viewer gets this conversation in their active feed. Participants
      * only. False after an unsubscribe, until they mention Junior again.
      */
@@ -904,28 +911,6 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
   .strict()
   .superRefine(validateConversationEvents);
 
-/** A feed row, with its visible Threads nested under their parents. */
-export type ConversationFeedItem = ConversationSummaryReport & {
-  threads?: ConversationFeedItem[];
-};
-
-/**
- * A root in the feed, or one of its visible Threads. A Thread nests under
- * its nearest visible Thread ancestor, or under the root. Tasks never show.
- */
-const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
-  conversationSummaryReportSchema.extend({
-    threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
-  });
-
-export const conversationFeedSchema = z
-  .object({
-    conversations: z.array(conversationFeedItemSchema),
-    source: z.literal("conversation_index"),
-    generatedAt: z.string(),
-  })
-  .strict();
-
 export type ConversationReportStatus = z.infer<
   typeof conversationReportStatusSchema
 >;
@@ -970,7 +955,6 @@ export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema
 >;
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
-export type ConversationFeed = z.infer<typeof conversationFeedSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
 export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<

@@ -1,9 +1,17 @@
+import { createHash, randomBytes } from "node:crypto";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
+import { setConversationArchive } from "@/api/conversations/archive";
 import { NO_REPLY_GAP_MS } from "@/chat/cache-warming/model";
+import { getConversationStore } from "@/chat/db";
+import { createApp } from "@/app";
+import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { mockTitleModel } from "../../fixtures/title-model";
 
 const mocks = vi.hoisted(() => ({
   sendCacheWarmup: vi.fn(async (_message: unknown, _delayMs: number) => {}),
@@ -19,9 +27,18 @@ const { createCacheWarmingRecorder, runCacheWarmup } =
 
 const MINUTE = 60_000;
 const conversationId = "local:test:cache-warming-segments";
+// Only this Conversation has plugin work, so the other cases keep `none`.
+const workConversationId = "local:test:cache-warming-segments-work";
+const childConversationId = `${workConversationId}:child`;
+const openWorkConversationId = "local:test:cache-warming-segments-open";
 const model = resolveGatewayModel("anthropic/claude-opus-5.5");
+const runPrompt = { platform: "local", mode: "conversation" } as const;
+// Warmups compare the stored prompt with the prompt of this deployment.
 const context: Context = {
-  systemPrompt: "Answer the question.",
+  systemPrompt: await buildDeploymentSystemPrompt(
+    runPrompt.platform,
+    runPrompt.mode,
+  ),
   messages: [{ role: "user", content: "Hi.", timestamp: 1 }],
 };
 const finalReply: AssistantMessage = {
@@ -42,11 +59,36 @@ const finalReply: AssistantMessage = {
   timestamp: 1,
 };
 
-// Run one Turn that ends with a final reply, like one agent run does.
-async function endTurn(userActor: boolean) {
-  const recorder = createCacheWarmingRecorder(conversationId, userActor);
-  recorder.wrap((() => undefined) as never)(model, context, {});
+// Run one Turn that ends with a final response, like one agent run does.
+async function endTurn(
+  userActor: boolean,
+  id = conversationId,
+  turnContext = context,
+) {
+  const recorder = createCacheWarmingRecorder(id, userActor, runPrompt);
+  recorder.wrap((() => undefined) as never)(model, turnContext, {});
   await recorder.record(finalReply);
+}
+
+const toolCall = (name: string): AssistantMessage => ({
+  ...finalReply,
+  content: [{ type: "toolCall", id: name, name, arguments: {} }],
+  stopReason: "toolUse",
+});
+
+// Run one Turn that calls a tool and then an answer tool that ends the run,
+// like one agent run does.
+async function endTurnWithAnswerTool(toolName: string, gated: boolean) {
+  const recorder = createCacheWarmingRecorder(conversationId, true, runPrompt);
+  const stream = recorder.wrap((() => undefined) as never);
+  stream(model, context, {});
+  await recorder.record(toolCall("systemTime"));
+  recorder.toolsReturned();
+  vi.advanceTimersByTime(MINUTE);
+  stream(model, context, {});
+  await recorder.record(toolCall(toolName));
+  recorder.answerToolEnded(toolName, gated);
+  await recorder.stop();
 }
 
 function scheduledHorizon(): CacheWarmupMessage {
@@ -74,9 +116,14 @@ describe("cache warming gap segments", () => {
   afterEach(async () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
-    await getStateAdapter().delete(
-      `junior:cache_warming:conversation:${conversationId}`,
-    );
+    for (const id of [
+      conversationId,
+      workConversationId,
+      childConversationId,
+      openWorkConversationId,
+    ]) {
+      await getStateAdapter().delete(`junior:cache_warming:conversation:${id}`);
+    }
   });
 
   it("records each gap in the segment of the Turn that started the idle period", async () => {
@@ -91,16 +138,205 @@ describe("cache warming gap segments", () => {
     vi.advanceTimersByTime(7 * MINUTE);
     await endTurn(true);
 
-    expect(await segmentGaps("system:1")).toEqual([NO_REPLY_GAP_MS]);
-    expect(await segmentGaps("user:2-3")).toEqual([7 * MINUTE]);
-    expect(await segmentGaps("user:1")).toEqual([]);
+    expect(await segmentGaps("system:1:none")).toEqual([NO_REPLY_GAP_MS]);
+    expect(await segmentGaps("user:2-3:none")).toEqual([7 * MINUTE]);
+    expect(await segmentGaps("user:1:none")).toEqual([]);
     // The Conversation's own gaps are kept per segment too.
     expect(
-      await segmentGaps(`conversation:${conversationId}:system:1`),
+      await segmentGaps(`conversation:${conversationId}:system:1:none`),
     ).toEqual([NO_REPLY_GAP_MS]);
     expect(
-      await segmentGaps(`conversation:${conversationId}:user:2-3`),
+      await segmentGaps(`conversation:${conversationId}:user:2-3:none`),
     ).toEqual([7 * MINUTE]);
+  });
+
+  it.each(["noReply", "reportBlocked"])(
+    "starts an idle period from the %s call of a Turn outside an Automation run",
+    async (toolName) => {
+      vi.useFakeTimers();
+      mocks.sendCacheWarmup.mockClear();
+      try {
+        await endTurnWithAnswerTool(toolName, true);
+        expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
+
+        await endTurnWithAnswerTool(toolName, false);
+        scheduledWarmup();
+        // The person returns 4 minutes after the answer tool call.
+        vi.advanceTimersByTime(4 * MINUTE);
+        await endTurn(true);
+
+        expect(await segmentGaps("user:1:none")).toEqual([4 * MINUTE]);
+      } finally {
+        await getStateAdapter().delete("junior:cache_warming:gaps:user:1:none");
+        await getStateAdapter().delete(
+          `junior:cache_warming:gaps:conversation:${conversationId}:user:1:none`,
+        );
+      }
+    },
+  );
+
+  it("records each gap in the segment of the plugin work and archive state when the idle period started", async () => {
+    vi.useFakeTimers();
+    let work: { open: boolean; finishedAt: Record<string, string> } = {
+      open: false,
+      finishedAt: {
+        [workConversationId]: new Date(Date.now() - MINUTE).toISOString(),
+      },
+    };
+    await createApp({
+      dashboard: { disabled: true },
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "work",
+            displayName: "Work",
+            description: "Cache warming work test plugin",
+          },
+          hooks: {
+            unfinishedWork: () => ({
+              assignedConversationIds: [workConversationId],
+              conversationIds: work.open ? [workConversationId] : [],
+              finishedWorkAtByConversationId: work.finishedAt,
+            }),
+          },
+        }),
+      ]),
+    });
+    const store = getConversationStore();
+    await store.recordActivity({
+      conversationId: workConversationId,
+      destination: { platform: "local", conversationId: workConversationId },
+      source: "internal",
+    });
+
+    // The pull request merged a minute before the Turn ended, and nobody
+    // came back in the idle horizon.
+    await endTurn(false, workConversationId);
+    vi.advanceTimersByTime(56 * MINUTE);
+    await runCacheWarmup(scheduledHorizon());
+
+    // Junior opened another pull request, and the Conversation was archived.
+    // Its CI result starts a Turn 3 minutes after the Turn ended.
+    work = { open: true, finishedAt: {} };
+    const conversation = await store.get({
+      conversationId: workConversationId,
+    });
+    await setConversationArchive({
+      applyToChildren: false,
+      archived: true,
+      conversationId: workConversationId,
+      lastSeenAt: new Date(conversation!.lastActivityAtMs).toISOString(),
+    });
+    await endTurn(false, workConversationId);
+    vi.advanceTimersByTime(3 * MINUTE);
+    await endTurn(false, workConversationId);
+    // A child that starts after the archive is not archived itself, like the
+    // children of a root that auto-archive archived. It still counts as
+    // archived.
+    await store.createChild({
+      childConversationId,
+      kind: "task",
+      parentConversationId: workConversationId,
+    });
+    await endTurn(false, childConversationId);
+    vi.advanceTimersByTime(2 * MINUTE);
+    await endTurn(false, childConversationId);
+
+    expect(await segmentGaps("system:1:done")).toEqual([NO_REPLY_GAP_MS]);
+    expect(await segmentGaps("archived:open")).toEqual([3 * MINUTE]);
+    expect(await segmentGaps("archived:none")).toEqual([2 * MINUTE]);
+    expect(await segmentGaps("system:2-3:open")).toEqual([]);
+  });
+
+  it("warms a segment with no gaps of its own with the gaps of its parent", async () => {
+    const state = getStateAdapter();
+    await createApp({
+      dashboard: { disabled: true },
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "open-work",
+            displayName: "Open work",
+            description: "Cache warming parent prior test plugin",
+          },
+          hooks: {
+            unfinishedWork: () => ({
+              assignedConversationIds: [openWorkConversationId],
+              conversationIds: [openWorkConversationId],
+              finishedWorkAtByConversationId: {},
+            }),
+          },
+        }),
+      ]),
+    });
+    await getConversationStore().recordActivity({
+      conversationId: openWorkConversationId,
+      destination: {
+        platform: "local",
+        conversationId: openWorkConversationId,
+      },
+      source: "internal",
+    });
+    // People reply after 8 minutes in the `none` segment. The `open`
+    // segment has no gaps yet.
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mocks.sendCacheWarmup.mockClear();
+    try {
+      // The model service answers the warmup with fixed text.
+      const warmupRequests: unknown[] = [];
+      mockTitleModel("", {
+        onRequest: (request) => warmupRequests.push(request),
+      });
+      await endTurn(true, openWorkConversationId);
+      await runCacheWarmup(scheduledWarmup());
+
+      expect(await segmentGaps("user:1:open")).toEqual([]);
+      // Without the parent's gaps, the empty segment would skip the warmup.
+      expect(warmupRequests).toHaveLength(1);
+    } finally {
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      // The warmup counted an outcome for the provider breaker.
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
+    }
+  });
+
+  it("stops warming an idle period whose system prompt changed", async () => {
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mocks.sendCacheWarmup.mockClear();
+    try {
+      const warmupRequests: unknown[] = [];
+      mockTitleModel("", {
+        onRequest: (request) => warmupRequests.push(request),
+      });
+      // A deploy since the Turn changed the system prompt.
+      await endTurn(true, conversationId, {
+        ...context,
+        systemPrompt: "The system prompt of an older deployment.",
+      });
+      const warmup = scheduledWarmup();
+      await runCacheWarmup(warmup);
+
+      expect(warmupRequests).toEqual([]);
+      expect(
+        await state.get(
+          `junior:cache_warming:snapshot:${conversationId}:${warmup.generation}`,
+        ),
+      ).toBeNull();
+      expect(scheduledWarmup()).toBe(warmup);
+    } finally {
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+    }
   });
 
   it("does not record a no-reply gap after a reply recorded the real gap", async () => {
@@ -120,7 +356,7 @@ describe("cache warming gap segments", () => {
     });
     await runCacheWarmup(horizon);
 
-    expect(await segmentGaps("user:1")).toEqual([7 * MINUTE]);
+    expect(await segmentGaps("user:1:none")).toEqual([7 * MINUTE]);
   });
 
   it("drops a warmup that arrives after the cache expired without counting a miss", async () => {
@@ -128,7 +364,10 @@ describe("cache warming gap segments", () => {
     const state = getStateAdapter();
     // People in this segment reply after 8 minutes, so the model would warm.
     for (let i = 0; i < 20; i++) {
-      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
     }
     mocks.sendCacheWarmup.mockClear();
     await endTurn(true);
@@ -146,20 +385,23 @@ describe("cache warming gap segments", () => {
         "junior:cache_warming:breaker:anthropic:outcomes",
       ),
     ).toEqual([]);
-    await state.delete("junior:cache_warming:gaps:user:1");
+    await state.delete("junior:cache_warming:gaps:user:1:none");
   });
 
   it("sends no warmup while the reply's first request runs", async () => {
     const state = getStateAdapter();
     for (let i = 0; i < 20; i++) {
-      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
     }
     mocks.sendCacheWarmup.mockClear();
     try {
       await endTurn(true);
       const warmup = scheduledWarmup();
       // The person replies. The warmup comes due before the model call ends.
-      const reply = createCacheWarmingRecorder(conversationId, true);
+      const reply = createCacheWarmingRecorder(conversationId, true, runPrompt);
       reply.wrap((() => undefined) as never)(model, context, {});
       await vi.waitFor(async () => {
         expect(
@@ -178,14 +420,17 @@ describe("cache warming gap segments", () => {
         ),
       ).toBeNull();
     } finally {
-      await state.delete("junior:cache_warming:gaps:user:1");
+      await state.delete("junior:cache_warming:gaps:user:1:none");
     }
   });
 
   it("schedules the horizon when the warmup send fails", async () => {
     const state = getStateAdapter();
     for (let i = 0; i < 20; i++) {
-      await state.appendToList("junior:cache_warming:gaps:user:1", 8 * MINUTE);
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
     }
     mocks.sendCacheWarmup.mockClear();
     mocks.sendCacheWarmup.mockImplementation(async (message: unknown) => {
@@ -198,7 +443,111 @@ describe("cache warming gap segments", () => {
       expect(scheduledHorizon().conversationId).toBe(conversationId);
     } finally {
       mocks.sendCacheWarmup.mockImplementation(async () => {});
-      await state.delete("junior:cache_warming:gaps:user:1");
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+    }
+  });
+
+  it("warms an idle period whose request holds an image over the snapshot limit, up to the image limit", async () => {
+    const state = getStateAdapter();
+    for (let i = 0; i < 20; i++) {
+      await state.appendToList(
+        "junior:cache_warming:gaps:user:1:none",
+        8 * MINUTE,
+      );
+    }
+    mocks.sendCacheWarmup.mockClear();
+    // Random bytes do not compress, like a screenshot.
+    const randomImage = (bytes = 1024 * 1024) =>
+      randomBytes(bytes).toString("base64");
+    const imageKeyOf = (imageData: string) =>
+      `junior:cache_warming:image:${conversationId}:${createHash("sha256")
+        .update(imageData)
+        .digest("hex")}`;
+    const data = randomImage();
+    const imageKey = imageKeyOf(data);
+    // With `data`, 33.3 MiB of base64, over the 32 MiB image limit.
+    const moreImages = Array.from({ length: 3 }, () =>
+      randomImage(8 * 1024 * 1024),
+    );
+    const imageContext: Context = {
+      ...context,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "What is in this screenshot?" },
+            { type: "image", data, mimeType: "image/png" },
+          ],
+          timestamp: 1,
+        },
+      ],
+    };
+    const requests: Array<Record<string, unknown>> = [];
+    mockTitleModel("", {
+      onRequest: (request) => requests.push(request as Record<string, unknown>),
+    });
+    try {
+      // The Turn sends its request to the model service, like a run does.
+      const recorder = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        runPrompt,
+      );
+      await (await recorder.wrap()(model, imageContext, {})).result();
+      await recorder.record(finalReply);
+      const warmup = scheduledWarmup();
+      await runCacheWarmup(warmup);
+
+      // The warmup sends the cached prefix of the Turn's request unchanged.
+      expect(requests).toHaveLength(2);
+      const [turnRequest, warmupRequest] = requests;
+      expect(JSON.stringify(warmupRequest!.messages)).toContain(data);
+      for (const field of ["system", "messages", "tools"]) {
+        expect(JSON.stringify(warmupRequest![field])).toBe(
+          JSON.stringify(turnRequest![field]),
+        );
+      }
+
+      // The next idle period lost its image, so its warmup sends nothing.
+      await endTurn(true, conversationId, imageContext);
+      const next = scheduledWarmup();
+      await state.delete(imageKey);
+      await runCacheWarmup(next);
+      expect(requests).toHaveLength(2);
+      expect(
+        await state.get(
+          `junior:cache_warming:snapshot:${conversationId}:${next.generation}`,
+        ),
+      ).toBeNull();
+
+      // Images over their limit store nothing, so the idle period gets no
+      // warmup.
+      mocks.sendCacheWarmup.mockClear();
+      await endTurn(true, conversationId, {
+        ...imageContext,
+        messages: [
+          ...imageContext.messages,
+          {
+            role: "user",
+            content: moreImages.map((imageData) => ({
+              type: "image" as const,
+              data: imageData,
+              mimeType: "image/png",
+            })),
+            timestamp: 2,
+          },
+        ],
+      });
+      expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
+      for (const imageData of [data, ...moreImages]) {
+        expect(await state.get(imageKeyOf(imageData))).toBeNull();
+      }
+    } finally {
+      for (const imageData of [data, ...moreImages]) {
+        await state.delete(imageKeyOf(imageData));
+      }
+      await state.delete("junior:cache_warming:gaps:user:1:none");
+      await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
     }
   });
 
@@ -212,7 +561,11 @@ describe("cache warming gap segments", () => {
         `junior:cache_warming:conversation:${conversationId}`,
       );
       const base = vi.fn();
-      const recorder = createCacheWarmingRecorder(conversationId, true);
+      const recorder = createCacheWarmingRecorder(
+        conversationId,
+        true,
+        runPrompt,
+      );
       recorder.wrap(base as never)(
         resolveGatewayModel(modelId),
         context,

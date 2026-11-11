@@ -208,8 +208,8 @@ export function canAccessConversation(args: {
   ) {
     return true;
   }
-  // Everyone who can see one Conversation at a Destination, such as a Slack
-  // channel, can see every other one there.
+  // Conversations share a Destination only when they have the same
+  // audience, so no data leaves that audience. No provider check belongs here.
   if (
     requester.destinationId !== undefined &&
     requester.destinationId === target.destinationId

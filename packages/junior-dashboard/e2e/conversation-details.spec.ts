@@ -106,15 +106,17 @@ test("opens conversation details beside the chat", async ({
     });
   });
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Share", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Share", exact: true }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "Could not copy the link" }),
   ).toBeAttached();
   await page.evaluate(() =>
     Reflect.deleteProperty(navigator.clipboard, "writeText"),
   );
-  await page.getByRole("button", { name: "Copy failed — retry" }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Copy failed — retry" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Link copied" }),
+  ).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );
@@ -153,12 +155,12 @@ test("opens conversation details beside the chat", async ({
   await expect(details).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await expect(
-    page.getByRole("button", { name: "Open event log", exact: true }),
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Share", exact: true }).focus();
+  await page.getByRole("menuitem", { name: "Share", exact: true }).focus();
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("button", { name: "Open event log", exact: true }),
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
   ).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Conversation menu" }),
@@ -170,8 +172,10 @@ test("opens conversation details beside the chat", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await screenshot(page, "conversation-share-menu", { view: "mobile" });
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Link copied" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Share", exact: true }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Link copied" }),
+  ).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
     conversationUrl,
   );

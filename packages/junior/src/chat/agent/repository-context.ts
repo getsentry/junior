@@ -131,7 +131,7 @@ export function createRepositoryInstructionsContext(
       : buildAgentsInstructionsMessage({ text: AGENTS_REMOVAL_NOTICE });
     const messages = [...(currentContext.messages as PiMessage[]), message];
     options.setMessages(messages);
-    // A final reply is committed directly after the current history, so
+    // A final response is committed directly after the current history, so
     // this message must be committed first.
     await options.commit(messages);
     visibleFingerprint = instructions?.fingerprint;

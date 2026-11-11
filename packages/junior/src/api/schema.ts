@@ -7,7 +7,10 @@ export {
   MAX_INPUT_IMAGE_BYTES,
 } from "../chat/attachments/input";
 export type { InputImage, MessageAttachment } from "../chat/attachments/input";
-export { isAgentInvocationResultEventType } from "../chat/agent-invocations/result-event-type";
+export {
+  AGENT_REPLY_EVENT_TYPE,
+  isAgentInvocationResultEventType,
+} from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,
@@ -22,13 +25,12 @@ export type {
 } from "../chat/tools/runtime/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
+export type { AutomationTask } from "../chat/automations/task";
 export {
   messageCardText,
   resolveMessageCards,
 } from "../chat/conversations/cards";
 export type { MessageCard } from "../chat/conversations/cards";
-export { boardReportSchema } from "./schema/board";
-export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
@@ -64,7 +66,6 @@ export {
   conversationEventHistorySchema,
   conversationEventsQuerySchema,
   conversationFeedQuerySchema,
-  conversationFeedSchema,
   conversationParamsSchema,
   conversationActivityPreviewSchema,
   conversationReportEventDataSchema,
@@ -87,6 +88,11 @@ export {
   conversationDetailWithMailboxReportSchema,
   conversationUnchangedDetailWithMailboxSchema,
 } from "./schema/conversation-pending-messages";
+export { conversationFeedSchema } from "./schema/conversation-feed";
+export type {
+  ConversationFeed,
+  ConversationFeedItem,
+} from "./schema/conversation-feed";
 export {
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -116,14 +122,8 @@ export type {
   ContinueConversationInSlackResponse,
 } from "./schema/conversation-continue-in-slack";
 export type { StopConversationTurnResponse } from "./schema/conversation-stop";
-export {
-  conversationReadPositionSchema,
-  conversationReadReportSchema,
-} from "./schema/conversation-read-position";
-export type {
-  ConversationReadPosition,
-  ConversationReadReport,
-} from "./schema/conversation-read-position";
+export { conversationReadPositionSchema } from "./schema/conversation-read-position";
+export type { ConversationReadPosition } from "./schema/conversation-read-position";
 export {
   conversationCatchUpBodySchema,
   conversationCatchUpSchema,
@@ -145,6 +145,14 @@ export type {
   ReorderPinnedConversationsResponse,
 } from "./schema/conversation-pin";
 export {
+  conversationDeliveryBodySchema,
+  conversationDeliveryResponseSchema,
+} from "./schema/conversation-delivery";
+export type {
+  ConversationDeliveryBody,
+  ConversationDeliveryResponse,
+} from "./schema/conversation-delivery";
+export {
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
@@ -152,14 +160,6 @@ export type {
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
-export {
-  conversationUnreadSchema,
-  markConversationUnreadBodySchema,
-} from "./schema/conversation-unread";
-export type {
-  ConversationUnread,
-  MarkConversationUnreadBody,
-} from "./schema/conversation-unread";
 export {
   CONVERSATION_OUTLINE_TEXT_LENGTH,
   conversationOutlineSchema,
@@ -184,8 +184,6 @@ export type {
   ConversationDetailReport,
   ConversationEventPage,
   ConversationEventHistory,
-  ConversationFeed,
-  ConversationFeedItem,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportMessageEvent,
@@ -342,7 +340,6 @@ export type {
   AutomationEdit,
   AutomationUpdate,
   AutomationExecution,
-  AutomationExecutionDay,
   AutomationExecutionList,
   AutomationExecutionStatusDay,
   AutomationList,
@@ -354,6 +351,11 @@ export type {
   AutomationVersionList,
   ListedAutomationVersion,
 } from "./schema/automation";
+export { replyTimeSegmentsReportSchema } from "./schema/reply-times";
+export type {
+  ReplyTimeHistogram,
+  ReplyTimeSegmentsReport,
+} from "./schema/reply-times";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {
@@ -365,6 +367,7 @@ export {
   pluginSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportSchema,
   skillReportsSchema,
 } from "../reporting-schema";
@@ -377,6 +380,7 @@ export type {
   Plugin,
   Plugins,
   RuntimeInfoReport,
+  SkillDetailReport,
   SkillReport,
   SkillReports,
 } from "../reporting-schema";

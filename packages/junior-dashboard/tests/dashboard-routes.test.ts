@@ -400,6 +400,7 @@ describe("dashboard routes", () => {
       "/api/runtime",
       "/api/plugins",
       "/api/skills",
+      "/api/skills/self-update",
       "/api/conversations",
       "/api/conversations/stats",
       "/api/people",

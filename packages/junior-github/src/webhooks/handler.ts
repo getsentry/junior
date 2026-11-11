@@ -10,6 +10,7 @@ import type {
   PluginRoute,
   EventInput,
   EventPublisher,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
@@ -33,6 +34,7 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
+import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
@@ -43,10 +45,12 @@ import {
   loadGitHubMergeConflictEvents,
   type GitHubPullRequestRef,
 } from "./merge-conflict.js";
+import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhooks.js";
 import {
   pullRequestReadyTargets,
   syncGitHubPullRequestReadyNotices,
 } from "./pull-request-ready.js";
+import { syncGitHubPullRequestReviewRequest } from "./pull-request-review-request.js";
 import {
   withGitHubPullRequestMatchData,
   type GitHubRoleTarget,
@@ -113,22 +117,26 @@ function webhookInstallationId(body: unknown): number | undefined {
 /** The pull request comment data that the feedback reaction needs. */
 const feedbackTargetSchema = z.object({
   commentId: z.number(),
-  commentKind: z.enum(["conversation", "review"]),
+  commentKind: z.enum(["conversation", "review", "review_body"]),
+  pullRequest: z.number(),
   repo: z.string().min(1),
 });
 type FeedbackTarget = z.output<typeof feedbackTargetSchema>;
 
-/** Return comment-level pull request feedback that the webhook can mark. */
+/**
+ * Return pull request feedback that the webhook can mark. Only comments and
+ * reviews with a body set `commentId`. An approval with a body is also sent
+ * as `review.commented`, and the first match marks it once.
+ */
 function pullRequestFeedbackTarget(
   events: EventInput[],
 ): FeedbackTarget | undefined {
-  const event = events.find(
-    (candidate) =>
-      candidate.eventType === "pull_request.comment.created" ||
-      candidate.eventType === "pull_request.review_comment.created",
-  );
-  const parsed = feedbackTargetSchema.safeParse(event?.data);
-  return parsed.success ? parsed.data : undefined;
+  for (const event of events) {
+    if (!event.eventType.startsWith("pull_request.")) continue;
+    const parsed = feedbackTargetSchema.safeParse(event.data);
+    if (parsed.success) return parsed.data;
+  }
+  return undefined;
 }
 
 function githubCodeChange(
@@ -187,6 +195,7 @@ export function createGitHubWebhookRoute(args: {
   privateKeyEnv: string;
   events: EventPublisher;
   reviewItems: PluginConversationReviewItems;
+  state: PluginState;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -213,6 +222,17 @@ export function createGitHubWebhookRoute(args: {
       }
       if (webhookInstallationId(body) !== installationId) {
         return new Response("Ignored", { status: 202 });
+      }
+      if (eventName === "push") {
+        const scheduled = await scheduleGitHubPushConflictCheck({
+          body,
+          db: args.db,
+          now: new Date(),
+          state: args.state,
+        });
+        return new Response(scheduled ? "Accepted" : "Ignored", {
+          status: 202,
+        });
       }
       const botEmail = args.botEmail();
       const pullRequestOutcome =
@@ -328,6 +348,13 @@ export function createGitHubWebhookRoute(args: {
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
         });
+      }
+      const pullRequestActivity = normalizeGitHubPullRequestActivity({
+        body,
+        eventName,
+      });
+      if (pullRequestActivity) {
+        await args.codeChanges.recordActivity(pullRequestActivity);
       }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
@@ -455,6 +482,15 @@ export function createGitHubWebhookRoute(args: {
         log: args.log,
         reviewItems: args.reviewItems,
         targets: pullRequestReadyTargets(eventName, body),
+      });
+      await syncGitHubPullRequestReviewRequest({
+        body,
+        db: args.db,
+        deliveryId,
+        eventName,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        reviewItems: args.reviewItems,
       });
       if (
         !pullRequestOutcome &&

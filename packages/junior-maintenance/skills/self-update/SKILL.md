@@ -1,6 +1,7 @@
 ---
 name: self-update
-description: Update this junior-prod app to the latest published Junior release. Use when asked to self-update Junior, bump @sentry/junior and @sentry/junior-* dependencies, run safety checks, and open a draft PR.
+description: Update this junior-prod app to the latest published Junior release. Use when asked to self-update Junior, bump @sentry/junior and @sentry/junior-* dependencies, run safety checks, and open a PR ready for review.
+disable-model-invocation: true
 ---
 
 ## Workflow
@@ -34,9 +35,9 @@ pnpm view <package>@<target> version
 
 Allow for npm security scanning and propagation delays after publication:
 
-- If a version or tarball is missing, retry affected packages after 30, 60, and 120 seconds. Keep the same target; do not retry auth failures as publication delays.
-- Confirm missing versions with cache-busted npm metadata and the direct version endpoint. Continue only when every package's exact target version and tarball are available.
-- If still unavailable, leave app files unchanged and do not open an update PR. Report "not yet available on npm" with the target, affected packages, and checks. Missing packages alone do not prove a failed publish or a scanning delay; do not republish or cut another release.
+- Confirm missing versions with cache-busted npm metadata and the direct version endpoint. Continue only when every package's exact target version and tarball are available. Do not retry auth failures as publication delays.
+- If any package is missing, leave app files unchanged. Call `watchTimer` with `after_ms: 900000` (15 minutes). Start its intent with `Run $self-update for target <target>`, so the timer Turn loads this skill, then name the missing packages and the wait number (for example `wait 1 of 4`). After `watchTimer` succeeds, end the Turn without a message in a separate call: in an Automation run, call `finishAutomationRun` with `no_action`; otherwise call `noReply`. If `watchTimer` fails, report the failure instead. When the timer fires, check the same target again.
+- Wait at most 4 times (one hour). If a package is still missing after the fourth wait, do not open an update PR. Report "not yet available on npm" with the target, affected packages, and checks. Missing packages alone do not prove a failed publish or a scanning delay; do not republish or cut another release.
 
 ### 3. Build release context
 
@@ -51,7 +52,7 @@ pnpm view '@sentry/junior@><old_version> <=<target_version>' version --json
 gh release view <version> --repo getsentry/junior --json tagName,name,body,publishedAt,url
 ```
 
-Collect the corresponding release bodies. Stop if any expected GitHub release is missing; do not substitute another source. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, keep the PR draft and call out manual review, but continue the update.
+Collect the corresponding release bodies. Stop if any expected GitHub release is missing; do not substitute another source. Save the target release's `publishedAt` as `target_published_at` for step 7. Save total change count, breaking changes (`Breaking Changes`, `!`, or `BREAKING CHANGE`), and config-relevant items (`config`, `plugins`, `nitro`, `createApp`, `runtime`, `credentials`, `egress`, `example`). If any breaking change exists, call out manual review, but continue the update.
 
 ### 4. Create or reuse branch
 
@@ -125,19 +126,15 @@ Update the Junior runtime and plugin packages to <target> and refresh the pnpm l
 
 Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
-### 10. Push and open/update draft PR
+### 10. Push and open/update PR
 
-Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Do not put `Checks`, `Verification`, `Test plan`, or similar validation sections in the PR body; put local check results in the final user report only. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open the PR ready for review, not as a draft. If an existing update PR is a draft, mark it ready for review. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Do not put `Checks`, `Verification`, `Test plan`, or similar validation sections in the PR body; put local check results in the final user report only. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
 
-## Automatic updates from GitHub releases
-
-When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event automation on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event automation for ongoing automation; use a temporary watch only when following one manually initiated update.
-
 ## Stop conditions
 
-- Any Junior package still lacks the target version or tarball after the bounded availability checks in step 2.
+- Any Junior package still lacks the target version or tarball after one hour of waits in step 2.
 - Any npm version in `(old_version, target_version]` lacks a matching GitHub release.
 - `pnpm install --frozen-lockfile` fails after repair.
 - Checks fail for non-pre-existing, non-environment reasons and no safe config fix is available from step 7.

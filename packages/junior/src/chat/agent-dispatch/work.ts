@@ -71,6 +71,14 @@ type DispatchRoutingContext = Pick<
   "credentialContext" | "dispatch" | "surface"
 > & { actor: DispatchRecord["actor"] };
 
+/** Return whether a dispatch is a Scheduled or Event automation run. */
+function isAutomationRun(dispatch: Pick<DispatchRecord, "source">): boolean {
+  return (
+    dispatch.source.kind === "scheduled_automation" ||
+    dispatch.source.kind === "event_automation"
+  );
+}
+
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
 export function buildDispatchRoutingContext(
   dispatch: DispatchRecord,
@@ -88,10 +96,8 @@ export function buildDispatchRoutingContext(
       plugin: dispatch.plugin,
       replyAttribution: dispatch.replyAttribution,
       outcomes: dispatch.outcomes,
-      ...(dispatch.source.kind === "scheduled_automation" ||
-      dispatch.source.kind === "event_automation"
-        ? { declaresResult: true }
-        : undefined),
+      ...(dispatch.skill ? { skill: dispatch.skill } : undefined),
+      ...(isAutomationRun(dispatch) ? { declaresResult: true } : undefined),
     },
     surface: "api",
   };
@@ -165,6 +171,7 @@ export async function enqueueAgentDispatch(
     activityAtMs: claimedDispatch.createdAtMs,
     conversationId: getDispatchConversationId(claimedDispatch),
     destination: claimedDispatch.destination,
+    kind: isAutomationRun(claimedDispatch) ? "automation" : "root",
     nowMs,
     source: "plugin",
     sessionSource: claimedDispatch.source,

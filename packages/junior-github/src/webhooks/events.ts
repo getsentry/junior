@@ -18,9 +18,16 @@ import {
 } from "./check-suite.js";
 import {
   definedValues,
+  gitHubDoneBy,
   gitHubEventKey,
+  gitHubSenderData,
+  gitHubSenderSchema,
+  nonBlank,
+  providerTime,
   pullRequestTargets,
+  titleAndBodyText,
 } from "./event-targets.js";
+import { normalizeIssueUpdateEvents } from "./issue-update.js";
 import { isBotLogin, mentionsBotLogin } from "./ownership.js";
 
 export type {
@@ -37,19 +44,6 @@ export {
   parseCheckSuitePublishTargets,
   selectFailingChecks,
 } from "./check-suite.js";
-
-/** The GitHub user who did what an Event describes, when GitHub names one. */
-function gitHubDoneBy(
-  login: string | undefined,
-): Pick<EventInput, "doneBy"> | undefined {
-  const handle = login?.trim();
-  return handle ? { doneBy: { provider: "github", handle } } : undefined;
-}
-
-/** The text of a webhook value, or undefined when it is missing or blank. */
-function nonBlank(value: string | null | undefined): string | undefined {
-  return value?.trim() || undefined;
-}
 
 const repositorySchema = z
   .object({ full_name: z.string().min(1) })
@@ -294,13 +288,6 @@ const gitHubUserSchema = z.object({
   login: z.string().nullish(),
 });
 
-/**
- * The user who sent a webhook. GitHub authenticates this user, so on a comment
- * or review it is the author. Match on the numeric id; logins can be renamed
- * and reused.
- */
-const senderSchema = z.object({ id: z.number(), login: z.string().min(1) });
-
 const commentSchema = z.object({
   body: z.string(),
   id: z.number(),
@@ -320,15 +307,14 @@ const commentAuthorDataSchema = z.object({
  */
 function commentAuthorData(input: {
   botEmail: string | undefined;
-  sender: z.output<typeof senderSchema> | undefined;
+  sender: z.output<typeof gitHubSenderSchema> | undefined;
   text: string | null | undefined;
 }) {
   return {
     mentionsBot: input.botEmail
       ? mentionsBotLogin(input.text ?? "", input.botEmail)
       : undefined,
-    senderId: input.sender?.id,
-    senderLogin: input.sender?.login,
+    ...gitHubSenderData(input.sender),
   };
 }
 
@@ -354,7 +340,7 @@ const pullRequestEventDataSchema = commentAuthorDataSchema
     openerEmail: z.string().min(1).optional(),
     openerUsername: z.string().min(1).optional(),
     commentId: z.number().optional(),
-    commentKind: z.enum(["conversation", "review"]).optional(),
+    commentKind: z.enum(["conversation", "review", "review_body"]).optional(),
   })
   .strict();
 
@@ -407,7 +393,7 @@ const issueCommentWebhookSchema = z.object({
     user: gitHubUserSchema.nullish(),
   }),
   repository: repositorySchema,
-  sender: senderSchema.optional(),
+  sender: gitHubSenderSchema.optional(),
 });
 
 /** Normalize a newly created issue or pull request comment. */
@@ -485,20 +471,14 @@ const issueWebhookSchema = z.object({
   repository: repositorySchema,
 });
 
-/** The title and body of an issue or pull request, as untrusted text. */
-function titleAndBodyText(item: {
-  body?: string | null;
-  title?: string;
-}): string | undefined {
-  const parts = [
-    item.title ? `Title: ${item.title}` : undefined,
-    nonBlank(item.body),
-  ].filter((part): part is string => part !== undefined);
-  return parts.length > 0 ? parts.join("\n\n") : undefined;
-}
-
-/** Normalize issue lifecycle changes for the issue and its repository. */
-function normalizeIssueEvents(deliveryId: string, body: unknown): EventInput[] {
+/** Normalize issue lifecycle changes and updates for the issue and its repository. */
+function normalizeIssueEvents(
+  deliveryId: string,
+  body: unknown,
+  botEmail: string | undefined,
+): EventInput[] {
+  const updates = normalizeIssueUpdateEvents(deliveryId, body, botEmail);
+  if (updates) return updates;
   const parsed = issueWebhookSchema.safeParse(body);
   if (!parsed.success) return [];
   const state =
@@ -543,7 +523,7 @@ const pullRequestReviewCommentWebhookSchema = z.object({
   comment: commentSchema,
   pull_request: pullRequestSchema,
   repository: repositorySchema,
-  sender: senderSchema.optional(),
+  sender: gitHubSenderSchema.optional(),
 });
 
 /** Normalize a newly created inline pull request review comment. */
@@ -592,10 +572,13 @@ const pullRequestReviewWebhookSchema = z.object({
   repository: repositorySchema,
   review: z.object({
     body: z.string().optional().nullable(),
+    // Only the feedback reaction needs the id, so a review without one is
+    // still delivered.
+    id: z.number().optional(),
     state: z.string(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
-  sender: senderSchema.optional(),
+  sender: gitHubSenderSchema.optional(),
 });
 
 /** Normalize a submitted pull request review into its review-state event. */
@@ -637,7 +620,12 @@ function normalizePullRequestReviewEvent(
           : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
     ...gitHubDoneBy(reviewer),
     data: pullRequestEventData({
-      comment: commentAuthorData({ botEmail, sender, text: review.body }),
+      comment: {
+        ...(review.id !== undefined && nonBlank(review.body)
+          ? { commentId: review.id, commentKind: "review_body" as const }
+          : undefined),
+        ...commentAuthorData({ botEmail, sender, text: review.body }),
+      },
       pullRequest,
       repo,
     }),
@@ -674,13 +662,6 @@ const pullRequestWebhookSchema = z.object({
   }),
   repository: repositorySchema,
 });
-
-/** Convert an optional provider timestamp for receipt-time fallback ordering. */
-function providerTime(value: string | null | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 /** Normalize pull request opened, ready-for-review, and terminal lifecycle events. */
 function normalizePullRequestEvent(
@@ -879,7 +860,7 @@ export function normalizeGitHubEvents(args: {
     case "pull_request":
       return normalizePullRequestEvent(args.deliveryId, args.body);
     case "issues":
-      return normalizeIssueEvents(args.deliveryId, args.body);
+      return normalizeIssueEvents(args.deliveryId, args.body, args.botEmail);
     case "pull_request_review":
       return normalizePullRequestReviewEvent(
         args.deliveryId,

@@ -1,4 +1,4 @@
-import { useMemo, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type {
   AutomationExecution,
   AutomationExecutionList,
@@ -10,6 +10,7 @@ import { useAutomationExecutionsData } from "../../api";
 import { Button } from "../../components/ui/button";
 import { FilterTabList } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
+import { ListPanelFrame } from "../../components/layout/ListPanelFrame";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusDot } from "../../components/StatusDot";
@@ -29,7 +30,6 @@ import { cn } from "../../styles";
 import { AutomationExecutionStatusChart } from "./AutomationExecutionStatusChart";
 import {
   AutomationRunDetails,
-  AutomationRunsFrame,
   RunConversationLink,
   useAutomationRunSelection,
 } from "./AutomationRunDetails";
@@ -85,11 +85,10 @@ export function AutomationRunsTab(props: {
     executions.map((execution) => execution.executionId),
   );
   return (
-    <AutomationRunsFrame
+    <ListPanelFrame
       details={
         selection.runId ? (
           <AutomationRunDetails
-            key={selection.runId}
             loading={!query.data && !query.error}
             onClose={selection.close}
             run={runs.find((run) => run.executionId === selection.runId)}
@@ -106,7 +105,6 @@ export function AutomationRunsTab(props: {
           data={query.data}
           executions={executions}
           onResultChange={setResult}
-          onRowsKeyDown={selection.onRowsKeyDown}
           onSelect={selection.toggle}
           range={props.range}
           result={result}
@@ -120,7 +118,7 @@ export function AutomationRunsTab(props: {
       ) : (
         <PageContentSkeleton label="Loading runs" variant="list" />
       )}
-    </AutomationRunsFrame>
+    </ListPanelFrame>
   );
 }
 
@@ -128,7 +126,6 @@ function AutomationRunsView(props: {
   data: AutomationExecutionList;
   executions: AutomationExecution[];
   onResultChange(value: (typeof RESULT_OPTIONS)[number]): void;
-  onRowsKeyDown(event: KeyboardEvent<HTMLElement>): void;
   onSelect(executionId: string): void;
   range: TimeRangeDays;
   result: (typeof RESULT_OPTIONS)[number];
@@ -153,6 +150,7 @@ function AutomationRunsView(props: {
             emptySixHour: (date) => ({
               blocked: 0,
               completed: 0,
+              costUsd: 0,
               date,
               failed: 0,
             }),
@@ -204,11 +202,7 @@ function AutomationRunsView(props: {
                 <div>Tokens</div>
                 <div>Cost</div>
               </div>
-              <div
-                className="min-w-0"
-                onKeyDown={props.onRowsKeyDown}
-                role="list"
-              >
+              <div className="min-w-0" role="list">
                 {props.executions.map((execution) => (
                   <ExecutionRow
                     execution={execution}

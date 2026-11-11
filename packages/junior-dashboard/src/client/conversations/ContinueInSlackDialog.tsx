@@ -85,6 +85,9 @@ export function ContinueInSlackDialog(props: {
         }),
       ]),
   });
+  const submit = () => {
+    if (selected && !move.isPending) move.mutate(selected);
+  };
   const error = move.error
     ? (move.error instanceof DashboardApiError && move.error.apiError) ||
       "Could not move the conversation. Try again."
@@ -130,7 +133,7 @@ export function ContinueInSlackDialog(props: {
             className="grid gap-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (selected && !move.isPending) move.mutate(selected);
+              submit();
             }}
           >
             <DialogTitle>Continue in Slack</DialogTitle>
@@ -143,6 +146,15 @@ export function ContinueInSlackDialog(props: {
                 disablePointerSelection
                 label="Channel"
                 loop
+                onKeyDown={(event) => {
+                  // cmdk takes Enter to pick the row. The row is already
+                  // picked, so Enter and Cmd/Ctrl+Enter move instead.
+                  if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+                    return;
+                  }
+                  event.preventDefault();
+                  submit();
+                }}
                 onValueChange={setLocationId}
                 shouldFilter={false}
                 value={selected}

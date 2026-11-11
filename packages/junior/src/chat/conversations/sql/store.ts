@@ -19,7 +19,7 @@ import type {
   Conversation,
   ConversationExecution,
   ConversationRunMetrics,
-  ConversationKind,
+  ChildConversationKind,
   ConversationSource,
   ConversationStatus,
   ConversationStore,
@@ -50,6 +50,7 @@ import {
 } from "./location";
 import { conversationKindFromRow } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
@@ -179,13 +180,11 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(dcramer): Remove the awaiting_resume name after the release that stops
-// writing it is the oldest deployed worker. Migration 0089 renamed older rows.
 function executionStatusFromValue(value: unknown): ConversationStatus {
-  if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
     value === "failed" ||
     value === "idle" ||
+    value === "paused" ||
     value === "pending" ||
     value === "running"
   ) {
@@ -298,6 +297,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(msFromDate(row.stoppedAt) !== undefined
       ? { stoppedAtMs: msFromDate(row.stoppedAt) }
       : undefined),
+    ...(msFromDate(row.deliveryPausedAt) !== undefined
+      ? { deliveryPausedAtMs: msFromDate(row.deliveryPausedAt) }
+      : undefined),
     ...(visibility ? { visibility } : undefined),
   };
 }
@@ -305,6 +307,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 function emptyConversation(args: {
   conversationId: string;
   destination?: Destination;
+  kind?: "root" | "automation";
   nowMs: number;
   source?: ConversationSource;
   sessionSource?: SessionSource;
@@ -313,7 +316,7 @@ function emptyConversation(args: {
     schemaVersion: 1,
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
-    kind: "root",
+    kind: args.kind ?? "root",
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -360,7 +363,7 @@ export class SqlStore implements ConversationStore {
 
   async createChild(args: {
     childConversationId: string;
-    kind: Exclude<ConversationKind, "root">;
+    kind: ChildConversationKind;
     parentConversationId: string;
     nowMs?: number;
     source?: ConversationSource;
@@ -446,6 +449,7 @@ export class SqlStore implements ConversationStore {
     sessionSource?: Source;
     title?: string;
     visibility?: ConversationPrivacy;
+    kind?: "root" | "automation";
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -466,6 +470,7 @@ export class SqlStore implements ConversationStore {
         emptyConversation({
           conversationId: args.conversationId,
           destination: args.destination,
+          kind: args.kind,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),
@@ -769,7 +774,9 @@ export class SqlStore implements ConversationStore {
     destinationId?: string;
   }): Promise<void> {
     const { conversation } = args;
-    if ((conversation.kind === "root") !== !conversation.parentConversationId) {
+    if (
+      isTopLevelKind(conversation.kind) !== !conversation.parentConversationId
+    ) {
       throw new Error(
         `Conversation ${conversation.conversationId} kind does not match its parent`,
       );

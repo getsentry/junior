@@ -4,13 +4,14 @@ import { Check, CircleAlert, Copy } from "lucide-react";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-/** Copy available text and show whether the clipboard write succeeded. */
-export function CopyButton(props: {
+/**
+ * Copy available text and name the result: the label and icon change while
+ * the copy runs and after it ends.
+ */
+export function useCopyText(props: {
   getText?: () => Promise<string> | string;
   label: string;
   copyingLabel?: string;
-  /** `menu` shows icon + label for mobile overflow lists. */
-  layout?: "icon" | "menu";
 }) {
   const [status, setStatus] = useState<
     "copied" | "copying" | "failed" | "idle"
@@ -23,14 +24,14 @@ export function CopyButton(props: {
         : status === "failed"
           ? "Copy failed"
           : props.label;
-  const Icon = {
+  const icon = {
     copied: Check,
     copying: Copy,
     failed: CircleAlert,
     idle: Copy,
   }[status];
 
-  async function copyText() {
+  async function copy() {
     if (!props.getText) return;
 
     try {
@@ -42,19 +43,22 @@ export function CopyButton(props: {
     }
   }
 
-  if (props.layout === "menu") {
-    return (
-      <Button
-        aria-label={label}
-        disabled={!props.getText || status === "copying"}
-        onClick={() => void copyText()}
-        size="menu"
-      >
-        <Icon aria-hidden="true" size={16} strokeWidth={2} />
-        <span>{label}</span>
-      </Button>
-    );
-  }
+  return {
+    copy,
+    disabled: !props.getText || status === "copying",
+    failed: status === "failed",
+    icon,
+    label,
+  };
+}
+
+/** Copy available text and show whether the clipboard write succeeded. */
+export function CopyButton(props: {
+  getText?: () => Promise<string> | string;
+  label: string;
+  copyingLabel?: string;
+}) {
+  const { copy, disabled, failed, icon: Icon, label } = useCopyText(props);
 
   return (
     <Tooltip>
@@ -63,13 +67,13 @@ export function CopyButton(props: {
           <Button
             focusableWhenDisabled
             aria-label={label}
-            disabled={!props.getText || status === "copying"}
-            onClick={() => void copyText()}
+            disabled={disabled}
+            onClick={() => void copy()}
             size="icon"
           >
             <Icon
               aria-hidden="true"
-              className={status === "failed" ? "text-rose-300" : undefined}
+              className={failed ? "text-rose-300" : undefined}
               size={15}
               strokeWidth={2}
             />

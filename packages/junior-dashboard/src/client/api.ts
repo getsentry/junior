@@ -6,7 +6,6 @@ import {
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
-  boardReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
@@ -20,6 +19,7 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
+  replyTimeSegmentsReportSchema,
   automationExecutionListSchema,
   automationListSchema,
   automationSummarySchema,
@@ -29,6 +29,7 @@ import {
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
 import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
@@ -135,16 +136,6 @@ export function useCodeOverviewData() {
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
-    retry: false,
-  });
-}
-
-/** Fetch the viewer's Board of code changes and tickets. */
-export function useBoardData() {
-  return useQuery({
-    queryKey: ["dashboard", "board"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(boardReportSchema, "/api/board", signal),
     retry: false,
   });
 }
@@ -387,6 +378,21 @@ export function useSkillsData() {
   });
 }
 
+/** Fetch one skill with its SKILL.md body. */
+export function useSkillDetail(name: string) {
+  return useQuery({
+    queryKey: ["dashboard", "skills", name],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        skillDetailReportSchema,
+        `/api/skills/${encodeURIComponent(name)}`,
+        signal,
+      ),
+    retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
+  });
+}
+
 /** Fetch operational plugin reports used by System navigation and pages. */
 export function usePluginReportsData() {
   return useQuery({
@@ -424,6 +430,16 @@ export function useSystemData(coreData: DashboardCoreData) {
       ),
     retry: false,
   });
+  const replyTimesQuery = useQuery({
+    queryKey: ["dashboard", "reply-times"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        replyTimeSegmentsReportSchema,
+        "/api/reply-times",
+        signal,
+      ),
+    retry: false,
+  });
   const skillsQuery = useSkillsData();
   const pluginReportsQuery = usePluginReportsData();
   const dataReady = pluginsQuery.data && skillsQuery.data;
@@ -442,6 +458,10 @@ export function useSystemData(coreData: DashboardCoreData) {
             : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
+          ...(replyTimesQuery.data
+            ? { replyTimes: replyTimesQuery.data }
+            : undefined),
+          replyTimesError: Boolean(replyTimesQuery.error),
           skills: skillsQuery.data,
         } satisfies SystemData)
       : undefined,

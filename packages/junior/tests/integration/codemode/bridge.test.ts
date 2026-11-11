@@ -16,11 +16,17 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { createTools } from "@/chat/tools";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { mswServer } from "../../msw/server";
+
+const ROOT_TURN_TOOLS = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const CONVERSATION_ID = "local:test:codemode-bridge";
 const DESTINATION = {
@@ -238,6 +244,7 @@ describe("Code Mode bridge", () => {
       },
       source: SOURCE,
       spawnAgent,
+      turnTools: ROOT_TURN_TOOLS,
       workspace: {} as never,
     } as never);
     const { scriptTools } = planToolExposure(registry);
@@ -315,6 +322,7 @@ describe("Code Mode bridge", () => {
         },
         mcpToolManager: manager,
         source: SOURCE,
+        turnTools: ROOT_TURN_TOOLS,
         workspace: {} as never,
       } as never);
       const { scriptTools } = planToolExposure(registry);

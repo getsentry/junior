@@ -1,3 +1,4 @@
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createWebSource,
@@ -13,6 +14,11 @@ import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+
+const rootTurnTools = turnBehavior({
+  kind: "root",
+  personInput: true,
+}).tools;
 
 const CONVERSATION_ID = "local:test:tool-search-ranking";
 
@@ -155,6 +161,7 @@ function catalogTools(): AgentTools {
       [],
       {},
       {
+        turnTools: rootTurnTools,
         conversationId: CONVERSATION_ID,
         destination: { platform: "local", conversationId: CONVERSATION_ID },
         egress: {

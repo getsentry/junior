@@ -1,8 +1,11 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import { blockRunAutomation } from "@/chat/automations/block-run";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   readMessageAttachments,
   type MessageAttachment,
 } from "@/chat/attachments/input";
+import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
@@ -50,7 +53,7 @@ import {
 } from "@/chat/runtime/turn";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
-import { decideReply } from "@/chat/services/assistant-reply";
+import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { botConfig } from "@/chat/config";
 import {
   latestConversationMessageSeq,
@@ -438,12 +441,9 @@ export function createConversationTurnWorker(
       visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    // A person's Turn in a Thread does not start or message child agents:
-    // their results would report to the parent as the wrong Actor.
-    const disabledFeatures: AgentFeature[] = [
-      ...(webActor ? [] : ["interactive-auth" as const]),
-      ...(isThread ? ["subagents" as const] : []),
-    ];
+    const disabledFeatures: AgentFeature[] = webActor
+      ? []
+      : ["interactive-auth"];
     const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
     // cursor stores Event Source.
@@ -451,17 +451,17 @@ export function createConversationTurnWorker(
     // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
-    // Only a root delivers to its Location. A child keeps a copy of its
-    // root's Location, but its output goes back to its parent.
-    // TODO(dcramer): This root check is temporary. Remove it when each Run
-    // gets explicit Delivery, so a child Run gets none.
+    // Only an Event Turn delivers here, and an Event has no person.
+    const postsToProvider = Boolean(conversationLocation) && isEventTurn;
     const deliverToProvider =
-      Boolean(conversationLocation) &&
-      isEventTurn &&
-      storedConversation?.kind === "root";
+      postsToProvider &&
+      turnBehavior({
+        kind: storedConversation?.kind ?? "root",
+        personInput: false,
+      }).delivery === "location";
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
-    const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
+    const surface = postsToProvider ? ("slack" as const) : ("api" as const);
 
     // Input timing applies to new input. A resumed slice continues the trace
     // of its first slice.
@@ -596,15 +596,11 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
+          options?: { quiet?: true; reply?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
-          const decision = agentMessage ? decideReply(agentMessage) : undefined;
           const replyText =
-            typeof value === "string"
-              ? value
-              : decision?.kind === "deliver"
-                ? decision.text
-                : undefined;
+            typeof value === "string" ? value : getAssistantReplyText(value);
           if (!replyText?.trim()) {
             return;
           }
@@ -613,12 +609,15 @@ export function createConversationTurnWorker(
           // Only Event Turns may be quiet: a person who asked always gets the
           // reply. A card means someone must look, so it always delivers.
           const quiet =
-            decision?.kind === "deliver" &&
-            decision.quiet === true &&
-            isEventTurn &&
-            cards.length === 0;
+            options?.quiet === true && isEventTurn && cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
-          if (deliverToProvider && !quiet) {
+          // Read the pause at reply time: a person can pause Delivery while
+          // this Turn runs.
+          if (
+            (options?.reply ? postsToProvider : deliverToProvider) &&
+            !quiet &&
+            !(await isConversationDeliveryPaused(context.conversationId))
+          ) {
             if (!conversationLocation || !deliverMessage) {
               throw new Error(
                 `Conversation ${context.conversationId} cannot deliver to its Location`,
@@ -779,6 +778,17 @@ export function createConversationTurnWorker(
               modelFailureEventId = finalized.eventId;
               if (reply.diagnostics.outcome !== "success") {
                 await deliverAssistantMessage(reply.text);
+              } else if (reply.reply) {
+                await deliverAssistantMessage(reply.reply.text, {
+                  reply: true,
+                });
+              } else if (reply.blocked) {
+                await blockRunAutomation(context.conversationId, reply.blocked);
+              } else if (reply.noReply?.note && isEventTurn) {
+                // The note of a no-reply Event Turn is its Quiet message.
+                await deliverAssistantMessage(reply.noReply.note, {
+                  quiet: true,
+                });
               }
 
               const completedState = buildDeliveredTurnStatePatch({

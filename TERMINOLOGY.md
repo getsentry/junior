@@ -14,7 +14,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location. Its `kind` is `root`, `thread`, or `task`, and never changes.
+  from Location. Its `kind` is `root`, `automation`, `thread`, or `task`, and
+  never changes. `automation` is a top-level Conversation for an Automation run.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
@@ -86,6 +87,9 @@ Canonical words for Junior code and docs. One concept, one word.
   boundary. **Follow-up message**: one that waits for the next Turn.
 - **Mailbox delivery**: `interrupt` (next safe boundary) or `defer` (in order).
 - **Turn**: one request-to-final-response cycle. Not one model call.
+- **Answer**: the tool call that ends a gated Turn: `reply`, `noReply`, or
+  `reportBlocked`. A Turn that a person did not open is gated on kinds
+  `automation`, `thread`, and `task`. Its final response is not delivered.
 - **Run**: one bounded attempt to advance a Turn. A later Run may resume the
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
@@ -99,14 +103,15 @@ Canonical words for Junior code and docs. One concept, one word.
   and search. **Message update**: later state stored as `message_updated`.
 - **Reply**: a destination-visible Message owned by delivery or reply-policy
   code. Execution code says turn, run, result, outcome, or delivery.
-- **Quiet message**: an Event Turn's assistant Message that the agent marked
-  as routine. Junior stores it but does not deliver it to the Location.
+- **Quiet message**: the `noReply` note of an Event Turn, for a routine
+  outcome. Junior stores it but does not deliver it to the Location.
 - **Transcript**: a reporting view of Messages and history. Not storage.
 - **Quick question**: a hidden, read-only fork that asks about text in one
   Reply. Keep as fork makes it a normal fork.
 - **Agent binding**: a parent-scoped name for one child Conversation.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
-  its terminal result. Never shorten to "invocation".
+  its terminal result. Only a `reply`, or a failed, blocked, or stopped
+  result, reaches the parent. Never shorten to "invocation".
 - **Agent message**: `messageAgent` text to a parent, a child, or another
   top-level agent (the agent of a root Conversation). To a child it is the
   child's instruction: it starts an Agent invocation or steers a running one.

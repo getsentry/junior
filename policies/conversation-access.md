@@ -37,9 +37,12 @@ Check the rows in this order. The first match decides.
 | 3   | Public                                          | Allow  |
 | 4   | Private, in another tree and Destination        | Deny   |
 
-- Row 2 compares the Destination row of the two roots. A Slack channel, DM,
-  or group DM is one Destination for all its Slack threads. A web or local
-  Conversation has its own Destination, so row 2 does not widen it.
+- Row 2 compares only the Destination ids of the two roots. It has no
+  provider or surface check. It is safe because of one invariant:
+  Conversations share a Destination only when they have the same audience.
+  A surface that cannot keep this invariant gives each Conversation its own
+  Destination, as web and local Conversations do now. Slack shares one
+  Destination across the threads of a channel, DM, or group DM.
 - Row 4 applies to every person and to every requester visibility. A
   person who is a participant of the target does not change the result.
 - Code: `canAccessConversation` in

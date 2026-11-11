@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 import * as z from "zod";
 
 import { fetchDashboardJson } from "../http";
-import { conversationSideReadQueryKey } from "./queries";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 
 const conversationMemoryListSchema = z
   .object({

@@ -1,284 +1,292 @@
-import { useEffect } from "react";
+import { memo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
   type AutomationSummary,
 } from "@sentry/junior/api/schema";
-import { Globe2, ListChecks, LockKeyhole, UserRound } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useAutomationsData } from "../../api";
 import { Button } from "../../components/ui/button";
-import { AutomationFilters, AutomationSort } from "./AutomationFilters";
-import { InlineError } from "../../components/InlineError";
-import { PageContentSkeleton } from "../../components/PageContentSkeleton";
-import { pageCount, PagePagination } from "../../components/Pagination";
 import {
-  selectTimeSeries,
-  timeRangeBucketUnit,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../components/ui/collapsible";
+import { FilterToolbar } from "../../components/filters/FilterToolbar";
+import {
+  activeAutomationFilters,
+  AutomationFilterPanel,
+} from "./AutomationFilters";
+import { InlineError } from "../../components/InlineError";
+import { FilteredList } from "../../components/filters/FilterPanel";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { StatCard } from "../../components/metrics/StatCard";
 import { automationPath } from "../../format";
-import { useDocumentTitle } from "../../documentTitle";
-import {
-  pathWithSearch,
-  useDebouncedSearchParam,
-  useSearchParamEnum,
-} from "../../searchParams";
+import { pathWithSearch, useDebouncedSearchParam } from "../../searchParams";
+import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
-import { AutomationCostChart } from "./AutomationCostChart";
-import { AutomationExecutionChart } from "./AutomationExecutionChart";
+import { automationNeedsAttention } from "./AutomationStatus";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 
-const AUTOMATION_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
+const EMPTY: AutomationSummary[] = [];
 
-function parseTaskRange(value: string): TimeRangeDays {
-  const days = Number(value);
-  return (
-    days === 1 || days === 7 || days === 30 || days === 90 ? days : 30
-  ) as TimeRangeDays;
-}
+// Groups need every visible Automation at once. The server caps a page at 100.
+const LANDING_PAGE_SIZE = "100";
 
-const EMPTY_TASKS: AutomationSummary[] = [];
+// Groups set the order and show every Automation, so the page reads only
+// the filters it shows. Old scope, sort, and page links fall back to all.
+const LANDING_FILTERS = [
+  "q",
+  "type",
+  "state",
+  "creator",
+  "destination",
+] as const;
 
-/** Render viewer-owned and public-workspace automations in one native view. */
-export function AutomationsPage(props: {
-  enabled: boolean;
-  view: "list" | "overview";
-}) {
-  const navigate = useNavigate();
+type AutomationGroup = {
+  automations: AutomationSummary[];
+  collapsed?: boolean;
+  key: string;
+  label: string;
+};
+
+/**
+ * Landing page for Automations: problems first, then what runs, then what
+ * is stopped. Each row shows recent runs and the next run, so the page
+ * answers "is my work healthy" without opening each Automation.
+ */
+export function AutomationsPage(props: { enabled: boolean }) {
   const location = useLocation();
-  const [rangeParam, setRangeParam] = useSearchParamEnum(
-    "range",
-    "30",
-    AUTOMATION_RANGE_OPTIONS,
-  );
-  const range = parseTaskRange(rangeParam);
-  const setRange = (value: TimeRangeDays) =>
-    setRangeParam(String(value) as (typeof AUTOMATION_RANGE_OPTIONS)[number]);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [searchText, setSearchText] = useDebouncedSearchParam("q", {
-    resetPage: true,
-  });
+  const [searchText, setSearchText] = useDebouncedSearchParam("q");
   // Ignore only invalid URL values. One bad field must not reset other filters.
   const filters = automationListQuerySchema.parse(
     Object.fromEntries(
-      // Zod owns this property name; it is not a Junior domain symbol.
-      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names
-      Object.entries(automationListQuerySchema.shape).flatMap(
-        ([key, schema]) => {
-          const parsed = schema.safeParse(searchParams.get(key) ?? undefined);
-          return parsed.success && parsed.data !== undefined
-            ? [[key, parsed.data]]
-            : [];
-        },
-      ),
+      LANDING_FILTERS.flatMap((key) => {
+        // Zod owns this property name; it is not a Junior domain symbol.
+        // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names
+        const parsed = automationListQuerySchema.shape[key].safeParse(
+          searchParams.get(key) ?? undefined,
+        );
+        return parsed.success && parsed.data !== undefined
+          ? [[key, parsed.data]]
+          : [];
+      }),
     ),
   );
   const request = new URLSearchParams(
-    Object.entries(filters).map(([key, value]) => [key, String(value)]),
+    Object.entries({ ...filters, pageSize: LANDING_PAGE_SIZE }).map(
+      ([key, value]) => [key, String(value)],
+    ),
   );
-  const query = useAutomationsData(
-    props.enabled,
-    props.view === "list" ? request.toString() : "",
-  );
+  const query = useAutomationsData(props.enabled, request.toString());
   const setFilter = (key: string, value: string) => {
     // Consecutive control events can precede the router's next render.
     const next = new URLSearchParams(window.location.search);
-    next.delete("page");
     if (value) next.set(key, value);
     else next.delete(key);
     setSearchParams(next, { replace: true });
   };
-  const setPage = (page: number) =>
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      if (page === 1) next.delete("page");
-      else next.set("page", String(page));
-      return next;
-    });
-  // The Automation page keeps the list query, so its back link restores it.
-  const automationPagePath = (id: string) =>
-    pathWithSearch(automationPath(id), location.search);
-  const automations = query.data?.automations ?? EMPTY_TASKS;
-  const mineCount = query.data?.counts.mine ?? 0;
-  const publicCount = query.data?.counts.public ?? 0;
-  const privateCount = query.data?.counts.private ?? 0;
-  const visibleTaskCount = query.data?.total ?? 0;
-  const totalPages = pageCount(visibleTaskCount, filters.pageSize);
-  const page = query.data?.page ?? filters.page;
-  // Overview names the tab through PageHeader; the list has a plain heading.
-  useDocumentTitle(props.view === "list" ? "All automations" : undefined);
-  // A deletion or a shared URL can leave the requested page past the last page.
-  useEffect(() => {
-    if (
-      props.view !== "list" ||
-      !query.data ||
-      query.isPlaceholderData ||
-      query.isFetching ||
-      query.data.page === filters.page
-    )
-      return;
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.set("page", String(query.data.page));
-        return next;
-      },
-      { replace: true },
-    );
-  }, [
-    filters.page,
-    props.view,
-    query.data,
-    query.isFetching,
-    query.isPlaceholderData,
-    setSearchParams,
-  ]);
-
+  const clearFilters = () => {
+    const next = new URLSearchParams(window.location.search);
+    for (const key of LANDING_FILTERS) if (key !== "q") next.delete(key);
+    setSearchParams(next, { replace: true });
+  };
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const automations = query.data?.automations ?? EMPTY;
   const loading = !query.data && !query.error;
-  const executionSeries = query.data?.executionDays?.length
-    ? selectTimeSeries({
-        days: query.data.executionDays,
-        hours: query.data.executionHours,
-        sixHours: query.data.executionSixHours,
-        range,
-        emptySixHour: (date) => ({
-          costUsd: 0,
-          date,
-          event: 0,
-          scheduled: 0,
-        }),
-      })
-    : [];
-  const showExecutionCharts = executionSeries.length > 0;
 
   return (
     <>
-      {props.view === "overview" ? (
-        <PageHeader
-          description="Scheduled and event-driven work created by users."
-          onRangeChange={setRange}
-          range={range}
-          title="Automations"
-        />
-      ) : (
-        <h2 className="m-0 font-display text-2xl font-light tracking-tight text-dashboard-text sm:text-3xl">
-          All automations
-        </h2>
-      )}
-      {props.view === "list" ? (
-        <AutomationFilters
-          filters={filters}
-          data={query.data}
-          onChange={setFilter}
-          searchText={searchText}
-          onSearch={setSearchText}
-        />
-      ) : null}
-      {loading ? (
-        <PageContentSkeleton
-          label="Loading automations"
-          variant={props.view === "overview" ? "stats" : "list"}
-        />
-      ) : null}
-      {query.error ? (
-        <InlineError>
-          Automations could not be loaded.{" "}
-          <Button onClick={() => void query.refetch()}>Try again</Button>
-        </InlineError>
-      ) : null}
-      {query.data && props.view === "overview" ? (
-        <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard
-              detail="All automations you can access"
-              icon={ListChecks}
-              label="Total automations"
-              value={query.data?.counts.all ?? 0}
-            />
-            <StatCard
-              detail="Created by you"
-              icon={UserRound}
-              label="Your automations"
-              value={mineCount}
-            />
-            <StatCard
-              detail="In shared destinations"
-              icon={Globe2}
-              label="Public automations"
-              value={publicCount}
-            />
-            <StatCard
-              detail="Visible only to you"
-              icon={LockKeyhole}
-              label="Private automations"
-              value={privateCount}
-            />
-          </div>
-          {showExecutionCharts ? (
-            <section className="grid gap-4 xl:grid-cols-2">
-              <AutomationExecutionChart
-                bucketUnit={timeRangeBucketUnit(range)}
-                days={executionSeries}
-                range={range}
-              />
-              <AutomationCostChart
-                bucketUnit={timeRangeBucketUnit(range)}
-                days={executionSeries}
-                range={range}
-              />
-            </section>
-          ) : null}
-        </>
-      ) : null}
-      {query.data && props.view === "list" ? (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
-            <p className="m-0 text-xs text-dashboard-text-muted">
-              {visibleTaskCount}{" "}
-              {visibleTaskCount === 1 ? "automation" : "automations"}
-              {query.isFetching ? (
-                <span className="ml-3" role="status">
-                  Updating results…
-                </span>
-              ) : null}
-            </p>
-            <AutomationSort
-              value={filters.sort}
-              onChange={(value) => setFilter("sort", value)}
-            />
-          </div>
-          {!query.error && visibleTaskCount === 0 ? (
-            <Card padding="md">
-              <p className="m-0 text-sm text-dashboard-text-muted">
-                No automations matched these filters.
-              </p>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-2" role="list">
-              {automations.map((automation) => {
-                const key = `${automation.kind}:${automation.id}`;
-                return (
-                  <AutomationRow
-                    key={key}
-                    onSelect={() => navigate(automationPagePath(automation.id))}
-                    automation={automation}
-                    to={automationPagePath(automation.id)}
-                  />
-                );
-              })}
-            </div>
-          )}
-          <PagePagination
-            onPageChange={setPage}
-            page={page}
-            pageCount={totalPages}
-            pageSize={filters.pageSize}
-            total={visibleTaskCount}
+      <PageHeader title="Automations" />
+      <FilteredList
+        toolbar={
+          <FilterToolbar
+            filters={{
+              active: activeAutomationFilters({ data: query.data, filters }),
+              onRemove: (key) => setFilter(key, ""),
+              onToggle: () => setFiltersOpen((open) => !open),
+              open: filtersOpen,
+            }}
+            search={{
+              label: "Search automations",
+              onChange: setSearchText,
+              placeholder: "Search automations",
+              value: searchText,
+            }}
           />
-        </>
-      ) : null}
+        }
+        filters={
+          filtersOpen ? (
+            <AutomationFilterPanel
+              data={query.data}
+              filters={filters}
+              onChange={setFilter}
+              onClear={clearFilters}
+              onClose={() => setFiltersOpen(false)}
+            />
+          ) : null
+        }
+      >
+        {loading ? (
+          <PageContentSkeleton label="Loading automations" variant="list" />
+        ) : null}
+        {query.error ? (
+          <InlineError>
+            Automations could not be loaded.{" "}
+            <Button onClick={() => void query.refetch()}>Try again</Button>
+          </InlineError>
+        ) : null}
+        {query.data && automations.length === 0 ? (
+          <Card padding="md">
+            <p className="m-0 text-sm text-dashboard-text-muted">
+              {LANDING_FILTERS.some((key) => searchParams.has(key))
+                ? "No automations matched these filters."
+                : "No automations yet. Ask Junior in Slack to do something on a schedule or when something happens."}
+            </p>
+          </Card>
+        ) : null}
+        {query.isFetching && query.data ? (
+          <span className="sr-only" role="status">
+            Updating results…
+          </span>
+        ) : null}
+        <AutomationGroups automations={automations} search={location.search} />
+        {query.data && query.data.total > automations.length ? (
+          <p className="m-0 text-xs text-dashboard-text-muted">
+            Showing {automations.length} of {query.data.total}. Search or filter
+            to find the rest.
+          </p>
+        ) : null}
+      </FilteredList>
     </>
+  );
+}
+
+/**
+ * Each search keystroke re-renders the page, and a row has up to 20 run
+ * tooltips. Rows re-render only when the results or the URL change.
+ */
+const AutomationGroups = memo(function AutomationGroups(props: {
+  automations: AutomationSummary[];
+  search: string;
+}) {
+  const navigate = useNavigate();
+  // The Automation page keeps the list query, so its back link restores it.
+  const pagePath = (id: string) =>
+    pathWithSearch(automationPath(id), props.search);
+  return groupAutomations(props.automations).map((group) => (
+    <AutomationGroupSection
+      group={group}
+      key={group.key}
+      onSelect={(id) => navigate(pagePath(id))}
+      pagePath={pagePath}
+    />
+  ));
+});
+
+/**
+ * Group by what needs a person, then by what still runs. Every group uses
+ * one order, latest run first, so the "Ran" times read top to bottom.
+ */
+function groupAutomations(automations: AutomationSummary[]): AutomationGroup[] {
+  const sorted = [...automations].sort(byLatestRun);
+  const attention = sorted.filter(
+    (automation) =>
+      automation.status !== "completed" && automationNeedsAttention(automation),
+  );
+  const rest = sorted.filter((automation) => !attention.includes(automation));
+  const groups: AutomationGroup[] = [
+    { automations: attention, key: "attention", label: "Needs attention" },
+    {
+      automations: rest.filter((automation) => automation.status === "active"),
+      key: "active",
+      label: "Active",
+    },
+    {
+      automations: rest.filter((automation) => automation.status === "paused"),
+      collapsed: true,
+      key: "paused",
+      label: "Paused",
+    },
+    {
+      automations: rest.filter(
+        (automation) => automation.status === "completed",
+      ),
+      collapsed: true,
+      key: "completed",
+      label: "Completed",
+    },
+  ];
+  return groups.filter((group) => group.automations.length > 0);
+}
+
+/** Latest run first. Automations that never ran follow, newest first. */
+function byLatestRun(a: AutomationSummary, b: AutomationSummary): number {
+  return (
+    (b.lastRunAt ?? "").localeCompare(a.lastRunAt ?? "") ||
+    b.createdAt.localeCompare(a.createdAt) ||
+    a.title.localeCompare(b.title)
+  );
+}
+
+function AutomationGroupSection(props: {
+  group: AutomationGroup;
+  onSelect(id: string): void;
+  pagePath(id: string): string;
+}) {
+  const { group } = props;
+  const [open, setOpen] = useState(!group.collapsed);
+  const rows = (
+    <Card>
+      <div role="list">
+        {group.automations.map((automation) => (
+          <AutomationRow
+            automation={automation}
+            key={`${automation.kind}:${automation.id}`}
+            onSelect={() => props.onSelect(automation.id)}
+            to={props.pagePath(automation.id)}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+  const heading = (
+    <>
+      {group.label}
+      <span className="ml-2 tabular-nums text-dashboard-text-faint">
+        {group.automations.length}
+      </span>
+    </>
+  );
+  if (!group.collapsed) {
+    return (
+      <section aria-label={group.label} className="grid gap-2.5">
+        <SectionTitle>{heading}</SectionTitle>
+        {rows}
+      </section>
+    );
+  }
+  return (
+    <Collapsible
+      aria-label={group.label}
+      className="grid gap-2.5"
+      onOpenChange={setOpen}
+      open={open}
+      render={<section />}
+    >
+      <h3 className="m-0">
+        <CollapsibleTrigger className="flex cursor-pointer items-center gap-1 rounded-md border-0 bg-transparent p-0 text-xs font-medium text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus">
+          <ChevronRight
+            aria-hidden="true"
+            className={cn("transition-transform", open && "rotate-90")}
+            size={14}
+          />
+          {heading}
+        </CollapsibleTrigger>
+      </h3>
+      <CollapsibleContent>{rows}</CollapsibleContent>
+    </Collapsible>
   );
 }

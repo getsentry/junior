@@ -169,6 +169,7 @@ function systemData(): SystemData {
     },
     conversationStatsError: false,
     conversationStatsLoading: false,
+    replyTimesError: false,
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
@@ -326,6 +327,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="search">
           <TranscriptToolView
+            conversationId="slack:C1:123"
             part={{
               id: "tool-1",
               input: { query: "regression" },
@@ -349,6 +351,7 @@ describe("dashboard canonical-event components", () => {
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="">
           <TranscriptToolView
+            conversationId="slack:C1:123"
             part={{
               id: "tool-1",
               name: "webSearch",
@@ -370,42 +373,39 @@ describe("dashboard canonical-event components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <ConversationHeader
-          archive={{
-            archived: false,
-            disabled: false,
-            onClick: () => {},
-            pending: false,
-          }}
-          conversationId="conversation-1"
           detailsOpen={false}
+          errors={[]}
+          menu={{
+            actions: {
+              archive: () => {},
+              continueInSlack: () => {},
+              delivery: () => {},
+              eventLog: () => {},
+              pin: () => {},
+              rename: () => {},
+              subscription: () => {},
+            },
+            conversation: undefined,
+            conversationId: "conversation-1",
+            detail: undefined,
+            eventLogOpen: true,
+            pending: {
+              archive: false,
+              delivery: false,
+              pin: false,
+              subscription: false,
+            },
+          }}
           onDetailsClick={() => {}}
           onSearchChange={() => {}}
           onViewChange={() => {}}
-          pin={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            pinned: false,
-          }}
           privacy={null}
-          read={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            unread: false,
-          }}
           search=""
           searchMatch={{
             count: 0,
             index: 0,
             setMatches: () => {},
             step: () => {},
-          }}
-          subscription={{
-            disabled: false,
-            error: false,
-            onClick: () => {},
-            subscribed: true,
           }}
           title="Header QA"
           view="raw"
@@ -1654,7 +1654,13 @@ describe("dashboard canonical-event components", () => {
   it("renders system metrics and capability inventories", () => {
     const data = systemData();
     data.plugins = [plugin("github")];
-    data.skills = [{ name: "triage", pluginProvider: "github" }];
+    data.skills = [
+      {
+        name: "triage",
+        description: "Triage issues.",
+        pluginProvider: "github",
+      },
+    ];
 
     const systemHtml = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/system"]}>
@@ -1689,7 +1695,7 @@ describe("dashboard canonical-event components", () => {
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");
     expect(systemHtml).not.toContain(">1 loaded<");
-    expect(systemHtml).not.toContain(">triage<");
+    expect(systemHtml).not.toContain(">$triage<");
 
     const pluginsHtml = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/system/plugins"]}>
@@ -1699,7 +1705,7 @@ describe("dashboard canonical-event components", () => {
     expect(pluginsHtml).toContain(">Plugins<");
     expect(pluginsHtml).toContain(">Skills<");
     expect(pluginsHtml).toContain(">GitHub<");
-    expect(pluginsHtml).toContain(">triage<");
+    expect(pluginsHtml).toContain(">$triage<");
     expect(pluginsHtml).not.toContain("Usage over time");
     expect(pluginsHtml).not.toContain('aria-label="Reporting period"');
 
@@ -1709,7 +1715,7 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(skillsHtml).toContain(">github<");
-    expect(skillsHtml).toContain(">triage<");
+    expect(skillsHtml).toContain(">$triage<");
   });
 
   it("renders each plugin as a dedicated System route", () => {
@@ -1721,7 +1727,11 @@ describe("dashboard canonical-event components", () => {
       plugin("scheduler", {}),
     ];
     data.skills = [
-      { name: "scheduled-automations", pluginProvider: "scheduler" },
+      {
+        name: "scheduled-automations",
+        description: "Manage scheduled automations.",
+        pluginProvider: "scheduler",
+      },
     ];
     data.pluginReports!.reports = [
       {
@@ -1743,7 +1753,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
-    expect(html).toContain(">scheduled-automations<");
+    expect(html).toContain(">$scheduled-automations<");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");
   });

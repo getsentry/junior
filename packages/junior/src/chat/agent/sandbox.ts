@@ -10,6 +10,7 @@ import type { PluginSandbox } from "@sentry/junior-plugin-api";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
+import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { listReferenceFiles } from "@/chat/discovery";
 import type { LogContext } from "@/chat/logging";
@@ -37,6 +38,7 @@ export interface AgentSandboxOptions {
   egressSignals?: SandboxEgressSignalTransport;
   conversationId?: string;
   credentialEgress?: CredentialContext;
+  credentialAuditSource?: CredentialAuditSource;
   actor?: Actor;
   locationConfiguration?: LocationConfigurationService;
   configurationValues: Record<string, unknown>;
@@ -169,6 +171,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     egressSignals: options.egressSignals,
     conversationId: options.conversationId,
     credentialEgress: options.credentialEgress,
+    credentialAuditSource: options.credentialAuditSource,
     prepare: options.prepareSandbox,
     prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {

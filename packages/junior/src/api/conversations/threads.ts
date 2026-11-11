@@ -6,7 +6,7 @@ import {
   readConversationTrees,
 } from "@/chat/conversations/sql/conversation-tree";
 import { juniorConversations } from "@/db/schema";
-import type { ConversationFeedItem } from "../schema/conversation";
+import type { ConversationFeedItem } from "../schema/conversation-feed";
 import type { ConversationAccess } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";

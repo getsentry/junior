@@ -52,9 +52,7 @@ function toolContext(
     egress: { fetch },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     events: { canSubscribe: true },
-    slack: {
-      conversationLink: { url: "https://example.com/session" },
-    },
+    conversationLink: { url: "https://example.com/session" },
     source: options.source,
     users: {
       resolveActor: async () => options.requester,

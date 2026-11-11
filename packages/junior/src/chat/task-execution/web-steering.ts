@@ -24,7 +24,7 @@ async function steeringMessageFromWeb(
   actor: WebActor,
 ): Promise<AgentSteeringMessage> {
   const storedAttachments = readMessageAttachments(message.input.attachments);
-  // An answer or a dismiss steers in as its Review item tag.
+  // An answer steers in as its Review item tag.
   const reviewItemInput = await loadReviewItemInput(
     message.input.reviewItemChange,
   );
