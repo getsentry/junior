@@ -164,10 +164,7 @@ import {
   lastRequestInputSize,
   requestBackgroundCompaction,
 } from "@/chat/services/background-compaction";
-import {
-  logInputAfterCompaction,
-  type CompactionMode,
-} from "@/chat/services/context-compaction-telemetry";
+import { createNextInputTracker } from "@/chat/services/context-compaction-telemetry";
 import {
   buildAgentModelRequest,
   CONTEXT_COMPACTION_PROMPT_NAME,
@@ -834,29 +831,7 @@ async function executeAgentRunInPrivacyContext(
       promptName: CONTEXT_COMPACTION_PROMPT_NAME,
       ...(streamFn ? { base: streamFn } : undefined),
     });
-    // The replacement waiting for the provider-reported input of the next
-    // model request.
-    let replacementAwaitingInput:
-      | { messageCount: number; mode: CompactionMode }
-      | undefined;
-    /** Log the first provider-reported input after a replacement. */
-    const logFirstInputAfterReplacement = (): void => {
-      if (!replacementAwaitingInput) {
-        return;
-      }
-      const inputSize = lastRequestInputSize(
-        agent!.state.messages.slice(replacementAwaitingInput.messageCount),
-      );
-      if (!inputSize) {
-        return;
-      }
-      logInputAfterCompaction({
-        inputSize,
-        mode: replacementAwaitingInput.mode,
-        threshold: getAgentContextCompactionTriggerTokens(activeModelId),
-      });
-      replacementAwaitingInput = undefined;
-    };
+    const nextInputAfterReplacement = createNextInputTracker();
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -925,7 +900,10 @@ async function executeAgentRunInPrivacyContext(
         throw error;
       }
       agent!.state.messages = replacement;
-      replacementAwaitingInput = { messageCount: replacement.length, mode };
+      nextInputAfterReplacement.replaced(
+        mode,
+        getAgentContextCompactionTriggerTokens(activeModelId),
+      );
       runResume.setBeforeMessageCount(replacement.length);
       runResume.adoptCommittedBoundary(replacement);
       if (clearSteeringQueueOnCommit && pendingMessages?.length) {
@@ -1059,6 +1037,8 @@ async function executeAgentRunInPrivacyContext(
       streamFn: createTracedStreamFn({
         conversationPrivacy,
         base: cacheWarming.wrap(streamFn),
+        endAttributes: (message) =>
+          nextInputAfterReplacement.attributes(lastRequestInputSize([message])),
       }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage, context, toolCall }) => {
@@ -1151,9 +1131,6 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
-          // A model call can complete before an abort, such as an auth
-          // pause, so log its input first. An aborted call reports none.
-          logFirstInputAfterReplacement();
           // Pi runs this hook after an abort, such as an auth pause, but no
           // model call follows. Sandbox work here fails on the aborted signal
           // and hides why the run stopped. Steering stays queued.
