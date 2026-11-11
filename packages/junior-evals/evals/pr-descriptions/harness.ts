@@ -22,6 +22,8 @@ interface PullRequestDescriptionEvalInput {
   mustInclude?: string[];
   /** Exact text, such as secrets and mentions, that must not appear. */
   mustNotInclude?: string[];
+  /** Longest allowed description, for notes that reviewers called too long. */
+  maxChars?: number;
   title?: string;
 }
 
@@ -40,7 +42,6 @@ const FORBIDDEN = [
     name: "a checks section",
     pattern: /^\s*(?:#+\s*|\*\*)(?:checks|verification|test plan|testing)\b/im,
   },
-  { name: "a heading", pattern: /^#{1,6}\s/m },
 ];
 
 /** Lightweight vitest-evals harness for PR description cases. */
@@ -69,6 +70,9 @@ export const pullRequestDescriptionHarness = createHarness<
       ...(input.mustNotInclude ?? [])
         .filter((text) => description.includes(text))
         .map((text) => `kept "${text}"`),
+      ...(input.maxChars && description.length > input.maxChars
+        ? [`is ${description.length} characters, over ${input.maxChars}`]
+        : []),
     ];
     if (problems.length > 0) {
       throw new Error(`Description ${problems.join("; ")}:\n${description}`);

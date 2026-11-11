@@ -158,4 +158,27 @@ describeEval("Pull Request Descriptions", pullRequestDescriptionEvals, (it) => {
       }),
     );
   });
+
+  it("when the context has screenshots of a UI change, the description keeps them", async ({
+    run,
+  }) => {
+    const result = await run({
+      title: "feat(dashboard): Mark the first unread message in a Conversation",
+      context:
+        'Readers who come back to a long Conversation had to scroll to find where they stopped. The Conversation view now draws an "Unread" divider above the first message that arrived after the reader\'s last visit, and scrolls to it on open. Before: ![Conversation without divider](https://github.com/user-attachments/assets/5f0c2d1e-before.png) After: ![Conversation with unread divider](https://github.com/user-attachments/assets/5f0c2d1e-after.png)',
+      mustInclude: [
+        "https://github.com/user-attachments/assets/5f0c2d1e-before.png",
+        "https://github.com/user-attachments/assets/5f0c2d1e-after.png",
+      ],
+    });
+    await expect(result).toSatisfyJudge(
+      RubricJudge,
+      rubric({
+        pass: [
+          "The description says what readers see: an unread divider above the first new message, and the view scrolls to it.",
+          "The description shows the before and after screenshots as images.",
+        ],
+      }),
+    );
+  });
 });
