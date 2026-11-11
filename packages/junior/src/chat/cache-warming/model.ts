@@ -90,19 +90,33 @@ export function warmupFailureCountsAsMiss(error: unknown): boolean {
 }
 
 /**
- * Latest timer due time, as idle time, that the timer floor warms for. A
- * warmup costs one cache read, and a miss costs one write minus one read.
- * With a read at 1/25 of the write price, 24 warmups, one about every 4.25
- * minutes, cost as much as the miss. Warming for a later timer costs more
- * than it saves.
- */
-export const TIMER_FLOOR_MAX_IDLE_MS = 103 * MINUTE_MS;
-
-/**
  * Time from a timer's due time to the request of its Turn: the heartbeat
  * fires due timers once a minute, and the Turn then starts.
  */
 export const TIMER_START_DELAY_MS = 2 * MINUTE_MS;
+
+/**
+ * Latest timer due time, as idle time, that the timer floor warms for. A
+ * warmup costs one cache read, and a miss costs one write minus one read, so
+ * the floor sends fewer warmups than the miss costs in reads. The cache of
+ * the last warmup must last until the timer's Turn starts. A later timer
+ * changes nothing: warming for it costs more than it saves.
+ */
+export function timerFloorMaxDueIdleMs(prices: {
+  cacheReadPrice: number;
+  cacheWritePrice: number;
+  cacheTtlMs: number;
+}): number {
+  const savedPerReturn = prices.cacheWritePrice - prices.cacheReadPrice;
+  // Without a read price or a saving, the floor cannot pay.
+  if (prices.cacheReadPrice <= 0 || savedPerReturn <= 0) return 0;
+  const maxWarmups = Math.ceil(savedPerReturn / prices.cacheReadPrice) - 1;
+  return (
+    prices.cacheTtlMs +
+    maxWarmups * (prices.cacheTtlMs - WARMUP_MARGIN_MS) -
+    TIMER_START_DELAY_MS
+  );
+}
 
 /** Gap that Junior records for an idle period with no reply in the horizon. */
 export const NO_REPLY_GAP_MS = 24 * 60 * MINUTE_MS;
@@ -331,7 +345,7 @@ export interface WarmupDecisionInput {
   cacheWritePrice: number;
   /**
    * Idle time at which a timer of the Conversation is due, when it is due
-   * within `TIMER_FLOOR_MAX_IDLE_MS`.
+   * within `timerFloorMaxDueIdleMs`.
    */
   timerDueIdleMs?: number;
 }

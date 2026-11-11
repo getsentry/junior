@@ -7,16 +7,17 @@ import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import { NON_TERMINAL_AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/store";
 import { listWatches } from "@/chat/events/store";
-import { TIMER_FLOOR_MAX_IDLE_MS, type WaitingOn } from "./model";
+import type { WaitingOn } from "./model";
 
 /**
  * Idle time at which the earliest timer Watch of the Conversation is due,
- * when it is due within `TIMER_FLOOR_MAX_IDLE_MS`. A later timer changes
- * nothing, so the idle period warms as without a timer.
+ * when it is due by `maxDueIdleMs` (`timerFloorMaxDueIdleMs`). A later timer
+ * changes nothing, so the idle period warms as without a timer.
  */
 export async function readTimerDueIdleMs(
   conversationId: string,
   sinceMs: number,
+  maxDueIdleMs: number,
 ): Promise<number | undefined> {
   const dueIdleMs =
     Math.min(
@@ -24,7 +25,7 @@ export async function readTimerDueIdleMs(
         (watch) => watch.firesAtMs ?? Infinity,
       ),
     ) - sinceMs;
-  return dueIdleMs <= TIMER_FLOOR_MAX_IDLE_MS ? dueIdleMs : undefined;
+  return dueIdleMs <= maxDueIdleMs ? dueIdleMs : undefined;
 }
 
 // Whether the Turn called `addReviewItem` after its last user message. A

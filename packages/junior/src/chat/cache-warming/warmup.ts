@@ -43,6 +43,7 @@ import {
   parentGapSegment,
   segmentNeedsParent,
   TIMER_START_DELAY_MS,
+  timerFloorMaxDueIdleMs,
   waitingGapSegment,
   type GapSegmentInput,
   type WaitingOn,
@@ -239,7 +240,15 @@ async function startIdlePeriod(
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
     return idle;
   }
-  const timerDueIdleMs = await readTimerDueIdleMs(conversationId, idle.sinceMs);
+  const timerDueIdleMs = await readTimerDueIdleMs(
+    conversationId,
+    idle.sinceMs,
+    timerFloorMaxDueIdleMs({
+      cacheReadPrice: request.model.cost.cacheRead,
+      cacheWritePrice: request.model.cost.cacheWrite,
+      cacheTtlMs: ttlMs,
+    }),
+  );
   const { skipReason, ...snapshot } = await saveSnapshot(
     state,
     conversationId,
@@ -593,7 +602,7 @@ export function createCacheWarmingRecorder(
  * ran) or `review` (the Turn asked a Review item) when the idle period
  * starts, and picks the segment's `waitingGapSegment` child. `timer_due_ms`
  * is the idle time at which a timer is due, when it is due within
- * `TIMER_FLOOR_MAX_IDLE_MS`. The `conversation.returned` log has the same
+ * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
  * five. Decision attributes are absent when the warmup skipped before the
  * decision. Of them, `timer_floor` is true for a warmup that only the timer
  * floor sends (`decideWarmup` reason `timer`). Cost and usage are absent

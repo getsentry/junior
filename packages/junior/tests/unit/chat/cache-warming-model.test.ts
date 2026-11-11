@@ -3,6 +3,7 @@ import {
   decideWarmup as decideWarmupAt,
   NO_REPLY_GAP_MS,
   parentGapSegment,
+  timerFloorMaxDueIdleMs,
   type WarmupDecisionInput,
   warmupFailureCountsAsMiss,
 } from "@/chat/cache-warming/model";
@@ -290,6 +291,19 @@ describe("decideWarmup", () => {
         );
       }
     }
+  });
+});
+
+describe("timerFloorMaxDueIdleMs", () => {
+  it("warms for a timer only while the warmups cost less than a miss", () => {
+    // A miss costs 24 reads, so 23 warmups, one each 4.25 minutes, keep the
+    // cache until 102.75 minutes. The timer's Turn starts 2 minutes late.
+    expect(timerFloorMaxDueIdleMs(prices)).toBe(100.75 * MINUTE);
+    // A read at twice the price allows 11 warmups.
+    expect(timerFloorMaxDueIdleMs({ ...prices, cacheReadPrice: 0.4 })).toBe(
+      49.75 * MINUTE,
+    );
+    expect(timerFloorMaxDueIdleMs({ ...prices, cacheReadPrice: 0 })).toBe(0);
   });
 });
 
