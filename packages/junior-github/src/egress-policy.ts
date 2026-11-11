@@ -13,6 +13,8 @@ import {
   type EgressHookContext,
   type EgressResponseHookContext,
   type PluginGrantAccess,
+  type PluginGraphqlOperation,
+  type PluginGraphqlRequest,
 } from "@sentry/junior-plugin-api";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import { assertGitHubPushAllowed } from "./receive-pack-policy.js";
@@ -85,91 +87,20 @@ function githubUserReadReason(
     : undefined;
 }
 
-function parseGitHubGraphqlOperation(
-  bodyText: string | undefined,
-): PluginGrantAccess | undefined {
-  const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (!parsed) {
-    return undefined;
-  }
-  const { normalized, operationName } = parsed;
-  if (operationName) {
-    const namedOperation = normalized.match(
-      new RegExp(
-        `\\b(query|mutation|subscription)\\s+${escapeRegExp(operationName)}\\b`,
-      ),
-    )?.[1];
-    return namedOperation ? graphqlOperationAccess(namedOperation) : undefined;
-  }
-  const operation = normalized.match(/\b(query|mutation|subscription)\b/)?.[1];
-  const operationAccess = graphqlOperationAccess(operation);
-  if (operationAccess) {
-    return operationAccess;
-  }
-  if (normalized.startsWith("{")) {
-    return "read";
-  }
-  return undefined;
-}
-
-function parseGitHubGraphqlRequest(
-  bodyText: string | undefined,
-): { normalized: string; operationName?: string } | undefined {
-  if (typeof bodyText !== "string" || bodyText.trim().length === 0) {
-    return undefined;
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(bodyText);
-  } catch {
-    return undefined;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return undefined;
-  }
-  const query = parsed.query;
-  if (typeof query !== "string") {
-    return undefined;
-  }
-  const operationName =
-    typeof parsed.operationName === "string"
-      ? parsed.operationName.trim()
-      : undefined;
-  const normalized = maskGraphqlStringLiterals(
-    query.replace(/^\s*#[^\n\r]*(?:\r?\n|$)/gm, ""),
-  ).trim();
-  return {
-    normalized,
-    ...(operationName ? { operationName } : undefined),
-  };
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function graphqlOperationAccess(
-  operation: string | undefined,
-): PluginGrantAccess | undefined {
-  if (operation === "mutation" || operation === "subscription") {
-    return "write";
-  }
-  if (operation === "query") {
-    return "read";
-  }
-  return undefined;
-}
-
-function maskGraphqlStringLiterals(query: string): string {
-  return query.replace(/"""[\s\S]*?"""|"(?:\\.|[^"\\])*"/g, (match) =>
-    " ".repeat(match.length),
-  );
+/**
+ * Return the one operation of a GitHub GraphQL POST. GitHub runs no batches,
+ * so a batch, like an unreadable body, has no operation.
+ */
+function githubGraphqlOperation(
+  graphql: PluginGraphqlRequest | undefined,
+): PluginGraphqlOperation | undefined {
+  return graphql?.kind === "operation" ? graphql.operation : undefined;
 }
 
 function githubGraphqlAccess(
   method: string,
   upstreamUrl: URL,
-  bodyText: string | undefined,
+  graphql: PluginGraphqlRequest | undefined,
 ): PluginGrantAccess | undefined {
   if (!isGitHubGraphqlUrl(upstreamUrl)) {
     return undefined;
@@ -177,13 +108,9 @@ function githubGraphqlAccess(
   if (HTTP_READ_METHODS.has(method)) {
     return "read";
   }
-  const operation = parseGitHubGraphqlOperation(bodyText);
-  if (operation) {
-    return operation;
-  }
-  // Unknown GraphQL POST bodies are classified as writes and denied by the
-  // caller rather than receiving an installation or user credential.
-  return "write";
+  // A POST without one readable query is a write, which the caller denies
+  // rather than issue an installation or user credential.
+  return githubGraphqlOperation(graphql)?.type === "query" ? "read" : "write";
 }
 
 function githubGraphqlPermissionDeniedMessage(
@@ -337,17 +264,22 @@ const ISSUE_READ_DENIAL = `Use github_getIssue to read a GitHub issue, not gh is
 
 /** Match one-issue reads: the REST issue path or a GraphQL issue field. */
 function isGitHubIssueRead(input: {
-  bodyText?: string;
+  graphql?: PluginGraphqlRequest;
   method: string;
   upstreamUrl: URL;
 }): boolean {
   if (isGitHubGraphqlUrl(input.upstreamUrl)) {
     // `gh issue view` selects `issue(number:)` or `issueOrPullRequest(number:)`.
-    const parsed = parseGitHubGraphqlRequest(input.bodyText);
+    const operation =
+      input.method === "POST"
+        ? githubGraphqlOperation(input.graphql)
+        : undefined;
     return (
-      input.method === "POST" &&
-      parsed !== undefined &&
-      /\b(?:issue|issueOrPullRequest)\s*\(/.test(parsed.normalized)
+      operation?.fields.some(
+        (field) =>
+          (field.name === "issue" || field.name === "issueOrPullRequest") &&
+          field.arguments.length > 0,
+      ) ?? false
     );
   }
   return (
@@ -540,20 +472,19 @@ function hostGraphqlMutationRepository(
   operation: string | undefined,
   method: string,
   upstreamUrl: URL,
-  bodyText: string | undefined,
+  graphql: PluginGraphqlRequest | undefined,
 ): string | undefined {
   if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl) || !operation) {
     return undefined;
   }
-  const parsed = parseGitHubGraphqlRequest(bodyText);
+  const parsed = githubGraphqlOperation(graphql);
   const mutation = HOST_GRAPHQL_MUTATIONS.find(
     (candidate) =>
       operation.startsWith(candidate.operationPrefix) &&
-      parsed?.operationName === candidate.operationName &&
-      new RegExp(`\\bmutation\\s+${candidate.operationName}\\b`).test(
-        parsed.normalized,
-      ) &&
-      new RegExp(`\\b${candidate.field}\\b`).test(parsed.normalized),
+      parsed?.type === "mutation" &&
+      parsed.name === candidate.operationName &&
+      parsed.rootFields.length === 1 &&
+      parsed.rootFields[0] === candidate.field,
   );
   if (!mutation) return undefined;
   const repository = operation.slice(mutation.operationPrefix.length);
@@ -563,26 +494,30 @@ function hostGraphqlMutationRepository(
 function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
-  bodyText: string | undefined,
+  graphql: PluginGraphqlRequest | undefined,
   field: GitHubBodyWrite["graphqlField"],
 ): boolean {
   if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) return false;
-  const parsed = parseGitHubGraphqlRequest(bodyText);
-  if (!parsed || !new RegExp(`\\b${field}\\b`).test(parsed.normalized)) {
-    return false;
-  }
-  if (!parsed.operationName) return /\bmutation\b/.test(parsed.normalized);
-  return new RegExp(
-    `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
-  ).test(parsed.normalized);
+  const parsed = githubGraphqlOperation(graphql);
+  return parsed?.type === "mutation" && parsed.rootFields.includes(field);
 }
 
 function applyGitHubEgressPolicy(input: {
   bodyText?: string;
+  graphql?: PluginGraphqlRequest;
   method: string;
   operation?: string;
   upstreamUrl: URL;
 }): void {
+  if (
+    isGitHubGraphqlUrl(input.upstreamUrl) &&
+    input.graphql?.kind === "unreadable" &&
+    input.graphql.reason === "too-large"
+  ) {
+    throw new EgressPolicyDenied(
+      "GitHub GraphQL request body is too large to inspect before issuing credentials.",
+    );
+  }
   const reactionWrite =
     isGitHubApiUrl(input.upstreamUrl) &&
     (input.method === "POST" || input.method === "DELETE") &&
@@ -625,7 +560,7 @@ function applyGitHubEgressPolicy(input: {
       isGitHubGraphqlMutation(
         input.method,
         input.upstreamUrl,
-        input.bodyText,
+        input.graphql,
         candidate.graphqlField,
       ),
   );
@@ -694,6 +629,7 @@ async function selectGitHubGrant(
     ...(ctx.request.bodyText !== undefined
       ? { bodyText: ctx.request.bodyText }
       : undefined),
+    ...(ctx.request.graphql ? { graphql: ctx.request.graphql } : undefined),
     method,
     ...(ctx.request.operation
       ? { operation: ctx.request.operation }
@@ -759,7 +695,7 @@ async function selectGitHubGrant(
     ctx.request.operation,
     method,
     upstreamUrl,
-    ctx.request.bodyText,
+    ctx.request.graphql,
   );
   if (hostMutationRepository) {
     return {
@@ -776,7 +712,7 @@ async function selectGitHubGrant(
   const graphqlAccess = githubGraphqlAccess(
     method,
     upstreamUrl,
-    ctx.request.bodyText,
+    ctx.request.graphql,
   );
   if (graphqlAccess) {
     if (graphqlAccess === "write") {

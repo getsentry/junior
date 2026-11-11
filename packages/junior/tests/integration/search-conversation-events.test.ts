@@ -18,7 +18,6 @@ import { juniorConversationEvents } from "@/db/schema";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";

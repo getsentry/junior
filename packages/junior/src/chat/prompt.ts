@@ -480,8 +480,8 @@ function buildDispatchSection(
       ([key, value]) =>
         `- dispatch.metadata.${escapeXml(key)}: ${escapeXml(value)}`,
     );
-  // An Automation run posts through `finishAutomationRun`, whose contract
-  // already says whether the run posts.
+  // An Automation run posts through `reply`, whose contract already says
+  // where the reply goes.
   const deliveryLines = params.declaresResult
     ? []
     : [

@@ -474,6 +474,19 @@ describe("Automation edit API", () => {
           code: "invalid_edit",
           fields: { "task.instruction": expect.any(Array) },
         });
+        // Dashboard edits get the same task text rules as the tools.
+        const unrunnable = await patch({
+          ...input,
+          task: {
+            kind: "instruction",
+            instruction: "Post the digest in this channel.",
+          },
+        });
+        expect(unrunnable.status).toBe(400);
+        expect(await unrunnable.json()).toMatchObject({
+          code: "invalid_edit",
+          fields: { "task.instruction": expect.any(Array) },
+        });
         const newDestination = await patch({
           ...input,
           outcomes: [

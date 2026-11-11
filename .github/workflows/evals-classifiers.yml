@@ -4,7 +4,6 @@ permissions:
   contents: read
   pull-requests: read
   actions: read
-  checks: write
 
 on:
   pull_request:
@@ -22,7 +21,7 @@ jobs:
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -77,11 +76,18 @@ jobs:
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: write
     env:
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Run classifier evals
         id: run
@@ -104,7 +110,7 @@ jobs:
           fi
       - name: Publish classifier eval summary
         if: steps.results.conclusion == 'success'
-        uses: getsentry/vitest-evals@v0.16.1
+        uses: getsentry/vitest-evals@abea6a519955e5df56ecb2a2d83bae9c821561e1 # v0.16.1
         with:
           results: packages/junior-evals/classifiers-results.json
           publish-check: true
@@ -112,7 +118,7 @@ jobs:
           fail-on-failures: true
       - name: Upload classifier eval results
         if: steps.results.conclusion == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: classifiers-evals
           path: packages/junior-evals/classifiers-results.json

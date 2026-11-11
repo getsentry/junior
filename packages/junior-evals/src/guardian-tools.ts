@@ -97,7 +97,6 @@ const context: ToolRuntimeContext = {
   turnTools: turnBehavior({
     kind: "root",
     personInput: true,
-    automationRun: false,
   }).tools,
 };
 

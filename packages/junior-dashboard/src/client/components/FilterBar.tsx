@@ -1,38 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "../styles";
-import { Card } from "./layout/Card";
-import { SearchInput } from "./SearchInput";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
-
-/** Lay out labeled filter groups and an optional search field. */
-export function FilterBar(props: {
-  children: ReactNode;
-  className?: string;
-  search?: {
-    label: string;
-    onChange(value: string): void;
-    placeholder: string;
-    value: string;
-  };
-}) {
-  return (
-    <Card className={cn("flex flex-wrap items-end gap-4 p-4", props.className)}>
-      {props.children}
-      {props.search ? (
-        <FilterGroup className="min-w-[16rem] flex-1" label="Search">
-          <SearchInput
-            className="w-full max-w-md"
-            label={props.search.label}
-            onChange={props.search.onChange}
-            placeholder={props.search.placeholder}
-            value={props.search.value}
-          />
-        </FilterGroup>
-      ) : null}
-    </Card>
-  );
-}
 
 /** Render one labeled control group inside a filter bar. */
 export function FilterGroup(props: {

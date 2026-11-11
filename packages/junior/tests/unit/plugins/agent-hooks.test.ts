@@ -57,7 +57,6 @@ import type {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const demoToolResultSchema = pluginToolOutputSchema.extend({

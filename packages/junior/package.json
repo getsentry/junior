@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.294.0",
+  "version": "0.295.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -100,6 +100,7 @@
     "commander": "^14.0.3",
     "diff": "^8.0.4",
     "drizzle-orm": "catalog:",
+    "graphql": "^16.14.0",
     "hono": "^4.13.11",
     "jiti": "^2.7.0",
     "jose": "^6.2.3",

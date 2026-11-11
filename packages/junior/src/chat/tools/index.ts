@@ -19,7 +19,7 @@ import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
-import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createReplyTool } from "@/chat/tools/runtime/reply";
 import { createNoReplyTool } from "@/chat/tools/runtime/no-reply";
 import { createReportBlockedTool } from "@/chat/tools/runtime/report-blocked";
 import {
@@ -28,8 +28,8 @@ import {
   createUpdateReviewItemTool,
 } from "@/chat/tools/review-items";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
-import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { createEventTools } from "@/chat/tools/events";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createAutomationTools } from "@/chat/tools/automations";
@@ -246,12 +246,12 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  if (turnTools.reportBlocked) {
-    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
+  if (turnTools.reply) {
+    tools[REPLY_TOOL_NAME] = createReplyTool();
   }
-  if (context.automation) {
-    tools[FINISH_AUTOMATION_RUN_TOOL_NAME] = createFinishAutomationRunTool(
-      context.automation,
+  if (turnTools.reportBlocked !== "none") {
+    tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool(
+      turnTools.reportBlocked,
     );
   }
   if (turnTools.noReply) {

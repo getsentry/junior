@@ -4,9 +4,22 @@ import {
   getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
+  getDispatchStorageKey,
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
+import { createAgentInvocation } from "@/chat/agent-invocations/create";
+import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import { completeAgentInvocation } from "@/chat/agent-invocations/store";
+import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { upsertIdentity } from "@/chat/identities/sql";
+import {
+  readScheduledAutomation,
+  saveScheduledAutomation,
+} from "@/chat/scheduled-automations/tasks";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
@@ -18,7 +31,7 @@ import {
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { createModelStream } from "../fixtures/model-stream";
@@ -34,18 +47,24 @@ import {
   agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
 } from "../fixtures/agent-dispatch";
-import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import {
+  createConversationWorkHarness,
+  handleSlackWebhookAndFlush,
+  SLACK_BOT_USER_ID,
+  slackEnvelope,
+  slackWebhookRequest,
+} from "../fixtures/conversation-work";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
-/** Model output that ends an Automation run with a declared message. */
+/** Model output that ends an Automation run with a `reply` call. */
 function sendMessage(message: string) {
   return {
     type: "toolCall" as const,
-    name: "finishAutomationRun",
-    arguments: { result: "send_message", message },
+    name: "reply",
+    arguments: { text: message },
   };
 }
 
@@ -225,40 +244,183 @@ describe("agent dispatch conversation work", () => {
     ).resolves.toBe("private");
   }, 15_000);
 
-  it("binds the default same-channel outcome reply to the dispatch's origin thread", async () => {
+  it("replies in the run's thread on later Watch, child result, and person Turns", async () => {
+    const creatorIdentityId = (
+      await upsertIdentity(getSqlExecutor(), {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: destination.teamId,
+        providerSubjectId: "U123",
+      })
+    ).id;
+    const threadDestination = { ...destination, threadTs: "1700000000.000200" };
+    await saveScheduledAutomation(getDb(), {
+      id: "sched_watch_follow_up",
+      conversationAccess: { audience: "channel", visibility: "public" },
+      createdAtMs: Date.now(),
+      createdBy: { slackUserId: "U123" },
+      creatorIdentityId,
+      credentialMode: "system",
+      destination,
+      outcomes: [{ action: "send_message", destination }],
+      nextRunAtMs: Date.now() + 86_400_000,
+      schedule: {
+        description: "Daily at noon UTC",
+        kind: "recurring",
+        timezone: "UTC",
+        recurrence: {
+          frequency: "daily",
+          interval: 1,
+          startDate: "2026-01-01",
+          time: { hour: 12, minute: 0 },
+        },
+      },
+      status: "active",
+      task: { kind: "instruction", instruction: "Post the scheduled digest." },
+      updatedAtMs: Date.now(),
+    });
     const dispatch = await createDispatch(
       "outcome-thread-binding",
       undefined,
-      { kind: "scheduled_automation" },
+      { kind: "scheduled_automation", automationId: "sched_watch_follow_up" },
       undefined,
       "Post the scheduled digest.",
-      [
+      [{ action: "send_message", destination: threadDestination }],
+      threadDestination,
+    );
+    const conversationId = getDispatchConversationId(dispatch);
+    const modelStream = vi.fn(
+      createModelStream([
+        sendMessage("Scheduled digest"),
+        // A Watch Event Turn's final response is not delivered.
+        { type: "text", text: "Checking the merged change." },
+        sendMessage("The change merged."),
+        { type: "toolCall", name: "noReply", arguments: {} },
+        // A Turn without an answer gets one re-ask, then posts nothing.
+        { type: "text", text: "Checks are still running." },
+        { type: "text", text: "Checks are still running." },
+        sendMessage("The child agent finished."),
+        // A person's Turn is not gated, so its final response is delivered.
+        { type: "text", text: "The digest is up to date." },
         {
-          action: "send_message",
-          destination: { ...destination, threadTs: "1700000000.000200" },
+          type: "toolCall",
+          name: "reportBlocked",
+          arguments: { missing: "The digest repository was archived." },
         },
-      ],
-      { ...destination, threadTs: "1700000000.000200" },
+      ]),
     );
-    const { queue, run, state } = await createConversationWorkHarness(
-      createModelAgentRunner(
-        createModelStream([sendMessage("Scheduled digest")]),
-      ),
-    );
+    const { adapter, queue, run, runtime, state } =
+      await createConversationWorkHarness(createModelAgentRunner(modelStream));
+    const processNext = async () =>
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run,
+        state,
+      });
+    const threadPosts = () =>
+      slackApiOutbox
+        .messages()
+        .filter((message) => message.params.thread_ts === "1700000000.000200")
+        .map((message) => message.params.text);
+    const watchEvent = async (eventKey: string, eventType: string) => {
+      await appendAndEnqueueInboundMessage({
+        message: createEventInboundMessage({
+          event: {
+            eventKey,
+            eventType,
+            identifier: "getsentry/junior#1563",
+            namespace: "github",
+            occurredAtMs: Date.now(),
+            trustedSummary: eventType,
+          },
+          // Past the Event batch wait, so the Turn runs on this delivery.
+          receivedAtMs: Date.now() - 60_000,
+          subscription: { conversationId, id: "watch-follow-up-subscription" },
+          text: eventType,
+        }),
+        queue,
+        state,
+      });
+      await processNext();
+    };
 
     await enqueueAgentDispatch(dispatch, { queue, state });
-    await processConversationQueueMessage(queue.takeMessage(), {
-      queue,
-      run,
-      state,
-    });
+    await processNext();
 
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
       channel: destination.channelId,
       thread_ts: "1700000000.000200",
     });
-  });
+
+    // Watch Event Turns reply in the run's thread, or stay quiet.
+    await watchEvent("watch-merged", "pull_request.merged");
+    await watchEvent("watch-no-reply", "pull_request.comment.created");
+    await watchEvent("watch-no-answer", "pull_request.checks.failed");
+    expect(threadPosts()).toEqual(["Scheduled digest", "The change merged."]);
+    expect(modelStream).toHaveBeenCalledTimes(6);
+
+    // A child result Turn replies in the run's thread.
+    const child = await createAgentInvocation({
+      actor: { name: "automation-run", platform: "system" },
+      destination,
+      idempotencyKey: "watch-follow-up-child",
+      input: "Check the release.",
+      parentConversationId: conversationId,
+      reasoningLevel: "medium",
+    });
+    const childResult = (await completeAgentInvocation({
+      invocationId: child.invocationId,
+      result: "The release is green.",
+      status: "completed",
+    })) as TerminalAgentInvocation;
+    await enqueueAgentInvocationResult(childResult, {
+      nowMs: Date.now() - 60_000,
+      queue,
+      state,
+    });
+    await processNext();
+    expect(threadPosts().at(-1)).toBe("The child agent finished.");
+
+    // A person's reply in the run's thread runs in the run's Conversation and
+    // gets its final response.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerConversationId: "1700000000.000200",
+        providerDestinationId: destination.channelId,
+        providerTenantId: destination.teamId,
+      }),
+    ).resolves.toBe(conversationId);
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> is the digest current?`,
+          threadTs: "1700000000.000200",
+          ts: "1700000000.000900",
+        }),
+      ),
+      services: { getSlackAdapter: () => adapter, queue, runtime, state },
+    });
+    await processNext();
+    expect(threadPosts().at(-1)).toBe("The digest is up to date.");
+
+    // A Watch outlives the dispatch record, so reportBlocked on a later Watch
+    // Event Turn finds the Automation through its stored run.
+    await recordAutomationExecution("sched_watch_follow_up", {
+      conversationId,
+      executionId: "sched_watch_follow_up:run",
+    });
+    await state.delete(getDispatchStorageKey(dispatch.id));
+    await watchEvent("watch-blocked", "pull_request.closed");
+    await expect(
+      readScheduledAutomation(getDb(), "sched_watch_follow_up"),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      statusReason: "The digest repository was archived.",
+    });
+    expect(threadPosts()).toHaveLength(4);
+  }, 30_000);
 
   it("sends successful work to each outcome destination in order", async () => {
     const dispatch = await createDispatch(
@@ -294,7 +456,7 @@ describe("agent dispatch conversation work", () => {
     ).toEqual(["D123", "C456"]);
   });
 
-  it("posts nothing for work with no outcomes, also when the run fails", async () => {
+  it("posts nothing for a run without a reply or outcomes, also when it fails", async () => {
     const dispatch = await createDispatch(
       "no-outcomes",
       undefined,
@@ -311,16 +473,37 @@ describe("agent dispatch conversation work", () => {
       "Apply the requested maintenance.",
       [],
     );
-    const agentRunner = createModelAgentRunner(
+    const quietDispatch = await createDispatch("no-reply");
+    const blockedDispatch = await createDispatch("blocked", undefined, {
+      kind: "event_automation",
+      automationId: "automation-1",
+      automationRunId: "automation-run-1",
+    });
+    const unansweredDispatch = await createDispatch("no-answer");
+    const modelStream = vi.fn(
       createModelStream([
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: { result: "no_action", reason: "Maintenance complete" },
+          name: "noReply",
+          arguments: { note: "Maintenance complete" },
         },
+        {
+          type: "toolCall",
+          name: "noReply",
+          arguments: { note: "Nothing changed." },
+        },
+        {
+          type: "toolCall",
+          name: "reportBlocked",
+          arguments: { missing: "The digest repository was archived." },
+        },
+        // A Turn without an answer gets one re-ask, then posts nothing.
+        { type: "text", text: "Here is the digest." },
+        { type: "text", text: "Here is the digest again." },
         { type: "toolCall", name: "systemTime", arguments: {} },
       ]),
     );
+    const agentRunner = createModelAgentRunner(modelStream);
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
       await createConversationWorkHarness(agentRunner);
@@ -342,6 +525,31 @@ describe("agent dispatch conversation work", () => {
     });
     expect(runAgent).toHaveBeenCalledOnce();
     expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+
+    for (const answered of [
+      quietDispatch,
+      blockedDispatch,
+      unansweredDispatch,
+    ]) {
+      await enqueueAgentDispatch(answered, { queue, state });
+      await processNext();
+    }
+
+    expect(slackApiOutbox.messages()).toEqual([]);
+    expect(modelStream).toHaveBeenCalledTimes(5);
+    await expect(getDispatchRecord(quietDispatch.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(getDispatchRecord(blockedDispatch.id)).resolves.toMatchObject({
+      errorMessage: "The digest repository was archived.",
+      status: "blocked",
+    });
+    await expect(
+      getDispatchRecord(unansweredDispatch.id),
+    ).resolves.toMatchObject({
+      errorMessage: "Automation run ended without an answer.",
+      status: "failed",
+    });
 
     // The second run pauses, and its resumed worker dies before it saves.
     // Recovery fails the run, and the failure still posts nothing.

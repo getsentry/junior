@@ -26,7 +26,6 @@ import { mswServer } from "../../msw/server";
 const ROOT_TURN_TOOLS = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const CONVERSATION_ID = "local:test:codemode-bridge";

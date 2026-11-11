@@ -1821,7 +1821,7 @@ function eventAutomationRunConversation(
             '<created-by><@U123>. This person is the Automation creator. "The Automation creator", "me", and "my" in the instructions mean this person. Where the instructions refer to this person, write this mention in the message. If they do not, do not mention this person.</created-by>',
             "<instructions>Summarize the closed issue</instructions>",
             "<summary>ACME-42 Checkout fails for saved cards was closed by Morgan Lee.</summary>",
-            "End with `finishAutomationRun`.",
+            "End with `reply`, `noReply`, or `reportBlocked`.",
             "</task>",
           ].join("\n"),
         },

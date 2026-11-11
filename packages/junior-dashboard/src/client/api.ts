@@ -30,6 +30,7 @@ import {
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
 import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
@@ -384,6 +385,21 @@ export function useSkillsData() {
     queryKey: ["dashboard", "skills"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(skillReportsSchema, "/api/skills", signal),
+    retry: false,
+    staleTime: dashboardMetadataStaleTimeMs,
+  });
+}
+
+/** Fetch one skill with its SKILL.md body. */
+export function useSkillDetail(name: string) {
+  return useQuery({
+    queryKey: ["dashboard", "skills", name],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        skillDetailReportSchema,
+        `/api/skills/${encodeURIComponent(name)}`,
+        signal,
+      ),
     retry: false,
     staleTime: dashboardMetadataStaleTimeMs,
   });

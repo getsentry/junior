@@ -8,8 +8,8 @@
  */
 import type { Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
-import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 
 /**
  * Prompt mode for one Run. `automation` is for Scheduled automation and Event
@@ -47,14 +47,15 @@ const AGENT_INPUT_RULES = [
 /**
  * Block 2, `<automation-run>`: the job rules for a stored automation. No person
  * reads the run while it executes, so Junior does the work without waiting.
- * A decision that only a person can make goes on the review desk, and the
- * run ends with the result tool.
+ * A decision that only a person can make goes on the review desk, and each
+ * Turn ends with one answer tool.
  */
 const AUTOMATION_RUN_RULES = [
   "- This run comes from a stored automation, not from a person. The stored instruction is the job, and its creator already approved it.",
   "- Nobody reads this run while it executes. Infer intent conservatively and do the work now. Ask a person with `addReviewItem` only for a decision that is truly theirs and blocks the work.",
   "- Check every condition in the instruction before any action with side effects. If a condition is not met or cannot be verified, stop before you act.",
-  `- Assistant text is never delivered. End the run with \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\`. Do not post the result with another tool.`,
+  `- Assistant text is never delivered. End each Turn with one of \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`. Do not post the reply with another tool. When \`${REPLY_TOOL_NAME}\` is not available, this automation posts nothing.`,
+  `- Use \`${NO_REPLY_TOOL_NAME}\` when the run worked and nothing should be posted, such as when a condition in the instruction is not met, or when a temporary failure stopped the work.`,
 ];
 
 /**
@@ -134,7 +135,7 @@ const TOOL_POLICY_RULES = [
   "- Do not use tools to rediscover content already present in the current conversation. For drafting or rewriting with no referenced retrievable source, do not search unrelated memory, history, files, or providers. Put a clear placeholder where a fact that only the person knows goes, and ask for those facts with one `addReviewItem` item.",
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggested_events, use watchEvents only for those remaining events that serve the current intent. If suggested_events is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
-  "- Scheduled and event automations use their creator's connected credentials by default when the requested work needs them. Do not ask for separate confirmation merely to use those credentials.",
+  "- New scheduled and event automations run on your own credentials by default. Make the creator's connected credentials available only when the creator asks for that. Do not decide from the tools, access, or connections in this turn whether an automation's runs can do the work; each run loads its own tools. Do not ask for credential confirmation, access, or a connection before you create one.",
   "- Before loading a skill or starting substantial work, decide whether `spawnAgent` fits better than inline work.",
 ];
 
@@ -191,12 +192,12 @@ const FAILURE_REPORTING_RULES = [
 
 /**
  * Block 6, `<failure-reporting>` for automation runs. No person reads the run,
- * so a failure that stops the job goes in the declared reason, never in the
- * posted message.
+ * so a failure that stops the job goes in `noReply` or `reportBlocked`, never
+ * in the reply.
  */
 const AUTOMATION_FAILURE_REPORTING_RULES = [
   "- Keep commands, error output, raw tool payloads, and internal routing metadata out of the message.",
-  `- When a failure stops the job, put its cause in the \`${FINISH_AUTOMATION_RUN_TOOL_NAME}\` reason, not in the message.`,
+  `- When a failure stops the job, put its cause in the \`note\` of \`${NO_REPLY_TOOL_NAME}\` or the \`missing\` field of \`${REPORT_BLOCKED_TOOL_NAME}\`, not in the reply.`,
 ];
 
 /**

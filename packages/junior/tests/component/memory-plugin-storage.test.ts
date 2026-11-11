@@ -38,7 +38,6 @@ import {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const NEON = vi.hoisted(() => ({

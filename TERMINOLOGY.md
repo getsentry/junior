@@ -87,6 +87,9 @@ Canonical words for Junior code and docs. One concept, one word.
   boundary. **Follow-up message**: one that waits for the next Turn.
 - **Mailbox delivery**: `interrupt` (next safe boundary) or `defer` (in order).
 - **Turn**: one request-to-final-response cycle. Not one model call.
+- **Answer**: the tool call that ends a gated Turn: `reply`, `noReply`, or
+  `reportBlocked`. A Turn on kind `automation` that a person did not open is
+  gated, and its final response is not delivered.
 - **Run**: one bounded attempt to advance a Turn. A later Run may resume the
   same Turn after a pause, yield, or recoverable failure.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn

@@ -6,7 +6,7 @@ import { createBoardRoutes } from "./api/board/routes";
 import { createCodeRoutes } from "./api/code/routes";
 import { createConnectionRoutes } from "./api/connections/routes";
 import { createNotificationRoutes } from "./api/notifications/routes";
-import { jsonResponse } from "./api/http";
+import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
@@ -23,6 +23,7 @@ import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
   runtimeInfoReportSchema,
+  skillDetailReportSchema,
   skillReportsSchema,
   statsReportSchema,
 } from "./api/schema";
@@ -43,6 +44,7 @@ import {
   readPluginOperationalReportFeed,
   readPlugins,
   readRuntimeInfoReport,
+  readSkillDetailReport,
   readSkillReports,
 } from "./reporting";
 
@@ -86,6 +88,11 @@ export function createJuniorApi(
   app.get("/api/skills", async () =>
     jsonResponse(skillReportsSchema, await readSkillReports()),
   );
+  app.get("/api/skills/:name", async (context) => {
+    const skill = await readSkillDetailReport(context.req.param("name"));
+    if (!skill) throwApiError(404, "Skill not found.");
+    return jsonResponse(skillDetailReportSchema, skill);
+  });
   app.get("/api/plugin-reports", async () =>
     jsonResponse(
       pluginOperationalReportFeedSchema,
