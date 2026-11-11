@@ -1,6 +1,6 @@
 import type {
   CodeActivityDay,
-  CodeRepositoryActivityDay,
+  CodeChangeSummaryReport,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -15,52 +15,43 @@ import {
 import { cn } from "../styles";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
 
-type ActivityCounts = Pick<
-  CodeRepositoryActivityDay,
-  "closed" | "created" | "merged"
->;
-
-// Column order in the tooltip. Icons match the PR states in Conversations.
+// Section order in the tooltip. Icons match the PR states in Conversations.
 const ACTIVITY_KINDS = [
-  { icon: "git-merge", key: "merged", label: "merged" },
-  { icon: "git-pull-request", key: "created", label: "opened" },
-  { icon: "circle-x", key: "closed", label: "closed" },
+  { icon: "git-merge", kind: "merged", label: "Merged" },
+  { icon: "git-pull-request", kind: "opened", label: "Opened" },
+  { icon: "circle-x", kind: "closed", label: "Closed" },
 ] as const;
 
-// Repository name, then one fixed count column per kind that the day has.
-const COLUMN_CLASSES = [
-  "grid-cols-1",
-  "grid-cols-[minmax(0,1fr)_1.5rem]",
-  "grid-cols-[minmax(0,1fr)_1.5rem_1.5rem]",
-  "grid-cols-[minmax(0,1fr)_1.5rem_1.5rem_1.5rem]",
-];
+type ActivityKind = (typeof ACTIVITY_KINDS)[number]["kind"];
+type ActivityEvent = {
+  at: string;
+  change: CodeChangeSummaryReport;
+  kind: ActivityKind;
+};
+
+/** PRs named per section before the rest fold into "+N more". */
+const SECTION_LIMIT = 3;
 
 /**
- * Show one cell per day in GitHub greens, shaded by merges. Hover shows the
- * day's code changes per repository.
+ * Show one cell per day in GitHub greens, shaded by merges. Hover names the
+ * PRs merged, opened, and closed that day.
  */
 export function HomeDayStrip(props: {
+  changes: CodeChangeSummaryReport[];
   days: CodeActivityDay[];
-  repositoryDays: CodeRepositoryActivityDay[];
 }) {
   const max = Math.max(1, ...props.days.map((day) => day.merged));
+  const eventsByDay = groupByDay(props.changes.flatMap(changeEvents));
   return (
     <div className="flex gap-0.5" role="list" aria-label="Activity per day">
       {props.days.map((day) => {
-        const repositories = props.repositoryDays
-          .filter((row) => row.date === day.date)
-          .sort(
-            (a, b) =>
-              activityTotal(b) - activityTotal(a) ||
-              a.repository.localeCompare(b.repository),
-          );
-        const total = sumActivity(repositories);
+        const events = eventsByDay.get(day.date) ?? [];
         return (
           <Tooltip key={day.date}>
             <TooltipTrigger
               render={
                 <span
-                  aria-label={`${formatDay(day.date)}: ${activitySummary(total)}`}
+                  aria-label={`${formatDay(day.date)}: ${activitySummary(events)}`}
                   className={cn(
                     "size-[7px] rounded-[1.5px] outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
                     contributionLevelClass(contributionLevel(day.merged, max)),
@@ -70,12 +61,8 @@ export function HomeDayStrip(props: {
                 />
               }
             />
-            <TooltipContent className="min-w-60 px-3.5 py-3" sideOffset={8}>
-              <DayActivity
-                date={day.date}
-                repositories={repositories}
-                total={total}
-              />
+            <TooltipContent className="w-80 p-0 leading-5" sideOffset={8}>
+              <DayActivity date={day.date} events={events} />
             </TooltipContent>
           </Tooltip>
         );
@@ -84,98 +71,105 @@ export function HomeDayStrip(props: {
   );
 }
 
-/**
- * The header row names the day and puts a state icon over each count column,
- * so the repository rows below need no labels.
- */
-function DayActivity(props: {
-  date: string;
-  repositories: CodeRepositoryActivityDay[];
-  total: ActivityCounts;
-}) {
-  const kinds = ACTIVITY_KINDS.filter((kind) => props.total[kind.key] > 0);
-  const columns = cn("grid items-center gap-x-3", COLUMN_CLASSES[kinds.length]);
+// Three tiers: section label, then PR title, then repository and number.
+function DayActivity(props: { date: string; events: ActivityEvent[] }) {
+  const sections = ACTIVITY_KINDS.map((kind) => ({
+    ...kind,
+    events: props.events.filter((event) => event.kind === kind.kind),
+  })).filter((section) => section.events.length > 0);
   return (
-    <div className="grid gap-3 leading-5">
-      <div className={columns}>
-        <div className="min-w-0">
-          <div className="font-medium text-dashboard-text">
-            {formatDay(props.date)}
-          </div>
-          <div className="text-dashboard-text-muted">
-            {activitySummary(props.total)}
-          </div>
+    <>
+      <div className="px-3.5 py-2.5">
+        <div className="font-medium text-dashboard-text">
+          {formatDay(props.date)}
         </div>
-        {kinds.map((kind) => (
-          <span className="flex justify-end self-start pt-1" key={kind.key}>
-            <SidebarAnnotationIcon decorative icon={kind.icon} size={12} />
-          </span>
-        ))}
+        {sections.length === 0 ? (
+          <div className="text-dashboard-text-muted">No PR activity</div>
+        ) : null}
       </div>
-      {props.repositories.length > 0 ? (
-        <div
-          className={cn(
-            columns,
-            "gap-y-1 border-t border-dashboard-border-subtle pt-2.5 tabular-nums",
-          )}
-        >
-          {props.repositories.flatMap((row) => [
-            <RepositoryName key={row.repository} name={row.repository} />,
-            ...kinds.map((kind) => (
-              <span
-                className={cn(
-                  "text-right",
-                  row[kind.key] > 0
-                    ? "font-medium text-dashboard-text"
-                    : "text-dashboard-text-faint",
-                )}
-                key={`${row.repository}:${kind.key}`}
-              >
-                {row[kind.key] > 0 ? row[kind.key] : "–"}
-              </span>
-            )),
-          ])}
+      {sections.length > 0 ? (
+        <div className="grid gap-3 border-t border-dashboard-border-subtle px-3.5 pt-2.5 pb-3">
+          {sections.map((section) => (
+            <div className="grid gap-0.5" key={section.kind}>
+              <div className="flex items-center gap-2">
+                <SidebarAnnotationIcon
+                  decorative
+                  icon={section.icon}
+                  size={12}
+                />
+                <span className="font-medium text-dashboard-text">
+                  {section.label}
+                </span>
+                <span className="text-dashboard-text-faint tabular-nums">
+                  {section.events.length}
+                </span>
+              </div>
+              {/* pl-5 lines titles up with the label text after the icon. */}
+              <ul className="m-0 grid list-none p-0 pl-5">
+                {section.events.slice(0, SECTION_LIMIT).map((event) => (
+                  <li
+                    className="flex min-w-0 items-baseline justify-between gap-3"
+                    key={event.change.id}
+                  >
+                    <span className="min-w-0 truncate text-dashboard-text-muted">
+                      {event.change.title ?? `#${event.change.number}`}
+                    </span>
+                    <span className="shrink-0 text-dashboard-text-faint tabular-nums">
+                      {repositoryName(event.change.repository)} #
+                      {event.change.number}
+                    </span>
+                  </li>
+                ))}
+                {section.events.length > SECTION_LIMIT ? (
+                  <li className="text-dashboard-text-faint">
+                    +{section.events.length - SECTION_LIMIT} more
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          ))}
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
-// The owner repeats on most rows, so it steps back behind the name.
-function RepositoryName(props: { name: string }) {
-  const slash = props.name.lastIndexOf("/");
-  return (
-    <span className="min-w-0 truncate text-dashboard-text-muted">
-      {slash > 0 ? (
-        <span className="text-dashboard-text-faint">
-          {props.name.slice(0, slash + 1)}
-        </span>
-      ) : null}
-      {props.name.slice(slash + 1)}
-    </span>
-  );
+function changeEvents(change: CodeChangeSummaryReport): ActivityEvent[] {
+  const events: ActivityEvent[] = [
+    { at: change.openedAt, change, kind: "opened" },
+  ];
+  if (change.mergedAt) {
+    events.push({ at: change.mergedAt, change, kind: "merged" });
+  }
+  if (change.state === "closed" && change.closedAt) {
+    events.push({ at: change.closedAt, change, kind: "closed" });
+  }
+  return events;
 }
 
-function activityTotal(counts: ActivityCounts): number {
-  return counts.closed + counts.created + counts.merged;
+// ISO timestamps are UTC, so the first 10 characters are the UTC day bucket.
+function groupByDay(events: ActivityEvent[]) {
+  const byDay = new Map<string, ActivityEvent[]>();
+  for (const event of [...events].sort((a, b) => b.at.localeCompare(a.at))) {
+    const day = event.at.slice(0, 10);
+    byDay.set(day, [...(byDay.get(day) ?? []), event]);
+  }
+  return byDay;
 }
 
-function sumActivity(rows: ActivityCounts[]): ActivityCounts {
-  return rows.reduce(
-    (total, row) => ({
-      closed: total.closed + row.closed,
-      created: total.created + row.created,
-      merged: total.merged + row.merged,
-    }),
-    { closed: 0, created: 0, merged: 0 },
-  );
+function activitySummary(events: ActivityEvent[]): string {
+  const parts = ACTIVITY_KINDS.map((kind) => ({
+    count: events.filter((event) => event.kind === kind.kind).length,
+    kind: kind.kind,
+  }))
+    .filter((part) => part.count > 0)
+    .map((part) => `${part.count} ${part.kind}`);
+  return parts.length > 0 ? parts.join(", ") : "No PR activity";
 }
 
-function activitySummary(counts: ActivityCounts): string {
-  const parts = ACTIVITY_KINDS.filter((kind) => counts[kind.key] > 0).map(
-    (kind) => `${counts[kind.key]} ${kind.label}`,
-  );
-  return parts.length > 0 ? parts.join(" · ") : "No activity";
+// The owner repeats on most rows; the full name is on the list below.
+function repositoryName(repository: string): string {
+  return repository.slice(repository.lastIndexOf("/") + 1);
 }
 
 function formatDay(date: string): string {

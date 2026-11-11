@@ -6,7 +6,6 @@ import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import {
   codeOverviewReportSchema,
   codePersonReportSchema,
-  codeRepositoryActivityDaySchema,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
@@ -18,8 +17,10 @@ const ACTIVITY_DAYS = 90;
  * stale open change is not cut off by newer completed changes.
  */
 const PERSON_CHANGE_LIMIT = 100;
-/** Days of per-repository activity on one People profile. */
-const REPOSITORY_ACTIVITY_DAYS = 7;
+/** Days of named code change activity on one People profile. */
+const ACTIVITY_CHANGE_DAYS = 7;
+// Far above one person's week. Past it, the oldest activity drops out.
+const ACTIVITY_CHANGE_LIMIT = 200;
 
 const summaryRowSchema = z
   .object({
@@ -487,46 +488,40 @@ export async function readCodeOverview(nowMs = Date.now()) {
   });
 }
 
-/** Read one person's code activity per UTC day and repository. */
-async function readPersonRepositoryActivity(args: {
+/**
+ * Read one person's code changes opened, merged, or closed in the last 7 UTC
+ * days, latest activity first.
+ */
+async function readPersonActivityChanges(args: {
   nowMs: number;
   userId: string;
 }) {
   const changes = juniorCodeChanges;
-  const start = startOfUtcDay(
-    args.nowMs - (REPOSITORY_ACTIVITY_DAYS - 1) * DAY_MS,
-  );
-  const owned = ownedByUserSql(sql`${changes.conversationIds}`, args.userId);
-  const result = await getDb().execute(sql`
-    SELECT
-      to_char(date_trunc('day', events.event_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS "date",
-      repositories.name AS "repository",
-      count(*) FILTER (WHERE events.kind = 'created')::integer AS "created",
-      count(*) FILTER (WHERE events.kind = 'merged')::integer AS "merged",
-      count(*) FILTER (WHERE events.kind = 'closed')::integer AS "closed"
-    FROM (
-      SELECT ${changes.repositoryId} AS repository_id, ${changes.openedAt} AS event_at, 'created'::text AS kind
-      FROM ${changes}
-      WHERE ${changes.openedAt} >= ${start} AND ${owned}
-      UNION ALL
-      SELECT ${changes.repositoryId}, ${changes.mergedAt}, 'merged'::text
-      FROM ${changes}
-      WHERE ${changes.mergedAt} >= ${start} AND ${owned}
-      UNION ALL
-      SELECT ${changes.repositoryId}, ${changes.closedAt}, 'closed'::text
-      FROM ${changes}
-      WHERE ${changes.state} = 'closed'
-        AND ${changes.closedAt} >= ${start}
-        AND ${owned}
-    ) AS events
-    INNER JOIN ${juniorCodeRepositories} AS repositories
-      ON repositories.id = events.repository_id
-    GROUP BY 1, 2
-    ORDER BY 1, 2
-  `);
-  return queryRows(result).map((row) =>
-    codeRepositoryActivityDaySchema.parse(row),
-  );
+  const start = startOfUtcDay(args.nowMs - (ACTIVITY_CHANGE_DAYS - 1) * DAY_MS);
+  const rows = await getDb()
+    .select(codeChangeReportColumns)
+    .from(changes)
+    .innerJoin(
+      juniorCodeRepositories,
+      eq(changes.repositoryId, juniorCodeRepositories.id),
+    )
+    .where(
+      and(
+        changeScopeFilter({ userId: args.userId }),
+        or(
+          gte(changes.openedAt, start),
+          gte(changes.mergedAt, start),
+          and(eq(changes.state, "closed"), gte(changes.closedAt, start)),
+        ),
+      ),
+    )
+    .orderBy(
+      desc(
+        sql`greatest(${changes.openedAt}, ${changes.mergedAt}, ${changes.closedAt})`,
+      ),
+    )
+    .limit(ACTIVITY_CHANGE_LIMIT);
+  return rows.map(codeChangeReport);
 }
 
 /**
@@ -539,9 +534,9 @@ export async function readPersonCodeOverview(args: {
 }) {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
-  const [windows, repositoryDays, changes] = await Promise.all([
+  const [windows, activityChanges, changes] = await Promise.all([
     readCodeWindows({ nowMs, userId: args.userId }),
-    readPersonRepositoryActivity({ nowMs, userId: args.userId }),
+    readPersonActivityChanges({ nowMs, userId: args.userId }),
     db
       .select(codeChangeReportColumns)
       .from(juniorCodeChanges)
@@ -559,7 +554,7 @@ export async function readPersonCodeOverview(args: {
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
-    activityRepositoryDays: repositoryDays,
+    activityChanges,
     activitySixHours: windows.activitySixHours,
     changes: changes.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),

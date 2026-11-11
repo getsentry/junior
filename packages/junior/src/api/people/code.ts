@@ -9,7 +9,7 @@ export async function readPeopleCode(email: string) {
     const now = new Date();
     return codePersonReportSchema.parse({
       activityDays: [],
-      activityRepositoryDays: [],
+      activityChanges: [],
       changes: [],
       generatedAt: now.toISOString(),
       summary: {

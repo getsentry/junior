@@ -28,17 +28,6 @@ export const codeActivityDaySchema = z
   })
   .strict();
 
-/** Code activity for one repository on one UTC day. */
-export const codeRepositoryActivityDaySchema = z
-  .object({
-    closed: z.number().int().nonnegative(),
-    created: z.number().int().nonnegative(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    merged: z.number().int().nonnegative(),
-    repository: z.string().min(1),
-  })
-  .strict();
-
 export const codeRepositorySummarySchema = z
   .object({
     closed: z.number().int().nonnegative(),
@@ -116,8 +105,8 @@ export const codeRepositoryReportSchema = z
 export const codePersonReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
-    /** Last 7 UTC days, one row per day and repository with activity. */
-    activityRepositoryDays: z.array(codeRepositoryActivityDaySchema),
+    /** Code changes opened, merged, or closed in the last 7 UTC days. */
+    activityChanges: z.array(codeChangeSummaryReportSchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
     activitySixHours: z.array(codeActivityDaySchema).optional(),
     changes: z.array(codeChangeSummaryReportSchema),
@@ -134,8 +123,5 @@ export type CodeChangeSummaryReport = z.infer<
 >;
 export type CodeOverviewReport = z.infer<typeof codeOverviewReportSchema>;
 export type CodePersonReport = z.infer<typeof codePersonReportSchema>;
-export type CodeRepositoryActivityDay = z.infer<
-  typeof codeRepositoryActivityDaySchema
->;
 export type CodeRepositoryReport = z.infer<typeof codeRepositoryReportSchema>;
 export type CodeRepositorySummary = z.infer<typeof codeRepositorySummarySchema>;

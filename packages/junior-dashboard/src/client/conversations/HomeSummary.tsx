@@ -66,8 +66,8 @@ export function HomeSummary() {
         <SummaryCard
           aside={
             <HomeDayStrip
+              changes={code.data.activityChanges}
               days={merges.days}
-              repositoryDays={code.data.activityRepositoryDays}
             />
           }
           detail={<MergeDelta {...merges} />}

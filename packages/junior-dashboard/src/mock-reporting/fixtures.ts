@@ -3568,57 +3568,69 @@ export function readMockPeopleCode(
     title,
     url: `https://github.com/${repository}/pull/${number}`,
   });
-  // Per-repository rows for the last 7 days. Merges match `merges` above.
-  const week = activityDays.slice(-7).map((day) => day.date);
-  const repositoryDay = (
-    dayIndex: number,
+  const doneChange = (
+    number: number,
     repository: string,
-    counts: { closed?: number; created?: number; merged?: number },
+    title: string,
+    openedDays: number,
+    done: { closed: number } | { merged: number },
   ) => ({
-    closed: counts.closed ?? 0,
-    created: counts.created ?? 0,
-    date: week[dayIndex]!,
-    merged: counts.merged ?? 0,
-    repository,
+    ...openChange(number, repository, title, openedDays),
+    ...("merged" in done
+      ? { mergedAt: daysAgo(done.merged), state: "merged" as const }
+      : { closedAt: daysAgo(done.closed), state: "closed" as const }),
   });
-  const activityRepositoryDays = [
-    repositoryDay(0, "getsentry/junior", { created: 1, merged: 1 }),
-    repositoryDay(1, "getsentry/payments", { created: 1 }),
-    repositoryDay(2, "getsentry/junior", { merged: 1 }),
-    repositoryDay(2, "getsentry/sentry-docs", { created: 1 }),
-    repositoryDay(2, "getsentry/sentry-mcp", { merged: 1 }),
-    repositoryDay(4, "getsentry/junior", { merged: 1 }),
-    repositoryDay(4, "getsentry/payments", { closed: 1 }),
-    repositoryDay(5, "getsentry/junior", { created: 2 }),
-    repositoryDay(5, "getsentry/sentry-docs", { merged: 1 }),
-    repositoryDay(6, "getsentry/junior", { created: 1 }),
+  const openChanges = [
+    openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
+    openChange(42, "getsentry/payments", "Reduce checkout latency", 3),
+    openChange(
+      2391,
+      "getsentry/junior",
+      "Retry Slack uploads after a rate limit",
+      6,
+    ),
+    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12),
+    openChange(2402, "getsentry/junior", "Cache plugin manifests", 1),
+    openChange(512, "getsentry/sentry-docs", "Document Review desk", 1),
+    openChange(2419, "getsentry/junior", "Trim Slack thread context", 2),
+    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4),
+    openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5),
+    openChange(61, "getsentry/payments", "Drop legacy refund path", 8),
+    openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10),
+    openChange(2350, "getsentry/junior", "Migrate memory schema", 15),
   ];
+  // Merges land on the days that `merges` counts in the last 7 days.
+  const doneThisWeek = [
+    doneChange(2330, "getsentry/junior", "Stream tool output in Slack", 9, {
+      merged: 6,
+    }),
+    doneChange(2361, "getsentry/junior", "Add Review desk filters", 6, {
+      merged: 4,
+    }),
+    doneChange(519, "getsentry/sentry-docs", "Document code changes", 7, {
+      merged: 4,
+    }),
+    doneChange(2384, "getsentry/junior", "Fix sandbox snapshot reuse", 3, {
+      merged: 2,
+    }),
+    doneChange(58, "getsentry/payments", "Try a shorter retry policy", 4, {
+      closed: 2,
+    }),
+    doneChange(85, "getsentry/sentry-mcp", "Pin Node 22 in CI", 2, {
+      merged: 1,
+    }),
+  ];
+  const weekStartMs = Date.parse(activityDays.at(-7)!.date);
   return {
+    activityChanges: [
+      ...doneThisWeek,
+      ...openChanges.filter(
+        (change) => Date.parse(change.openedAt) >= weekStartMs,
+      ),
+    ],
     activityDays,
-    activityRepositoryDays,
     changes: [
-      openChange(
-        2440,
-        "getsentry/junior",
-        "Show your week on the home page",
-        0,
-      ),
-      openChange(42, "getsentry/payments", "Reduce checkout latency", 3),
-      openChange(
-        2391,
-        "getsentry/junior",
-        "Retry Slack uploads after a rate limit",
-        6,
-      ),
-      openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12),
-      openChange(2402, "getsentry/junior", "Cache plugin manifests", 1),
-      openChange(512, "getsentry/sentry-docs", "Document Review desk", 1),
-      openChange(2419, "getsentry/junior", "Trim Slack thread context", 2),
-      openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4),
-      openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5),
-      openChange(61, "getsentry/payments", "Drop legacy refund path", 8),
-      openChange(523, "getsentry/sentry-docs", "Fix broken SDK links", 10),
-      openChange(2350, "getsentry/junior", "Migrate memory schema", 15),
+      ...openChanges,
       ...overview.changes.filter((change) => change.state !== "open"),
     ],
     generatedAt: overview.generatedAt,
