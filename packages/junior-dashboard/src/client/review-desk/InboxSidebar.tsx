@@ -43,9 +43,6 @@ function viewHref(view: InboxView, search: string): string {
   const params = new URLSearchParams(search);
   if (view === "all") params.delete("bundle");
   else params.set("bundle", view);
-  // A bundle link leaves the needs-you landing view.
-  params.delete("filter");
-  params.delete("group");
   params.delete("item");
   const query = params.toString();
   return `/review${query ? `?${query}` : ""}`;

@@ -207,22 +207,14 @@ export async function mockReviewItems(
         },
       });
     if (path === "" || path === "/") {
-      const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       const linked = url.searchParams.get("conversationId");
-      // A search also finds archived items, after the open ones. A status
-      // list has only closed items, newest closed first.
+      // A status list has only closed items, newest closed first.
       const closed = (url.searchParams.get("status") ?? "open") !== "open";
       const list = (
         closed
-          ? [...archived].sort((a, b) => b.closedAt.localeCompare(a.closedAt))
-          : q
-            ? [...open, ...archived]
-            : open
-      ).filter(
-        (i) =>
-          i.title.toLowerCase().includes(q) &&
-          (!linked || i.conversationIds.includes(linked)),
-      );
+          ? [...archived].sort((x, y) => y.closedAt.localeCompare(x.closedAt))
+          : open
+      ).filter((i) => !linked || i.conversationIds.includes(linked));
       // The cursor is the index of the first item of the page.
       const start = Number(url.searchParams.get("cursor") ?? 0);
       const end = start + (options.pageSize ?? list.length);

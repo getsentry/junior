@@ -13,24 +13,21 @@ import {
 /**
  * The inbox bundles, as in Google Inbox. Every bundle is automatic: All,
  * pull requests, decisions, Automations that need attention, then one per
- * Conversation. `needs-you` is the landing view that other pages link to.
+ * Conversation.
  */
 export type InboxView =
   | "all"
   | "automations"
   | "decisions"
   | "done"
-  | "needs-you"
   | "prs"
   | `c:${string}`;
 
 /**
  * Read the bundle from the URL. `bundle` names a bundle in the list, and
- * `filter=needs-you` opens the items that wait on the viewer. `bundle=done`
- * opens the closed items. The inbox opens on All.
+ * `bundle=done` opens the closed items. The inbox opens on All.
  */
 export function parseInboxView(params: URLSearchParams): InboxView {
-  if (params.get("filter") === "needs-you") return "needs-you";
   const value = params.get("bundle");
   if (
     value === "prs" ||
@@ -71,7 +68,6 @@ export function itemsInView(
   if (view === "all") return [...items];
   if (view === "prs") return items.filter(isPullRequestItem);
   if (view === "decisions") return items.filter(isDecisionItem);
-  if (view === "needs-you") return items.filter(itemNeedsViewer);
   // Automation attention comes from the Automation list, not Review items,
   // and Done lists closed items from their own list.
   if (view === "automations" || view === "done") return [];
@@ -255,7 +251,7 @@ function byConversation(
  * Group the rows of a bundle the way its filter reads best. All leads with
  * what waits on the viewer (To do), longest wait first, then Today, This
  * week, and Earlier, by how long each row has waited, so new activity on an
- * old ask does not move it up. Pull requests group by state, decisions and the needs-you view by
+ * old ask does not move it up. Pull requests group by state, decisions by
  * Conversation, and one Conversation by item kind. Empty groups drop out.
  */
 export function viewSections(
@@ -287,7 +283,7 @@ export function viewSections(
         ? byLabels(rows, [...PULL_REQUEST_STATES, "Other"], (row) =>
             pullRequestState(row.newest),
           )
-        : view === "decisions" || view === "needs-you"
+        : view === "decisions"
           ? byConversation(rows, options.titleOf)
           : view === "automations"
             ? []

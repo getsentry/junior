@@ -9,14 +9,12 @@ import type {
 import { InlineError } from "../components/InlineError";
 import { ListPane } from "../components/layout/PaneNav";
 import { LoadMorePagination } from "../components/Pagination";
-import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { ChatLayout } from "../conversations/ChatLayout";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { useDocumentTitle } from "../documentTitle";
 import { automationPath, formatRelativeTime } from "../format";
-import { useDebouncedSearchParam } from "../searchParams";
 import { cn } from "../styles";
 import { InboxAutomationRow } from "./InboxAutomationRow";
 import { InboxBundleView } from "./InboxBundleView";
@@ -133,18 +131,14 @@ export function ReviewDeskPage() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const view = parseInboxView(searchParams);
-  const [search, setSearch, q] = useDebouncedSearchParam();
-  const {
-    items: list,
-    moreArchived,
-    query: items,
-  } = useReviewItemsData({ forViewer: true, q });
+  const { items: list, query: items } = useReviewItemsData({
+    forViewer: true,
+  });
   const isDone = view === "done";
   const { items: doneItems, query: doneQuery } = useReviewItemsData({
     closed: true,
     enabled: isDone,
     forViewer: true,
-    q,
   });
   // The viewer's Automations that need attention are asks too: they lead
   // All and fill their own bundle. A sweep leaves them.
@@ -213,18 +207,14 @@ export function ReviewDeskPage() {
   );
   const titleOf = (conversationId: string) => titleById.get(conversationId);
 
-  // A search shows every match, snoozed or not.
   const sleepingConversations = new Set(
-    q
-      ? []
-      : inboxBundles(allItems)
-          .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
-          .map((bundle) => bundle.conversationId),
+    inboxBundles(allItems)
+      .filter((bundle) => snoozes.sleeps(bundle.key, bundle.newest.id))
+      .map((bundle) => bundle.conversationId),
   );
   const asleep = (item: ReviewItemPayload) =>
-    !q &&
-    (sleepingConversations.has(item.addedByConversationId) ||
-      snoozes.sleeps(item.id, item.id));
+    sleepingConversations.has(item.addedByConversationId) ||
+    snoozes.sleeps(item.id, item.id);
   const isPinned = (item: ReviewItemPayload) =>
     pins.pinned(item.id) || pins.pinned(item.addedByConversationId);
   const live = allItems.filter((item) => !sweeper.isSwept(item.id));
@@ -269,17 +259,15 @@ export function ReviewDeskPage() {
     );
 
   const conversationId = viewConversationId(view);
-  const rows = viewRows(q ? allItems : awake, view);
+  const rows = viewRows(awake, view);
   const rowPinned = (row: InboxBundle) => row.items.some(isPinned);
-  const pinnedRows = q ? [] : rows.filter(rowPinned);
-  const sections: StreamSection[] = q
-    ? []
-    : viewSections(
-        view,
-        rows.filter((row) => !rowPinned(row)),
-        { nowMs, titleOf },
-      ).map((section) => ({ ...section, automations: [] }));
-  if (!q && view === "all" && attentionAll.length > 0) {
+  const pinnedRows = rows.filter(rowPinned);
+  const sections: StreamSection[] = viewSections(
+    view,
+    rows.filter((row) => !rowPinned(row)),
+    { nowMs, titleOf },
+  ).map((section) => ({ ...section, automations: [] }));
+  if (view === "all" && attentionAll.length > 0) {
     // Automations that need attention wait on the viewer, after the asks.
     const todo = sections.find((section) => section.key === "todo");
     if (todo) todo.automations = attentionAll;
@@ -291,7 +279,7 @@ export function ReviewDeskPage() {
         rows: [],
       });
   }
-  if (!q && view === "automations")
+  if (view === "automations")
     sections.push(
       ...automationSections(attentionAll).map((section) => ({
         automations: section.automations,
@@ -307,25 +295,10 @@ export function ReviewDeskPage() {
       label: "Pinned",
       rows: pinnedRows,
     });
-  // Automations are not Review items, so the server search skips them.
-  // Match them here, in the bundles that list them.
-  const needle = q.toLowerCase();
-  const searchedAutomations =
-    q && (view === "all" || view === "automations")
-      ? attentionAll.filter((automation) =>
-          [automation.title, automation.statusReason ?? ""].some((text) =>
-            text.toLowerCase().includes(needle),
-          ),
-        )
-      : [];
-  const snoozedRows = q ? [] : viewRows(sleeping, view);
-  const conversationCount = new Set(rows.map((row) => row.conversationId)).size;
-  const viewLabel =
-    view === "needs-you"
-      ? "By conversation"
-      : view.startsWith("c:")
-        ? (titleOf(view.slice(2)) ?? "Conversation")
-        : VIEW_LABELS[view as keyof typeof VIEW_LABELS];
+  const snoozedRows = viewRows(sleeping, view);
+  const viewLabel = view.startsWith("c:")
+    ? (titleOf(view.slice(2)) ?? "Conversation")
+    : VIEW_LABELS[view as keyof typeof VIEW_LABELS];
 
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
     () => new Set(["snoozed"]),
@@ -343,19 +316,14 @@ export function ReviewDeskPage() {
   );
   const navigable = isDone
     ? doneKeys(doneItems, nowMs, collapsed)
-    : q
-      ? [
-          ...rows.map((row) => row.key),
-          ...searchedAutomations.map(automationKey),
-        ]
-      : sections.flatMap((section) =>
-          collapsed.has(section.key)
-            ? []
-            : [
-                ...section.rows.map((row) => row.key),
-                ...section.automations.map(automationKey),
-              ],
-        );
+    : sections.flatMap((section) =>
+        collapsed.has(section.key)
+          ? []
+          : [
+              ...section.rows.map((row) => row.key),
+              ...section.automations.map(automationKey),
+            ],
+      );
 
   const linkedKey = itemParam
     ? rows.find((row) => row.items.some((item) => item.id === itemParam))?.key
@@ -540,7 +508,6 @@ export function ReviewDeskPage() {
   const automationsMissing = showsAutomations && !attention.data;
   const empty =
     loaded &&
-    !q &&
     !isDone &&
     !automationsMissing &&
     navigable.length === 0 &&
@@ -550,8 +517,7 @@ export function ReviewDeskPage() {
     view === "all"
       ? undefined
       : {
-          showConversation:
-            !conversationId && view !== "decisions" && view !== "needs-you",
+          showConversation: !conversationId && view !== "decisions",
         };
   const rowView = (row: InboxBundle) => (
     <InboxBundleView
@@ -589,7 +555,6 @@ export function ReviewDeskPage() {
       />
     );
   };
-  const viewSweep = sweepOf(rows, isPinned);
 
   const page = (
     <ChatLayout
@@ -600,15 +565,6 @@ export function ReviewDeskPage() {
             <div className="mx-auto flex h-full w-full min-w-0 max-w-[52.5rem] items-center justify-between gap-4 px-4 pt-3 md:px-7 md:pt-0">
               <h2 className="m-0 min-w-0 truncate font-display text-xl font-medium leading-tight tracking-tight">
                 {viewLabel}
-                {view === "needs-you" ? (
-                  <>
-                    {" "}
-                    <span className="ml-2 font-sans text-sm font-normal text-dashboard-text-muted">
-                      {conversationCount} conversation
-                      {conversationCount === 1 ? "" : "s"}
-                    </span>
-                  </>
-                ) : null}
               </h2>
               <div className="flex shrink-0 items-center gap-2">
                 {conversationId ? (
@@ -620,45 +576,29 @@ export function ReviewDeskPage() {
                     <ArrowUpRight aria-hidden="true" size={14} />
                   </Link>
                 ) : null}
-                {q || isDone ? null : (
-                  <SweepButton
-                    clear={viewSweep.length}
-                    onSweep={() => sweepRows(rows)}
-                    scope={viewLabel}
-                  />
-                )}
               </div>
             </div>
           </div>
-          <div className="mx-auto grid w-full max-w-[52.5rem] gap-3 px-4 py-3 md:px-7">
+          {/* Phones show the chips, wide screens the key hints. */}
+          <div className="mx-auto grid w-full max-w-[52.5rem] gap-3 px-4 py-3 md:px-7 md:max-lg:hidden">
             <InboxBundleChips
               bundles={[...bundleLinks, ...conversationLinks, DONE_LINK]}
               search={location.search}
               selected={view}
             />
-            <div className="flex min-w-0 items-center gap-4">
-              <SearchInput
-                className="min-w-0 flex-1"
-                label="Search review items"
-                onChange={setSearch}
-                placeholder="Search items…"
-                size="compact"
-                value={search}
-              />
-              <p
-                aria-label="Keyboard shortcuts"
-                className="m-0 flex shrink-0 flex-wrap justify-end gap-x-3 gap-y-1 font-sans text-xs text-dashboard-text-faint max-lg:hidden"
-              >
-                {(isDone ? DONE_KEY_HINTS : KEY_HINTS).map(([keys, label]) => (
-                  <span key={label}>
-                    <kbd className="font-sans text-dashboard-text-muted">
-                      {keys}
-                    </kbd>{" "}
-                    {label}
-                  </span>
-                ))}
-              </p>
-            </div>
+            <p
+              aria-label="Keyboard shortcuts"
+              className="m-0 flex flex-wrap gap-x-3 gap-y-1 font-sans text-xs text-dashboard-text-faint max-lg:hidden"
+            >
+              {(isDone ? DONE_KEY_HINTS : KEY_HINTS).map(([keys, label]) => (
+                <span key={label}>
+                  <kbd className="font-sans text-dashboard-text-muted">
+                    {keys}
+                  </kbd>{" "}
+                  {label}
+                </span>
+              ))}
+            </p>
           </div>
         </header>
       }
@@ -685,7 +625,7 @@ export function ReviewDeskPage() {
               <BundleRowsLoading />
             ) : doneItems.length === 0 ? (
               <p className="m-0 py-12 text-center font-display text-lg font-medium text-dashboard-text">
-                {q ? `No done items match "${q}".` : "Nothing done yet"}
+                Nothing done yet
               </p>
             ) : (
               <InboxDoneView
@@ -710,11 +650,6 @@ export function ReviewDeskPage() {
               navigable.length === 0 &&
               snoozedRows.length === 0) ? (
             <BundleRowsLoading />
-          ) : q ? (
-            <ul aria-label="Search results" className="m-0 grid gap-2 p-0">
-              {rows.map(rowView)}
-              {searchedAutomations.map(automationView)}
-            </ul>
           ) : (
             <>
               {sections.map((section) => {
@@ -768,25 +703,9 @@ export function ReviewDeskPage() {
               </InboxSection>
             </>
           )}
-          {moreArchived && !isDone ? (
-            <p className="m-0 px-4 py-2 text-xs text-dashboard-text-muted">
-              Narrow the search to find older archived items.
-            </p>
-          ) : null}
-          {loaded &&
-          q &&
-          !isDone &&
-          rows.length === 0 &&
-          searchedAutomations.length === 0 ? (
-            <p className="m-0 px-4 py-8 text-center text-sm text-dashboard-text-muted">
-              No items match "{q}".
-            </p>
-          ) : null}
           {empty ? (
             <p className="m-0 py-12 text-center font-display text-lg font-medium text-dashboard-text">
-              {view === "all" || view === "needs-you"
-                ? "All caught up"
-                : "Nothing left here"}
+              {view === "all" ? "All caught up" : "Nothing left here"}
             </p>
           ) : null}
           <LoadMorePagination

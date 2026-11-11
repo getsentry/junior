@@ -34,7 +34,9 @@ test("shows the primary destinations at the top of every desktop pane", async ({
     "aria-current",
     "page",
   );
-  await expect(page.getByPlaceholder("Search items…")).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Inbox bundles" }),
+  ).toBeVisible();
 
   // Pages without a list get the destinations alone.
   await primary.getByRole("link", { name: "Automations" }).click();

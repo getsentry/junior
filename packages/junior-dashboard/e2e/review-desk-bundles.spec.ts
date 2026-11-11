@@ -86,30 +86,6 @@ test("each bundle groups its rows the way its filter reads", async ({
   );
 });
 
-test("the needs-you link groups waiting items by conversation", async ({
-  dashboard,
-  page,
-}) => {
-  await mockReviewItems(page);
-  await page.goto(
-    `${dashboard.baseURL}/review?filter=needs-you&group=conversation`,
-  );
-  // The count is Conversations, not items. The notice does not wait on you.
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText(
-    "By conversation 2 conversations",
-  );
-  // Everything here involves the viewer, so nothing says "need you".
-  await expect(page.getByText(/needs? you/i)).toHaveCount(0);
-  const groups = page.locator("section[aria-label]");
-  await expect(groups).toHaveCount(2);
-  await expect(groups.nth(1)).toHaveAccessibleName(
-    "Investigate checkout latency",
-  );
-  await expect(groups.getByRole("button", { expanded: false })).toHaveCount(4);
-  await expect(page.getByText(prReady.title)).toHaveCount(0);
-  await screenshot(page, "review-desk-needs-you", { view: "desktop" });
-});
-
 test("an automation row expands in place and only its buttons leave", async ({
   dashboard,
   page,
@@ -169,18 +145,7 @@ test("an automation row expands in place and only its buttons leave", async ({
     0,
   );
   await blockedHeading.click();
-  // A search finds Automations too, though the server search skips them.
-  await page
-    .getByRole("searchbox", { name: "Search review items" })
-    .fill("weekly project");
-  await expect(
-    page
-      .getByRole("list", { name: "Search results" })
-      .getByRole("button", { name: /Weekly project summary/ }),
-  ).toBeVisible();
-  await page.getByRole("searchbox", { name: "Search review items" }).fill("");
-  await expect(page).toHaveURL(/\/review\?bundle=automations$/);
-  // The row stays open through the collapse and the search.
+  // The row stays open through the collapse.
   await expect(details).toBeVisible();
   await details.getByRole("button", { name: "Resume" }).click();
   await expect
@@ -246,22 +211,24 @@ test("a sweep clears only FYI items, with an Undo", async ({
     open: [license, prReady, digest, teamAsk],
   });
   await page.goto(`${dashboard.baseURL}/review`);
-  // The notice in the question's bundle and the FYI digest go; the
-  // questions stay.
-  const sweep = page.getByRole("button", {
-    name: "Clear 2 in All",
-  });
-  await sweep.click();
+  // Each section clears its own rows. In To do, the notice in the
+  // question's bundle goes; the questions stay.
   const digestRow = page.getByRole("button", { name: /Digest skipped/ });
-  await expect(digestRow).toHaveCount(0);
-  const cleared = page.getByText("Cleared 2 items");
-  await expect(cleared).toBeVisible();
+  await page.getByRole("button", { name: "Clear 1 in To do" }).click();
+  await expect(page.getByText("Cleared 1 item")).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Pick the on-call rotation/ }),
   ).toBeVisible();
+  await expect(digestRow).toBeVisible();
   await screenshot(page, "review-desk-sweep", { view: "desktop" });
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect(digestRow).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Clear 1 in To do" }),
+  ).toBeVisible();
+  // The page has no Clear of its own.
+  await expect(
+    page.getByRole("button", { name: /^Clear \d+ in All$/ }),
+  ).toHaveCount(0);
   expect(actions).toEqual([]);
 
   // p pins the active row. A pin keeps it out of a sweep.
@@ -270,7 +237,11 @@ test("a sweep clears only FYI items, with an Undo", async ({
   const pinned = page.getByRole("region", { name: "Pinned" });
   await expect(pinned.getByRole("button", { expanded: false })).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Clear 1 in All" }).click();
+  await expect(
+    page.getByRole("button", { name: "Clear 1 in To do" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear 1 in Today" }).click();
+  await expect(digestRow).toHaveCount(0);
   // The sweep closes the items when the Undo window ends.
   await expect
     .poll(() => actions, { timeout: 10_000 })
@@ -288,7 +259,7 @@ test("a sweep that fails to close an item brings it back", async ({
   await page.goto(`${dashboard.baseURL}/review`);
   const digestRow = page.getByRole("button", { name: /Digest skipped/ });
   await expect(digestRow).toBeVisible();
-  await page.getByRole("button", { name: /^Clear \d+ in All$/ }).click();
+  await page.getByRole("button", { name: /^Clear \d+ in Today$/ }).click();
   await expect(digestRow).toHaveCount(0);
   await expect(page.getByText(/^Could not clear \d+ items?$/)).toBeVisible({
     timeout: 10_000,

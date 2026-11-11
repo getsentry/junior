@@ -27,8 +27,9 @@ test("the inbox bundles review items by conversation", async ({
   await expect(bundles.nth(0)).toContainText("2 questions");
   await expect(bundles.nth(1)).toContainText("Investigate checkout latency");
   await expect(bundles.nth(1)).toContainText(rollout.title);
-  // Archived items show only in a search.
+  // Closed items show only in Done. The pane's search is the only search.
   await expect(page.getByText(answered.title)).toHaveCount(0);
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
   await screenshot(page, "review-desk", { lightTheme: true, view: "desktop" });
 
   // j shows where the reader is, and Enter opens the bundle in place.
@@ -335,24 +336,6 @@ test("on mobile the inbox is the same queue", async ({ dashboard, page }) => {
     }),
   ).toBeVisible();
   await screenshot(page, "review-desk-bundle", { view: "mobile" });
-});
-
-test("a search bundles open and archived items together", async ({
-  dashboard,
-  page,
-}) => {
-  await mockReviewItems(page);
-  await page.goto(`${dashboard.baseURL}/review`);
-  await page.getByLabel("Search review items").fill("license");
-  await expect(page).toHaveURL(/[?&]q=license/);
-  const results = page.getByRole("list", { name: "Search results" });
-  const bundle = results.getByRole("button", { expanded: false });
-  await expect(bundle).toHaveCount(1);
-  await expect(page.getByRole("region", { name: "To do" })).toHaveCount(0);
-  await bundle.click();
-  // A closed item shows its answer.
-  await expect(results.getByText("MIT license, no change.")).toBeVisible();
-  await screenshot(page, "review-desk-search", { view: "desktop" });
 });
 
 test("an Automations error does not read as an empty inbox", async ({
