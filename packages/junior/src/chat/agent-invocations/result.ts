@@ -34,12 +34,14 @@ import {
   getAgentInvocationIdForResult,
   getAgentInvocationResultMessageId,
   getAgentReplyMessageId,
+  isAgentReplyMessageId,
 } from "./ids";
 import {
   getAgentInvocation,
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
+  reportReplacedWithoutOpenWork,
   sendsResultToParent,
 } from "./store";
 import { isWatchEvent } from "@/chat/conversations/session-stop";
@@ -248,6 +250,20 @@ export async function enqueueAgentInvocationResult(
       invocation.invocationId,
       nowMs,
     );
+    const replied = parentInboundMessageIds.some((messageId) =>
+      isAgentReplyMessageId(messageId, invocation.invocationId),
+    );
+    // A child that sent its parent nothing starts no later agent invocation
+    // there, so a `replaced` result of the parent reports now.
+    const replaced = replied
+      ? undefined
+      : await reportReplacedWithoutOpenWork(
+          invocation.parentConversationId,
+          nowMs,
+        );
+    if (replaced && isTerminalAgentInvocation(replaced)) {
+      await enqueueAgentInvocationResult(replaced, options);
+    }
     return;
   }
   await appendAndEnqueueInboundMessage({
@@ -398,7 +414,10 @@ export async function enqueueAgentReplyToParent(args: {
   });
 }
 
-type ChildAgentInput = { invocationId: string; kind: "message" | "result" };
+type ChildAgentInput = {
+  invocationId: string;
+  kind: "message" | "reply" | "result";
+};
 
 /**
  * Read the agent invocation that one result or message Event refers to: the
@@ -412,13 +431,13 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
   ) {
     return undefined;
   }
+  if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
+    return { invocationId: metadata.event.identifier, kind: "message" };
+  }
   // A reply, like a message, can arrive before its sender's agent invocation
   // ends.
-  if (
-    metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE ||
-    metadata.event.eventType === AGENT_REPLY_EVENT_TYPE
-  ) {
-    return { invocationId: metadata.event.identifier, kind: "message" };
+  if (metadata.event.eventType === AGENT_REPLY_EVENT_TYPE) {
+    return { invocationId: metadata.event.identifier, kind: "reply" };
   }
   return isAgentInvocationResultEventType(metadata.event.eventType)
     ? { invocationId: metadata.event.identifier, kind: "result" }
@@ -426,15 +445,16 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
 }
 
 /**
- * Return whether a stop after this result was sent skipped it, so it starts no
- * work. A message that a child sent before its stop is still delivered.
+ * Return whether a stop after this result or reply was sent skipped it, so it
+ * starts no work. A message that a child sent before its stop is still
+ * delivered.
  */
 function isSkippedAgentResult(
   input: ChildAgentInput,
   invocation: AgentInvocation,
 ): boolean {
   return (
-    input.kind === "result" &&
+    input.kind !== "message" &&
     isTerminalAgentInvocation(invocation) &&
     invocation.parentMailboxStatus === "skipped"
   );

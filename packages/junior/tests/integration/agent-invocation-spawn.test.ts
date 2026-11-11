@@ -431,7 +431,7 @@ describe("agent invocation spawn and result delivery", () => {
       await fixture.close();
     }
   });
-  it("delivers a child's Message cards with the parent's result reply and shows its annotations on the root", async () => {
+  it("delivers the Message cards of a child's reply with the parent's reply and shows its annotations on the root", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
@@ -476,28 +476,20 @@ describe("agent invocation spawn and result delivery", () => {
           },
         },
       ]);
-      await lifecycle.complete({
-        conversationId: child,
-        createdAtMs: 2_002,
-        outcome: "success",
-        turnId: childTurnId,
-      });
-      const terminal = await completeAgentInvocation({
-        invocationId: created.invocationId,
-        result: "Opened getsentry/junior#1.",
-        status: "completed",
-      });
-      await enqueueAgentInvocationResult(terminal as TerminalAgentInvocation, {
+      // The `reply` can reach the parent before the child's Turn ends.
+      await enqueueAgentReplyToParent({
         queue,
+        reply: { text: "Opened getsentry/junior#1.", toolCallId: "call-reply" },
+        sender: created,
         state,
       });
 
-      // The result starts a parent Turn. Its reply delivers the child's card.
+      // The `reply` starts a parent Turn. Its reply delivers the child's card.
       await lifecycle.start({
         conversationId: slackParentConversationId,
         createdAtMs: 40_000,
         inputMessageIds: [
-          getAgentInvocationResultMessageId(created.invocationId),
+          getAgentReplyMessageId(created.invocationId, "call-reply"),
         ],
         surface: "slack",
         turnId: "parent-result-turn",

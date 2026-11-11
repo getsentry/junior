@@ -320,6 +320,27 @@ export async function reportReplacedAgentInvocation(
   return await getAgentInvocation(invocationId);
 }
 
+/**
+ * Send the `replaced` result of a child Conversation when its open child work
+ * ended and sent it nothing, such as a helper that ended with `noReply`. No
+ * later agent invocation of the child would send the report.
+ */
+export async function reportReplacedWithoutOpenWork(
+  conversationId: string,
+  nowMs = Date.now(),
+): Promise<AgentInvocation | undefined> {
+  const latest = await getLatestAgentInvocationForConversation(conversationId);
+  if (
+    !latest ||
+    !isTerminalAgentInvocation(latest) ||
+    latest.parentMailboxStatus !== "replaced" ||
+    (await hasOpenChildWork(latest))
+  ) {
+    return undefined;
+  }
+  return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
+}
+
 /** Record that one terminal result is in its parent mailbox. */
 export async function markAgentInvocationParentMailboxAppended(
   invocationId: string,

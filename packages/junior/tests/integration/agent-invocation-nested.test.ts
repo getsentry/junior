@@ -185,4 +185,72 @@ describe("nested agent invocations", () => {
       await fixture.close();
     }
   });
+
+  it("sends a child's report when its helper ends without a reply", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const harness = await createConversationWorkHarness({
+      run: async () => {
+        throw new Error("The agent does not run in this test.");
+      },
+    });
+    const { queue, state } = harness;
+    try {
+      const child = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "quiet-child",
+      });
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "quiet-helper",
+        parentConversationId: child.childConversationId,
+      });
+      await expect(
+        completeAgentInvocation({
+          errorMessage: "Started a helper.",
+          invocationId: child.invocationId,
+          status: "blocked",
+        }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+
+      // The helper ends with `noReply`, so it sends the child nothing. No
+      // later agent invocation of the child would send its report.
+      const quiet = (await completeAgentInvocation({
+        invocationId: helper.invocationId,
+        result: "",
+        status: "completed",
+      })) as TerminalAgentInvocation;
+      await enqueueAgentInvocationResult(quiet, { queue, state });
+
+      expect(
+        (
+          await getConversationWorkState({
+            conversationId: child.childConversationId,
+            state,
+          })
+        )?.messages ?? [],
+      ).toEqual([]);
+      await expect(
+        getAgentInvocation(child.invocationId),
+      ).resolves.toMatchObject({ parentMailboxStatus: "appended" });
+      expect(
+        (
+          await getConversationWorkState({
+            conversationId: slackParentConversationId,
+            state,
+          })
+        )?.messages,
+      ).toEqual([
+        expect.objectContaining({
+          inboundMessageId: getAgentInvocationResultMessageId(
+            child.invocationId,
+          ),
+          input: expect.objectContaining({
+            text: expect.stringContaining("Started a helper."),
+          }),
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });

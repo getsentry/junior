@@ -86,6 +86,16 @@ export function getAgentReplyMessageId(
   return `${REPLY_MESSAGE_PREFIX}${invocationId}:${toolCallId}`;
 }
 
+// Agent invocation ids come from `stableId`.
+const REPLY_MESSAGE_ID = /^agent-reply:(agent-invocation:[0-9a-f]{32}):/;
+
+/** Read the agent invocation identity from one parent `reply` mailbox identity. */
+export function parseAgentReplyMessageId(
+  messageId: string,
+): string | undefined {
+  return REPLY_MESSAGE_ID.exec(messageId)?.[1];
+}
+
 /** Return whether one parent mailbox identity is a `reply` of an agent invocation. */
 export function isAgentReplyMessageId(
   messageId: string,

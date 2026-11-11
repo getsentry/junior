@@ -13,6 +13,7 @@ import {
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result";
+import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
@@ -324,6 +325,19 @@ describe("agent invocation conversation work", () => {
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
       expect(observedVisibility).toBe("public");
+      // A person's stop of the parent skips the unread reply, as it skips a
+      // result, so it starts no parent Turn.
+      await stopChildAgentsBelow(slackParentConversationId, {
+        nowMs: Date.now(),
+        stoppedAtMs: Date.now(),
+        state,
+      });
+      await expect(
+        withAgentInvocationResultActors({
+          kind: "mailbox",
+          batch: [resultEntry],
+        }),
+      ).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }
