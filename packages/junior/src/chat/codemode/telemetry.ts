@@ -1,4 +1,9 @@
-// Names and meanings: TELEMETRY.md "Code Mode". Policy: policies/observability.md.
+// A `codemode` call has one `gen_ai.execute_tool` span with
+// `gen_ai.tool.name:codemode` and the `app.codemode.*` attributes below. Each
+// nested call has its own child `gen_ai.execute_tool` span with the real tool
+// name, `gen_ai.tool.dispatcher.name:codemode`, its own `app.guardian.*`
+// decision, and the call id `<codemode call id>/c<n>`. A nested failure logs
+// `agent.tool_call.failed` with that id. Policy: policies/observability.md.
 
 /**
  * Why a Code Mode script did not return a result. `script`, `timeout`,

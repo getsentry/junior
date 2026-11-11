@@ -319,6 +319,11 @@ function failureLabel(error: unknown, signal: AbortSignal): string {
   return providerError ? `provider_${providerError.kind}` : "summary_error";
 }
 
+/**
+ * `app.compaction.outcome` of a job. `stale`: the History was replaced before
+ * the job ran. `duplicate`: the request already has a result. Both write
+ * nothing. A `failed` job sets `error.type` to its failure label.
+ */
 type JobOutcome = "ready" | "failed" | "stale" | "duplicate";
 
 /**
