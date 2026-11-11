@@ -222,6 +222,8 @@ function shouldPersistBeforeAck(body: SlackEventEnvelope): boolean {
 
 async function resolveSlackConversationId(args: {
   canonicalThreadId: string;
+  /** Claim an unowned thread for the Conversation this message starts. */
+  claimAtMs?: number;
   conversationStore?: ConversationStore;
   installation: SlackInstallationContext;
 }): Promise<string> {
@@ -230,14 +232,28 @@ async function resolveSlackConversationId(args: {
   if (!providerThread) {
     return args.canonicalThreadId;
   }
-  return (
-    (await conversationStore.getConversationIdByProviderConversation({
-      provider: "slack",
-      providerDestinationId: providerThread.channelId,
-      providerTenantId: args.installation.teamId ?? "",
-      providerConversationId: providerThread.threadTs,
-    })) ?? args.canonicalThreadId
-  );
+  const thread = {
+    provider: "slack",
+    providerDestinationId: providerThread.channelId,
+    providerTenantId: args.installation.teamId ?? "",
+    providerConversationId: providerThread.threadTs,
+  };
+  const ownerId =
+    await conversationStore.getConversationIdByProviderConversation(thread);
+  if (ownerId) {
+    return ownerId;
+  }
+  if (args.claimAtMs === undefined || !args.installation.teamId) {
+    return args.canonicalThreadId;
+  }
+  // Claim the thread now, not at the first reply. Otherwise another
+  // Conversation that posts here first takes the thread, and later replies
+  // split between the two.
+  return await conversationStore.claimProviderConversation({
+    ...thread,
+    atMs: args.claimAtMs,
+    conversationId: args.canonicalThreadId,
+  });
 }
 
 /**
@@ -437,6 +453,9 @@ async function routeParsedMessage(args: {
   await bindSlackAuthorIdentity(message, args.installation);
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
+    ...(route === "mention" && !stopDecision
+      ? { claimAtMs: args.receivedAtMs }
+      : undefined),
     conversationStore: args.conversationStore,
     installation: args.installation,
   });

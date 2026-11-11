@@ -26,7 +26,10 @@ import {
   LOST_WORKER_RESUME_MESSAGE,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
-import { persistConversationMessages } from "@/chat/conversations/messages";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
@@ -420,6 +423,19 @@ describe("agent dispatch conversation work", () => {
   }, 30_000);
 
   it("sends successful work to each outcome destination in order", async () => {
+    // A person's Conversation started in the second outcome's thread.
+    const personThread = {
+      provider: "slack",
+      providerConversationId: "1700000000.000400",
+      providerDestinationId: "C456",
+      providerTenantId: destination.teamId,
+    };
+    const personConversationId = "slack:C456:1700000000.000400";
+    await getConversationStore().claimProviderConversation({
+      ...personThread,
+      atMs: Date.now(),
+      conversationId: personConversationId,
+    });
     const dispatch = await createDispatch(
       "multiple-message-outcomes",
       undefined,
@@ -433,7 +449,11 @@ describe("agent dispatch conversation work", () => {
         },
         {
           action: "send_message",
-          destination: { ...destination, channelId: "C456" },
+          destination: {
+            ...destination,
+            channelId: "C456",
+            threadTs: "1700000000.000400",
+          },
         },
       ],
     );
@@ -451,6 +471,21 @@ describe("agent dispatch conversation work", () => {
     expect(
       slackApiOutbox.messages().map((message) => message.params.channel),
     ).toEqual(["D123", "C456"]);
+    // The run stores its reply, and the thread stays with the person's
+    // Conversation.
+    const stored = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation: stored,
+      conversationId: getDispatchConversationId(dispatch),
+    });
+    expect(stored.messages).toContainEqual(
+      expect.objectContaining({ role: "assistant", text: "Work complete" }),
+    );
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation(
+        personThread,
+      ),
+    ).resolves.toBe(personConversationId);
   });
 
   it("posts nothing for a run without a reply or outcomes, also when it fails", async () => {
