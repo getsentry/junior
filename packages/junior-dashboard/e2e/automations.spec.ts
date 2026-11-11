@@ -154,9 +154,31 @@ test("opens scheduled and event automations in the native Automations view", asy
     exact: true,
   });
   await expect(recentRuns.getByRole("listitem")).toHaveCount(3);
+  // A recent run opens its details over the Overview, not on the Runs tab.
+  const recentRun = recentRuns.getByRole("link", {
+    name: /^Open completed run/,
+  });
+  await expect(recentRun).toHaveAttribute(
+    "href",
+    /^\/automations\/scheduled-1\?run=/,
+  );
+  await recentRun.click();
+  await expect(page).toHaveURL(
+    /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
+  );
+  const recentDetails = page.getByRole("dialog", { name: "Run details" });
   await expect(
-    recentRuns.getByRole("link", { name: /^Open completed run/ }),
-  ).toHaveAttribute("href", /\/automations\/scheduled-1\/runs\?run=/);
+    recentDetails.getByRole("region", { name: "Result" }),
+  ).toContainText("Completed");
+  await screenshot(page, "automation-overview-run-details", {
+    view: "desktop",
+  });
+  await recentDetails
+    .getByRole("button", { name: "Close run details" })
+    .click();
+  await expect(recentDetails).toHaveCount(0);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/automations/scheduled-1`);
+  await expect(recentRun).toBeFocused();
   await expect(
     recentRuns.getByRole("link", { name: "Open conversation" }).first(),
   ).toHaveAttribute("href", "/conversations/scheduler%3Adaily-ops-digest");
@@ -662,7 +684,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   await page.keyboard.press("ArrowDown");
   await expect(page).toHaveURL(/run=scheduled-1-run-3$/);
   await expect(
-    details.getByText("No Conversation was recorded for this run."),
+    details.getByText("Not recorded", { exact: true }),
   ).toBeVisible();
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("ArrowUp");

@@ -16,7 +16,7 @@ import {
   formatAutomationRunTime,
 } from "./automationFormat";
 
-/** One bar in the strip. `to` makes the bar open that run. */
+/** One bar in the strip. `to` makes the bar open that run in place. */
 export type AutomationRunStripRun = {
   costUsd?: number;
   durationMs?: number;
@@ -93,6 +93,8 @@ export function AutomationRunStrip(props: {
                       className,
                       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
                     )}
+                    // Bars open run details over the current page.
+                    replace
                     style={style}
                     to={run.to}
                   />

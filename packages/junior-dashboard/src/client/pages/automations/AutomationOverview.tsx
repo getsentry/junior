@@ -37,10 +37,15 @@ import { pathWithSearch } from "../../searchParams";
 import { dashboardInlineLinkClass } from "../../styles";
 import { AutomationCost } from "./AutomationCost";
 import { AutomationOutcomeList } from "./AutomationOutcomeFields";
-import { AUTOMATION_RUN_PARAM } from "./AutomationRunDetails";
+import {
+  AUTOMATION_RUN_PARAM,
+  AutomationRunDetails,
+  useAutomationRunSelection,
+} from "./AutomationRunDetails";
 import { AutomationRunStrip } from "./AutomationRunStrip";
 import { AutomationAttention } from "./AutomationStatus";
 import {
+  automationRunOf,
   automationRunStatusTone,
   automationScheduleLabel,
   formatAutomationRunTime,
@@ -86,21 +91,33 @@ export function AutomationOverview(props: {
   );
 }
 
-/** Recent results as a strip and a short list, with what happens next. */
+/**
+ * Recent results as a strip and a short list, with what happens next. A run
+ * opens its details over this page, so reading a run keeps your place.
+ */
 function AutomationActivity(props: {
   automation: AutomationSummary;
   query: ReturnType<typeof useAutomationExecutionsData>;
 }) {
   const { automation, query } = props;
   const location = useLocation();
+  const runs = query.data?.executions ?? [];
+  const selection = useAutomationRunSelection(
+    runs.map((run) => run.executionId),
+  );
   const runPath = (run: AutomationExecution) => {
     const search = new URLSearchParams(location.search);
     search.set(AUTOMATION_RUN_PARAM, run.executionId);
-    return pathWithSearch(automationPath(automation.id, "runs"), search);
+    return pathWithSearch(location.pathname, search);
   };
-  const runs = query.data?.executions ?? [];
+  const selectedRun = runs.find((run) => run.executionId === selection.runId);
   return (
-    <section aria-label="Recent runs" className="min-w-0">
+    <div
+      aria-label="Recent runs"
+      className="min-w-0"
+      ref={selection.listRef}
+      role="region"
+    >
       <Card>
         <div className="flex items-baseline justify-between gap-3 px-4 pt-4">
           <SectionTitle>Recent runs</SectionTitle>
@@ -165,7 +182,15 @@ function AutomationActivity(props: {
           </ol>
         ) : null}
       </Card>
-    </section>
+      {selection.runId ? (
+        <AutomationRunDetails
+          loading={query.isPending}
+          onClose={selection.close}
+          run={selectedRun && automationRunOf(selectedRun, automation)}
+          showAutomation={false}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -188,10 +213,15 @@ function AutomationRunLine(props: {
   const title =
     run.title && run.title !== props.automation.title ? run.title : undefined;
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_auto_2.25rem] items-center gap-x-4 border-t border-dashboard-border-subtle pl-4 first:border-t-0">
+    <li
+      className="grid grid-cols-[minmax(0,1fr)_auto_2.25rem] items-center gap-x-4 border-t border-dashboard-border-subtle pl-4 first:border-t-0"
+      data-run-id={run.executionId}
+    >
       <Link
         aria-label={`Open ${run.status} run from ${formatAutomationRunTime(run.executedAt)}`}
         className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 py-2.5 text-xs text-inherit no-underline focus-visible:outline-2 focus-visible:outline-dashboard-focus sm:grid-cols-[auto_8rem_minmax(0,1fr)]"
+        // Opening a run only changes the panel, not the page, so Back leaves.
+        replace
         to={props.to}
       >
         <StatusDot
