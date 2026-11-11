@@ -6,7 +6,10 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 
-/** Identify Automation routes whose run list scrolls on its own beside run details. */
+/**
+ * Identify Automation routes whose list scrolls on its own beside a panel:
+ * run details, or the filters of the Automations list.
+ */
 export function hasAutomationDetailsFrame(pathname: string): boolean {
   return (
     Boolean(matchPath("/automations/runs", pathname)) ||

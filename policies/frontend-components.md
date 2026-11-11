@@ -18,6 +18,15 @@ consistent.
 - Keep pages thin: compose shared components and wire data.
 - Own page filters and secondary nav in one shared layout control. Sections
   must not each own a copy.
+- Title page, card, and panel sections with `layout/SectionTitle` (or a
+  shared component that uses it, such as `FactSection` and `CardHeader`).
+  Small muted text is for field and subsection labels only.
+- Filtered lists use `filters/FilterToolbar` (search, a Filters button, and
+  chips) and a `filters/FilterPanel` with one `FilterOptions` per filter.
+  `FilteredList` puts the panel beside the list, so the list narrows. Row
+  details open in an overlay `DetailsPanel` that slides over the list and
+  filters. On small screens both are modal sheets. Do not put page filters
+  in popovers or native selects.
 - Check a changed shared component on a real page with
   `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` and the dashboard E2E
   screenshots.

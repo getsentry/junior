@@ -16,6 +16,7 @@ import {
 } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
 import { LocationActivityChart } from "./LocationActivityChart";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {
@@ -97,9 +98,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
             <MapPin aria-hidden="true" size={16} />
           </span>
           <div>
-            <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
-              People seen here
-            </h3>
+            <SectionTitle>People seen here</SectionTitle>
             <p className="mt-1 mb-0 font-mono text-xs text-dashboard-text-muted">
               Verified contributors across persisted conversations.
             </p>

@@ -6,6 +6,7 @@ import { anchorTitleId } from "../../components/layout/AnchorHeading";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { SkillLink } from "../../components/SkillLink";
 import type { SystemPlugin } from "./SystemPlugins";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 
 /** Render non-reporting plugin metadata. */
 export function PluginDetails(props: { plugin: SystemPlugin }) {
@@ -77,9 +78,7 @@ function CapabilityList(props: {
 }) {
   return (
     <div>
-      <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
-        {props.title}
-      </h3>
+      <SectionTitle>{props.title}</SectionTitle>
       {props.items.length ? (
         <div className="mt-2.5 flex flex-wrap gap-2">
           {props.items.map(

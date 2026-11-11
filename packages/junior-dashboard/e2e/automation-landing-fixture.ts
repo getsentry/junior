@@ -275,8 +275,13 @@ export const landingAutomations = [
       id: "post-merge-cleanup",
       task: {
         kind: "instruction",
-        instruction:
-          "Review one day of commits on getsentry/junior and open PRs for the cleanup they caused.",
+        // Long, like real cleanup instructions, so the page shows the clamp.
+        instruction: [
+          "Once a day, review the commits that landed on the default branch of getsentry/junior during the previous calendar day. Look at the changes as a whole, not commit by commit, and decide whether they make anything deletable or in need of cleanup: skill instructions the runtime now handles, dead code, config that no longer does anything, and stale docs.",
+          "Do not look for work just to look for work. Only act on cleanup that the previous day's changes directly caused and that you have checked against the current source. Do not do speculative refactors, style changes, or cleanup unrelated to those commits.",
+          "Before you make any change, check whether a PR already covers it. Search open PRs and PRs merged since the causing commits landed, by the file paths, symbols, and causing PR numbers involved. Skip any cleanup that an existing PR already makes.",
+          "If nothing needs to change, post one line that says so. Otherwise open one PR per cleanup and post the links.",
+        ].join("\n\n"),
       },
       kind: "scheduled",
       nextRunAt: iso(9),

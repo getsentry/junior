@@ -1,18 +1,12 @@
 import type { AutomationRun } from "@sentry/junior/api/schema";
 import { MessageSquareText } from "lucide-react";
-import {
-  useRef,
-  type KeyboardEvent,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { DetailsPanel } from "../../components/DetailsPanel";
 import { Fact, FactList, FactSection } from "../../components/FactSection";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatusChip } from "../../components/StatusChip";
-import { PageLayout } from "../../components/layout/PageLayout";
 import { buttonVariants } from "../../components/ui/button";
 import {
   Tooltip,
@@ -65,50 +59,49 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
     (trigger ?? listRef.current)?.focus({ preventScroll: true });
   };
   const toggle = (id: string) => select(id === runId ? undefined : id);
-  const onRowsKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (!runId || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) {
-      return;
-    }
-    // Read the focused row. The URL can lag behind fast key repeats.
-    const current = (event.target as Element)
-      .closest("[data-run-id]")
-      ?.getAttribute("data-run-id");
-    const index = current ? runIds.indexOf(current) : -1;
-    const next = runIds[index + (event.key === "ArrowDown" ? 1 : -1)];
-    if (index === -1 || !next) return;
-    event.preventDefault();
-    select(next);
-    rowButton(next)?.focus();
-  };
-  return { close, listRef, onRowsKeyDown, runId, toggle };
+  // Run details are a modal panel over the list, so read Up and Down from
+  // the whole page while a run is open. The panel stops key events from
+  // bubbling, so listen in the capture phase.
+  const steppedRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    steppedRef.current = undefined;
+  }, [runId]);
+  useEffect(() => {
+    if (!runId) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target?.closest("input, textarea, select")
+      ) {
+        return;
+      }
+      // Key repeats can land before the URL updates, so step from the last key.
+      const index = runIds.indexOf(steppedRef.current ?? runId);
+      const next = runIds[index + (event.key === "ArrowDown" ? 1 : -1)];
+      if (index === -1 || !next) return;
+      event.preventDefault();
+      steppedRef.current = next;
+      select(next);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  });
+  return { close, listRef, runId, toggle };
 }
 
-/** Scroll a run list on its own, beside the selected run's details. */
-export function AutomationRunsFrame(props: {
-  children: ReactNode;
-  details: ReactNode;
-  label: string;
-  listRef: RefObject<HTMLDivElement | null>;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid h-full min-h-0 min-w-0",
-        props.details ? "xl:grid-cols-[minmax(0,1fr)_25rem]" : undefined,
-      )}
-    >
-      <div
-        aria-label={props.label}
-        className="min-h-0 overflow-y-auto overscroll-contain outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus"
-        ref={props.listRef}
-        role="region"
-        tabIndex={0}
-      >
-        <PageLayout>{props.children}</PageLayout>
-      </div>
-      {props.details}
-    </div>
-  );
+// The panel scrolls on an element that stays mounted, so start each run at
+// its top. Stop at the panel so the page behind it keeps its place.
+function scrollPanelToTop(node: HTMLElement | null) {
+  const panel = node?.closest("[data-dashboard-modal]");
+  for (
+    let el = node?.parentElement;
+    el && panel?.contains(el);
+    el = el.parentElement
+  ) {
+    el.scrollTop = 0;
+  }
 }
 
 /** Open a run's Conversation from its row without opening run details. */
@@ -157,6 +150,8 @@ export function AutomationRunDetails(props: {
       }
       label="Run details"
       onClose={props.onClose}
+      // Run details slide over the list, so the list and filters keep their width.
+      overlay
       sheetTitle={title}
       title={
         <h2 className="m-0 line-clamp-2 break-words font-display text-base font-medium text-dashboard-text">
@@ -164,7 +159,13 @@ export function AutomationRunDetails(props: {
         </h2>
       }
     >
-      <div className="p-4 [overflow-wrap:anywhere]">
+      {/* Up and Down swap the run inside the open panel, so reset only the
+          content, not the panel and its slide-in. */}
+      <div
+        className="p-4 [overflow-wrap:anywhere]"
+        key={run?.executionId}
+        ref={scrollPanelToTop}
+      >
         {run ? (
           <AutomationRunContent
             run={run}
