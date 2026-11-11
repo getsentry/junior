@@ -563,11 +563,12 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(
     details.getByRole("link", { name: "Open conversation" }),
   ).toBeVisible();
-  // Filters slide over the page and keep the selected run.
+  // Filters replace run details and keep the selected run.
   await page.getByRole("button", { name: /^Filters/ }).click();
   await expect(
     page.getByRole("dialog", { name: "Filters", exact: true }),
   ).toBeVisible();
+  await expect(details).toHaveCount(0);
   await filterOption(page, "status", "Failed").click();
   await expect(page).toHaveURL(/status=failed/);
   await expect(page).toHaveURL(/[?&]run=/);

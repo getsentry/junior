@@ -135,7 +135,9 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
   return (
     <ListPanelFrame
       details={
-        selection.runId ? (
+        // Below xl both are modal, so the filters drawer replaces run details
+        // instead of stacking with them. The selected run stays in the URL.
+        selection.runId && !filtersOpen ? (
           <AutomationRunDetails
             key={selection.runId}
             loading={loading}
