@@ -40,6 +40,7 @@ import {
   dashboardConfigSchema,
   dashboardIdentitySchema,
 } from "../api/schema";
+import { readDashboardPreview } from "./preview";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
@@ -58,6 +59,9 @@ function takeDashboardBootstrap(): DashboardCoreData | undefined {
   if (typeof window === "undefined") return undefined;
   const embedded = window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
   delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__;
+  // The local server built it, but live data has the identity and config of
+  // the live deployment.
+  if (readDashboardPreview()?.live) return undefined;
   const parsed = dashboardBootstrapSchema.safeParse(embedded);
   return parsed.success ? parsed.data : undefined;
 }

@@ -131,11 +131,10 @@ If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 
 Dashboard auth requires at least one [allowed domain](#allowed-domains). Set these optional policy variables when you prefer environment-managed dashboard authorization:
 
-| Variable                              | Required | Purpose                                                                                     |
-| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                               |
-| `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures.     |
-| `JUNIOR_DASHBOARD_LIVE_ORIGIN`        | No       | Origin of a live deployment that a viewer can read with a personal token. Auth must be off. |
+| Variable                              | Required | Purpose                                                                                 |
+| ------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `JUNIOR_DASHBOARD_TRUSTED_ORIGINS`    | No       | Comma-separated or JSON array of Better Auth trusted origins.                           |
+| `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS` | No       | Set to `true` to replace conversation API responses with local/demo visual-QA fixtures. |
 
 For local/demo dashboard visual QA, set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` to replace conversation API responses with sample fixtures.
 

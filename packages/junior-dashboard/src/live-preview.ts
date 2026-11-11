@@ -1,19 +1,26 @@
 /**
  * Live data for a dashboard Preview.
  *
+ * This is a separate entry point. Only a Preview app wraps itself with it, so
+ * a production app does not load it or run its checks.
+ *
  * A Preview shows mock data by default. A viewer can enter a personal token
  * from the live deployment as the Basic auth password. The browser then sends
- * it with every request, and this module forwards `/api/*` reads to the live
+ * it with every request, and the wrapper forwards `/api/*` reads to the live
  * deployment as a bearer token. The server never stores the token, so a
  * public Preview URL does not give anyone else live data.
  *
  * The live deployment accepts personal tokens only for GET and HEAD, so live
  * data is read-only.
  */
-import { jsonResponse } from "@sentry/junior/api";
-import { apiErrorSchema } from "@sentry/junior/api/schema";
-import { escapeHtml } from "./shell";
+import { LIVE_PREVIEW_PARAM, type DashboardPreview } from "./api/schema";
 
+/** An app that serves requests, such as the Hono app from `createApp()`. */
+export interface FetchApp<Rest extends unknown[]> {
+  fetch(request: Request, ...rest: Rest): Response | Promise<Response>;
+}
+
+const AUTH_PATH = "/api/auth";
 // Response headers that describe the upstream transfer, not the body that
 // this server sends. `fetch` already decoded the body.
 const DROPPED_RESPONSE_HEADERS = [
@@ -24,22 +31,21 @@ const DROPPED_RESPONSE_HEADERS = [
 ];
 const FORWARDED_REQUEST_HEADERS = ["accept", "if-none-match", "range"];
 
-/** Read the live deployment origin. Only a dashboard without auth can use it. */
-export function readLivePreviewOrigin(
-  authRequired: boolean,
-): string | undefined {
-  const value = process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN?.trim();
-  if (!value) return undefined;
-  if (authRequired) {
-    throw new Error(
-      "JUNIOR_DASHBOARD_LIVE_ORIGIN requires dashboard auth to be off",
-    );
-  }
-  return new URL(value).origin;
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function errorResponse(error: string): Response {
+  return Response.json({ error }, { status: 403 });
 }
 
 /** Read the personal token from Basic credentials. The username is ignored. */
-export function livePreviewToken(request: Request): string | undefined {
+function livePreviewToken(request: Request): string | undefined {
   const encoded = /^Basic ([A-Za-z0-9+/=]+)$/.exec(
     request.headers.get("authorization") ?? "",
   )?.[1];
@@ -50,18 +56,13 @@ export function livePreviewToken(request: Request): string | undefined {
   return token || undefined;
 }
 
-/** Forward one dashboard API read to the live deployment. */
-export async function proxyLivePreviewRequest(
+async function proxyRequest(
   request: Request,
   origin: string,
   token: string,
 ): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
-    return jsonResponse(
-      apiErrorSchema,
-      { error: "Live data in a Preview is read-only." },
-      { status: 403 },
-    );
+    return errorResponse("Live data in a Preview is read-only.");
   }
   const url = new URL(request.url);
   const headers = new Headers({ authorization: `Bearer ${token}` });
@@ -81,10 +82,8 @@ export async function proxyLivePreviewRequest(
   // A 401 makes the client restart local sign-in, which cannot fix a bad
   // token. Report it as 403, so the page shows the error.
   if (upstream.status === 401) {
-    return jsonResponse(
-      apiErrorSchema,
-      { error: `${new URL(origin).host} rejected the personal token.` },
-      { status: 403 },
+    return errorResponse(
+      `${new URL(origin).host} rejected the personal token.`,
     );
   }
   const responseHeaders = new Headers(upstream.headers);
@@ -97,25 +96,25 @@ export async function proxyLivePreviewRequest(
 }
 
 /**
- * Ask for a personal token, or go back to the base path when the live
- * deployment accepts the token that the browser sent.
+ * Ask for a personal token, or go back to the page when the live deployment
+ * accepts the token that the browser sent.
  *
  * The browser keeps Basic credentials for the directory of the URL that asked
- * for them. The base path is always one level deep, so the credentials apply
- * to every dashboard path.
+ * for them. The client asks on a path one level deep, so the credentials
+ * apply to every path.
  */
-export async function startLivePreview(
+async function startLivePreview(
   request: Request,
   origin: string,
-  basePath: string,
 ): Promise<Response> {
+  const url = new URL(request.url);
   const token = livePreviewToken(request);
   if (token) {
     const me = await fetch(new URL("/api/me", origin), {
       headers: { authorization: `Bearer ${token}` },
       redirect: "manual",
     });
-    if (me.ok) return Response.redirect(new URL(basePath, request.url), 302);
+    if (me.ok) return Response.redirect(new URL(url.pathname, url), 302);
   }
   const host = escapeHtml(new URL(origin).host);
   const tokensUrl = escapeHtml(new URL("/settings/api-tokens", origin).href);
@@ -126,7 +125,7 @@ export async function startLivePreview(
 <body style="font-family: system-ui, sans-serif; max-width: 36rem; margin: 4rem auto; padding: 0 1rem;">
   <h1>Live data from ${host}</h1>
   <p>Enter any user name and a <a href="${tokensUrl}">personal token from ${host}</a> as the password. Live data is read-only.</p>
-  <p><a href="${escapeHtml(basePath)}">Use demo data</a></p>
+  <p><a href="${escapeHtml(url.pathname)}">Use demo data</a></p>
 </body>
 </html>`,
     {
@@ -138,4 +137,62 @@ export async function startLivePreview(
       status: 401,
     },
   );
+}
+
+/** Tell the page shell which data it shows, so the client shows the banner. */
+async function withPreviewScript(
+  response: Response,
+  preview: DashboardPreview,
+): Promise<Response> {
+  const json = JSON.stringify(preview).replace(/</g, "\\u003c");
+  const html = (await response.text()).replace(
+    "</head>",
+    `<script>window.__JUNIOR_DASHBOARD_PREVIEW__ = ${json};</script></head>`,
+  );
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(html, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+/**
+ * Wrap a Junior app so its dashboard can also show data from `liveOrigin`.
+ * Use it only in a Preview app with dashboard auth off.
+ */
+export function withLivePreview<Rest extends unknown[]>(
+  app: FetchApp<Rest>,
+  liveOrigin: string,
+): FetchApp<Rest> {
+  const origin = new URL(liveOrigin).origin;
+  return {
+    async fetch(request, ...rest) {
+      const url = new URL(request.url);
+      if (
+        url.searchParams.has(LIVE_PREVIEW_PARAM) &&
+        url.pathname.lastIndexOf("/") === 0
+      ) {
+        return startLivePreview(request, origin);
+      }
+      const token = livePreviewToken(request);
+      if (
+        token &&
+        url.pathname.startsWith("/api/") &&
+        url.pathname !== AUTH_PATH &&
+        !url.pathname.startsWith(`${AUTH_PATH}/`)
+      ) {
+        return proxyRequest(request, origin, token);
+      }
+      const response = await app.fetch(request, ...rest);
+      return request.method === "GET" &&
+        response.headers.get("content-type")?.startsWith("text/html")
+        ? withPreviewScript(response, {
+            live: Boolean(token),
+            liveOrigin: origin,
+          })
+        : response;
+    },
+  };
 }

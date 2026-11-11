@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { BrowserSentryConfig } from "@sentry/junior/instrumentation";
-import type { DashboardBootstrap, DashboardPreview } from "./api/schema";
+import type { DashboardBootstrap } from "./api/schema";
 import {
   dashboardAvatarHeaderAsset,
   dashboardFaviconAsset,
@@ -21,8 +21,7 @@ export const DASHBOARD_MANIFEST_PATH =
 const DASHBOARD_THEME_COLOR = DASHBOARD_THEME_COLORS.dark;
 const DASHBOARD_BACKGROUND_COLOR = "#000000";
 
-/** Escape text before it enters server-rendered HTML. */
-export function escapeHtml(value: string): string {
+function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -187,20 +186,12 @@ export function renderDashboard(
   agentName: string,
   {
     bootstrap,
-    preview,
     sentry,
-  }: {
-    bootstrap?: DashboardBootstrap;
-    preview?: DashboardPreview;
-    sentry?: BrowserSentryConfig;
-  } = {},
+  }: { bootstrap?: DashboardBootstrap; sentry?: BrowserSentryConfig } = {},
 ): Response {
   const encodedAgentName = scriptJson(agentName);
   const bootstrapScript = bootstrap
     ? `window.__JUNIOR_DASHBOARD_BOOTSTRAP__ = ${scriptJson(bootstrap)};`
-    : "";
-  const previewScript = preview
-    ? `window.__JUNIOR_DASHBOARD_PREVIEW__ = ${scriptJson(preview)};`
     : "";
   const client = readDashboardClientManifest();
   // Without these hints, the browser finds the chunks only after the entry
@@ -250,7 +241,6 @@ export function renderDashboard(
     window.__JUNIOR_DASHBOARD_BASE_PATH__ = ${JSON.stringify(basePath)};
     window.__JUNIOR_DASHBOARD_AGENT_NAME__ = ${encodedAgentName};
     ${bootstrapScript}
-    ${previewScript}
     (function () {
       function escapeHtml(value) {
         return String(value)

@@ -2,11 +2,7 @@ import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createDashboardApp } from "../src/app";
-import {
-  auth,
-  embeddedBootstrap,
-  resetDashboardEnv,
-} from "./dashboard-test-helpers";
+import { withLivePreview } from "../src/live-preview";
 
 const TOKEN = "jr_live_token";
 
@@ -40,16 +36,17 @@ afterAll(async () => {
 
 afterEach(() => {
   liveRequests.length = 0;
-  resetDashboardEnv();
 });
 
 function dashboard() {
-  process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN = liveOrigin;
-  return createDashboardApp({
-    allowedDomains: [],
-    authRequired: false,
-    mockConversations: true,
-  });
+  return withLivePreview(
+    createDashboardApp({
+      allowedDomains: [],
+      authRequired: false,
+      mockConversations: true,
+    }),
+    liveOrigin,
+  );
 }
 
 function basic(token: string): HeadersInit {
@@ -59,7 +56,9 @@ function basic(token: string): HeadersInit {
 }
 
 function embeddedPreview(html: string): unknown {
-  const match = /window\.__JUNIOR_DASHBOARD_PREVIEW__ = (.*);\n/.exec(html);
+  const match = /window\.__JUNIOR_DASHBOARD_PREVIEW__ = (.*?);<\/script>/.exec(
+    html,
+  );
   return match ? JSON.parse(match[1]!) : undefined;
 }
 
@@ -74,7 +73,6 @@ describe("dashboard live preview", () => {
     expect(api.status).toBe(200);
     expect(liveRequests).toEqual([]);
     expect(embeddedPreview(html)).toEqual({ live: false, liveOrigin });
-    expect(embeddedBootstrap(html)).toBeDefined();
   });
 
   it("asks for a personal token until the live deployment accepts one", async () => {
@@ -113,7 +111,6 @@ describe("dashboard live preview", () => {
     expect(liveRequests[0]?.headers.authorization).toBe(`Bearer ${TOKEN}`);
     expect(liveRequests[0]?.headers.cookie).toBeUndefined();
     expect(embeddedPreview(html)).toEqual({ live: true, liveOrigin });
-    expect(embeddedBootstrap(html)).toBeUndefined();
   });
 
   it("keeps live data read-only", async () => {
@@ -139,13 +136,5 @@ describe("dashboard live preview", () => {
     );
 
     expect(response.status).toBe(403);
-  });
-
-  it("refuses live data on a dashboard that requires auth", () => {
-    process.env.JUNIOR_DASHBOARD_LIVE_ORIGIN = "https://live.example";
-
-    expect(() =>
-      createDashboardApp({ allowedDomains: ["sentry.io"], auth: auth(null) }),
-    ).toThrow("JUNIOR_DASHBOARD_LIVE_ORIGIN requires dashboard auth to be off");
   });
 });

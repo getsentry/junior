@@ -33,10 +33,8 @@ import {
 import { useDesktopTopBar } from "./navLayout";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
-import {
-  PreviewBanner,
-  readDashboardPreview,
-} from "./components/PreviewBanner";
+import { PreviewBanner } from "./components/PreviewBanner";
+import { readDashboardPreview } from "./preview";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";

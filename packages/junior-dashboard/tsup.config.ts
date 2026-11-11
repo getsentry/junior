@@ -142,6 +142,7 @@ export default defineConfig({
   entry: {
     app: "src/app.ts",
     index: "src/index.ts",
+    "live-preview": "src/live-preview.ts",
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",

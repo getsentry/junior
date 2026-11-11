@@ -15,6 +15,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./live-preview": {
+      "types": "./dist/live-preview.d.ts",
+      "default": "./dist/live-preview.js"
     }
   },
   "files": [

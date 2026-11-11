@@ -1,27 +1,10 @@
 import { useLocation } from "react-router";
 
-import {
-  dashboardPreviewSchema,
-  LIVE_PREVIEW_PARAM,
-  type DashboardPreview,
-} from "../../api/schema";
+import { LIVE_PREVIEW_PARAM, type DashboardPreview } from "../../api/schema";
 import { Alert } from "./ui/alert";
-
-declare global {
-  interface Window {
-    __JUNIOR_DASHBOARD_PREVIEW__?: unknown;
-  }
-}
 
 const linkClass =
   "font-semibold text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-text-solid";
-
-/** Read the Preview data mode that the page shell embedded, if any. */
-export function readDashboardPreview(): DashboardPreview | undefined {
-  if (typeof window === "undefined") return undefined;
-  return dashboardPreviewSchema.safeParse(window.__JUNIOR_DASHBOARD_PREVIEW__)
-    .data;
-}
 
 /** Say which data a Preview shows, and link to the other data. */
 export function PreviewBanner(props: { preview: DashboardPreview }) {
