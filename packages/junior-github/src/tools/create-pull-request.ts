@@ -20,6 +20,10 @@ import { Value } from "@sinclair/typebox/value";
 import * as z from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import {
+  DESCRIPTION_CONTEXT_DESCRIPTION,
+  writePullRequestDescription,
+} from "../tool-support/pull-request-description.js";
+import {
   gitHubPullRequestCreateWatch,
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
@@ -71,11 +75,10 @@ const createPullRequestInputSchema = Type.Object(
     base: Type.String({
       description: "Base branch.",
     }),
-    body: Type.Optional(
-      Type.String({
-        description:
-          "Pull request body. The runtime appends the conversation footer.",
-      }),
+    // Optional here so idempotency state saved before this field existed
+    // still parses. The executor requires it for new calls.
+    description_context: Type.Optional(
+      Type.String({ description: DESCRIPTION_CONTEXT_DESCRIPTION }),
     ),
     draft: Type.Optional(
       Type.Boolean({
@@ -93,12 +96,7 @@ const createPullRequestToolInputSchema = z
     title: z.string().describe("Pull request title."),
     head: z.string().describe("Head branch or owner:branch ref."),
     base: z.string().describe("Base branch."),
-    body: z
-      .string()
-      .describe(
-        "Pull request body. The runtime appends the conversation footer.",
-      )
-      .optional(),
+    description_context: z.string().describe(DESCRIPTION_CONTEXT_DESCRIPTION),
     draft: z
       .boolean()
       .describe("Whether to open the pull request as a draft.")
@@ -225,6 +223,7 @@ function isDefinitiveGitHubPullRequestCreateRejection(
 function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
+  description: string,
   ctx: ToolRegistrationHookContext,
   requester: GitHubRequester | undefined,
   dashboardUrl?: string,
@@ -235,7 +234,7 @@ function createGitHubPullRequestRequest(
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
     body: appendGitHubFooter(
-      appendGitHubRequesterAttribution(input.body ?? "", ctx, requester),
+      appendGitHubRequesterAttribution(description, ctx, requester),
       conversationId,
       dashboardUrl,
     ),
@@ -448,7 +447,7 @@ export function createGitHubPullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-owned conversation footer and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-written description and conversation footer, and assign it to the requester's linked GitHub account when available. Use this instead of shelling out to gh pr create when creating pull requests.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
@@ -500,9 +499,18 @@ export function createGitHubPullRequestTool(
           }
           const requester = await resolveGitHubRequester(ctx);
           const identityId = requester?.identity?.id;
+          const description = await writePullRequestDescription(ctx.model, {
+            context: nonEmptyString(
+              parsedInput.description_context,
+              "description_context",
+            ),
+            repo: parsedInput.repo,
+            title: nonEmptyString(parsedInput.title, "title"),
+          });
           const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
+            description,
             ctx,
             requester,
             ctx.conversationLink?.url,

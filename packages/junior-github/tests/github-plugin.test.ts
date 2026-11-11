@@ -30,6 +30,7 @@ import { gitHubReleaseSourceResource } from "../src/events/release";
 import { gitHubRepositoryResource } from "../src/events/repository";
 import type { GitHubDb } from "../src/db/database";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
+import { echoDescriptionModel } from "./description-model";
 import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -440,7 +441,7 @@ function githubToolsContext(input?: {
         );
       },
     },
-    model: {},
+    model: echoDescriptionModel(),
     events: {
       canSubscribe: true,
       subscribe:
@@ -1499,7 +1500,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "dcramer/gh-660-pr-create",
           base: "main",
-          body: "PR body",
+          description_context: "PR body",
           draft: true,
         },
         { toolCallId: "call-create-pull-request" },
@@ -1577,6 +1578,11 @@ Conversation: \`local:test:old-conversation\`
       body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
       draft: true,
     });
+    expect(ctx.model.completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("title: Typed PR"),
+      }),
+    );
   });
 
   it("subscribes configured events after creating a pull request", async () => {
@@ -1605,6 +1611,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "feature",
           base: "main",
+          description_context: "PR body",
         },
         { toolCallId: "call-create-pull-request-subscribe" },
       ),
@@ -1676,6 +1683,7 @@ Conversation: \`local:test:old-conversation\`
         title: "Typed PR",
         head: "feature",
         base: "main",
+        description_context: "PR body",
       },
       { toolCallId: "call-create-pull-request-subscribe-fail" },
     );
@@ -1749,7 +1757,7 @@ Conversation: \`local:test:old-conversation\`
         title: "Typed PR",
         head: "dcramer/gh-660-pr-create",
         base: "main",
-        body: "PR body",
+        description_context: "PR body",
         draft: true,
       },
       { toolCallId: "call-create-identity-pull-request" },
@@ -1844,6 +1852,7 @@ Conversation: \`local:test:old-conversation\`
             title: "Top of the stack",
             head: "feat/top",
             base: "feat/bottom",
+            description_context: "PR body",
           },
           { toolCallId: "call-create-stacked-pull-request" },
         ),
@@ -1907,6 +1916,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Update long-lived branch",
           head,
           base: "feat/long-lived",
+          description_context: "PR body",
         },
         { toolCallId: "call-create-looped-pull-request" },
       );
@@ -1956,7 +1966,7 @@ Conversation: \`local:test:old-conversation\`
         title: "Typed PR",
         head: "dcramer/gh-660-pr-create",
         base: "main",
-        body: "PR body",
+        description_context: "PR body",
         draft: true,
       },
       { toolCallId: "call-create-unresolved-pull-request" },
@@ -1990,7 +2000,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "dcramer/gh-660-pr-create",
           base: "main",
-          body: "PR body",
+          description_context: "PR body",
           draft: true,
         },
         { toolCallId: "call-create-identity-lookup-failed" },
@@ -2025,6 +2035,7 @@ Conversation: \`local:test:old-conversation\`
           title: "x".repeat(256),
           head: "long-title",
           base: "main",
+          description_context: "PR body",
         },
         { toolCallId: "call-create-pull-request-long-title" },
       ),
@@ -2055,6 +2066,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "dcramer/gh-660-pr-create",
           base: "main",
+          description_context: "PR body",
         },
         { toolCallId: "call-create-pull-request-without-webhooks" },
       ),
@@ -2088,7 +2100,7 @@ Conversation: \`local:test:old-conversation\`
         title: "Typed PR",
         head: "dcramer/gh-660-pr-create",
         base: "main",
-        body: "PR body",
+        description_context: "PR body",
       },
       { toolCallId: "call-create-pull-request-with-session-link" },
     );
@@ -2169,6 +2181,7 @@ Conversation: \`local:test:old-conversation\`
         title: "Typed PR",
         head: "dcramer/gh-660-pr-create",
         base: "main",
+        description_context: "PR body",
       };
 
       await expect(
@@ -2257,6 +2270,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "dcramer/gh-660-pr-create",
           base: "main",
+          description_context: "PR body",
         },
         { toolCallId: "call-legacy-pr-create" },
       ),
@@ -2290,6 +2304,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "dcramer/gh-660-pr-create",
           base: "main",
+          description_context: "PR body",
         },
         { toolCallId: "call-legacy-pending-pr-create" },
       ),
@@ -2325,6 +2340,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "inc-2297-eap-items-consumer-high-performance",
           base: "main",
+          description_context: "PR body",
         },
         { toolCallId: "call-invalid-pr-base" },
       ),
@@ -2339,6 +2355,7 @@ Conversation: \`local:test:old-conversation\`
           title: "Typed PR",
           head: "inc-2297-eap-items-consumer-high-performance",
           base: "master",
+          description_context: "PR body",
         },
         { toolCallId: "call-invalid-pr-base" },
       ),

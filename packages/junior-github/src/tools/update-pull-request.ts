@@ -6,6 +6,7 @@ import {
   type Actor,
   type PluginLogger,
   type PluginEgress,
+  type PluginModel,
   type Source,
   definePluginTool,
   PluginToolInputError,
@@ -25,6 +26,10 @@ import type { GitHubDb } from "../db/database.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
 import { appendGitHubFooter } from "./footer.js";
 import {
+  DESCRIPTION_CONTEXT_DESCRIPTION,
+  writePullRequestDescription,
+} from "../tool-support/pull-request-description.js";
+import {
   githubApi,
   githubErrorMessage,
   parseRepo,
@@ -41,11 +46,13 @@ const inputSchema = z
       .min(1)
       .optional()
       .describe("Replacement pull request title."),
-    body: z
+    description_context: z
       .string()
+      .trim()
+      .min(1)
       .optional()
       .describe(
-        "Replacement pull request body. The runtime appends requester attribution and the conversation footer.",
+        `${DESCRIPTION_CONTEXT_DESCRIPTION} Pass the full context for the current change. The new description replaces the old one.`,
       ),
     base: z
       .string()
@@ -66,9 +73,9 @@ const inputSchema = z
   })
   .strict()
   .refine(
-    ({ title, body, base, state, draft }) =>
+    ({ title, description_context, base, state, draft }) =>
       title !== undefined ||
-      body !== undefined ||
+      description_context !== undefined ||
       base !== undefined ||
       state !== undefined ||
       draft !== undefined,
@@ -158,6 +165,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
   db: unknown;
   egress: PluginEgress;
   log: PluginLogger;
+  model: PluginModel;
   events: { canSubscribe: boolean };
   conversationLink?: { url: string };
   source?: Source;
@@ -173,7 +181,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       readOnlyHint: false,
     },
     description:
-      "Update an existing GitHub pull request's title, body, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
+      "Update an existing GitHub pull request's title, description, base branch, open/closed state, or draft state. Use this instead of raw GitHub API calls when changing PR metadata or marking a PR ready for review.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -188,19 +196,27 @@ export function createGitHubUpdatePullRequestTool(ctx: {
       const repo = parseRepo(update.repo);
       const requester = await resolveGitHubRequester(ctx);
       const currentBody =
-        update.body !== undefined
+        update.description_context !== undefined
           ? await readGitHubBody(ctx.egress, {
               operation: "github.pull.get",
               path: `${repoPath(repo)}/pulls/${update.number}`,
             })
           : undefined;
+      const description =
+        update.description_context !== undefined
+          ? await writePullRequestDescription(ctx.model, {
+              context: update.description_context,
+              repo: repo.ref,
+              title: update.title,
+            })
+          : undefined;
       const payload = {
         ...(update.title !== undefined ? { title: update.title } : undefined),
-        ...(update.body !== undefined
+        ...(description !== undefined
           ? {
               body: appendGitHubFooter(
                 appendGitHubRequesterAttribution(
-                  update.body,
+                  description,
                   ctx,
                   requester,
                   currentBody,

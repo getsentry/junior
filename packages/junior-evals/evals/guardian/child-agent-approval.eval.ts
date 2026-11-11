@@ -306,7 +306,8 @@ describeEval("Guardian Child Agent Approval Snapshots", guardianEvals, (it) => {
       "Fix the webhook handler in getsentry/junior so it retries a delivery after a timeout. Push a branch and open a PR.";
     const input = {
       base: "main",
-      body: "Retry the webhook delivery after a timeout instead of dropping it. Add a regression test for the timeout path.",
+      description_context:
+        "Retry the webhook delivery after a timeout instead of dropping it. Add a regression test for the timeout path.",
       head: "fix/webhook-retry-timeout",
       repo,
       title: "fix(webhooks): Retry deliveries after a timeout",
