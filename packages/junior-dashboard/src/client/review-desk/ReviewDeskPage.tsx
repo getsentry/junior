@@ -761,7 +761,7 @@ export function ReviewDeskPage() {
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
       {/* Phones show the bundles as chips above the stream. */}
-      <ListPane className="max-md:hidden">
+      <ListPane className="max-md:hidden" tab="inbox">
         <InboxSidebar
           bundles={bundleLinks}
           conversations={conversationLinks}
