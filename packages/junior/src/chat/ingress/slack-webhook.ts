@@ -305,6 +305,9 @@ async function persistSlackMessage(args: {
     args.conversationId ??
     (await resolveSlackConversationId({
       canonicalThreadId,
+      ...(args.route === "mention"
+        ? { claimAtMs: args.receivedAtMs }
+        : undefined),
       conversationStore: args.conversationStore,
       installation: args.installation,
     }));
