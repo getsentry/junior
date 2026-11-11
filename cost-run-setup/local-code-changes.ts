@@ -19,7 +19,23 @@ export const localCodeChangesPlugin = {
   },
   hooks: {
     codeChanges: {
-      readStack: (ctx: object) => hooks.readStack(wrap(ctx)),
+      // /tmp/walkthrough-head ("<number> <sha>") pins one layer to an older
+      // commit, so one PR can play a stack before and after a push.
+      readStack: async (ctx: object) => {
+        const stack = await hooks.readStack(wrap(ctx));
+        const pin = await import("node:fs/promises")
+          .then((fs) => fs.readFile("/tmp/walkthrough-head", "utf8"))
+          .catch(() => "");
+        const [number, sha] = pin.trim().split(/\s+/);
+        if (!stack || !sha) return stack;
+        return {
+          codeChanges: stack.codeChanges.map((change) =>
+            String(change.number) === number
+              ? { ...change, headSha: sha }
+              : change,
+          ),
+        };
+      },
       readDiff: (ctx: object) => hooks.readDiff(wrap(ctx)),
       readFile: (ctx: object) => hooks.readFile(wrap(ctx)),
     },

@@ -423,3 +423,86 @@ Draft PR #3149 (`walkthrough/6-answers`, 474330e88), stacked on #3147.
     next question recreates the Conversation with the same id. Generation
     versions behave the same way.
 - Screenshots: `screenshots/slice-7/` on this branch.
+
+### 2026-11-11 — slice 8 (updates and lineage)
+
+Draft PR #3151 (`walkthrough/8-updates`, dc2d6dc59), stacked on #3150. No
+migration: slice 3 already has `parent_version_id`.
+
+- Start: a click on a stack with new commits starts a version whose parent
+  is the newest ready version that shares a layer. The same commits still
+  reuse the same version. Only a click starts one.
+- What "changed" means (decided by Junior, per DECISIONS.md "only decisions
+  whose cited evidence changed are reopened"):
+  - Documents now store `files`: a sha256 of each changed file's added and
+    removed lines. A rebase alone changes no fingerprint.
+  - A file changed when its fingerprint changed or it is new. A chapter
+    changed when it cites code in a changed file, or an earlier item on it
+    does. Granularity is the file, not the line range.
+  - Old documents have no `files`, so an update of one treats everything
+    as changed.
+- Update Turn:
+  - `readPreviousWalkthrough` returns the previous story, `changed_files`,
+    `changed_chapters`, new and left layers, and `feedback_decisions`.
+  - The update form of `submitWalkthrough` takes `items` (each `touches`
+    one frozen chapter, may `answers` one decision) and `added_chapters`.
+  - Validator: every changed chapter needs an item; new ids must be
+    unique and not reuse old ones; coverage applies to changed files only.
+  - Stored document = previous document + new excerpts, layers, `files`,
+    and one appended `updates` entry with `changedChapters`, `movedLayers`,
+    `newLayers`, `leftLayers`. Update keys are snake_case where the model
+    writes them (`added_chapters`, `not_covered`).
+- Answers: not copied. `GET /:id/answers` returns the nearest answer per
+  decision across the parent chain, with its `versionId`. The dashboard
+  keeps answers whose chapter did not change, reopens the rest and shows
+  the old answer. A change request that an item `answers` reopens as "Does
+  this answer your feedback?" (Yes / Not yet), shown only to a reviewer
+  whose latest answer was "change".
+- Feedback privacy: the update Turn gets the ids of decisions with "change"
+  feedback from any reviewer, without notes. Notes are private and the
+  generation Conversation is public. **For Thomas:** confirm that ids alone
+  are fine to share.
+- Merged layers: readStack drops them; the update records them in
+  `leftLayers` and the dashboard says "Left, merged or closed: #N". Their
+  chapters stay as they were.
+- Dashboard: "What changed since you looked" box (layers, links to changed
+  and new chapters), "Changed"/"New" marks in the rail, update items above
+  the earlier story, decisions after the items, a `v1 v2` switcher, and a
+  "Read the previous version" link while an update is written.
+  "Since you looked" = updates after the last version the viewer answered
+  on (not counting this one). A viewer who never answered sees all updates.
+- Mock: a copy of the stack fixture plus a hand-written update, ids
+  `…0003` (v1) and `…0004` (v2). v1 starts with three answers (one change
+  request). #3087 is shown as "left" only so that row renders; it has not
+  merged.
+
+#### Update cost run
+
+Same setup as slice 4b, plus a pin file in the local plugin
+(`cost-run-setup/local-code-changes.ts`) that holds one layer at an older
+commit. #3059 at its 2nd commit `2d81f58`, then at its head `8cf9873` (2
+test commits: +80 −1, 4 files).
+
+| Run | Version | Cost | Time | Result |
+| --- | --- | --- | --- | --- |
+| 5 | full, #3059 @ 2d81f58 | $2.34 | 7m55s | 10 chapters, 5 decisions; 2 rejection rounds |
+| 6 | update → 8cf9873 | $0.57 | 1m31s | 3 items, 0 added chapters; 1 rejection (coverage) |
+
+The update cost 24% of its full run. The earlier full run of #3059 at its
+head cost $1.44, so full runs vary a lot. Documents:
+`cost-run-5-pr3059-at-2d81f58.json` and `cost-run-6-pr3059-update.json`.
+
+The run found one weak spot: `tools.ts` changed by one word (`export`), so
+the chapter citing other lines of it was marked changed. The model wrote an
+item that says "unchanged". Line-range granularity would avoid this; left as
+is for now.
+
+- Screenshots: `screenshots/slice-8/` on this branch (01–04 mock, 05 the
+  real update above).
+- Open:
+  - Line-range rather than file granularity for "changed".
+  - A rebase-only click still starts an update Turn (cheap, items say
+    nothing changed). It could skip the Turn.
+  - "Since you looked" for a viewer with no answers says "since you looked"
+    but means "since the first version".
+  - The review panel lists a reopened decision as "Not answered".
