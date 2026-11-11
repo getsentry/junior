@@ -42,8 +42,7 @@ async function aggregateMemoryDays(args: { db: MemoryDb; nowMs: number }) {
   const start = startOfUtcDay(args.nowMs - (WINDOWS.at(-1)! - 1) * DAY_MS);
   const endExclusiveMs = end.getTime() + DAY_MS;
   const table = juniorMemoryMemories;
-  // Raw SQL from before no-raw-sql-queries. Move it to the query builder.
-  // ast-grep-ignore: no-raw-sql-queries
+  // oxlint-disable-next-line junior/no-raw-sql-queries -- Predates the rule. Move it to the query builder.
   const result = await args.db.execute(sql`
     WITH days AS (
       SELECT generate_series(
