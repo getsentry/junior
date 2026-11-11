@@ -82,6 +82,7 @@ export async function readConversationAgentTree(
         conversationId: id,
         kind,
         label: agent?.title ?? agent?.agentName ?? childLabel(kind),
+        ...(agent?.agentType ? { agentType: agent.agentType } : undefined),
       };
     }),
   );

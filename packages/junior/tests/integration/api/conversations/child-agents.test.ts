@@ -199,6 +199,7 @@ describe("conversation child agents API", () => {
     const helper = await createAgentInvocation(
       {
         ...slackInvocationInput,
+        agentType: "fork",
         idempotencyKey: "agent-tree-helper",
         input: "Check one claim.",
         parentConversationId: reviewer.childConversationId,
@@ -228,6 +229,7 @@ describe("conversation child agents API", () => {
         label: "Plan review",
       },
       {
+        agentType: "fork",
         conversationId: helper.childConversationId,
         kind: "task",
         label: "Claim check",
@@ -262,6 +264,7 @@ describe("conversation child agents API", () => {
       {
         ...invocationInput,
         agentName: "private-reviewer",
+        agentType: "reviewer",
         idempotencyKey: "child-agents-private",
         title: "Private plan review",
       },

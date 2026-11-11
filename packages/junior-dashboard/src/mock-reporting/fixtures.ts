@@ -2768,6 +2768,12 @@ export function readMockConversationChildAgents(
   };
 }
 
+/** Agent types of mock children. Other children have no type. */
+const MOCK_AGENT_TYPES: Readonly<Record<string, string>> = {
+  [DASHBOARD_QA_PLAN_ID]: "fork",
+  [DASHBOARD_QA_REVIEW_ID]: "reviewer",
+};
+
 /** Build the agent tree of a mock child Conversation, like the API. */
 function mockAgentTree(
   conversation: MockConversation,
@@ -2795,6 +2801,7 @@ function mockAgentTree(
     const agent = readMockConversationChildAgents(
       item.parentConversationId,
     )?.agents.find((child) => child.conversationId === item.conversationId);
+    const agentType = MOCK_AGENT_TYPES[item.conversationId];
     return {
       conversationId: item.conversationId,
       kind: item.kind,
@@ -2802,6 +2809,7 @@ function mockAgentTree(
         agent?.title ??
         agent?.name ??
         (item.kind === "thread" ? "Thread" : "Task"),
+      ...(agentType ? { agentType } : undefined),
     };
   });
 }

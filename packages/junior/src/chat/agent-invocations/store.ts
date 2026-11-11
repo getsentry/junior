@@ -141,17 +141,17 @@ export async function getLatestAgentInvocationForConversation(
 }
 
 /**
- * Read the name and the newest task title of one child Conversation, for
- * labels. Agent invocations that give a nested result to the child have no
- * title, so an agent invocation with a title comes first.
+ * Read the name, agent type, and newest task title of one child
+ * Conversation, for labels. Agent invocations that give a nested result to
+ * the child have no title, so an agent invocation with a title comes first.
+ * Each agent invocation keeps the child's agent type.
  */
-export async function getChildAgentLabel(
-  childConversationId: string,
-): Promise<{ agentName: string | null; title: string | null } | undefined> {
+export async function getChildAgentLabel(childConversationId: string) {
   const [row] = await getSqlExecutor()
     .db()
     .select({
       agentName: juniorAgentInvocations.agentName,
+      agentType: juniorAgentInvocations.agentType,
       title: juniorAgentInvocations.title,
     })
     .from(juniorAgentInvocations)
