@@ -8,7 +8,12 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { automationPath, formatRelativeTime } from "../format";
 import { DashboardApiError } from "../http";
 import { useAutomationLifecycle } from "../pages/automations/useAutomationLifecycle";
-import { inboxCardClass, inboxRowButtonClass } from "./InboxBundleView";
+import { cn } from "../styles";
+import {
+  INBOX_ROW_DETAIL_CLASS,
+  inboxCardClass,
+  inboxRowButtonClass,
+} from "./InboxBundleView";
 import { automationAttentionGroup } from "./inboxModel";
 
 const LAST_RUN_LABELS = {
@@ -85,7 +90,7 @@ export function InboxAutomationRow(props: {
       {props.expanded ? (
         <div
           aria-label={`${automation.title}: attention`}
-          className="grid min-w-0 gap-3 px-4 pb-4 font-sans text-sm md:px-6"
+          className={cn(INBOX_ROW_DETAIL_CLASS, "gap-3 font-sans text-sm")}
           id={regionId}
           role="region"
         >

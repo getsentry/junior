@@ -195,7 +195,15 @@ async function mockReviewItems(
   await page.route("**/api/review-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
-    if (path === "/count") return route.fulfill({ json: { needsViewer: 3 } });
+    // The tab badge counts what waits on the viewer, as the server does.
+    if (path === "/count")
+      return route.fulfill({
+        json: {
+          needsViewer: open.filter(
+            (i) => i.kind === "action" && i.canAct && !i.assignedToEveryone,
+          ).length,
+        },
+      });
     if (path === "" || path === "/") {
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       const linked = url.searchParams.get("conversationId");
@@ -711,6 +719,16 @@ test("each bundle groups its rows the way its filter reads", async ({
   });
   await page.goto(`${dashboard.baseURL}/review`);
   const bundles = page.getByRole("complementary", { name: "Inbox bundles" });
+  // All's main number is what waits on the viewer, the same as the Inbox
+  // tab badge. FYI items count apart.
+  const inboxTab = page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: "Inbox" });
+  await expect(inboxTab).toHaveText(/^Inbox\d+$/);
+  const badge = (await inboxTab.textContent())!.replace(/\D/g, "");
+  await expect(
+    bundles.getByRole("link", { name: /^All/ }).getByLabel(/to do/),
+  ).toHaveAccessibleName(new RegExp(`^${badge} to do(, \\d+ FYI)?$`));
   await expect(bundles.getByRole("link")).toHaveText([
     /^All/,
     /^Pull requests/,

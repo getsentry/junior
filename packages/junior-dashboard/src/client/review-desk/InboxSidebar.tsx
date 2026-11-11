@@ -15,11 +15,11 @@ import type { InboxView } from "./inboxModel";
 
 /** One bundle in the Inbox list, with its counts. */
 export type InboxBundleLink = {
-  /** Items in the bundle that a sweep can see. Done has no count. */
-  count?: number;
-  label: string;
-  /** Items in the bundle that wait on the viewer. They show in accent. */
+  /** Items that wait on the viewer: the main number, in accent. */
   asks: number;
+  /** Notices (FYI): a lighter second number. */
+  fyi: number;
+  label: string;
   view: InboxView;
 };
 
@@ -34,6 +34,7 @@ const VIEW_ICONS: Partial<Record<InboxView, LucideIcon>> = {
 /** Done lists the closed items. It comes last, after the Conversations. */
 export const DONE_LINK: InboxBundleLink = {
   asks: 0,
+  fyi: 0,
   label: "Done",
   view: "done",
 };
@@ -48,6 +49,58 @@ function viewHref(view: InboxView, search: string): string {
   params.delete("item");
   const query = params.toString();
   return `/review${query ? `?${query}` : ""}`;
+}
+
+/** The accessible name of a bundle's counts, such as "8 to do, 3 FYI". */
+function countsLabel(bundle: InboxBundleLink): string {
+  return [
+    bundle.asks > 0 ? `${bundle.asks} to do` : "",
+    bundle.fyi > 0 ? `${bundle.fyi} FYI` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/**
+ * A bundle's numbers: what waits on the viewer in accent, then its FYI
+ * items, lighter. All's accent number matches the Inbox tab badge.
+ */
+function BundleCounts(props: { bundle: InboxBundleLink; chip?: boolean }) {
+  const { asks, fyi } = props.bundle;
+  if (asks === 0 && fyi === 0) return null;
+  return (
+    <span
+      aria-label={countsLabel(props.bundle)}
+      className="inline-flex shrink-0 items-center gap-1 text-xs tabular-nums"
+    >
+      {asks > 0 ? (
+        <span
+          className={
+            props.chip
+              ? "font-semibold text-dashboard-accent-text"
+              : "grid h-5 min-w-5 place-items-center rounded-full bg-dashboard-accent/[0.16] px-1.5 font-semibold text-dashboard-accent-text"
+          }
+        >
+          {asks}
+        </span>
+      ) : null}
+      {asks > 0 && fyi > 0 ? (
+        <span aria-hidden="true" className="text-dashboard-text-faint">
+          ·
+        </span>
+      ) : null}
+      {fyi > 0 ? (
+        <span
+          className={cn(
+            "text-dashboard-text-faint",
+            !props.chip && asks === 0 && "px-1.5",
+          )}
+        >
+          {fyi} FYI
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 function BundleRow(props: {
@@ -94,22 +147,7 @@ function BundleRow(props: {
         >
           {bundle.label}
         </span>
-        {/* The count shows in accent while the bundle waits on the viewer. */}
-        {bundle.asks > 0 ? (
-          <span
-            aria-label={`${bundle.count} items`}
-            className="grid h-5 min-w-5 place-items-center rounded-full bg-dashboard-accent/[0.16] px-1.5 text-xs font-semibold tabular-nums text-dashboard-accent-text"
-          >
-            {bundle.count}
-          </span>
-        ) : bundle.count === undefined ? null : (
-          <span
-            aria-label={`${bundle.count} items`}
-            className="px-1.5 text-xs tabular-nums text-dashboard-text-faint"
-          >
-            {bundle.count}
-          </span>
-        )}
+        <BundleCounts bundle={bundle} />
       </Link>
     </li>
   );
@@ -118,7 +156,7 @@ function BundleRow(props: {
 /**
  * The Inbox bundle list: All, Pull requests, Decisions, Automations, then
  * one bundle per Conversation, then Done. Every bundle is automatic. Accent numbers count
- * what waits on the viewer; faint numbers count everything.
+ * what waits on the viewer; faint numbers count FYI items.
  */
 export function InboxSidebar(props: {
   bundles: InboxBundleLink[];
@@ -196,19 +234,7 @@ export function InboxBundleChips(props: {
           to={viewHref(bundle.view, props.search)}
         >
           <span className="max-w-40 truncate">{bundle.label}</span>
-          {/* Same count and accent as the pane. */}
-          {bundle.count === undefined ? null : (
-            <span
-              className={cn(
-                "text-xs tabular-nums",
-                bundle.asks > 0
-                  ? "font-semibold text-dashboard-accent-text"
-                  : "opacity-70",
-              )}
-            >
-              {bundle.count}
-            </span>
-          )}
+          <BundleCounts bundle={bundle} chip />
         </Link>
       ))}
     </nav>
