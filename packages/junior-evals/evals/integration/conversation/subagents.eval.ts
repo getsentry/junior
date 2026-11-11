@@ -31,6 +31,8 @@ describe("Child Agents", () => {
     // Only the child's `reply` reaches the parent.
     expect(requestedTools).toContain("reply");
     expect(conversation.turns).toHaveLength(2);
+    // A status that only says the child started would notify people twice.
+    expect(conversation.turns[0]?.replies).toEqual([]);
     const resultTurn = conversation.turns[1];
     expect(resultTurn?.status).toBe("succeeded");
     expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([

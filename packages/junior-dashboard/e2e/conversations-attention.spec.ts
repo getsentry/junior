@@ -235,9 +235,9 @@ test.describe("conversation sections", () => {
 
     // Unpin from the conversation `⋯` menu.
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("button", { name: "Unpin", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "Pin", exact: true }),
+      page.getByRole("menuitem", { name: "Pin", exact: true }),
     ).toBeVisible();
     await expect(sidebar.getByRole("button").first()).toHaveText(/^Needs you/);
   });
@@ -379,13 +379,13 @@ test.describe("conversation sections", () => {
     // The menu stays open, like Pin, so the label flips in place.
     await menu.click();
     await expect(
-      page.getByRole("button", { name: "Mark as unread" }),
+      page.getByRole("menuitem", { name: "Mark as unread" }),
     ).toBeVisible();
     await screenshot(page, "conversation-menu-mark-unread", { view: "mobile" });
-    await page.getByRole("button", { name: "Mark as unread" }).click();
-    await page.getByRole("button", { name: "Mark as read" }).click();
+    await page.getByRole("menuitem", { name: "Mark as unread" }).click();
+    await page.getByRole("menuitem", { name: "Mark as read" }).click();
     await expect(
-      page.getByRole("button", { name: "Mark as unread" }),
+      page.getByRole("menuitem", { name: "Mark as unread" }),
     ).toBeVisible();
     expect(requests).toEqual([{ unread: true }, { unread: false }]);
   });
@@ -429,7 +429,7 @@ test.describe("conversation sections", () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
     );
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("button", { name: "Rename", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
       "Investigate checkout latency",
     );

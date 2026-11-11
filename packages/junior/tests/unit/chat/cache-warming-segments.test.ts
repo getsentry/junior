@@ -437,7 +437,7 @@ describe("cache warming gap segments", () => {
     }
   });
 
-  it("warms an idle period whose request holds an image over the snapshot limit", async () => {
+  it("warms an idle period whose request holds an image over the snapshot limit, up to the image limit", async () => {
     const state = getStateAdapter();
     for (let i = 0; i < 20; i++) {
       await state.appendToList(
@@ -447,12 +447,15 @@ describe("cache warming gap segments", () => {
     }
     mocks.sendCacheWarmup.mockClear();
     // Random bytes do not compress, like a screenshot.
-    const data = randomBytes(1024 * 1024).toString("base64");
-    const imageKey = `junior:cache_warming:image:${conversationId}:${createHash(
-      "sha256",
-    )
-      .update(data)
-      .digest("hex")}`;
+    const randomImage = () => randomBytes(1024 * 1024).toString("base64");
+    const imageKeyOf = (imageData: string) =>
+      `junior:cache_warming:image:${conversationId}:${createHash("sha256")
+        .update(imageData)
+        .digest("hex")}`;
+    const data = randomImage();
+    const imageKey = imageKeyOf(data);
+    // With `data`, 9.3 MiB of base64, over the 8 MiB image limit.
+    const moreImages = Array.from({ length: 6 }, randomImage);
     const imageContext: Context = {
       ...context,
       messages: [
@@ -503,8 +506,33 @@ describe("cache warming gap segments", () => {
           `junior:cache_warming:snapshot:${conversationId}:${next.generation}`,
         ),
       ).toBeNull();
+
+      // Images over their limit store nothing, so the idle period gets no
+      // warmup.
+      mocks.sendCacheWarmup.mockClear();
+      await endTurn(true, conversationId, {
+        ...imageContext,
+        messages: [
+          ...imageContext.messages,
+          {
+            role: "user",
+            content: moreImages.map((imageData) => ({
+              type: "image" as const,
+              data: imageData,
+              mimeType: "image/png",
+            })),
+            timestamp: 2,
+          },
+        ],
+      });
+      expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
+      for (const imageData of [data, ...moreImages]) {
+        expect(await state.get(imageKeyOf(imageData))).toBeNull();
+      }
     } finally {
-      await state.delete(imageKey);
+      for (const imageData of [data, ...moreImages]) {
+        await state.delete(imageKeyOf(imageData));
+      }
       await state.delete("junior:cache_warming:gaps:user:1:none");
       await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
     }

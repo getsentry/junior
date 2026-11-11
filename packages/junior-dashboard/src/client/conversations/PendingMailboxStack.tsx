@@ -400,13 +400,13 @@ function PendingRow(props: {
           <p className="m-0 font-sans text-xs text-red-300/80">
             Could not send.
           </p>
-          <button
-            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-xs font-medium text-dashboard-accent-text/90 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus"
+          <Button
+            className="text-xs font-medium text-dashboard-accent-text/90 underline-offset-2 focus-visible:outline-offset-1"
             onClick={() => props.onRetry?.(props.message)}
-            type="button"
+            variant="link"
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
       {props.cancelError ? (
