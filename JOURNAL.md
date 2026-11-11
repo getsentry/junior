@@ -764,3 +764,74 @@ node (dagre layout needs a fixed node box); that is scaling, not clipping.
 - The 30-file head-code cap (from 4a) cost the stack one round.
 - The citation mark's open state is a faint background; may need a stronger
   mark.
+
+### 2026-11-11 — review polish (walkthrough/12-review-polish, #3169, on #3164 `2b8954e13`)
+
+Thomas answered the freeze card with "More changes first": a cost
+breakdown, a clearer "Do you agree?" card with a way to ask first, and a
+header that does not stay on screen. Head `a1bb49d46`. Lower heads were
+unchanged before and after `gh stack push`. No real model runs.
+
+#### Cost breakdown
+
+- The cost opens a popover on click or hover. It shows
+  `ConversationUsageBreakdown`, the same one Conversation details shows,
+  fed by `conversationDetailQueryOptions(generationConversationId)`. It
+  loads only when the popover opens. No API change.
+- `ConversationUsageBreakdown` got an optional `defaultOpen`, so the
+  breakdown starts open in the popover.
+- The "Open the generation transcript" link stays in the popover.
+- An update version uses its own `generationConversationId`. A version
+  without one (the mock update) shows the cost as plain text.
+
+#### Claim card
+
+- The eyebrow reads "Claim to review: do you agree?" (or "Does this answer
+  your feedback?"). The claim is the main text. The concern has a "Why it
+  is worth checking:" label.
+- Agree, Request change and Skip are buttons, and the chosen one shows as
+  pressed with a check.
+- "Ask about this" sets the claim, opens the Questions tab (the sheet on
+  narrow screens), turns the chapter chip on and puts the cursor in the
+  composer. A box above the composer shows the claim, with a button to
+  remove it.
+- The question quotes the claim on its own line under the chapter caption:
+  `> **caption**` then `> claim`, then the text. The claim is joined to one
+  line so the quote does not break. The `walkthrough-questions` skill now
+  treats a quoted claim as the subject.
+- The card finds its question by the quoted claim text in this version.
+  It then says "You asked about this claim" and links "Read the answer" or
+  "See the question", which scrolls Questions to that question. The claim
+  stays open.
+
+#### Header
+
+- Chapter 1 opens with the full header (title, intent, PRs, "Made in",
+  cost, versions and Review). It scrolls away with the chapter.
+- Other chapters show one bar: title ▾ · `N PRs ▾` · cost, then versions
+  and Review. On chapter 1 the bar appears once half the header has
+  scrolled away. Showing the bar does not move the header inside the
+  story, so it cannot flicker.
+- Clicking the bar's title shows the intent and "Made in" under it.
+  Opening another chapter hides them again.
+- Nothing is clipped. The title wraps.
+- "What changed since you looked" stays at the top of the story.
+
+#### Screenshots (`screenshots/review-polish/`, desktop, mock mode)
+
+- before-01 header on chapter 1 (cost was a link with a tooltip),
+  before-03 claim card, before-04 header on chapter 3.
+- after-01 full header on chapter 1, after-02 cost popover, after-03 claim
+  card, after-04 Questions with the claim set and a question typed, after-05
+  claim card after asking, with the mock answer and "Read the answer",
+  after-07 one-line header on chapter 3, after-08 intent opened from the
+  title, after-09/10 chapter 1 at 520px tall, before and after scrolling.
+
+#### Open
+
+- The mock update version has no generation Conversation, so its cost has
+  no popover in mock mode.
+- A question matches its claim by text. If an update changes a claim's
+  wording, the old question no longer shows on the new card.
+- The concern label "Why it is worth checking:" is a guess at wording.
+
