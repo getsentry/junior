@@ -6,7 +6,7 @@ const CONTEXT_INPUT_LIMIT_RATIO = 0.95;
 const COMPACTION_TARGET_RATIO = 0.8;
 // Share of the compaction threshold where a background summary starts, so it
 // is ready before blocking compaction would run.
-const BACKGROUND_COMPACTION_MARK_RATIO = 0.7;
+const BACKGROUND_COMPACTION_MARK_RATIO = 0.85;
 const FALLBACK_CONTEXT_WINDOW_TOKENS = 400_000;
 
 export interface ModelContextBudget {
