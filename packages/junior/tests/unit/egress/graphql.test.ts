@@ -33,9 +33,9 @@ describe("isGraphqlPost", () => {
 });
 
 describe("readGraphqlRequest", () => {
-  it("reads a named query with its fields at every depth", () => {
+  it("reads a named query with its fields at every depth", async () => {
     expect(
-      read({
+      await read({
         query:
           'query IssueList { repository(owner: "getsentry", name: "junior") { issues(first: 1) { nodes { number } } } }',
       }),
@@ -55,16 +55,16 @@ describe("readGraphqlRequest", () => {
     });
   });
 
-  it("reads a shorthand query", () => {
-    expect(read({ query: "{ viewer { login } }" })).toMatchObject({
+  it("reads a shorthand query", async () => {
+    expect(await read({ query: "{ viewer { login } }" })).toMatchObject({
       kind: "operation",
       operation: { rootFields: ["viewer"], type: "query" },
     });
   });
 
-  it("ignores operation keywords in strings and comments", () => {
+  it("ignores operation keywords in strings and comments", async () => {
     expect(
-      read({
+      await read({
         query:
           '# mutation Hidden { createIssue }\nquery Search { search(query: "mutation subscription", type: ISSUE, first: 1) { issueCount } }',
       }),
@@ -74,9 +74,9 @@ describe("readGraphqlRequest", () => {
     });
   });
 
-  it("names the schema field, not its alias", () => {
+  it("names the schema field, not its alias", async () => {
     expect(
-      read({
+      await read({
         query:
           "mutation ResolveReviewThread { resolveReviewThread: addComment(input: {}) { clientMutationId } again: addComment(input: {}) { clientMutationId } }",
       }),
@@ -90,9 +90,9 @@ describe("readGraphqlRequest", () => {
     });
   });
 
-  it("reads root fields through fragment spreads and inline fragments", () => {
+  it("reads root fields through fragment spreads and inline fragments", async () => {
     expect(
-      read({
+      await read({
         operationName: "CreateIssue",
         query:
           'fragment create on Mutation { createIssue(input: {title: "x"}) { issue { ...number } } } fragment number on Issue { number } mutation CreateIssue { ...create ... on Mutation { updateIssue(input: {}) { clientMutationId } } }',
@@ -111,41 +111,43 @@ describe("readGraphqlRequest", () => {
     });
   });
 
-  it("selects the operation that operationName names", () => {
+  it("selects the operation that operationName names", async () => {
     const query =
       "query ReadIssues { viewer { login } } mutation CreateIssue { createIssue(input: {}) { clientMutationId } }";
-    expect(read({ operationName: "ReadIssues", query })).toMatchObject({
+    expect(await read({ operationName: "ReadIssues", query })).toMatchObject({
       operation: { name: "ReadIssues", type: "query" },
     });
-    expect(read({ operationName: "CreateIssue", query })).toMatchObject({
+    expect(await read({ operationName: "CreateIssue", query })).toMatchObject({
       operation: { name: "CreateIssue", type: "mutation" },
     });
   });
 
-  it("does not guess an operation from a multi-operation document", () => {
+  it("does not guess an operation from a multi-operation document", async () => {
     const query =
       "query ReadIssues { viewer { login } } mutation CreateIssue { createIssue(input: {}) { clientMutationId } }";
-    expect(read({ query })).toEqual({
+    expect(await read({ query })).toEqual({
       kind: "unreadable",
       reason: "operation",
     });
-    expect(read({ operationName: null, query })).toEqual({
+    expect(await read({ operationName: null, query })).toEqual({
       kind: "unreadable",
       reason: "operation",
     });
-    expect(read({ operationName: "Missing", query })).toEqual({
+    expect(await read({ operationName: "Missing", query })).toEqual({
       kind: "unreadable",
       reason: "operation",
     });
-    expect(read({ operationName: 1, query: "{ viewer { login } }" })).toEqual({
+    expect(
+      await read({ operationName: 1, query: "{ viewer { login } }" }),
+    ).toEqual({
       kind: "unreadable",
       reason: "operation",
     });
   });
 
-  it("reads each entry of a batch", () => {
+  it("reads each entry of a batch", async () => {
     expect(
-      read([
+      await read([
         { query: "{ viewer { login } }" },
         { query: "mutation { addComment(input: {}) { clientMutationId } }" },
       ]),
@@ -156,15 +158,17 @@ describe("readGraphqlRequest", () => {
         { rootFields: ["addComment"], type: "mutation" },
       ],
     });
-    expect(read([{ query: "{ viewer { login } }" }, { query: "{" }])).toEqual({
+    expect(
+      await read([{ query: "{ viewer { login } }" }, { query: "{" }]),
+    ).toEqual({
       kind: "unreadable",
       reason: "document",
     });
   });
 
-  it("stops at fragment cycles", () => {
+  it("stops at fragment cycles", async () => {
     expect(
-      read({
+      await read({
         query:
           "fragment a on Query { viewer { login } ...b } fragment b on Query { ...a } query { ...a }",
       }),
@@ -174,8 +178,10 @@ describe("readGraphqlRequest", () => {
     });
   });
 
-  it("reads subscriptions", () => {
-    expect(read({ query: "subscription { events { id } }" })).toMatchObject({
+  it("reads subscriptions", async () => {
+    expect(
+      await read({ query: "subscription { events { id } }" }),
+    ).toMatchObject({
       operation: { rootFields: ["events"], type: "subscription" },
     });
   });
@@ -211,23 +217,26 @@ describe("readGraphqlRequest", () => {
       { query: "fragment f on Query { a }" },
       "operation",
     ],
-  ])("reports %s as unreadable", (_name, value, reason) => {
-    expect(read(value)).toEqual({ kind: "unreadable", reason });
+  ])("reports %s as unreadable", async (_name, value, reason) => {
+    expect(await read(value)).toEqual({ kind: "unreadable", reason });
   });
 
-  it("reports a missing body as unreadable", () => {
-    expect(readGraphqlRequest(undefined)).toEqual({
+  it("reports a missing body as unreadable", async () => {
+    expect(await readGraphqlRequest(undefined)).toEqual({
       kind: "unreadable",
       reason: "json",
     });
   });
 
-  it("reports gzip and oversized bodies as unreadable", () => {
+  it("reports gzip and oversized bodies as unreadable", async () => {
     expect(
-      readGraphqlRequest(new Uint8Array([0x1f, 0x8b, 0x08, 0x00]).buffer),
+      await readGraphqlRequest(new Uint8Array([0x1f, 0x8b, 0x08, 0x00]).buffer),
     ).toEqual({ kind: "unreadable", reason: "gzip" });
     expect(
-      read({ query: "{ viewer { login } }", filler: "x".repeat(64 * 1024) }),
+      await read({
+        query: "{ viewer { login } }",
+        filler: "x".repeat(64 * 1024),
+      }),
     ).toEqual({ kind: "unreadable", reason: "too-large" });
   });
 });

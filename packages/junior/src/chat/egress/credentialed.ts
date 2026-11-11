@@ -615,7 +615,7 @@ export async function executeCredentialedEgressRequest(input: {
         ? { gitPush: readGitPush(body) }
         : undefined),
       ...(isGraphqlPost(request.method, upstreamUrl)
-        ? { graphql: readGraphqlRequest(body) }
+        ? { graphql: await readGraphqlRequest(body) }
         : undefined),
       ...(operation ? { operation } : undefined),
       provider,

@@ -5,6 +5,8 @@
  * document with graphql-js and gives plugins the selected operation, so a
  * plugin can judge a request without parsing GraphQL. Reading fails closed:
  * a body that the host cannot read is `unreadable`, never a query.
+ *
+ * graphql-js loads on the first GraphQL request, not at startup.
  */
 import type {
   PluginGraphqlField,
@@ -12,15 +14,13 @@ import type {
   PluginGraphqlRequest,
   PluginGraphqlUnreadableReason,
 } from "@sentry/junior-plugin-api";
-import {
-  Kind,
-  parse,
-  type DocumentNode,
-  type FragmentDefinitionNode,
-  type FragmentSpreadNode,
-  type InlineFragmentNode,
-  type OperationDefinitionNode,
-  type SelectionSetNode,
+import type {
+  DocumentNode,
+  FragmentDefinitionNode,
+  FragmentSpreadNode,
+  InlineFragmentNode,
+  OperationDefinitionNode,
+  SelectionSetNode,
 } from "graphql";
 
 /** Largest GraphQL body that the host reads before it issues credentials. */
@@ -48,9 +48,9 @@ function unreadable(
  * A JSON array is a batch. One unreadable entry makes the whole batch
  * unreadable.
  */
-export function readGraphqlRequest(
+export async function readGraphqlRequest(
   body: ArrayBuffer | undefined,
-): PluginGraphqlRequest {
+): Promise<PluginGraphqlRequest> {
   const bytes = new Uint8Array(body ?? new ArrayBuffer(0));
   if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
     return unreadable("gzip");
@@ -65,14 +65,14 @@ export function readGraphqlRequest(
     return unreadable("json");
   }
   if (!Array.isArray(parsed)) {
-    const operation = readOperation(parsed);
+    const operation = await readOperation(parsed);
     return typeof operation === "string"
       ? unreadable(operation)
       : { kind: "operation", operation };
   }
   const operations: PluginGraphqlOperation[] = [];
   for (const entry of parsed) {
-    const operation = readOperation(entry);
+    const operation = await readOperation(entry);
     if (typeof operation === "string") {
       return unreadable(operation);
     }
@@ -81,9 +81,9 @@ export function readGraphqlRequest(
   return { kind: "batch", operations };
 }
 
-function readOperation(
+async function readOperation(
   entry: unknown,
-): PluginGraphqlOperation | PluginGraphqlUnreadableReason {
+): Promise<PluginGraphqlOperation | PluginGraphqlUnreadableReason> {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     return "json";
   }
@@ -98,6 +98,7 @@ function readOperation(
   ) {
     return "operation";
   }
+  const { parse } = await import("graphql");
   let document: DocumentNode;
   try {
     document = parse(query, { noLocation: true });
@@ -107,9 +108,9 @@ function readOperation(
   const fragments: Fragments = new Map();
   const operations: OperationDefinitionNode[] = [];
   for (const definition of document.definitions) {
-    if (definition.kind === Kind.OPERATION_DEFINITION) {
+    if (definition.kind === "OperationDefinition") {
       operations.push(definition);
-    } else if (definition.kind === Kind.FRAGMENT_DEFINITION) {
+    } else if (definition.kind === "FragmentDefinition") {
       // Two fragments with one name leave the spread ambiguous.
       if (fragments.has(definition.name.value)) {
         return "document";
@@ -150,7 +151,7 @@ function collectFields(
   fields: Map<string, PluginGraphqlField>,
 ): boolean {
   for (const selection of selectionSet.selections) {
-    if (selection.kind === Kind.FIELD) {
+    if (selection.kind === "Field") {
       const name = selection.name.value;
       const args = (selection.arguments ?? []).map((arg) => arg.name.value);
       const key = [name, ...args].join("\0");
@@ -184,7 +185,7 @@ function collectRootFields(
   rootFields: string[],
 ): boolean {
   for (const selection of selectionSet.selections) {
-    if (selection.kind === Kind.FIELD) {
+    if (selection.kind === "Field") {
       rootFields.push(selection.name.value);
       continue;
     }
@@ -210,7 +211,7 @@ function fragmentSelectionSet(
   fragments: Fragments,
   seen: Set<string>,
 ): SelectionSetNode | undefined | false {
-  if (selection.kind === Kind.INLINE_FRAGMENT) {
+  if (selection.kind === "InlineFragment") {
     return selection.selectionSet;
   }
   const name = selection.name.value;
