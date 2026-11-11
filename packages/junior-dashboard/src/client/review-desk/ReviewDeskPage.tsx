@@ -537,8 +537,9 @@ export function ReviewDeskPage() {
     <ChatLayout
       header={
         <header className="border-b border-dashboard-border bg-dashboard-bg">
-          <div className="mx-auto grid w-full max-w-[52.5rem] gap-3 px-4 py-3 md:px-7 md:py-5">
-            <div className="flex min-w-0 items-center justify-between gap-4">
+          {/* On desktop the title row shares the pane's header row. */}
+          <div className="md:box-content md:h-header md:border-b md:border-dashboard-border">
+            <div className="mx-auto flex h-full w-full min-w-0 max-w-[52.5rem] items-center justify-between gap-4 px-4 pt-3 md:px-7 md:pt-0">
               <h2 className="m-0 min-w-0 truncate font-display text-xl font-medium leading-tight tracking-tight">
                 {viewLabel}
                 {view === "needs-you" ? (
@@ -570,6 +571,8 @@ export function ReviewDeskPage() {
                 )}
               </div>
             </div>
+          </div>
+          <div className="mx-auto grid w-full max-w-[52.5rem] gap-3 px-4 py-3 md:px-7">
             <InboxBundleChips
               bundles={[...bundleLinks, ...conversationLinks, DONE_LINK]}
               search={location.search}
