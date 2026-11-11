@@ -308,7 +308,7 @@ function Shell() {
   const sidebarFits = useSidebarFits();
   const area = useArea(
     location.pathname,
-    profileNavItems,
+    { primary: primaryNavItems, profile: profileNavItems },
     Boolean(paneTabForPath(location.pathname)),
   );
   const areaListed =

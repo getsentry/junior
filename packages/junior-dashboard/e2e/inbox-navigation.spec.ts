@@ -184,10 +184,36 @@ test("the list loads older Conversations as it scrolls", async ({
   await expect(older).toBeVisible();
   expect(olderPage).toBe(1);
   expect(firstPage).toBeGreaterThan(0);
+
+  // Another tab replaces the list. Back brings back every row that was
+  // loaded, so the list returns to the same place, not a shorter one.
+  const scroller = list.locator(".overflow-y-auto").first();
+  const scrollTop = await scroller.evaluate((node) => node.scrollTop);
+  expect(scrollTop).toBeGreaterThan(0);
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  await primary.getByRole("link", { name: /^Automations/ }).click();
+  await expect(page).toHaveURL(/\/automations/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/\?view=conversations$/);
+  await expect(older).toBeVisible();
+  expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
 });
 
 test.describe("on a phone", () => {
   test.use({ viewport: { height: 844, width: 390 } });
+
+  test("an item link opens its row in the Inbox list", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page);
+    // Old links redirect to the item's link, which names the Inbox entry.
+    await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
+    await expect(page).toHaveURL(/\/\?view=inbox$/);
+    await expect(
+      page.getByRole("region", { name: `${checkout}: asks` }),
+    ).toContainText(rollout.title);
+  });
 
   test("entries, then a list, then a Conversation, each with Back", async ({
     dashboard,
@@ -217,5 +243,41 @@ test.describe("on a phone", () => {
     await expect(page).toHaveURL(/\/conversations\//);
     await page.getByRole("link", { name: "Back to Inbox" }).click();
     await expect(page).toHaveURL(/\/\?view=inbox$/);
+  });
+});
+
+test.describe("on a touch phone", () => {
+  test.use({ hasTouch: true, viewport: { height: 844, width: 390 } });
+
+  test("+ focuses the composer each time, and Back into it does not", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockReviewItems(page);
+    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    const composer = page.getByLabel("Start a conversation");
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await expect(page).toHaveURL(/\/conversations\/new$/);
+    await expect(composer).toBeFocused();
+
+    // A browser Back into the composer is not a request to type.
+    await page.getByRole("link", { name: "Back to Inbox" }).click();
+    await page.goBack();
+    await expect(composer).toBeVisible();
+    await expect(composer).not.toBeFocused();
+
+    // "+" asks again after the composer has shown. So does New in the
+    // palette, from a page outside the Inbox that the composer replaces.
+    await page.getByRole("link", { name: "Back to Inbox" }).click();
+    await page.getByRole("button", { name: "New conversation" }).click();
+    await expect(composer).toBeFocused();
+    await page.goto(`${dashboard.baseURL}/settings`);
+    await page.keyboard.press("ControlOrMeta+k");
+    await page
+      .getByRole("dialog", { name: "Go to conversation" })
+      .getByRole("option", { name: "New conversation" })
+      .click();
+    await expect(page).toHaveURL(/\/conversations\/new$/);
+    await expect(composer).toBeFocused();
   });
 });

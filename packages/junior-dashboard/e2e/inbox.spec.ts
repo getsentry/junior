@@ -359,7 +359,7 @@ test("old Inbox links open the list with the item's row expanded", async ({
   // The linked item is past the first page, so its row loads on its own.
   await mockReviewItems(page, { open: [audit, rollout], pageSize: 1 });
   await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(/\/\?view=inbox$/);
   await expect(
     page.getByRole("region", { name: `${checkout}: asks` }),
   ).toBeVisible();

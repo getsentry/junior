@@ -16,7 +16,11 @@ import {
 import { useConversationsData, useOlderConversationPages } from "../api";
 import { InboxDataProvider } from "../review-desk/inboxData";
 import { InboxList } from "../review-desk/InboxList";
-import { useInboxReturnPath } from "../review-desk/inboxListState";
+import {
+  useInboxReturnPath,
+  useOlderConversationPagesState,
+  useShowComposer,
+} from "../review-desk/inboxListState";
 import { INBOX_VIEW_LABELS, inboxViewOfPath } from "../review-desk/inboxModel";
 import { InboxNav } from "../review-desk/InboxNav";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
@@ -46,6 +50,7 @@ import {
 import {
   conversationPath,
   FOCUS_REPLY_STATE,
+  readReplyFocus,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
 import { buildConversations } from "../format";
@@ -86,7 +91,10 @@ export function ConversationWorkspace(props: {
   const home = !selectedId;
   const feed = useConversationsData();
   // Older feed pages load only when the list scrolls to its end.
-  const older = useOlderConversationPages(feed.data?.nextCursor);
+  const older = useOlderConversationPages(
+    feed.data?.nextCursor,
+    useOlderConversationPagesState(),
+  );
   const returnPath = useInboxReturnPath();
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
@@ -97,7 +105,6 @@ export function ConversationWorkspace(props: {
   if (!home && pendingCreate) setPendingCreate(undefined);
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
-  const createRequested = useRef(false);
   const conversations = useMemo(() => {
     const first = feed.data?.conversations ?? [];
     const firstIds = new Set(first.map((row) => row.conversationId));
@@ -119,11 +126,9 @@ export function ConversationWorkspace(props: {
   };
   const openCreate = () => {
     createConversation.reset();
-    if (!composing) {
-      // The reader asked to type, so home takes focus even on a touch screen.
-      createRequested.current = true;
-      navigate(NEW_CONVERSATION_PATH);
-    } else createComposer.current?.focus();
+    if (!composing)
+      navigate(NEW_CONVERSATION_PATH, { state: FOCUS_REPLY_STATE });
+    else createComposer.current?.focus();
   };
 
   // Thread cards, breadcrumbs, and details show each Thread's own title and
@@ -145,21 +150,36 @@ export function ConversationWorkspace(props: {
     return () => visit.abort();
   }, [home]);
 
-  // Home exists to start a conversation, so the reader can type at once. On a
-  // touch screen, focus opens the keyboard over the conversation list. There,
-  // focus only when the dashboard opens on home or the reader asks to create,
-  // not when they come back from a conversation or follow a link.
-  const homeShown = useRef(false);
+  // The composer exists to start a conversation, so the reader can type at
+  // once. On a touch screen, focus opens the keyboard over the page. There,
+  // focus only when the dashboard opens on the composer or "+" asks to type,
+  // not when they come back or follow a link. "+" asks in the route state,
+  // which the composer then clears, so a Back into it does not ask again.
+  // The session remembers that it showed, across remounts.
+  const showComposer = useShowComposer();
+  const typeRequested = composing && Boolean(readReplyFocus(location.state));
   useEffect(() => {
     if (!home || !composing) return;
+    const first = showComposer();
     const returned =
-      (homeShown.current || navigationType === NavigationType.Push) &&
-      !createRequested.current;
-    homeShown.current = true;
-    createRequested.current = false;
+      (!first || navigationType === NavigationType.Push) && !typeRequested;
+    if (typeRequested)
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: null,
+      });
     if (returned && touchKeyboardMatches()) return;
     createComposer.current?.focus();
-  }, [composing, home, navigationType]);
+  }, [
+    composing,
+    home,
+    location.pathname,
+    location.search,
+    navigate,
+    navigationType,
+    showComposer,
+    typeRequested,
+  ]);
 
   const createView = (
     <NewConversationView

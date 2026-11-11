@@ -241,3 +241,29 @@ test("hides and restores the panels with the shortcuts and Zen mode", async ({
     await expect(pane).toBeVisible();
   }
 });
+
+test("Zen mode hides the page links that the pane lists", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${dashboard.baseURL}/system`);
+  const pane = page.getByRole("navigation", { name: "Primary" });
+  const pageLinks = page.getByRole("navigation", { name: "System navigation" });
+  await expect(pane).toBeVisible();
+  await expect(pageLinks).toHaveCount(0);
+
+  // Closing the pane shows them, because nothing else lists the pages.
+  await page.keyboard.press("ControlOrMeta+KeyB");
+  await expect(pane).toBeHidden();
+  await expect(pageLinks).toBeVisible();
+
+  // Zen mode hides the page chrome, and the page links with it.
+  await page.keyboard.press("ControlOrMeta+Alt+KeyY");
+  await expect(pageLinks).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+Alt+KeyY");
+  await expect(pageLinks).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+KeyB");
+  await expect(pane).toBeVisible();
+  await expect(pageLinks).toHaveCount(0);
+});

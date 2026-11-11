@@ -14,6 +14,7 @@ import {
   ScrollText,
   UserRound,
 } from "lucide-react";
+import { useMemo } from "react";
 
 import {
   useActorDirectoryData,
@@ -63,7 +64,9 @@ const AREA_KEYS = {
 
 /** The repository ID of the open repository page, if one shows. */
 export function repositoryIdForPath(pathname: string): string | undefined {
-  return REPOSITORY_PATH.exec(pathname)?.[1];
+  const segment = REPOSITORY_PATH.exec(pathname)?.[1];
+  // `codeRepositoryPath` encodes the ID, which can hold `/`.
+  return segment ? decodeURIComponent(segment) : undefined;
 }
 
 /** The directory group of the page that shows, which ranks first. */
@@ -97,7 +100,8 @@ export function pluginPageGroupForPath(
  * the open repository's Changes, Memories, Runs, each generic plugin page,
  * and the open Conversation's Events. A directory reads only while there
  * is typed text or its page shows. Memories match on the server; the others
- * filter the list they load, as their pages did.
+ * filter the list they load, as their pages did. `fetching` is true while
+ * any directory read is in flight.
  */
 export function useDirectoryPaletteItems(input: {
   activeGroup?: string;
@@ -108,7 +112,7 @@ export function useDirectoryPaletteItems(input: {
   query: string;
   /** Debounced text, for server searches. */
   search: string;
-}): PaletteItem[] {
+}): { fetching: boolean; items: PaletteItem[] } {
   const query = input.query || undefined;
   const navKeys = new Set(input.navItems.map((item) => item.key));
   const wanted = (group: keyof typeof AREA_KEYS) =>
@@ -145,7 +149,7 @@ export function useDirectoryPaletteItems(input: {
   });
   const memoriesCurrent =
     !memories.isPlaceholderData && input.query.trim() === input.search;
-  const events = useEventItems(input.conversationId, input.query);
+  const events = useEventItems(input.conversationId, input.search);
   const pluginPages = input.navItems.flatMap((item) => {
     const api = pluginUserPageApiPath(item.to);
     return api ? [{ ...item, api }] : [];
@@ -165,7 +169,12 @@ export function useDirectoryPaletteItems(input: {
     })),
   });
 
-  return [
+  // Directories that read on the server, so "No matches." waits for them.
+  const fetching =
+    [people, locations, repositories, repository, runs, memories].some(
+      (read) => read.isFetching,
+    ) || pluginContents.some((read) => read.isFetching);
+  const items = [
     ...rows(
       "People",
       (people.data?.people ?? []).map((person) =>
@@ -293,40 +302,60 @@ export function useDirectoryPaletteItems(input: {
       );
     }),
   ];
+  return { fetching, items };
 }
 
 /**
- * Events of the open Conversation that match the typed text, from the
- * events it has loaded. Picking one opens it in the event log.
+ * Events of the open Conversation that match the debounced text, from the
+ * events it has loaded. Picking one opens it in the event log. The rows
+ * build once per loaded history, and only while there is text, because
+ * matching reads every event's data.
  */
 function useEventItems(
   conversationId: string | undefined,
-  query: string,
+  search: string,
 ): PaletteItem[] {
   const client = useQueryClient();
-  const needle = query.trim().toLowerCase();
-  if (!conversationId || !needle) return [];
-  const detail = client.getQueryData<ConversationSnapshot>(
-    conversationDetailQueryKey(conversationId),
+  const needle = search.trim().toLowerCase();
+  const detail =
+    conversationId && needle
+      ? client.getQueryData<ConversationSnapshot>(
+          conversationDetailQueryKey(conversationId),
+        )
+      : undefined;
+  const history = detail
+    ? client.getQueryData<{ pages: ConversationHistoryPage[] }>([
+        "conversation",
+        conversationId,
+        "history",
+        detail.eventHistory.status,
+      ])
+    : undefined;
+  const rows = useMemo(
+    () =>
+      detail
+        ? eventLogRows(
+            buildConversationTranscript(detail, history?.pages ?? []).events,
+          )
+        : [],
+    [detail, history],
   );
-  if (!detail) return [];
-  const history = client.getQueryData<{ pages: ConversationHistoryPage[] }>([
-    "conversation",
-    conversationId,
-    "history",
-    detail.eventHistory.status,
-  ]);
-  const events = buildConversationTranscript(
-    detail,
-    history?.pages ?? [],
-  ).events;
-  return filterEventLogRows(eventLogRows(events), needle).map((row) => ({
-    group: "Events",
-    icon: ScrollText,
-    id: `event-${row.event.seq}`,
-    label: `${row.event.data.type}: ${row.summary}`.slice(0, LABEL_LENGTH),
-    meta: `#${row.event.seq}`,
-    score: 1,
-    to: `${conversationPath(conversationId)}?${new URLSearchParams({ [CONVERSATION_EVENT_PARAM]: String(row.event.seq) })}`,
-  }));
+  return useMemo(
+    () =>
+      conversationId && needle
+        ? filterEventLogRows(rows, needle).map((row) => ({
+            group: "Events",
+            icon: ScrollText,
+            id: `event-${row.event.seq}`,
+            label: `${row.event.data.type}: ${row.summary}`.slice(
+              0,
+              LABEL_LENGTH,
+            ),
+            meta: `#${row.event.seq}`,
+            score: 1,
+            to: `${conversationPath(conversationId)}?${new URLSearchParams({ [CONVERSATION_EVENT_PARAM]: String(row.event.seq) })}`,
+          }))
+        : [],
+    [conversationId, needle, rows],
+  );
 }

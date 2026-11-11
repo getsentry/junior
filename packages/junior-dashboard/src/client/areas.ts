@@ -33,7 +33,10 @@ function sectionItems(
  */
 export function useArea(
   pathname: string,
-  profileNavItems: readonly DashboardHeaderNavItem[],
+  navItems: {
+    primary: readonly DashboardHeaderNavItem[];
+    profile: readonly DashboardHeaderNavItem[];
+  },
   isTabPath: boolean,
 ): Area | undefined {
   const code = under(pathname, "/code");
@@ -71,12 +74,16 @@ export function useArea(
       root: "/code",
     };
   const more = [
-    ...profileNavItems.map((item) => ({ label: item.label, to: item.to })),
+    ...navItems.profile.map((item) => ({ label: item.label, to: item.to })),
     { label: "Settings", to: "/settings" },
   ];
   if (under(pathname, "/plugins"))
     return {
-      items: more.filter((item) => item.to.startsWith("/plugins/")),
+      // Primary plugin pages have a nav tab too, but they list here with
+      // the profile ones, so the page on screen is always in the list.
+      items: [...navItems.primary, ...navItems.profile]
+        .filter((item) => item.to.startsWith("/plugins/"))
+        .map((item) => ({ label: item.label, to: item.to })),
       label: "Pages",
       // No page lists the plugin pages, so phones open each one directly.
       root: "",

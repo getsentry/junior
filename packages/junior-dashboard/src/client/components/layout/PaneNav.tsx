@@ -32,7 +32,10 @@ import {
 } from "../../conversations/conversationSidebarLayout";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
-import { NEW_CONVERSATION_PATH } from "../../conversations/conversationRoutes";
+import {
+  FOCUS_REPLY_STATE,
+  NEW_CONVERSATION_PATH,
+} from "../../conversations/conversationRoutes";
 import { cn } from "../../styles";
 import {
   COMMAND_PALETTE_LABEL,
@@ -686,7 +689,8 @@ function runNewAction(
   navigate: ReturnType<typeof useNavigate>,
 ) {
   if (action.onClick) action.onClick();
-  else navigate(action.to);
+  // The reader asked to type, so the composer takes focus on phones too.
+  else navigate(action.to, { state: FOCUS_REPLY_STATE });
 }
 
 /** New where a page names nothing else, such as the Inbox and areas. */

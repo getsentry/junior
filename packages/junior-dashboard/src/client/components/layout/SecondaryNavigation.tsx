@@ -11,7 +11,7 @@ import {
   dashboardInteractiveTextClass,
 } from "../../styles";
 import { SecondaryNavigationPortal } from "./DashboardChrome";
-import { usePaneShows } from "./PaneNav";
+import { usePaneShows, useZenMode } from "./PaneNav";
 
 export type SecondaryNavigationItem = SegmentedNavItem;
 
@@ -28,7 +28,8 @@ export function SecondaryNavigation(props: {
   items: SecondaryNavigationItem[];
   /**
    * The pane lists these pages (see `AreaSidebar`), so the desktop links
-   * show only while the pane hides, and phones open on the list instead.
+   * show only while the reader has closed the pane, not in Zen mode, and
+   * phones open on the list instead.
    */
   listedInPane?: boolean;
   /**
@@ -38,7 +39,9 @@ export function SecondaryNavigation(props: {
   opensOnPhone?: boolean;
 }) {
   const paneOpen = usePaneShows();
-  const desktopLinks = !props.listedInPane || !paneOpen;
+  const zen = useZenMode();
+  // Zen mode hides the pane too, but it hides the page links with it.
+  const desktopLinks = !props.listedInPane || (!paneOpen && !zen.active);
   const menuLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 pl-6 font-sans text-sm font-medium no-underline transition-colors",

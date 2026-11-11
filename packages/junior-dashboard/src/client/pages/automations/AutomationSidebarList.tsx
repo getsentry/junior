@@ -15,7 +15,10 @@ import { automationPath } from "../../format";
 import { cn } from "../../styles";
 import { WaitingMarker } from "../../components/WaitingMarker";
 import { ConversationSectionHeading } from "../../conversations/ConversationSectionHeading";
-import { NEW_CONVERSATION_PATH } from "../../conversations/conversationRoutes";
+import {
+  FOCUS_REPLY_STATE,
+  NEW_CONVERSATION_PATH,
+} from "../../conversations/conversationRoutes";
 import { automationAttentionReason } from "./automationAttention";
 
 const NEW_AUTOMATION_PROMPT = "Set up an automation that ";
@@ -40,7 +43,7 @@ export function useNewAutomationAction(): PaneNewAction {
           ? draft
           : `${NEW_AUTOMATION_PROMPT}${draft}`,
       );
-      navigate(NEW_CONVERSATION_PATH);
+      navigate(NEW_CONVERSATION_PATH, { state: FOCUS_REPLY_STATE });
     },
   };
 }
@@ -55,7 +58,10 @@ export function automationSelectPath(automation: AutomationSummary): string {
 function selectedAutomationId(pathname: string): string | undefined {
   const match = pathname.match(/^\/automations\/([^/]+)/);
   const id = match?.[1];
-  return id && id !== "list" && id !== "runs" ? decodeURIComponent(id) : id;
+  // `list` and `runs` are pages of the tab, not Automations.
+  return id && id !== "list" && id !== "runs"
+    ? decodeURIComponent(id)
+    : undefined;
 }
 
 type Group = { key: string; label: string; rows: AutomationSummary[] };

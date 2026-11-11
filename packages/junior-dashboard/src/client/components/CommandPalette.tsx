@@ -215,7 +215,7 @@ function CommandPaletteBody(props: {
           ? (automationsSearched.data?.automations ?? [])
           : [],
         currentConversationId: props.currentConversationId,
-        directories,
+        directories: directories.items,
         feed: buildConversations(feed.data?.conversations ?? []),
         inbox: inbox.items,
         inboxSearched: inboxSearchedCurrent ? inboxSearched.items : [],
@@ -236,7 +236,7 @@ function CommandPaletteBody(props: {
       inbox.items,
       inboxSearched.items,
       inboxSearchedCurrent,
-      directories,
+      directories.items,
       activeGroup,
       props.actions,
       props.currentConversationId,
@@ -259,7 +259,17 @@ function CommandPaletteBody(props: {
   const groups = [...new Set(items.map((item) => item.group))].map(
     (group) => [group, items.filter((item) => item.group === group)] as const,
   );
-  const searching = query.trim() !== search || searched.isFetching;
+  // Every server read counts, so "No matches." never shows while one of
+  // them can still match.
+  const searching =
+    query.trim() !== search ||
+    [
+      searched,
+      inboxSearched.query,
+      automationsSearched,
+      repositorySearched,
+    ].some((read) => read.isFetching) ||
+    directories.fetching;
 
   return (
     // Rows are already filtered and ranked in `paletteItems`.
@@ -346,6 +356,7 @@ function paletteItems(input: {
       icon: SquarePen,
       key: "new-conversation",
       label: "New conversation",
+      state: FOCUS_REPLY_STATE,
       to: NEW_CONVERSATION_PATH,
     },
     ...input.navItems.map((item) => ({
@@ -361,6 +372,7 @@ function paletteItems(input: {
     id: `page-${page.key}`,
     label: page.label,
     score: 0,
+    state: "state" in page ? page.state : undefined,
     to: page.to,
   });
   const actionItem = (action: PaletteAction): PaletteItem => ({

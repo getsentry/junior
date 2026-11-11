@@ -6,10 +6,11 @@ import {
 
 /**
  * Return the Inbox route that expands one item's row. A closed item opens
- * in Done.
+ * in Done. The route names the Inbox entry, because phones show the
+ * entries at `/`.
  */
 export function reviewItemPath(id: string): string {
-  return `/?item=${encodeURIComponent(id)}`;
+  return `/?view=inbox&item=${encodeURIComponent(id)}`;
 }
 
 /**

@@ -165,7 +165,7 @@ export const digest = {
   assignees: [],
   body: "The digest skipped two noisy alerts.",
   createdAt: "2026-08-07T07:00:00.000Z",
-  id: "item-digest",
+  id: "item-digest-open",
   kind: "notice" as const,
   title: "Digest skipped two noisy alerts",
 };

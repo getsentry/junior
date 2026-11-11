@@ -60,7 +60,8 @@ export function inboxViewPath(
   options: { itemId?: string } = {},
 ): string {
   const params = new URLSearchParams();
-  if (view !== "inbox") params.set("view", view);
+  // Phones show the entries at `/`, so an item link names its entry.
+  if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
   const search = params.toString();
   return search ? `/?${search}` : "/";

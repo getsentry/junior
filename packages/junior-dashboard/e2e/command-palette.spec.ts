@@ -274,7 +274,7 @@ test("ranks the active tab's results first", async ({ page, dashboard }) => {
   const match = inbox.getByRole("option").first();
   await expect(match).toHaveAccessibleName(new RegExp(rollout.title));
   await match.click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(/\/\?view=inbox$/);
   await expect(
     page.getByRole("region", { name: /: asks$/ }).filter({
       hasText: rollout.title,
@@ -372,6 +372,35 @@ test("closed Inbox matches show under Done, after the open ones", async ({
       name: "Review the initech license entry: how it closed",
     }),
   ).toBeVisible();
+});
+
+test("waits for every server search before it says nothing matches", async ({
+  page,
+  dashboard,
+}) => {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/user-pages/memory/memories?q=*", async (route) => {
+    await released;
+    await route.fallback();
+  });
+  await page.goto(dashboard.baseURL);
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  const conversationsSearched = page.waitForResponse((response) =>
+    response.url().includes("/api/conversations?q="),
+  );
+  await palette.getByRole("combobox").fill("zzqx nothing");
+  // The conversation search has answered; Memories still reads.
+  await conversationsSearched;
+  await expect(palette.getByText("Searching…")).toBeVisible();
+  await expect(palette.getByText("No matches.")).toHaveCount(0);
+  // The mock memories ignore the text, so the server's matches then show.
+  release();
+  await expect(
+    palette.getByRole("group", { name: "Memories" }).getByRole("option"),
+  ).not.toHaveCount(0);
+  await expect(palette.getByText("Searching…")).toHaveCount(0);
 });
 
 test("lists the open repository's matching conversations first", async ({

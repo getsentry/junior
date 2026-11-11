@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   keepPreviousData,
   queryOptions,
@@ -134,17 +133,29 @@ export function useConversationsData(search = "") {
 }
 
 /**
+ * The older feed pages a list has asked for: their cursors, and the first
+ * page's cursor they follow. A new first page starts them over.
+ */
+export type OlderConversationPages = {
+  after: string | undefined;
+  cursors: string[];
+};
+
+/**
  * Read the feed pages after the first, for infinite scroll. The first page
  * stays `useConversationsData`, which the versions poll keeps fresh. Each
  * older page is its own feed query under the feed key, so row actions that
  * patch every cached feed patch these rows too. The pages start from the
  * cursor at the end of the first page; a new first page starts them over.
+ * The caller owns which pages are asked for, so they outlive the list.
  */
-export function useOlderConversationPages(firstPageCursor: string | undefined) {
-  const [requested, setRequested] = useState<{
-    after: string | undefined;
-    cursors: string[];
-  }>({ after: firstPageCursor, cursors: [] });
+export function useOlderConversationPages(
+  firstPageCursor: string | undefined,
+  [requested, setRequested]: readonly [
+    OlderConversationPages,
+    (pages: OlderConversationPages) => void,
+  ],
+) {
   const cursors = requested.after === firstPageCursor ? requested.cursors : [];
   const pages = useQueries({
     queries: cursors.map((cursor) => ({
