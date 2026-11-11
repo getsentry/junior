@@ -380,7 +380,10 @@ test("searches the directory pages, with the page's group first", async ({
     await firstMatch("/automations/runs", "weekly", "Runs", /Weekly project/)
   ).click();
   await expect(page).toHaveURL(/\/automations\/runs\?run=/);
-  await expect(page.getByRole("dialog", { name: "Run details" })).toBeVisible();
+  // The run opens in the conversation drawer, named by its Automation.
+  await expect(
+    page.getByRole("dialog", { name: "Weekly project summary" }),
+  ).toBeVisible();
 });
 
 test("closed Inbox matches show under Done, after the open ones", async ({
