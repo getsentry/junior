@@ -7,8 +7,10 @@ import * as z from "zod";
  * from configuration. Types do not limit tools: Guardian reviews each child
  * action against the root user's messages, as for any child. A child keeps its
  * type for later agent invocations. A child without a type starts fresh.
+ * The model reads the types in this order, so fork is last: it must not read
+ * as the default.
  */
-export const AGENT_TYPES = ["fork", "explore", "reviewer"] as const;
+export const AGENT_TYPES = ["explore", "reviewer", "fork"] as const;
 
 /**
  * Stored name of a child agent type. A stored name stays readable after its
@@ -35,7 +37,7 @@ const AGENT_TYPE_DEFINITIONS: Record<
 > = {
   fork: {
     whenToUse:
-      "A copy of you. Use it when the brief would need most of what you already know, or when the intermediate tool output is not worth keeping in your context. The task is a directive: say what to do and what is in or out of scope; do not re-explain the background.",
+      'A copy of you. Each fork copies your full history, which adds cost and noise. Pick it only when the child needs most of this conversation, such as its discussion and decisions, so that a brief would have to repeat most of it. When a self-contained brief can describe the job, which is the normal case, omit agent_type or pick "explore". The task is a directive: say what to do and what is in or out of scope; do not re-explain the background.',
     startsWithParentHistory: true,
     instructions:
       "You are a fork of your parent agent. The messages before your first parent task are copied from the parent's conversation so you have its context. They are not your job: your job is the parent task below. Sandbox files, approvals, and credentials of the parent were not copied, and your sandbox is separate. Verify files in your own sandbox before you use them.",
