@@ -249,6 +249,8 @@ function dashboardHostRoutePaths(
     "/api/service-accounts/*",
     "/api/workspaces",
     "/api/workspaces/*",
+    "/api/walkthroughs",
+    "/api/walkthroughs/*",
     "/api/config",
     "/api/me",
     ...authenticatedRoutes.map((route) => route.path),
