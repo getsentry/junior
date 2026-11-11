@@ -10,7 +10,7 @@ import {
   INBOX_ROW_DETAIL_CLASS,
   inboxCardClass,
   inboxRowButtonClass,
-} from "./InboxBundleView";
+} from "./inboxRowStyles";
 import { InboxSection } from "./InboxSection";
 import { doneSections } from "./inboxModel";
 import { ReviewItemActions } from "./ReviewItemActions";
@@ -24,10 +24,8 @@ function outcomeOf(item: ReviewItemPayload): string | undefined {
 }
 
 function DoneRow(props: {
-  active: boolean;
   expanded: boolean;
   item: ReviewItemPayload;
-  onActivate(): void;
   onToggle(): void;
   /** The Conversation title, when it is known. */
   title?: string;
@@ -41,14 +39,13 @@ function DoneRow(props: {
   const regionId = `inbox-done-${item.id}`;
   const Icon = dismissed ? X : Check;
   return (
-    <li className={inboxCardClass(props.expanded)} onFocus={props.onActivate}>
+    <li className={inboxCardClass(props.expanded)}>
       <button
         aria-controls={regionId}
         aria-expanded={props.expanded}
-        className={inboxRowButtonClass(props.active, props.expanded)}
-        data-inbox-bundle={item.id}
+        className={inboxRowButtonClass(props.expanded)}
+        data-inbox-row={item.id}
         onClick={props.onToggle}
-        tabIndex={props.active ? 0 : -1}
         type="button"
       >
         <Icon
@@ -128,12 +125,10 @@ function DoneRow(props: {
  * only "Open conversation" leaves the Inbox.
  */
 export function InboxDoneView(props: {
-  activeKey?: string;
   collapsed: ReadonlySet<string>;
   expandedKey?: string;
   items: readonly ReviewItemPayload[];
   nowMs: number;
-  onActivate(key: string): void;
   onToggle(key: string): void;
   onToggleSection(key: string): void;
   titleOf(conversationId: string): string | undefined;
@@ -150,11 +145,9 @@ export function InboxDoneView(props: {
         >
           {section.items.map((item) => (
             <DoneRow
-              active={item.id === props.activeKey}
               expanded={item.id === props.expandedKey}
               item={item}
               key={item.id}
-              onActivate={() => props.onActivate(item.id)}
               onToggle={() => props.onToggle(item.id)}
               title={props.titleOf(item.addedByConversationId)}
             />
@@ -162,18 +155,5 @@ export function InboxDoneView(props: {
         </InboxSection>
       ))}
     </div>
-  );
-}
-
-/** The keys of the Done rows in reading order, for keyboard moves. */
-export function doneKeys(
-  items: readonly ReviewItemPayload[],
-  nowMs: number,
-  collapsed: ReadonlySet<string>,
-): string[] {
-  return doneSections(items, nowMs).flatMap((section) =>
-    collapsed.has(`done:${section.key}`)
-      ? []
-      : section.items.map((item) => item.id),
   );
 }

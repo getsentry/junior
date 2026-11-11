@@ -744,6 +744,10 @@ export function createMockReportingApi(): Hono<{
   });
   app.get("/review-items/count", () =>
     jsonResponse(reviewItemCountSchema, {
+      automations: mockAutomationCollection(
+        readMockAutomationList(),
+        new URLSearchParams({ owner: "me", scope: "attention" }),
+      ).total,
       needsViewer: readMockWaitingConversations(NOW_MS).needsViewer,
     }),
   );

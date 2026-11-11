@@ -1,20 +1,25 @@
 import type { InputImage } from "@sentry/junior/api/schema";
 import { useEffect, useMemo, useRef, useState, type Ref } from "react";
-import { Globe2, LockKeyhole } from "lucide-react";
+import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import {
+  Link,
   NavigationType,
+  useLocation,
   useNavigate,
   useNavigationType,
   useParams,
+  useSearchParams,
 } from "react-router";
 
-import { useConversationsData } from "../api";
-import { ConversationSidebar } from "./ConversationSidebar";
+import { useConversationsData, useOlderConversationPages } from "../api";
+import { InboxDataProvider } from "../review-desk/inboxData";
+import { InboxList } from "../review-desk/InboxList";
+import { useInboxReturnPath } from "../review-desk/inboxListState";
+import { INBOX_VIEW_LABELS, inboxViewOfPath } from "../review-desk/inboxModel";
+import { InboxNav } from "../review-desk/InboxNav";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
-import { composerDockClass } from "./ComposerDock";
-import { ConversationHomeList } from "./ConversationHomeList";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
 import {
@@ -43,45 +48,46 @@ import {
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
 } from "./conversationRoutes";
-import { pinnedFirst } from "./conversationSections";
-import { buildConversations, getDashboardTimeZone } from "../format";
+import { buildConversations } from "../format";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationPage } from "./ConversationPage";
-import { useAutoLoadHistoryPage } from "./transcriptBottomPinning";
 import { FeedThreads, feedThreadsById } from "./feedThreads";
-import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
-import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import { useSidebarFits } from "./conversationSidebarLayout";
 import { ListPane, PaneCollapsedControls } from "../components/layout/PaneNav";
 
-const CONVERSATION_PAGE_SIZE = 20;
-
 /**
- * Render the conversation list beside the create view or one selected
- * conversation. Narrow screens without room for the list get a stacked home.
+ * The Inbox: its entries in the pane, and in the main area the list of the
+ * selected entry, one Conversation, or the composer that "+" opens. Phones
+ * show one of these at a time: the entries, a list, then a Conversation.
  */
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
+  /** Asks and Automations need a viewer; signed out, only Conversations show. */
+  signedIn: boolean;
 }) {
-  const [visibleCount, setVisibleCount] = useState(CONVERSATION_PAGE_SIZE);
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
   const { showArchiveError, showArchived } = useConversationActionToasts();
   useConversationPageArchiveResult(showArchived, showArchiveError);
   const sidebarFits = useSidebarFits();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  // "+" opens the composer in the main area; "/" is the Inbox list.
+  const composing = location.pathname === NEW_CONVERSATION_PATH;
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
-  // Lists show every conversation; the command palette searches them.
   const feed = useConversationsData();
+  // Older feed pages load only when the list scrolls to its end.
+  const older = useOlderConversationPages(feed.data?.nextCursor);
+  const returnPath = useInboxReturnPath();
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
-  const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
   const offerPushNotifications = usePushNotificationsTip();
   const [pendingCreate, setPendingCreate] = useState<PendingNewConversation>();
@@ -91,17 +97,28 @@ export function ConversationWorkspace(props: {
   const queryClient = useQueryClient();
   const createComposer = useRef<ConversationComposerHandle>(null);
   const createRequested = useRef(false);
-  const conversations = useMemo(
-    () =>
-      applyPendingArchiveUpdates(
-        buildConversations(feed.data?.conversations ?? []),
-        pendingArchiveUpdates,
-      ),
-    [feed.data?.conversations, pendingArchiveUpdates],
-  );
+  const conversations = useMemo(() => {
+    const first = feed.data?.conversations ?? [];
+    const firstIds = new Set(first.map((row) => row.conversationId));
+    // A Conversation with new activity moves to the first page, so an
+    // older page can still hold it until it reloads.
+    const rows = [
+      ...first,
+      ...older.conversations.filter((row) => !firstIds.has(row.conversationId)),
+    ];
+    return applyPendingArchiveUpdates(
+      buildConversations(rows),
+      pendingArchiveUpdates,
+    );
+  }, [feed.data?.conversations, older.conversations, pendingArchiveUpdates]);
+  const feedPages = {
+    hasMore: older.hasMore,
+    loadingMore: older.loadingMore,
+    loadMore: older.loadMore,
+  };
   const openCreate = () => {
     createConversation.reset();
-    if (selectedId) {
+    if (!composing) {
       // The reader asked to type, so home takes focus even on a touch screen.
       createRequested.current = true;
       navigate(NEW_CONVERSATION_PATH);
@@ -114,26 +131,6 @@ export function ConversationWorkspace(props: {
     () => feedThreadsById(conversations),
     [conversations],
   );
-  const waitingConversations = useWaitingConversations();
-
-  // The feed holds every row. The home list shows them a batch at a time
-  // and shows the next batch when the reader scrolls near its end.
-  const orderedConversations = useMemo(
-    () => pinnedFirst(conversations),
-    [conversations],
-  );
-  const visibleConversations = useMemo(
-    () => orderedConversations.slice(0, visibleCount),
-    [orderedConversations, visibleCount],
-  );
-  const hiddenCount = orderedConversations.length - visibleConversations.length;
-  const homeList = useRef<HTMLDivElement>(null);
-  const loadMoreRef = useAutoLoadHistoryPage({
-    edge: "bottom",
-    enabled: hiddenCount > 0,
-    historyVersion: String(visibleCount),
-    onLoad: () => setVisibleCount((count) => count + CONVERSATION_PAGE_SIZE),
-  });
 
   // Aborts when the reader leaves home, so a late create does not pull them
   // back from the page they went to.
@@ -153,7 +150,7 @@ export function ConversationWorkspace(props: {
   // not when they come back from a conversation or follow a link.
   const homeShown = useRef(false);
   useEffect(() => {
-    if (!home) return;
+    if (!home || !composing) return;
     const returned =
       (homeShown.current || navigationType === NavigationType.Push) &&
       !createRequested.current;
@@ -161,12 +158,11 @@ export function ConversationWorkspace(props: {
     createRequested.current = false;
     if (returned && touchKeyboardMatches()) return;
     createComposer.current?.focus();
-  }, [home, navigationType]);
+  }, [composing, home, navigationType]);
 
   const createView = (
     <NewConversationView
       composerRef={createComposer}
-      docked={!sidebarFits}
       error={
         createConversation.error
           ? "Message failed to send. Try again."
@@ -225,147 +221,177 @@ export function ConversationWorkspace(props: {
     />
   );
 
-  // One tree for every width, so the create draft and its images survive a
-  // resize across the breakpoint: the create view is always the child of the
-  // second div.
+  // "+" opens this: the composer, alone in the main area.
   const homePane = (
     <main
       className={cn(
-        "h-full min-h-0 w-full overflow-hidden",
+        "h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden",
         pendingCreate ? "hidden" : "grid",
-        sidebarFits
-          ? "grid-rows-[auto_minmax(0,1fr)]"
-          : "grid-rows-[minmax(0,1fr)_auto]",
       )}
     >
-      {sidebarFits ? (
-        <div className="flex h-header items-center pl-6">
-          <PaneCollapsedControls />
-        </div>
-      ) : (
-        // The top space is inside the content, not the scroller's padding,
-        // so the sticky section labels meet the page header.
-        <div
-          className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 sm:px-6"
-          ref={homeList}
-        >
-          <section aria-label="Conversations" className="grid gap-3 pt-4">
-            <ConversationHomeList
-              conversations={visibleConversations}
-              emptyLabel={feed.error?.message}
-              loading={feed.isPending}
-              // More pins than the list shows yet: a drop could not place
-              // the rest.
-              onReorderPins={
-                conversations.filter((conversation) => conversation.pinnedAt)
-                  .length > visibleCount
-                  ? undefined
-                  : reorderPins
-              }
-              timeZone={getDashboardTimeZone()}
-              waitingConversations={waitingConversations}
-            />
-            {hiddenCount > 0 ? (
-              <div
-                className="py-2 text-center font-sans text-xs text-dashboard-text-muted"
-                ref={loadMoreRef}
-                role="status"
-              >
-                Loading {Math.min(hiddenCount, CONVERSATION_PAGE_SIZE)} more…
-              </div>
-            ) : null}
-          </section>
-        </div>
-      )}
       <div
-        className={
-          sidebarFits
-            ? // The bottom pad matches the toggle row, so the create view
-              // sits in the middle of the pane.
-              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
-            : // Narrow screens dock the composer at the bottom, in thumb
-              // reach.
-              cn(
-                composerDockClass,
-                "overflow-y-auto border-t border-dashboard-border-subtle sm:px-6",
-              )
-        }
+        className={cn(
+          "flex h-header items-center gap-1 pl-6",
+          !sidebarFits && "hidden",
+        )}
       >
+        <PaneCollapsedControls />
+        <BackToList />
+      </div>
+      {/* The bottom pad matches the header row, so the create view sits in
+          the middle of the pane. */}
+      <div className="grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 pb-13 sm:px-6">
         {createView}
       </div>
     </main>
   );
+  // On a phone, "/" lists the entries; each opens its list on its own page.
+  const listPane =
+    !sidebarFits && !searchParams.has("view") ? (
+      <section aria-label="Inbox" className="relative h-full min-h-0">
+        <InboxNav phone />
+        <PhoneNewButton onClick={openCreate} />
+      </section>
+    ) : (
+      <div className="relative h-full min-h-0">
+        <InboxList
+          error={feed.error?.message}
+          loading={feed.isPending}
+          phone={!sidebarFits}
+        />
+        {sidebarFits ? null : <PhoneNewButton onClick={openCreate} />}
+      </div>
+    );
+
+  // Esc goes back to the list when nothing else takes it: open Details, a
+  // menu or dialog, a docked question, or a text box. It runs first, in
+  // the capture phase, because a focused tooltip stops Esc from bubbling.
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "input, textarea, select, [contenteditable='true'], [data-escape-scope]",
+        ) ||
+        document.querySelector(ESCAPE_OWNERS)
+      )
+        return;
+      void navigate(returnPath);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [navigate, returnPath, selectedId]);
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
-      {/* The pane hides itself while the reader hides it, and keeps the
+    <InboxDataProvider
+      conversations={conversations}
+      feed={feedPages}
+      signedIn={props.signedIn}
+    >
+      <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
+        {/* The pane hides itself while the reader hides it, and keeps the
           list mounted so its scroll position stays. */}
-      {sidebarFits ? (
-        <ListPane
-          newAction={{ label: "New conversation", onClick: openCreate }}
-          tab="conversations"
-        >
-          <ConversationSidebar
-            conversations={conversations}
-            error={feed.error?.message}
-            loading={feed.isPending}
-            onReorderPins={reorderPins}
-            selectedId={selectedId}
-            timeZone={getDashboardTimeZone()}
-            waitingConversations={waitingConversations}
-          />
-        </ListPane>
-      ) : null}
-      <div className="h-full min-h-0 min-w-0 flex-1">
-        {home ? homePane : null}
-        {/* A pending create shows in the same section as the page that
-            replaces it, so the swap keeps this element. */}
-        {selectedId || pendingCreate ? (
-          <section
-            aria-busy={home || undefined}
-            aria-label="Selected conversation"
-            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+        {sidebarFits ? (
+          <ListPane
+            newAction={{ label: "New conversation", onClick: openCreate }}
+            tab="inbox"
           >
-            {selectedId ? (
-              <UnsentAnswersProvider
-                conversationId={selectedId}
-                key={selectedId}
-              >
-                <FeedThreads value={feedThreads}>
-                  <ConversationPage
-                    conversationId={selectedId}
-                    detail={props.detail}
-                    data={
-                      feed.data
-                        ? {
-                            conversations: feed.data,
-                          }
-                        : undefined
-                    }
-                    pendingArchiveUpdate={pendingArchiveUpdates.find(
-                      (update) => update.conversationId === selectedId,
-                    )}
-                    sidebarToggle=<PaneCollapsedControls />
-                  />
-                </FeedThreads>
-              </UnsentAnswersProvider>
-            ) : pendingCreate ? (
-              <NewConversationPending
-                pending={pendingCreate}
-                sidebarToggle=<PaneCollapsedControls />
-              />
-            ) : null}
-          </section>
+            <InboxNav selectedConversationId={selectedId} />
+          </ListPane>
         ) : null}
+        <div className="h-full min-h-0 min-w-0 flex-1">
+          {home ? (composing ? homePane : listPane) : null}
+          {/* A pending create shows in the same section as the page that
+            replaces it, so the swap keeps this element. */}
+          {selectedId || pendingCreate ? (
+            <section
+              aria-busy={home || undefined}
+              aria-label="Selected conversation"
+              className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-dashboard-bg"
+            >
+              {selectedId ? (
+                <UnsentAnswersProvider
+                  conversationId={selectedId}
+                  key={selectedId}
+                >
+                  <FeedThreads value={feedThreads}>
+                    <ConversationPage
+                      conversationId={selectedId}
+                      detail={props.detail}
+                      listPath={returnPath}
+                      data={
+                        feed.data
+                          ? {
+                              conversations: feed.data,
+                            }
+                          : undefined
+                      }
+                      pendingArchiveUpdate={pendingArchiveUpdates.find(
+                        (update) => update.conversationId === selectedId,
+                      )}
+                      sidebarToggle={
+                        <span className="flex items-center gap-1">
+                          <PaneCollapsedControls />
+                          <BackToList />
+                        </span>
+                      }
+                    />
+                  </FeedThreads>
+                </UnsentAnswersProvider>
+              ) : pendingCreate ? (
+                <NewConversationPending
+                  pending={pendingCreate}
+                  sidebarToggle=<PaneCollapsedControls />
+                />
+              ) : null}
+            </section>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </InboxDataProvider>
+  );
+}
+
+/** Back to the Inbox list the reader came from. Esc does the same. */
+function BackToList() {
+  const to = useInboxReturnPath();
+  const view = inboxViewOfPath(to);
+  return (
+    <Link
+      aria-keyshortcuts="Escape"
+      aria-label={`Back to ${INBOX_VIEW_LABELS[view]}`}
+      className="-ml-2 inline-flex h-8 items-center gap-1.5 rounded-lg px-2 font-sans text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+      title="Back (Esc)"
+      to={to}
+    >
+      <ArrowLeft aria-hidden="true" className="size-4" />
+      {INBOX_VIEW_LABELS[view]}
+    </Link>
+  );
+}
+
+/** What takes Esc before Back while open: Details, menus, and dialogs. */
+const ESCAPE_OWNERS =
+  "[data-dashboard-modal], [data-escape-owner], [role='dialog'], [role='menu']";
+
+/** On a phone, "+" floats over the bottom-right of the list. */
+function PhoneNewButton(props: { onClick(): void }) {
+  return (
+    <button
+      aria-label="New conversation"
+      className="absolute right-4 bottom-5 grid size-14 place-items-center rounded-2xl bg-dashboard-accent text-2xl text-dashboard-text-inverse shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+      onClick={props.onClick}
+      type="button"
+    >
+      +
+    </button>
   );
 }
 
 function NewConversationView(props: {
   composerRef: Ref<ConversationComposerHandle>;
-  /** Docked at the bottom of the narrow home, where the list is above it. */
-  docked: boolean;
   error?: string;
   onSubmit(
     message: string,
@@ -381,12 +407,7 @@ function NewConversationView(props: {
       aria-label="New conversation"
       className="mx-auto grid w-full max-w-3xl gap-3"
     >
-      <h2
-        className={cn(
-          "m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl",
-          props.docked && "sr-only",
-        )}
-      >
+      <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
         What do you need?
       </h2>
       <ConversationComposer

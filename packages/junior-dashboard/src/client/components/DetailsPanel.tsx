@@ -108,6 +108,8 @@ export function DetailsPanel(props: {
   return (
     <aside
       aria-label={props.label}
+      // Esc closes it before Esc leaves the page.
+      data-escape-owner=""
       className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] border-l border-dashboard-border bg-dashboard-bg-elevated"
     >
       {/* Same height and centre line as the conversation header beside it:

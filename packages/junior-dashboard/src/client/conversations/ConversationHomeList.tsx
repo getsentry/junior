@@ -108,7 +108,7 @@ export function ConversationHomeList(props: {
 }
 
 /** Match the grouped card list while its first feed request is pending. */
-export function ConversationHomeListLoading(props: { label?: string }) {
+function ConversationHomeListLoading(props: { label?: string }) {
   return (
     <div
       aria-busy={props.label ? "true" : undefined}

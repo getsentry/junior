@@ -1,9 +1,6 @@
 import { Skeleton } from "../components/ui/skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
-import { composerDockClass } from "./ComposerDock";
-import { ConversationHomeListLoading } from "./ConversationHomeList";
-import { ConversationRowSkeletons } from "./ConversationSidebar";
 import { ListPane, usePaneOpen } from "../components/layout/PaneNav";
 import { TranscriptLoading } from "./TranscriptLoading";
 
@@ -39,39 +36,34 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
 function ConversationSidebarLoading() {
   return (
     <ListPane className="max-md:hidden">
-      <aside className="h-full min-h-0 overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel px-3 pt-1.5">
-        <ConversationRowSkeletons />
-      </aside>
+      <div aria-hidden="true" className="grid gap-1 px-3 pt-2">
+        {Array.from({ length: 7 }, (_, index) => (
+          <div className="flex h-8 items-center gap-3 px-3" key={index}>
+            <Skeleton className="size-4 rounded" />
+            <Skeleton className={cn("h-3.5", index % 2 ? "w-20" : "w-28")} />
+          </div>
+        ))}
+      </div>
     </ListPane>
   );
 }
 
-// Wide screens show only the create view beside the list. Narrow screens
-// show the home list with the create composer docked below it.
+// The Inbox list: card rows in the main area.
 function ConversationHomeLoading() {
   return (
-    <div className="grid h-full min-h-0 w-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden md:grid-rows-[minmax(0,1fr)]">
-      <section className="grid min-h-0 content-start gap-3 overflow-hidden px-4 pb-3 pt-4 sm:px-6 md:hidden">
-        <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
-        <ConversationHomeListLoading />
-      </section>
-      <div
-        className={cn(
-          composerDockClass,
-          "border-t border-dashboard-border-subtle sm:px-6 md:grid md:max-h-none md:place-items-center md:border-t-0 md:px-6 md:pb-13 md:pt-13",
-        )}
-      >
-        <section className="mx-auto grid w-full max-w-3xl gap-3">
-          <Skeleton className="mx-auto hidden h-8 w-56 md:block" />
-          <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
-            <Skeleton className="h-20 w-full bg-dashboard-fill-faint" />
-            <div className="mt-3 flex justify-between">
-              <Skeleton className="h-7 w-32" />
-              <Skeleton className="size-8 rounded-md" />
-            </div>
-          </div>
-        </section>
-      </div>
+    <div
+      aria-hidden="true"
+      className="mx-auto grid w-full max-w-[56rem] content-start gap-2 px-2 pt-4 md:px-6"
+    >
+      {Array.from({ length: 6 }, (_, index) => (
+        <div
+          className="grid gap-2 rounded-xl border border-dashboard-border px-4 py-3"
+          key={index}
+        >
+          <Skeleton className={cn("h-4", index % 2 ? "w-2/5" : "w-3/5")} />
+          <Skeleton className="h-3 w-4/5 opacity-70" />
+        </div>
+      ))}
     </div>
   );
 }

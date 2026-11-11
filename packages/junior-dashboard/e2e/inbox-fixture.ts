@@ -1,5 +1,6 @@
 /** Review items and an API mock shared by the Inbox e2e specs. */
 import type { Page } from "@playwright/test";
+import { attentionCount } from "./automation-fixture";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -177,6 +178,8 @@ export const digest = {
 export async function mockReviewItems(
   page: Page,
   options: {
+    /** Attention Automations in the count. The mocked list's by default. */
+    automations?: number;
     failActions?: string[];
     keepOpen?: boolean;
     open?: unknown[];
@@ -198,14 +201,16 @@ export async function mockReviewItems(
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/review-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
-    if (path === "/count")
+    if (path === "/count") {
       return route.fulfill({
         json: {
+          automations: options.automations ?? attentionCount(),
           needsViewer: open.filter(
             (i) => i.kind === "action" && i.canAct && !i.assignedToEveryone,
           ).length,
         },
       });
+    }
     if (path === "" || path === "/") {
       const linked = url.searchParams.get("conversationId");
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";

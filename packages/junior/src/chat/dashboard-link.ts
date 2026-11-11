@@ -112,9 +112,9 @@ export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
 }
 
-/** Build the review desk URL that selects one Review item. */
+/** Build the dashboard Inbox URL that expands one Review item's row. */
 export function getDashboardReviewItemLink(itemId: string): string | undefined {
-  return resolveDashboardPath(`/review?item=${encodeURIComponent(itemId)}`);
+  return resolveDashboardPath(`/?item=${encodeURIComponent(itemId)}`);
 }
 
 /** Public icon asset URL. Headless and local installs keep text-only identity. */

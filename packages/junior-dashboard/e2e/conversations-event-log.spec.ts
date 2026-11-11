@@ -456,10 +456,8 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(linkedEntry).toBeFocused();
   await linkedEntry.click();
   await expect(linked).toBeVisible();
-  await page
-    .getByRole("navigation", { name: "Your conversations" })
-    .getByRole("link", { name: /Investigate checkout latency/ })
-    .click();
+  // Leaving the page closes it.
+  await page.getByRole("link", { name: /^Back to/ }).click();
   await expect(linked).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]event=/);
 });
@@ -818,30 +816,23 @@ for (const view of [desktop, mobile]) {
   });
 }
 
-test("opens the event log from the sidebar row menu", async ({
-  page,
-  dashboard,
-}) => {
-  await page.goto(dashboard.baseURL);
+test("opens the event log from the row menu", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const row = page
-    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("region", { exact: true, name: "Conversations" })
     .getByRole("link", { name: /Closed issue summary/ });
   const log = page.getByRole("region", { name: "Conversation event log" });
   await row.click({ button: "right" });
   // The viewer is not a participant, so the menu disables changes.
   await expect(page.getByRole("menuitem", { name: "Archive" })).toBeDisabled();
   await page.getByRole("menuitem", { name: "Open event log" }).click();
-  await expect(row).toHaveAttribute("aria-current", "page");
   await expect(log).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Closed issue summary" }),
+  ).toBeVisible();
 
-  // The page is open already, so the row menu switches its view.
-  await page.getByTitle("Back to conversation").click();
-  await expect(log).toBeHidden();
-  await row.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Open event log" }).click();
-  await expect(log).toBeVisible();
-  // That switch adds no history entry, so Back leaves the conversation.
+  // Browser Back returns to the list it came from.
   await page.goBack();
-  await expect(row).not.toHaveAttribute("aria-current", "page");
   await expect(log).toBeHidden();
+  await expect(row).toBeVisible();
 });

@@ -12,33 +12,17 @@ test("shows the primary destinations at the top of every desktop pane", async ({
 
   const primary = page.getByRole("navigation", { name: "Primary" });
   const destinations = primary.getByRole("link");
-  // Inbox comes first and carries the open review item count.
-  await expect(destinations).toHaveCount(3);
+  // Inbox comes first and carries the To do count.
+  await expect(destinations).toHaveCount(2);
   await expect(destinations.nth(0)).toHaveAccessibleName(
     /^Inbox, \d+ waiting$/,
   );
-  await expect(destinations.nth(1)).toHaveAccessibleName("Conversations");
-  await expect(destinations.nth(2)).toHaveAccessibleName("Automations");
-  await expect(
-    primary.getByRole("link", { name: "Conversations" }),
-  ).toHaveAttribute("aria-current", "page");
-  // The pane is one column: destinations above the conversation list.
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toBeVisible();
+  await expect(destinations.nth(1)).toHaveAccessibleName("Automations");
+  await expect(destinations.nth(0)).toHaveAttribute("aria-current", "page");
+  // The pane is one column: destinations above the Inbox entries.
+  await expect(page.getByRole("navigation", { name: "Inbox" })).toBeVisible();
 
-  // Inbox puts its own list under the same destinations.
-  await primary.getByRole("link", { name: "Inbox" }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/review`);
-  await expect(primary.getByRole("link", { name: "Inbox" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(
-    page.getByRole("complementary", { name: "Inbox bundles" }),
-  ).toBeVisible();
-
-  // Pages without a list get the destinations alone.
+  // Automations puts its own list under the same destinations.
   await primary.getByRole("link", { name: "Automations" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
   await expect(
@@ -64,7 +48,7 @@ test("shows the primary destinations at the top of every desktop pane", async ({
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
   await expect.poll(paneWidth).toBe(startWidth + 32);
-  await primary.getByRole("link", { name: "Conversations" }).click();
+  await primary.getByRole("link", { name: /^Inbox/ }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect.poll(paneWidth).toBe(startWidth + 32);
   await page.reload();
@@ -80,27 +64,27 @@ test("collapses the other tabs to icons in a narrow pane", async ({
   const primary = page.getByRole("navigation", { name: "Primary" });
   const inbox = primary.getByRole("link", { name: /^Inbox, \d+ waiting$/ });
   const automations = primary.getByRole("link", { name: "Automations" });
-  const conversations = primary.getByRole("link", { name: "Conversations" });
 
   await page.getByRole("separator", { name: "Resize sidebar" }).focus();
-  // Each arrow press moves the pane edge 16px: 400px wide, then 240px.
+  // Each arrow press moves the pane edge 16px.
   for (let step = 0; step < 5; step += 1)
     await page.keyboard.press("ArrowRight");
   await expect(automations.getByText("Automations")).toBeVisible();
 
-  for (let step = 0; step < 10; step += 1)
+  for (let step = 0; step < 15; step += 1)
     await page.keyboard.press("ArrowLeft");
   // The tab in view keeps its label; the others keep their name as tooltip.
-  await expect(conversations.getByText("Conversations")).toBeVisible();
+  await expect(inbox.getByText("Inbox")).toBeVisible();
   await expect(automations.getByText("Automations")).toBeHidden();
-  await expect(inbox.getByText(/^\d+$/)).toBeVisible();
   await automations.hover();
   await expect(page.getByRole("tooltip")).toHaveText("Automations");
 
-  await inbox.click();
-  await expect(inbox).toHaveAttribute("aria-current", "page");
-  await expect(inbox.getByText("Inbox")).toBeVisible();
-  await expect(conversations.getByText("Conversations")).toBeHidden();
+  // An icon-only Inbox keeps its count.
+  await automations.click();
+  await expect(automations).toHaveAttribute("aria-current", "page");
+  await expect(automations.getByText("Automations")).toBeVisible();
+  await expect(inbox.getByText("Inbox")).toBeHidden();
+  await expect(inbox.getByText(/^\d+$/)).toBeVisible();
 });
 
 test("names New after the tab that shows", async ({ page, dashboard }) => {
@@ -115,7 +99,10 @@ test("names New after the tab that shows", async ({ page, dashboard }) => {
   }
   // New on Automations starts the ask in a new conversation.
   await page.getByRole("button", { name: "New automation" }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
+  await expect(page.getByLabel("Start a conversation")).toHaveValue(
+    /^Set up an automation that /,
+  );
 });
 
 test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
@@ -146,16 +133,13 @@ test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
   await expect(primary).toBeHidden();
   await page.goto(dashboard.baseURL);
   await expect(primary).toBeHidden();
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toBeHidden();
+  const entries = page.getByRole("navigation", { name: "Inbox" });
+  await expect(entries).toBeHidden();
 
   // Cmd/Ctrl+B shows it again.
   await page.keyboard.press("ControlOrMeta+b");
   await expect(primary).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toBeVisible();
+  await expect(entries).toBeVisible();
 });
 
 test("reopens each tab where the reader left it", async ({
@@ -168,7 +152,7 @@ test("reopens each tab where the reader left it", async ({
   const tab = (name: string) =>
     primary.getByRole("link", { exact: true, name });
 
-  await tab("Conversations").click();
+  await primary.getByRole("link", { name: /^Inbox/ }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await tab("Automations").click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/runs`);
@@ -185,18 +169,21 @@ test("reopens each tab where the reader left it", async ({
 
 test("keeps the density choice", async ({ page, dashboard }) => {
   const root = page.locator("html");
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   await expect(root).toHaveAttribute("data-density", "compact");
-  // A row with a Brief shows its status; Comfortable adds its summary.
-  const row = page.getByRole("link", { name: /^Checkout latency triage/ });
-  const summary = row.getByText(/traced to payments-v42/);
+  // A row with a Brief shows its status; Comfortable gives its summary
+  // more lines.
+  const row = page
+    .getByRole("region", { exact: true, name: "Conversations" })
+    .getByRole("link", { name: /Checkout latency triage/ });
   await expect(row.getByRole("img", { name: "Brief: Done" })).toBeVisible();
-  await expect(summary).toHaveCount(0);
+  const summary = row.getByText(/traced to payments-v42/);
+  await expect(summary).toHaveClass(/line-clamp-1/);
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("button", { name: "Comfortable density" }).click();
   await expect(root).toHaveAttribute("data-density", "comfortable");
-  await expect(summary).toBeVisible();
+  await expect(summary).toHaveClass(/line-clamp-2/);
   await page.reload();
   await expect(root).toHaveAttribute("data-density", "comfortable");
 });
@@ -243,7 +230,7 @@ test("hides and restores the panels with the shortcuts and Zen mode", async ({
   await expect(details).toBeHidden();
 
   // Every page has Zen mode; without details, it hides the pane.
-  for (const path of ["/settings", "/review"]) {
+  for (const path of ["/settings", "/"]) {
     await page.goto(`${dashboard.baseURL}${path}`);
     await page.keyboard.press("ControlOrMeta+Alt+KeyY");
     await expect(pane).toBeHidden();

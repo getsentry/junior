@@ -15,6 +15,7 @@ import { automationPath } from "../../format";
 import { cn } from "../../styles";
 import { WaitingMarker } from "../../components/WaitingMarker";
 import { ConversationSectionHeading } from "../../conversations/ConversationSectionHeading";
+import { NEW_CONVERSATION_PATH } from "../../conversations/conversationRoutes";
 import { automationAttentionReason } from "./automationAttention";
 
 const NEW_AUTOMATION_PROMPT = "Set up an automation that ";
@@ -39,7 +40,7 @@ export function useNewAutomationAction(): PaneNewAction {
           ? draft
           : `${NEW_AUTOMATION_PROMPT}${draft}`,
       );
-      navigate("/");
+      navigate(NEW_CONVERSATION_PATH);
     },
   };
 }

@@ -51,7 +51,10 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "./format";
-import { isNewConversationPath } from "./conversations/conversationRoutes";
+import {
+  isNewConversationPath,
+  NEW_CONVERSATION_PATH,
+} from "./conversations/conversationRoutes";
 import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
@@ -76,10 +79,16 @@ import {
 } from "./pages/automations/AutomationsPageLayout";
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "./TracedRoutes";
+import { InboxRedirect } from "./review-desk/InboxList";
 import {
-  ReviewDeskLoading,
-  ReviewDeskPage,
-} from "./review-desk/ReviewDeskPage";
+  InboxListProvider,
+  useInboxReturnPath,
+} from "./review-desk/inboxListState";
+import {
+  INBOX_VIEW_LABELS,
+  inboxViewOfPath,
+  parseInboxView,
+} from "./review-desk/inboxModel";
 import { useReviewItemCountData } from "./review-desk/queries";
 import { cn } from "./styles";
 import { useVersionsPoll } from "./versions";
@@ -187,7 +196,46 @@ const legacySettingsPaths = [
 
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
+  // The Inbox list keeps its place while a Conversation replaces it, and
+  // the phone header's Back returns to it.
+  return (
+    <InboxListProvider>
+      <Shell />
+    </InboxListProvider>
+  );
+}
+
+/**
+ * Where the phone header's Back goes on an Inbox page, and its title: a
+ * Conversation and the composer go back to the list, and a list goes back
+ * to the entries.
+ */
+function inboxMobileHeader(
+  pathname: string,
+  search: string,
+  returnPath: string,
+): { backLabel?: string; backTo?: string; title?: string } {
+  const back = (to: string) => ({
+    backLabel: `Back to ${INBOX_VIEW_LABELS[inboxViewOfPath(to)]}`,
+    backTo: to,
+  });
+  if (pathname === NEW_CONVERSATION_PATH)
+    return { ...back(returnPath), title: "New conversation" };
+  if (conversationIdFromPath(pathname)) return back(returnPath);
+  const view = new URLSearchParams(search).get("view");
+  // A list's Back goes to the entries, which "/" shows on a phone.
+  if (pathname === "/" && view !== null)
+    return {
+      backLabel: "Back to the Inbox entries",
+      backTo: "/",
+      title: INBOX_VIEW_LABELS[parseInboxView(view)],
+    };
+  return {};
+}
+
+function Shell() {
   const location = useLocation();
+  const inboxReturnPath = useInboxReturnPath();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const openCommandPalette = () => setCommandPaletteOpen(true);
@@ -207,9 +255,6 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
-  // These pages put their own list in the pane. Other pages get the pane
-  // with the primary destinations only.
-  const ownsPane = workspace || location.pathname === "/review";
   const automationsTab = paneTabForPath(location.pathname) === "automations";
   const newAutomation = useNewAutomationAction();
   useDensityRoot();
@@ -235,14 +280,23 @@ export function DashboardShell() {
     ? (conversationDetailTitle(conversationDetail.data) ??
       conversationDisplayTitle(mobileConversation))
     : undefined;
-  const reviewCountQuery = useReviewItemCountData(loggedIn);
+  // To do counts the asks and the Automations that wait on the viewer, as
+  // the server counts them, so the tab badge matches To do.
+  const inboxCount = useReviewItemCountData(loggedIn).data;
   const primaryNavItems = buildPrimaryNavItems({
+    inboxCount: inboxCount
+      ? inboxCount.needsViewer + inboxCount.automations
+      : undefined,
     loading,
     loggedIn,
     pathname: location.pathname,
     primaryUserPages,
-    reviewCount: reviewCountQuery.data?.needsViewer,
   });
+  const inboxHeader = inboxMobileHeader(
+    location.pathname,
+    location.search,
+    inboxReturnPath,
+  );
   const profileNavItems = loggedIn
     ? buildProfileNavItems(
         userPages.filter((page) => page.navigation === "profile"),
@@ -319,7 +373,9 @@ export function DashboardShell() {
           onOpenChange={setCommandPaletteOpen}
           open={commandPaletteOpen}
         />
-        {ownsPane ? null : (
+        {/* The Inbox puts its own entries in the pane. Other pages get the
+            pane with the primary destinations only. */}
+        {workspace ? null : (
           <div
             className={cn(
               "sticky top-0 h-dvh shrink-0 max-md:hidden",
@@ -339,7 +395,6 @@ export function DashboardShell() {
           className="min-w-0 flex-1 bg-dashboard-bg"
           enabled={
             workspace ||
-            location.pathname === "/review" ||
             hasAutomationDetailsFrame(location.pathname) ||
             hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
@@ -356,13 +411,15 @@ export function DashboardShell() {
             }
             header={
               <DashboardHeader
-                mobileBackTo={
-                  conversationId ? "/" : areaBack ? area?.root : undefined
-                }
+                mobileBackTo={areaBack ? area?.root : inboxHeader.backTo}
                 mobileBackLabel={
-                  areaBack ? `Back to ${area?.label}` : undefined
+                  areaBack ? `Back to ${area?.label}` : inboxHeader.backLabel
                 }
-                mobileTitle={areaBack ? area?.label : mobileConversationTitle}
+                mobileTitle={
+                  areaBack
+                    ? area?.label
+                    : (inboxHeader.title ?? mobileConversationTitle)
+                }
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
                 onMobileNavigationOpenChange={setMobileNavigationOpen}
@@ -538,7 +595,10 @@ export function DashboardShell() {
                   loading ? (
                     <ConversationWorkspaceLoading detail={false} />
                   ) : data ? (
-                    <ConversationWorkspace detail={conversationDetail} />
+                    <ConversationWorkspace
+                      detail={conversationDetail}
+                      signedIn={loggedIn}
+                    />
                   ) : (
                     <LoadingView
                       label={query.error?.message ?? "Dashboard unavailable"}
@@ -547,18 +607,7 @@ export function DashboardShell() {
                 }
                 path="/"
               />
-              <Route
-                element={
-                  loading ? (
-                    <ReviewDeskLoading />
-                  ) : loggedIn ? (
-                    <ReviewDeskPage />
-                  ) : (
-                    <Navigate replace to="/" />
-                  )
-                }
-                path="/review"
-              />
+              <Route element={<InboxRedirect />} path="/review" />
               {/* The Board is an experiment, so no navigation links to it. */}
               <Route element={<BoardPage />} path="/board" />
               <Route element={<CodePage />} path="/code" />
@@ -574,7 +623,20 @@ export function DashboardShell() {
                 />
               ))}
               <Route
-                element={<Navigate replace to="/" />}
+                element={
+                  loading ? (
+                    <ConversationWorkspaceLoading detail={false} />
+                  ) : data ? (
+                    <ConversationWorkspace
+                      detail={conversationDetail}
+                      signedIn={loggedIn}
+                    />
+                  ) : (
+                    <LoadingView
+                      label={query.error?.message ?? "Dashboard unavailable"}
+                    />
+                  )
+                }
                 path="/conversations/new"
               />
               <Route
@@ -582,7 +644,10 @@ export function DashboardShell() {
                   loading ? (
                     <ConversationWorkspaceLoading detail />
                   ) : data ? (
-                    <ConversationWorkspace detail={conversationDetail} />
+                    <ConversationWorkspace
+                      detail={conversationDetail}
+                      signedIn={loggedIn}
+                    />
                   ) : (
                     <LoadingView
                       label={query.error?.message ?? "Dashboard unavailable"}

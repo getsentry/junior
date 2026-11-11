@@ -3,15 +3,14 @@ import { useLocalStorage } from "@uidotdev/usehooks";
 import type { InboxBundle } from "./reviewItemFormat";
 
 const STORAGE_KEY = "junior:inbox:snoozed";
-const PIN_STORAGE_KEY = "junior:inbox:pinned";
 const HOUR_MS = 60 * 60 * 1000;
 
 /** One snoozed row: until when, and its newest item at the snooze. */
 type Snooze = { newestItemId: string; untilMs: number };
 
 /**
- * Every key that can snooze or pin a row: the row itself, its Conversation,
- * and its items. A row can show under another view's key.
+ * Every key that can snooze a row: the row itself, its Conversation, and
+ * its items. A row can show under another entry's key.
  */
 function rowKeys(bundle: InboxBundle): Set<string> {
   return new Set([
@@ -78,29 +77,4 @@ export function useInboxSnoozes(nowMs: number) {
   const until = (bundle: InboxBundle) =>
     Math.max(...[...rowKeys(bundle)].map((key) => snoozes[key]?.untilMs ?? 0));
   return { sleeps, snooze, until, wake };
-}
-
-/**
- * Pin inbox rows in this browser, as Google Inbox did. A pinned row stays
- * at the top, and a sweep leaves it. Prototype: the server has no pins.
- */
-export function useInboxPins() {
-  const [pins, setPins] = useLocalStorage<Record<string, true>>(
-    PIN_STORAGE_KEY,
-    {},
-  );
-  const pinned = (key: string) => pins[key] === true;
-  const toggle = (bundle: InboxBundle, rowPinned: boolean) => {
-    if (!rowPinned) {
-      setPins({ ...pins, [bundle.key]: true });
-      return;
-    }
-    const keys = rowKeys(bundle);
-    setPins(
-      Object.fromEntries(
-        Object.entries(pins).filter(([key]) => !keys.has(key)),
-      ) as Record<string, true>,
-    );
-  };
-  return { pinned, toggle };
 }

@@ -1,6 +1,8 @@
+import { useState } from "react";
 import {
   keepPreviousData,
   queryOptions,
+  useQueries,
   useQuery,
 } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
@@ -129,6 +131,53 @@ export function useConversationsData(search = "") {
     // The versions poll refreshes the feed when it changes.
     retry: false,
   });
+}
+
+/**
+ * Read the feed pages after the first, for infinite scroll. The first page
+ * stays `useConversationsData`, which the versions poll keeps fresh. Each
+ * older page is its own feed query under the feed key, so row actions that
+ * patch every cached feed patch these rows too. The pages start from the
+ * cursor at the end of the first page; a new first page starts them over.
+ */
+export function useOlderConversationPages(firstPageCursor: string | undefined) {
+  const [requested, setRequested] = useState<{
+    after: string | undefined;
+    cursors: string[];
+  }>({ after: firstPageCursor, cursors: [] });
+  const cursors = requested.after === firstPageCursor ? requested.cursors : [];
+  const pages = useQueries({
+    queries: cursors.map((cursor) => ({
+      queryKey: ["dashboard", "conversations", "viewer", "older", cursor],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        fetchDashboardJson(
+          conversationFeedSchema,
+          `/api/conversations?cursor=${encodeURIComponent(cursor)}`,
+          signal,
+        ),
+      retry: false,
+    })),
+    // The combined value stays the same object while no page changes.
+    combine: (results) => ({
+      conversations: results.flatMap((page) => page.data?.conversations ?? []),
+      last: results.at(-1),
+      loadingMore: results.some((page) => page.isFetching),
+    }),
+  });
+  const { conversations, last, loadingMore } = pages;
+  const nextCursor = last ? last.data?.nextCursor : firstPageCursor;
+  return {
+    conversations,
+    hasMore: Boolean(nextCursor) || Boolean(last?.isPending),
+    loadingMore,
+    loadMore: () => {
+      if (!nextCursor || loadingMore) return;
+      setRequested({
+        after: firstPageCursor,
+        cursors: [...cursors, nextCursor],
+      });
+    },
+  };
 }
 
 /** Fetch repository and code change analytics. */

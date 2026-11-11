@@ -246,6 +246,8 @@ export function ComposerQuestion(props: {
   return (
     <section
       aria-label={`Question: ${item.title}`}
+      // Esc here dismisses the question, so it does not leave the page.
+      data-escape-scope=""
       className="mb-2 grid min-w-0 gap-2 rounded-xl border border-dashboard-accent/30 bg-dashboard-surface-panel px-3 py-2.5 font-sans text-sm text-dashboard-text outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-4 md:py-3"
       onKeyDown={onKeyDown}
       ref={(node) => {

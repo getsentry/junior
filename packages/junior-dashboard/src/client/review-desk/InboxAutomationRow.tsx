@@ -13,7 +13,7 @@ import {
   INBOX_ROW_DETAIL_CLASS,
   inboxCardClass,
   inboxRowButtonClass,
-} from "./InboxBundleView";
+} from "./inboxRowStyles";
 import { automationAttentionGroup } from "./inboxModel";
 
 const LAST_RUN_LABELS = {
@@ -41,12 +41,10 @@ function lastRunLine(automation: AutomationSummary): string | undefined {
  * sweep never clears it; it leaves when the Automation is fixed or resumed.
  */
 export function InboxAutomationRow(props: {
-  active: boolean;
   automation: AutomationSummary;
   expanded: boolean;
   /** Names the row for keys and focus. */
   rowKey: string;
-  onActivate(): void;
   onToggle(): void;
 }) {
   const { automation } = props;
@@ -58,14 +56,13 @@ export function InboxAutomationRow(props: {
   const resume = useAutomationLifecycle(automation, "resume");
   const regionId = `inbox-automation-${automation.id}`;
   return (
-    <li className={inboxCardClass(props.expanded)} onFocus={props.onActivate}>
+    <li className={inboxCardClass(props.expanded)}>
       <button
         aria-controls={regionId}
         aria-expanded={props.expanded}
-        className={inboxRowButtonClass(props.active, props.expanded)}
-        data-inbox-bundle={props.rowKey}
+        className={inboxRowButtonClass(props.expanded)}
+        data-inbox-row={props.rowKey}
         onClick={props.onToggle}
-        tabIndex={props.active ? 0 : -1}
         type="button"
       >
         <TriangleAlert

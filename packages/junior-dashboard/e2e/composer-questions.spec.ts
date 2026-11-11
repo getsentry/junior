@@ -18,7 +18,8 @@ async function openConversation(page: Page, baseURL: string, id: string) {
 async function spreadQuestionTurns(page: Page) {
   const path = `/api/conversations/${encodeURIComponent(THREE_QUESTIONS_ID)}`;
   await page.route(
-    (url) => url.pathname === path,
+    // The Inbox reads a title with `limit=1`; only full reads get spread.
+    (url) => url.pathname === path && !url.searchParams.has("limit"),
     async (route) => {
       const response = await route.fetch({
         headers: {

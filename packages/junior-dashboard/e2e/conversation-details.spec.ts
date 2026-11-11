@@ -8,26 +8,27 @@ test("opens conversation details beside the chat", async ({
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(page).toHaveTitle("Junior");
-  const sidebar = page.getByRole("navigation", {
-    name: "Your conversations",
+  const list = page.getByRole("region", {
+    exact: true,
+    name: "Conversations",
   });
-  const privateConversation = sidebar.getByRole("link", {
+  const privateConversation = list.getByRole("link", {
     name: /Direct Message/,
   });
   await expect(
     privateConversation.getByLabel("Private conversation"),
   ).toBeVisible();
-  const publicConversation = sidebar.getByRole("link", {
+  const publicConversation = list.getByRole("link", {
     name: /Checkout latency triage/,
   });
   await expect(
     publicConversation.getByLabel("Private conversation"),
   ).toHaveCount(0);
-  const runningConversation = sidebar.getByRole("link", {
+  const runningConversation = list.getByRole("link", {
     name: /Investigate checkout latency/,
   });
   await expect(
@@ -186,16 +187,16 @@ test("opens conversation details beside the chat", async ({
   ).toBeVisible();
 
   await expect(
-    page.getByRole("link", { exact: true, name: "Conversations" }),
+    page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: /^Inbox/ }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 
   await detailsButton.click();
   await expect(details).toBeVisible();
-  await page
-    .getByRole("navigation", { name: "Your conversations" })
-    .getByRole("link", { name: /Direct Message/ })
-    .click();
+  await page.getByRole("link", { name: "Back to Conversations" }).click();
+  await list.getByRole("link", { name: /Direct Message/ }).click();
   // Each conversation opens with details beside the chat.
   await expect(details).toBeVisible();
   await expect(page.getByRole("note")).toContainText("Private conversation");

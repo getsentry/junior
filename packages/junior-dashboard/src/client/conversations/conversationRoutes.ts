@@ -61,12 +61,12 @@ export function readOpenEventLog(state: unknown): boolean {
   );
 }
 
-/** Dashboard home route. Legacy `/conversations/new` redirects here. */
-export const NEW_CONVERSATION_PATH = "/";
+/** The composer for a new Conversation, which "+" opens. */
+export const NEW_CONVERSATION_PATH = "/conversations/new";
 
-/** True when the path shows the dashboard home page. */
+/** True when the path shows a list or the composer, not one Conversation. */
 export function isNewConversationPath(pathname: string): boolean {
-  return pathname === "/" || pathname === "/conversations/new";
+  return pathname === "/" || pathname === NEW_CONVERSATION_PATH;
 }
 
 /** Query param that opens one event log entry by its sequence number. */

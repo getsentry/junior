@@ -34,10 +34,12 @@ test("finds an old archived conversation by title and restores it", async ({
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
+  // The list shows the row again.
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   await expect(sidebarLink).toBeVisible();
 });
 
-test("archives and restores a conversation from the sidebar", async ({
+test("archives and restores a conversation from its row", async ({
   page,
   dashboard,
 }) => {
@@ -72,15 +74,7 @@ test("archives and restores a conversation from the sidebar", async ({
       json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
     });
   });
-  await page.goto(dashboard.baseURL);
-  const selectedConversation = page.getByRole("link", {
-    name: /Investigate checkout latency/,
-  });
-  await selectedConversation.click();
-  await expect(
-    page.getByRole("heading", { name: "Investigate checkout latency" }),
-  ).toBeVisible();
-
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
   const conversationLink = page.getByRole("link", {
     name: /Dashboard QA edge cases/,
   });

@@ -15,16 +15,19 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
     await route.fallback();
   });
   await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Loading your conversations")).toBeAttached();
-  await expect(page.getByText("No conversations match this view.")).toHaveCount(
-    0,
-  );
+  const inbox = page.getByRole("region", { exact: true, name: "Inbox" });
+  await expect(inbox.getByText("Loading", { exact: true })).toBeAttached();
   releaseFeed?.();
   await expect(
-    page.getByRole("heading", { name: "What do you need?", exact: true }),
+    inbox.getByRole("link", { name: /Checkout latency triage/ }).first(),
   ).toBeVisible();
   await screenshot(page, "conversations");
 
+  // "+" opens the composer, which takes focus.
+  await page.getByRole("button", { name: "New conversation" }).click();
+  await expect(
+    page.getByRole("heading", { name: "What do you need?", exact: true }),
+  ).toBeVisible();
   const composer = page.getByLabel("Start a conversation");
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
@@ -39,9 +42,7 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
       exact: true,
     }),
   ).toBeVisible();
-  const conversationList = page.getByRole("navigation", {
-    name: "Your conversations",
-  });
+  const conversationList = page.getByRole("navigation", { name: "Inbox" });
   const hideList = page.getByRole("button", { name: "Hide sidebar" });
   await expect(conversationList).toBeVisible();
   await expect(hideList).toHaveAttribute("aria-expanded", "true");
@@ -322,7 +323,10 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
+    page
+      .getByRole("region", { exact: true, name: "Inbox" })
+      .getByRole("link", { name: /Checkout latency triage/ })
+      .first(),
   ).toBeVisible();
   expect(requests).toBe(1);
 
@@ -384,10 +388,10 @@ test("shows the repo name on linked work tags on mobile", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
 
   const conversation = page.getByRole("listitem").filter({
-    has: page.getByRole("heading", { name: "Checkout latency triage" }),
+    has: page.getByRole("link", { name: /Checkout latency triage/ }),
   });
   await expect(conversation).toBeVisible();
   // Mobile shows the first linked work tag.
@@ -517,11 +521,6 @@ test("scrolls long conversation and transcript panes independently", async ({
     page.getByRole("heading", { name: "Long transcript" }),
   ).toBeVisible();
 
-  const conversationList = page
-    .locator('[data-slot="scroll-area-viewport"]')
-    .filter({
-      has: page.getByRole("navigation", { name: "Your conversations" }),
-    });
   const transcript = page.getByLabel("Conversation transcript");
   const geometry = await page.evaluate(() => ({
     documentHeight: document.documentElement.scrollHeight,
@@ -530,37 +529,39 @@ test("scrolls long conversation and transcript panes independently", async ({
   expect(geometry.documentHeight).toBeLessThanOrEqual(geometry.viewportHeight);
   await expect
     .poll(() =>
-      conversationList.evaluate(
-        (element) => element.scrollHeight > element.clientHeight,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(() =>
       transcript.evaluate(
         (element) => element.scrollHeight > element.clientHeight,
       ),
     )
     .toBe(true);
-
-  await conversationList.evaluate((element) => {
-    element.scrollTop = 240;
-  });
-  expect(await conversationList.evaluate((element) => element.scrollTop)).toBe(
-    240,
-  );
   expect(
     await transcript.evaluate(
       (element) =>
         element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
     ),
   ).toBe(true);
-  expect(await page.evaluate(() => window.scrollY)).toBe(0);
-
   await transcript.evaluate((element) => {
     element.scrollTop = 320;
   });
   expect(await transcript.evaluate((element) => element.scrollTop)).toBe(320);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  // The list scrolls in its own pane too.
+  await page.getByRole("link", { name: /^Back to/ }).click();
+  const conversationList = page
+    .getByRole("region", { exact: true, name: "Inbox" })
+    .locator(".overflow-y-auto")
+    .first();
+  await expect
+    .poll(() =>
+      conversationList.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  await conversationList.evaluate((element) => {
+    element.scrollTop = 240;
+  });
   expect(await conversationList.evaluate((element) => element.scrollTop)).toBe(
     240,
   );
@@ -883,10 +884,7 @@ test("rates a Junior Reply once, with time to change it", async ({
   await open();
   await good.hover();
   await good.click();
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: "Checkout latency triage" })
-    .click();
+  await page.getByRole("link", { name: /^Back to/ }).click();
   await expect.poll(() => feedback.length).toBe(2);
   await open();
 

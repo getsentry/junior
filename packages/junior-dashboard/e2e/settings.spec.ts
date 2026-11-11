@@ -139,7 +139,7 @@ test("turns on push notifications from a one-time tip", async ({
     });
   });
   async function startConversation(message: string) {
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations/new`);
     await page.getByPlaceholder("Message Junior…").fill(message);
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
@@ -256,7 +256,7 @@ test("turns on composer autocorrect for this browser", async ({
   page,
   dashboard,
 }) => {
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
@@ -267,7 +267,7 @@ test("turns on composer autocorrect for this browser", async ({
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByText("Autocorrect", { exact: true }).click();
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
   await expect(composer).toHaveAttribute("autocorrect", "on");
   await expect(composer).toHaveAttribute("autocapitalize", "sentences");
   await expect(composer).toHaveAttribute("spellcheck", "true");

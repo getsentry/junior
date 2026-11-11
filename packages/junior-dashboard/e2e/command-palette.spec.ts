@@ -2,7 +2,7 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "./automation-landing-fixture";
-import { mockReviewItems, rollout } from "./review-desk-fixture";
+import { mockReviewItems, rollout } from "./inbox-fixture";
 import { expect, test } from "./test";
 
 const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
@@ -243,7 +243,8 @@ test("ranks the active tab's results first", async ({ page, dashboard }) => {
   const palette = page.getByRole("dialog", { name: "Go to conversation" });
   for (const [path, group] of [
     ["/automations", "Automations"],
-    ["/review", "Inbox"],
+    // The Inbox tab ranks its Conversations first.
+    ["/", "Conversations"],
   ] as const) {
     await page.goto(`${dashboard.baseURL}${path}`);
     await page.keyboard.press("ControlOrMeta+k");
@@ -263,21 +264,22 @@ test("ranks the active tab's results first", async ({ page, dashboard }) => {
     /Fair Source PR review/,
   );
   await page.keyboard.press("Escape");
-  await page.goto(`${dashboard.baseURL}/review`);
+  await page.goto(dashboard.baseURL);
 
-  // On the Inbox, a match in an item's body text leads, and picking it
-  // opens the Inbox with that item expanded.
+  // On the Inbox, a match in an item's body text shows, and picking it
+  // opens the list with that item's row expanded.
   await page.keyboard.press("ControlOrMeta+k");
   await palette.getByRole("combobox").fill("canary error");
-  const inbox = palette.getByRole("group").first();
-  await expect(inbox).toHaveAccessibleName("Inbox");
+  const inbox = palette.getByRole("group", { exact: true, name: "Inbox" });
   const match = inbox.getByRole("option").first();
   await expect(match).toHaveAccessibleName(new RegExp(rollout.title));
   await match.click();
-  await expect(page).toHaveURL(new RegExp(`[?&]item=${rollout.id}`));
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
-    page.getByRole("button", { name: new RegExp(rollout.title) }),
-  ).toHaveAttribute("aria-expanded", "true");
+    page.getByRole("region", { name: /: asks$/ }).filter({
+      hasText: rollout.title,
+    }),
+  ).toBeVisible();
 });
 
 test("searches the directory pages, with the page's group first", async ({
@@ -353,7 +355,7 @@ test("closed Inbox matches show under Done, after the open ones", async ({
   dashboard,
 }) => {
   await mockReviewItems(page);
-  await page.goto(`${dashboard.baseURL}/review`);
+  await page.goto(dashboard.baseURL);
   await page.keyboard.press("ControlOrMeta+k");
   const palette = page.getByRole("dialog", { name: "Go to conversation" });
   await palette.getByRole("combobox").fill("license entry");
@@ -363,7 +365,8 @@ test("closed Inbox matches show under Done, after the open ones", async ({
   const closed = groups.nth(1).getByRole("option").first();
   await expect(closed).toHaveAccessibleName(/initech license entry/);
   await closed.click();
-  await expect(page).toHaveURL(/\/review\?bundle=done&item=item-initech$/);
+  // Done opens with the item's row expanded.
+  await expect(page).toHaveURL(/\/\?view=done$/);
   await expect(
     page.getByRole("region", {
       name: "Review the initech license entry: how it closed",

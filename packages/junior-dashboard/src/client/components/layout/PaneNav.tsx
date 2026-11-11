@@ -1,6 +1,5 @@
 import {
   Inbox,
-  MessagesSquare,
   PanelLeft,
   Plus,
   Search,
@@ -94,12 +93,11 @@ type ZenMode = {
 };
 
 /** The tabs at the top of the pane. Each tab's list fills the pane. */
-type PaneTab = "automations" | "conversations" | "inbox";
+type PaneTab = "automations" | "inbox";
 
 const TAB_ROOTS: Record<PaneTab, string> = {
   automations: "/automations",
-  conversations: "/",
-  inbox: "/review",
+  inbox: "/",
 };
 
 /** Name the tab that owns a path, if any. */
@@ -109,9 +107,8 @@ export function paneTabForPath(pathname: string): PaneTab | undefined {
     pathname === "/conversations" ||
     pathname.startsWith("/conversations/")
   ) {
-    return "conversations";
+    return "inbox";
   }
-  if (pathname === "/review") return "inbox";
   if (pathname === "/automations" || pathname.startsWith("/automations/")) {
     return "automations";
   }
@@ -180,7 +177,7 @@ export function PaneNavProvider(props: {
   if (tab && tabPaths[tab] !== here) {
     setTabPaths({ ...tabPaths, [tab]: here });
   }
-  const [lastTab, setLastTab] = useState<PaneTab>("conversations");
+  const [lastTab, setLastTab] = useState<PaneTab>("inbox");
   if (tab && tab !== lastTab) setLastTab(tab);
   const [width, setWidth] = useState(readSidebarWidth);
   const widthValue = useMemo(() => ({ setWidth, width }), [width]);
@@ -272,7 +269,6 @@ export function PaneNavProvider(props: {
 
 const TAB_LABELS: Record<PaneTab, string> = {
   automations: "Automations",
-  conversations: "Conversations",
   inbox: "Inbox",
 };
 
@@ -374,7 +370,6 @@ export function PaneCollapsedControls() {
 
 const TAB_ICONS: Record<PaneTab, LucideIcon> = {
   automations: Zap,
-  conversations: MessagesSquare,
   inbox: Inbox,
 };
 
@@ -389,7 +384,7 @@ type PaneTabLink = {
 };
 
 /**
- * Build the pane tabs: Inbox, Conversations, and Automations, then any other
+ * Build the pane tabs: Inbox and Automations, then any other
  * primary destination, such as a plugin page. A tab opens where the reader
  * left it. A press on the tab that shows now goes back to its root.
  */
@@ -405,14 +400,13 @@ function usePaneTabs(): PaneTabLink[] {
     label,
     to: current === key ? TAB_ROOTS[key] : pane.tabPaths[key],
   });
-  const review = pane.navItems.find((item) => item.key === "review");
+  const inbox = pane.navItems.find((item) => item.key === "inbox");
   const automations = pane.navItems.find((item) => item.key === "automations");
   const others = pane.navItems.filter(
-    (item) => item.key !== "review" && item.key !== "automations",
+    (item) => item.key !== "inbox" && item.key !== "automations",
   );
   return [
-    ...(review ? [tab("inbox", review.label, review.count)] : []),
-    tab("conversations", "Conversations"),
+    tab("inbox", "Inbox", inbox?.count),
     ...(automations ? [tab("automations", automations.label)] : []),
     ...others.map((item) => ({
       active: pathname === item.to || pathname.startsWith(`${item.to}/`),

@@ -4,50 +4,66 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import {
-  inboxBundles,
   itemNeedsViewer,
   reviewItemStatusLabel,
   type InboxBundle,
 } from "./reviewItemFormat";
 
 /**
- * The inbox bundles, as in Google Inbox. Every bundle is automatic: All,
- * pull requests, decisions, Automations that need attention, then one per
- * Conversation.
+ * The entries of the Inbox sidebar, as in Google Inbox. Each one names a
+ * list in the main area: the Inbox, Snoozed, Done, then the automatic
+ * bundles.
  */
 export type InboxView =
-  | "all"
   | "automations"
+  | "conversations"
   | "decisions"
   | "done"
+  | "inbox"
   | "prs"
-  | `c:${string}`;
+  | "snoozed";
 
-/**
- * Read the bundle from the URL. `bundle` names a bundle in the list, and
- * `bundle=done` opens the closed items. The inbox opens on All.
- */
-export function parseInboxView(params: URLSearchParams): InboxView {
-  const value = params.get("bundle");
-  if (
-    value === "prs" ||
-    value === "decisions" ||
-    value === "automations" ||
-    value === "done"
-  )
-    return value;
-  if (value?.startsWith("c:") && value.length > 2) return value as InboxView;
-  return "all";
+const INBOX_VIEWS: readonly InboxView[] = [
+  "automations",
+  "conversations",
+  "decisions",
+  "done",
+  "inbox",
+  "prs",
+  "snoozed",
+];
+
+/** The list heading of each entry. The Inbox itself has no heading. */
+export const INBOX_VIEW_LABELS: Record<InboxView, string> = {
+  automations: "Automations",
+  conversations: "Conversations",
+  decisions: "Decisions",
+  done: "Done",
+  inbox: "Inbox",
+  prs: "Pull requests",
+  snoozed: "Snoozed",
+};
+
+/** Read the entry from `?view=`. The Inbox is the default. */
+export function parseInboxView(value: string | null): InboxView {
+  return INBOX_VIEWS.find((view) => view === value) ?? "inbox";
 }
 
-/** The bundle for one Conversation. */
-export function conversationView(conversationId: string): InboxView {
-  return `c:${conversationId}`;
+/** Read the entry of a list path, such as the return path of a Back. */
+export function inboxViewOfPath(path: string): InboxView {
+  return parseInboxView(new URLSearchParams(path.split("?")[1]).get("view"));
 }
 
-/** The Conversation that a Conversation bundle shows. */
-export function viewConversationId(view: InboxView): string | undefined {
-  return view.startsWith("c:") ? view.slice(2) : undefined;
+/** The list path of an entry, with one item's row expanded when given. */
+export function inboxViewPath(
+  view: InboxView,
+  options: { itemId?: string } = {},
+): string {
+  const params = new URLSearchParams();
+  if (view !== "inbox") params.set("view", view);
+  if (options.itemId) params.set("item", options.itemId);
+  const search = params.toString();
+  return search ? `/?${search}` : "/";
 }
 
 /** A pull request ask or notice from a plugin, such as GitHub. */
@@ -63,16 +79,9 @@ function isDecisionItem(item: ReviewItemPayload): boolean {
 /** Keep the items that one bundle holds. */
 export function itemsInView(
   items: readonly ReviewItemPayload[],
-  view: InboxView,
+  view: "decisions" | "prs",
 ): ReviewItemPayload[] {
-  if (view === "all") return [...items];
-  if (view === "prs") return items.filter(isPullRequestItem);
-  if (view === "decisions") return items.filter(isDecisionItem);
-  // Automation attention comes from the Automation list, not Review items,
-  // and Done lists closed items from their own list.
-  if (view === "automations" || view === "done") return [];
-  const id = view.slice(2);
-  return items.filter((item) => item.addedByConversationId === id);
+  return items.filter(view === "prs" ? isPullRequestItem : isDecisionItem);
 }
 
 function singleRow(item: ReviewItemPayload): InboxBundle {
@@ -95,30 +104,26 @@ function queueOrder(a: InboxBundle, b: InboxBundle): number {
   );
 }
 
-/**
- * Build the rows of one bundle. All shows one collapsed row per
- * Conversation. A narrower bundle shows one row per item.
- */
+/** Build the rows of a bundle of items: one row per item, queue order. */
 export function viewRows(
   items: readonly ReviewItemPayload[],
-  view: InboxView,
+  view: "decisions" | "prs",
 ): InboxBundle[] {
-  const inView = itemsInView(items, view);
-  if (view === "all") return inboxBundles(inView);
-  return inView.map(singleRow).sort(queueOrder);
+  return itemsInView(items, view).map(singleRow).sort(queueOrder);
 }
 
 /** One labelled group of rows in the stream. */
 type InboxSection = { key: string; label: string; rows: InboxBundle[] };
 
-const TIME_SECTIONS = [
+/** The time sections of a stream, newest first. */
+export const TIME_SECTIONS = [
   { key: "today", label: "Today" },
   { key: "week", label: "This week" },
   { key: "earlier", label: "Earlier" },
 ] as const;
 
 /** Put a time in Today, This week, or Earlier. */
-function timeSectionAt(iso: string, nowMs: number): string {
+export function timeSectionAt(iso: string, nowMs: number): string {
   const at = Date.parse(iso);
   const startOfToday = new Date(nowMs);
   startOfToday.setHours(0, 0, 0, 0);
@@ -160,7 +165,7 @@ function pullRequestState(item: ReviewItemPayload): string {
  * What one item is, as its row says: Question, Approval, the pull request
  * state that a plugin ask names, or FYI. A closed item says how it closed.
  */
-function inboxItemKind(item: ReviewItemPayload): string {
+export function inboxItemKind(item: ReviewItemPayload): string {
   if (item.status !== "open") return reviewItemStatusLabel(item);
   if (item.kind === "notice") return "FYI";
   if (item.request) return "Question";
@@ -196,15 +201,6 @@ export function inboxRowReason(bundle: InboxBundle): string | undefined {
       return count === 1 || kind === "FYI" ? kind : `${kind} (${count})`;
     })
     .join(" · ");
-}
-
-/** Item kinds in a Conversation bundle, in stream order. */
-const ITEM_KINDS = ["Decisions", "Pull requests", "Asks", "Notices"] as const;
-
-function itemKind(item: ReviewItemPayload): (typeof ITEM_KINDS)[number] {
-  if (isDecisionItem(item)) return "Decisions";
-  if (isPullRequestItem(item)) return "Pull requests";
-  return item.kind === "notice" ? "Notices" : "Asks";
 }
 
 /** Group rows by a fixed list of labels, in that order. */
@@ -248,46 +244,20 @@ function byConversation(
 }
 
 /**
- * Group the rows of a bundle the way its filter reads best. All leads with
- * what waits on the viewer (To do), longest wait first, then Today, This
- * week, and Earlier, by how long each row has waited, so new activity on an
- * old ask does not move it up. Pull requests group by state, decisions by
- * Conversation, and one Conversation by item kind. Empty groups drop out.
+ * Group the rows of a bundle of items the way it reads best: pull requests
+ * by state, decisions by Conversation. Empty groups drop out.
  */
 export function viewSections(
-  view: InboxView,
+  view: "decisions" | "prs",
   rows: readonly InboxBundle[],
-  options: {
-    nowMs: number;
-    titleOf(conversationId: string): string | undefined;
-  },
+  titleOf: (conversationId: string) => string | undefined,
 ): InboxSection[] {
   const sections =
-    view === "all"
-      ? [
-          {
-            key: "todo",
-            label: "To do",
-            rows: rows.filter((row) => row.needsYou),
-          },
-          ...TIME_SECTIONS.map((section) => ({
-            ...section,
-            rows: rows.filter(
-              (row) =>
-                !row.needsYou &&
-                timeSectionAt(row.waitingSince, options.nowMs) === section.key,
-            ),
-          })),
-        ]
-      : view === "prs"
-        ? byLabels(rows, [...PULL_REQUEST_STATES, "Other"], (row) =>
-            pullRequestState(row.newest),
-          )
-        : view === "decisions"
-          ? byConversation(rows, options.titleOf)
-          : view === "automations"
-            ? []
-            : byLabels(rows, ITEM_KINDS, (row) => itemKind(row.newest));
+    view === "prs"
+      ? byLabels(rows, [...PULL_REQUEST_STATES, "Other"], (row) =>
+          pullRequestState(row.newest),
+        )
+      : byConversation(rows, titleOf);
   return sections.filter((section) => section.rows.length > 0);
 }
 
@@ -330,22 +300,19 @@ export function automationSections(
 }
 
 /**
- * What a sweep would mark done in some rows. A sweep clears notices (FYI)
- * only. Every action item stays, including one assigned to Everyone, and
- * so do pinned items.
- * Automations are not Review items, so a sweep never sees them.
+ * What a sweep would mark done in some rows: notices (FYI) only. Every
+ * action item stays, including one assigned to Everyone, and so does every
+ * item of a pinned Conversation. Automations are not Review items, so a
+ * sweep never sees them.
  */
 export function sweepOf(
   rows: readonly InboxBundle[],
-  isPinned: (item: ReviewItemPayload) => boolean,
+  isPinned: (conversationId: string) => boolean,
 ): ReviewItemPayload[] {
   return rows
+    .filter((row) => !isPinned(row.conversationId))
     .flatMap((row) => row.items)
     .filter(
-      (item) =>
-        item.status === "open" &&
-        item.kind === "notice" &&
-        item.canAct &&
-        !isPinned(item),
+      (item) => item.status === "open" && item.kind === "notice" && item.canAct,
     );
 }

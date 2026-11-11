@@ -94,8 +94,7 @@ test("starts and continues conversations from the dashboard", async ({
     });
   });
 
-  await page.goto(dashboard.baseURL);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
   await expect(
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
@@ -143,14 +142,14 @@ test("starts and continues conversations from the dashboard", async ({
   await page.getByRole("button", { name: "Send" }).click();
   await expect.poll(() => createRequests.length).toBe(1);
   // The new Conversation shows at once with the message and Junior at work.
-  // The draft stays in the hidden home composer while the first accept is
+  // The draft stays in the hidden composer while the first accept is
   // open, so a later submit cannot send it twice.
   const transcriptView = page.getByLabel("Conversation transcript");
   await expect(transcriptView.getByText("Check the deploy")).toBeVisible();
   await expect(
     page.getByRole("status").filter({ hasText: "Junior is thinking" }),
   ).toBeVisible();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
   await expect(startComposer).toBeHidden();
   await expect(startComposer).toHaveValue("Check the deploy");
   await startComposer.evaluate((element) => {
@@ -215,7 +214,7 @@ test("starts and continues conversations from the dashboard", async ({
   // The pending Conversation shows until the new one can open with its
   // transcript.
   await expect.poll(() => createdDetailReads).toBe(1);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
   await expect(transcriptView.getByText("Check the deploy")).toBeVisible();
   await expect(startComposer).toHaveValue("Check the deploy");
   releaseCreatedDetail?.();

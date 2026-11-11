@@ -152,6 +152,8 @@ export function ConversationPage(props: {
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
+  /** The list this page opened from. An archive goes back to it. */
+  listPath?: string;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
   sidebarToggle?: ReactNode;
 }) {
@@ -319,10 +321,10 @@ export function ConversationPage(props: {
       archived,
       lastSeenAt: conversation!.lastSeenAt,
     });
-    // Archiving hides this conversation, so go home at once. The mutation
-    // keeps running after this page unmounts.
+    // Archiving hides this conversation, so go back to its list at once.
+    // The mutation keeps running after this page unmounts.
     if (archived) {
-      navigate("/", {
+      navigate(props.listPath ?? "/", {
         state: {
           archivedConversation: conversation!,
         } satisfies ArchivedFromConversationState,

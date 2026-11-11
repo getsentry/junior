@@ -30,7 +30,8 @@ import {
   automationSelectPath,
 } from "../pages/automations/AutomationSidebarList";
 import { useReviewItemsData } from "../review-desk/queries";
-import { doneItemPath, reviewItemPath } from "../review-desk/reviewItemFormat";
+import { inboxViewPath } from "../review-desk/inboxModel";
+import { reviewItemPath } from "../review-desk/reviewItemFormat";
 import type { Conversation } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
@@ -61,12 +62,12 @@ export const COMMAND_PALETTE_SHORTCUT = platformShortcut("k");
 /** Name of the command palette and the controls that open it. */
 export const COMMAND_PALETTE_LABEL = "Go to conversation";
 
-type PaletteTab = "automations" | "conversations" | "inbox";
+type PaletteTab = "automations" | "inbox";
 
+// The Inbox tab lists Conversations, so they rank first there.
 const TAB_GROUPS: Record<PaletteTab, string> = {
   automations: "Automations",
-  conversations: "Conversations",
-  inbox: "Inbox",
+  inbox: "Conversations",
 };
 
 /**
@@ -378,9 +379,9 @@ function paletteItems(input: {
       .map((conversation) => conversationItem(conversation, "Recent"));
     return lead(
       {
-        [TAB_GROUPS.automations]: automations.slice(0, RECENT_LIMIT),
-        [TAB_GROUPS.conversations]: recent,
-        [TAB_GROUPS.inbox]: inbox.slice(0, RECENT_LIMIT),
+        Automations: automations.slice(0, RECENT_LIMIT),
+        Conversations: recent,
+        Inbox: inbox.slice(0, RECENT_LIMIT),
       },
       [recent, input.actions.map(actionItem), pages.map(pageItem)],
     );
@@ -435,9 +436,9 @@ function paletteItems(input: {
     (matchedPages[0]?.score ?? 0) > (conversations[0]?.score ?? 0);
   return lead(
     {
-      [TAB_GROUPS.automations]: matchedAutomations,
-      [TAB_GROUPS.conversations]: conversations,
-      [TAB_GROUPS.inbox]: matchedInbox,
+      Automations: matchedAutomations,
+      Conversations: conversations,
+      Inbox: matchedInbox,
     },
     [
       ...(pagesFirst
@@ -474,7 +475,7 @@ function doneItem(item: ReviewItemPayload, query?: string): PaletteItem {
     matches: match?.indices,
     // The server matched the text, so the row stays without a title match.
     score: match?.score ?? 1,
-    to: doneItemPath(item.id),
+    to: inboxViewPath("done", { itemId: item.id }),
   };
 }
 

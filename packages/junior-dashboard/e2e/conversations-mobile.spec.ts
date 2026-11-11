@@ -133,7 +133,10 @@ test("starts a new conversation from a centered compose empty state", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
+  // A phone opens on the Inbox entries; "+" opens the composer.
   await page.goto(dashboard.baseURL);
+  await page.getByRole("button", { name: "New conversation" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
 
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
@@ -143,21 +146,8 @@ test("starts a new conversation from a centered compose empty state", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Home and create share one page. It is not a conversation or a reply dock.
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(
-    page.getByRole("button", { name: "Open navigation" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Back to conversations" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("list", { name: "Your conversations" }),
-  ).toBeVisible();
-  // Legacy create deep link collapses onto home.
-  await page.goto(`${dashboard.baseURL}/conversations/new`);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(heading).toBeVisible();
+  // The composer is its own page, with a Back to the list it came from.
+  await expect(page.getByRole("link", { name: "Back to Inbox" })).toBeVisible();
   await expect
     .poll(() =>
       composer.evaluate((node) => {
@@ -180,18 +170,15 @@ test("starts a new conversation from a centered compose empty state", async ({
     )
     .toBe("landing-compose");
 
-  const conversationList = page.getByRole("list", {
-    name: "Your conversations",
-  });
-  await expect(conversationList.getByRole("listitem").first()).toBeVisible();
-
   // A short new transcript must not leave the reply composer mid-screen.
   const releaseCreate = await holdCreate(page);
   await composer.fill("Check the deploy");
   await composer.press("Enter");
   // The new Conversation shows its chrome before its route exists, so the
-  // header does not flash home's menu first.
-  await expect(page.getByLabel("Back to conversations")).toBeDisabled();
+  // header does not flash the composer's first.
+  await expect(
+    page.getByRole("button", { name: "Back to Inbox" }),
+  ).toBeDisabled();
   await expect(
     page.getByRole("heading", { level: 1, name: "New conversation" }),
   ).toBeVisible();
@@ -214,7 +201,7 @@ test.describe("on a touch screen", () => {
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations/new`);
 
     const composer = page.getByLabel("Start a conversation");
     await expect(composer).toHaveAttribute("enterkeyhint", "enter");
@@ -222,46 +209,32 @@ test.describe("on a touch screen", () => {
     await composer.press("Enter");
     await composer.pressSequentially("Second line");
     await expect(composer).toHaveValue("First line\nSecond line");
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
   });
 
-  test("opens the keyboard on home only when the dashboard opens there", async ({
+  test("opens the keyboard on the composer only when asked or opened there", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
-
+    await page.goto(`${dashboard.baseURL}/conversations/new`);
     const composer = page.getByLabel("Start a conversation");
     await expect(composer).toBeFocused();
 
-    const conversation = page.getByRole("link", {
-      name: /Investigate checkout latency/,
-    });
-    const heading = page.getByRole("heading", {
-      name: "Investigate checkout latency",
-    });
-    await conversation.click();
-    await expect(heading).toBeVisible();
-    await page.getByRole("link", { name: "Back to conversations" }).click();
+    // A browser back and forward is not a request to type.
+    await page.getByRole("link", { name: "Back to Inbox" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-    await expect(composer).toBeVisible();
-    await expect(composer).not.toBeFocused();
-
-    // A browser back gesture returns to home too.
-    await conversation.click();
-    await expect(heading).toBeVisible();
     await page.goBack();
+    await page.goForward();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await page.goBack();
     await expect(composer).toBeVisible();
     await expect(composer).not.toBeFocused();
 
-    // A tablet shows the list beside home. Its create button asks to type.
-    await page.setViewportSize({ height: 800, width: 1024 });
-    await conversation.first().click();
-    await expect(heading).toBeVisible();
+    // "+" asks to type.
+    await page.getByRole("link", { name: "Back to Inbox" }).click();
     await page.getByRole("button", { name: "New conversation" }).click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
     await expect(composer).toBeFocused();
   });
 });
@@ -282,12 +255,11 @@ test("opens and closes a conversation on mobile", async ({
   });
   await page.goto(`${dashboard.baseURL}/conversations`);
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  // Mobile home is the create landing (hero + list), same as desktop empty state.
+  // A phone opens on the Inbox entries: the list of lists.
+  const entries = page.getByRole("navigation", { name: "Inbox" });
+  await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("list", { name: "Your conversations" }),
+    entries.getByRole("link", { name: "Conversations", exact: true }),
   ).toBeVisible();
   const navigationTrigger = page.getByRole("button", {
     name: "Open navigation",
@@ -297,12 +269,6 @@ test("opens and closes a conversation on mobile", async ({
   await expect(
     page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
   ).toBeHidden();
-  await expect(
-    page.getByRole("link", { name: "Conversations", exact: true }),
-  ).toBeHidden();
-  await expect(
-    page.getByRole("button", { name: "Archive Investigate checkout latency" }),
-  ).toBeVisible();
   await navigationTrigger.click();
   await expect(page.getByText(/^junior version /)).toBeVisible();
   const navigationSheet = page.getByRole("dialog", { name: "Navigation" });
@@ -343,8 +309,9 @@ test("opens and closes a conversation on mobile", async ({
   });
   await expect(closeNavigation).toBeVisible();
   await closeNavigation.click();
-  // Compact mobile composer needs a participant fixture.
-  await page
+  // Compact mobile composer needs a participant fixture. In flight lists
+  // the running Conversation one tap away.
+  await entries
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(page).toHaveURL(
@@ -355,9 +322,7 @@ test("opens and closes a conversation on mobile", async ({
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
 
-  await expect(
-    page.getByRole("link", { name: "Back to conversations" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to Inbox" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Junior home" })).toBeHidden();
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
@@ -732,14 +697,9 @@ test("opens and closes a conversation on mobile", async ({
     .click();
   await expect(eventLog).toBeHidden();
   await expect(page).toHaveURL(/\/conversations\//);
-  await page.getByRole("link", { name: "Back to conversations" }).click();
+  await page.getByRole("link", { name: "Back to Inbox" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("list", { name: "Your conversations" }),
-  ).toBeVisible();
+  await expect(entries).toBeVisible();
 
   // Log out must POST and dismiss the sheet before the response completes.
   let finishSignOut: (() => void) | undefined;

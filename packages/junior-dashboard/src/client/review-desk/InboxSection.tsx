@@ -9,6 +9,8 @@ import { ConversationSectionHeading } from "../conversations/ConversationSection
 export function InboxSection(props: {
   /** Shows at the end of the heading, such as the section's sweep. */
   action?: ReactNode;
+  /** Shows after the label while the section is open, such as a count. */
+  badge?: ReactNode;
   children: ReactNode;
   collapsed: boolean;
   count: number;
@@ -19,7 +21,7 @@ export function InboxSection(props: {
   return (
     <section aria-label={props.label} className="grid gap-2 pt-5 first:pt-1">
       {/* A bold heading and a rule split the stream of cards. */}
-      <div className="flex min-h-9 items-end justify-between gap-3 border-b border-dashboard-border pr-1 pb-1.5">
+      <div className="flex min-h-9 items-end gap-2 border-b border-dashboard-border pr-1 pb-1.5">
         <ConversationSectionHeading
           className="px-1 font-semibold text-dashboard-text [&_*]:text-dashboard-text"
           collapsed={props.collapsed}
@@ -27,6 +29,8 @@ export function InboxSection(props: {
           label={props.label}
           onToggle={props.onToggle}
         />
+        {props.collapsed ? null : props.badge}
+        <span className="flex-1" />
         {props.action}
       </div>
       {props.collapsed ? null : (

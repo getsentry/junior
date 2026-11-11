@@ -8,18 +8,7 @@ import { cn } from "../styles";
  * Bottom pad comes only from `--dashboard-composer-dock-padding` written by
  * `VisualViewportShell` / `useMobileViewportHeight`. Callers must not invent
  * `env(safe-area-inset-bottom)` math here.
- *
- * The narrow home docks its create composer in a plain element, so the
- * composer keeps its place in the tree across the breakpoint. It uses
- * `composerDockClass` for the same geometry.
  */
-/**
- * Size and pad a narrow-screen composer dock. The bottom pad is the shell's
- * keyboard and safe-area padding.
- */
-export const composerDockClass =
-  "max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] bg-dashboard-bg px-2 pt-1.5 pb-[var(--dashboard-composer-dock-padding,0.375rem)]";
-
 export function ComposerDock(props: {
   children: ReactNode;
   className?: string;
@@ -30,7 +19,9 @@ export function ComposerDock(props: {
     <div
       className={cn(
         "flex w-full min-h-0 shrink-0 flex-col overflow-hidden",
-        composerDockClass,
+        // Size and pad the narrow-screen dock. The bottom pad is the shell's
+        // keyboard and safe-area padding.
+        "max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] bg-dashboard-bg px-2 pt-1.5 pb-[var(--dashboard-composer-dock-padding,0.375rem)]",
         "md:max-h-none md:overflow-visible md:px-7 md:pt-3 md:pb-5",
         props.className,
       )}
