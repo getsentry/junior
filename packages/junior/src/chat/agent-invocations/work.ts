@@ -458,7 +458,6 @@ async function projectTerminalTurn(
   if (turn.state === "paused") {
     return undefined;
   }
-  const failed = turn.state !== "completed" || Boolean(turn.errorMessage);
   // Read the answer only from this Turn. A Turn record without a start index
   // cannot tell this Turn from earlier history of a named child. Its reply
   // reached the parent before the Turn was saved.
@@ -466,6 +465,11 @@ async function projectTerminalTurn(
     turn.turnStartMessageIndex === undefined
       ? undefined
       : readTurnAnswer(turn.piMessages.slice(turn.turnStartMessageIndex));
+  // A Turn that saved a `reply` answered its task, even when a newer Turn or a
+  // lost worker ended it after that.
+  const failed =
+    (turn.state !== "completed" || Boolean(turn.errorMessage)) &&
+    !(answer && "reply" in answer);
   return await completeAgentInvocation({
     ...completeOptions,
     invocationId: invocation.invocationId,

@@ -177,6 +177,9 @@ import {
 } from "@/chat/agent/tool-batch";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
+// Past a turn limit, a gated Turn gets this many failed answer calls before
+// its run ends without an answer.
+const MAX_FAILED_ANSWER_CALLS_PAST_LIMIT = 2;
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -676,6 +679,9 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    // A gated Turn's answer calls past a limit, and how many of them failed.
+    const answerCallsPastLimit = new Set<string>();
+    let failedAnswerCallsPastLimit = 0;
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
@@ -1056,10 +1062,6 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // A gated Turn must answer, so its answer tool runs past a limit.
-        if (behavior.gated && isAnswerToolName(toolCall.name)) {
-          return undefined;
-        }
         // Past a limit, the first step is blocked so the model replies with
         // its progress. A later tool call ends the turn: Pi turns exceptions
         // into tool errors, so block + terminate and rethrow after the step.
@@ -1074,11 +1076,16 @@ async function executeAgentRunInPrivacyContext(
             ),
           ) ?? 0;
         const overBudget = turnCostUsd >= botConfig.maxTurnCostUsd;
-        const decision = turnLimitGate({
-          assistantMessage,
-          overLimit:
-            overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
-        });
+        const overLimit =
+          overBudget || toolCallCount > botConfig.maxToolCallsPerTurn;
+        // A gated Turn must answer, so its answer tool runs past a limit.
+        if (behavior.gated && isAnswerToolName(toolCall.name)) {
+          if (overLimit || runResume.turnLimitWrappedUp) {
+            answerCallsPastLimit.add(toolCall.id);
+          }
+          return undefined;
+        }
+        const decision = turnLimitGate({ assistantMessage, overLimit });
         if (decision === "allow") {
           return undefined;
         }
@@ -1128,6 +1135,15 @@ async function executeAgentRunInPrivacyContext(
         // A reply, blocked report, or no-reply is the last step of the run.
         if (isAnswerToolName(toolCall.name) && !isError && !override) {
           return { terminate: true };
+        }
+        // Past a limit, the second failed answer call ends the run without
+        // an answer.
+        if (
+          isError &&
+          answerCallsPastLimit.has(toolCall.id) &&
+          ++failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+        ) {
+          return { ...override, terminate: true };
         }
         return override;
       },
@@ -1530,9 +1546,14 @@ async function executeAgentRunInPrivacyContext(
                 continue;
               }
 
-              const answerReminder = answerReminderUsed
-                ? undefined
-                : remindMissingAnswer(agent!.state.messages, turnStartIndex());
+              const answerReminder =
+                answerReminderUsed ||
+                failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+                  ? undefined
+                  : remindMissingAnswer(
+                      agent!.state.messages,
+                      turnStartIndex(),
+                    );
               if (answerReminder) {
                 answerReminderUsed = true;
                 agent!.state.messages = answerReminder;

@@ -6,10 +6,12 @@ import {
   getAgentInvocationMessageId,
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
+  getAgentReplyMessageId,
 } from "@/chat/agent-invocations/ids";
 import {
   completeAgentInvocation,
   getAgentInvocation,
+  markAgentInvocationRunning,
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
@@ -539,8 +541,8 @@ describe("agent invocation spawn and result delivery", () => {
       // parent.
       await completeAgentInvocation({
         invocationId: sibling.invocationId,
-        result: "Second finding.",
-        status: "completed",
+        errorMessage: "Needs the repo name.",
+        status: "blocked",
       });
 
       await enqueueAgentReplyToParent({
@@ -557,6 +559,58 @@ describe("agent invocation spawn and result delivery", () => {
       expect(parentWork?.messages[0]?.input.text).toContain(
         ' waiting_on="analyst"',
       );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not wait for a running sibling that already replied", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    try {
+      const replied = await createAgentInvocation(
+        {
+          ...slackInvocationInput,
+          agentName: "analyst",
+          idempotencyKey: "fan-out-replied",
+        },
+        2_000,
+      );
+      const other = await createAgentInvocation(
+        { ...slackInvocationInput, idempotencyKey: "fan-out-other" },
+        2_500,
+      );
+      await markAgentInvocationRunning(replied.invocationId);
+      await enqueueAgentReplyToParent({
+        queue,
+        reply: { text: "First finding.", toolCallId: "call-reply" },
+        sender: replied,
+        state,
+      });
+      // The other child finishes while the replied child's row still runs.
+      const terminal = await completeAgentInvocation({
+        invocationId: other.invocationId,
+        errorMessage: "model unavailable",
+        status: "failed",
+      });
+      await enqueueAgentInvocationResult(terminal as TerminalAgentInvocation, {
+        queue,
+        state,
+      });
+
+      const parentWork = await getConversationWorkState({
+        conversationId: slackParentConversationId,
+        state,
+      });
+      expect(
+        parentWork?.messages.map((message) => message.inboundMessageId),
+      ).toEqual([
+        getAgentReplyMessageId(replied.invocationId, "call-reply"),
+        getAgentInvocationResultMessageId(other.invocationId),
+      ]);
+      expect(parentWork?.messages[1]?.input.text).not.toContain("waiting_on");
     } finally {
       await fixture.close();
     }

@@ -76,12 +76,22 @@ export function getAgentInvocationMessageId(invocationId: string): string {
   return `agent-invocation:${invocationId}:input`;
 }
 
+const REPLY_MESSAGE_PREFIX = "agent-reply:";
+
 /** Return the parent mailbox identity of one child agent `reply` call. */
 export function getAgentReplyMessageId(
-  childConversationId: string,
+  invocationId: string,
   toolCallId: string,
 ): string {
-  return `agent-reply:${childConversationId}:${toolCallId}`;
+  return `${REPLY_MESSAGE_PREFIX}${invocationId}:${toolCallId}`;
+}
+
+/** Return whether one parent mailbox identity is a `reply` of an agent invocation. */
+export function isAgentReplyMessageId(
+  messageId: string,
+  invocationId: string,
+): boolean {
+  return messageId.startsWith(`${REPLY_MESSAGE_PREFIX}${invocationId}:`);
 }
 
 const RESULT_MESSAGE_PREFIX = "agent-invocation:";

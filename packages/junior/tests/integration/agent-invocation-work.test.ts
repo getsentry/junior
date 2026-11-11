@@ -156,7 +156,7 @@ describe("agent invocation conversation work", () => {
         expect.objectContaining({
           delivery: "defer",
           inboundMessageId: expect.stringMatching(
-            `^agent-reply:${created.childConversationId}:`,
+            `^agent-reply:${created.invocationId}:`,
           ),
           input: expect.objectContaining({
             metadata: {

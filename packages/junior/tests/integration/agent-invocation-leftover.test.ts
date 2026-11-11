@@ -7,7 +7,9 @@ import {
 import {
   getAgentInvocationResultMessageId,
   getAgentInvocationTurnId,
+  getAgentReplyMessageId,
 } from "@/chat/agent-invocations/ids";
+import { enqueueAgentReplyToParent } from "@/chat/agent-invocations/result";
 import {
   completeAgentInvocation,
   getActiveAgentInvocationForConversation,
@@ -37,9 +39,14 @@ describe("agent invocation left over from earlier work", () => {
 
   // A child with an active invocation left over from earlier work gets new
   // mailbox input. Only the new invocation may be active when it runs.
-  it.each([{ state: "running" as const }, { state: "paused" as const }])(
-    "ends a leftover $state child invocation before new mailbox input runs",
-    async ({ state: orphanState }) => {
+  it.each([
+    { state: "running" as const, replied: false },
+    { state: "paused" as const, replied: false },
+    // Its `reply` reached the parent before the newer work ended its Turn.
+    { state: "running" as const, replied: true },
+  ])(
+    "ends a leftover $state child invocation (replied: $replied) before new mailbox input runs",
+    async ({ state: orphanState, replied }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const activeAtRun: unknown[] = [];
       // Integration tests do not run the agent. The runner reads the run and
@@ -72,6 +79,15 @@ describe("agent invocation left over from earlier work", () => {
           await markAgentInvocationPaused(orphan.invocationId);
         }
         const orphanTurnId = getAgentInvocationTurnId(orphan.invocationId);
+        const reply = { text: "Orphan found it", toolCallId: "call-reply" };
+        if (replied) {
+          await enqueueAgentReplyToParent({
+            queue,
+            reply,
+            sender: orphan,
+            state,
+          });
+        }
         await upsertTurnRecord({
           actor: invocationInput.actor,
           conversationId: childConversationId,
@@ -80,6 +96,29 @@ describe("agent invocation left over from earlier work", () => {
               role: "user",
               content: [{ type: "text", text: invocationInput.input }],
             },
+            ...(replied
+              ? [
+                  {
+                    role: "assistant",
+                    content: [
+                      {
+                        type: "toolCall",
+                        id: reply.toolCallId,
+                        name: "reply",
+                        arguments: { text: reply.text },
+                      },
+                    ],
+                  },
+                  {
+                    role: "toolResult",
+                    toolCallId: reply.toolCallId,
+                    toolName: "reply",
+                    content: [{ type: "text", text: "Reply saved." }],
+                    details: { text: reply.text },
+                    isError: false,
+                  },
+                ]
+              : []),
           ] as PiMessage[],
           sliceId: 1,
           source: { kind: "agent_invocation" },
@@ -121,21 +160,24 @@ describe("agent invocation left over from earlier work", () => {
         ).resolves.not.toMatchObject({ state: orphanState });
         // The newer work does not continue the earlier task, so the earlier
         // agent invocation sends its own result before the newer one ends.
+        // One that already replied completes and sends nothing more.
         await expect(
           getAgentInvocation(orphan.invocationId),
         ).resolves.toMatchObject({
           parentMailboxStatus: "appended",
-          status: "failed",
+          status: replied ? "completed" : "failed",
         });
         const orphanResult = expect.objectContaining({
-          inboundMessageId: getAgentInvocationResultMessageId(
-            orphan.invocationId,
-          ),
+          inboundMessageId: replied
+            ? getAgentReplyMessageId(orphan.invocationId, reply.toolCallId)
+            : getAgentInvocationResultMessageId(orphan.invocationId),
           input: expect.objectContaining({
             text: expect.stringMatching(
-              orphanState === "paused"
-                ? /^<agent-result [^>]*status="failed"[\s\S]*\nThis task was not resumed\. Newer work for this child agent started/
-                : /^<agent-result [^>]*status="failed"[\s\S]*\nAgent invocation lost its worker/,
+              replied
+                ? /^<agent-result [^>]*status="completed"[\s\S]*\nOrphan found it\n/
+                : orphanState === "paused"
+                  ? /^<agent-result [^>]*status="failed"[\s\S]*\nThis task was not resumed\. Newer work for this child agent started/
+                  : /^<agent-result [^>]*status="failed"[\s\S]*\nAgent invocation lost its worker/,
             ),
           }),
         });
@@ -150,9 +192,21 @@ describe("agent invocation left over from earlier work", () => {
           process(queue.takeMessageFor(childConversationId)),
         ).resolves.toMatchObject({ status: "completed" });
 
-        // A completed agent invocation sends nothing. Only a `reply` reaches
-        // the parent.
-        await expect(parentMailbox()).resolves.toEqual([orphanResult]);
+        // A completed agent invocation saved before `reply` existed has no
+        // reply in the parent's mailbox, so it still sends its result text.
+        await expect(parentMailbox()).resolves.toEqual([
+          orphanResult,
+          expect.objectContaining({
+            inboundMessageId: getAgentInvocationResultMessageId(
+              queued.invocationId,
+            ),
+            input: expect.objectContaining({
+              text: expect.stringMatching(
+                /^<agent-result [^>]*status="completed"[\s\S]*\nRetry path checked\n/,
+              ),
+            }),
+          }),
+        ]);
       } finally {
         await fixture.close();
       }

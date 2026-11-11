@@ -112,9 +112,10 @@ export async function finishInvocation(
   const invocation =
     await getActiveAgentInvocationForConversation(childConversationId);
   if (!invocation) throw new Error("Expected an open Agent invocation");
+  // A Turn that ended without a `reply` saves no result text.
   await completeAgentInvocation({
     invocationId: invocation.invocationId,
-    result: "Found it.",
+    result: "",
     status: "completed",
   });
   await expect(harness.process(childConversationId)).resolves.toMatchObject({

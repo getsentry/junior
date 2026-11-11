@@ -19,6 +19,7 @@ import {
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
+  getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type {
@@ -43,9 +44,10 @@ import { isWatchEvent } from "@/chat/conversations/session-stop";
 import { renderUntrustedTag } from "@/chat/input-tags";
 import type { Reply } from "@/chat/turn-answer";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
-import { listUnreportedSiblingAgents } from "./list";
+import { listUnreportedSiblingAgents, sendsCompletedResult } from "./list";
 import {
   agentInvocationResultEventType,
+  AGENT_REPLY_EVENT_TYPE,
   isAgentInvocationResultEventType,
 } from "./result-event-type";
 import type {
@@ -65,8 +67,6 @@ const AGENT_INVOCATION_EVENT_NAMESPACE = "junior";
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
 /** Event type of a message that a child agent sends to its parent. */
 const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
-/** Event type of the `reply` that ends a child agent's Turn. */
-const AGENT_REPLY_EVENT_TYPE = "agent.reply";
 
 /**
  * Return the Inbound message author id for results sent by one Actor.
@@ -87,18 +87,17 @@ function resultAuthorId(actor: Actor): string {
   }
 }
 
-/** A terminal agent invocation that sends a result: every status but `completed`. */
-type UnansweredResult = Exclude<
-  TerminalAgentInvocation,
-  { status: "completed" }
->;
-
 /**
  * Error messages can contain text from tools or providers, so the trusted
  * summary in the mailbox metadata has only the status.
  */
-function trustedSummary(invocation: UnansweredResult, agent: string): string {
+function trustedSummary(
+  invocation: TerminalAgentInvocation,
+  agent: string,
+): string {
   switch (invocation.status) {
+    case "completed":
+      return `${agent} finished its task.`;
     case "blocked":
       return `${agent} is blocked.`;
     case "failed":
@@ -147,7 +146,7 @@ function siblingLabel(sibling: ChildAgent): string {
 
 /** Build the parent Inbound message for one terminal agent invocation. */
 function buildResultInboundMessage(
-  invocation: UnansweredResult,
+  invocation: TerminalAgentInvocation,
   nowMs: number,
   openSiblings: readonly ChildAgent[],
 ): InboundMessage {
@@ -176,7 +175,13 @@ function buildResultInboundMessage(
       metadata,
       text: renderResultInput(
         invocation,
-        { output: invocation.errorMessage, status: invocation.status },
+        {
+          output:
+            invocation.status === "completed"
+              ? invocation.result
+              : invocation.errorMessage,
+          status: invocation.status,
+        },
         openSiblings,
       ),
     },
@@ -206,9 +211,16 @@ export async function enqueueAgentInvocationResult(
     return;
   }
   const nowMs = options.nowMs ?? Date.now();
+  const parentInboundMessageIds = await readParentInboundMessageIds(
+    invocation.parentConversationId,
+    options.state,
+  );
   // A child's final response stays in its Conversation. Only its `reply`
   // reaches the parent, so a completed agent invocation sends nothing.
-  if (invocation.status === "completed") {
+  if (
+    invocation.status === "completed" &&
+    !sendsCompletedResult(invocation, parentInboundMessageIds)
+  ) {
     await markAgentInvocationParentMailboxAppended(
       invocation.invocationId,
       nowMs,
@@ -218,6 +230,7 @@ export async function enqueueAgentInvocationResult(
   const openSiblings = await listUnreportedSiblingAgents(
     invocation.parentConversationId,
     invocation.childConversationId,
+    parentInboundMessageIds,
   );
   await appendAndEnqueueInboundMessage({
     message: buildResultInboundMessage(invocation, nowMs, openSiblings),
@@ -229,6 +242,21 @@ export async function enqueueAgentInvocationResult(
     invocation.invocationId,
     nowMs,
   );
+}
+
+/**
+ * Read the ids of every message that reached the parent's mailbox. A sibling
+ * whose `reply` is among them has answered.
+ */
+async function readParentInboundMessageIds(
+  parentConversationId: string,
+  state: StateAdapter | undefined,
+): Promise<readonly string[]> {
+  const work = await getConversationWorkState({
+    conversationId: parentConversationId,
+    state,
+  });
+  return work?.execution.inboundMessageIds ?? [];
 }
 
 function childAgentLabel(invocation: AgentInvocation): string {
@@ -315,12 +343,16 @@ export async function enqueueAgentReplyToParent(args: {
 }): Promise<void> {
   const nowMs = args.nowMs ?? Date.now();
   const inboundMessageId = getAgentReplyMessageId(
-    args.sender.childConversationId,
+    args.sender.invocationId,
     args.reply.toolCallId,
   );
   const openSiblings = await listUnreportedSiblingAgents(
     args.sender.parentConversationId,
     args.sender.childConversationId,
+    await readParentInboundMessageIds(
+      args.sender.parentConversationId,
+      args.state,
+    ),
   );
   const metadata: EventMailboxMetadata = {
     kind: "event",
