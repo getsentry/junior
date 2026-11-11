@@ -17,16 +17,16 @@ const buttonVariants = cva(
       variant: {
         /** The primary action of a view. */
         default:
-          "border-dashboard-text-solid bg-dashboard-text-solid text-dashboard-text-inverse hover:border-dashboard-text-subtle hover:bg-dashboard-text-subtle focus-visible:outline-dashboard-focus data-disabled:hover:border-dashboard-text-solid data-disabled:hover:bg-dashboard-text-solid",
+          "border-primary bg-primary text-primary-foreground hover:border-dashboard-text-subtle hover:bg-dashboard-text-subtle focus-visible:outline-ring data-disabled:hover:border-primary data-disabled:hover:bg-primary",
         /** A command beside or instead of the primary action. */
         outline:
-          "border-dashboard-border-emphasis bg-dashboard-surface-raised text-dashboard-text hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-dashboard-focus data-disabled:hover:border-dashboard-border-emphasis data-disabled:hover:bg-dashboard-surface-raised data-disabled:hover:text-dashboard-text",
+          "border-input bg-secondary text-foreground hover:border-dashboard-border-heavy hover:bg-accent hover:text-foreground focus-visible:outline-ring data-disabled:hover:border-input data-disabled:hover:bg-secondary data-disabled:hover:text-foreground",
         /** A low-emphasis action, such as Dismiss, an icon, or a list row. */
         ghost:
-          "border-transparent bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:outline-dashboard-focus data-disabled:hover:bg-transparent data-disabled:hover:text-dashboard-text-muted",
+          "border-transparent bg-transparent text-muted-foreground hover:bg-dashboard-fill-strong hover:text-foreground focus-visible:outline-ring data-disabled:hover:bg-transparent data-disabled:hover:text-muted-foreground",
         /** An action that deletes or revokes. */
         destructive:
-          "border-dashboard-border-strong bg-transparent text-dashboard-text-muted hover:border-rose-300/40 hover:text-rose-300 focus-visible:outline-rose-300/55 data-disabled:hover:border-dashboard-border-strong data-disabled:hover:text-dashboard-text-muted",
+          "border-dashboard-border-strong bg-transparent text-muted-foreground hover:border-rose-300/40 hover:text-rose-300 focus-visible:outline-rose-300/55 data-disabled:hover:border-dashboard-border-strong data-disabled:hover:text-muted-foreground",
         /** An action that reads as a link in running text. It has no box. */
         link: "border-0 bg-transparent p-0 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
       },
@@ -36,7 +36,7 @@ const buttonVariants = cva(
         bare: "focus-visible:outline-2",
         icon: "grid size-9 place-items-center rounded-md border-0 p-0 focus-visible:outline-2 focus-visible:outline-offset-1",
         // Body weight keeps menu rows below headings; icons stay muted until the row is active.
-        menu: "flex w-full items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-normal text-dashboard-text hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none data-disabled:hover:bg-transparent [&_svg]:text-dashboard-text-muted hover:[&_svg]:text-dashboard-text focus-visible:[&_svg]:text-dashboard-text data-disabled:hover:[&_svg]:text-dashboard-text-muted",
+        menu: "flex w-full items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-normal text-foreground hover:bg-dashboard-fill-strong focus-visible:bg-dashboard-fill-strong focus-visible:outline-none data-disabled:hover:bg-transparent [&_svg]:text-muted-foreground hover:[&_svg]:text-foreground focus-visible:[&_svg]:text-foreground data-disabled:hover:[&_svg]:text-muted-foreground",
       },
     },
     compoundVariants: [

@@ -12,7 +12,7 @@ function InputGroup({ className, ...props }: ComponentProps<"div">) {
       data-slot="input-group"
       role="group"
       className={cn(
-        "group/input-group relative flex h-9 w-full min-w-0 items-center rounded-md border border-dashboard-border bg-dashboard-overlay-soft transition-colors outline-none hover:border-dashboard-border-emphasis has-[[data-slot=input-group-control]:focus-visible]:border-dashboard-focus has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-dashboard-focus/25",
+        "group/input-group relative flex h-9 w-full min-w-0 items-center rounded-md border border-border bg-dashboard-overlay-soft transition-colors outline-none hover:border-input has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/25",
         className,
       )}
       {...props}
@@ -21,7 +21,7 @@ function InputGroup({ className, ...props }: ComponentProps<"div">) {
 }
 
 const inputGroupAddonVariants = cva(
-  "flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-sm font-medium text-dashboard-text-muted select-none",
+  "flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-sm font-medium text-muted-foreground select-none",
   {
     variants: {
       align: {
