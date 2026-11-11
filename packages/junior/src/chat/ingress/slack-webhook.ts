@@ -336,6 +336,28 @@ async function persistSlackMessage(args: {
   });
 }
 
+/**
+ * Whether a Slack message mentions Junior in its text or section blocks.
+ * Slack still emits app_mention for tokens inside code spans/blocks. Only
+ * mentions that sit outside code count.
+ */
+function eventMentionsBot(
+  event: SlackInboundEvent,
+  botUserId: string | undefined,
+): boolean {
+  return Boolean(
+    botUserId &&
+    (textMentionsBot(event.text ?? "", botUserId) ||
+      event.blocks?.some(
+        (block) =>
+          block.type === "section" &&
+          typeof block.text === "object" &&
+          block.text.type === "mrkdwn" &&
+          textMentionsBot(block.text.text, botUserId),
+      )),
+  );
+}
+
 async function routeParsedMessage(args: {
   adapter: SlackAdapter;
   event: SlackInboundEvent;
@@ -357,20 +379,7 @@ async function routeParsedMessage(args: {
   const normalized = normalizeMessageThreadId(args.message);
   const message = normalized.message;
   const canonicalThreadId = normalized.threadId;
-  // Slack still emits app_mention for tokens inside code spans/blocks. Only
-  // count mentions that sit outside code as activations.
-  const botUserId = args.adapter.botUserId;
-  const isMention = Boolean(
-    botUserId &&
-    (textMentionsBot(args.event.text ?? "", botUserId) ||
-      args.event.blocks?.some(
-        (block) =>
-          block.type === "section" &&
-          typeof block.text === "object" &&
-          block.text.type === "mrkdwn" &&
-          textMentionsBot(block.text.text, botUserId),
-      )),
-  );
+  const isMention = eventMentionsBot(args.event, args.adapter.botUserId);
   if (isMention) {
     message.isMention = true;
   }
@@ -555,14 +564,13 @@ async function ingestWorkspaceBotPost(args: {
   teamId?: string;
   ts: string;
 }): Promise<void> {
-  const text = args.event.text ?? "";
   if (!args.teamId) return;
-  if (args.botUserId && textMentionsBot(text, args.botUserId)) return;
+  if (eventMentionsBot(args.event, args.botUserId)) return;
   const channelMessage = slackChannelMessageEvent({
     botId: args.botPostId,
     channelId: args.channelId,
     subtype: args.event.subtype,
-    text,
+    text: args.event.text,
     threadTs: args.event.thread_ts,
     ts: args.ts,
     userId: args.botPostId,

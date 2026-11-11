@@ -50,6 +50,7 @@ function trigger(match?: Record<string, string | string[]>) {
 }
 
 async function postChannelMessage(input: {
+  blocks?: unknown[];
   botId?: string;
   channel?: string;
   isExtSharedChannel?: boolean;
@@ -63,13 +64,14 @@ async function postChannelMessage(input: {
   const state = getStateAdapter();
   await state.connect();
   const slackAdapter = createSlackAdapterFixture();
-  const { botId, isExtSharedChannel, noUser, ...message } = input;
+  const { blocks, botId, isExtSharedChannel, noUser, ...message } = input;
   const envelope = slackEnvelope({
     eventType: "message",
     text: "How do I connect the Jira integration?",
     ...message,
   });
   if (botId) Object.assign(envelope.event, { bot_id: botId });
+  if (blocks) Object.assign(envelope.event, { blocks });
   if (noUser) {
     Reflect.deleteProperty(envelope.event, "user");
     Object.assign(envelope.event, { subtype: "bot_message" });
@@ -270,7 +272,8 @@ describe("Slack channel-message automations", () => {
     )) as { automation: { id: string } };
 
     // Another bot, a channel shared with another organization, a payload
-    // without the shared-channel flag, and a mention of Junior run nothing.
+    // without the shared-channel flag, and a mention of Junior in the text or
+    // in a section block run nothing.
     await postChannelMessage({
       botId: "B888",
       isExtSharedChannel: false,
@@ -294,6 +297,19 @@ describe("Slack channel-message automations", () => {
       noUser: true,
       text: `<@${SLACK_BOT_USER_ID}> summarize this`,
       ts: "1712348.0004",
+    });
+    await postChannelMessage({
+      blocks: [
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `<@${SLACK_BOT_USER_ID}> summarize` },
+        },
+      ],
+      botId: "B777",
+      isExtSharedChannel: false,
+      noUser: true,
+      text: "New report",
+      ts: "1712348.0006",
     });
     expect(queue.sentRecords()).toEqual([]);
 
