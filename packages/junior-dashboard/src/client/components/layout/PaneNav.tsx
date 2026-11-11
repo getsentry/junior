@@ -78,14 +78,16 @@ type PaneNavValue = {
   tabScroll: Map<PaneTab, number>;
   tabValues: Record<string, string>;
   setTabValue(key: string, value: string): void;
+  /** The tab the highlight sat on last, so a remounted pane slides from it. */
+  shownTab: { get(): string | undefined; set(key: string | undefined): void };
   zen: ZenMode;
 };
 
 /**
- * Zen mode hides the pane and Conversation details, so the conversation
- * header, transcript, and composer fill the window. It overlays the pane and
- * details choices without changing them, so leaving it restores both. It
- * lasts for the session and exists only on a desktop conversation page.
+ * Zen mode hides the pane, and Conversation details where a page has them,
+ * so the page fills the window. It overlays the pane and details choices
+ * without changing them, so leaving it restores both. It lasts for the
+ * session and exists on every desktop page.
  */
 type ZenMode = {
   active: boolean;
@@ -142,7 +144,7 @@ function usePaneNav(): PaneNavValue {
  * at its top, the profile at its bottom, whether the pane shows, and its
  * width. The pane is part of the layout, so every page shares one width.
  * Cmd/Ctrl+B shows or hides it on desktop, and Option/Alt+Cmd/Ctrl+Y
- * toggles Zen mode on a conversation page. Children lay out in one row: the
+ * toggles Zen mode. Children lay out in one row: the
  * pane, then the page.
  */
 export function PaneNavProvider(props: {
@@ -154,18 +156,26 @@ export function PaneNavProvider(props: {
   profile?: ReactNode;
   spend?: ReactNode;
   workspaceActive: boolean;
-  /** A conversation page shows, so Zen mode can apply. */
-  zenAvailable: boolean;
 }) {
   const focusToggle = useRef(false);
   const desktop = useSidebarFits();
   const [zenOn, setZenOn] = useState(false);
-  const zenAvailable = props.zenAvailable && desktop;
+  const zenAvailable = desktop;
   const zenActive = zenOn && zenAvailable;
   const location = useLocation();
   const [tabPaths, setTabPaths] = useState<Record<PaneTab, string>>(TAB_ROOTS);
   const [tabValues, setTabValues] = useState<Record<string, string>>({});
   const tabScroll = useRef(new Map<PaneTab, number>()).current;
+  const shownTabKey = useRef<string | undefined>(undefined);
+  const shownTab = useMemo(
+    () => ({
+      get: () => shownTabKey.current,
+      set: (key: string | undefined) => {
+        shownTabKey.current = key;
+      },
+    }),
+    [],
+  );
   const setTabValue = useCallback(
     (key: string, value: string) =>
       setTabValues((current) => ({ ...current, [key]: value })),
@@ -229,6 +239,7 @@ export function PaneNavProvider(props: {
       setOpen,
       spend: props.spend,
       setTabValue,
+      shownTab,
       tabPaths,
       tabScroll,
       tabValues,
@@ -250,6 +261,7 @@ export function PaneNavProvider(props: {
       props.workspaceActive,
       setOpen,
       setTabValue,
+      shownTab,
       tabPaths,
       tabScroll,
       tabValues,
@@ -298,8 +310,9 @@ export function usePaneShows(): boolean {
 const NO_ZEN: ZenMode = { active: false, available: false, toggle() {} };
 
 /**
- * Read Zen mode, for the conversation page, its menu, and the palette. A
- * page that renders on its own, such as in tests, has no Zen mode.
+ * Read Zen mode, for pages with details, the conversation menu, and the
+ * palette. A page that renders on its own, such as in tests, has no Zen
+ * mode.
  */
 export function useZenMode(): ZenMode {
   return useContext(PaneNavContext)?.zen ?? NO_ZEN;
@@ -441,26 +454,158 @@ function PaneTabCount(props: { active?: boolean; count?: number }) {
 }
 
 /**
+ * The tab the highlight sits on. On a tab switch the pane remounts, so the
+ * first frame keeps the tab that showed before and the next frame moves to
+ * the new one, which lets the highlight slide and the labels fade.
+ */
+function useShownTab(current: string | undefined): string | undefined {
+  const { shownTab } = usePaneNav();
+  const [shown, setShown] = useState(() => shownTab.get() ?? current);
+  useLayoutEffect(() => {
+    shownTab.set(current);
+    if (shown === current) return;
+    const frame = requestAnimationFrame(() => setShown(current));
+    return () => cancelAnimationFrame(frame);
+  }, [current, shown, shownTab]);
+  return shown;
+}
+
+// The container width at which every tab shows its label.
+const TABS_LABELLED_REM = 22;
+
+// A bit past the 180ms transitions, for when no transitionend fires.
+const SWITCH_MS = 250;
+
+/**
+ * Where the shown tab ends up once the labels finish opening and closing.
+ * Below `TABS_LABELLED_REM`, the other tabs close to their icon and the
+ * shown tab takes the rest of the row. Above it, no tab changes size.
+ */
+function finalTabBox(nav: HTMLElement, target: HTMLElement) {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const style = getComputedStyle(nav);
+  const start = parseFloat(style.paddingLeft);
+  const inner = nav.clientWidth - start - parseFloat(style.paddingRight);
+  if (inner >= TABS_LABELLED_REM * rem) {
+    return { left: target.offsetLeft, width: target.offsetWidth };
+  }
+  const gap = parseFloat(style.columnGap) || 0;
+  const tabs = [...nav.querySelectorAll<HTMLElement>("a")];
+  // Each tab at its content width without the label, as the other tabs
+  // end up. The tab that showed before may hold free space as well.
+  const closed = tabs.map((tab) => {
+    const pad = getComputedStyle(tab);
+    return [...tab.children].reduce(
+      (sum, child) => {
+        if (child.hasAttribute("data-tab-label")) return sum;
+        const margin = getComputedStyle(child);
+        return (
+          sum +
+          child.getBoundingClientRect().width +
+          parseFloat(margin.marginLeft) +
+          parseFloat(margin.marginRight)
+        );
+      },
+      parseFloat(pad.paddingLeft) + parseFloat(pad.paddingRight),
+    );
+  });
+  const index = tabs.indexOf(target);
+  const before = closed
+    .slice(0, index)
+    .reduce((sum, width) => sum + width + gap, 0);
+  const others = closed.reduce(
+    (sum, width, at) => (at === index ? sum : sum + width + gap),
+    0,
+  );
+  return { left: start + before, width: inner - others };
+}
+
+/**
+ * Keep the highlight under the shown tab. A switch slides it to where the
+ * tab ends up, while the labels open and close beside it. Other resizes,
+ * such as a pane drag, move it at once.
+ */
+function useTabHighlight(shown: string | undefined) {
+  const nav = useRef<HTMLElement>(null);
+  const highlight = useRef<HTMLSpanElement>(null);
+  const switching = useRef(false);
+  const place = useCallback((animate: boolean) => {
+    const box = highlight.current;
+    const row = nav.current;
+    if (!box || !row) return;
+    const target = row.querySelector<HTMLElement>("[data-tab-shown]");
+    box.hidden = !target;
+    if (!target) return;
+    const next = animate
+      ? finalTabBox(row, target)
+      : { left: target.offsetLeft, width: target.offsetWidth };
+    if (!animate) box.style.transition = "none";
+    box.style.width = `${next.width}px`;
+    box.style.transform = `translateX(${next.left}px)`;
+    if (!animate) {
+      void box.offsetWidth;
+      box.style.transition = "";
+    }
+  }, []);
+  useLayoutEffect(() => {
+    const observer = new ResizeObserver(() => {
+      // During a switch the labels resize the tabs; the slide covers it.
+      if (!switching.current) place(false);
+    });
+    for (const tab of nav.current?.querySelectorAll("a") ?? []) {
+      observer.observe(tab);
+    }
+    return () => observer.disconnect();
+  }, [place]);
+  const placed = useRef(false);
+  useLayoutEffect(() => {
+    const animate = placed.current;
+    placed.current = true;
+    place(animate);
+    if (!animate) return;
+    switching.current = true;
+    const timer = window.setTimeout(() => {
+      switching.current = false;
+    }, SWITCH_MS);
+    return () => {
+      window.clearTimeout(timer);
+      switching.current = false;
+    };
+  }, [place, shown]);
+  return { highlight, nav };
+}
+
+/**
  * The pane tabs as one segmented control. Each tab shows its icon and label.
  * When the labels do not fit, the other tabs show only their icon, with the
  * label as tooltip; the tab that shows now and the Inbox count stay.
  * Destinations past the three tabs, such as plugin pages, always show as
- * icons.
+ * icons. One highlight slides between tabs, and labels fade as they open or
+ * close; reduced motion turns both off.
  */
 export function PaneTabs(props: { className?: string }) {
   const tabs = usePaneTabs();
   const main = tabs.slice(0, 3);
   const extra = tabs.slice(3);
+  const shown = useShownTab(tabs.find((tab) => tab.active)?.key);
+  const { highlight, nav } = useTabHighlight(shown);
   return (
     <nav
       aria-label="Primary"
       className={cn(
-        "@container/tabs flex min-w-0 gap-0.5 rounded-xl bg-dashboard-fill-soft p-0.5",
+        "@container/tabs relative flex min-w-0 gap-0.5 rounded-xl bg-dashboard-fill-soft p-0.5",
         props.className,
       )}
+      ref={nav}
     >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0.5 bottom-0.5 left-0 rounded-[0.625rem] bg-dashboard-surface-raised shadow-sm ring-1 ring-dashboard-border transition-[transform,width] duration-180 ease-out motion-reduce:transition-none"
+        ref={highlight}
+      />
       {main.map((tab) => {
         const Icon = tab.icon;
+        const on = tab.key === shown;
         return (
           // 22rem fits the three labelled tabs with the Inbox count.
           <Tooltip key={tab.key}>
@@ -472,11 +617,12 @@ export function PaneTabs(props: { className?: string }) {
                     tab.count ? `${tab.label}, ${tab.count} waiting` : tab.label
                   }
                   className={cn(
-                    "flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-[0.625rem] px-1.5 font-sans @[22rem]/tabs:px-2 text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-                    tab.active
-                      ? "flex-auto bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
+                    "relative flex h-8 min-w-0 items-center justify-center rounded-[0.625rem] px-2 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+                    on
+                      ? "flex-auto text-dashboard-text"
                       : "flex-none text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text @[22rem]/tabs:flex-auto",
                   )}
+                  data-tab-shown={on ? "" : undefined}
                   to={tab.to}
                 />
               }
@@ -486,15 +632,26 @@ export function PaneTabs(props: { className?: string }) {
                 className="size-4 shrink-0"
                 strokeWidth={1.9}
               />
+              {/* The label column opens from zero width, so it fades in as
+                  the tab widens, and the reverse as it closes. */}
               <span
+                data-tab-label=""
                 className={cn(
-                  "truncate",
-                  !tab.active && "hidden @[22rem]/tabs:inline",
+                  "grid min-w-0 transition-[grid-template-columns,opacity,visibility] duration-180 ease-out motion-reduce:transition-none",
+                  on
+                    ? "grid-cols-[1fr] opacity-100"
+                    : "invisible grid-cols-[0fr] opacity-0 @[22rem]/tabs:visible @[22rem]/tabs:grid-cols-[1fr] @[22rem]/tabs:opacity-100",
                 )}
               >
-                {tab.label}
+                <span className="min-w-0 overflow-hidden">
+                  <span className="block truncate pl-1.5">{tab.label}</span>
+                </span>
               </span>
-              <PaneTabCount active={tab.active} count={tab.count} />
+              {tab.count ? (
+                <span className="ml-1.5">
+                  <PaneTabCount active={on} count={tab.count} />
+                </span>
+              ) : null}
             </TooltipTrigger>
             <TooltipContent size="compact">{tab.label}</TooltipContent>
           </Tooltip>
@@ -502,16 +659,18 @@ export function PaneTabs(props: { className?: string }) {
       })}
       {extra.map((tab) => {
         const Icon = tab.icon;
+        const on = tab.key === shown;
         return (
           <Link
             aria-current={tab.active ? "page" : undefined}
             aria-label={tab.label}
             className={cn(
-              "grid size-8 shrink-0 place-items-center rounded-[0.625rem] no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-              tab.active
-                ? "bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
+              "relative grid size-8 shrink-0 place-items-center rounded-[0.625rem] no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+              on
+                ? "text-dashboard-text"
                 : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
             )}
+            data-tab-shown={on ? "" : undefined}
             key={tab.key}
             title={tab.label}
             to={tab.to}

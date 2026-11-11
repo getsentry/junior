@@ -226,4 +226,16 @@ test("hides and restores the panels with the shortcuts and Zen mode", async ({
   await page.keyboard.press("ControlOrMeta+Alt+KeyY");
   await expect(pane).toBeVisible();
   await expect(details).toBeHidden();
+
+  // Every page has Zen mode; without details, it hides the pane.
+  for (const path of ["/settings", "/review"]) {
+    await page.goto(`${dashboard.baseURL}${path}`);
+    await page.keyboard.press("ControlOrMeta+Alt+KeyY");
+    await expect(pane).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "Show sidebar" }),
+    ).toHaveCount(0);
+    await page.keyboard.press("ControlOrMeta+Alt+KeyY");
+    await expect(pane).toBeVisible();
+  }
 });

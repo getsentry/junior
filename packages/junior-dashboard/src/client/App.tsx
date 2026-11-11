@@ -307,7 +307,6 @@ export function DashboardShell() {
           ) : undefined
         }
         workspaceActive={workspace}
-        zenAvailable={Boolean(conversationId)}
       >
         <ShellCommandPalette
           currentConversationId={conversationId}
