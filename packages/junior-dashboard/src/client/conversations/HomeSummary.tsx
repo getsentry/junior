@@ -2,7 +2,8 @@ import type {
   CodeActivityDay,
   CodeChangeSummaryReport,
 } from "@sentry/junior/api/schema";
-import type { ReactNode } from "react";
+import { ArrowUpDown } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useActorCodeData, useDashboardCoreData } from "../api";
@@ -19,12 +20,15 @@ import {
   TooltipTitle,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { peoplePath } from "../format";
 import { useReviewItemCountData } from "../review-desk/queries";
 import { cn } from "../styles";
 
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
+/** Open code changes shown before and after the reader expands the list. */
 const OPEN_LIMIT = 3;
+const OPEN_EXPANDED_LIMIT = 10;
 
 // Sums the last 7 UTC day buckets and the 7 before them.
 function weeklyMerges(days: CodeActivityDay[]) {
@@ -57,6 +61,7 @@ export function HomeSummary() {
   const open = code.data.changes
     .filter((change) => change.state === "open")
     .sort((a, b) => a.openedAt.localeCompare(b.openedAt));
+  const oldest = open[0];
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
     merges.thisWeek + merges.lastWeek === 0 &&
@@ -77,9 +82,9 @@ export function HomeSummary() {
         />
         <SummaryCard
           detail={
-            open[0] ? (
+            oldest ? (
               <>
-                oldest <AgeText nowMs={nowMs} openedAt={open[0].openedAt} />
+                oldest <AgeText nowMs={nowMs} openedAt={oldest.openedAt} />
               </>
             ) : null
           }
@@ -104,20 +109,13 @@ export function HomeSummary() {
         />
       </div>
       {open.length > 0 ? (
-        <div className="grid gap-2">
-          <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
-            Waiting to merge
-          </h3>
-          <ul className="m-0 grid list-none gap-0.5 p-0">
-            {open.slice(0, OPEN_LIMIT).map((change) => (
-              <OpenChangeRow change={change} key={change.id} nowMs={nowMs} />
-            ))}
-          </ul>
-        </div>
+        <OpenChangeList changes={open} email={email} nowMs={nowMs} />
       ) : null}
     </section>
   );
 }
+
+const cardClass = "grid gap-3 px-4 py-3.5";
 
 function SummaryCard(props: {
   aside?: ReactNode;
@@ -126,14 +124,14 @@ function SummaryCard(props: {
   value: number;
 }) {
   return (
-    <Card className="grid gap-3 px-4 py-3.5">
+    <Card className={cardClass}>
       <div className="flex h-4 items-center justify-between gap-3">
         <span className="truncate font-sans text-xs font-medium text-dashboard-text-muted">
           {props.label}
         </span>
         {props.aside}
       </div>
-      <div className="flex min-w-0 items-baseline gap-2">
+      <div className="flex h-7.5 min-w-0 items-baseline gap-2">
         <span className="font-display text-3xl font-light leading-none tracking-[-0.04em] text-dashboard-text tabular-nums">
           {props.value}
         </span>
@@ -193,6 +191,71 @@ function DayStrip(props: { days: CodeActivityDay[] }) {
   );
 }
 
+/**
+ * Open code changes, oldest first. The label row holds the only control, a
+ * sort toggle, so the list has no table header. The last row expands it.
+ */
+function OpenChangeList(props: {
+  changes: CodeChangeSummaryReport[];
+  email: string;
+  nowMs: number;
+}) {
+  const [newestFirst, setNewestFirst] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const sorted = newestFirst ? [...props.changes].reverse() : props.changes;
+  const limit = expanded ? OPEN_EXPANDED_LIMIT : OPEN_LIMIT;
+  const hidden = Math.min(sorted.length, OPEN_EXPANDED_LIMIT) - OPEN_LIMIT;
+  return (
+    <div className="grid gap-2">
+      <div className="flex h-4 items-center justify-between gap-4">
+        <h3 className="m-0 font-sans text-xs font-medium leading-4 text-dashboard-text-muted">
+          Waiting to merge
+        </h3>
+        {sorted.length > 1 ? (
+          <button
+            className={quietButtonClass}
+            onClick={() => setNewestFirst(!newestFirst)}
+            type="button"
+          >
+            {newestFirst ? "Newest first" : "Oldest first"}
+            <ArrowUpDown aria-hidden="true" className="size-3" />
+          </button>
+        ) : null}
+      </div>
+      <ul className="m-0 grid list-none gap-0.5 p-0">
+        {sorted.slice(0, limit).map((change) => (
+          <OpenChangeRow change={change} key={change.id} nowMs={props.nowMs} />
+        ))}
+        {hidden > 0 ? (
+          <li className={rowClass}>
+            <button
+              aria-expanded={expanded}
+              className={quietButtonClass}
+              onClick={() => setExpanded(!expanded)}
+              type="button"
+            >
+              {expanded ? "Show less" : `${hidden} more`}
+            </button>
+            {expanded && sorted.length > OPEN_EXPANDED_LIMIT ? (
+              <Link
+                className={cn(quietButtonClass, "no-underline")}
+                to={`${peoplePath(props.email)}#code`}
+              >
+                All {sorted.length}
+              </Link>
+            ) : null}
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  );
+}
+
+// Fixed row height, so HomeSummaryLoading matches the list.
+const rowClass = "flex h-8 min-w-0 items-center justify-between gap-6";
+const quietButtonClass =
+  "inline-flex h-4 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-sans text-xs leading-4 text-dashboard-text-muted hover:text-dashboard-text focus-visible:text-dashboard-text";
+
 function OpenChangeRow(props: {
   change: CodeChangeSummaryReport;
   nowMs: number;
@@ -200,7 +263,7 @@ function OpenChangeRow(props: {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
   return (
-    <li className="flex min-w-0 items-baseline justify-between gap-6 py-1.5">
+    <li className={rowClass}>
       <div className="min-w-0 truncate font-sans text-sm text-dashboard-text">
         {change.url ? (
           <OutboundLink
@@ -240,19 +303,35 @@ function AgeText(props: { nowMs: number; openedAt: string }) {
   );
 }
 
+/** Same frame and row heights as the loaded summary with three open rows. */
 function HomeSummaryLoading() {
   return (
-    <div
-      aria-label="Loading your week"
-      className="grid grid-cols-3 gap-3"
-      role="status"
-    >
-      {[0, 1, 2].map((index) => (
-        <Card className="grid gap-3 px-4 py-3.5" key={index}>
-          <Skeleton className="h-4 w-20" />
-          <Skeleton className="h-7 w-28" />
-        </Card>
-      ))}
+    <div aria-label="Loading your week" className="grid gap-8" role="status">
+      <div className="grid grid-cols-3 gap-3">
+        {[0, 1, 2].map((index) => (
+          <Card className={cardClass} key={index}>
+            <div className="flex h-4 items-center">
+              <Skeleton className="h-3 w-24" />
+            </div>
+            <div className="flex h-7.5 items-center">
+              <Skeleton className="h-6 w-28" />
+            </div>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-2">
+        <div className="flex h-4 items-center">
+          <Skeleton className="h-3 w-28" />
+        </div>
+        <div className="grid gap-0.5">
+          {["w-1/2", "w-2/5", "w-1/3"].map((width) => (
+            <div className={rowClass} key={width}>
+              <Skeleton className={cn("h-3.5", width)} />
+              <Skeleton className="h-3 w-44" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
