@@ -47,11 +47,20 @@ export async function uploadWebFiles(
     const { target, uploadId } = attachmentUploadSchema.parse(
       await response.json(),
     );
-    const write = await api.request(target.url, {
-      body: new Uint8Array(file.content),
-      headers: { ...target.headers, [VIEWER_HEADER]: message.viewerEmail },
-      method: target.method,
-    });
+    const body = new Uint8Array(file.content);
+    // Storage that signs browser writes returns its own URL. Other storage
+    // takes the bytes through the API.
+    const write = target.url.startsWith("/")
+      ? await api.request(target.url, {
+          body,
+          headers: { ...target.headers, [VIEWER_HEADER]: message.viewerEmail },
+          method: target.method,
+        })
+      : await fetch(target.url, {
+          body,
+          headers: target.headers,
+          method: target.method,
+        });
     if (!write.ok) throw new Error(`Upload write returned ${write.status}`);
     ids.push(uploadId);
   }
