@@ -64,6 +64,18 @@ export async function installBlobMock(): Promise<BlobMock> {
     }
     response.setHeader("content-type", "application/json");
     if (request.method === "PUT" && url.pathname === "/") {
+      // A presigned upload carries its options in the signed URL. Reject one
+      // that would add a suffix or overwrite, or that has no store id.
+      if (
+        url.searchParams.has("vercel-blob-delegation") &&
+        (url.searchParams.get("vercel-blob-add-random-suffix") !== "false" ||
+          url.searchParams.get("vercel-blob-allow-overwrite") !== "false" ||
+          !request.headers["x-vercel-blob-store-id"])
+      ) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: { code: "bad_request" } }));
+        return;
+      }
       const pathname = url.searchParams.get("pathname") ?? "";
       const contentType =
         (request.headers["x-content-type"] as string | undefined) ??

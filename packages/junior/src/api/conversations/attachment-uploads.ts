@@ -60,18 +60,20 @@ export async function createAttachmentUploadForViewer(
 
 /** Take upload bytes for storage that cannot sign browser writes. */
 export async function writeAttachmentUploadForViewer(args: {
-  body: Buffer;
+  readBody: () => Promise<ArrayBuffer>;
   storage: AttachmentStorage;
   uploadId: string;
   viewer: User;
 }): Promise<void> {
   if (args.storage.createUploadTarget) {
-    // The browser writes to storage directly. Do not take bytes here.
+    // The browser writes to storage directly. Refuse before the body is
+    // read, so this route never buffers bytes that it does not keep.
     throwApiError(404, "Upload not found.");
   }
+  const body = Buffer.from(await args.readBody());
   try {
     await writeAttachmentUpload({
-      body: args.body,
+      body,
       db: getSqlExecutor(),
       storage: args.storage,
       uploadId: args.uploadId,

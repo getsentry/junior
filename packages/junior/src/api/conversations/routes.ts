@@ -211,7 +211,7 @@ export function createConversationRoutes(
     ),
     async (context) => {
       await writeAttachmentUploadForViewer({
-        body: Buffer.from(await context.req.arrayBuffer()),
+        readBody: () => context.req.arrayBuffer(),
         storage: options.attachmentStorage,
         uploadId: context.req.valid("param").uploadId,
         viewer: context.get("viewer"),
