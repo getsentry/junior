@@ -121,7 +121,15 @@ export const ConversationSidebarThreadRow = memo(
           </span>
           {visualStatusForConversation(props.conversation) ===
           "active" ? null : (
-            <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
+            <span
+              className={cn(
+                "font-sans text-xs tabular-nums text-dashboard-text-faint",
+                // The archive button takes the age's place. The fade alone
+                // leaves part of the age showing beside the one button.
+                participant &&
+                  "sm:group-hover:invisible sm:group-focus-within:invisible",
+              )}
+            >
               {formatCompactAge(props.conversation.lastSeenAt)}
             </span>
           )}
