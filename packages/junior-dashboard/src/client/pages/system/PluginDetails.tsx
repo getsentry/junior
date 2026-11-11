@@ -30,9 +30,7 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
           <CapabilityList
             emptyText="No plugin-provided skills were discovered."
             items={props.plugin.skills.map((skill) => skill.name)}
-            renderItem={(name) => (
-              <SkillLink className={SKILL_CHIP_CLASS} key={name} name={name} />
-            )}
+            renderItem={(name) => <SkillLink chip key={name} name={name} />}
             title="Skills"
           />
           {props.plugin.configKeys.length ? (
@@ -71,10 +69,6 @@ function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
   );
 }
 
-const CHIP_CLASS =
-  "rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 font-mono text-xs";
-const SKILL_CHIP_CLASS = `${CHIP_CLASS} hover:border-dashboard-border-heavy hover:no-underline`;
-
 function CapabilityList(props: {
   emptyText: string;
   items: string[];
@@ -92,7 +86,7 @@ function CapabilityList(props: {
             (item) =>
               props.renderItem?.(item) ?? (
                 <span
-                  className={`${CHIP_CLASS} text-dashboard-text-muted`}
+                  className="rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
                   key={item}
                 >
                   {item}

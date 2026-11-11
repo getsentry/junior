@@ -1,11 +1,13 @@
 import { useId, useState, type ReactNode } from "react";
 
 import { useSkillDetail } from "../api";
+import { HighlightedCode } from "../code";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { cn } from "../styles";
 import { Drawer } from "./Drawer";
 import { InlineError } from "./InlineError";
+import { MarkdownViewToggle, type MarkdownView } from "./MarkdownViewToggle";
 import { Skeleton } from "./ui/skeleton";
 
 const SKELETON_LINE_WIDTHS = ["w-3/4", "w-full", "w-5/6", "w-2/3", "w-full"];
@@ -17,11 +19,12 @@ export function skillLabel(name: string): string {
 
 /**
  * Name a skill as `$skill-name` and open its SKILL.md in a drawer on click.
- * Pass children to replace the label, such as "View skill".
+ * Pass children to replace the label, such as "View skill". Set `chip` in
+ * skill lists.
  */
 export function SkillLink(props: {
   children?: ReactNode;
-  className?: string;
+  chip?: boolean;
   name: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -29,9 +32,11 @@ export function SkillLink(props: {
     <>
       <button
         className={cn(
-          "cursor-pointer border-0 bg-transparent p-0 text-dashboard-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+          "cursor-pointer text-dashboard-accent-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+          props.chip
+            ? "rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 text-xs hover:border-dashboard-border-heavy"
+            : "border-0 bg-transparent p-0 hover:underline",
           props.children ? "font-sans" : "font-mono",
-          props.className,
         )}
         onClick={() => setOpen(true)}
         type="button"
@@ -47,12 +52,18 @@ export function SkillLink(props: {
 
 function SkillDrawer(props: { name: string; onClose(): void }) {
   const titleId = useId();
+  const [view, setView] = useState<MarkdownView>("formatted");
   const skill = useSkillDetail(props.name);
   const missing =
     skill.error instanceof DashboardApiError && skill.error.status === 404;
 
   return (
     <Drawer
+      actions={
+        skill.data ? (
+          <MarkdownViewToggle onChange={setView} value={view} />
+        ) : null
+      }
       closeLabel={`Close ${skillLabel(props.name)}`}
       header={
         <div className="min-w-0 [overflow-wrap:anywhere]">
@@ -95,7 +106,11 @@ function SkillDrawer(props: { name: string; onClose(): void }) {
             {skill.data.description}
           </p>
           <div className="border-t border-dashboard-border-subtle pt-4">
-            <DisplayText document text={skill.data.body} />
+            {view === "formatted" ? (
+              <DisplayText document text={skill.data.body} />
+            ) : (
+              <HighlightedCode code={skill.data.body} language="markdown" />
+            )}
           </div>
         </div>
       )}

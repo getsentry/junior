@@ -174,6 +174,9 @@ test("runs a skill with optional context instead of an instruction", async ({
   ).toBeVisible();
   await expect(skillDrawer).toContainText("Compare the release branch");
   await screenshot(page, "automation-skill-drawer");
+  await skillDrawer.getByRole("button", { name: "Raw", exact: true }).click();
+  await expect(skillDrawer).toContainText("# Release check");
+  await expect(skillDrawer).toContainText("`main`");
   await skillDrawer
     .getByRole("button", { name: "Close $release-check", exact: true })
     .click();

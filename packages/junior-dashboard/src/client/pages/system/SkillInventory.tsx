@@ -82,11 +82,7 @@ function SkillGroupCard(props: { group: SkillGroup }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {props.group.skills.map((skill) => (
-          <SkillLink
-            className="rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 text-xs hover:border-dashboard-border-heavy hover:no-underline"
-            key={skill.name}
-            name={skill.name}
-          />
+          <SkillLink chip key={skill.name} name={skill.name} />
         ))}
       </div>
     </article>
