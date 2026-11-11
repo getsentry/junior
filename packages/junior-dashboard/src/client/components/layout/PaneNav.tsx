@@ -42,6 +42,7 @@ import {
 import { JuniorLogo } from "../JuniorLogo";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import { navItemIcon } from "./navIcons";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 const PANE_TOGGLE_SHORTCUT = platformShortcut("b");
 
@@ -387,7 +388,7 @@ type PaneTabLink = {
 };
 
 /**
- * Build the pane tabs: Conversations, Inbox, and Automations, then any other
+ * Build the pane tabs: Inbox, Conversations, and Automations, then any other
  * primary destination, such as a plugin page. A tab opens where the reader
  * left it. A press on the tab that shows now goes back to its root.
  */
@@ -409,8 +410,8 @@ function usePaneTabs(): PaneTabLink[] {
     (item) => item.key !== "review" && item.key !== "automations",
   );
   return [
-    tab("conversations", "Conversations"),
     ...(review ? [tab("inbox", review.label, review.count)] : []),
+    tab("conversations", "Conversations"),
     ...(automations ? [tab("automations", automations.label)] : []),
     ...others.map((item) => ({
       active: pathname === item.to || pathname.startsWith(`${item.to}/`),
@@ -440,9 +441,11 @@ function PaneTabCount(props: { active?: boolean; count?: number }) {
 }
 
 /**
- * The pane tabs as one segmented control. Labels show when the pane is wide
- * enough; a narrow pane shows icons. Destinations past the three tabs, such
- * as plugin pages, always show as icons.
+ * The pane tabs as one segmented control. Each tab shows its icon and label.
+ * When the labels do not fit, the other tabs show only their icon, with the
+ * label as tooltip; the tab that shows now and the Inbox count stay.
+ * Destinations past the three tabs, such as plugin pages, always show as
+ * icons.
  */
 export function PaneTabs(props: { className?: string }) {
   const tabs = usePaneTabs();
@@ -459,31 +462,42 @@ export function PaneTabs(props: { className?: string }) {
       {main.map((tab) => {
         const Icon = tab.icon;
         return (
-          <Link
-            aria-current={tab.active ? "page" : undefined}
-            aria-label={
-              tab.count ? `${tab.label}, ${tab.count} waiting` : tab.label
-            }
-            className={cn(
-              "flex h-8 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-[0.625rem] px-2 font-sans text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
-              tab.active
-                ? "bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
-                : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
-            )}
-            key={tab.key}
-            title={tab.label}
-            to={tab.to}
-          >
-            <Icon
-              aria-hidden="true"
-              className="size-4 shrink-0 @[17.5rem]/tabs:hidden"
-              strokeWidth={1.9}
-            />
-            <span className="hidden truncate @[17.5rem]/tabs:inline">
-              {tab.label}
-            </span>
-            <PaneTabCount active={tab.active} count={tab.count} />
-          </Link>
+          // 22rem fits the three labelled tabs with the Inbox count.
+          <Tooltip key={tab.key}>
+            <TooltipTrigger
+              render={
+                <Link
+                  aria-current={tab.active ? "page" : undefined}
+                  aria-label={
+                    tab.count ? `${tab.label}, ${tab.count} waiting` : tab.label
+                  }
+                  className={cn(
+                    "flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-[0.625rem] px-1.5 font-sans @[22rem]/tabs:px-2 text-xs font-medium no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+                    tab.active
+                      ? "flex-auto bg-dashboard-surface-raised text-dashboard-text shadow-sm ring-1 ring-dashboard-border"
+                      : "flex-none text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text @[22rem]/tabs:flex-auto",
+                  )}
+                  to={tab.to}
+                />
+              }
+            >
+              <Icon
+                aria-hidden="true"
+                className="size-4 shrink-0"
+                strokeWidth={1.9}
+              />
+              <span
+                className={cn(
+                  "truncate",
+                  !tab.active && "hidden @[22rem]/tabs:inline",
+                )}
+              >
+                {tab.label}
+              </span>
+              <PaneTabCount active={tab.active} count={tab.count} />
+            </TooltipTrigger>
+            <TooltipContent size="compact">{tab.label}</TooltipContent>
+          </Tooltip>
         );
       })}
       {extra.map((tab) => {

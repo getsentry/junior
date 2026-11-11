@@ -12,12 +12,13 @@ test("shows the primary destinations at the top of every desktop pane", async ({
 
   const primary = page.getByRole("navigation", { name: "Primary" });
   const destinations = primary.getByRole("link");
-  // Inbox carries the open review item count.
-  await expect(destinations).toHaveText([
-    "Conversations",
-    /^Inbox\d+$/,
-    "Automations",
-  ]);
+  // Inbox comes first and carries the open review item count.
+  await expect(destinations).toHaveCount(3);
+  await expect(destinations.nth(0)).toHaveAccessibleName(
+    /^Inbox, \d+ waiting$/,
+  );
+  await expect(destinations.nth(1)).toHaveAccessibleName("Conversations");
+  await expect(destinations.nth(2)).toHaveAccessibleName("Automations");
   await expect(
     primary.getByRole("link", { name: "Conversations" }),
   ).toHaveAttribute("aria-current", "page");
@@ -66,6 +67,38 @@ test("shows the primary destinations at the top of every desktop pane", async ({
   await expect.poll(paneWidth).toBe(startWidth + 32);
   await page.reload();
   await expect.poll(paneWidth).toBe(startWidth + 32);
+});
+
+test("collapses the other tabs to icons in a narrow pane", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(dashboard.baseURL);
+  const primary = page.getByRole("navigation", { name: "Primary" });
+  const inbox = primary.getByRole("link", { name: /^Inbox, \d+ waiting$/ });
+  const automations = primary.getByRole("link", { name: "Automations" });
+  const conversations = primary.getByRole("link", { name: "Conversations" });
+
+  await page.getByRole("separator", { name: "Resize sidebar" }).focus();
+  // Each arrow press moves the pane edge 16px: 400px wide, then 240px.
+  for (let step = 0; step < 5; step += 1)
+    await page.keyboard.press("ArrowRight");
+  await expect(automations.getByText("Automations")).toBeVisible();
+
+  for (let step = 0; step < 10; step += 1)
+    await page.keyboard.press("ArrowLeft");
+  // The tab in view keeps its label; the others keep their name as tooltip.
+  await expect(conversations.getByText("Conversations")).toBeVisible();
+  await expect(automations.getByText("Automations")).toBeHidden();
+  await expect(inbox.getByText(/^\d+$/)).toBeVisible();
+  await automations.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Automations");
+
+  await inbox.click();
+  await expect(inbox).toHaveAttribute("aria-current", "page");
+  await expect(inbox.getByText("Inbox")).toBeVisible();
+  await expect(conversations.getByText("Conversations")).toBeHidden();
 });
 
 test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
