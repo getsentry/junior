@@ -17,6 +17,7 @@ import {
   createNoopSlackWebhookRuntime,
   createSlackAdapterFixture,
   handleSlackWebhookAndFlush,
+  SLACK_BOT_USER_ID,
   slackEnvelope,
   slackWebhookRequest,
   type ConversationWorkQueueTestAdapter,
@@ -51,6 +52,10 @@ function trigger(match?: Record<string, string | string[]>) {
 async function postChannelMessage(input: {
   botId?: string;
   channel?: string;
+  isExtSharedChannel?: boolean;
+  /** Post as an app integration: a `bot_message` with a `bot_id` and no `user`. */
+  noUser?: boolean;
+  text?: string;
   threadTs?: string;
   ts: string;
   user?: string;
@@ -58,13 +63,20 @@ async function postChannelMessage(input: {
   const state = getStateAdapter();
   await state.connect();
   const slackAdapter = createSlackAdapterFixture();
-  const { botId, ...message } = input;
+  const { botId, isExtSharedChannel, noUser, ...message } = input;
   const envelope = slackEnvelope({
     eventType: "message",
     text: "How do I connect the Jira integration?",
     ...message,
   });
   if (botId) Object.assign(envelope.event, { bot_id: botId });
+  if (noUser) {
+    Reflect.deleteProperty(envelope.event, "user");
+    Object.assign(envelope.event, { subtype: "bot_message" });
+  }
+  if (isExtSharedChannel !== undefined) {
+    Object.assign(envelope, { is_ext_shared_channel: isExtSharedChannel });
+  }
   return await handleSlackWebhookAndFlush({
     request: slackWebhookRequest(envelope),
     services: {
@@ -234,6 +246,75 @@ describe("Slack channel-message automations", () => {
       destination: { channelId: "C123", threadTs: "1712346.0002" },
       metadata: { eventAutomationId: automation.id },
     });
+  });
+
+  it("runs for app integration posts that have no user only when its match names the bot ID", async () => {
+    const catalog = getEventCatalog();
+    const channelContext = context(
+      "U123",
+      "C123",
+      "public",
+      undefined,
+      TEAM_ID,
+    );
+    const { automation } = (await execute(
+      createAutomationTool(automationToolContext(channelContext), catalog),
+      {
+        instruction: "Review each new report.",
+        title: "Review reports",
+        outcomes: [
+          { action: "send_message", destination: "current_conversation" },
+        ],
+        trigger: trigger({ user_id: "B777" }),
+      },
+    )) as { automation: { id: string } };
+
+    // Another bot, a channel shared with another organization, a payload
+    // without the shared-channel flag, and a mention of Junior run nothing.
+    await postChannelMessage({
+      botId: "B888",
+      isExtSharedChannel: false,
+      noUser: true,
+      ts: "1712348.0001",
+    });
+    await postChannelMessage({
+      botId: "B777",
+      isExtSharedChannel: true,
+      noUser: true,
+      ts: "1712348.0002",
+    });
+    await postChannelMessage({
+      botId: "B777",
+      noUser: true,
+      ts: "1712348.0003",
+    });
+    await postChannelMessage({
+      botId: "B777",
+      isExtSharedChannel: false,
+      noUser: true,
+      text: `<@${SLACK_BOT_USER_ID}> summarize this`,
+      ts: "1712348.0004",
+    });
+    expect(queue.sentRecords()).toEqual([]);
+
+    // A post from the named bot in a workspace-only channel runs it once and
+    // replies in its thread, with system credentials.
+    await postChannelMessage({
+      botId: "B777",
+      isExtSharedChannel: false,
+      noUser: true,
+      ts: "1712348.0005",
+    });
+    const sent = queue.sentRecords();
+    expect(sent).toHaveLength(1);
+    const dispatch = await getDispatchRecord(
+      sent[0]!.conversationId.replace(/^agent-dispatch:/, ""),
+    );
+    expect(dispatch).toMatchObject({
+      destination: { channelId: "C123", threadTs: "1712348.0005" },
+      metadata: { eventAutomationId: automation.id },
+    });
+    expect(dispatch?.credentialSubject).toBeUndefined();
   });
 
   it("runs for thread replies only when its match names the thread location", async () => {

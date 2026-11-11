@@ -23,6 +23,7 @@ export const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
 const CHANNEL_RESOURCE_TYPE = "channel";
 const MESSAGE_POSTED_EVENT = "message.posted";
 const CHANNEL_ID_PATTERN = /^[CG][A-Z0-9]{2,}$/;
+const BOT_ID_PATTERN = /^B[A-Z0-9]{2,}$/;
 const CHANNEL_LOCATION = "channel";
 const THREAD_LOCATION = "thread";
 
@@ -36,7 +37,7 @@ const CHANNEL_MESSAGE_MATCH_FIELDS = eventMatchFieldsSchema.parse({
   userId: {
     kind: "string",
     description:
-      "Slack user ID of the message author. Required to run on bot posts, such as alert bots.",
+      "Slack user ID of the message author, or the bot ID (B…) of a bot post that has no user, such as an app integration. Required to run on bot posts.",
   },
   location: {
     kind: "string",
@@ -70,7 +71,7 @@ export function slackChannelMessageEvents(): EventRegistrationInput {
       [MESSAGE_POSTED_EVENT]: {
         reach: { anyOf: ["channelId"] },
         guidance:
-          "A person or bot posted a new message in this channel. A bot post runs the automation only when match names the bot in user_id. A thread reply runs it only when match.location names thread. A reply goes in the message's Slack thread. If the instructions do not apply to this message, end with no action.",
+          "A person or bot posted a new message in this channel. A bot post runs the automation only when match names the bot in user_id, by its user ID or, for a post with no user, its bot ID. A thread reply runs it only when match.location names thread. A reply goes in the message's Slack thread. If the instructions do not apply to this message, end with no action.",
       },
     },
     limits: {
@@ -144,6 +145,29 @@ export function requireSlackChannelMessageScope(
 }
 
 /**
+ * Return the bot ID of a Slack post that has a `bot_id` and no `user`, or
+ * nothing.
+ *
+ * App integrations and Workflows post this way, so the workspace member
+ * check cannot verify them. Accept them only in channels that Slack marks as
+ * not shared with another organization: only apps installed in this workspace
+ * can post there. A missing flag fails closed. These posts can run only
+ * channel-message automations that name the bot ID, never a Turn.
+ */
+export function slackWorkspaceBotPostId(input: {
+  botId?: string;
+  isExtSharedChannel: unknown;
+  user?: string;
+}): string | undefined {
+  if (input.user !== undefined || input.isExtSharedChannel !== false) {
+    return undefined;
+  }
+  return input.botId && BOT_ID_PATTERN.test(input.botId)
+    ? input.botId
+    : undefined;
+}
+
+/**
  * Build the Event for one new channel message or thread reply, or nothing.
  *
  * Slackbot posts do not count. Bot posts are marked with `postedByBot`, so
@@ -169,7 +193,7 @@ export function slackChannelMessageEvent(input: {
     eventType: MESSAGE_POSTED_EVENT,
     identifier: input.channelId,
     occurredAtMs: Math.floor(Number(input.ts) * 1000),
-    trustedSummary: `${postedByBot ? "The bot " : ""}<@${input.userId}> posted a new ${threadTs ? `thread reply under message ${threadTs}` : "message"} in <#${input.channelId}>.`,
+    trustedSummary: `${postedByBot ? "The bot " : ""}${BOT_ID_PATTERN.test(input.userId) ? input.userId : `<@${input.userId}>`} posted a new ${threadTs ? `thread reply under message ${threadTs}` : "message"} in <#${input.channelId}>.`,
     data: {
       channelId: input.channelId,
       location: threadTs ? THREAD_LOCATION : CHANNEL_LOCATION,

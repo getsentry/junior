@@ -46,6 +46,7 @@ import { ingestEventAutomations } from "@/chat/event-automations/ingest";
 import {
   SLACK_EVENT_NAMESPACE,
   slackChannelMessageEvent,
+  slackWorkspaceBotPostId,
 } from "@/chat/slack/channel-message-events";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { botConfig } from "@/chat/config";
@@ -540,6 +541,39 @@ async function routeParsedMessage(args: {
   args.runAfterUnlock(closeAnswered);
 }
 
+/**
+ * Run channel-message automations for a workspace bot post that has no Slack
+ * user. It never starts a Turn. A post that mentions Junior runs nothing, the
+ * same as a mention from a person.
+ */
+async function ingestWorkspaceBotPost(args: {
+  botPostId: string;
+  botUserId?: string;
+  channelId: string;
+  event: SlackInboundEvent;
+  queue: ConversationWorkQueue;
+  teamId?: string;
+  ts: string;
+}): Promise<void> {
+  const text = args.event.text ?? "";
+  if (!args.teamId) return;
+  if (args.botUserId && textMentionsBot(text, args.botUserId)) return;
+  const channelMessage = slackChannelMessageEvent({
+    botId: args.botPostId,
+    channelId: args.channelId,
+    subtype: args.event.subtype,
+    text,
+    threadTs: args.event.thread_ts,
+    ts: args.ts,
+    userId: args.botPostId,
+  });
+  if (!channelMessage) return;
+  await ingestEventAutomations(
+    { ...channelMessage, namespace: SLACK_EVENT_NAMESPACE },
+    { queue: args.queue, teamId: args.teamId },
+  );
+}
+
 async function handleSlackEvent(args: {
   body: SlackEventEnvelope;
   services: SlackWebhookServices;
@@ -683,6 +717,26 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
+          const botPostId =
+            event.type === "message"
+              ? slackWorkspaceBotPostId({
+                  botId: event.bot_id,
+                  isExtSharedChannel: args.body.is_ext_shared_channel,
+                  user: event.user,
+                })
+              : undefined;
+          if (botPostId) {
+            await ingestWorkspaceBotPost({
+              botPostId,
+              botUserId: adapter.botUserId,
+              channelId: event.channel,
+              event,
+              queue: args.services.queue,
+              teamId: installation.teamId,
+              ts: event.ts,
+            });
+            return;
+          }
           const member = await isSlackWorkspaceMember(event, state);
           setSpanAttributes({
             "app.slack.membership": member ? "verified" : "unverified",
