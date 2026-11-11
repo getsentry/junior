@@ -7,8 +7,9 @@ import type {
 import { ConversationLinkedWork } from "../conversations/ConversationLinkedWork";
 import { DetailsRow } from "../conversations/DetailsList";
 import { conversationPath } from "../conversations/conversationRoutes";
+import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
-import { chapterTitle, typeLabels } from "./walkthroughModel";
+import { chapterSlotLabel, chapterTitle, typeLabels } from "./walkthroughModel";
 
 const NO_WATCHES = new Map();
 
@@ -84,13 +85,6 @@ function ChapterList(props: {
   marks?: ReadonlyMap<string, ChapterMark>;
   onSelect?(index: number): void;
 }) {
-  // A slot can repeat, such as three "The change" chapters. The caption then
-  // tells them apart.
-  const titleCounts = new Map<string, number>();
-  for (const chapter of props.chapters) {
-    const title = chapterTitle(chapter);
-    titleCounts.set(title, (titleCounts.get(title) ?? 0) + 1);
-  }
   return (
     <div className="-mx-1.5 grid gap-3">
       {chapterGroups(props.chapters).map((group) => (
@@ -121,12 +115,16 @@ function ChapterList(props: {
                       {index + 1}
                     </span>
                     <span className="grid min-w-0 flex-1 gap-0.5">
-                      {chapterTitle(chapter)}
-                      {(titleCounts.get(chapterTitle(chapter)) ?? 0) > 1 ? (
-                        <span className="line-clamp-2 text-xs text-dashboard-text-faint">
-                          {chapter.caption}
-                        </span>
-                      ) : null}
+                      <span className="text-xs text-dashboard-text-faint">
+                        {chapterSlotLabel(chapter)}
+                      </span>
+                      <span className="line-clamp-2">
+                        <DisplayText
+                          inline
+                          links={false}
+                          text={chapterTitle(chapter)}
+                        />
+                      </span>
                     </span>
                     {mark ? (
                       <span className="shrink-0 text-xs text-amber-200">

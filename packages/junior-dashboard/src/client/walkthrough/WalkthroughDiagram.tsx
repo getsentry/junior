@@ -1,4 +1,12 @@
+import {
+  Graph,
+  layout,
+  type EdgeLabel,
+  type GraphLabel,
+  type NodeLabel,
+} from "@dagrejs/dagre";
 import type { WalkthroughDocument } from "@sentry/junior/api/schema";
+import { useMemo } from "react";
 
 import { cn } from "../styles";
 
@@ -7,41 +15,39 @@ type DiagramView = NonNullable<
   WalkthroughDocument["content"]["chapters"][number]["view"]
 >;
 
-const COLUMN_WIDTH = 172;
-const ROW_HEIGHT = 96;
-const NODE_WIDTH = 136;
-const NODE_HEIGHT = 44;
-const PAD = 12;
-const LABEL_PAD = 8;
-/** About how many characters fit in a node, in text-sm and in text-xs. */
-const SMALL_LABEL_CHARS = 16;
-const LABEL_FIT_CHARS = 20;
+const NODE_WIDTH = 156;
+const LINE_HEIGHT = 15;
+const NODE_PAD_Y = 12;
+/** About how many text-xs characters fit on one line of a node. */
+const LINE_CHARS = 21;
+const EDGE_LABEL_CHAR_WIDTH = 6;
+const MARGIN = 12;
 
 /**
- * Draw the Walkthrough's one diagram. A chapter's view picks what to show, so
- * the reader sees the same picture change from chapter to chapter.
+ * Draw one diagram. A chapter's view picks what to show, so the reader sees
+ * the same picture change from chapter to chapter. Junior lays it out; the
+ * model only names the nodes and edges.
  */
 export function WalkthroughDiagram(props: {
   diagram: Diagram;
   view: DiagramView;
 }) {
   const { diagram, view } = props;
-  const columns = Math.max(...diagram.nodes.map((n) => n.column)) + 1;
-  const rows = Math.max(...diagram.nodes.map((n) => n.row)) + 1;
-  const width = (columns - 1) * COLUMN_WIDTH + NODE_WIDTH + PAD * 2;
-  const height = (rows - 1) * ROW_HEIGHT + NODE_HEIGHT + PAD * 2;
+  const placed = useMemo(() => narrowestLayout(diagram), [diagram]);
   const shown = new Set(view.show);
   const highlighted = new Set(view.highlight);
   const added = new Set(view.added);
   const broken = new Map(view.broken.map((b) => [b.id, b.label]));
-  const nodes = new Map(diagram.nodes.map((node) => [node.id, node]));
 
   return (
     <svg
       aria-label="Diagram of the change"
-      className="block h-auto w-full max-w-2xl"
+      // Natural size, so text stays the size of the page text. A wide
+      // diagram shrinks to fit the column.
+      className="block h-auto max-w-full"
       role="img"
-      viewBox={`0 0 ${width} ${height}`}
+      viewBox={`0 0 ${placed.width} ${placed.height}`}
+      width={placed.width}
     >
       <defs>
         <marker
@@ -56,18 +62,14 @@ export function WalkthroughDiagram(props: {
           <path className="fill-current" d="M0,0 L8,4 L0,8 z" />
         </marker>
       </defs>
-      {diagram.edges.map((edge) => {
-        const from = nodes.get(edge.from);
-        const to = nodes.get(edge.to);
-        if (!from || !to) return null;
-        const [x1, y1, x2, y2] = edgeLine(from, to);
+      {placed.edges.map((edge) => {
         const brokenLabel = broken.get(edge.id);
         const label = brokenLabel ?? edge.label;
         return (
           <g
             className={cn(
               "transition-opacity",
-              !shown.has(edge.id) && "opacity-15",
+              !shown.has(edge.id) && "opacity-40",
               brokenLabel
                 ? "text-rose-300"
                 : highlighted.has(edge.id)
@@ -76,27 +78,22 @@ export function WalkthroughDiagram(props: {
             )}
             key={edge.id}
           >
-            <line
-              className="stroke-current"
+            <path
+              className="fill-none stroke-current"
+              d={edge.path}
               markerEnd="url(#walkthrough-arrow)"
               strokeDasharray={
                 added.has(edge.id) || brokenLabel ? "5 4" : undefined
               }
               strokeWidth={highlighted.has(edge.id) ? 2 : 1.25}
-              x1={x1}
-              x2={x2}
-              y1={y1}
-              y2={y2}
             />
-            {label ? (
+            {label && edge.labelAt ? (
               <text
-                className="fill-current font-sans text-xs"
-                // Put labels beside vertical edges and above the others.
-                textAnchor={Math.abs(x1 - x2) < 1 ? "start" : "middle"}
-                x={Math.abs(x1 - x2) < 1 ? x1 + 8 : (x1 + x2) / 2}
-                y={
-                  Math.abs(x1 - x2) < 1 ? (y1 + y2) / 2 + 4 : (y1 + y2) / 2 - 8
-                }
+                className="fill-current font-sans text-2xs"
+                dominantBaseline="central"
+                textAnchor="middle"
+                x={edge.labelAt.x}
+                y={edge.labelAt.y}
               >
                 {label}
               </text>
@@ -104,15 +101,15 @@ export function WalkthroughDiagram(props: {
           </g>
         );
       })}
-      {diagram.nodes.map((node) => {
-        const x = PAD + node.column * COLUMN_WIDTH;
-        const y = PAD + node.row * ROW_HEIGHT;
+      {placed.nodes.map((node) => {
         const isHighlighted = highlighted.has(node.id);
+        const top = node.y - node.height / 2;
+        const firstLine = node.y - ((node.lines.length - 1) * LINE_HEIGHT) / 2;
         return (
           <g
             className={cn(
               "transition-opacity",
-              !shown.has(node.id) && "opacity-15",
+              !shown.has(node.id) && "opacity-40",
             )}
             key={node.id}
           >
@@ -122,40 +119,35 @@ export function WalkthroughDiagram(props: {
                   ? "fill-dashboard-surface-active stroke-dashboard-accent"
                   : "fill-dashboard-surface-raised stroke-dashboard-border-heavy",
               )}
-              height={NODE_HEIGHT}
+              height={node.height}
               rx="8"
               strokeDasharray={added.has(node.id) ? "5 4" : undefined}
               strokeWidth={isHighlighted ? 1.5 : 1}
               width={NODE_WIDTH}
-              x={x}
-              y={y}
+              x={node.x - NODE_WIDTH / 2}
+              y={top}
             />
             <text
-              // A label can be up to 32 characters. A long one gets smaller
-              // text, then squeezes into the node instead of running past it.
-              className={cn(
-                "fill-dashboard-text font-sans",
-                node.label.length > SMALL_LABEL_CHARS ? "text-xs" : "text-sm",
-              )}
+              className="fill-dashboard-text font-sans text-xs"
               dominantBaseline="central"
-              {...(node.label.length > LABEL_FIT_CHARS
-                ? {
-                    lengthAdjust: "spacingAndGlyphs",
-                    textLength: NODE_WIDTH - LABEL_PAD * 2,
-                  }
-                : undefined)}
               textAnchor="middle"
-              x={x + NODE_WIDTH / 2}
-              y={y + NODE_HEIGHT / 2}
             >
-              {node.label}
+              {node.lines.map((line, index) => (
+                <tspan
+                  key={index}
+                  x={node.x}
+                  y={firstLine + index * LINE_HEIGHT}
+                >
+                  {line}
+                </tspan>
+              ))}
             </text>
             {added.has(node.id) ? (
               <text
                 className="fill-dashboard-accent font-sans text-2xs"
                 textAnchor="end"
-                x={x + NODE_WIDTH - 8}
-                y={y + 13}
+                x={node.x + NODE_WIDTH / 2 - 6}
+                y={top + 11}
               >
                 new
               </text>
@@ -167,37 +159,129 @@ export function WalkthroughDiagram(props: {
   );
 }
 
-type GridNode = Diagram["nodes"][number];
+type PlacedDiagram = {
+  width: number;
+  height: number;
+  nodes: {
+    id: string;
+    lines: string[];
+    x: number;
+    y: number;
+    height: number;
+  }[];
+  edges: {
+    id: string;
+    label?: string;
+    path: string;
+    labelAt?: { x: number; y: number };
+  }[];
+};
 
-/** Center-to-center line, cut at both node borders. */
-function edgeLine(
-  from: GridNode,
-  to: GridNode,
-): [number, number, number, number] {
-  const a = center(from);
-  const b = center(to);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const cut = (sign: 1 | -1) => {
-    const scale = Math.min(
-      dx === 0 ? Infinity : NODE_WIDTH / 2 / Math.abs(dx),
-      dy === 0 ? Infinity : NODE_HEIGHT / 2 / Math.abs(dy),
-    );
-    return { x: sign * dx * scale, y: sign * dy * scale };
-  };
-  const start = cut(1);
-  const end = cut(-1);
-  return [
-    a.x + start.x,
-    a.y + start.y,
-    b.x + end.x - Math.sign(dx) * 2,
-    b.y + end.y - Math.sign(dy) * 2,
-  ];
+/**
+ * The diagram sits in a narrow column and shrinks to fit it. A chain is
+ * narrow top to bottom, and a fan of callers is narrow left to right, so
+ * use the narrower layout.
+ */
+function narrowestLayout(diagram: Diagram): PlacedDiagram {
+  const down = placeDiagram(diagram, "TB");
+  const across = placeDiagram(diagram, "LR");
+  return across.width < down.width ? across : down;
 }
 
-function center(node: GridNode) {
+/** Lay the diagram out with dagre. */
+function placeDiagram(diagram: Diagram, rankdir: "TB" | "LR"): PlacedDiagram {
+  const graph = new Graph<GraphLabel, NodeLabel, EdgeLabel>({
+    multigraph: true,
+  });
+  graph.setGraph({
+    rankdir,
+    nodesep: 24,
+    ranksep: 36,
+    marginx: MARGIN,
+    marginy: MARGIN,
+  });
+  graph.setDefaultEdgeLabel(() => ({}));
+  const lines = new Map(
+    diagram.nodes.map((node) => [node.id, wrapLabel(node.label)]),
+  );
+  for (const node of diagram.nodes) {
+    const count = lines.get(node.id)?.length ?? 1;
+    graph.setNode(node.id, {
+      width: NODE_WIDTH,
+      height: count * LINE_HEIGHT + NODE_PAD_Y * 2,
+    });
+  }
+  for (const edge of diagram.edges) {
+    if (!graph.hasNode(edge.from) || !graph.hasNode(edge.to)) continue;
+    graph.setEdge(
+      edge.from,
+      edge.to,
+      edge.label
+        ? {
+            width: edge.label.length * EDGE_LABEL_CHAR_WIDTH,
+            height: LINE_HEIGHT,
+            labelpos: "c",
+          }
+        : {},
+      edge.id,
+    );
+  }
+  layout(graph);
+
+  const nodes = diagram.nodes.map((node) => {
+    const placed = graph.node(node.id);
+    return {
+      id: node.id,
+      lines: lines.get(node.id) ?? [node.label],
+      x: placed.x ?? 0,
+      y: placed.y ?? 0,
+      height: placed.height,
+    };
+  });
+  const edges = diagram.edges.flatMap((edge) => {
+    const placed = graph.edge({ v: edge.from, w: edge.to, name: edge.id });
+    const points = placed?.points ?? [];
+    if (points.length < 2) return [];
+    return [
+      {
+        id: edge.id,
+        label: edge.label,
+        path: points
+          .map((p, index) => `${index ? "L" : "M"}${p.x},${p.y}`)
+          .join(" "),
+        labelAt:
+          placed?.x === undefined || placed.y === undefined
+            ? undefined
+            : { x: placed.x, y: placed.y },
+      },
+    ];
+  });
+  const size = graph.graph();
   return {
-    x: PAD + node.column * COLUMN_WIDTH + NODE_WIDTH / 2,
-    y: PAD + node.row * ROW_HEIGHT + NODE_HEIGHT / 2,
+    width: size.width ?? NODE_WIDTH,
+    height: size.height ?? LINE_HEIGHT,
+    nodes,
+    edges,
   };
+}
+
+/** Break a label into lines at spaces. A word that is too long gets cut. */
+function wrapLabel(label: string): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of label.split(/\s+/).filter(Boolean)) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= LINE_CHARS) {
+      line = next;
+      continue;
+    }
+    if (line) lines.push(line);
+    line = word;
+    while (line.length > LINE_CHARS) {
+      lines.push(line.slice(0, LINE_CHARS));
+      line = line.slice(LINE_CHARS);
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [label];
 }

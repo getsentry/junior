@@ -8,14 +8,14 @@ import {
 describe("Walkthrough questions", () => {
   it("names the chapter in the question and reads it back", () => {
     const message = chapterQuestion(
-      { title: "The change", caption: "A click claims a version." },
+      { title: "A click claims a version." },
       "What if two people click at once?",
     );
     expect(message).toBe(
-      "> **The change** · A click claims a version.\n\nWhat if two people click at once?",
+      "> **A click claims a version.**\n\nWhat if two people click at once?",
     );
     expect(readChapterQuestion(message)).toEqual({
-      chapter: "The change",
+      chapter: "A click claims a version.",
       text: "What if two people click at once?",
     });
     expect(readChapterQuestion("Which PR first?")).toEqual({

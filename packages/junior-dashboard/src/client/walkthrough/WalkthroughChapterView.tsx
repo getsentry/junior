@@ -18,6 +18,7 @@ import {
   ReferenceList,
 } from "./WalkthroughEvidence";
 import {
+  chapterSlotLabel,
   chapterTitle,
   citedEvidence,
   evidencePrs,
@@ -77,6 +78,9 @@ export function WalkthroughChapterView(props: {
           <span className="tabular-nums">
             {props.index + 1} of {props.total}
           </span>
+          <span className="font-medium text-dashboard-text-subtle">
+            {chapterSlotLabel(chapter)}
+          </span>
           {prs.map((pr) => (
             <span className="font-mono" key={pr}>
               #{pr}
@@ -87,8 +91,8 @@ export function WalkthroughChapterView(props: {
             <ChangeBadge>Changed</ChangeBadge>
           ) : null}
         </div>
-        <h2 className="m-0 font-display text-3xl leading-tight font-medium text-dashboard-text">
-          {chapterTitle(chapter)}
+        <h2 className="m-0 max-w-3xl font-display text-2xl leading-tight font-medium text-dashboard-text">
+          <DisplayText inline text={chapterTitle(chapter)} />
         </h2>
       </header>
 
@@ -118,9 +122,6 @@ export function WalkthroughChapterView(props: {
         )}
       >
         <div className="grid max-w-2xl gap-3">
-          <p className="m-0 text-lg leading-7 font-medium text-dashboard-text">
-            <DisplayText inline text={chapter.caption} />
-          </p>
           <CitedProse
             className="text-base leading-7 text-dashboard-text-subtle"
             refs={refs}

@@ -52,7 +52,12 @@ export function WalkthroughChangeSummaryView(props: {
                   onClick={() => props.onOpenChapter(entry.index)}
                   type="button"
                 >
-                  {entry.index + 1}. {chapterTitle(chapter)}
+                  {entry.index + 1}.{" "}
+                  <DisplayText
+                    inline
+                    links={false}
+                    text={chapterTitle(chapter)}
+                  />
                   {entry.added ? " (new)" : null}
                 </button>
                 {entry.captions.map((caption) => (

@@ -185,9 +185,7 @@ function DecisionSummary(props: {
             <DisplayText inline text={answer.note} />
           </span>
         ) : null}
-        <span className="text-dashboard-text-muted">
-          {props.chapterTitle}
-          {" · "}
+        <span className="line-clamp-1 text-dashboard-text-muted">
           <span
             className={cn(
               answer?.value === "agree"
@@ -199,6 +197,12 @@ function DecisionSummary(props: {
           >
             {answer ? answerLabels[answer.value] : "Not answered"}
           </span>
+          {props.chapterTitle ? (
+            <>
+              {" · "}
+              <DisplayText inline links={false} text={props.chapterTitle} />
+            </>
+          ) : null}
         </span>
       </span>
       <ChevronRight

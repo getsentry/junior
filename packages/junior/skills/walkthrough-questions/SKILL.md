@@ -16,9 +16,9 @@ Walkthrough. Say that questions start from the Walkthrough page, and stop.
 
 1. Call `readWalkthrough` once per Conversation, before your first answer.
    Later Turns can use the result that is already in the history.
-2. A question that starts with a quoted chapter, such as
-   `> **The change** · Plugins read code changes.`, is about that chapter.
-   Find it by its caption and start there.
+2. A question that starts with a quoted chapter caption, such as
+   `> **Plugins read code changes.**`, is about that chapter. Find the
+   chapter with that caption and start there.
 3. Read code only when the answer needs it. `readWalkthroughCode` with a PR
    number returns that code change's diff. Add a `path` to read one file at
    its head commit, also a file that the change does not touch, such as a

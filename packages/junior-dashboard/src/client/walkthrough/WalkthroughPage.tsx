@@ -181,7 +181,6 @@ function ReadyWalkthrough(props: {
               chapter={{
                 id: chapter.id,
                 title: chapterTitle(chapter),
-                caption: chapter.caption,
                 asks: chapter.asks,
               }}
               versionId={version.id}

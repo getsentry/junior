@@ -18,7 +18,7 @@ import {
 type Check = WalkthroughDocument["checks"][number];
 type Message = WalkthroughDocument["messages"][number];
 
-/** The chapter heading for each slot. The model fills slots; it never names them. */
+/** The label of each slot. The model fills slots; it never names them. */
 const slotLabels: Record<string, string> = {
   how_it_works: "How it works",
   gap: "The gap",
@@ -52,8 +52,16 @@ export const typeLabels: Record<WalkthroughChapter["type"], string> = {
   ship_check: "Ship check",
 };
 
-/** The heading of one chapter. */
+/**
+ * The heading of one chapter: its caption. A slot repeats, such as several
+ * "The change" chapters in a stack, so the slot is only a label above it.
+ */
 export function chapterTitle(chapter: WalkthroughChapter): string {
+  return chapter.caption;
+}
+
+/** The slot label shown above a chapter heading. */
+export function chapterSlotLabel(chapter: WalkthroughChapter): string {
   return slotLabels[chapter.slot] ?? chapter.slot;
 }
 
@@ -286,21 +294,21 @@ function markdownLocation(location: { label: string; url?: string }): string {
 }
 
 /** The chapter that a question is about, as the question quotes it. */
-export type QuestionChapter = { title: string; caption: string };
+export type QuestionChapter = { title: string };
 
 /**
- * Write a question about one chapter. The quote line names the chapter, so
- * the agent and the transcript both see it.
+ * Write a question about one chapter. The quote line names the chapter by
+ * its title, which is unique, so the agent and the transcript both see it.
  */
 export function chapterQuestion(
   chapter: QuestionChapter | undefined,
   text: string,
 ): string {
   if (!chapter) return text;
-  return `> **${chapter.title}** · ${chapter.caption}\n\n${text}`;
+  return `> **${chapter.title}**\n\n${text}`;
 }
 
-const CHAPTER_QUOTE = /^> \*\*(.+?)\*\* · .*\n\n/;
+const CHAPTER_QUOTE = /^> \*\*(.+?)\*\*\n\n/;
 
 /** Split a question into its chapter title, if it names one, and its text. */
 export function readChapterQuestion(message: string): {
