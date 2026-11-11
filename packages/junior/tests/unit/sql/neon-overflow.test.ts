@@ -3,16 +3,24 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createNeonJuniorSqlExecutor } from "@/db/neon";
 import { juniorConversations } from "@/db/schema";
+import { ErrorEvent } from "undici";
+import { logException } from "@/chat/logging";
 import { mswServer } from "../../msw/server";
 
 const CONNECTION_STRING =
   "postgresql://junior:secret@ep-overflow-test.test.aws.neon.tech/neondb";
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logException: vi.fn(),
+}));
 
 const wire = vi.hoisted(() => ({
   clientsOpened: 0,
   clientsReady: 0,
   clientsClosed: 0,
   failNextConnect: false,
+  connectError: undefined as unknown,
   websocketQueries: [] as string[],
   httpQueries: [] as string[],
 }));
@@ -25,13 +33,13 @@ vi.mock("@neondatabase/serverless", async (importOriginal) => {
   class FakeClient extends EventEmitter {
     _queryable = true;
     _ending = false;
-    connect(callback: (error?: Error) => void) {
+    connect(callback: (error?: unknown) => void) {
       wire.clientsOpened++;
       const failed = wire.failNextConnect;
       wire.failNextConnect = false;
       setImmediate(() => {
         if (failed) {
-          callback(new Error("connection refused"));
+          callback(wire.connectError ?? new Error("connection refused"));
           return;
         }
         wire.clientsReady++;
@@ -89,6 +97,8 @@ describe("Neon pool overflow", () => {
     wire.clientsReady = 0;
     wire.clientsClosed = 0;
     wire.failNextConnect = false;
+    wire.connectError = undefined;
+    vi.mocked(logException).mockClear();
     wire.websocketQueries.length = 0;
     wire.httpQueries.length = 0;
     // The driver sends HTTP queries to the regional API host.
@@ -174,7 +184,9 @@ describe("Neon pool overflow", () => {
 
   it("keeps a failed background connect from failing queries", async () => {
     await executor.query("select 'warm'");
+    const cause = new Error("getaddrinfo ENOTFOUND ep-overflow-test");
     wire.failNextConnect = true;
+    wire.connectError = new ErrorEvent("error", { message: "", error: cause });
 
     const [first, second] = await Promise.all([
       executor.query<{ transport: string }>("select 1"),
@@ -185,6 +197,16 @@ describe("Neon pool overflow", () => {
       "http",
     ]);
     await vi.waitFor(() => expect(wire.clientsOpened).toBe(2));
+    await vi.waitFor(() =>
+      expect(logException).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: `WebSocket connect failed: ${cause.message}`,
+          cause,
+        }),
+        "db.pool.client.connect_failed",
+        expect.anything(),
+      ),
+    );
 
     // The pool still serves queries, and the next overflow grows it again.
     await Promise.all([executor.query("select 3"), executor.query("select 4")]);
