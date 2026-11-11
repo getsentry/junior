@@ -5,15 +5,15 @@ import {
   type GraphLabel,
   type NodeLabel,
 } from "@dagrejs/dagre";
-import type { WalkthroughDocument } from "@sentry/junior/api/schema";
+import type {
+  WalkthroughChapter,
+  WalkthroughDiagram as Diagram,
+} from "@sentry/junior/api/schema";
 import { useMemo } from "react";
 
 import { cn } from "../styles";
 
-type Diagram = WalkthroughDocument["content"]["diagram"];
-type DiagramView = NonNullable<
-  WalkthroughDocument["content"]["chapters"][number]["view"]
->;
+type DiagramView = NonNullable<WalkthroughChapter["view"]>;
 
 const NODE_WIDTH = 156;
 const LINE_HEIGHT = 15;
@@ -89,8 +89,13 @@ export function WalkthroughDiagram(props: {
             />
             {label && edge.labelAt ? (
               <text
-                className="fill-current font-sans text-2xs"
+                // A halo in the page color keeps the label readable where
+                // it crosses its own edge.
+                className="fill-current stroke-dashboard-bg font-sans text-2xs"
                 dominantBaseline="central"
+                paintOrder="stroke"
+                strokeLinejoin="round"
+                strokeWidth={4}
                 textAnchor="middle"
                 x={edge.labelAt.x}
                 y={edge.labelAt.y}

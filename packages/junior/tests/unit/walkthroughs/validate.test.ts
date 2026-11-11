@@ -6,6 +6,7 @@ const lockFile = "src/run-lock.ts";
 const retryFile = "src/retry.ts";
 
 const refs = {
+  prs: new Set([3150]),
   files: [
     {
       pr: 3150,
@@ -45,13 +46,16 @@ function output(overrides: Record<string, unknown> = {}) {
   return walkthroughOutputSchema.parse({
     title: "Automations run once per tick",
     intent: "This PR fixes a bug where an automation ran twice during deploys.",
-    diagram: {
-      nodes: [
-        { id: "scheduler", label: "Scheduler", column: 0, row: 0 },
-        { id: "lock", label: "Run lock", column: 1, row: 0 },
-      ],
-      edges: [{ id: "s-l", from: "scheduler", to: "lock" }],
-    },
+    diagrams: [
+      {
+        pr: 3150,
+        nodes: [
+          { id: "scheduler", label: "Scheduler" },
+          { id: "lock", label: "Run lock" },
+        ],
+        edges: [{ id: "s-l", from: "scheduler", to: "lock" }],
+      },
+    ],
     chapters: [
       causeChapter([
         { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
@@ -215,6 +219,45 @@ describe("validateWalkthrough", () => {
     expect(validateWalkthrough(uncited, refs)).toEqual([
       "cause cites [2], which is not in its evidence.",
       "cause never cites evidence [1].",
+    ]);
+  });
+
+  it("rejects repeated captions, question decisions, and diagrams that do not fit the stack", () => {
+    const evidence = [
+      { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
+    ];
+    const problems = validateWalkthrough(
+      output({
+        diagrams: [
+          { pr: 3150, nodes: [{ id: "lock", label: "Run lock" }], edges: [] },
+          { pr: 3151, nodes: [{ id: "retry", label: "Retry" }], edges: [] },
+        ],
+        chapters: [
+          {
+            ...causeChapter(evidence),
+            view: { pr: 3150, show: ["lock"] },
+            decisions: [
+              {
+                id: "lock-ttl",
+                claim: "Is a 30 second lock long enough?",
+                origin: { kind: "assumed" },
+              },
+            ],
+          },
+          {
+            ...causeChapter(evidence),
+            id: "cause-again",
+            view: { pr: 3152, show: ["retry"] },
+          },
+        ],
+      }),
+      refs,
+    );
+    expect(problems).toEqual([
+      "A diagram is for PR #3151, which is not in the stack.",
+      "Chapters cause and cause-again have the same caption. Make each caption unique.",
+      "Decision lock-ttl is a question. Write the claim as a statement, and put the doubt in concern.",
+      "Chapter cause-again shows the diagram for PR #3152, which has none.",
     ]);
   });
 

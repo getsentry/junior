@@ -67,6 +67,9 @@ write the story again.
 
 - `intent` says what kind of change this is first: "This PR fixes a bug
   where…", "This stack adds…".
+- Each chapter `caption` is its title in the chapter list. Make each one
+  unique: a stack has many chapters in the same slot, and only the caption
+  tells them apart.
 - Each chapter `body` is two or three short sentences of prose for a reader
   with no context. Cite each evidence item by its 1-based index, such as
   `[2]`, and cite every item.
@@ -76,9 +79,20 @@ write the story again.
 - Add a decision only for something the reader must judge: an assumption that
   nobody confirmed, a behavior change, a missing signal, or a question that
   nobody asked.
+- A decision `claim` is a statement that the reader agrees with or asks to
+  change, such as "Three retries are enough to recover a lost lock." Never
+  write it as a question. Put what could make the claim wrong in `concern`.
 - `asks` are questions a reader is likely to ask at that chapter.
 - If one code change mixes types, such as a feature and a refactor, add a
   `splits` entry for it.
+
+## Diagrams
+
+- Draw one diagram for each code change that has a flow worth showing. Set
+  its `pr`. Use 10 nodes or fewer: the parts that the code change touches
+  and how they connect. Junior lays the diagram out.
+- A chapter `view` names the `pr` of the diagram that it shows and the node
+  and edge ids to show. The other parts fade.
 
 ## Evidence
 

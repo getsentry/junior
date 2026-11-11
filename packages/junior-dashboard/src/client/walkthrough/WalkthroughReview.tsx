@@ -178,7 +178,7 @@ function DecisionSummary(props: {
     >
       <span className="grid min-w-0 gap-0.5">
         <span className="line-clamp-2 text-dashboard-text">
-          <DisplayText inline text={props.decision.question} />
+          <DisplayText inline text={props.decision.claim} />
         </span>
         {answer?.note ? (
           <span className="line-clamp-2 text-dashboard-text-subtle">

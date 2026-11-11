@@ -67,7 +67,7 @@ async function listedIds(): Promise<string[]> {
 
 function document(versionId: string) {
   return walkthroughDocumentSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     versionId,
     contentVersionId: versionId,
     repository: "getsentry/junior",
@@ -82,10 +82,13 @@ function document(versionId: string) {
     content: walkthroughOutputSchema.parse({
       title: "Walkthroughs read code changes",
       intent: "This stack adds the Walkthrough format and provider reads.",
-      diagram: {
-        nodes: [{ id: "plugin", label: "Plugin", column: 0, row: 0 }],
-        edges: [],
-      },
+      diagrams: [
+        {
+          pr: 3087,
+          nodes: [{ id: "plugin", label: "Plugin" }],
+          edges: [],
+        },
+      ],
       chapters: [
         {
           id: "change",
@@ -304,10 +307,13 @@ function submitOutput(seq: number) {
   return {
     title: "Retries wait longer",
     intent: "This PR changes the retry delay and adds jitter.",
-    diagram: {
-      nodes: [{ id: "retry", label: "Retry", column: 0, row: 0 }],
-      edges: [],
-    },
+    diagrams: [
+      {
+        pr: 3087,
+        nodes: [{ id: "retry", label: "Retry" }],
+        edges: [],
+      },
+    ],
     chapters: [
       {
         id: "change",

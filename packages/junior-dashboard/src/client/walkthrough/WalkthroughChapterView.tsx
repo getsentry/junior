@@ -53,6 +53,9 @@ export function WalkthroughChapterView(props: {
   const prs = stacked ? evidencePrs(chapter.evidence) : [];
   const refs = citedEvidence(document, chapter.evidence);
   const scope = chapter.id;
+  const diagram = chapter.view
+    ? document.content.diagrams.find((d) => d.pr === chapter.view?.pr)
+    : undefined;
   // After an update, decisions follow what changed, since that is what the
   // reviewer judges again.
   const changed = props.changes.length > 0;
@@ -117,7 +120,7 @@ export function WalkthroughChapterView(props: {
       <div
         className={cn(
           "grid gap-6",
-          chapter.view &&
+          diagram &&
             "@3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] @3xl:items-start",
         )}
       >
@@ -134,11 +137,8 @@ export function WalkthroughChapterView(props: {
             scope={scope}
           />
         </div>
-        {chapter.view ? (
-          <WalkthroughDiagram
-            diagram={document.content.diagram}
-            view={chapter.view}
-          />
+        {diagram && chapter.view ? (
+          <WalkthroughDiagram diagram={diagram} view={chapter.view} />
         ) : null}
       </div>
 

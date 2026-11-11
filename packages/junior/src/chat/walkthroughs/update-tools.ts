@@ -39,7 +39,7 @@ import {
   walkthroughFileHashes,
   type WalkthroughStackChanges,
 } from "./update";
-import { validateWalkthroughUpdate } from "./validate";
+import { validateWalkthroughUpdate, walkthroughDiagramIds } from "./validate";
 
 export const READ_PREVIOUS_WALKTHROUGH_TOOL_NAME = "readPreviousWalkthrough";
 
@@ -180,10 +180,7 @@ export function createWalkthroughUpdateTools(
             changedChapterIds: new Set(changes.changedChapters),
             decisionIds: walkthroughDecisionIds(previous),
             changedDecisionIds: new Set(feedback),
-            diagramIds: new Set([
-              ...previous.content.diagram.nodes.map((node) => node.id),
-              ...previous.content.diagram.edges.map((edge) => edge.id),
-            ]),
+            diagrams: walkthroughDiagramIds(previous.content.diagrams),
             changedFiles: changes.changedFiles,
           },
         );

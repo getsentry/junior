@@ -24,7 +24,7 @@ const versionId = "v1";
 const decisions: ReviewDecision[] = [
   {
     id: "fork-prs",
-    question: "Should forks stop the stack walk?",
+    claim: "Forks need not stop the stack walk.",
     chapterId: "github-reads",
     chapterIndex: 1,
     prs: [3088],
@@ -35,7 +35,7 @@ const decisions: ReviewDecision[] = [
   },
   {
     id: "no-fk",
-    question: "Is no foreign key fine here?",
+    claim: "No foreign key is needed here.",
     chapterId: "versions-table",
     chapterIndex: 2,
     prs: [3088],
@@ -43,7 +43,7 @@ const decisions: ReviewDecision[] = [
   },
   {
     id: "other-layer",
-    question: "Does this belong in #3090?",
+    claim: "This belongs in #3090.",
     chapterId: "submit-tool",
     chapterIndex: 3,
     prs: [3090],
@@ -83,8 +83,8 @@ describe("Walkthrough review text", () => {
       [
         "Nice stack.",
         "**Changes requested**",
-        "1. Stop at forks. ([`packages/junior-github/src/code-changes.ts:143`](https://github.com/getsentry/junior/blob/abc/packages/junior-github/src/code-changes.ts#L143))\n   > Should forks stop the stack walk?",
-        "**Agreed**\n- Is no foreign key fine here?",
+        "1. Stop at forks. ([`packages/junior-github/src/code-changes.ts:143`](https://github.com/getsentry/junior/blob/abc/packages/junior-github/src/code-changes.ts#L143))\n   > Forks need not stop the stack walk.",
+        "**Agreed**\n- No foreign key is needed here.",
       ].join("\n\n"),
     );
   });

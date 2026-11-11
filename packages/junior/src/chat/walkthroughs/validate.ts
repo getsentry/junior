@@ -6,6 +6,8 @@ import {
   WALKTHROUGH_TEMPLATES,
   type WalkthroughChapter,
   type WalkthroughCodeRef,
+  type WalkthroughDecision,
+  type WalkthroughDiagram,
   type WalkthroughEvidence,
   type WalkthroughOutput,
   type WalkthroughUpdateOutput,
@@ -14,6 +16,8 @@ import type { WalkthroughDiffFile } from "./diff";
 
 /** What a Walkthrough may cite, as read from the provider and the source Conversation. */
 export type WalkthroughInputRefs = {
+  /** Numbers of the code changes in the stack. */
+  prs: ReadonlySet<number>;
   /** Mechanical files are left out, so they cannot be cited and need no coverage. */
   files: readonly WalkthroughDiffFile[];
   /**
@@ -33,6 +37,24 @@ export function contextFileKey(pr: number, path: string): string {
   return `${pr}:${path}`;
 }
 
+/** Node and edge ids of each diagram, by code change. */
+export type DiagramIds = ReadonlyMap<number, ReadonlySet<string>>;
+
+/** Collect the ids that chapter views may show, by code change. */
+export function walkthroughDiagramIds(
+  diagrams: readonly WalkthroughDiagram[],
+): DiagramIds {
+  return new Map(
+    diagrams.map((diagram) => [
+      diagram.pr,
+      new Set([
+        ...diagram.nodes.map((node) => node.id),
+        ...diagram.edges.map((edge) => edge.id),
+      ]),
+    ]),
+  );
+}
+
 /** Previous version facts that an update may refer to. */
 export type WalkthroughParentRefs = {
   chapterIds: ReadonlySet<string>;
@@ -42,7 +64,8 @@ export type WalkthroughParentRefs = {
   decisionIds: ReadonlySet<string>;
   /** Decisions that got "change" feedback. */
   changedDecisionIds: ReadonlySet<string>;
-  diagramIds: ReadonlySet<string>;
+  /** Node and edge ids of each diagram, by code change. */
+  diagrams: DiagramIds;
   /** `contextFileKey` of files whose diff changed. Only these need coverage. */
   changedFiles: ReadonlySet<string>;
 };
@@ -55,23 +78,28 @@ export function validateWalkthrough(
   output: WalkthroughOutput,
   refs: WalkthroughInputRefs,
 ): string[] {
-  const problems: string[] = [];
-  const diagramIds = new Set([
-    ...output.diagram.nodes.map((node) => node.id),
-    ...output.diagram.edges.map((edge) => edge.id),
-  ]);
-  const nodeIds = new Set(output.diagram.nodes.map((node) => node.id));
-  for (const edge of output.diagram.edges) {
-    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
-      problems.push(`Edge ${edge.id} joins a node that does not exist.`);
-    }
-  }
+  const problems: string[] = [...diagramProblems(output.diagrams, refs)];
+  const diagrams = walkthroughDiagramIds(output.diagrams);
   problems.push(
     ...duplicateIds(
       "chapter",
       output.chapters.map((c) => c.id),
     ),
   );
+  // The caption is the chapter title, and a slot such as "The change"
+  // repeats, so only the caption tells chapters apart.
+  const captions = new Map<string, string>();
+  for (const chapter of output.chapters) {
+    const key = chapter.caption.trim().toLowerCase();
+    const first = captions.get(key);
+    if (first) {
+      problems.push(
+        `Chapters ${first} and ${chapter.id} have the same caption. Make each caption unique.`,
+      );
+    } else {
+      captions.set(key, chapter.id);
+    }
+  }
   problems.push(
     ...duplicateIds(
       "decision",
@@ -79,7 +107,7 @@ export function validateWalkthrough(
     ),
   );
   for (const chapter of output.chapters) {
-    problems.push(...chapterProblems(chapter, refs, diagramIds));
+    problems.push(...chapterProblems(chapter, refs, diagrams));
   }
   const bugFixCause = output.chapters.find(
     (c) => c.type === "bug_fix" && c.slot === "cause",
@@ -137,6 +165,7 @@ export function validateWalkthroughUpdate(
     problems.push(
       ...item.evidence.flatMap((e) => evidenceProblems(e, refs)),
       ...citationProblems(item.id, item.body, item.evidence.length),
+      ...item.decisions.flatMap(claimProblems),
     );
   }
   const touched = new Set(output.items.map((item) => item.touches));
@@ -151,7 +180,7 @@ export function validateWalkthroughUpdate(
     if (parent.chapterIds.has(chapter.id)) {
       problems.push(`Added chapter ${chapter.id} reuses an existing id.`);
     }
-    problems.push(...chapterProblems(chapter, refs, parent.diagramIds));
+    problems.push(...chapterProblems(chapter, refs, parent.diagrams));
   }
   problems.push(
     ...coverageProblems(
@@ -171,10 +200,53 @@ export function validateWalkthroughUpdate(
   return problems;
 }
 
+/** Each diagram belongs to one code change, and its edges join its nodes. */
+function diagramProblems(
+  diagrams: readonly WalkthroughDiagram[],
+  refs: WalkthroughInputRefs,
+): string[] {
+  const problems: string[] = [];
+  const seen = new Set<number>();
+  for (const diagram of diagrams) {
+    if (!refs.prs.has(diagram.pr)) {
+      problems.push(
+        `A diagram is for PR #${diagram.pr}, which is not in the stack.`,
+      );
+    }
+    if (seen.has(diagram.pr)) {
+      problems.push(
+        `PR #${diagram.pr} has more than one diagram. Use one per PR.`,
+      );
+    }
+    seen.add(diagram.pr);
+    const nodeIds = new Set(diagram.nodes.map((node) => node.id));
+    for (const edge of diagram.edges) {
+      if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+        problems.push(
+          `Edge ${edge.id} in the diagram for PR #${diagram.pr} joins a node that is not in that diagram.`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * A reviewer agrees with a decision or asks to change it, so it must be a
+ * claim. A question reads oddly under "Agreed" in the copied review.
+ */
+function claimProblems(decision: WalkthroughDecision): string[] {
+  return decision.claim.trim().endsWith("?")
+    ? [
+        `Decision ${decision.id} is a question. Write the claim as a statement, and put the doubt in concern.`,
+      ]
+    : [];
+}
+
 function chapterProblems(
   chapter: WalkthroughChapter,
   refs: WalkthroughInputRefs,
-  diagramIds: ReadonlySet<string> | undefined,
+  diagrams: DiagramIds,
 ): string[] {
   const problems = [
     ...chapter.evidence.flatMap((e) => evidenceProblems(e, refs)),
@@ -187,6 +259,7 @@ function chapterProblems(
     );
   }
   for (const decision of chapter.decisions) {
+    problems.push(...claimProblems(decision));
     if (
       decision.evidence !== undefined &&
       decision.evidence >= chapter.evidence.length
@@ -196,8 +269,15 @@ function chapterProblems(
       );
     }
   }
-  if (chapter.view && diagramIds) {
+  if (chapter.view) {
     const view = chapter.view;
+    const diagramIds = diagrams.get(view.pr);
+    if (!diagramIds) {
+      return [
+        ...problems,
+        `Chapter ${chapter.id} shows the diagram for PR #${view.pr}, which has none.`,
+      ];
+    }
     const ids = [
       ...view.show,
       ...view.highlight,
@@ -206,7 +286,9 @@ function chapterProblems(
     ];
     for (const id of ids) {
       if (!diagramIds.has(id)) {
-        problems.push(`Chapter ${chapter.id} shows unknown diagram id ${id}.`);
+        problems.push(
+          `Chapter ${chapter.id} shows ${id}, which is not in the diagram for PR #${view.pr}.`,
+        );
       }
     }
   }

@@ -119,7 +119,7 @@ async function setup(walkthroughs: boolean) {
 /** A stored document for a version of the one-layer stack. */
 function readyDocument(versionId: string) {
   return walkthroughDocumentSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     versionId,
     contentVersionId: versionId,
     repository: "getsentry/junior",
@@ -141,10 +141,13 @@ function readyDocument(versionId: string) {
     content: walkthroughOutputSchema.parse({
       title: "Retries wait longer",
       intent: "This PR raises the retry delay.",
-      diagram: {
-        nodes: [{ id: "retry", label: "Retry", column: 0, row: 0 }],
-        edges: [],
-      },
+      diagrams: [
+        {
+          pr: 3088,
+          nodes: [{ id: "retry", label: "Retry" }],
+          edges: [],
+        },
+      ],
       chapters: [
         {
           id: "change",
@@ -158,7 +161,7 @@ function readyDocument(versionId: string) {
           decisions: [
             {
               id: "delay-ok",
-              question: "Is 3 long enough?",
+              claim: "A 3 second delay is long enough.",
               origin: { kind: "not_asked" },
             },
           ],

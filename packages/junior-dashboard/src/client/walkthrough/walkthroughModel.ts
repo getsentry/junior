@@ -146,7 +146,10 @@ export type AnswerMap = Readonly<Record<string, WalkthroughAnswerResponse>>;
 /** One decision a reviewer answers, with the chapter that asks it. */
 export type ReviewDecision = {
   id: string;
-  question: string;
+  /** The statement the reviewer agrees with or asks to change. */
+  claim: string;
+  /** What could make the claim wrong. */
+  concern?: string;
   chapterId: string;
   chapterIndex: number;
   /** Layers this decision is about. */
@@ -189,7 +192,8 @@ export function reviewDecisions(
         const prs = own ? evidencePrs([own]) : evidencePrs(evidence);
         return {
           id: decision.id,
-          question: decision.question,
+          claim: decision.claim,
+          ...(decision.concern ? { concern: decision.concern } : undefined),
           chapterId: chapter.id,
           chapterIndex,
           prs: prs.length ? prs : allPrs,
@@ -273,15 +277,15 @@ export function reviewMarkdown(args: {
           const note = args.answers[d.id]?.note;
           const where = d.location ? ` (${markdownLocation(d.location)})` : "";
           return note
-            ? `${index + 1}. ${note}${where}\n   > ${d.question}`
-            : `${index + 1}. ${d.question}${where}`;
+            ? `${index + 1}. ${note}${where}\n   > ${d.claim}`
+            : `${index + 1}. ${d.claim}${where}`;
         }),
       ].join("\n\n"),
     );
   }
   if (agreed.length) {
     sections.push(
-      ["**Agreed**", ...agreed.map((d) => `- ${d.question}`)].join("\n"),
+      ["**Agreed**", ...agreed.map((d) => `- ${d.claim}`)].join("\n"),
     );
   }
   return sections.join("\n\n");

@@ -58,8 +58,14 @@ export function WalkthroughDecision(props: {
               feedback ? "text-dashboard-text-subtle" : "text-dashboard-text",
             )}
           >
-            <DisplayText inline text={decision.question} />
+            <DisplayText inline text={decision.claim} />
           </p>
+          {decision.concern && !feedback ? (
+            <p className="m-0 text-xs text-dashboard-text-muted">
+              <span className="font-medium">Concern:</span>{" "}
+              <DisplayText inline text={decision.concern} />
+            </p>
+          ) : null}
           {reopened && !answer ? (
             <p className="m-0 text-xs text-dashboard-text-muted">
               {reopenedText(reopened, Boolean(feedback))}

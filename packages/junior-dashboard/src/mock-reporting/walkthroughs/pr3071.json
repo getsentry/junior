@@ -25,7 +25,7 @@
     }
   ],
   "document": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "versionId": "64fd6d43-3066-4852-919b-3925cd9059a5",
     "contentVersionId": "64fd6d43-3066-4852-919b-3925cd9059a5",
     "repository": "getsentry/junior",
@@ -478,85 +478,13 @@
     "content": {
       "title": "Share one filter for Conversations that lists may show",
       "intent": "This PR is a refactor: four list and search queries hand-wrote the same \"a root, not an unkept Quick question\" filter, and now call one helper instead. No behavior change is intended.",
-      "diagram": {
-        "nodes": [
-          { "id": "feed-rows", "label": "Feed rows", "column": 0, "row": 0 },
-          {
-            "id": "feed-token",
-            "label": "Feed change token",
-            "column": 0,
-            "row": 1
-          },
-          { "id": "board", "label": "Board read", "column": 0, "row": 2 },
-          {
-            "id": "brief-search",
-            "label": "Brief search",
-            "column": 0,
-            "row": 3
-          },
-          {
-            "id": "agent-search",
-            "label": "Top-level agent search",
-            "column": 1,
-            "row": 3
-          },
-          {
-            "id": "listed",
-            "label": "listedConversation()",
-            "column": 2,
-            "row": 1
-          },
-          {
-            "id": "conversations",
-            "label": "junior_conversations",
-            "column": 3,
-            "row": 1
-          },
-          {
-            "id": "stats",
-            "label": "Stats & location counts",
-            "column": 3,
-            "row": 2
-          },
-          {
-            "id": "structural",
-            "label": "Purge & other root checks",
-            "column": 3,
-            "row": 3
-          }
-        ],
-        "edges": [
-          { "id": "e-rows", "from": "feed-rows", "to": "listed" },
-          { "id": "e-token", "from": "feed-token", "to": "listed" },
-          { "id": "e-board", "from": "board", "to": "listed" },
-          { "id": "e-brief", "from": "brief-search", "to": "listed" },
-          { "id": "e-agent", "from": "agent-search", "to": "listed" },
-          {
-            "id": "e-listed",
-            "from": "listed",
-            "to": "conversations",
-            "label": "root, not unkept QQ"
-          },
-          {
-            "id": "e-stats",
-            "from": "stats",
-            "to": "conversations",
-            "label": "root only"
-          },
-          {
-            "id": "e-struct",
-            "from": "structural",
-            "to": "conversations",
-            "label": "root only"
-          }
-        ]
-      },
       "chapters": [
         {
           "id": "one-helper",
           "caption": "One helper now holds the rule for what lists may show",
           "body": "The new listedConversation() returns the two conditions that every list used: no parent Conversation, and no unkept Quick question [1]. The feed, the Brief search, and the top-level agent search each drop their inline copies and call it [2][3][4]. Each caller keeps its own access, scope, and sort filters.",
           "view": {
+            "pr": 3071,
             "show": [
               "feed-rows",
               "feed-token",
@@ -618,6 +546,7 @@
           "caption": "The feed change token and the feed rows now use the same filter",
           "body": "The token query that tells clients the feed changed now calls the same helper as the feed rows [1]. The fork test reads the reader's token before a Quick question exists [2]. It checks that the token stays the same while the Quick question is unkept and changes after Keep [3].",
           "view": {
+            "pr": 3071,
             "show": ["feed-rows", "feed-token", "listed", "conversations"],
             "highlight": ["feed-rows", "feed-token"],
             "added": [],
@@ -664,6 +593,7 @@
           "caption": "The Board changes condition order, and root-only queries stay as they are",
           "body": "The Board query swaps its two inline conditions for the helper, so the archived check now comes after it [1][2]. The order of AND conditions does not change the result. The helper's comment says that structural root checks, such as retention, do not use it [3]. Stats and location counts also still check only for a root.",
           "view": {
+            "pr": 3071,
             "show": ["board", "listed", "conversations", "stats", "structural"],
             "highlight": ["board", "stats", "structural"],
             "added": [],
@@ -701,8 +631,9 @@
           "decisions": [
             {
               "id": "stats-count-qq",
-              "question": "Should stats and location counts also leave out unkept Quick questions? They may count them now; this PR leaves them unchanged.",
-              "origin": { "kind": "not_asked" }
+              "origin": { "kind": "not_asked" },
+              "claim": "Stats and location counts can keep counting unkept Quick questions.",
+              "concern": "They may count them today, and this PR leaves them unchanged."
             }
           ],
           "asks": ["Why does purge not use the helper?"],
@@ -736,6 +667,23 @@
           "pr": 3071,
           "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
           "reason": "Uncited hunk only imports versionsSchema for the token check."
+        }
+      ],
+      "diagrams": [
+        {
+          "pr": 3071,
+          "nodes": [
+            { "id": "feed-rows", "label": "Feed rows" },
+            { "id": "feed-token", "label": "Feed change token" },
+            { "id": "board", "label": "Board read" },
+            { "id": "brief-search", "label": "Brief search" },
+            { "id": "agent-search", "label": "Top-level agent search" },
+            { "id": "listed", "label": "listedConversation()" },
+            { "id": "conversations", "label": "junior_conversations" },
+            { "id": "stats", "label": "Stats & location counts" },
+            { "id": "structural", "label": "Purge & other root checks" }
+          ],
+          "edges": []
         }
       ]
     },

@@ -52,7 +52,7 @@ function previous(): WalkthroughDocument {
     evidence: [{ kind: "code", pr, path, start: 1, end: 1 }],
   });
   return walkthroughDocumentSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     versionId: "v1",
     contentVersionId: "v1",
     repository: "getsentry/junior",
@@ -67,10 +67,13 @@ function previous(): WalkthroughDocument {
     content: {
       title: "Locks and retries",
       intent: "This stack adds a lock and changes retries.",
-      diagram: {
-        nodes: [{ id: "lock", label: "Lock", column: 0, row: 0 }],
-        edges: [],
-      },
+      diagrams: [
+        {
+          pr: 1,
+          nodes: [{ id: "lock", label: "Lock" }],
+          edges: [],
+        },
+      ],
       chapters: [
         chapter("lock", 1, "src/lock.ts"),
         chapter("retry", 2, "src/retry.ts"),

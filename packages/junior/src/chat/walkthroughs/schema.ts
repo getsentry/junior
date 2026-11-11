@@ -12,7 +12,7 @@
  */
 import * as z from "zod";
 
-export const WALKTHROUGH_SCHEMA_VERSION = 1;
+export const WALKTHROUGH_SCHEMA_VERSION = 2;
 
 /** Stable slug. Chapter and decision ids stay the same across versions. */
 const idSchema = z
@@ -39,21 +39,16 @@ export const WALKTHROUGH_TEMPLATES = {
 
 export type WalkthroughChangeType = keyof typeof WALKTHROUGH_TEMPLATES;
 
-/** One diagram for the whole Walkthrough. Chapters choose what to show. */
+/**
+ * The diagram of one code change. Chapters choose what to show. A stack gets
+ * one diagram per code change, so no picture grows past what a reader can
+ * follow. Junior lays it out; the model only names nodes and edges.
+ */
 const diagramSchema = z
   .object({
+    pr: z.number().int().positive(),
     nodes: z
-      .array(
-        z
-          .object({
-            id: idSchema,
-            label: sentence(32),
-            // A small grid, not pixels. The renderer owns layout.
-            column: z.number().int().min(0).max(4),
-            row: z.number().int().min(0).max(3),
-          })
-          .strict(),
-      )
+      .array(z.object({ id: idSchema, label: sentence(32) }).strict())
       .min(1)
       .max(10),
     edges: z
@@ -73,6 +68,8 @@ const diagramSchema = z
 
 const diagramViewSchema = z
   .object({
+    /** The code change whose diagram this view shows. */
+    pr: z.number().int().positive(),
     /** Node and edge ids. Others are dimmed. */
     show: z.array(idSchema).min(1),
     highlight: z.array(idSchema).default([]),
@@ -154,10 +151,16 @@ const decisionOriginSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("not_asked") }).strict(),
 ]);
 
+/**
+ * A claim the reader agrees with or asks to change, such as "Retrying three
+ * times is enough for a lost lock." It is a statement, so an answer to it
+ * reads as a review. `concern` says what could make the claim wrong.
+ */
 const decisionSchema = z
   .object({
     id: idSchema,
-    question: sentence(160),
+    claim: sentence(160),
+    concern: sentence(160).optional(),
     origin: decisionOriginSchema,
     /** Index into this chapter's evidence. */
     evidence: z.number().int().nonnegative().optional(),
@@ -227,7 +230,7 @@ export const walkthroughOutputSchema = z
      * else, such as "This PR fixes a bug where…" or "This stack adds…".
      */
     intent: sentence(200),
-    diagram: diagramSchema,
+    diagrams: z.array(diagramSchema).min(1).max(10),
     chapters: z.array(walkthroughChapterSchema).min(1).max(12),
     /** A layer that mixes change types, such as a feature and a refactor. */
     splits: z
@@ -417,5 +420,6 @@ export type WalkthroughUpdate = WalkthroughDocument["updates"][number];
 export type WalkthroughChapter = z.infer<typeof walkthroughChapterSchema>;
 export type WalkthroughEvidence = z.infer<typeof evidenceSchema>;
 export type WalkthroughDecision = z.infer<typeof decisionSchema>;
+export type WalkthroughDiagram = z.infer<typeof diagramSchema>;
 export type WalkthroughExcerpt = z.infer<typeof walkthroughExcerptSchema>;
 export type WalkthroughDocument = z.infer<typeof walkthroughDocumentSchema>;

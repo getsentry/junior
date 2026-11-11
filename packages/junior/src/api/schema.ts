@@ -43,6 +43,7 @@ export type {
 export { codeExcerptId } from "../chat/walkthroughs/schema";
 export type {
   WalkthroughChapter,
+  WalkthroughDiagram,
   WalkthroughDocument,
   WalkthroughEvidence,
   WalkthroughExcerpt,
