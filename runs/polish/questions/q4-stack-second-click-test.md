@@ -1,0 +1,9 @@
+turn_api-msg_82362e589b6e998690f5a0e5:assistant:1
+Yes, two tests cover it, though both send the clicks one after another rather than at the same moment.
+- **`packages/junior/tests/integration/walkthrough-versions.test.ts:104-123` (#3090).** This test calls `startWalkthroughVersion` twice for the same snapshot, each time from a different generation Conversation. The first call returns `started: true`. The second returns the same version:
+  expect(joined).toEqual({ version: started.version, started: false });
+  Because the first row already exists, the second insert really does hit `onConflictDoNothing()` and then falls back to `findLiveWalkthroughVersion` (`store.ts:65-87`).
+- **`packages/junior/tests/integration/walkthrough-generation.test.ts:109-122` (#3133).** This one goes through the API. It sends two `POST /api/walkthroughs` requests and checks `again.id === started.id`. It also checks that only one Turn was queued (`queuedMessages()` has length 1), which is the part that shows "instead of starting another generation."
+- **Clicks that arrive at the same moment.** Nothing runs two calls at once, for example with `Promise.all`. In both tests the second call starts after the first has finished. My guess, which no test confirms, is that the unique index still makes the database settle a real race the same way.
+- **The error branch.** No test reaches `"Walkthrough version conflict without a live version"` (`store.ts:84`). That happens if the live row turns failed between the insert and the lookup.
+On your other request: I can't approve or merge #3087 from this conversation, since it can only read the Walkthrough. You can approve and merge it on GitHub at https://github.com/getsentry/junior/pull/3087. It's the bottom of the stack, so merging it first means GitHub will retarget #3088 onto the base branch.

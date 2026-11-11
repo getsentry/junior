@@ -27,10 +27,20 @@ export const localCodeChangesPlugin = {
           .then((fs) => fs.readFile("/tmp/walkthrough-head", "utf8"))
           .catch(() => "");
         const [number, sha] = pin.trim().split(/\s+/);
-        if (!stack || !sha) return stack;
+        // /tmp/walkthrough-top ("<number>") drops the layers above one PR,
+        // so a long stack can play a shorter one.
+        const top = await import("node:fs/promises")
+          .then((fs) => fs.readFile("/tmp/walkthrough-top", "utf8"))
+          .catch(() => "");
+        if (!stack) return stack;
+        const topIndex = stack.codeChanges.findIndex(
+          (change) => String(change.number) === top.trim(),
+        );
+        const kept =
+          topIndex < 0 ? stack.codeChanges : stack.codeChanges.slice(0, topIndex + 1);
         return {
-          codeChanges: stack.codeChanges.map((change) =>
-            String(change.number) === number
+          codeChanges: kept.map((change) =>
+            sha && String(change.number) === number
               ? { ...change, headSha: sha }
               : change,
           ),

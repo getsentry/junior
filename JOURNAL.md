@@ -30,7 +30,8 @@ Read this first after a sandbox reset or context loss.
   #3090 (3-storage, migration 0100) → #3124 (4a-generation-tool). All drafts,
   all mergeable. Use `gh stack rebase` / `gh stack push` to update.
 - #3133 (4b-generation-worker) → #3147 (5-dashboard, head 450adaa6b).
-- Next: slice 6 (answers / review panel).
+- #3149 (6) → #3150 (7) → #3151 (8) → walkthrough/9-polish (format v2).
+- Next: posting the review as the user.
 
 ## Open questions (decide in 4b)
 
@@ -506,3 +507,106 @@ is for now.
   - "Since you looked" for a viewer with no answers says "since you looked"
     but means "since the first version".
   - The review panel lists a reopened decision as "Not answered".
+
+### Polish (slice 9, branch walkthrough/9-polish)
+
+Stacked on #3151 (`dc2d6dc59`). Commits: `a373776c8` (titles + dagre),
+`7cdc79c29` (format v2), `06bf4eb8b` (question Turn tool fix).
+
+#### UI
+
+- The caption is the chapter title. The slot ("The change") is a small
+  eyebrow above it, in the header and in the left list.
+- Diagram: dagre (`@dagrejs/dagre`, ~49 KB ESM; elkjs is ~8 MB unpacked).
+  The renderer tries top-down and left-right and keeps the narrower one.
+  Labels wrap at about 21 characters. Parts outside the chapter are at 40%.
+  Edge labels get a halo in the page color, so the edge line does not cross
+  them.
+
+#### Format v2
+
+- `diagrams: [{pr, nodes:{id,label}, edges}]`, at most 10 nodes each, one per
+  PR. No column/row. A view has `pr`.
+- Decisions: `{id, claim, concern?, origin, evidence?}`. Agree / Request
+  change apply to the claim. The copied review lists claims.
+- The validator rejects: repeated captions, a claim that ends in "?", a
+  diagram for a PR not in the stack or a second diagram for one PR, an edge
+  between diagrams, and a view of a PR with no diagram.
+- Prompt version 3, schema version 2. Hard cutover: v1 documents no longer
+  parse (nothing shipped). Fixtures converted with
+  `cost-run-setup/convert-v2.mjs` (ids kept; claims written by hand; the
+  stack diagram split per PR from what each PR's chapters show).
+
+#### Eval
+
+No `junior-evals` eval. The harness needs a GitHub PR/diff mock (only issue
+mocks exist), cloudflared and Sandbox OIDC, and policies/evals.md wants
+replies under 60s; a generation takes 3–11 min. Instead:
+`cost-run-setup/score-walkthrough.mjs` scores real local runs, and the
+validator now enforces the same rules on every run.
+
+Before (stored v1 runs, prompt v2):
+
+| Case | Run | Cost | Captions unique | Max nodes | Decisions | Questions |
+| --- | --- | --- | --- | --- | --- | --- |
+| small | #3071 | $0.53 | yes | ≤10 | 1 | 1 |
+| refactor | #3059 | $1.44 | yes | ≤10 | 2 | 2 |
+| stack (5) | #3087–#3133 | $2.30 | yes | ≤10 (1 diagram) | 8 | 6 |
+
+After (v2, prompt v3, `runs/polish/`):
+
+| Case | Cost | Chapters | Diagrams | Max nodes | Decisions | Questions | Concerns | Rejections |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| small #3071 | $0.34 | 5 | 1 | 7 | 2 | 0 | 2 | 1 (coverage) |
+| refactor #3059 | $1.78 | 9 | 1 | 9 | 5 | 0 | 5 | 3 (2 body length, 1 coverage) |
+| stack #3087–#3133 | $1.94 | 12 | 5 | 8 | 10 | 0 | 10 | 0 |
+
+No run hit a new v2 rule. Wall time is not comparable: the runs waited
+~10 min on a stuck Docker snapshot build (see below). The stack run used a
+local `/tmp/walkthrough-top` pin (in `local-code-changes.ts`) to stop at
+#3133.
+
+#### Question runs (prompt v3 docs, opus via gateway)
+
+The first try failed every question before the model call: "Cannot read
+properties of undefined (reading 'properties')". Slice 7 disabled the other
+tools with `{...tool, disabledReason}`, and plugin tools keep `inputSchema`
+on the prototype (`Object.create(definition)` in `getPluginTools`), so 26
+plugin tools went to the provider with no parameters. Fixed in this slice
+with `Object.create(tool)`; it belongs in #3150.
+
+| # | Walkthrough | Question | Cost | Tool calls | Quality |
+| --- | --- | --- | --- | --- | --- |
+| q1 | small | other lists still using the inline pair? | $0.31 | 12 (hit the 20 cap with codemode) | Good. Found `detail-etag.ts:114,168`, said it is not quite the same filter, said it could not search the repo |
+| q2 | refactor | (chapter) what happens on the new throws? | $0.55 | 20 | Very good. Traced worker retry → failed Turn, no reply; said where it could not trace |
+| q3 | refactor | anything still reads durability.spawnAgent? | $0.15 | — | Good. Field removed, only reader removed; suggested the `rg` that would settle it |
+| q4 | stack | (chapter) test for second click joining? | $0.29 | 8 | Good. Cited `walkthrough-versions.test.ts:104-123`, noted the clicks are sequential, not concurrent |
+| q5 | stack | approve and merge #3087? | $0.03 | 0 | Correct refusal, pointed to the PR |
+
+Mean $0.27 per question; $0.15–$0.55 for real code questions. Answers:
+`runs/polish/questions/`.
+
+Common gap: `readWalkthroughCode` opens files by path only. q1 and q3 both
+said a repo-wide search would settle the answer.
+
+#### Screenshots (`screenshots/polish/`)
+
+01/02 before (single PR, stack). 03/04 caption titles + dagre (still one
+stack diagram). 04b single PR on v2. 05 stack with one diagram per PR.
+06 claim with a change request and the review text. 07 agreed claim and
+the review text.
+
+#### Local dev notes
+
+- The Docker snapshot build hung twice: an exec stream did not end after
+  its command exited (`/var/tmp/junior-commands/*.pid` left behind). A
+  third `snapshot create` with the server stopped worked. Not debugged.
+- `pnpm dev` runs `tsdown --watch`; editing `packages/junior/src` restarts
+  the server and requeues running Turns.
+
+#### Open
+
+- Move the tool-disabling fix down to #3150, or keep it here.
+- Question Turns have no code search.
+- The per-file "changed" check, rebase-only Turns, and "Not answered" on
+  reopened decisions (slice 8 leftovers) are unchanged.
