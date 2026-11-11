@@ -14,6 +14,7 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { WalkthroughCodeChange } from "@/db/schema/walkthroughs";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { readWalkthroughDiff, type WalkthroughDiffFile } from "./diff";
 import { buildWalkthroughExcerpts } from "./excerpts";
@@ -35,17 +36,6 @@ const MESSAGE_TEXT_LIMIT = 400;
 const URL_PATTERN = /https?:\/\/[^\s<>()"'`\]]+/g;
 
 /** One code change of the stack, as the provider reported it at click time. */
-export type WalkthroughGenerationLayer = {
-  number: number;
-  title: string;
-  body: string;
-  url: string;
-  headSha: string;
-  baseSha: string;
-  additions: number;
-  deletions: number;
-};
-
 /**
  * What a generation Turn writes. Only the Walkthrough worker sets this, so
  * `submitWalkthrough` exists only in generation Turns.
@@ -55,7 +45,7 @@ export type WalkthroughGeneration = {
   provider: string;
   repository: string;
   /** Bottom first. */
-  layers: WalkthroughGenerationLayer[];
+  layers: WalkthroughCodeChange[];
   sourceConversationId?: string;
   modelId: string;
 };
