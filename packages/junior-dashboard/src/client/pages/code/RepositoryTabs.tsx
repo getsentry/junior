@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
+import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 
-import { useCodeRepositoryConversationsData } from "../../api";
+import {
+  useCodeRepositoryConversationsData,
+  useCodeRepositoryData,
+} from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { FilterTabList } from "../../components/FilterBar";
 import {
@@ -67,10 +71,16 @@ export function RepositoryChangesTab(props: {
 }) {
   const [state, setState] = useState("");
   const [page, setPage] = useState(1);
-  const changes = props.data.changes.filter(
-    (change) => !state || change.state === state,
+  // The report lists open changes first, up to its limit, so each state tab
+  // loads its own changes. The counts cover every change.
+  const selectedState = codeChangeStateSchema.safeParse(state).data;
+  const stateQuery = useCodeRepositoryData(
+    selectedState && props.data.repository.id,
+    selectedState,
   );
-  // The list stops at the report's limit. The counts cover every change.
+  const changes = selectedState
+    ? (stateQuery.data?.changes ?? [])
+    : props.data.changes;
   const counts = props.data.changeCounts;
   useEffect(() => {
     setPage(1);
@@ -103,7 +113,13 @@ export function RepositoryChangesTab(props: {
         <Card>
           {changes.length === 0 ? (
             <div className="p-4">
-              <EmptyTelemetry>No changes match this state.</EmptyTelemetry>
+              <EmptyTelemetry>
+                {selectedState && stateQuery.error
+                  ? "Changes are unavailable. Try refreshing the dashboard."
+                  : selectedState && !stateQuery.data
+                    ? "Loading changes…"
+                    : "No changes match this state."}
+              </EmptyTelemetry>
             </div>
           ) : (
             pageItems(changes, page, PAGE_SIZE).map((change) => (

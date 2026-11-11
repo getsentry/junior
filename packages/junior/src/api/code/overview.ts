@@ -20,6 +20,7 @@ import { conversationUsageCostExpr } from "../conversations/aggregate";
 import {
   codeOverviewReportSchema,
   codePersonReportSchema,
+  IDLE_CHANGE_DAYS,
 } from "../schema/code";
 import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
@@ -191,6 +192,7 @@ export async function readCodeWindows(args: {
     .select({
       closedAt: changes.closedAt,
       conversationIds: changes.conversationIds,
+      lastActivityAt: changes.lastActivityAt,
       mergedAt: changes.mergedAt,
       openedAt: changes.openedAt,
       state: changes.state,
@@ -226,6 +228,16 @@ export async function readCodeWindows(args: {
     closed: closed.length,
     costUsd: treeCost(createdConversationIds),
     created: created.length,
+    // Same rule as the dashboard's idle marker: whole days since the last
+    // activity, or since opening when no activity is recorded.
+    idle: rows.filter(
+      (row) =>
+        row.state === "open" &&
+        Math.floor(
+          (args.nowMs - (row.lastActivityAt ?? row.openedAt).getTime()) /
+            DAY_MS,
+        ) > IDLE_CHANGE_DAYS,
+    ).length,
     medianCostUsd: median(changeCosts.filter((cost) => cost > 0)),
     medianMergeTimeMs: median(
       merged.flatMap((row) =>

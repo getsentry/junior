@@ -33,6 +33,7 @@ import type {
   AutomationList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
+import { IDLE_CHANGE_DAYS } from "@sentry/junior/api/schema";
 import { mockQuestionConversations } from "./review-items";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
@@ -40,6 +41,21 @@ import { isUnlistedMockConversation, withMockSends } from "./sends";
 export const NOW = "2026-08-07T12:00:00.000Z";
 /** Milliseconds for {@link NOW}. */
 export const NOW_MS = Date.parse(NOW);
+
+/** Count open changes idle past {@link IDLE_CHANGE_DAYS}, as the API does. */
+export function mockIdleCount(
+  changes: readonly CodeOverviewReport["changes"][number][],
+  nowMs = NOW_MS,
+): number {
+  return changes.filter(
+    (change) =>
+      change.state === "open" &&
+      Math.floor(
+        (nowMs - Date.parse(change.lastActivityAt ?? change.openedAt)) /
+          86_400_000,
+      ) > IDLE_CHANGE_DAYS,
+  ).length;
+}
 
 /** Build code activity for local dashboard development and QA. */
 export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
@@ -110,6 +126,8 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
       closed: 1,
       costUsd: 18.4,
       created: 8,
+      // The listed open change is two days old.
+      idle: 0,
       medianCostUsd: 3.5,
       medianMergeTimeMs: 2 * 86_400_000,
       merged: 6,
@@ -3717,7 +3735,11 @@ export function readMockPeopleCode(
       ),
     ],
     generatedAt: overview.generatedAt,
-    summary: { ...overview.summary, open: openChanges.length },
+    summary: {
+      ...overview.summary,
+      idle: mockIdleCount(openChanges),
+      open: openChanges.length,
+    },
     windowEnd: overview.windowEnd,
     windowStart: overview.windowStart,
   };

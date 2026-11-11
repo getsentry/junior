@@ -48,31 +48,53 @@ test("counts every open code change past the listed ones", async ({
       response,
       json: {
         ...report,
+        // Every listed change is active. The one idle change is past the
+        // limit, so only the summary counts it.
         changes: Array.from({ length: 100 }, (_, index) => ({
           ...report.changes[0],
           id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+          lastActivityAt: report.generatedAt,
           number: index + 1,
           state: "open",
         })),
-        summary: { ...report.summary, open: 105 },
+        summary: { ...report.summary, idle: 1, open: 105 },
       },
     });
   });
+  // The open changes fill the list, so the Closed tab loads its own rows.
   await page.route(/\/api\/code\/repositories\/[^/]+$/, async (route) => {
     const response = await route.fetch();
     const report = await response.json();
+    const state = new URL(route.request().url()).searchParams.get("state");
+    const changes = (count: number, changeState: string, title: string) =>
+      Array.from({ length: count }, (_, index) => ({
+        id: `00000000-0000-4000-9000-${String(index).padStart(12, "0")}`,
+        number: index + 1,
+        openedAt: report.generatedAt,
+        provider: "github",
+        repository: report.repository.name,
+        state: changeState,
+        title: `${title} ${index + 1}`,
+        url: `https://github.com/${report.repository.name}/pull/${index + 1}`,
+      }));
     await route.fulfill({
       response,
-      json: { ...report, changeCounts: { closed: 12, merged: 3, open: 105 } },
+      json: {
+        ...report,
+        changeCounts: { closed: 12, merged: 3, open: 105 },
+        changes:
+          state === "closed"
+            ? changes(12, "closed", "Closed change")
+            : changes(100, "open", "Open change"),
+      },
     });
   });
 
   await page.goto(`${dashboard.baseURL}/conversations/new`);
-  await expect(
-    page.getByRole("region", { name: "Your week" }).getByText("105", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  const week = page.getByRole("region", { name: "Your week" });
+  await expect(week.getByText("105", { exact: true })).toBeVisible();
+  await expect(week.getByText("1 idle 7d+")).toBeVisible();
+  await expect(week.getByText("all moving")).toHaveCount(0);
 
   await page.goto(`${dashboard.baseURL}/code`);
   await page
@@ -84,4 +106,9 @@ test("counts every open code change past the listed ones", async ({
     .click();
   await expect(page.getByRole("tab", { name: /^All/ })).toContainText("120");
   await expect(page.getByRole("tab", { name: /^Open/ })).toContainText("105");
+  await page.getByRole("tab", { name: /^Closed/ }).click();
+  await expect(
+    page.getByRole("link", { name: "Closed change 12" }),
+  ).toBeVisible();
+  await expect(page.getByText("No changes match this state.")).toHaveCount(0);
 });

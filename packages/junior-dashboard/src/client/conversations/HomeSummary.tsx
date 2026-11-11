@@ -1,6 +1,7 @@
-import type {
-  CodeActivityDay,
-  CodeChangeSummaryReport,
+import {
+  IDLE_CHANGE_DAYS,
+  type CodeActivityDay,
+  type CodeChangeSummaryReport,
 } from "@sentry/junior/api/schema";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -56,12 +57,10 @@ export function HomeSummary() {
   const open = code.data.changes
     .filter((change) => change.state === "open")
     .sort((a, b) => lastActivity(a).localeCompare(lastActivity(b)));
-  const idleCount = open.filter(
-    (change) => idleDays(nowMs, change) > IDLE_RED_DAYS,
-  ).length;
   // The listed changes stop at the report's limit. The summary counts every
   // open change.
   const openCount = code.data.summary.open;
+  const idleCount = code.data.summary.idle;
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
     merges.thisWeek + merges.lastWeek === 0 &&
@@ -94,7 +93,7 @@ export function HomeSummary() {
                 <span className="font-medium text-dashboard-text">
                   {idleCount}
                 </span>{" "}
-                idle {IDLE_RED_DAYS}d+
+                idle {IDLE_CHANGE_DAYS}d+
               </StatusText>
             ) : (
               <StatusText tone="bg-emerald-300">all moving</StatusText>
@@ -285,9 +284,6 @@ function OpenChangeRow(props: {
   );
 }
 
-/** Idle days past this turn red. 4 days up to this turn amber. */
-const IDLE_RED_DAYS = 7;
-
 // Until a code plugin records activity, opening is the last known activity.
 function lastActivity(change: CodeChangeSummaryReport): string {
   return change.lastActivityAt ?? change.openedAt;
@@ -310,10 +306,12 @@ function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
       <TooltipTrigger
         render={
           <span
+            // Idle past the summary's idle rule turns red; 4 days up to it,
+            // amber.
             className={cn(
-              days > IDLE_RED_DAYS && "font-medium text-rose-300",
+              days > IDLE_CHANGE_DAYS && "font-medium text-rose-300",
               days >= 4 &&
-                days <= IDLE_RED_DAYS &&
+                days <= IDLE_CHANGE_DAYS &&
                 "font-medium text-amber-300",
             )}
           />

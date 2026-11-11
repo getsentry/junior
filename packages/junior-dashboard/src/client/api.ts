@@ -33,7 +33,10 @@ import {
   skillDetailReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
-import { pluginUserPageLinksSchema } from "@sentry/junior-plugin-api";
+import {
+  pluginUserPageLinksSchema,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 
 import {
   dashboardBootstrapSchema,
@@ -204,15 +207,23 @@ export function useCodeOverviewData(enabled = true) {
   });
 }
 
-/** Fetch code activity, recent changes, and Workspaces for one repository. */
-export function useCodeRepositoryData(repositoryId: string | undefined) {
+/**
+ * Fetch code activity, recent changes, and Workspaces for one repository.
+ * `state` lists only the changes in that state.
+ */
+export function useCodeRepositoryData(
+  repositoryId: string | undefined,
+  state?: CodeChangeState,
+) {
   return useQuery({
     enabled: Boolean(repositoryId),
-    queryKey: ["dashboard", "code", "repositories", repositoryId],
+    queryKey: ["dashboard", "code", "repositories", repositoryId, state],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         codeRepositoryReportSchema,
-        `/api/code/repositories/${encodeURIComponent(repositoryId!)}`,
+        `/api/code/repositories/${encodeURIComponent(repositoryId!)}${
+          state ? `?state=${state}` : ""
+        }`,
         signal,
       ),
     retry: false,

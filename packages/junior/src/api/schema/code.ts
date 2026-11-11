@@ -6,6 +6,8 @@ export const codeChangeSummarySchema = z
     closed: z.number().int().nonnegative(),
     costUsd: z.number().nonnegative().optional(),
     created: z.number().int().nonnegative(),
+    /** Open changes with no activity for more than {@link IDLE_CHANGE_DAYS} days. */
+    idle: z.number().int().nonnegative(),
     medianCostUsd: z.number().nonnegative().optional(),
     medianMergeTimeMs: z.number().nonnegative().optional(),
     merged: z.number().int().nonnegative(),
@@ -13,6 +15,9 @@ export const codeChangeSummarySchema = z
     open: z.number().int().nonnegative(),
   })
   .strict();
+
+/** Whole days without activity after which an open change counts as idle. */
+export const IDLE_CHANGE_DAYS = 7;
 
 /** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
 export const codeMetricBucketSchema = z
@@ -79,6 +84,11 @@ export const codeOverviewReportSchema = z
 
 export const codeRepositoryParamsSchema = z
   .object({ repositoryId: z.string().uuid() })
+  .strict();
+
+/** Optional change state that limits the listed repository changes. */
+export const codeRepositoryQuerySchema = z
+  .object({ state: codeChangeStateSchema.optional() })
   .strict();
 
 /** Code activity, recent changes, and Workspaces for one repository. */

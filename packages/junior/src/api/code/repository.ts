@@ -1,7 +1,8 @@
-import { count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { listWorkspacesByRepository } from "@/chat/workspaces/store";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
+import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import {
   codeRepositoryReportSchema,
   type CodeRepositoryReport,
@@ -21,12 +22,14 @@ const REPOSITORY_CHANGE_LIMIT = 100;
 /**
  * Read code activity for one repository: windowed summary, activity buckets,
  * recent code changes with every change counted by state, and the
- * Workspaces that include it.
+ * Workspaces that include it. `state` limits the listed changes, so each
+ * state tab lists its own rows past the limit; the counts stay whole.
  */
 export async function readCodeRepository(
   repositoryId: string,
-  nowMs = Date.now(),
+  options: { nowMs?: number; state?: CodeChangeState } = {},
 ): Promise<CodeRepositoryReport | undefined> {
+  const nowMs = options.nowMs ?? Date.now();
   const db = getDb();
   const [repository] = await db
     .select({
@@ -48,7 +51,14 @@ export async function readCodeRepository(
         juniorCodeRepositories,
         eq(juniorCodeChanges.repositoryId, juniorCodeRepositories.id),
       )
-      .where(eq(juniorCodeChanges.repositoryId, repositoryId))
+      .where(
+        and(
+          eq(juniorCodeChanges.repositoryId, repositoryId),
+          options.state
+            ? eq(juniorCodeChanges.state, options.state)
+            : undefined,
+        ),
+      )
       .orderBy(
         desc(sql`${juniorCodeChanges.state} = 'open'`),
         desc(juniorCodeChanges.updatedAt),

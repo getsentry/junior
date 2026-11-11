@@ -10,7 +10,7 @@ import {
   codeRepositoryReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
-import { recordCodeChange } from "@/chat/code/store";
+import { recordCodeChange, recordCodeChangeActivity } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import {
@@ -92,6 +92,7 @@ describe("code API", () => {
         closed: 0,
         costUsd: 0.75,
         created: 1,
+        idle: 0,
         medianCostUsd: 0.75,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
@@ -174,12 +175,26 @@ describe("code API", () => {
           url: `https://github.com/getsentry/junior/pull/${number}`,
         }) satisfies CodeChangeInput;
       // More open changes than a page lists, all older than the closed ones.
+      // Change 1 is the oldest, so it falls past the limit, and it is the
+      // only one with no recent activity.
       for (let number = 1; number <= 105; number += 1) {
         await recordCodeChange(
           db,
           "github",
-          change(number, "2026-05-02T12:00:00.000Z"),
+          change(
+            number,
+            number === 1
+              ? "2026-05-01T12:00:00.000Z"
+              : "2026-05-02T12:00:00.000Z",
+          ),
         );
+        if (number > 1) {
+          await recordCodeChangeActivity(db, "github", {
+            at: new Date("2026-08-23T12:00:00.000Z"),
+            number,
+            repositoryProviderId: "repository-1",
+          });
+        }
       }
       for (let number = 106; number <= 120; number += 1) {
         await recordCodeChange(db, "github", {
@@ -209,6 +224,21 @@ describe("code API", () => {
       expect(new Set(report.changes.map((listed) => listed.state))).toEqual(
         new Set(["open"]),
       );
+      expect(report.summary.idle).toBe(1);
+
+      // Each state lists its own changes, past the open ones.
+      const closed = codeRepositoryReportSchema.parse(
+        await (
+          await api.request(
+            `http://localhost/api/code/repositories/${repository!.id}?state=closed`,
+          )
+        ).json(),
+      );
+      expect(closed.changeCounts).toEqual(report.changeCounts);
+      expect(closed.changes).toHaveLength(15);
+      expect(new Set(closed.changes.map((listed) => listed.state))).toEqual(
+        new Set(["closed"]),
+      );
 
       const person = codePersonReportSchema.parse(
         await (
@@ -219,6 +249,9 @@ describe("code API", () => {
       );
       expect(person.summary.open).toBe(105);
       expect(person.changes).toHaveLength(100);
+      // The idle change is not listed, and the summary still counts it.
+      expect(person.changes.map((listed) => listed.number)).not.toContain(1);
+      expect(person.summary.idle).toBe(1);
     } finally {
       vi.useRealTimers();
       await fixture.close();
