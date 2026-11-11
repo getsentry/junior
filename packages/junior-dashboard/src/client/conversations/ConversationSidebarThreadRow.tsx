@@ -45,8 +45,8 @@ const DEPTH_INDENT = ["pl-[2.25rem]", "pl-[3.25rem]", "pl-[4.25rem]"];
  * icon, the title, and its age. A running Thread shows only its spinner and
  * no age, so the feed token skips its activity. Participants can archive it
  * from the row. A Thread archive applies to everyone, so it asks first.
- * Threads have no pin or unread state here, and archived Threads leave the
- * sidebar, so the row has no restore.
+ * Threads have no pin here, and archived Threads leave the sidebar, so the
+ * row has no restore.
  */
 export const ConversationSidebarThreadRow = memo(
   function ConversationSidebarThreadRow(props: {

@@ -447,15 +447,18 @@ describe("cache warming gap segments", () => {
     }
     mocks.sendCacheWarmup.mockClear();
     // Random bytes do not compress, like a screenshot.
-    const randomImage = () => randomBytes(1024 * 1024).toString("base64");
+    const randomImage = (bytes = 1024 * 1024) =>
+      randomBytes(bytes).toString("base64");
     const imageKeyOf = (imageData: string) =>
       `junior:cache_warming:image:${conversationId}:${createHash("sha256")
         .update(imageData)
         .digest("hex")}`;
     const data = randomImage();
     const imageKey = imageKeyOf(data);
-    // With `data`, 9.3 MiB of base64, over the 8 MiB image limit.
-    const moreImages = Array.from({ length: 6 }, randomImage);
+    // With `data`, 33.3 MiB of base64, over the 32 MiB image limit.
+    const moreImages = Array.from({ length: 3 }, () =>
+      randomImage(8 * 1024 * 1024),
+    );
     const imageContext: Context = {
       ...context,
       messages: [

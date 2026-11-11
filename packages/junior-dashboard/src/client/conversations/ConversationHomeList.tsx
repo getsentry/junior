@@ -249,11 +249,9 @@ function ConversationCard(props: ConversationCardProps) {
   const tags = conversationCardTags(conversation, title);
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
-  const unread = Boolean(conversation.unread);
-  const emphasized = props.waitingOnViewer || unread;
-  // Only read state gets a badge. A running card shows its spinner in place
-  // of the time, and failed and stopped are text beside the time.
-  const showStatus = emphasized && status !== "active";
+  // Only a wait on the viewer gets a badge. A running card shows its spinner
+  // in place of the time, and failed and stopped are text beside the time.
+  const showStatus = props.waitingOnViewer && status !== "active";
   const activityAt = conversation.lastMessageAt ?? conversation.lastSeenAt;
   return (
     <article
@@ -291,7 +289,6 @@ function ConversationCard(props: ConversationCardProps) {
           <span className="absolute -bottom-1 -right-1 grid size-3.5 place-items-center rounded-full bg-dashboard-surface-panel">
             <ConversationListStatusIcon
               status={status}
-              unread={unread}
               waitingOnViewer={props.waitingOnViewer}
             />
           </span>
@@ -299,12 +296,7 @@ function ConversationCard(props: ConversationCardProps) {
       </span>
       <div className="grid min-w-0">
         <div className="flex min-w-0 items-center gap-3">
-          <h4
-            className={cn(
-              "pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm leading-6 text-dashboard-text",
-              emphasized ? "font-semibold" : "font-medium",
-            )}
-          >
+          <h4 className="pointer-events-none relative z-[1] m-0 min-w-0 flex-1 truncate font-display text-sm font-medium leading-6 text-dashboard-text">
             {title}
           </h4>
           {participants.length > 0 ? (

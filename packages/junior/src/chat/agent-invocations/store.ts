@@ -55,6 +55,7 @@ export function invocationFromRow(
       ? { parentToolCallId: row.parentToolCallId }
       : undefined),
     ...(row.agentType ? { agentType: row.agentType } : undefined),
+    ...(row.fork ? { fork: true as const } : undefined),
     ...(row.reasoningLevel
       ? { reasoningLevel: row.reasoningLevel }
       : undefined),

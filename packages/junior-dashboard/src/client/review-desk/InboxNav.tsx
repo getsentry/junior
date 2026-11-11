@@ -131,12 +131,7 @@ function InFlightRow(props: {
             role="img"
           />
         )}
-        <span
-          className={cn(
-            "truncate",
-            conversation.unread ? "font-semibold" : "text-dashboard-text",
-          )}
-        >
+        <span className="truncate text-dashboard-text">
           {conversation.displayTitle}
         </span>
       </Link>

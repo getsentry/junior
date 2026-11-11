@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ContextMenuContent } from "../components/ui/context-menu";
-import { conversationDisplayTitle, isIdleConversation } from "../format";
+import { conversationDisplayTitle } from "../format";
 import type { Conversation } from "../types";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
 import { useConversationActionToasts } from "./conversationActionToasts";
@@ -14,14 +14,13 @@ import { ConversationRowMenu } from "./ConversationRowMenu";
 import { RenameConversationDialog } from "./RenameConversationDialog";
 import { useConversationDelivery } from "./useConversationDelivery";
 import { useConversationSubscription } from "./useConversationSubscription";
-import { useMarkConversationUnread } from "./useMarkConversationUnread";
 import { usePinConversation } from "./usePinConversation";
 import { useRenameConversation } from "./useRenameConversation";
 
 /**
- * The row actions of one Conversation in a list: pin, archive, read state,
- * rename, subscription, Slack updates, and the event log. `menu` is the
- * context menu content with its dialogs; the row renders it inside its
+ * The row actions of one Conversation in a list: pin, archive, rename,
+ * subscription, Slack updates, and the event log. `menu` is the context
+ * menu content with its dialogs; the row renders it inside its
  * `ContextMenu` and calls `onMenuOpenChange` from it. Failures show as
  * toasts. `onRowAction` runs before an action that can move rows, so a
  * held list shows the result at once.
@@ -50,13 +49,6 @@ export function useConversationRowActions(
       ),
     onSuccess: () => clearActionError(conversation),
   });
-  const markUnread = useMarkConversationUnread(conversation.id, {
-    onError: (unread) =>
-      showActionError(
-        conversation,
-        unread ? "Could not mark as unread" : "Could not mark as read",
-      ),
-  });
   const rename = useRenameConversation(conversation.id, {
     onError: () => showActionError(conversation, "Could not rename"),
   });
@@ -74,15 +66,10 @@ export function useConversationRowActions(
   const queryClient = useQueryClient();
   const pinned = Boolean(conversation.pinnedAt);
   const archived = Boolean(conversation.archivedAt);
-  const unread = Boolean(conversation.unread);
   const title = conversationDisplayTitle(conversation);
   const setPinned = (next: boolean) => {
     options.onRowAction?.();
     pin.mutate(next);
-  };
-  const setUnread = (next: boolean) => {
-    options.onRowAction?.();
-    markUnread.mutate(next);
   };
   const toggleArchive = () => {
     options.onRowAction?.();
@@ -93,11 +80,6 @@ export function useConversationRowActions(
   };
   return {
     archived,
-    // The API takes row actions only from participants. Unread tracks idle
-    // Conversations only.
-    canToggleRead:
-      conversation.isParticipant &&
-      (unread || isIdleConversation(conversation)),
     menu: (
       <>
         <ContextMenuContent>
@@ -115,7 +97,6 @@ export function useConversationRowActions(
                   state: OPEN_EVENT_LOG_STATE,
                 }),
               pin: setPinned,
-              read: setUnread,
               rename: () => setRenaming(true),
               subscription: (subscribed) => subscription.mutate(subscribed),
             }}
@@ -125,7 +106,6 @@ export function useConversationRowActions(
               archive: archive.isPending,
               delivery: delivery.isPending,
               pin: pin.isPending,
-              read: markUnread.isPending,
               subscription: subscription.isPending,
             }}
           />
@@ -152,13 +132,10 @@ export function useConversationRowActions(
     pending: {
       archive: archive.isPending,
       pin: pin.isPending,
-      read: markUnread.isPending,
     },
     pinned,
     setPinned,
-    setUnread,
     title,
     toggleArchive,
-    unread,
   };
 }

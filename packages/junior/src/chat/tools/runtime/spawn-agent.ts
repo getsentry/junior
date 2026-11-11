@@ -54,7 +54,7 @@ export function createSpawnAgentTool(
       "Start a new asynchronous child agent. A child agent has its own sandbox and tool budget, runs at the same time as you, and replies when it has something to report. Its kind is a Thread for one discrete work item that people will own and talk to, or a Task for work that you delegate. Use Tasks to run independent work in parallel and to keep long investigations out of your context.",
       "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
       "Do it yourself instead of a Task when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn a Task.",
-      `Pick agent_type when one fits; omit it for a fresh general-purpose child with your tools:\n${formatAgentTypes()}`,
+      `Pick agent_type when one fits; omit it for a general-purpose child with your tools:\n${formatAgentTypes()}`,
       `After you delegate, do not do the same work yourself. When your reply posts to people, do not post a status that only says the work started or repeats the task: call ${NO_REPLY_TOOL_NAME} instead, because the child's result posts when it arrives. Reply only with something people need now, such as an answer, a question, or a Thread's dashboard_url.`,
       "You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
       "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
@@ -77,7 +77,7 @@ export function createSpawnAgentTool(
           .trim()
           .min(1)
           .describe(
-            "Self-contained brief. Unless its agent type starts with this conversation's history, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread.",
+            "Self-contained brief. Unless fork is true, the child has not seen this thread, so this is its only context. Brief it like a capable peer who just joined: the goal and why it matters; target repos, refs, paths, and URLs; facts you already verified and what you ruled out; constraints, including which remote side effects are allowed (scratch work in its sandbox is always fine); what counts as done; and the shape and length of the result to return. Do the synthesis yourself: name the exact question, files, or change instead of writing 'based on your findings, fix it'. If you cannot write a clear brief, you do not understand the task well enough to delegate it. Summarize thread facts instead of pasting the thread.",
           ),
         title: z
           .string()
@@ -110,7 +110,14 @@ export function createSpawnAgentTool(
           .nullable()
           .optional()
           .describe(
-            "Child agent type from the list in this tool's description. Omit or pass null for a fresh general-purpose child.",
+            "Child agent type from the list in this tool's description. Omit or pass null for a general-purpose child.",
+          ),
+        fork: z
+          .boolean()
+          .nullable()
+          .optional()
+          .describe(
+            "true: the child starts with a copy of this conversation's history, which adds cost and noise. Pass true only when the child needs most of this conversation, such as its discussion and decisions, so that a brief would have to repeat most of it. Then the task is a directive: say what to do and what is in or out of scope; do not re-explain the background. Omit, or pass null or false, for a child that starts with only the task, which is the normal case. Works with any agent_type.",
           ),
         reasoning_level: z
           .enum(TURN_REASONING_LEVELS)
@@ -137,6 +144,7 @@ export function createSpawnAgentTool(
           {
             task: input.task,
             ...(input.agent_type ? { agentType: input.agent_type } : undefined),
+            ...(input.fork ? { fork: true } : undefined),
             ...(input.kind ? { kind: input.kind } : undefined),
             ...(title ? { title } : undefined),
             ...(input.name ? { name: input.name } : undefined),

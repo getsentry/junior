@@ -242,6 +242,13 @@ test("opens scheduled and event automations in the native Automations view", asy
     .click();
   await expect(deleteButton).toBeFocused();
   await page.getByRole("link", { name: "Back to automations" }).click();
+  // The toggle hides beside the open panel, so focus moves to its close
+  // button and comes back when the panel closes.
+  await page.getByRole("button", { name: /^Filters/ }).press("Enter");
+  const closeFilters = page.getByRole("button", { name: "Close filters" });
+  await expect(closeFilters).toBeFocused();
+  await closeFilters.press("Enter");
+  await expect(page.getByRole("button", { name: /^Filters/ })).toBeFocused();
   await page.getByRole("button", { name: /^Filters/ }).click();
   await filterOption(page, "type", "Event").click();
   await filterOption(page, "creator", "Morgan").click();
@@ -337,6 +344,12 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
       ...automationReport.automations,
       ...Array.from({ length: 30 }, (_, index) => ({
         ...automationReport.automations[0]!,
+        // Enough Destinations that the filter needs its search box.
+        destination: {
+          ...automationReport.automations[0]!.destination,
+          channelId: `C-extra-${index}`,
+          label: `#team-${String(index).padStart(2, "0")}`,
+        },
         id: `scheduled-extra-${index}`,
         title: `Weekly summary ${String(index).padStart(2, "0")}`,
       })),
@@ -424,6 +437,16 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await expect(page).toHaveURL(listUrl);
   await expect(active.getByRole("listitem")).toHaveCount(31);
   await page.getByRole("button", { name: /^Filters/ }).click();
+  const findDestination = page.getByLabel("Search destination options");
+  await findDestination.fill("TEAM-07");
+  // The best match follows "All".
+  await expect(
+    page
+      .getByRole("group", { name: "Filter by destination", exact: true })
+      .getByRole("button")
+      .nth(1),
+  ).toHaveText("#team-07");
+  await findDestination.fill("");
   await filterOption(page, "destination", "#project-updates").click();
   await filterOption(page, "state", "Active").click();
   await expect(page).toHaveURL(/state=active/);
@@ -466,7 +489,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileFilters = page.getByRole("button", { name: /^Filters/ });
   await expect(mobileFilters).toHaveAttribute("aria-expanded", "false");
-  await expect(mobileFilters).toHaveText(/Filters\s*4$/);
+  await expect(mobileFilters).toHaveAccessibleName("Filters 4");
   await expect(
     page.getByRole("group", { name: "Filter by creator" }),
   ).toHaveCount(0);
@@ -487,7 +510,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     .getByRole("button", { name: "Close", exact: true })
     .click();
   await page.reload();
-  await expect(mobileFilters).toHaveText(/Filters\s*4$/);
+  await expect(mobileFilters).toHaveAccessibleName("Filters 4");
   await mobileFilters.click();
   await expect(filterOption(page, "state", "Blocked")).toHaveAttribute(
     "aria-pressed",

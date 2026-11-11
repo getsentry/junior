@@ -100,7 +100,7 @@ type Hold = { following: boolean; order: HeldOrder };
  * `pending` until the reader calls `applyPending`, or the pointer and focus
  * leave. React events bubble through portals, so a row menu counts as in
  * the list. `releaseHold` follows the latest order until the hold ends; row
- * actions such as pin, archive, and mark unread call it, so their result
+ * actions such as pin and archive call it, so their result
  * shows at once.
  */
 export function useHeldListOrder(

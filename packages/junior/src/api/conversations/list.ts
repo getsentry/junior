@@ -21,7 +21,6 @@ import {
   juniorConversationAnnotations,
   juniorConversationBriefs,
   juniorConversationParticipants,
-  juniorConversationReadPositions,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -45,7 +44,6 @@ import {
   conversationRecordJoins,
 } from "./record";
 import { readFeedThreads } from "./threads";
-import { readUnreadConversationIds, unreadReplySql } from "./unread";
 import { conversationFeedSchema } from "../schema/conversation-feed";
 import type { ConversationFeed } from "../schema/conversation-feed";
 import {
@@ -287,8 +285,6 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * token holds its minute. The end of the Turn moves the status.
  * The rows are in feed order, so a move that reorders them moves the token.
  * The newest Message of each role stands for the preview and participants.
- * The row shows only whether a reply is unread, so a scroll that moves the
- * read position does not move the token.
  * Threads and annotations show from the whole tree. Waiting roots outside
  * the page move the Review items token.
  */
@@ -297,7 +293,6 @@ export function conversationFeedVersionQuery(
   userId: string,
 ) {
   const pin = juniorConversationParticipants;
-  const read = juniorConversationReadPositions;
   const conversationId = juniorConversations.conversationId;
   // The fields of each nested Thread row. An archive anywhere in the tree
   // can hide Threads under it.
@@ -353,9 +348,6 @@ export function conversationFeedVersionQuery(
         sql<number>`(${latestMessageSeqQuery(db, "user", conversationId)})`.as(
           "user_seq",
         ),
-      unread: unreadReplySql(db, userId, conversationId, read.lastReadSeq).as(
-        "unread",
-      ),
       threads: sql<string>`(${tree})`.as("threads"),
       annotations: sql<string>`(${annotations})`.as("annotations"),
     })
@@ -363,10 +355,6 @@ export function conversationFeedVersionQuery(
     .leftJoin(
       pin,
       and(eq(pin.rootConversationId, conversationId), eq(pin.userId, userId)),
-    )
-    .leftJoin(
-      read,
-      and(eq(read.conversationId, conversationId), eq(read.userId, userId)),
     )
     .where(
       and(
@@ -395,7 +383,6 @@ export function conversationFeedVersionQuery(
     status: byRow(page.executionStatus, page.stoppedAt),
     activity: byRow(page.activity),
     messages: byRow(page.assistantSeq, page.userSeq),
-    unread: byRow(page.unread),
     threads: byRow(page.threads),
     annotations: byRow(page.annotations),
   };
@@ -515,7 +502,6 @@ export async function readConversationFeedFromSql(
     briefByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
-    unreadConversationIds,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationViewerMarks(
@@ -549,9 +535,6 @@ export async function readConversationFeedFromSql(
     readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
-    filter?.kind === "viewer"
-      ? readUnreadConversationIds(db, conversationIds, filter.userId)
-      : new Set<string>(),
   ]);
   const visibleActivityPreviews = await attachActivityPreviewMentions(
     getSqlExecutor(),
@@ -599,7 +582,6 @@ export async function readConversationFeedFromSql(
       const childAgentTotals = childAgentTotalsReport(metrics, auxiliaryCosts);
       const summary = conversationSummaryFromStoredConversation({
         ...viewerMarksByConversation.get(conversation.conversationId),
-        unreadReply: unreadConversationIds.has(conversation.conversationId),
         automationTitle: automationTitleByConversation.get(
           conversation.conversationId,
         ),

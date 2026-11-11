@@ -139,15 +139,17 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
         <PageContentSkeleton label="Loading automation runs" variant="list" />
       ) : (
         <>
-          <FilterToolbar
-            filters={{
-              active: activeFilters,
-              onRemove: removeFilter,
-              onToggle: () => setFiltersOpen((open) => !open),
-              open: filtersOpen,
-            }}
-          />
           <FilteredList
+            toolbar={
+              <FilterToolbar
+                filters={{
+                  active: activeFilters,
+                  onRemove: removeFilter,
+                  onToggle: () => setFiltersOpen((open) => !open),
+                  open: filtersOpen,
+                }}
+              />
+            }
             filters={
               filtersOpen ? (
                 <FilterPanel

@@ -5,23 +5,21 @@ import { cn } from "../styles";
 import type { VisualStatus } from "../types";
 
 /**
- * Render the row marker. Rows use three channels: the section for position,
- * a dot with a bold title for read state, and a spinner for a running Turn.
- * Waiting rows use the same dot as unread rows; their section and chip say
- * why. Private, failed, and stopped go in `ConversationStatusText`.
+ * Render the row marker: a spinner for a running Turn, else a dot when the
+ * row waits on the viewer. Private, failed, and stopped go in
+ * `ConversationStatusText`.
  */
 export function ConversationListStatusIcon(props: {
   status: VisualStatus;
-  unread: boolean;
   waitingOnViewer: boolean;
 }) {
   if (props.status === "active") {
     return <Spinner aria-label="Running" className="size-3 text-emerald-300" />;
   }
-  if (props.unread || props.waitingOnViewer) {
+  if (props.waitingOnViewer) {
     return (
       <span
-        aria-label={props.waitingOnViewer ? "Waiting on you" : "Unread"}
+        aria-label="Waiting on you"
         className="size-1.5 shrink-0 rounded-full bg-dashboard-accent"
         role="img"
       />

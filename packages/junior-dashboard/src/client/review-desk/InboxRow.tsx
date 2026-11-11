@@ -282,15 +282,6 @@ function ConversationInboxRow(
               // reorder.
               draggable: drag ? false : undefined,
             }}
-            readToggle={
-              actions.canToggleRead && !props.bundle?.needsYou
-                ? {
-                    disabled: actions.pending.read,
-                    onToggle: () => actions.setUnread(!actions.unread),
-                    unread: actions.unread,
-                  }
-                : undefined
-            }
           />
           {participant ? (
             <div className="absolute top-2 right-2 z-10 flex gap-0.5 transition sm:pointer-events-none sm:opacity-0 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100">
@@ -359,7 +350,6 @@ function ConversationInboxRow(
 function InboxRowBody(
   props: InboxRowProps & {
     linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
-    readToggle?: { disabled: boolean; onToggle(): void; unread: boolean };
   },
 ) {
   const { bundle, conversation } = props;
@@ -370,7 +360,6 @@ function InboxRowBody(
   // An item row's title already names its ask, so it shows no pill.
   const pills = props.itemTitle ? [] : askPills(openItems);
   const waiting = bundle?.needsYou ?? false;
-  const unread = Boolean(conversation?.unread);
   const summary = props.itemTitle ? undefined : rowSummary(conversation);
   const annotations = conversation?.sidebarAnnotations ?? [];
   const canDone = openItems.some((item) => item.canAct);
@@ -410,26 +399,19 @@ function InboxRowBody(
           })}
         >
           <span
-            aria-label={
-              waiting ? "Waiting on you" : unread ? "Unread" : undefined
-            }
+            aria-label={waiting ? "Waiting on you" : undefined}
             className={cn(
               "mt-[0.45rem] size-2 rounded-full",
-              waiting || unread
+              waiting
                 ? "bg-dashboard-accent"
                 : openItems.length > 0
                   ? "border border-dashboard-text-faint"
                   : "",
             )}
-            role={waiting || unread ? "img" : undefined}
+            role={waiting ? "img" : undefined}
           />
           <span className="grid min-w-0 gap-1">
-            <span
-              className={cn(
-                "min-w-0 truncate text-sm leading-snug text-dashboard-text",
-                waiting || unread ? "font-semibold" : "font-medium",
-              )}
-            >
+            <span className="min-w-0 truncate text-sm font-medium leading-snug text-dashboard-text">
               {props.itemTitle ?? props.title}
             </span>
             {props.itemTitle ? (
@@ -482,27 +464,6 @@ function InboxRowBody(
             )}
           </span>
         </Link>
-        {props.readToggle ? (
-          <button
-            aria-label={`Mark ${props.title} as ${props.readToggle.unread ? "read" : "unread"}`}
-            className="group/read absolute top-1.5 left-1 z-10 grid size-6 cursor-pointer place-items-center rounded-md transition hover:bg-dashboard-surface-active focus-visible:bg-dashboard-surface-active focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-dashboard-focus disabled:cursor-not-allowed"
-            disabled={props.readToggle.disabled}
-            onClick={props.readToggle.onToggle}
-            title={props.readToggle.unread ? "Mark as read" : "Mark as unread"}
-            type="button"
-          >
-            {/* On hover, preview the state that a click sets. */}
-            <span
-              aria-hidden="true"
-              className={cn(
-                "hidden size-2 rounded-full group-hover/read:block group-focus-visible/read:block",
-                props.readToggle.unread
-                  ? "border border-dashboard-text-muted"
-                  : "bg-dashboard-accent",
-              )}
-            />
-          </button>
-        ) : null}
         {hasChips ? (
           <div className="flex min-w-0 items-center gap-1 pr-2 pb-2 pl-[1.875rem]">
             <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
