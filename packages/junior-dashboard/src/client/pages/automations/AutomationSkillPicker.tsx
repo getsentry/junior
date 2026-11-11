@@ -45,18 +45,17 @@ export function AutomationSkillPicker(props: {
     },
   ].filter((group) => group.skills.length > 0);
   const search = query.trim();
+  // Each open starts from the grouped list, however the picker closed.
+  const changeOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) setQuery("");
+  };
   const choose = (skill: string) => {
     props.onChange(skill);
-    setOpen(false);
+    changeOpen(false);
   };
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setQuery("");
-      }}
-    >
+    <Popover open={open} onOpenChange={changeOpen}>
       <PopoverTrigger
         id={props.id}
         aria-invalid={props.invalid || missing || undefined}
