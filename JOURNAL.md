@@ -262,3 +262,24 @@ Read this first after a sandbox reset or context loss.
   Real cost runs cover that path.
 - Known gap: a Turn that throws (not a completed outcome) leaves the version
   generating until the 30-minute timeout.
+
+### 2026-11-11 — real cost runs (slice 4b)
+
+Setup: local `pnpm dev`, Docker sandbox, experiment on, model
+`anthropic/claude-opus-5.5` (app default) through AI Gateway via the egress
+proxy. The dev server has no GitHub App key, so a temporary local plugin
+`github-local` (uncommitted, apps/example/local-code-changes*.ts) runs the same
+readStack/readDiff/readFile code with this sandbox's GitHub token. The agent
+in the sandbox read the PRs over public GitHub.
+
+| Run | Code change | Size | Cost | Time | Chapters | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | #3071 | +32 −14, 6 files | $0.53 | 3m22s | 3 | validator rejected once: 6 uncited hunks; fixed |
+| 2 | #3052 | +158 −122, 10 files | $1.15 | 4m07s | 10 | |
+| 3 | #3059 | +837 −143, 46 files | $1.44 | 3m52s | 6 | |
+
+Documents: cost-run-{1,2,3}-*.json in this branch (also good fixtures for
+slice 5 rendering).
+
+Found by the live run: /api/walkthroughs was missing from the dashboard's
+served API paths → framework 404. Fixed in d7e308274 on 4b.
