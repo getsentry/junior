@@ -239,7 +239,7 @@ export function createAutomationTool(
           .enum(["creator", "system"])
           .nullable()
           .describe(
-            "Use creator to make the creator's connected credentials available, or system when the creator says not to use them. Omit or use null for the creator default.",
+            "Omit or use null for the system default: runs use your own credentials. Use creator only when the creator asks for their connected credentials to be available to the runs.",
           )
           .optional(),
       })
@@ -267,10 +267,7 @@ export function createAutomationTool(
       if (prepared.context == null) {
         delete prepared.context;
       }
-      if (
-        prepared.credential_mode === "creator" ||
-        prepared.credential_mode === null
-      ) {
+      if (prepared.credential_mode === null) {
         delete prepared.credential_mode;
       }
       return prepared;
@@ -350,7 +347,7 @@ export function createAutomationTool(
         id,
         nowMs,
         task,
-        credentialMode: input.credential_mode ?? "creator",
+        credentialMode: input.credential_mode ?? "system",
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
           destination,
