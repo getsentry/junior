@@ -224,11 +224,24 @@ function parseStoredCredentials(
 
 // Attempts hold the PKCE code verifier and the user's message, so they are
 // encrypted. The attempt index holds only ids and stays plain.
-function readMcpAuthSession(
+async function readMcpAuthSession(
   stateAdapter: StateAdapter,
   authSessionId: string,
 ): Promise<unknown> {
-  return createEncryptedState(stateAdapter).get(sessionKey(authSessionId));
+  const stored = await readEncryptedState(
+    stateAdapter,
+    sessionKey(authSessionId),
+  );
+  // TODO(dcramer): Delete one attempt TTL after deploy. Attempts saved before
+  // encryption are JSON strings; the next write encrypts them.
+  if (stored?.stale && typeof stored.value === "string") {
+    try {
+      return JSON.parse(stored.value);
+    } catch {
+      return undefined;
+    }
+  }
+  return stored?.value;
 }
 
 async function getConnectedStateAdapter() {

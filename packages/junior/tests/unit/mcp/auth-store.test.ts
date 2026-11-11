@@ -92,6 +92,21 @@ describe("MCP auth session store", () => {
     await expect(getMcpAuthSession("legacy-auth")).resolves.toBeUndefined();
   });
 
+  it("reads attempts saved before encryption", async () => {
+    const { getMcpAuthSession } = await import("@/chat/mcp/auth-store");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      "junior:mcp_oauth_attempt:v2:plaintext-auth",
+      JSON.stringify(buildSession("plaintext-auth")),
+    );
+
+    await expect(getMcpAuthSession("plaintext-auth")).resolves.toEqual(
+      expect.objectContaining({ authSessionId: "plaintext-auth" }),
+    );
+  });
+
   it("keeps the code verifier encrypted at rest", async () => {
     const { getMcpAuthSession, putMcpAuthSession } =
       await import("@/chat/mcp/auth-store");
