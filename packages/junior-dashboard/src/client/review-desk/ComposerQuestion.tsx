@@ -21,6 +21,7 @@ import {
   type UserInputFormHandle,
 } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
+import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
 import { useReviewItemAction, useReviewItemsData } from "./queries";
@@ -369,12 +370,13 @@ function DockedQuestion(props: {
           variant="quiet"
         >
           Dismiss
-          <kbd
+          <Kbd
             aria-hidden="true"
-            className="font-sans text-2xs text-dashboard-text-faint max-md:hidden"
+            className="text-2xs text-dashboard-text-faint max-md:hidden"
+            variant="plain"
           >
             Esc
-          </kbd>
+          </Kbd>
         </Button>
       </header>
       {item.request ? (

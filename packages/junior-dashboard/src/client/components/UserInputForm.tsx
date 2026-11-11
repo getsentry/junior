@@ -31,6 +31,7 @@ import {
   FieldSet,
   FieldTitle,
 } from "./ui/field";
+import { Kbd } from "./ui/kbd";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Textarea } from "./ui/textarea";
 
@@ -68,12 +69,9 @@ function SuggestedLabel(props: { className?: string }) {
 function ShortcutHint(props: { value?: string }) {
   if (!props.value) return null;
   return (
-    <kbd
-      aria-hidden="true"
-      className="grid size-5 shrink-0 place-items-center rounded border border-dashboard-border bg-dashboard-fill-soft font-sans text-2xs text-dashboard-text-muted max-md:hidden"
-    >
+    <Kbd aria-hidden="true" className="max-md:hidden">
       {props.value}
-    </kbd>
+    </Kbd>
   );
 }
 

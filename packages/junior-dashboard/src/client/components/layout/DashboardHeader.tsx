@@ -9,6 +9,7 @@ import {
 } from "../CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { Sheet, SheetClose, SheetContent } from "../ui/sheet";
 import { useSheet } from "../ui/useSheet";
 import {
@@ -164,9 +165,9 @@ export function DashboardHeader(props: {
                 {COMMAND_PALETTE_LABEL}…
               </span>
             </span>
-            <kbd className="font-sans text-xs max-xl:hidden">
+            <Kbd className="text-xs max-xl:hidden" variant="plain">
               {COMMAND_PALETTE_SHORTCUT}
-            </kbd>
+            </Kbd>
           </Button>
           <div className="flex items-center gap-3 justify-self-end">
             {props.profile}

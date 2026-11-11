@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import { Kbd } from "../components/ui/kbd";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { platformShortcut } from "../keyboard";
 import { cn } from "../styles";
@@ -222,7 +223,11 @@ export function HeaderIconButton({
       />
       <TooltipContent size="compact">
         {label}
-        {shortcut ? <kbd className="ml-1.5 font-sans">{shortcut}</kbd> : null}
+        {shortcut ? (
+          <Kbd className="ml-1.5" variant="plain">
+            {shortcut}
+          </Kbd>
+        ) : null}
       </TooltipContent>
     </Tooltip>
   );
