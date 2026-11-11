@@ -46,7 +46,8 @@ export function HomeSummary() {
   const code = useActorCodeData(email);
   const reviewCount = useReviewItemCountData(Boolean(email));
   if (!email) return null;
-  if (code.isPending) return <HomeSummaryLoading />;
+  // Wait for both: a missing count would read as "all clear".
+  if (code.isPending || reviewCount.isPending) return <HomeSummaryLoading />;
   if (!code.data) return null;
 
   const nowMs = Date.parse(code.data.generatedAt);
