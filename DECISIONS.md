@@ -296,3 +296,19 @@ The update Turn gets the ids of decisions that any reviewer marked "Request
 change", and nothing else: no notes, no reviewer. The generation Conversation
 is public, so anyone who opens it can see that some reviewer pushed back on
 those decisions. Thomas approved this. Notes stay private.
+
+### 2026-11-11 — Story-first chapters (Thomas)
+
+- A Walkthrough synthesizes the whole stack, 1 PR or 10, into one guided
+  story. Commits, diffs, and checks are evidence, not structure. The prose
+  plus citations must be enough for a reviewer with zero context.
+- Chapters are not fixed. The change type suggests a structure (bug fix:
+  root cause + proof it is the root cause, the fix, proof it works, side
+  effects, what to watch after it ships; feature, migration, and so on differ).
+  The agent adapts it: it may skip, merge, reorder, or add chapters when
+  the change needs it. The type applies to the whole Walkthrough, not to
+  each PR.
+- Drop "Brief first, transcript later". The agent reads the source
+  Conversation transcript as it sees fit. Don't be prescriptive.
+- The generation transcript and its usage breakdown stay reachable from
+  the Walkthrough page (link to the generation Conversation).
