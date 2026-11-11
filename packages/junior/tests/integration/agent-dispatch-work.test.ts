@@ -4,9 +4,11 @@ import {
   getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
+  getDispatchStorageKey,
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
 import { completeAgentInvocation } from "@/chat/agent-invocations/store";
@@ -403,7 +405,13 @@ describe("agent dispatch conversation work", () => {
     await processNext();
     expect(threadPosts().at(-1)).toBe("The digest is up to date.");
 
-    // reportBlocked on a Watch Event Turn blocks the Automation.
+    // A Watch outlives the dispatch record, so reportBlocked on a later Watch
+    // Event Turn finds the Automation through its stored run.
+    await recordAutomationExecution("sched_watch_follow_up", {
+      conversationId,
+      executionId: "sched_watch_follow_up:run",
+    });
+    await state.delete(getDispatchStorageKey(dispatch.id));
     await watchEvent("watch-blocked", "pull_request.closed");
     await expect(
       readScheduledAutomation(getDb(), "sched_watch_follow_up"),

@@ -4,9 +4,38 @@ import {
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
 import { notifyAutomationBlocked } from "@/chat/automations/blocked-notice";
+import { readAutomationExecutionByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
 import { blockEventAutomation } from "@/chat/event-automations/store";
+import { logWarn } from "@/chat/logging";
 import { blockScheduledAutomation } from "@/chat/scheduled-automations/tasks";
+
+type RunAutomation = { automationId: string; kind: "scheduled" | "event" };
+
+/**
+ * Find the Automation of a run. The SQL run row lasts as long as the
+ * Automation, but a Watch can outlive the dispatch record. The dispatch record
+ * covers a run whose row does not link its Conversation yet.
+ */
+async function findRunAutomation(
+  conversationId: string,
+  dispatchId: string | undefined,
+): Promise<RunAutomation | undefined> {
+  const run = await readAutomationExecutionByConversationId({
+    conversationId,
+  });
+  if (run) return run;
+  const source = dispatchId
+    ? (await getDispatchRecord(dispatchId))?.source
+    : undefined;
+  if (!source || !("automationId" in source) || !source.automationId) {
+    return undefined;
+  }
+  return {
+    automationId: source.automationId,
+    kind: source.kind === "scheduled_automation" ? "scheduled" : "event",
+  };
+}
 
 /**
  * Block the Automation of a run from a later Turn of the run, such as a Watch
@@ -18,12 +47,14 @@ export async function blockRunAutomation(
   blocked: BlockedReport,
 ): Promise<void> {
   const dispatchId = getDispatchIdForConversation(conversationId);
-  const dispatch = dispatchId ? await getDispatchRecord(dispatchId) : undefined;
-  const source = dispatch?.source;
-  const automationId =
-    source && "automationId" in source ? source.automationId : undefined;
-  if (!dispatch || !source || !automationId) return;
-  const kind = source.kind === "scheduled_automation" ? "scheduled" : "event";
+  const automation = await findRunAutomation(conversationId, dispatchId);
+  if (!automation) {
+    logWarn("automation.block.unresolved", {
+      "gen_ai.conversation.id": conversationId,
+    });
+    return;
+  }
+  const { automationId, kind } = automation;
   const stored =
     kind === "scheduled"
       ? await blockScheduledAutomation(getDb(), automationId, blocked.missing)
@@ -31,7 +62,7 @@ export async function blockRunAutomation(
   if (stored) {
     await notifyAutomationBlocked({
       automationId,
-      dispatchId: dispatch.id,
+      ...(dispatchId ? { dispatchId } : undefined),
       kind,
       reason: blocked.missing,
     });

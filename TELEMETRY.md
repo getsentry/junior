@@ -733,6 +733,8 @@ previous Turn when agent history exists.
   missing, it logs `agent.turn.answer.missing` and posts nothing. On the
   dispatch Turn, the Automation run then fails. `app.turn.answer` replaces the
   removed `app.automation.result`.
+  When `reportBlocked` on a later Turn of a run finds no Automation to
+  block, it logs `automation.block.unresolved`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it. `already_reacted` on `reactions.add` and `no_reaction` on
   `reactions.remove` are success, so they do not log `slack.action.failed`.
