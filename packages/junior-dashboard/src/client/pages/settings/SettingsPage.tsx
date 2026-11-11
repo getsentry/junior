@@ -13,7 +13,12 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "../../components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+} from "../../components/ui/field";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import {
   useConversationStartPosition,
@@ -179,18 +184,21 @@ function ConversationStartSetting() {
         value={startPosition}
       >
         {startPositionOptions.map((option) => (
-          <label
-            className="flex cursor-pointer items-start gap-3"
-            key={option.value}
-          >
-            <RadioGroupItem className="mt-0.5" value={option.value} />
-            <span className="grid gap-0.5">
-              <span className="text-sm font-medium">{option.label}</span>
-              <span className="text-xs text-dashboard-text-muted">
+          <Field key={option.value} orientation="horizontal">
+            <RadioGroupItem
+              aria-describedby={`start-position-${option.value}-help`}
+              id={`start-position-${option.value}`}
+              value={option.value}
+            />
+            <FieldContent>
+              <FieldLabel htmlFor={`start-position-${option.value}`}>
+                {option.label}
+              </FieldLabel>
+              <FieldDescription id={`start-position-${option.value}-help`}>
                 {option.description}
-              </span>
-            </span>
-          </label>
+              </FieldDescription>
+            </FieldContent>
+          </Field>
         ))}
       </RadioGroup>
     </Card>
@@ -207,21 +215,22 @@ function ComposerAutocorrectSetting() {
         className="m-0 text-lg font-bold"
         title="Message box"
       />
-      <label className="mt-4 flex cursor-pointer items-start gap-3">
+      <Field className="mt-4" orientation="horizontal">
         <Checkbox
+          aria-describedby="composer-autocorrect-help"
           checked={autocorrect}
-          className="mt-0.5"
+          id="composer-autocorrect"
           onCheckedChange={setAutocorrect}
         />
-        <span className="grid gap-0.5">
-          <span className="text-sm font-medium">Autocorrect</span>
-          <span className="text-xs text-dashboard-text-muted">
+        <FieldContent>
+          <FieldLabel htmlFor="composer-autocorrect">Autocorrect</FieldLabel>
+          <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
             type. This can change ids, paths, and code. This choice applies to
             this browser.
-          </span>
-        </span>
-      </label>
+          </FieldDescription>
+        </FieldContent>
+      </Field>
     </Card>
   );
 }

@@ -354,13 +354,13 @@ function DockedQuestion(props: {
         />
         <h2 className="m-0 min-w-0 flex-1 truncate text-sm font-semibold">
           {/* The title shows where Junior asked in the transcript. */}
-          <button
-            className="max-w-full cursor-pointer truncate text-left hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+          <Button
+            className="max-w-full truncate text-left focus-visible:rounded-sm focus-visible:outline-offset-0"
             onClick={props.onShowRecord}
-            type="button"
+            variant="link"
           >
             {item.title}
-          </button>
+          </Button>
         </h2>
         {props.stepper}
         <Button

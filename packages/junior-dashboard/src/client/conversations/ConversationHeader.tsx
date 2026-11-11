@@ -3,7 +3,7 @@ import { displayPlainText } from "../display-text/plainText";
 import { Menu, PanelRight } from "lucide-react";
 import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
 
-import { Button } from "../components/ui/button";
+import { DropdownMenuItem } from "../components/ui/dropdown-menu";
 import { cn } from "../styles";
 import {
   MobileHeaderActionsPortal,
@@ -148,10 +148,11 @@ export function ConversationHeader(props: {
     open: searchOpenVisible,
   });
 
-  const menuActions = (placement: "desktop" | "mobile", close: () => void) => (
+  const menuActions = (placement: "desktop" | "mobile") => (
     <ConversationHeaderActions
-      close={close}
-      detailsOpen={detailsOpen}
+      // Desktop makes the whole control inert until the Conversation exists.
+      // Mobile turns off only these rows, so the app menu row stays usable.
+      disabled={placement === "mobile" && props.pending}
       menu={props.menu}
       onDetailsClick={props.onDetailsClick}
       onSearchClick={toggleSearch}
@@ -221,27 +222,13 @@ export function ConversationHeader(props: {
     <>
       <MobileHeaderActionsPortal>
         <ConversationOverflowMenu buttonRef={menuButtonRef}>
-          {(close) => (
-            <>
-              {/* App menu stays usable on mobile, like the sidebar toggle. */}
-              <div className="contents" inert={props.pending}>
-                {menuActions("mobile", close)}
-              </div>
-              {openMobileNavigation ? (
-                <Button
-                  className="mt-0.5"
-                  onClick={() => {
-                    close();
-                    openMobileNavigation();
-                  }}
-                  size="menu"
-                >
-                  <Menu aria-hidden="true" size={16} strokeWidth={2} />
-                  App menu
-                </Button>
-              ) : null}
-            </>
-          )}
+          {menuActions("mobile")}
+          {openMobileNavigation ? (
+            <DropdownMenuItem onClick={openMobileNavigation}>
+              <Menu aria-hidden="true" />
+              App menu
+            </DropdownMenuItem>
+          ) : null}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
       {props.contextTags || props.linkedWork ? (
@@ -307,7 +294,7 @@ export function ConversationHeader(props: {
               </span>
             ) : null}
             <ConversationOverflowMenu>
-              {(close) => menuActions("desktop", close)}
+              {menuActions("desktop")}
             </ConversationOverflowMenu>
             {detailsOpen ? null : (
               <HeaderIconButton

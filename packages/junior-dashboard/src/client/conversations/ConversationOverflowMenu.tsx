@@ -1,74 +1,39 @@
 import { Ellipsis } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { HeaderIconButton } from "./ConversationHeaderActions";
 
 /**
- * Show the conversation `⋯` button and its menu. The menu closes on an
- * outside click or Escape. `children` gets `close` so an item can close the
- * menu before it acts.
+ * Show the conversation `⋯` button and its menu. `children` are the menu
+ * rows. The menu returns focus to the button when it closes.
  */
 export function ConversationOverflowMenu(props: {
   buttonRef?: RefObject<HTMLButtonElement | null>;
-  children(close: () => void): ReactNode;
+  children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const localButtonRef = useRef<HTMLButtonElement>(null);
-  const buttonRef = props.buttonRef ?? localButtonRef;
-
-  useEffect(() => {
-    if (!open) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-
-    // Capture runs before the details panel's document listener, and
-    // preventDefault tells it that this Escape is taken.
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      event.preventDefault();
-      setOpen(false);
-      if (menuRef.current?.contains(document.activeElement)) {
-        buttonRef.current?.focus({ preventScroll: true });
-      }
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape, true);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape, true);
-    };
-  }, [buttonRef, open]);
-
   return (
-    <div className="relative" ref={menuRef}>
-      <HeaderIconButton
-        ref={buttonRef}
-        label={open ? "Close conversation menu" : "Conversation menu"}
-        onClick={() => setOpen((value) => !value)}
-        pressed={open}
-        tooltipDisabled={open}
-      >
-        <Ellipsis aria-hidden="true" size={16} strokeWidth={1.9} />
-      </HeaderIconButton>
-      {open ? (
-        <div
-          // Esc closes it before Esc leaves the page.
-          data-escape-owner=""
-          className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-56 rounded-xl border border-dashboard-border-strong bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
-        >
-          {props.children(() => setOpen(false))}
-        </div>
-      ) : null}
-    </div>
+    // Not modal, so the page keeps scrolling while the menu is open.
+    <DropdownMenu modal={false} onOpenChange={setOpen} open={open}>
+      <DropdownMenuTrigger
+        ref={props.buttonRef}
+        render={
+          <HeaderIconButton
+            label={open ? "Close conversation menu" : "Conversation menu"}
+            tooltipDisabled={open}
+          >
+            <Ellipsis aria-hidden="true" size={18} strokeWidth={2} />
+          </HeaderIconButton>
+        }
+      />
+      <DropdownMenuContent align="end" className="w-56">
+        {props.children}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

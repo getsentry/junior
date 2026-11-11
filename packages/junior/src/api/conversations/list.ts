@@ -254,9 +254,20 @@ async function waitingRowsOutsidePage(
   });
 }
 
-/** Feed rows show last activity only as an age in whole minutes. */
-function shownActivityMinute(lastActivityAt: SQLWrapper) {
-  return sql`date_trunc('minute', ${lastActivityAt})`;
+/**
+ * Feed rows show last activity only as an age in whole minutes. A running
+ * row shows its running state in place of the age, so it shows no activity.
+ * Every status but `idle` and `failed` shows as running, as in
+ * `statusFromConversation`.
+ */
+function shownActivityMinute(
+  executionStatus: SQLWrapper,
+  lastActivityAt: SQLWrapper,
+) {
+  return sql`case
+    when ${executionStatus} in ('idle', 'failed')
+    then date_trunc('minute', ${lastActivityAt})
+  end`;
 }
 
 const feedTree = alias(juniorConversations, "feed_tree");
@@ -297,7 +308,7 @@ export function conversationFeedVersionQuery(
         string_agg(concat_ws('/',
           ${feedTree.conversationId}, ${feedTree.title},
           ${feedTree.executionStatus}, ${feedTree.stoppedAt},
-          ${shownActivityMinute(feedTree.lastActivityAt)}
+          ${shownActivityMinute(feedTree.executionStatus, feedTree.lastActivityAt)}
         ), ',' order by ${feedTree.conversationId}) filter (
           where ${feedTree.kind} = 'thread' and ${feedTree.archivedAt} is null
         )
@@ -330,11 +341,10 @@ export function conversationFeedVersionQuery(
       pinPosition: pin.pinPosition,
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
-      // Every other status shows as running, as in `statusFromConversation`.
-      activity: sql`case
-        when ${juniorConversations.executionStatus} in ('idle', 'failed')
-        then ${shownActivityMinute(juniorConversations.lastActivityAt)}
-      end`.as("activity"),
+      activity: shownActivityMinute(
+        juniorConversations.executionStatus,
+        juniorConversations.lastActivityAt,
+      ).as("activity"),
       assistantSeq:
         sql<number>`(${latestMessageSeqQuery(db, "assistant", conversationId)})`.as(
           "assistant_seq",

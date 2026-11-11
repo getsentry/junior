@@ -5,7 +5,7 @@ import { cn } from "@dashboard/lib/utils";
 const commandButtonClass =
   "inline-flex h-9 max-w-full items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium leading-none focus-visible:outline-2 focus-visible:outline-offset-2";
 
-/** Style the dashboard command, primary, quiet, danger, icon, and menu row button surfaces. Links use it with `className`. */
+/** Style the dashboard command, primary, quiet, danger, ghost, link, icon, and menu row button surfaces. Links use it with `className`. */
 const buttonVariants = cva(
   "cursor-pointer font-sans no-underline transition-colors data-disabled:cursor-not-allowed data-disabled:opacity-50",
   {
@@ -16,6 +16,11 @@ const buttonVariants = cva(
         /** A secondary action beside a primary one, such as Dismiss. */
         quiet: "",
         danger: "",
+        /** A low-emphasis action in a toolbar, list, or panel. */
+        ghost:
+          "border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+        /** An action that reads as a link in running text. */
+        link: "border-0 bg-transparent p-0 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
       },
       size: {
         default: "",

@@ -178,7 +178,7 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   // A Thread archive is for everyone and takes its nested Thread with it, so
   // it asks first. The page goes back to its list like any archive.
   await openMenu.click();
-  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await expect(openMenus).toHaveCount(0);
   await page
     .getByRole("alertdialog", { name: "Also archive its child conversations?" })
@@ -220,7 +220,7 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   // An archived Thread stays readable, and Restore brings its row back.
   await page.goto(threadUrl);
   await openMenu.click();
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
   await expect(openMenus).toHaveCount(0);
   // The reload starts a new visit, so Back goes to the Inbox.
   await page.getByRole("link", { name: "Back to Inbox" }).click();
@@ -256,7 +256,7 @@ test("archives a nested Thread without its parent", async ({
   await page
     .getByRole("button", { name: "Conversation menu", exact: true })
     .click();
-  await page.getByRole("button", { name: "Archive", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await page
     .getByRole("alertdialog", { name: "Archive for everyone?" })
     .getByRole("button", { name: "Archive" })

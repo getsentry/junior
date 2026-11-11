@@ -12,10 +12,11 @@ test("updates the signed-in user's display name", async ({
 }) => {
   await page.goto(dashboard.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await expect(
     page.getByRole("main").getByRole("heading", { name: "Settings" }),
   ).toBeVisible();
+  await expect(page.locator("#profile-popover")).toHaveCount(0);
   await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
   await screenshot(page, "settings", { view: "desktop" });
 
@@ -264,7 +265,7 @@ test("turns on composer autocorrect for this browser", async ({
   await expect(composer).toHaveAttribute("autocomplete", "off");
 
   await page.getByRole("button", { name: /Open profile menu/ }).click();
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   await page.getByText("Autocorrect", { exact: true }).click();
 
   await page.goto(`${dashboard.baseURL}/conversations/new`);

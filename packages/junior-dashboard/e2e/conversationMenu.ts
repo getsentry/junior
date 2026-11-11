@@ -7,11 +7,7 @@ export async function chooseTranscriptView(
 ) {
   await page.getByRole("button", { name: "Conversation menu" }).click();
   const name = view === "Event log" ? "Open event log" : "Back to conversation";
-  // The mobile header back button shares the label. Menu rows show it.
-  await page
-    .getByRole("button", { name, exact: true })
-    .filter({ hasText: name })
-    .click();
+  await page.getByRole("menuitem", { name, exact: true }).click();
 }
 
 /**

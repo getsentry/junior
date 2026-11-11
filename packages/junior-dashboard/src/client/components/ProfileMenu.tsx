@@ -18,8 +18,14 @@ import { navItemIcon } from "./layout/navIcons";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { DensitySwitcher } from "../conversations/conversationDensity";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { Button, buttonVariants } from "./ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLinkItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 type ProfileMenuProps = {
   identity: Identity;
@@ -174,8 +180,6 @@ export function SpendSummary(props: {
   );
 }
 
-const profileLinkClass = buttonVariants({ size: "menu" });
-
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
   identity,
@@ -188,8 +192,9 @@ export function ProfileMenu({
   const email = identity.user.email!;
   const name = identity.user.name?.trim() || email;
 
+  // Plain content, not a group label: it names no menu items.
   const identityBlock = (
-    <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
+    <div className="px-2 py-1.5">
       <div className="flex min-w-0 items-center gap-2.5">
         <ProfileAvatar className="size-8" user={identity.user} />
         <div className="min-w-0">
@@ -224,50 +229,35 @@ export function ProfileMenu({
     </div>
   );
 
-  const menuLinks = (close: () => void) => (
+  const menuLinks = (
     <>
-      <Link
-        className={cn(profileLinkClass, "mt-1")}
-        onClick={close}
-        to={peoplePath(email)}
-      >
-        <UserRound aria-hidden="true" size={16} strokeWidth={2} />
+      <DropdownMenuLinkItem render={<Link to={peoplePath(email)} />}>
+        <UserRound aria-hidden="true" />
         My profile
-      </Link>
+      </DropdownMenuLinkItem>
       {pages.map((page) => {
         const Icon = navItemIcon(page.key);
         return (
-          <Link
-            className={profileLinkClass}
-            key={page.key}
-            onClick={close}
-            to={page.to}
-          >
-            <Icon aria-hidden="true" size={16} strokeWidth={2} />
+          <DropdownMenuLinkItem key={page.key} render={<Link to={page.to} />}>
+            <Icon aria-hidden="true" />
             {page.label}
-          </Link>
+          </DropdownMenuLinkItem>
         );
       })}
       {identity.user.isAdmin ? (
-        <Link className={profileLinkClass} onClick={close} to="/admin">
-          <ShieldCheck aria-hidden="true" size={16} strokeWidth={2} />
+        <DropdownMenuLinkItem render={<Link to="/admin" />}>
+          <ShieldCheck aria-hidden="true" />
           Admin
-        </Link>
+        </DropdownMenuLinkItem>
       ) : null}
-      <Link className={profileLinkClass} onClick={close} to="/settings">
-        <Settings aria-hidden="true" size={16} strokeWidth={2} />
+      <DropdownMenuLinkItem render={<Link to="/settings" />}>
+        <Settings aria-hidden="true" />
         Settings
-      </Link>
-      <Button
-        onClick={() => {
-          close();
-          void onSignOut();
-        }}
-        size="menu"
-      >
-        <LogOut aria-hidden="true" size={16} strokeWidth={2} />
+      </DropdownMenuLinkItem>
+      <DropdownMenuItem onClick={() => void onSignOut()}>
+        <LogOut aria-hidden="true" />
         Log out
-      </Button>
+      </DropdownMenuItem>
     </>
   );
 
@@ -362,7 +352,9 @@ export function ProfileMenu({
     openOnHover: true,
   };
   return (
-    <Popover
+    // Not modal, so the page keeps scrolling while the menu is open.
+    <DropdownMenu
+      modal={false}
       onOpenChange={(nextOpen, details) => {
         // A mouse click always keeps the menu open, also after hover opened it.
         // A keyboard press (detail 0) still toggles it.
@@ -375,7 +367,7 @@ export function ProfileMenu({
       }}
       open={open}
     >
-      <PopoverTrigger
+      <DropdownMenuTrigger
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. ${personalSpendLabel(spend)}.`}
         className={cn(
           // The sidebar row grid: the avatar on the icon axis, the name on
@@ -401,20 +393,23 @@ export function ProfileMenu({
           size={14}
           strokeWidth={2}
         />
-      </PopoverTrigger>
-      <PopoverContent
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
         align="end"
         side="right"
-        className="w-64 rounded-xl border-0 bg-dashboard-surface-raised/95 p-1.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
+        sideOffset={8}
+        className="w-64"
         id="profile-popover"
       >
         {identityBlock}
-        <div className="grid gap-1 border-b border-dashboard-border-strong px-2.5 py-2">
+        <DropdownMenuSeparator />
+        <div className="grid gap-1 px-2 py-1.5">
           <ThemeSwitcher />
           <DensitySwitcher />
         </div>
-        {menuLinks(() => setOpen(false))}
-      </PopoverContent>
-    </Popover>
+        <DropdownMenuSeparator />
+        {menuLinks}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

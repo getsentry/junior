@@ -50,7 +50,7 @@ test("inspects all reporting events and searches full event data", async ({
 
   // Search must still reveal a result that the reader has closed.
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByRole("menuitem", { name: "Search transcript" }).click();
   await page
     .getByPlaceholder("Search transcript…")
     .fill("payments-v42 deploy notes");

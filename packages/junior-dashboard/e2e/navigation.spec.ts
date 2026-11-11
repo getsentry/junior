@@ -223,7 +223,7 @@ test("hides and restores the panels with the shortcuts and Zen mode", async ({
   await page.keyboard.press("ControlOrMeta+Alt+KeyB");
   await expect(details).toBeHidden();
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Zen mode" }).click();
+  await page.getByRole("menuitem", { name: "Zen mode" }).click();
   await expect(pane).toBeHidden();
   await page.keyboard.press("ControlOrMeta+Alt+KeyY");
   await expect(pane).toBeVisible();

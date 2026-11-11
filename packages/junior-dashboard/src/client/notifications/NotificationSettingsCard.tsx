@@ -9,7 +9,13 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { InlineError } from "../components/InlineError";
@@ -271,15 +277,18 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
       onSubmit={submit}
     >
       <h3 className="m-0 text-base font-bold">Working hours</h3>
-      <label className="mt-4 flex items-center gap-3 text-sm">
+      <Field className="mt-4" orientation="horizontal">
         <Checkbox
           checked={followSlack}
+          id="notification-follow-slack"
           onCheckedChange={(checked) =>
             update({ followSlack: checked === true })
           }
         />
-        Follow my Slack notification schedule
-      </label>
+        <FieldLabel className="font-normal" htmlFor="notification-follow-slack">
+          Follow my Slack notification schedule
+        </FieldLabel>
+      </Field>
       {followSlack ? (
         <p className="mt-2 mb-0 text-sm text-dashboard-text-muted">
           {settings.slackPausedNow === undefined
@@ -287,20 +296,26 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
             : "Junior pauses notifications when Slack does. It uses the hours below only when it cannot read Slack."}
         </p>
       ) : null}
-      <label className="mt-4 flex items-center gap-3 text-sm">
+      <Field className="mt-4" orientation="horizontal">
         <Checkbox
           checked={draft.workingHoursOnly}
+          id="notification-working-hours-only"
           onCheckedChange={(checked) =>
             update({ workingHoursOnly: checked === true })
           }
         />
-        Only notify me during working hours
-      </label>
-      <fieldset
-        className="m-0 mt-4 border-0 p-0 disabled:opacity-60"
+        <FieldLabel
+          className="font-normal"
+          htmlFor="notification-working-hours-only"
+        >
+          Only notify me during working hours
+        </FieldLabel>
+      </Field>
+      <FieldSet
+        className="mt-4 gap-0 disabled:opacity-60"
         disabled={!draft.workingHoursOnly}
       >
-        <legend className="mb-2 p-0 text-sm font-medium">Days</legend>
+        <FieldLegend variant="label">Days</FieldLegend>
         <ToggleGroup
           aria-label="Working days"
           className="flex-wrap gap-2"
@@ -345,7 +360,7 @@ function ScheduleForm({ settings }: { settings: NotificationSettings }) {
             />
           </Field>
         </div>
-      </fieldset>
+      </FieldSet>
       <Field className="mt-4 sm:max-w-sm">
         <FieldLabel htmlFor="notification-timezone">Timezone</FieldLabel>
         <NativeSelect
