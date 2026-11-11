@@ -249,7 +249,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   );
   await page.keyboard.press("Escape");
   await expect(
-    page.getByRole("dialog", { name: "Filters", exact: true }),
+    page.getByRole("complementary", { name: "Filters" }),
   ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Remove creator filter", exact: true })
@@ -456,7 +456,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await expect(
     page.getByRole("dialog", { name: "Filters", exact: true }),
   ).toBeVisible();
-  // The modal drawer hides the page behind it, including the trigger.
+  // The modal sheet hides the page behind it, including the trigger.
   await expect(
     page.getByRole("button", { name: /^Filters/, includeHidden: true }),
   ).toHaveAttribute("aria-expanded", "true");
@@ -466,7 +466,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   ).toBeVisible();
   await page
     .getByRole("dialog", { name: "Filters", exact: true })
-    .getByRole("button", { name: "Close filters", exact: true })
+    .getByRole("button", { name: "Close", exact: true })
     .click();
   await page.reload();
   await expect(mobileFilters).toHaveText(/Filters\s*4$/);
@@ -477,7 +477,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   );
   await page
     .getByRole("dialog", { name: "Filters", exact: true })
-    .getByRole("button", { name: "Close filters", exact: true })
+    .getByRole("button", { name: "Close", exact: true })
     .click();
   await page
     .getByRole("button", { name: "Remove state filter", exact: true })
@@ -563,12 +563,17 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(
     details.getByRole("link", { name: "Open conversation" }),
   ).toBeVisible();
-  // Filters replace run details and keep the selected run.
+  // Filters take the side panel from run details and keep the selected run.
   await page.getByRole("button", { name: /^Filters/ }).click();
   await expect(
-    page.getByRole("dialog", { name: "Filters", exact: true }),
+    page.getByRole("complementary", { name: "Filters" }),
   ).toBeVisible();
   await expect(details).toHaveCount(0);
+  // Clicking the selected run shows it again instead of closing it.
+  await firstRun.click();
+  await expect(details).toBeVisible();
+  await expect(page).toHaveURL(/[?&]run=/);
+  await page.getByRole("button", { name: /^Filters/ }).click();
   await filterOption(page, "status", "Failed").click();
   await expect(page).toHaveURL(/status=failed/);
   await expect(page).toHaveURL(/[?&]run=/);
@@ -851,9 +856,9 @@ test("groups automations by what needs attention on the landing page", async ({
   ).toBeVisible();
   await screenshot(page, "automations-landing", { lightTheme: true });
 
-  // Filters open in the slide-out drawer, and every option is visible.
+  // Filters open in the side panel, and every option is visible.
   await page.getByRole("button", { name: /^Filters/ }).click();
-  const filters = page.getByRole("dialog", { name: "Filters", exact: true });
+  const filters = page.getByRole("complementary", { name: "Filters" });
   await filters
     .getByRole("group", { name: "Filter by type" })
     .getByRole("button", { name: "Event", exact: true })

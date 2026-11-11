@@ -135,9 +135,45 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
   return (
     <ListPanelFrame
       details={
-        // Below xl both are modal, so the filters drawer replaces run details
-        // instead of stacking with them. The selected run stays in the URL.
-        selection.runId && !filtersOpen ? (
+        // Filters and run details share the side panel. The selected run
+        // stays in the URL and returns when filters close.
+        filtersOpen ? (
+          <FilterPanel
+            onClear={
+              activeFilters.length
+                ? () =>
+                    // One URL update, so the second clear cannot undo the first.
+                    setSearchParams(
+                      (current) => {
+                        const next = new URLSearchParams(current);
+                        next.delete("type");
+                        next.delete("status");
+                        return next;
+                      },
+                      { replace: true },
+                    )
+                : undefined
+            }
+            onClose={() => setFiltersOpen(false)}
+          >
+            <FilterOptions
+              label="Type"
+              onChange={(value) =>
+                setKind(value ? (value as RunKindFilter) : "all")
+              }
+              options={KIND_OPTIONS}
+              value={kind === "all" ? "" : kind}
+            />
+            <FilterOptions
+              label="Status"
+              onChange={(value) =>
+                setStatus(value ? (value as RunStatusFilter) : "all")
+              }
+              options={STATUS_OPTIONS}
+              value={status === "all" ? "" : status}
+            />
+          </FilterPanel>
+        ) : selection.runId ? (
           <AutomationRunDetails
             key={selection.runId}
             loading={loading}
@@ -172,43 +208,6 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
               value: searchText,
             }}
           />
-          {filtersOpen ? (
-            <FilterPanel
-              onClear={
-                activeFilters.length
-                  ? () =>
-                      // One URL update, so the second clear cannot undo the first.
-                      setSearchParams(
-                        (current) => {
-                          const next = new URLSearchParams(current);
-                          next.delete("type");
-                          next.delete("status");
-                          return next;
-                        },
-                        { replace: true },
-                      )
-                  : undefined
-              }
-              onClose={() => setFiltersOpen(false)}
-            >
-              <FilterOptions
-                label="Type"
-                onChange={(value) =>
-                  setKind(value ? (value as RunKindFilter) : "all")
-                }
-                options={KIND_OPTIONS}
-                value={kind === "all" ? "" : kind}
-              />
-              <FilterOptions
-                label="Status"
-                onChange={(value) =>
-                  setStatus(value ? (value as RunStatusFilter) : "all")
-                }
-                options={STATUS_OPTIONS}
-                value={status === "all" ? "" : status}
-              />
-            </FilterPanel>
-          ) : null}
           <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border-subtle pb-3">
             <p className="m-0 text-sm text-dashboard-text-muted">
               {visibleRuns.length} {visibleRuns.length === 1 ? "run" : "runs"}
@@ -255,7 +254,17 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
                     {pagedRuns.map((run) => (
                       <AutomationRunRow
                         key={`${run.kind}:${run.executionId}`}
-                        onSelect={() => selection.toggle(run.executionId)}
+                        onSelect={() => {
+                          setFiltersOpen(false);
+                          // Beside open filters, the selected run is hidden,
+                          // so its click shows it instead of closing it.
+                          if (
+                            !filtersOpen ||
+                            selection.runId !== run.executionId
+                          ) {
+                            selection.toggle(run.executionId);
+                          }
+                        }}
                         run={run}
                         selected={selection.runId === run.executionId}
                       />

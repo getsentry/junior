@@ -18,6 +18,7 @@ import {
   AutomationFilterPanel,
 } from "./AutomationFilters";
 import { InlineError } from "../../components/InlineError";
+import { ListPanelFrame } from "../../components/layout/ListPanelFrame";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -101,7 +102,20 @@ export function AutomationsPage(props: { enabled: boolean }) {
     pathWithSearch(automationPath(id), location.search);
 
   return (
-    <>
+    <ListPanelFrame
+      details={
+        filtersOpen ? (
+          <AutomationFilterPanel
+            data={query.data}
+            filters={filters}
+            onChange={setFilter}
+            onClear={clearFilters}
+            onClose={() => setFiltersOpen(false)}
+          />
+        ) : null
+      }
+      label="Automations list"
+    >
       <PageHeader title="Automations" />
       <FilterToolbar
         filters={{
@@ -117,15 +131,6 @@ export function AutomationsPage(props: { enabled: boolean }) {
           value: searchText,
         }}
       />
-      {filtersOpen ? (
-        <AutomationFilterPanel
-          data={query.data}
-          filters={filters}
-          onChange={setFilter}
-          onClear={clearFilters}
-          onClose={() => setFiltersOpen(false)}
-        />
-      ) : null}
       {loading ? (
         <PageContentSkeleton label="Loading automations" variant="list" />
       ) : null}
@@ -163,7 +168,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
           to find the rest.
         </p>
       ) : null}
-    </>
+    </ListPanelFrame>
   );
 }
 

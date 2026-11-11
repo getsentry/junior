@@ -20,8 +20,9 @@ consistent.
   must not each own a copy.
 - Filtered lists use `filters/FilterToolbar` (search, a Filters button, and
   chips) and a `filters/FilterPanel` with one `FilterOptions` per filter.
-  The panel is the standard slide-out `Drawer`. Do not put page filters in
-  popovers or native selects.
+  The panel is the same `DetailsPanel` as row details, in a
+  `layout/ListPanelFrame`: beside the list on wide screens, a modal sheet
+  elsewhere. Do not put page filters in popovers or native selects.
 - Check a changed shared component on a real page with
   `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev` and the dashboard E2E
   screenshots.

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 
-import { Drawer } from "../Drawer";
+import { DetailsPanel } from "../DetailsPanel";
 import { Button } from "../ui/button";
 import { cn } from "../../styles";
 
@@ -12,8 +12,10 @@ export type FilterOption = { label: string; value: string };
 const COLLAPSED_OPTIONS = 6;
 
 /**
- * Edit page filters in the standard slide-out drawer, so the page keeps its
- * width. Choices apply at once. Put one `FilterOptions` in it per filter.
+ * Edit page filters in the same side panel as row details: beside the list
+ * on wide screens, a modal sheet elsewhere. Render it as the `details` of a
+ * `ListPanelFrame`. Choices apply at once. Put one `FilterOptions` in it per
+ * filter.
  */
 export function FilterPanel(props: {
   children: ReactNode;
@@ -22,7 +24,7 @@ export function FilterPanel(props: {
   onClose(): void;
 }) {
   return (
-    <Drawer
+    <DetailsPanel
       actions={
         props.onClear ? (
           <Button onClick={props.onClear} variant="quiet">
@@ -30,22 +32,19 @@ export function FilterPanel(props: {
           </Button>
         ) : undefined
       }
-      closeLabel="Close filters"
-      flush
-      header={
-        <h2 className="m-0 font-display text-base leading-9 font-medium text-dashboard-text">
+      label="Filters"
+      onClose={props.onClose}
+      sheetTitle="Filters"
+      title={
+        <h2 className="m-0 font-display text-base font-medium text-dashboard-text">
           Filters
         </h2>
       }
-      label="Filters"
-      onClose={props.onClose}
-      openKey="filters"
-      width="narrow"
     >
-      <div className="grid divide-y divide-dashboard-border-subtle px-3 pb-[env(safe-area-inset-bottom)]">
+      <div className="grid divide-y divide-dashboard-border-subtle px-3">
         {props.children}
       </div>
-    </Drawer>
+    </DetailsPanel>
   );
 }
 
