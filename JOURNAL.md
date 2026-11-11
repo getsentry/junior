@@ -325,3 +325,39 @@ Draft PR #3147 (`walkthrough/5-dashboard`, 450adaa6b), stacked on #3133.
   (`/tmp/restart-dev.sh` pattern). A hot rebuild leaves the shell stuck on
   "Loading".
 - Screenshots: `screenshots/slice-5/` on this branch.
+
+### 2026-11-11 — slice 6 (answers + copyable review text)
+
+Draft PR #3149 (`walkthrough/6-answers`, 474330e88), stacked on #3147.
+
+- Storage: new `junior_walkthrough_answers` table, migration `0101`. PK
+  (`version_id`, `user_id`, `decision_id`), plus `value` (`agree` | `change`),
+  `note` and `updated_at`. FK to the version, on delete cascade. Slice 3 did
+  not make it, so this slice adds it. Answers are not copied to later versions.
+- API: `GET /:id/answers` returns only the viewer's answers.
+  `PUT /:id/answers/:decisionId` saves one answer (409 until the version is
+  ready). The decision id is not checked against the stored document: a bad
+  id stays with its reviewer and never shows. The dashboard route list already
+  covers `/api/walkthroughs/*`.
+- UI: decisions sit under the story, before the code, with Agree or
+  Request change and an optional note. The side panel has Questions and
+  Review tabs. A chapter with decisions opens Review and scrolls to its rows.
+  The header has a Review button with an open-count badge; on narrow screens
+  it opens a sheet. The cost uses the same box as the button.
+- Review text: one card per PR. It holds the comment (a browser draft),
+  then **Changes requested** (note, `[path:line](url)`, the question quoted),
+  then **Agreed**, with a Copy button. There is no post, approve or
+  request-changes button: that is slice 9.
+- New optional plugin hook `codeChanges.lineUrl`, which GitHub implements.
+  `submitWalkthrough` uses it to fill `excerpt.url`. Nothing filled that
+  field before, so cited code had no GitHub links.
+- Mock: the cost-run fixtures have no excerpt URLs, so mock mode adds
+  GitHub-style links. Answers live in memory until a dev restart.
+- Open:
+  - `0100` collides on main: main now has `0100_automation_task_kind_repair`.
+    A stack rebase has to renumber slice 3 to `0101` and this slice to
+    `0102`.
+  - Agreeing with a question that the model wrote ("Is that fine?") reads a
+    little odd in **Agreed**. Tune the decision prompt later.
+  - Update items (`document.updates`) and confirm decisions come in slice 8.
+- Screenshots: `screenshots/slice-6/` on this branch.
