@@ -170,7 +170,6 @@
     "packages/junior/tests/integration/slack/conversation-turn-steering-behavior.test.ts": 1
   },
   "kind-behavior": {
-    "packages/junior/src/api/board/read.ts": 3,
     "packages/junior/src/api/conversations/access.ts": 2,
     "packages/junior/src/api/conversations/agent-tree.ts": 3,
     "packages/junior/src/api/conversations/events.ts": 3,
