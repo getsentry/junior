@@ -318,6 +318,45 @@ describe("versions API", () => {
     const turnEnded = await rootTurn("idle", nowMs + 120_000);
     expect(feedMoved(liveEvent, turnEnded)).toEqual(["activity", "status"]);
 
+    // A running Thread row also shows that it runs in place of its age, so
+    // the Events of its live Turn do not move the feed. Its start and end
+    // move the Thread's status.
+    const threadId = `${OWN}:thread`;
+    await createChild({
+      childConversationId: threadId,
+      kind: "thread",
+      parentConversationId: OWN,
+    });
+    const withThread = await read();
+    const threadTurn = async (status: "idle" | "running", atMs: number) => {
+      await getConversationEventStore().append(threadId, [
+        {
+          data: {
+            type: "tool_execution_started",
+            toolCallId: `${threadId}:tool-${atMs}`,
+            toolName: "search",
+          },
+          createdAtMs: atMs,
+        },
+      ]);
+      await getConversationStore().recordExecution({
+        conversationId: threadId,
+        createdAtMs: atMs,
+        execution: { runId: "thread-turn", status, updatedAtMs: atMs },
+        lastActivityAtMs: atMs,
+        metrics: { durationMs: 50 },
+        source: "slack",
+        updatedAtMs: atMs,
+      });
+      return await read();
+    };
+    const threadRunning = await threadTurn("running", nowMs + 180_000);
+    expect(feedMoved(withThread, threadRunning)).toEqual(["threads"]);
+    const threadEvent = await threadTurn("running", nowMs + 240_000);
+    expect(changed(threadRunning, threadEvent)).toEqual(["conversation"]);
+    const threadEnded = await threadTurn("idle", nowMs + 240_000);
+    expect(feedMoved(threadEvent, threadEnded)).toEqual(["threads"]);
+
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");
     await getConversationEventStore().append(OWN, [
@@ -331,7 +370,7 @@ describe("versions API", () => {
       },
     ]);
     const withReply = await read();
-    expect(changed(turnEnded, withReply)).toEqual([
+    expect(changed(threadEnded, withReply)).toEqual([
       "conversation",
       "conversations",
     ]);

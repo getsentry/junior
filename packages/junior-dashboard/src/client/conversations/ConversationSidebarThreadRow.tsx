@@ -2,7 +2,10 @@ import { ChevronRight } from "lucide-react";
 import { memo } from "react";
 import { Link } from "react-router";
 
-import { conversationDisplayTitle } from "../format";
+import {
+  conversationDisplayTitle,
+  visualStatusForConversation,
+} from "../format";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import type { Conversation } from "../types";
 import {
@@ -19,8 +22,10 @@ const DEPTH_INDENT = ["pl-[2.125rem]", "pl-[3.125rem]", "pl-[4.125rem]"];
 
 /**
  * Render one Thread under its parent in the sidebar. The row shows a status
- * icon, the title, and its age. Threads have no pin, archive, or unread state
- * here: archive applies to everyone, so it stays on the Thread.
+ * icon, the title, and its age. A running Thread shows only its spinner and
+ * no age, so the feed token skips its activity. Threads have no pin,
+ * archive, or unread state here: archive applies to everyone, so it stays on
+ * the Thread.
  */
 export const ConversationSidebarThreadRow = memo(
   function ConversationSidebarThreadRow(props: {
@@ -56,9 +61,11 @@ export const ConversationSidebarThreadRow = memo(
         >
           {conversationDisplayTitle(props.conversation)}
         </span>
-        <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
-          {formatCompactAge(props.conversation.lastSeenAt)}
-        </span>
+        {visualStatusForConversation(props.conversation) === "active" ? null : (
+          <span className="font-sans text-xs tabular-nums text-dashboard-text-faint">
+            {formatCompactAge(props.conversation.lastSeenAt)}
+          </span>
+        )}
       </Link>
     );
   },
