@@ -13,6 +13,9 @@
  * image does not load: a changed request would write a new cache entry.
  * Deleting a snapshot keeps its images, because the next snapshot of the
  * Conversation likely holds them. They expire with their TTL.
+ * A snapshot whose images are over their own limit is not stored, so one
+ * Conversation cannot keep an unbounded amount of image data in state.
+ * Removing its images would change the request, so it would miss the cache.
  */
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
@@ -40,6 +43,10 @@ const SNAPSHOT_ZSTD_PARAMS = {
 };
 // The limit applies to the snapshot without its image data.
 const MAX_SNAPSHOT_BYTES = 1024 * 1024;
+// The limit of the base64 data of all images of one snapshot. It holds one
+// image at the 5 MiB limit of Slack attachments and `viewImage` (6.7 MiB as
+// base64), or a few typical screenshots.
+const MAX_SNAPSHOT_IMAGE_BYTES = 8 * 1024 * 1024;
 
 const IMAGE_REF_PREFIX = "sha256:";
 // Images are user content of the Conversation, so their keys have the same
@@ -98,8 +105,8 @@ function snapshotContext(
 
 /**
  * Store the snapshot of a request context with its images under hash keys.
- * Stores nothing and returns `stored: false` when the snapshot without its
- * images is still over the limit. Every key expires after `ttlMs`.
+ * Stores nothing and returns a `skipReason` when the snapshot without its
+ * images or the images are over their limit. Every key expires after `ttlMs`.
  */
 export async function saveSnapshot(
   state: ConnectedState,
@@ -107,7 +114,9 @@ export async function saveSnapshot(
   key: string,
   context: Context,
   ttlMs: number,
-): Promise<SnapshotSize & { stored: boolean }> {
+): Promise<
+  SnapshotSize & { skipReason?: "snapshot_too_large" | "images_too_large" }
+> {
   const images = new Map<string, string>();
   // Spreading the part keeps `data` at its key position, so the loaded
   // snapshot serializes the same way as the original context.
@@ -132,8 +141,11 @@ export async function saveSnapshot(
       0,
     ),
   };
-  if (snapshot.length > MAX_SNAPSHOT_BYTES) {
-    return { ...size, stored: false };
+  if (size.bytes > MAX_SNAPSHOT_BYTES) {
+    return { ...size, skipReason: "snapshot_too_large" };
+  }
+  if (size.imageBytes > MAX_SNAPSHOT_IMAGE_BYTES) {
+    return { ...size, skipReason: "images_too_large" };
   }
   // Write the images after the snapshot, so they expire after it.
   await state.set(key, snapshot, ttlMs);
@@ -142,7 +154,7 @@ export async function saveSnapshot(
       state.set(imageKey(conversationId, sha256), data, ttlMs),
     ),
   );
-  return { ...size, stored: true };
+  return size;
 }
 
 /**
