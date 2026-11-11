@@ -1,0 +1,30 @@
+diff --git a/apps/example/plugins.ts b/apps/example/plugins.ts
+index aa6f1b598..b8aac8cee 100644
+--- a/apps/example/plugins.ts
++++ b/apps/example/plugins.ts
+@@ -5,6 +5,7 @@ import { linearPlugin } from "@sentry/junior-linear";
+ import { memoryPlugin } from "@sentry/junior-memory";
+ import { sentryPlugin } from "@sentry/junior-sentry";
+ import { vercelPlugin } from "@sentry/junior-vercel";
++import { localCodeChangesPlugin } from "./local-code-changes.ts";
+ 
+ process.env.GITHUB_APP_BOT_NAME ||= "sentry-junior[bot]";
+ process.env.GITHUB_APP_BOT_EMAIL ||=
+@@ -25,4 +26,5 @@ export const plugins = defineJuniorPlugins([
+   "@sentry/junior-notion",
+   sentryPlugin(),
+   vercelPlugin(),
++  localCodeChangesPlugin,
+ ]);
+diff --git a/apps/example/server.ts b/apps/example/server.ts
+index 505dbb65c..6797fe74f 100644
+--- a/apps/example/server.ts
++++ b/apps/example/server.ts
+@@ -15,6 +15,7 @@ const [
+ const app = await createApp({
+   allowedDomains: ["sentry.io"],
+   briefs: { enabled: true },
++  experimental: { walkthroughs: true },
+   dashboard: {
+     authRequired: exampleDashboardAuthRequired(),
+     mockConversations: exampleDashboardMockConversations(),

@@ -283,3 +283,12 @@ slice 5 rendering).
 
 Found by the live run: /api/walkthroughs was missing from the dashboard's
 served API paths → framework 404. Fixed in d7e308274 on 4b.
+
+| 4 | stack #3089 (#3087→#3133, 5 layers) | +8.4k −27, 46 files (5k = generated migration snapshot) | $2.30 | 10m43s | 12 | validator rejected once: 74 problems, nearly all uncited hunks |
+
+Read: single PRs $0.5–1.5, the 5-layer stack $2.3. Under the ~$2 target for
+single PRs; the stack is a little over. Every run had one rejection round from
+the coverage rule (uncited hunks). Cheap tune for later: tell the skill to
+decide `not_covered` before writing chapters. Not changing it in 4b.
+
+Setup files for these runs: cost-run-setup/ (not in the repo).
