@@ -67,10 +67,11 @@ export function RepositoryChangesTab(props: {
 }) {
   const [state, setState] = useState("");
   const [page, setPage] = useState(1);
-  const all = props.data.changes;
-  const changes = all.filter((change) => !state || change.state === state);
-  const count = (value: string) =>
-    all.filter((change) => change.state === value).length;
+  const changes = props.data.changes.filter(
+    (change) => !state || change.state === state,
+  );
+  // The list stops at the report's limit. The counts cover every change.
+  const counts = props.data.changeCounts;
   useEffect(() => {
     setPage(1);
   }, [state]);
@@ -86,10 +87,14 @@ export function RepositoryChangesTab(props: {
           <FilterTabList
             ariaLabel="Change state"
             items={[
-              { count: all.length, label: "All", value: "" },
-              { count: count("open"), label: "Open", value: "open" },
-              { count: count("merged"), label: "Merged", value: "merged" },
-              { count: count("closed"), label: "Closed", value: "closed" },
+              {
+                count: counts.open + counts.merged + counts.closed,
+                label: "All",
+                value: "",
+              },
+              { count: counts.open, label: "Open", value: "open" },
+              { count: counts.merged, label: "Merged", value: "merged" },
+              { count: counts.closed, label: "Closed", value: "closed" },
             ]}
             onChange={setState}
             value={state}

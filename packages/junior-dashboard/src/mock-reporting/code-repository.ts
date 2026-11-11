@@ -18,11 +18,20 @@ export function readMockCodeRepository(
     (entry) => entry.id === repositoryId,
   );
   if (!repository) return undefined;
+  const changes = overview.changes.filter(
+    (change) => change.repository === repository.name,
+  );
+  const countOf = (state: string) =>
+    changes.filter((change) => change.state === state).length;
   return {
     activityDays: overview.activityDays,
-    changes: overview.changes.filter(
-      (change) => change.repository === repository.name,
-    ),
+    // The mock lists every change, so the counts match the list.
+    changeCounts: {
+      closed: countOf("closed"),
+      merged: countOf("merged"),
+      open: countOf("open"),
+    },
+    changes,
     generatedAt: overview.generatedAt,
     repository: {
       id: repository.id,

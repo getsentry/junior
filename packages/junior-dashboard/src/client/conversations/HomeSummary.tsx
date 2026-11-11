@@ -59,10 +59,13 @@ export function HomeSummary() {
   const idleCount = open.filter(
     (change) => idleDays(nowMs, change) > IDLE_RED_DAYS,
   ).length;
+  // The listed changes stop at the report's limit. The summary counts every
+  // open change.
+  const openCount = code.data.summary.open;
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
     merges.thisWeek + merges.lastWeek === 0 &&
-    open.length === 0 &&
+    openCount === 0 &&
     needsViewer === 0
   ) {
     return null;
@@ -86,7 +89,7 @@ export function HomeSummary() {
         />
         <SummaryCard
           detail={
-            open.length === 0 ? null : idleCount > 0 ? (
+            openCount === 0 ? null : idleCount > 0 ? (
               <StatusText tone="bg-rose-300">
                 <span className="font-medium text-dashboard-text">
                   {idleCount}
@@ -98,7 +101,7 @@ export function HomeSummary() {
             )
           }
           label="Open"
-          value={open.length}
+          value={openCount}
         />
         <SummaryCard
           detail={

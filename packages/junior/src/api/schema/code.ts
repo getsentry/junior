@@ -87,6 +87,14 @@ export const codeRepositoryReportSchema = z
     activityDays: z.array(codeActivityDaySchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
     activitySixHours: z.array(codeActivityDaySchema).optional(),
+    /** Every code change in the repository by state, past the listed ones. */
+    changeCounts: z
+      .object({
+        closed: z.number().int().nonnegative(),
+        merged: z.number().int().nonnegative(),
+        open: z.number().int().nonnegative(),
+      })
+      .strict(),
     changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
     repository: z

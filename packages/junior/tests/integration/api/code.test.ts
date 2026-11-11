@@ -6,6 +6,7 @@ import { createJuniorApi } from "@/api";
 import {
   apiErrorSchema,
   codeOverviewReportSchema,
+  codePersonReportSchema,
   codeRepositoryReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
@@ -131,6 +132,93 @@ describe("code API", () => {
           title: "Make code native",
         }),
       ]);
+    } finally {
+      vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+
+  test("counts every code change past the listed ones, open first", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    vi.setSystemTime(new Date("2026-08-24T12:00:00.000Z"));
+    try {
+      await migrateSchema(fixture.sql);
+      const db = fixture.sql.db();
+      await createSqlStore(fixture.sql).recordActivity({
+        actor: {
+          email: "alice@example.com",
+          fullName: "Alice Example",
+          platform: "slack",
+          slackUserId: "U1",
+          teamId: "T1",
+        },
+        conversationId: "slack:C1:alice",
+        destination: { channelId: "C1", platform: "slack", teamId: "T1" },
+        nowMs: Date.parse("2026-05-01T10:00:00.000Z"),
+        source: "slack",
+        visibility: "public",
+      });
+      const change = (number: number, at: string) =>
+        ({
+          conversationIds: ["slack:C1:alice"],
+          number,
+          openedAt: new Date(at),
+          providerId: `change-${number}`,
+          repository: {
+            name: "getsentry/junior",
+            providerId: "repository-1",
+          },
+          state: "open",
+          title: `Change ${number}`,
+          updatedAt: new Date(at),
+          url: `https://github.com/getsentry/junior/pull/${number}`,
+        }) satisfies CodeChangeInput;
+      // More open changes than a page lists, all older than the closed ones.
+      for (let number = 1; number <= 105; number += 1) {
+        await recordCodeChange(
+          db,
+          "github",
+          change(number, "2026-05-02T12:00:00.000Z"),
+        );
+      }
+      for (let number = 106; number <= 120; number += 1) {
+        await recordCodeChange(db, "github", {
+          ...change(number, "2026-08-20T12:00:00.000Z"),
+          closedAt: new Date("2026-08-22T12:00:00.000Z"),
+          state: "closed",
+          updatedAt: new Date("2026-08-22T12:00:00.000Z"),
+        });
+      }
+      const [repository] = await db
+        .select()
+        .from(juniorCodeRepositories)
+        .where(eq(juniorCodeRepositories.providerId, "repository-1"));
+      const api = createJuniorApi();
+
+      const report = codeRepositoryReportSchema.parse(
+        await (
+          await api.request(
+            `http://localhost/api/code/repositories/${repository!.id}`,
+          )
+        ).json(),
+      );
+      expect(report.changeCounts).toEqual({ closed: 15, merged: 0, open: 105 });
+      expect(report.summary.open).toBe(105);
+      // Old open changes come before newer closed ones.
+      expect(report.changes).toHaveLength(100);
+      expect(new Set(report.changes.map((listed) => listed.state))).toEqual(
+        new Set(["open"]),
+      );
+
+      const person = codePersonReportSchema.parse(
+        await (
+          await api.request(
+            "http://localhost/api/people/alice@example.com/code",
+          )
+        ).json(),
+      );
+      expect(person.summary.open).toBe(105);
+      expect(person.changes).toHaveLength(100);
     } finally {
       vi.useRealTimers();
       await fixture.close();
