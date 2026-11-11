@@ -20,12 +20,12 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
-import type { SearchOpenPullRequests } from "./open-pull-requests.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
   loadPullRequest,
+  loadPullRequestLifecycles,
   loadPullRequestCommitPages,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
@@ -321,22 +321,21 @@ export function githubPlugin(
       async heartbeat(ctx) {
         const db = ctx.db as GitHubDb;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
-        const search: SearchOpenPullRequests = async (input) => {
-          const login = botLoginFromEmail(requireEnv(botEmailEnv));
-          if (!login) {
-            throw new Error(`${botEmailEnv} is not a GitHub bot address`);
-          }
-          return await searchOpenPullRequestMergeability(installationEnv, {
-            ...input,
-            author: `app/${login.replace(/\[bot\]$/, "")}`,
-          });
-        };
         await runGitHubConflictChecks({
           db,
           events: ctx.events,
           log: ctx.log,
           now: new Date(ctx.nowMs),
-          search,
+          search: async (input) => {
+            const login = botLoginFromEmail(requireEnv(botEmailEnv));
+            if (!login) {
+              throw new Error(`${botEmailEnv} is not a GitHub bot address`);
+            }
+            return await searchOpenPullRequestMergeability(installationEnv, {
+              ...input,
+              author: `app/${login.replace(/\[bot\]$/, "")}`,
+            });
+          },
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({
@@ -345,11 +344,10 @@ export function githubPlugin(
           codeChanges: ctx.codeChanges,
           db,
           events: ctx.events,
-          loadPullRequest: async (pullRequest) =>
-            await loadPullRequest(installationEnv, pullRequest),
+          loadLifecycles: async (input) =>
+            await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
-          search,
           state: ctx.state,
         });
       },

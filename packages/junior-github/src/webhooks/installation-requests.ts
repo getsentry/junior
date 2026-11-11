@@ -78,6 +78,44 @@ export async function loadPullRequest(
 }
 
 /**
+ * Read the lifecycle of some pull requests of one repository in one GraphQL
+ * query, with a read-only token. Each pull request has the alias `pr<index>`.
+ */
+export async function loadPullRequestLifecycles(
+  env: GitHubInstallationEnv,
+  input: { numbers: number[]; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    input.repositoryFullName,
+    "pull request lifecycle",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { pull_requests: "read" },
+    repositories: [name],
+  });
+  const variables = input.numbers.map((_, index) => `$n${index}: Int!`);
+  const pullRequests = input.numbers.map(
+    (_, index) =>
+      `pr${index}: pullRequest(number: $n${index}) { ...lifecycle }`,
+  );
+  return await githubRequest("https://api.github.com", "/graphql", {
+    body: {
+      query: `query($owner: String!, $name: String!, ${variables.join(", ")}) { repository(owner: $owner, name: $name) { databaseId nameWithOwner ${pullRequests.join(" ")} } } fragment lifecycle on PullRequest { author { __typename login } closedAt createdAt databaseId headRefName isDraft merged mergedAt number state title updatedAt }`,
+      variables: {
+        name,
+        owner,
+        ...Object.fromEntries(
+          input.numbers.map((number, index) => [`n${index}`, number]),
+        ),
+      },
+    },
+    method: "POST",
+    token: token.token,
+  });
+}
+
+/**
  * Read one page of a repository's open pull requests by one author, with
  * their mergeability, through GraphQL search and a read-only token.
  */

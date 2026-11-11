@@ -3,11 +3,10 @@
  *
  * Only `pull_request` webhooks change a stored pull request. When GitHub
  * does not deliver a close, or its handler fails, the row stays open. Once a
- * day for each repository, the heartbeat compares the stored open rows with
- * GitHub's open search. It reads each pull request that the search does not
- * list, and records a close through the webhook write path, with its
- * merged or closed_unmerged event. The write is guarded by `updatedAt`, so a
- * replay cannot move a newer row back.
+ * day for each repository, the heartbeat reads the stored open rows from
+ * GitHub with GraphQL. Each close goes through the webhook write path, with
+ * its merged or closed_unmerged event. The write is guarded by `updatedAt`,
+ * so a replay cannot move a newer row back.
  */
 import type {
   CodeChangePublisher,
@@ -18,10 +17,6 @@ import type {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
-import {
-  listOpenGitHubPullRequests,
-  type SearchOpenPullRequests,
-} from "../open-pull-requests.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
 import { normalizeGitHubPullRequestOutcome } from "../webhooks/pull-request-outcome.js";
 import { applyGitHubPullRequestOutcome } from "./apply.js";
@@ -36,20 +31,43 @@ const RECONCILE_MS = 24 * 60 * 60_000;
 /** Repositories per heartbeat. */
 const REPOSITORY_LIMIT = 1;
 
-/** Pull request reads per repository reconcile. The rest wait a day. */
-const READ_LIMIT = 10;
+/**
+ * Pull requests per GraphQL query. The query has no connections, so it costs
+ * one rate limit point. 100 is the GraphQL page size, which keeps the query
+ * and its response small. A repository with more stale open rows uses more
+ * queries, so no row waits for others.
+ */
+const PULL_REQUESTS_PER_QUERY = 100;
 
-const pullRequestSchema = z
-  .object({
-    base: z.object({
-      repo: z.object({
-        full_name: z.string().min(1),
-        id: z.number().int().positive(),
-      }),
-    }),
-    state: z.enum(["open", "closed"]),
-  })
-  .passthrough();
+const lifecycleSchema = z.object({
+  // GraphQL omits the `[bot]` suffix that REST and webhooks give an app.
+  author: z
+    .object({ __typename: z.string(), login: z.string().min(1) })
+    .nullable(),
+  closedAt: z.string().nullable(),
+  createdAt: z.string(),
+  databaseId: z.number().int().positive(),
+  headRefName: z.string(),
+  isDraft: z.boolean(),
+  merged: z.boolean(),
+  mergedAt: z.string().nullable(),
+  number: z.number().int().positive(),
+  state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+  title: z.string(),
+  updatedAt: z.string(),
+});
+
+const lifecyclesResponseSchema = z.object({
+  data: z.object({
+    repository: z
+      .object({
+        databaseId: z.number().int().positive(),
+        nameWithOwner: z.string().min(1),
+      })
+      // A deleted pull request is null.
+      .catchall(lifecycleSchema.nullable()),
+  }),
+});
 
 interface ReconcileArgs {
   annotations: PluginConversationAnnotations;
@@ -57,15 +75,46 @@ interface ReconcileArgs {
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
   events: EventPublisher;
-  /** Read one pull request from the GitHub REST API. */
-  loadPullRequest(pullRequest: {
-    number: number;
+  /** Read the lifecycle of some pull requests with one GraphQL query. */
+  loadLifecycles(input: {
+    numbers: number[];
     repositoryFullName: string;
   }): Promise<unknown>;
-  log: Pick<PluginLogger, "error" | "warn">;
+  log: Pick<PluginLogger, "error">;
   nowMs: number;
-  search: SearchOpenPullRequests;
   state: PluginState;
+}
+
+/** Write a GraphQL lifecycle as the `closed` webhook body. */
+function closedWebhookBody(
+  repository: { databaseId: number; nameWithOwner: string },
+  pullRequest: z.output<typeof lifecycleSchema>,
+) {
+  // GitHub shows a deleted account as `ghost`.
+  const login = pullRequest.author?.login ?? "ghost";
+  return {
+    action: "closed",
+    pull_request: {
+      closed_at: pullRequest.closedAt,
+      created_at: pullRequest.createdAt,
+      draft: pullRequest.isDraft,
+      head: { ref: pullRequest.headRefName },
+      id: pullRequest.databaseId,
+      merged: pullRequest.merged,
+      merged_at: pullRequest.mergedAt,
+      number: pullRequest.number,
+      title: pullRequest.title,
+      updated_at: pullRequest.updatedAt,
+      user: {
+        login:
+          pullRequest.author?.__typename === "Bot" ? `${login}[bot]` : login,
+      },
+    },
+    repository: {
+      full_name: repository.nameWithOwner,
+      id: repository.databaseId,
+    },
+  };
 }
 
 async function reconcileRepository(
@@ -73,48 +122,42 @@ async function reconcileRepository(
   repositoryFullName: string,
   numbers: number[],
 ): Promise<void> {
-  const { complete, pullRequests } = await listOpenGitHubPullRequests(
-    args.search,
-    repositoryFullName,
-  );
-  if (!complete) {
-    // A pull request past the search limit is open, but not in the list.
-    // The reads would find the same open pull requests every day.
-    args.log.warn("GitHub pull request reconcile skipped a partial search", {
-      repository: repositoryFullName,
-    });
-    return;
-  }
-  const open = new Set(pullRequests.map((pullRequest) => pullRequest.number));
-  const missing = numbers.filter((number) => !open.has(number));
-  for (const number of missing.slice(0, READ_LIMIT)) {
-    const pullRequest = pullRequestSchema.parse(
-      await args.loadPullRequest({ number, repositoryFullName }),
-    );
-    // The search index can lag behind GitHub.
-    if (pullRequest.state === "open") continue;
-    const body = {
-      action: "closed",
-      pull_request: pullRequest,
-      repository: pullRequest.base.repo,
-    };
-    const outcome = normalizeGitHubPullRequestOutcome({
-      body,
-      botEmail: args.botEmail,
-    });
-    if (!outcome) continue;
-    const recorded = await applyGitHubPullRequestOutcome({
-      annotations: args.annotations,
-      codeChanges: args.codeChanges,
-      db: args.db,
-      log: args.log,
-      outcome,
-    });
-    if (!recorded.applied) continue;
-    // These have the key of the webhook events for this close, so a Watch
-    // gets the close once, even when the webhook arrives later.
-    for (const event of gitHubPullRequestTerminalEvents(body)) {
-      await args.events.publish({ ...event, objectType: "code_change" });
+  for (
+    let start = 0;
+    start < numbers.length;
+    start += PULL_REQUESTS_PER_QUERY
+  ) {
+    const { databaseId, nameWithOwner, ...pullRequests } =
+      lifecyclesResponseSchema.parse(
+        await args.loadLifecycles({
+          numbers: numbers.slice(start, start + PULL_REQUESTS_PER_QUERY),
+          repositoryFullName,
+        }),
+      ).data.repository;
+    for (const pullRequest of Object.values(pullRequests)) {
+      if (!pullRequest || pullRequest.state === "OPEN") continue;
+      const body = closedWebhookBody(
+        { databaseId, nameWithOwner },
+        pullRequest,
+      );
+      const outcome = normalizeGitHubPullRequestOutcome({
+        body,
+        botEmail: args.botEmail,
+      });
+      if (!outcome) continue;
+      // Publish before the write. When the publish fails, the row stays open
+      // and the next reconcile tries again. The events have the key of the
+      // webhook events for this close, so a Watch gets the close once.
+      for (const event of gitHubPullRequestTerminalEvents(body)) {
+        await args.events.publish({ ...event, objectType: "code_change" });
+      }
+      await applyGitHubPullRequestOutcome({
+        annotations: args.annotations,
+        codeChanges: args.codeChanges,
+        db: args.db,
+        log: args.log,
+        outcome,
+      });
     }
   }
 }

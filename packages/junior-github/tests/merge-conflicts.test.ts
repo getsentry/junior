@@ -534,71 +534,60 @@ describe("merge conflict check on webhook events", () => {
   describe("daily reconcile of open pull requests", () => {
     const now = Date.parse("2026-11-09T12:00:00.000Z");
     const day = 24 * 60 * 60_000;
-    let searches: number;
-    let reads: number[];
-    let morePages: boolean;
+    let queries: number[][];
 
-    /** A pull request as the REST API returns it. */
-    function closedPullRequest(number: number, merged: boolean) {
+    /** A pull request lifecycle as GitHub GraphQL returns it. */
+    function lifecycle(number: number) {
+      const closed = number === 946 || number === 949;
+      const merged = number === 946;
       return {
-        base: {
-          ref: "main",
-          repo: { full_name: "getsentry/junior", id: 1 },
-        },
-        body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC1%3A1.0 -->\n<!-- junior-session-footer:end -->",
-        closed_at: new Date(now - day).toISOString(),
-        created_at: new Date(now - 3 * day).toISOString(),
-        id: number * 10,
+        author: { __typename: "Bot", login: "sentry-junior" },
+        closedAt: closed ? new Date(now - day).toISOString() : null,
+        createdAt: new Date(now - 3 * day).toISOString(),
+        databaseId: number * 10,
+        headRefName: `feat/pr-${number}`,
+        isDraft: false,
         merged,
-        merged_at: merged ? new Date(now - day).toISOString() : null,
+        mergedAt: merged ? new Date(now - day).toISOString() : null,
         number,
-        state: "closed",
+        state: merged ? "MERGED" : closed ? "CLOSED" : "OPEN",
         title: `Pull request ${number}`,
-        updated_at: new Date(now - day).toISOString(),
-        user: { login: "sentry-junior[bot]" },
+        updatedAt: new Date(now - day).toISOString(),
       };
     }
 
     beforeEach(async () => {
       vi.useFakeTimers({ now, toFake: ["Date"] });
-      searches = 0;
-      reads = [];
-      morePages = false;
+      queries = [];
       vi.stubEnv(
         "GITHUB_APP_BOT_EMAIL",
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
-        http.post("https://api.github.com/graphql", () => {
-          searches += 1;
+        http.post("https://api.github.com/graphql", async ({ request }) => {
+          const { variables } = (await request.json()) as {
+            variables: Record<string, unknown>;
+          };
+          const numbers = Object.entries(variables)
+            .filter(([name]) => /^n\d+$/.test(name))
+            .map(([, number]) => number as number);
+          queries.push(numbers);
           return HttpResponse.json({
             data: {
-              search: {
-                nodes: [
-                  {
-                    baseRefName: "main",
-                    headRefOid: "1111111111111111111111111111111111111111",
-                    mergeable: "MERGEABLE",
-                    number: 947,
-                    state: "OPEN",
-                    url: "https://github.com/getsentry/junior/pull/947",
-                  },
-                ],
-                pageInfo: morePages
-                  ? { endCursor: `page-${searches}`, hasNextPage: true }
-                  : { endCursor: null, hasNextPage: false },
+              repository: {
+                databaseId: 1,
+                nameWithOwner: "getsentry/junior",
+                ...Object.fromEntries(
+                  numbers.map((number, index) => [
+                    `pr${index}`,
+                    // GitHub deleted pull request 951.
+                    number === 951 ? null : lifecycle(number),
+                  ]),
+                ),
               },
             },
           });
         }),
-        http.get(
-          "https://api.github.com/repos/getsentry/junior/pulls/:number",
-          ({ params }) => {
-            const number = Number(params.number);
-            reads.push(number);
-            return HttpResponse.json(closedPullRequest(number, number === 946));
-          },
-        ),
       );
       const row = (number: number, updatedAt: number) => ({
         conversationIds: ["slack:C1:1.0"],
@@ -617,6 +606,7 @@ describe("merge conflict check on webhook events", () => {
           row(946, now - 2 * day),
           row(947, now - 2 * day),
           row(949, now - 2 * day),
+          row(951, now - 2 * day),
           // Its close webhook can still arrive.
           row(950, now - 60_000),
         ]);
@@ -624,13 +614,15 @@ describe("merge conflict check on webhook events", () => {
 
     afterEach(() => {
       vi.useRealTimers();
+      vi.restoreAllMocks();
     });
 
     it("records closes that GitHub did not deliver, once a day", async () => {
       await heartbeat(now);
 
-      expect(searches).toBe(1);
-      expect(reads.sort()).toEqual([946, 949]);
+      expect(queries.map((numbers) => numbers.sort())).toEqual([
+        [946, 947, 949, 951],
+      ]);
       const rows = await fixture
         .db()
         .select()
@@ -643,6 +635,7 @@ describe("merge conflict check on webhook events", () => {
         [947, "open", null, null],
         [949, "closed_unmerged", null, new Date(now - day)],
         [950, "open", null, null],
+        [951, "open", null, null],
       ]);
       expect(
         codeChanges.map((change) => [change.number, change.state]),
@@ -663,12 +656,11 @@ describe("merge conflict check on webhook events", () => {
 
       vi.setSystemTime(now + 60_000);
       await heartbeat(now + 60_000);
-      expect(searches).toBe(1);
+      expect(queries).toHaveLength(1);
       // The next day, the row that waited for its webhook is checked too.
       vi.setSystemTime(now + day);
       await heartbeat(now + day);
-      expect(searches).toBe(2);
-      expect(reads).toEqual([946, 949, 950]);
+      expect(queries[1]?.sort()).toEqual([947, 950, 951]);
     });
 
     it("publishes a corrected close with the key of its webhook", async () => {
@@ -682,6 +674,8 @@ describe("merge conflict check on webhook events", () => {
       expect(closes()).toEqual([
         expect.objectContaining({
           data: {
+            headBranch: "feat/pr-946",
+            isDraft: false,
             openerUsername: "sentry-junior[bot]",
             pullRequest: 946,
             repo: "getsentry/junior",
@@ -699,6 +693,7 @@ describe("merge conflict check on webhook events", () => {
       ).toHaveLength(2);
 
       // The late webhook has the same key, so a Watch gets the merge once.
+      const merged = lifecycle(946);
       await deliver(
         "delivery-merge",
         signedRequest({
@@ -707,7 +702,16 @@ describe("merge conflict check on webhook events", () => {
           body: {
             action: "closed",
             installation: { id: 456 },
-            pull_request: closedPullRequest(946, true),
+            pull_request: {
+              closed_at: merged.closedAt,
+              created_at: merged.createdAt,
+              id: merged.databaseId,
+              merged: true,
+              merged_at: merged.mergedAt,
+              number: 946,
+              updated_at: merged.updatedAt,
+              user: { login: "sentry-junior[bot]" },
+            },
             repository: { full_name: "getsentry/junior", id: 1 },
             sender: { login: "jane" },
           },
@@ -717,13 +721,31 @@ describe("merge conflict check on webhook events", () => {
       expect(new Set(closes().map((event) => event.eventKey)).size).toBe(1);
     });
 
-    it("reads no pull request when the search has more than it lists", async () => {
-      morePages = true;
+    it("keeps a close open for the next reconcile when its event fails", async () => {
+      vi.spyOn(events, "publish").mockRejectedValueOnce(
+        new Error("The event queue is down"),
+      );
       await heartbeat(now);
+      const states = async () =>
+        (
+          await fixture
+            .db()
+            .select()
+            .from(juniorGitHubPullRequests)
+            .orderBy(juniorGitHubPullRequests.number)
+        ).map((row) => [row.number, row.state]);
+      expect(await states()).toContainEqual([946, "open"]);
 
-      expect(searches).toBe(5);
-      expect(reads).toEqual([]);
-      expect(codeChanges).toEqual([]);
+      vi.setSystemTime(now + day);
+      await heartbeat(now + day);
+      expect(await states()).toContainEqual([946, "merged"]);
+      expect(
+        published.filter(
+          (event) =>
+            event.identifier === "getsentry/junior#946" &&
+            event.eventType === "pull_request.merged",
+        ),
+      ).toHaveLength(1);
     });
   });
 });
