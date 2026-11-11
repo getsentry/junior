@@ -114,9 +114,11 @@ function AutomationActivity(props: {
   return (
     <div
       aria-label="Recent runs"
-      className="min-w-0"
+      className="min-w-0 outline-none"
       ref={selection.listRef}
       role="region"
+      // Closing details on a run with no bar or row focuses the section.
+      tabIndex={-1}
     >
       <Card>
         <div className="flex items-baseline justify-between gap-3 px-4 pt-4">
@@ -146,6 +148,7 @@ function AutomationActivity(props: {
                 .map((run) => ({
                   ...run,
                   key: run.executionId,
+                  runId: run.executionId,
                   to: runPath(run),
                 }))}
               size="default"

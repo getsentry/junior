@@ -37,9 +37,10 @@ export const AUTOMATION_RUN_PARAM = "run";
 
 /**
  * Read the run that the URL selects, and change it, so any page that lists
- * runs opens details in place. Closing returns focus to the run row: the
- * first button or link inside its `data-run-id` element. Up and Down move the
- * selection while details are open.
+ * runs opens details in place. Closing returns focus to the run: the first
+ * button or link inside its `data-run-id` element, else a button or link
+ * tagged with it, else the list. Up and Down move the selection while
+ * details are open.
  */
 export function useAutomationRunSelection(runIds: readonly string[]) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -55,10 +56,14 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
       },
       { replace: true },
     );
-  const rowControl = (id: string) =>
-    listRef.current?.querySelector<HTMLElement>(
-      `[data-run-id="${CSS.escape(id)}"] :is(button, a)`,
+  // A list row holds its controls; a strip bar is the control itself.
+  const rowControl = (id: string) => {
+    const run = `[data-run-id="${CSS.escape(id)}"]`;
+    return (
+      listRef.current?.querySelector<HTMLElement>(`${run} :is(button, a)`) ??
+      listRef.current?.querySelector<HTMLElement>(`:is(button, a)${run}`)
     );
+  };
   const close = () => {
     const trigger = runId ? rowControl(runId) : undefined;
     select(undefined);
