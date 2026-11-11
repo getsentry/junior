@@ -6,6 +6,8 @@ import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import {
   consumeSandboxEgressAuthRequiredSignal,
   createSandboxEgressCredentialToken,
+  getSandboxEgressCredentialLease,
+  parseSandboxEgressCredentialToken,
 } from "@/chat/sandbox/egress/session";
 import {
   proxyVercelSandboxEgressRequest,
@@ -179,7 +181,7 @@ describe("sandbox egress workload identity credentials", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("sends an IAP service account JWT in Proxy-Authorization next to static API headers, and mints again when the lease expires", async () => {
+  it("sends an IAP service account JWT in Proxy-Authorization next to static API headers, keeps only the token in the shared lease, and mints again when it expires", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const response = await sendFromSandbox(IAP_HOST, {
       authorization: "Key sandbox-value",
@@ -216,10 +218,35 @@ describe("sandbox egress workload identity credentials", () => {
     });
     expect(Number(claims.exp) - Number(claims.iat)).toBe(3600);
 
-    // The lease is shared until 5 minutes before the token expires.
+    // Host state keeps only the minted token, never the static API key.
+    const stored = await getSandboxEgressCredentialLease(
+      "iap-app",
+      { name: "installation-workload-identity", access: "read" },
+      parseSandboxEgressCredentialToken(
+        createSandboxEgressCredentialToken({
+          credentials: { actor: { type: "user", userId: "U123" } },
+          egressId: EGRESS_ID,
+          ttlMs: 60_000,
+        }),
+      )!,
+    );
+    expect(stored?.headerTransforms).toEqual([
+      {
+        domain: IAP_HOST,
+        headers: { "Proxy-Authorization": `Bearer ${GCP_SIGNED_JWT}` },
+      },
+    ]);
+    expect(JSON.stringify(stored)).not.toContain("redash-api-key");
+
+    // The lease is shared until 5 minutes before the token expires. Static
+    // API headers resolve from env on each request.
+    process.env.IAP_APP_API_KEY = "rotated-api-key";
     vi.setSystemTime(Date.now() + 54 * 60 * 1000);
     expect((await sendFromSandbox(IAP_HOST)).status).toBe(200);
     expect(workloadIdentityRequests()).toHaveLength(2);
+    expect(upstreamHeaders[1]?.get("authorization")).toBe(
+      "Key rotated-api-key",
+    );
 
     vi.setSystemTime(Date.now() + 2 * 60 * 1000);
     expect((await sendFromSandbox(IAP_HOST)).status).toBe(200);
@@ -291,4 +318,25 @@ describe("sandbox egress workload identity credentials", () => {
     });
     expect(signal?.authorization).toBeUndefined();
   });
+
+  it.each([401, 403])(
+    "reports an upstream HTTP %i as unavailable, without an auth flow",
+    async (status) => {
+      // Injected fault: the upstream rejects the federated credential.
+      upstreamFetch.mockResolvedValueOnce(new Response("denied", { status }));
+
+      const response = await sendFromSandbox(IAP_HOST);
+
+      expect(response.status).toBe(401);
+      expect(upstreamFetch).toHaveBeenCalledTimes(1);
+      const signal = await consumeSandboxEgressAuthRequiredSignal(EGRESS_ID);
+      expect(signal).toMatchObject({
+        kind: "unavailable",
+        provider: "iap-app",
+        message: `Upstream rejected the iap-app workload identity credential with HTTP ${status}.`,
+      });
+      expect(signal?.authorization).toBeUndefined();
+      expect(signal?.message).not.toContain(GCP_SIGNED_JWT);
+    },
+  );
 });

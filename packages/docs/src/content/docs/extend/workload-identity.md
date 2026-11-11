@@ -86,7 +86,7 @@ credentials:
 
 ## Set up Google Cloud
 
-1. Create a workload identity pool and an OIDC provider. Set the issuer to `https://oidc.vercel.com/<team-slug>`, even when your Vercel issuer mode is Global. Select **Default audience**. Junior asks Vercel for a token with that audience.
+1. Create a workload identity pool and an OIDC provider. Set the issuer to `https://oidc.vercel.com/<team-slug>`, even when your Vercel issuer mode is Global. A token with a custom audience always comes from the team issuer. See [Vercel OIDC for Google Cloud](https://vercel.com/docs/oidc/gcp). Select **Default audience**. Junior asks Vercel for a token with that audience.
 2. Map `google.subject` to `assertion.sub`.
 3. Add an attribute condition that trusts only production:
 
@@ -109,7 +109,7 @@ credentials:
 
 The Token Creator role also lets the holder mint access and ID tokens for the service account. This is why each plugin needs its own service account.
 
-Service accounts cannot pass IAP access levels that check the device. Grant the service account its IAP role without a device-based access level condition. Otherwise Junior gets HTTP 403.
+Service accounts cannot pass IAP access levels that check the device. Grant the service account its IAP role without a device-based access level condition. Otherwise Junior gets HTTP 403. See [IAP programmatic authentication](https://cloud.google.com/iap/docs/authentication-howto).
 
 ## Set up Azure
 
@@ -128,6 +128,8 @@ Service accounts cannot pass IAP access levels that check the device. Grant the 
 Run `junior check` to validate the manifest. Then ask Junior to call the service from the sandbox, for example with `curl https://redash.example.com/api/session`.
 
 If a token exchange fails, the command fails with a message such as `Could not mint the redash workload identity credential: Google IAM Credentials returned HTTP 403.` The message names the failing step: Vercel OIDC, Google STS, Google IAM Credentials, or Microsoft Entra ID. Junior does not ask anyone to connect an account. Fix the trust or role setup for that step.
+
+If the token is minted but the service returns HTTP 401 or 403, the message is `Upstream rejected the redash workload identity credential with HTTP 403.` Check the role that the service account or app has on that service. For a plugin that also sends static `api-headers`, also check those values.
 
 ## Next step
 

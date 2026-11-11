@@ -15,6 +15,8 @@ import {
   selectPluginGrant,
   issuePluginCredential,
 } from "@/chat/plugins/credential-hooks";
+import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
+import { resolveApiHeaderTransforms } from "@/chat/plugins/auth/api-headers-broker";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   matchesSandboxEgressDomain,
@@ -83,6 +85,36 @@ export class SandboxEgressCredentialError extends Error {
   }
 }
 
+/** True when the provider's credential is a host-minted workload identity token. */
+export function isWorkloadIdentityProvider(provider: string): boolean {
+  return (
+    pluginCatalogRuntime.getDefinition(provider)?.manifest.credentials?.type ===
+    "workload-identity"
+  );
+}
+
+/**
+ * Add a workload identity plugin's static `api-headers` to its lease.
+ *
+ * The shared lease in host state holds only the minted token. Static values,
+ * such as an app API key, resolve from env on each request instead.
+ */
+function withStaticApiHeaders(
+  lease: SandboxEgressCredentialLease,
+): SandboxEgressCredentialLease {
+  const manifest = pluginCatalogRuntime.getDefinition(lease.provider)?.manifest;
+  if (manifest?.credentials?.type !== "workload-identity") {
+    return lease;
+  }
+  return {
+    ...lease,
+    headerTransforms: mergeHeaderTransforms([
+      ...resolveApiHeaderTransforms(manifest),
+      ...lease.headerTransforms,
+    ]),
+  };
+}
+
 function defaultGrantForProvider(input: {
   method: string;
   provider: string;
@@ -92,15 +124,12 @@ function defaultGrantForProvider(input: {
   )
     ? "read"
     : "write";
-  const credentials = pluginCatalogRuntime.getDefinition(input.provider)
-    ?.manifest.credentials;
   return {
     source: "broker",
     grant: {
-      name:
-        credentials?.type === "workload-identity"
-          ? WORKLOAD_IDENTITY_GRANT_NAME
-          : "default",
+      name: isWorkloadIdentityProvider(input.provider)
+        ? WORKLOAD_IDENTITY_GRANT_NAME
+        : "default",
       access,
       reason: `sandbox-egress:${input.provider}:${access}`,
     },
@@ -225,10 +254,10 @@ export async function sandboxEgressCredentialLease(
         `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
       );
     }
-    return {
+    return withStaticApiHeaders({
       ...cached,
       grant,
-    };
+    });
   }
 
   let lease: {
@@ -325,7 +354,7 @@ export async function sandboxEgressCredentialLease(
   };
   assertLeaseTransformsOwnedByProvider(provider, issuedLease);
   await setSandboxEgressCredentialLease(context, issuedLease);
-  return issuedLease;
+  return withStaticApiHeaders(issuedLease);
 }
 
 /** Return whether a credential lease can modify requests to the target host. */
