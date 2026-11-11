@@ -40,7 +40,8 @@ export function AutomationTaskFields(props: {
   const skills = useSkillsData().data;
   return (
     <>
-      <Field>
+      {/* Field stretches its children. The toggle keeps its own width. */}
+      <Field className="*:w-fit">
         <span id="run-label" className="text-sm font-semibold">
           Run
         </span>

@@ -4,6 +4,7 @@ import type {
   AutomationSummary,
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
+import { Field, FieldLabel } from "../../components/ui/field";
 import { NativeSelect } from "../../components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { cn } from "../../styles";
@@ -78,13 +79,19 @@ export function AutomationOutcomeFields(props: {
         value={props.value.length > 0}
       >
         {[true, false].map((send) => (
-          <label
+          <Field
             key={String(send)}
-            className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm"
+            className="min-h-8 w-auto"
+            orientation="horizontal"
           >
-            <RadioGroupItem value={send} />
-            {send ? "Send a message" : "No success message"}
-          </label>
+            <RadioGroupItem id={`success-message-${send}`} value={send} />
+            <FieldLabel
+              className="font-normal"
+              htmlFor={`success-message-${send}`}
+            >
+              {send ? "Send a message" : "No success message"}
+            </FieldLabel>
+          </Field>
         ))}
       </RadioGroup>
       {props.value.length ? (
