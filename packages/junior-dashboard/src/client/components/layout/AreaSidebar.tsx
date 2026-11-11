@@ -7,7 +7,10 @@ import { usePaneBackToTab } from "./PaneNav";
 
 /** One page in an area, such as "Users" in System, or a section of one. */
 type AreaItem = {
-  /** The section's heading id, when the item is a section of one page. */
+  /**
+   * The section's heading id, when the item is a section of the page in
+   * `to`. A section of a listed page shows under that page's row.
+   */
   anchor?: string;
   /** Match only this exact path, as for an area's first page. */
   end?: boolean;
@@ -30,12 +33,19 @@ export type Area = {
   root: string;
 };
 
+function itemPage(item: AreaItem): string {
+  return item.to.split("#")[0]!;
+}
+
 /**
- * True when the items are separate pages. An area whose items are sections
- * of one page shows that page on phones, since the page is the list.
+ * True when the area's first page is not a page of sections. A first page
+ * of sections, such as Settings or the Memories Overview, shows itself on
+ * phones, since the page is the list.
  */
 export function areaListsPages(area: Area): boolean {
-  return !area.items.some((item) => item.anchor);
+  return !area.items.some(
+    (item) => item.anchor && itemPage(item) === area.root,
+  );
 }
 
 /** On phones the root shows the list, so its own page opens with this. */
@@ -62,10 +72,14 @@ export function AreaSidebar(props: { area: Area; phone?: boolean }) {
   const { pathname } = useLocation();
   const back = usePaneBackToTab();
   const { area } = props;
-  // Sections mark the one in view; pages mark the one that shows.
+  // Sections of the page that shows mark the one in view; pages mark the
+  // one that shows.
   const currentAnchor = useCurrentAnchor(
-    area.items.flatMap((item) => (item.anchor ? [item.anchor] : [])),
+    area.items.flatMap((item) =>
+      item.anchor && itemPage(item) === pathname ? [item.anchor] : [],
+    ),
   );
+  const hasPages = area.items.some((item) => !item.anchor);
   return (
     <nav
       aria-label={area.label}
@@ -92,8 +106,10 @@ export function AreaSidebar(props: { area: Area; phone?: boolean }) {
           const active =
             !props.phone &&
             (item.anchor
-              ? item.anchor === currentAnchor
+              ? itemPage(item) === pathname && item.anchor === currentAnchor
               : itemActive(item, pathname));
+          // Sections under a page row step in, so they read as its parts.
+          const nested = Boolean(item.anchor) && hasPages;
           return (
             <li className="list-none" key={item.to}>
               <Link
@@ -103,6 +119,7 @@ export function AreaSidebar(props: { area: Area; phone?: boolean }) {
                 className={cn(
                   "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2 font-sans no-underline transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
                   props.phone ? "py-3" : "py-2 comfortable:py-2.5",
+                  nested && "py-1.5 pl-5",
                   active
                     ? "bg-dashboard-accent/[0.12] text-dashboard-accent-text"
                     : "text-dashboard-text hover:bg-dashboard-fill-hover",
@@ -112,7 +129,8 @@ export function AreaSidebar(props: { area: Area; phone?: boolean }) {
                 <span className="grid min-w-0 gap-0.5">
                   <span
                     className={cn(
-                      "truncate text-sm",
+                      "truncate",
+                      nested ? "text-xs" : "text-sm",
                       active ? "font-semibold" : "font-medium",
                     )}
                   >

@@ -329,7 +329,7 @@ test("links to a settings section", async ({ page, dashboard }) => {
   ).toBeInViewport();
 });
 
-test("marks the Settings section in view in the pane", async ({
+test("marks the section in view in the pane on pages of sections", async ({
   page,
   dashboard,
 }) => {
@@ -357,6 +357,33 @@ test("marks the Settings section in view in the pane", async ({
     .getByRole("heading", { exact: true, name: "API Tokens" })
     .evaluate((heading) => heading.scrollIntoView());
   await expect(section("API Tokens")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  // The Memories Overview lists its sections under its own row.
+  await page.goto(`${dashboard.baseURL}/memories`);
+  const memories = page.getByRole("navigation", {
+    exact: true,
+    name: "Memories",
+  });
+  const memorySection = (name: string) =>
+    memories.getByRole("link", { exact: true, name });
+  await expect(memorySection("Overview")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(memorySection("Activity")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  await memorySection("How they got here").click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/memories#memory-sources`);
+  await expect(memorySection("How they got here")).toHaveAttribute(
+    "aria-current",
+    "location",
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(memorySection("Activity")).toHaveAttribute(
     "aria-current",
     "location",
   );

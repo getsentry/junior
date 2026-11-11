@@ -20,6 +20,14 @@ export const memoryNavigationItems = [
   },
 ];
 
+/** The Overview's sections, which the pane lists under it as anchors. */
+export const memoryOverviewSections = [
+  { anchor: "activity", label: "Activity" },
+  { anchor: "cost", label: "Cost" },
+  { anchor: "memory-types", label: "What Junior remembers" },
+  { anchor: "memory-sources", label: "How they got here" },
+];
+
 /** Identify library and memory routes that keep the list beside its details. */
 export function isMemoryLibraryPath(pathname: string): boolean {
   if (
