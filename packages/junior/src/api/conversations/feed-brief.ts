@@ -1,6 +1,6 @@
-import { desc, inArray, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationBriefs } from "@/db/schema";
+import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import {
   conversationFeedBriefSchema,
   type ConversationFeedBrief,
@@ -8,7 +8,8 @@ import {
 
 /**
  * Read the latest Brief version of each Conversation on a feed page, in one
- * query. It walks `junior_conversation_briefs_conversation_version_idx`.
+ * query. A lateral limit reads one row per Conversation from the
+ * (conversation, version) key, so long Brief histories do not slow the feed.
  * Callers show the result only when the viewer can see private content.
  */
 export async function readConversationFeedBriefs(
@@ -18,19 +19,32 @@ export async function readConversationFeedBriefs(
   if (conversationIds.length === 0) return new Map();
 
   const content = juniorConversationBriefs.content;
-  const rows = await db
-    .selectDistinctOn([juniorConversationBriefs.conversationId], {
-      conversationId: juniorConversationBriefs.conversationId,
+  const latest = db
+    .select({
       intent: sql<string>`${content}->>'intent'`.as("intent"),
       status: sql<string>`${content}->'outcome'->>'status'`.as("status"),
       summary: sql<string>`${content}->>'summary'`.as("summary"),
     })
     .from(juniorConversationBriefs)
-    .where(inArray(juniorConversationBriefs.conversationId, conversationIds))
-    .orderBy(
-      juniorConversationBriefs.conversationId,
-      desc(juniorConversationBriefs.version),
-    );
+    .where(
+      eq(
+        juniorConversationBriefs.conversationId,
+        juniorConversations.conversationId,
+      ),
+    )
+    .orderBy(desc(juniorConversationBriefs.version))
+    .limit(1)
+    .as("latest_brief");
+  const rows = await db
+    .select({
+      conversationId: juniorConversations.conversationId,
+      intent: latest.intent,
+      status: latest.status,
+      summary: latest.summary,
+    })
+    .from(juniorConversations)
+    .innerJoinLateral(latest, sql`true`)
+    .where(inArray(juniorConversations.conversationId, conversationIds));
 
   return new Map(
     rows.map(({ conversationId, ...brief }) => [
