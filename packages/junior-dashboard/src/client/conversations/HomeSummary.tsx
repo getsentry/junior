@@ -84,12 +84,14 @@ export function HomeSummary() {
         <SummaryCard
           detail={
             open.length === 0 ? null : idleCount > 0 ? (
-              <>
-                <span className="font-medium text-rose-300">{idleCount}</span>{" "}
+              <StatusText tone="bg-rose-300">
+                <span className="font-medium text-dashboard-text">
+                  {idleCount}
+                </span>{" "}
                 idle {IDLE_RED_DAYS}d+
-              </>
+              </StatusText>
             ) : (
-              "all moving"
+              <StatusText tone="bg-emerald-300">all moving</StatusText>
             )
           }
           label="Open"
@@ -98,14 +100,16 @@ export function HomeSummary() {
         <SummaryCard
           detail={
             needsViewer > 0 ? (
-              <Link
-                className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
-                to="/review"
-              >
-                on your Review desk
-              </Link>
+              <StatusText tone="bg-amber-300">
+                <Link
+                  className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
+                  to="/review"
+                >
+                  on your Review desk
+                </Link>
+              </StatusText>
             ) : (
-              "all clear"
+              <StatusText tone="bg-emerald-300">all clear</StatusText>
             )
           }
           label="Needs you"
@@ -145,6 +149,19 @@ function SummaryCard(props: {
   );
 }
 
+// A tone dot keeps the detail's count from reading as part of the big value.
+function StatusText(props: { children: ReactNode; tone: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        aria-hidden="true"
+        className={cn("size-1.5 shrink-0 rounded-full", props.tone)}
+      />
+      <span>{props.children}</span>
+    </span>
+  );
+}
+
 function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
   const delta = props.thisWeek - props.lastWeek;
   if (delta === 0) return <>same as last week</>;
@@ -164,7 +181,7 @@ function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
 }
 
 /**
- * Open code changes, oldest first. The label row holds the only control, a
+ * Open code changes, longest idle first. The label row holds the only control, a
  * sort toggle, so the list has no table header. The last row expands it.
  */
 function OpenChangeList(props: {
@@ -248,11 +265,13 @@ function OpenChangeRow(props: {
           <span className="min-w-0 truncate">{title}</span>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-4 font-sans text-xs text-dashboard-text-muted tabular-nums">
+      <div className="flex shrink-0 items-center gap-4 font-sans text-xs text-dashboard-text-muted">
         <span className="hidden sm:inline">
-          {change.repository} #{change.number}
+          {/* Tabular figures only on digits: they widen hyphens in names. */}
+          {change.repository}{" "}
+          <span className="tabular-nums">#{change.number}</span>
         </span>
-        <span className="w-10 text-right">
+        <span className="w-10 text-right tabular-nums">
           <IdleText change={change} nowMs={props.nowMs} />
         </span>
       </div>
@@ -280,6 +299,9 @@ function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
   const days = idleDays(props.nowMs, props.change);
   const idle = formatSince(props.nowMs, lastActivity(props.change));
   const opened = formatSince(props.nowMs, props.change.openedAt);
+  const touched =
+    props.change.lastActivityAt !== undefined &&
+    props.change.lastActivityAt > props.change.openedAt;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -297,7 +319,9 @@ function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
         {idle}
       </TooltipTrigger>
       <TooltipContent size="compact">
-        Last activity {idle} ago · opened {opened} ago
+        {touched
+          ? `Last activity ${idle} ago · opened ${opened} ago`
+          : `Opened ${opened} ago · no activity since`}
       </TooltipContent>
     </Tooltip>
   );

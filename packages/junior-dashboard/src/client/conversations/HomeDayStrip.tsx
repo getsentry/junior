@@ -114,9 +114,11 @@ function DayActivity(props: { date: string; events: ActivityEvent[] }) {
                     <span className="min-w-0 truncate text-dashboard-text-muted">
                       {event.change.title ?? `#${event.change.number}`}
                     </span>
-                    <span className="shrink-0 text-dashboard-text-faint tabular-nums">
-                      {repositoryName(event.change.repository)} #
-                      {event.change.number}
+                    <span className="shrink-0 text-dashboard-text-faint">
+                      {repositoryName(event.change.repository)}{" "}
+                      <span className="tabular-nums">
+                        #{event.change.number}
+                      </span>
                     </span>
                   </li>
                 ))}
