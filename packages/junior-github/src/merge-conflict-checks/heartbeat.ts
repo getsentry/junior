@@ -10,8 +10,11 @@ import type {
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
-import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
+import {
+  listOpenGitHubPullRequests,
+  type SearchOpenPullRequests,
+} from "../open-pull-requests.js";
 import { gitHubMergeConflictEvents } from "../webhooks/merge-conflict.js";
 import {
   claimGitHubConflictCheck,
@@ -22,9 +25,6 @@ import {
 
 /** Repositories per heartbeat. */
 const CHECK_LIMIT = 10;
-
-/** Search pages per check, at 100 pull requests per page. */
-const MAX_PAGES = 5;
 
 /** A claimed check that stops without an end runs again after this time. */
 const CLAIM_MS = 5 * 60_000;
@@ -38,66 +38,30 @@ const UNKNOWN_RETRY_MS = 60_000;
  */
 const MAX_ATTEMPTS = 5;
 
-/** One search result. A result that is not a pull request has no fields. */
-const searchNodeSchema = z.union([
-  z.object({
-    baseRefName: z.string().min(1),
-    headRefOid: z.string().min(1),
-    mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
-    number: z.number().int().positive(),
-    state: z.string(),
-    url: z.string().min(1),
-  }),
-  z.object({}).strict(),
-]);
-
-const searchResponseSchema = z.object({
-  data: z.object({
-    search: z.object({
-      nodes: z.array(searchNodeSchema.nullable()),
-      pageInfo: z.object({
-        endCursor: z.string().nullable(),
-        hasNextPage: z.boolean(),
-      }),
-    }),
-  }),
-});
-
-type SearchOpenPullRequests = (input: {
-  after?: string;
-  repositoryFullName: string;
-}) => Promise<unknown>;
-
 /** Return whether any open pull request still has an unknown answer. */
 async function checkRepository(
   args: { events: EventPublisher; search: SearchOpenPullRequests },
   repositoryFullName: string,
 ): Promise<boolean> {
   let unknown = false;
-  let after: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page += 1) {
-    const { search } = searchResponseSchema.parse(
-      await args.search({ after, repositoryFullName }),
-    ).data;
-    for (const node of search.nodes) {
-      if (!node || !("number" in node) || node.state !== "OPEN") continue;
-      if (node.mergeable === "UNKNOWN") unknown = true;
-      if (node.mergeable !== "CONFLICTING") continue;
-      const events = gitHubMergeConflictEvents({
-        conflict: {
-          baseBranch: node.baseRefName,
-          headSha: node.headRefOid,
-          url: node.url,
-        },
-        number: node.number,
-        repositoryFullName,
-      });
-      // Conflict events match only `repo` and `pullRequest`.
-      if (!(await args.events.hasMatch?.(events))) continue;
-      for (const event of events) await args.events.publish(event);
-    }
-    if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
-    after = search.pageInfo.endCursor;
+  for (const pullRequest of await listOpenGitHubPullRequests(
+    args.search,
+    repositoryFullName,
+  )) {
+    if (pullRequest.mergeable === "UNKNOWN") unknown = true;
+    if (pullRequest.mergeable !== "CONFLICTING") continue;
+    const events = gitHubMergeConflictEvents({
+      conflict: {
+        baseBranch: pullRequest.baseRefName,
+        headSha: pullRequest.headRefOid,
+        url: pullRequest.url,
+      },
+      number: pullRequest.number,
+      repositoryFullName,
+    });
+    // Conflict events match only `repo` and `pullRequest`.
+    if (!(await args.events.hasMatch?.(events))) continue;
+    for (const event of events) await args.events.publish(event);
   }
   return unknown;
 }

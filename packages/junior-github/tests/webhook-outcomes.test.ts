@@ -2228,10 +2228,21 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("rejects malformed terminal outcomes before persistence", async () => {
+  it("records a close without a terminal time at its update time", async () => {
     const fixture = await createGitHubFixture();
     try {
-      const route = webhookRoute(fixture);
+      const annotations: Array<{
+        annotation: ConversationAnnotationInput;
+        conversationId: string;
+      }> = [];
+      const route = webhookRoute(
+        fixture,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        annotations,
+      );
       const missingMergeTime = lifecyclePayload({
         action: "closed",
         closedAt: "2026-07-03T12:00:00.000Z",
@@ -2239,15 +2250,58 @@ describe("GitHub-owned pull request outcomes", () => {
         id: 1001,
         merged: true,
         number: 946,
-        updatedAt: "2026-07-03T12:00:00.000Z",
+        updatedAt: "2026-07-03T12:05:00.000Z",
+      });
+      const missingCloseTime = lifecyclePayload({
+        action: "closed",
+        closedAt: "not a time",
+        createdAt: "2026-07-01T12:00:00.000Z",
+        id: 1002,
+        number: 947,
+        updatedAt: "2026-07-04T12:05:00.000Z",
       });
 
-      await expect(
-        route.handler(signedRequest(missingMergeTime)),
-      ).rejects.toThrow("GitHub pull request terminal timestamp is invalid");
-      await expect(
-        fixture.db().select().from(juniorGitHubPullRequests),
-      ).resolves.toEqual([]);
+      for (const closed of [missingMergeTime, missingCloseTime]) {
+        const opened = {
+          ...closed,
+          action: "opened",
+          pull_request: {
+            ...closed.pull_request,
+            closed_at: null,
+            merged: false,
+            merged_at: null,
+            updated_at: closed.pull_request.created_at,
+          },
+        };
+        expect((await route.handler(signedRequest(opened))).status).toBe(202);
+        expect((await route.handler(signedRequest(closed))).status).toBe(202);
+      }
+      const rows = await fixture
+        .db()
+        .select()
+        .from(juniorGitHubPullRequests)
+        .orderBy(juniorGitHubPullRequests.number);
+      expect(rows).toMatchObject([
+        {
+          closedAt: new Date("2026-07-03T12:00:00.000Z"),
+          mergedAt: new Date("2026-07-03T12:05:00.000Z"),
+          state: "merged",
+        },
+        {
+          closedAt: new Date("2026-07-04T12:05:00.000Z"),
+          mergedAt: null,
+          state: "closed_unmerged",
+        },
+      ]);
+      expect(
+        annotations.map(({ annotation }) => [
+          annotation.key,
+          annotation.status,
+        ]),
+      ).toEqual([
+        ["getsentry/junior#946", "merged"],
+        ["getsentry/junior#947", "closed"],
+      ]);
     } finally {
       await fixture.close();
     }

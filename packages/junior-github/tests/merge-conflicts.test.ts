@@ -1,5 +1,7 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
+  CodeChangeInput,
+  ConversationAnnotationInput,
   EventInput,
   EventPublisher,
   HeartbeatHookContext,
@@ -75,21 +77,37 @@ describe("merge conflict check on webhook events", () => {
   let watchesComments: boolean;
   let watchesConflicts: boolean;
   let reactions: number;
+  let annotations: Array<{
+    annotation: ConversationAnnotationInput;
+    conversationId: string;
+  }>;
+  let codeChanges: CodeChangeInput[];
 
-  let stored: Map<string, unknown>;
+  let stored: Map<string, { expiresAtMs: number; value: unknown }>;
+  const live = (key: string) => {
+    const entry = stored.get(key);
+    if (entry && entry.expiresAtMs <= Date.now()) stored.delete(key);
+    return stored.get(key);
+  };
+  const store = (key: string, value: unknown, ttlMs?: number) => {
+    stored.set(key, {
+      expiresAtMs: ttlMs ? Date.now() + ttlMs : Infinity,
+      value: structuredClone(value),
+    });
+  };
   const state: PluginState = {
     async delete(key) {
       stored.delete(key);
     },
     async get<T>(key: string) {
-      return stored.get(key) as T | undefined;
+      return live(key)?.value as T | undefined;
     },
-    async set(key, value) {
-      stored.set(key, structuredClone(value));
+    async set(key, value, ttlMs) {
+      store(key, value, ttlMs);
     },
-    async setIfNotExists(key, value) {
-      if (stored.has(key)) return false;
-      stored.set(key, structuredClone(value));
+    async setIfNotExists(key, value, ttlMs) {
+      if (live(key)) return false;
+      store(key, value, ttlMs);
       return true;
     },
     async withLock(_key, _ttlMs, callback) {
@@ -154,6 +172,48 @@ describe("merge conflict check on webhook events", () => {
     expect(response.status).toBe(202);
   }
 
+  async function heartbeat(nowMs: number): Promise<void> {
+    const unused = () => {
+      throw new Error("The GitHub heartbeat does not use this");
+    };
+    const context: HeartbeatHookContext = {
+      agent: { dispatch: unused, get: unused },
+      annotations: {
+        forConversation(conversationId) {
+          return {
+            async upsert(annotation) {
+              annotations.push({ annotation, conversationId });
+            },
+            async remove() {},
+            async list() {
+              return [];
+            },
+          };
+        },
+      },
+      cache: {
+        async getOrLoad(_key, load) {
+          return (await load()).value;
+        },
+      },
+      codeChanges: {
+        async associateConversations() {},
+        async recordActivity() {},
+        async record(input) {
+          codeChanges.push(input);
+        },
+      },
+      db: fixture.db(),
+      embedder: { embedTexts: unused, model: "unused", provider: "unused" },
+      events,
+      log: { error() {}, info() {}, warn() {} },
+      nowMs,
+      plugin: { name: "github" },
+      state,
+    };
+    await githubPlugin().hooks!.heartbeat!(context);
+  }
+
   const conflicts = () =>
     published.filter(
       (event) => event.eventType === "pull_request.merge_conflict",
@@ -167,6 +227,8 @@ describe("merge conflict check on webhook events", () => {
     watchesComments = true;
     watchesConflicts = true;
     reactions = 0;
+    annotations = [];
+    codeChanges = [];
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
       mergeable: false,
@@ -320,28 +382,6 @@ describe("merge conflict check on webhook events", () => {
     let mergeability: Record<number, string>;
     let duringRead: (() => Promise<void>) | undefined;
 
-    async function heartbeat(nowMs: number): Promise<void> {
-      const unused = () => {
-        throw new Error("The GitHub heartbeat does not use this");
-      };
-      const context: HeartbeatHookContext = {
-        agent: { dispatch: unused, get: unused },
-        cache: {
-          async getOrLoad(_key, load) {
-            return (await load()).value;
-          },
-        },
-        db: fixture.db(),
-        embedder: { embedTexts: unused, model: "unused", provider: "unused" },
-        events,
-        log: { error() {}, info() {}, warn() {} },
-        nowMs,
-        plugin: { name: "github" },
-        state,
-      };
-      await githubPlugin().hooks!.heartbeat!(context);
-    }
-
     function pushRequest(ref: string, repo = "getsentry/junior"): Request {
       return signedRequest({
         deliveryId: `push-${repo}-${ref}`,
@@ -488,6 +528,143 @@ describe("merge conflict check on webhook events", () => {
       await heartbeat(pushedAt + 2 * minute);
       expect(searches).toHaveLength(1);
       expect(conflicts()).toEqual([]);
+    });
+  });
+
+  describe("daily reconcile of open pull requests", () => {
+    const now = Date.parse("2026-11-09T12:00:00.000Z");
+    const day = 24 * 60 * 60_000;
+    let searches: number;
+    let reads: number[];
+
+    /** A pull request as the REST API returns it. */
+    function closedPullRequest(number: number, merged: boolean) {
+      return {
+        base: {
+          ref: "main",
+          repo: { full_name: "getsentry/junior", id: 1 },
+        },
+        body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC1%3A1.0 -->\n<!-- junior-session-footer:end -->",
+        closed_at: new Date(now - day).toISOString(),
+        created_at: new Date(now - 3 * day).toISOString(),
+        id: number * 10,
+        merged,
+        merged_at: merged ? new Date(now - day).toISOString() : null,
+        number,
+        state: "closed",
+        title: `Pull request ${number}`,
+        updated_at: new Date(now - day).toISOString(),
+        user: { login: "sentry-junior[bot]" },
+      };
+    }
+
+    beforeEach(async () => {
+      vi.useFakeTimers({ now, toFake: ["Date"] });
+      searches = 0;
+      reads = [];
+      vi.stubEnv(
+        "GITHUB_APP_BOT_EMAIL",
+        "1234+sentry-junior[bot]@users.noreply.github.com",
+      );
+      mswServer.use(
+        http.post("https://api.github.com/graphql", () => {
+          searches += 1;
+          return HttpResponse.json({
+            data: {
+              search: {
+                nodes: [
+                  {
+                    baseRefName: "main",
+                    headRefOid: "1111111111111111111111111111111111111111",
+                    mergeable: "MERGEABLE",
+                    number: 947,
+                    state: "OPEN",
+                    url: "https://github.com/getsentry/junior/pull/947",
+                  },
+                ],
+                pageInfo: { endCursor: null, hasNextPage: false },
+              },
+            },
+          });
+        }),
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/pulls/:number",
+          ({ params }) => {
+            const number = Number(params.number);
+            reads.push(number);
+            return HttpResponse.json(closedPullRequest(number, number === 946));
+          },
+        ),
+      );
+      const row = (number: number, updatedAt: number) => ({
+        conversationIds: ["slack:C1:1.0"],
+        number,
+        openedAt: new Date(now - 3 * day),
+        pullRequestId: `${number}0`,
+        repositoryFullName: "getsentry/junior",
+        repositoryId: "1",
+        state: "open" as const,
+        updatedAt: new Date(updatedAt),
+      });
+      await fixture
+        .db()
+        .insert(juniorGitHubPullRequests)
+        .values([
+          row(946, now - 2 * day),
+          row(947, now - 2 * day),
+          row(949, now - 2 * day),
+          // Its close webhook can still arrive.
+          row(950, now - 60_000),
+        ]);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("records closes that GitHub did not deliver, once a day", async () => {
+      await heartbeat(now);
+
+      expect(searches).toBe(1);
+      expect(reads.sort()).toEqual([946, 949]);
+      const rows = await fixture
+        .db()
+        .select()
+        .from(juniorGitHubPullRequests)
+        .orderBy(juniorGitHubPullRequests.number);
+      expect(
+        rows.map((row) => [row.number, row.state, row.mergedAt, row.closedAt]),
+      ).toEqual([
+        [946, "merged", new Date(now - day), new Date(now - day)],
+        [947, "open", null, null],
+        [949, "closed_unmerged", null, new Date(now - day)],
+        [950, "open", null, null],
+      ]);
+      expect(
+        codeChanges.map((change) => [change.number, change.state]),
+      ).toEqual([
+        [946, "merged"],
+        [949, "closed"],
+      ]);
+      expect(
+        annotations.map(({ annotation, conversationId }) => [
+          conversationId,
+          annotation.key,
+          annotation.status,
+        ]),
+      ).toEqual([
+        ["slack:C1:1.0", "getsentry/junior#946", "merged"],
+        ["slack:C1:1.0", "getsentry/junior#949", "closed"],
+      ]);
+
+      vi.setSystemTime(now + 60_000);
+      await heartbeat(now + 60_000);
+      expect(searches).toBe(1);
+      // The next day, the row that waited for its webhook is checked too.
+      vi.setSystemTime(now + day);
+      await heartbeat(now + day);
+      expect(searches).toBe(2);
+      expect(reads).toEqual([946, 949, 950]);
     });
   });
 });

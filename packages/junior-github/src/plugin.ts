@@ -20,6 +20,8 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import type { SearchOpenPullRequests } from "./open-pull-requests.js";
+import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl } from "./events/resource-url.js";
 import {
@@ -317,21 +319,36 @@ export function githubPlugin(
         return linkifyGitHubReferences(text);
       },
       async heartbeat(ctx) {
+        const db = ctx.db as GitHubDb;
+        const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
+        const search: SearchOpenPullRequests = async (input) => {
+          const login = botLoginFromEmail(requireEnv(botEmailEnv));
+          if (!login) {
+            throw new Error(`${botEmailEnv} is not a GitHub bot address`);
+          }
+          return await searchOpenPullRequestMergeability(installationEnv, {
+            ...input,
+            author: `app/${login.replace(/\[bot\]$/, "")}`,
+          });
+        };
         await runGitHubConflictChecks({
-          db: ctx.db as GitHubDb,
+          db,
           events: ctx.events,
           log: ctx.log,
           now: new Date(ctx.nowMs),
-          search: async (input) => {
-            const login = botLoginFromEmail(requireEnv(botEmailEnv));
-            if (!login) {
-              throw new Error(`${botEmailEnv} is not a GitHub bot address`);
-            }
-            return await searchOpenPullRequestMergeability(
-              { appIdEnv, installationIdEnv, privateKeyEnv },
-              { ...input, author: `app/${login.replace(/\[bot\]$/, "")}` },
-            );
-          },
+          search,
+          state: ctx.state,
+        });
+        await reconcileGitHubPullRequests({
+          annotations: ctx.annotations,
+          botEmail: readEnv(botEmailEnv),
+          codeChanges: ctx.codeChanges,
+          db,
+          loadPullRequest: async (pullRequest) =>
+            await loadPullRequest(installationEnv, pullRequest),
+          log: ctx.log,
+          nowMs: ctx.nowMs,
+          search,
           state: ctx.state,
         });
       },

@@ -2,7 +2,6 @@ import type { GitHubStatusIncident } from "../github-status.js";
 import { updateGitHubAnnotation } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
-  CodeChangeInput,
   CodeChangePublisher,
   PluginConversationAnnotations,
   PluginConversationReviewItems,
@@ -19,8 +18,8 @@ import {
   recordGitHubIssueConversations,
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
+import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
-  type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
@@ -139,29 +138,6 @@ function pullRequestFeedbackTarget(
   return undefined;
 }
 
-function githubCodeChange(
-  outcome: GitHubPullRequestOutcomeInput,
-  conversationIds: string[],
-): CodeChangeInput {
-  return {
-    closedAt: outcome.closedAt,
-    conversationIds,
-    mergedAt: outcome.mergedAt,
-    number: outcome.number,
-    openedAt: outcome.openedAt,
-    providerId: outcome.pullRequestId,
-    repository: {
-      name: outcome.repositoryFullName,
-      providerId: outcome.repositoryId,
-      url: `https://github.com/${outcome.repositoryFullName}`,
-    },
-    state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
-    title: outcome.title,
-    updatedAt: outcome.updatedAt,
-    url: `https://github.com/${outcome.repositoryFullName}/pull/${outcome.number}`,
-  };
-}
-
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
@@ -256,35 +232,12 @@ export function createGitHubWebhookRoute(args: {
           ? normalizeGitHubPullRequestLinkedIssues({ body, botEmail })
           : undefined;
       if (pullRequestOutcome) {
-        const recordedOutcome = await recordGitHubPullRequestOutcome(
-          args.db,
-          pullRequestOutcome,
-        );
-        if (recordedOutcome.applied) {
-          await args.codeChanges.record(
-            githubCodeChange(
-              pullRequestOutcome,
-              recordedOutcome.conversationIds,
-            ),
-          );
-        }
-        if (recordedOutcome.applied && pullRequestOutcome.state !== "open") {
-          const status =
-            pullRequestOutcome.state === "merged" ? "merged" : "closed";
-          await Promise.all(
-            recordedOutcome.conversationIds.map((conversationId) =>
-              updateGitHubAnnotation(
-                args.annotations.forConversation(conversationId),
-                {
-                  repo: pullRequestOutcome.repositoryFullName,
-                  number: pullRequestOutcome.number,
-                  objectType: "code_change",
-                  status,
-                },
-              ),
-            ),
-          );
-        }
+        const recordedOutcome = await applyGitHubPullRequestOutcome({
+          annotations: args.annotations,
+          codeChanges: args.codeChanges,
+          db: args.db,
+          outcome: pullRequestOutcome,
+        });
         if (
           recordedOutcome.applied &&
           !recordedOutcome.commitComposition &&
