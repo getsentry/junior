@@ -1,4 +1,4 @@
-import { and, eq, lte, ne, sql } from "drizzle-orm";
+import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -219,6 +219,23 @@ export async function listGitHubFinishedWork(
       return finishedAt ? [[conversationId, finishedAt.toISOString()]] : [];
     }),
   );
+}
+
+/**
+ * Return the open Junior pull requests whose last lifecycle change is
+ * before `before`, oldest first. The daily reconcile checks these against
+ * GitHub.
+ */
+export async function listGitHubStaleOpenPullRequests(
+  db: GitHubDb,
+  before: Date,
+): Promise<Array<{ number: number; repositoryFullName: string }>> {
+  const t = juniorGitHubPullRequests;
+  return await db
+    .select({ number: t.number, repositoryFullName: t.repositoryFullName })
+    .from(t)
+    .where(and(eq(t.state, "open"), lt(t.updatedAt, before)))
+    .orderBy(t.updatedAt);
 }
 
 /** Return candidate conversations linked to any Junior-owned pull request. */
