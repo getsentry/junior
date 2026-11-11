@@ -4,9 +4,15 @@ import { createGitHubApiTestAdapter } from "./github-api-adapter";
 
 const sha = (digit: string) => digit.repeat(40);
 
-function pull(number: number, base: string, head: string) {
+function pull(
+  number: number,
+  base: string,
+  head: string,
+  state: "open" | "closed" = "open",
+) {
   return {
     number,
+    state,
     title: `PR ${number}`,
     body: number === 2 ? null : `Body ${number}`,
     html_url: `https://github.com/getsentry/junior/pull/${number}`,
@@ -38,25 +44,34 @@ const paths = (adapter: ReturnType<typeof createGitHubApiTestAdapter>) =>
     );
 
 describe("readStack", () => {
-  it("returns the Stacks API order with each pull request's commits", async () => {
+  it("returns the open pull requests in Stacks API order with their commits", async () => {
     const { adapter, input } = context([
-      { body: pull(3, "b2", "b3") },
+      { body: pull(4, "b3", "b4") },
       {
         body: [
-          { pull_requests: [{ number: 1 }, { number: 2 }, { number: 3 }] },
+          {
+            pull_requests: [
+              { number: 1 },
+              { number: 2 },
+              { number: 3 },
+              { number: 4 },
+            ],
+          },
         ],
       },
-      { body: pull(1, "main", "b1") },
+      // #1 merged, so the Walkthrough skips it.
+      { body: pull(1, "main", "b1", "closed") },
       { body: pull(2, "b1", "b2") },
+      { body: pull(3, "b2", "b3") },
     ]);
     const stack = await hooks.readStack(
       input({
         repository: "getsentry/junior",
-        number: 3,
+        number: 4,
       }),
     );
-    expect(stack?.codeChanges.map((c) => c.number)).toEqual([1, 2, 3]);
-    expect(stack?.codeChanges[1]).toEqual({
+    expect(stack?.codeChanges.map((c) => c.number)).toEqual([2, 3, 4]);
+    expect(stack?.codeChanges[0]).toEqual({
       number: 2,
       title: "PR 2",
       body: "",
@@ -67,7 +82,7 @@ describe("readStack", () => {
       deletions: 0,
     });
     expect(paths(adapter)[1]).toBe(
-      "/repos/getsentry/junior/stacks?pull_request=3",
+      "/repos/getsentry/junior/stacks?pull_request=4",
     );
   });
 

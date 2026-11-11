@@ -21,6 +21,7 @@ const pullSchema = z.object({
   title: z.string(),
   body: z.string().nullable(),
   html_url: z.string().url(),
+  state: z.enum(["open", "closed"]),
   additions: z.number().int().nonnegative(),
   deletions: z.number().int().nonnegative(),
   head: z.object({ ref: z.string().min(1), sha: z.string() }),
@@ -96,8 +97,12 @@ async function readStack(
       return other;
     }),
   );
+  // A merged or closed layer needs no review. The requested one stays.
+  const open = pulls.filter(
+    (p) => p.number === pull.number || p.state === "open",
+  );
   return {
-    codeChanges: pulls.map((p) => ({
+    codeChanges: open.map((p) => ({
       number: p.number,
       title: p.title,
       body: p.body ?? "",

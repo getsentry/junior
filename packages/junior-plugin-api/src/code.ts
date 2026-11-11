@@ -63,7 +63,10 @@ const codeChangeStackItemSchema = z
   })
   .strict();
 
-/** The code changes in one stack, bottom first. One item when not stacked. */
+/**
+ * The open code changes in one stack, bottom first, plus the requested code
+ * change even when it is closed. One item when not stacked.
+ */
 export const codeChangeStackSchema = z
   .object({ codeChanges: z.array(codeChangeStackItemSchema).min(1) })
   .strict();
