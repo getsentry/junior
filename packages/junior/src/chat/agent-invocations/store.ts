@@ -323,8 +323,8 @@ export async function reportReplacedAgentInvocation(
 /**
  * Send the `replaced` result of a child Conversation when its open child work
  * ended and sent it nothing, such as a helper that ended with `noReply`. No
- * later agent invocation of the child would send the report. Input that still
- * waits in the child's mailbox starts one, so that one reports instead.
+ * later agent invocation of the child would send the report. Event input that
+ * still waits in the child's mailbox starts one, so that one reports instead.
  */
 export async function reportReplacedWithoutOpenWork(
   conversationId: string,
@@ -339,8 +339,10 @@ export async function reportReplacedWithoutOpenWork(
   ) {
     return undefined;
   }
+  // Only Event input, such as a child agent's reply or a Watch Event, starts
+  // an agent invocation of the child. A person's message in a Thread does not.
   const waiting = await getConversationWorkState({ conversationId });
-  if ((waiting?.messages.length ?? 0) > 0) {
+  if (waiting?.messages.some((message) => message.source === "event")) {
     return undefined;
   }
   return await reportReplacedAgentInvocation(latest.invocationId, nowMs);

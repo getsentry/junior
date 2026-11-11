@@ -15,7 +15,10 @@ import {
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  appendInboundMessage,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import { createSearchAgentsTool } from "@/chat/tools/runtime/search-agents";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
@@ -258,6 +261,21 @@ describe("nested agent invocations", () => {
         getAgentInvocation(busy.invocationId),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
 
+      // A person's message in a Thread starts no agent invocation, so it
+      // does not hold the report.
+      await appendInboundMessage({
+        message: {
+          conversationId: child.childConversationId,
+          createdAtMs: Date.now(),
+          delivery: "defer",
+          inboundMessageId: "web:quiet-child:person",
+          input: { text: "Any update?" },
+          receivedAtMs: Date.now(),
+          source: "web",
+        },
+        state,
+      });
+
       // The helper ends with `noReply`, so it sends the child nothing. No
       // later agent invocation of the child would send its report.
       const quiet = (await completeAgentInvocation({
@@ -273,8 +291,8 @@ describe("nested agent invocations", () => {
             conversationId: child.childConversationId,
             state,
           })
-        )?.messages ?? [],
-      ).toEqual([]);
+        )?.messages.map((message) => message.source),
+      ).toEqual(["web"]);
       await expect(
         getAgentInvocation(child.invocationId),
       ).resolves.toMatchObject({ parentMailboxStatus: "appended" });
