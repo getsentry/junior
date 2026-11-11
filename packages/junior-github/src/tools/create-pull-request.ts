@@ -18,7 +18,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import * as z from "zod";
-import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubFooter, PULL_REQUEST_BODY_GUIDANCE } from "./footer.js";
 import {
   gitHubPullRequestCreateWatch,
   gitHubPullRequestSubscribable,
@@ -73,8 +73,7 @@ const createPullRequestInputSchema = Type.Object(
     }),
     body: Type.Optional(
       Type.String({
-        description:
-          "Pull request body. The runtime appends the conversation footer.",
+        description: `Pull request body. ${PULL_REQUEST_BODY_GUIDANCE} The runtime appends the conversation footer.`,
       }),
     ),
     draft: Type.Optional(
@@ -96,7 +95,7 @@ const createPullRequestToolInputSchema = z
     body: z
       .string()
       .describe(
-        "Pull request body. The runtime appends the conversation footer.",
+        `Pull request body. ${PULL_REQUEST_BODY_GUIDANCE} The runtime appends the conversation footer.`,
       )
       .optional(),
     draft: z

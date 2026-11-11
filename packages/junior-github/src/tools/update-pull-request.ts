@@ -23,7 +23,7 @@ import {
 } from "../tool-support/attribution.js";
 import type { GitHubDb } from "../db/database.js";
 import { recordGitHubPullRequestRequester } from "../pull-request-requesters/store.js";
-import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubFooter, PULL_REQUEST_BODY_GUIDANCE } from "./footer.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -45,7 +45,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Replacement pull request body. The runtime appends requester attribution and the conversation footer.",
+        `Replacement pull request body for the current diff. ${PULL_REQUEST_BODY_GUIDANCE} The runtime appends requester attribution and the conversation footer.`,
       ),
     base: z
       .string()
