@@ -52,6 +52,7 @@ export function DrawerContent(props: DrawerProps) {
             <DrawerClose
               render={
                 <Button
+                  variant="ghost"
                   ref={closeRef}
                   aria-label={props.closeLabel}
                   size="icon"

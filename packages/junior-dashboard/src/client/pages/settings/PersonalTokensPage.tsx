@@ -117,6 +117,7 @@ export function PersonalTokensPage() {
             {createdToken.token}
           </code>
           <Button
+            variant="outline"
             className="mt-3"
             onClick={() => {
               createTokenMutation.reset();
@@ -144,7 +145,7 @@ export function PersonalTokensPage() {
             onChange={(event) => setName(event.target.value)}
             value={name}
           />
-          <Button disabled={!canCreate} type="submit">
+          <Button variant="outline" disabled={!canCreate} type="submit">
             Create token
           </Button>
         </form>
@@ -185,7 +186,7 @@ export function PersonalTokensPage() {
                     revokeTokenMutation.mutate(token);
                   }}
                   size="icon"
-                  variant="danger"
+                  variant="destructive"
                   type="button"
                 >
                   <Trash2 size={16} />

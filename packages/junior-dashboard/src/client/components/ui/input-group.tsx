@@ -69,6 +69,7 @@ function InputGroupButton({
   return (
     <Button
       type={type}
+      variant="ghost"
       size="icon"
       className={cn("size-6", className)}
       {...props}

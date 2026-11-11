@@ -308,7 +308,11 @@ export function UserInputForm(props: {
   // Slack cards show the same button, so both surfaces take a free-text
   // answer when no choice fits.
   const otherButton = props.docked ? null : (
-    <Button disabled={sending} onClick={() => setWriteOther(true)}>
+    <Button
+      variant="outline"
+      disabled={sending}
+      onClick={() => setWriteOther(true)}
+    >
       Other…
     </Button>
   );
@@ -374,6 +378,7 @@ export function UserInputForm(props: {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {buttonField.options.map((option, index) => (
             <Button
+              variant="outline"
               aria-keyshortcuts={shortcut(index)}
               disabled={sending}
               key={option.label}
@@ -430,7 +435,7 @@ export function UserInputForm(props: {
           {props.docked && fieldCount < 2 && !secondary ? null : (
             <div className="flex flex-wrap items-center gap-2">
               {props.docked ? null : (
-                <Button disabled={sending} type="submit" variant="primary">
+                <Button disabled={sending} type="submit" variant="default">
                   Send
                 </Button>
               )}

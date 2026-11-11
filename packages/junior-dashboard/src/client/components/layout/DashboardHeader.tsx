@@ -156,6 +156,7 @@ export function DashboardHeader(props: {
             </nav>
           </div>
           <Button
+            variant="outline"
             aria-keyshortcuts="Meta+K Control+K"
             className="w-full font-normal text-dashboard-text-faint hover:text-dashboard-text-muted"
             onClick={props.onSearch}
@@ -263,6 +264,7 @@ export function DashboardHeader(props: {
               ) : null}
               <nav aria-label="Primary" className="grid gap-1">
                 <Button
+                  variant="ghost"
                   className={cn(sheetLinkClass({ isActive: false }), "gap-2")}
                   data-mobile-nav-dismiss=""
                   onClick={props.onSearch}

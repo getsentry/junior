@@ -215,6 +215,7 @@ export function HeaderIconButton({
               className,
             )}
             size="icon"
+            variant="ghost"
             {...buttonProps}
           >
             {children}

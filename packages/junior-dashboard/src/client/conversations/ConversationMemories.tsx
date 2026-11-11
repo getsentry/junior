@@ -38,6 +38,7 @@ export function ConversationMemoryCard(props: {
         className="group -mx-1.5 -my-1 flex min-h-8 w-[calc(100%+0.75rem)] items-center justify-between gap-2.5 rounded-md px-1.5 py-1.5 text-left text-sm tabular-nums text-foreground focus-visible:-outline-offset-2"
         onClick={props.onOpen}
         variant="ghost"
+        size="bare"
       >
         {summary}
         <ChevronRight

@@ -130,6 +130,7 @@ export function ConversationSidebar(props: {
         {/* The chip centers on the rows' icon column, so the label lines up
           with the conversation titles below. */}
         <Button
+          variant="ghost"
           className="grid grid-cols-[0.875rem_minmax(0,1fr)] gap-2 rounded-lg px-3 py-2 font-medium leading-snug hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover [&_svg]:text-dashboard-accent-text hover:[&_svg]:text-dashboard-accent-text focus-visible:[&_svg]:text-dashboard-accent-text"
           onClick={props.onNewConversation}
           size="menu"

@@ -74,7 +74,12 @@ export function AlertDialogFooter({
 /** Run the confirmed action; its owner decides when the dialog can close. */
 export function AlertDialogAction(props: ComponentProps<typeof Button>) {
   return (
-    <Button data-slot="alert-dialog-action" className="min-h-11" {...props} />
+    <Button
+      data-slot="alert-dialog-action"
+      className="min-h-11"
+      variant="outline"
+      {...props}
+    />
   );
 }
 
@@ -82,7 +87,7 @@ export function AlertDialogAction(props: ComponentProps<typeof Button>) {
 export function AlertDialogCancel(props: AlertDialogPrimitive.Close.Props) {
   return (
     <AlertDialogPrimitive.Close
-      render={<Button className="min-h-11" />}
+      render={<Button className="min-h-11" variant="outline" />}
       {...props}
     />
   );

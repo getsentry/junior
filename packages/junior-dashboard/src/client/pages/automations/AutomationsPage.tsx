@@ -135,7 +135,9 @@ export function AutomationsPage(props: { enabled: boolean }) {
         {query.error ? (
           <InlineError>
             Automations could not be loaded.{" "}
-            <Button onClick={() => void query.refetch()}>Try again</Button>
+            <Button variant="outline" onClick={() => void query.refetch()}>
+              Try again
+            </Button>
           </InlineError>
         ) : null}
         {query.data && automations.length === 0 ? (

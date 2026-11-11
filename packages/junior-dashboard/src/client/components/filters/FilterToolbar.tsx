@@ -67,6 +67,7 @@ export function FilterToolbar(props: {
             <TooltipTrigger
               render={
                 <Button
+                  variant="outline"
                   aria-expanded={filters.open}
                   aria-label={
                     filters.active.length
@@ -102,6 +103,7 @@ export function FilterToolbar(props: {
         >
           {chips.map((filter) => (
             <Button
+              variant="outline"
               aria-label={`Remove ${filter.key} filter`}
               className="min-h-8 max-w-full text-xs"
               key={filter.key}

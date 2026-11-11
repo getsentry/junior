@@ -90,6 +90,7 @@ export function DetailsList<T>(props: {
             className="group flex min-h-8 w-full items-center gap-2.5 rounded-md px-1.5 py-1.5 text-left text-xs font-medium leading-4 focus-visible:-outline-offset-2"
             onClick={() => setExpanded((value) => !value)}
             variant="ghost"
+            size="bare"
           >
             <span className="grid size-5 shrink-0 place-items-center">
               <ChevronRight

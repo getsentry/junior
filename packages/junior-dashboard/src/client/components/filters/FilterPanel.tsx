@@ -63,7 +63,7 @@ export function FilterPanel(props: {
     if (beside) closeRef.current?.focus();
   }, [beside]);
   const clear = props.onClear ? (
-    <Button onClick={props.onClear} variant="quiet">
+    <Button onClick={props.onClear} variant="ghost">
       Clear all
     </Button>
   ) : null;
@@ -98,6 +98,7 @@ export function FilterPanel(props: {
         <div className="flex items-center gap-0.5">
           {clear}
           <Button
+            variant="ghost"
             aria-label="Close filters"
             onClick={onClose}
             ref={closeRef}
