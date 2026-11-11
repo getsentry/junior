@@ -1,8 +1,12 @@
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
-import { getConversationWorkState } from "@/chat/task-execution/store";
-import { isChildAgentInputMessage } from "./result-event-type";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
+import {
+  getConversationWorkState,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
+import { AGENT_INVOCATION_EVENT_NAMESPACE } from "./result-event-type";
 import {
   getAgentInvocationResultMessageId,
   isAgentReplyMessageId,
@@ -343,6 +347,15 @@ export async function reportReplacedWithoutOpenWork(
     return undefined;
   }
   return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
+}
+
+// Results, replies, and messages from a child's own child agents.
+function isChildAgentInputMessage(message: InboundMessage): boolean {
+  const metadata = message.input.metadata;
+  return (
+    isEventMailboxMetadata(metadata) &&
+    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE
+  );
 }
 
 /** Record that one terminal result is in its parent mailbox. */

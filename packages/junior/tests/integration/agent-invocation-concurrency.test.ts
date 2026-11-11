@@ -603,7 +603,8 @@ describe("agent invocation identity and concurrency", () => {
   // A child with no open agent invocation, such as after a Watch Event Turn
   // that spawned a helper, gets the helper's result on its shared
   // Conversation loop. That Turn answers the parent itself, and a Task that
-  // ends without an answer after the re-ask tells the parent.
+  // ends without an answer after the re-ask tells the parent. It runs as the
+  // web user who started it, but cannot wait for that person to sign in.
   it.each([
     { name: "a reply", finding: "Helper fact: 42.", expected: "Helper fact" },
     { name: "no answer", finding: NO_ANSWER, expected: "No reply was sent." },
@@ -613,8 +614,15 @@ describe("agent invocation identity and concurrency", () => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const harness = await createHarness(taskModel);
       try {
+        const actor = {
+          platform: "web" as const,
+          userId: "alice@example.com",
+          email: "alice@example.com",
+          fullName: "Alice",
+        };
         const child = await createAgentInvocation({
           ...baseInput,
+          actor,
           idempotencyKey: "loop-child",
         });
         await completeAgentInvocation({
@@ -624,6 +632,7 @@ describe("agent invocation identity and concurrency", () => {
         });
         const helper = await createAgentInvocation({
           ...baseInput,
+          actor,
           idempotencyKey: "loop-helper",
           parentConversationId: child.childConversationId,
         });
@@ -643,10 +652,12 @@ describe("agent invocation identity and concurrency", () => {
         const requests = harness.requests();
         expect(requests).toHaveLength(1);
         expect(requests[0]).toMatchObject({
-          actor: baseInput.actor,
+          actor,
           conversationId: child.childConversationId,
+          disabledFeatures: ["interactive-auth"],
           parentConversationId,
         });
+        expect(requests[0]!.authorization).toBeUndefined();
         expect(requests[0]!.agentInvocationId).toBeUndefined();
         // The child starts no agent invocation, and its answer reaches the
         // parent once.

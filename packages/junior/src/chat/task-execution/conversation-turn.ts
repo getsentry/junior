@@ -359,10 +359,6 @@ export function createConversationTurnWorker(
       source: turnInputFacts.source,
       visibility,
     });
-    const webActor = actor.platform === "web" ? actor : undefined;
-    const disabledFeatures: AgentFeature[] = webActor
-      ? []
-      : ["interactive-auth"];
     const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
     // cursor stores Event Source.
@@ -376,6 +372,14 @@ export function createConversationTurnWorker(
       kind,
       personInput: isPersonInput(source.kind),
     });
+    const webActor = actor.platform === "web" ? actor : undefined;
+    // A child agent's Turn cannot wait for a person to sign in, even when it
+    // runs as the web user who started it; missing auth blocks it instead.
+    const signInActor =
+      behavior.promptMode === "child_agent" ? undefined : webActor;
+    const disabledFeatures: AgentFeature[] = signInActor
+      ? []
+      : ["interactive-auth"];
     const deliverToProvider =
       postsToProvider && behavior.delivery === "location";
     const sendToParent = async (answer: ParentAnswer): Promise<void> => {
@@ -650,10 +654,10 @@ export function createConversationTurnWorker(
                 : undefined),
               surface,
               ...(stopSignal ? { signal: stopSignal } : undefined),
-              ...(webActor
+              ...(signInActor
                 ? {
                     authorization: createWebAuthorization({
-                      actorId: webActor.userId,
+                      actorId: signInActor.userId,
                       conversationId: context.conversationId,
                     }),
                   }
