@@ -1134,7 +1134,7 @@ async function executeAgentRunInPrivacyContext(
             : undefined;
         // A reply, blocked report, or no-reply is the last step of the run.
         if (isAnswerToolName(toolCall.name) && !isError && !override) {
-          cacheWarming.answerToolEnded(toolCall.name, behavior.gated);
+          cacheWarming.answerToolEnded(toolCall.name);
           return { terminate: true };
         }
         // Past a limit, the second failed answer call ends the run without

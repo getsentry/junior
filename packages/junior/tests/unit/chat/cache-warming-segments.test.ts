@@ -16,6 +16,7 @@ import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
 
@@ -87,8 +88,11 @@ const toolCall = (name: string): AssistantMessage => ({
 
 // Run one Turn that calls a tool and then an answer tool that ends the run,
 // like one agent run does.
-async function endTurnWithAnswerTool(toolName: string, gated: boolean) {
-  const recorder = createCacheWarmingRecorder(conversationId, true, runPrompt);
+async function endTurnWithAnswerTool(toolName: string, mode: PromptMode) {
+  const recorder = createCacheWarmingRecorder(conversationId, false, {
+    ...runPrompt,
+    mode,
+  });
   const stream = recorder.wrap((() => undefined) as never);
   stream(model, context, {});
   await recorder.record(toolCall("systemTime"));
@@ -96,7 +100,7 @@ async function endTurnWithAnswerTool(toolName: string, gated: boolean) {
   vi.advanceTimersByTime(MINUTE);
   stream(model, context, {});
   await recorder.record(toolCall(toolName));
-  recorder.answerToolEnded(toolName, gated);
+  recorder.answerToolEnded(toolName);
   await recorder.stop();
 }
 
@@ -184,26 +188,32 @@ describe("cache warming gap segments", () => {
   });
 
   it.each(["noReply", "reportBlocked"])(
-    "starts an idle period from the %s call of a Turn outside an Automation run",
+    "starts an idle period from the %s call of a child agent's Turn, not of an Automation run",
     async (toolName) => {
       vi.useFakeTimers();
       mocks.sendCacheWarmup.mockClear();
+      const clearGaps = async () => {
+        await getStateAdapter().delete(
+          "junior:cache_warming:gaps:system:1:none",
+        );
+        await getStateAdapter().delete(
+          `junior:cache_warming:gaps:conversation:${conversationId}:system:1:none`,
+        );
+      };
+      await clearGaps();
       try {
-        await endTurnWithAnswerTool(toolName, true);
+        await endTurnWithAnswerTool(toolName, "automation");
         expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
 
-        await endTurnWithAnswerTool(toolName, false);
+        await endTurnWithAnswerTool(toolName, "child_agent");
         scheduledWarmup();
-        // The person returns 4 minutes after the answer tool call.
+        // The parent returns 4 minutes after the answer tool call.
         vi.advanceTimersByTime(4 * MINUTE);
-        await endTurn(true);
+        await endTurn(false);
 
-        expect(await segmentGaps("user:1:none")).toEqual([4 * MINUTE]);
+        expect(await segmentGaps("system:1:none")).toEqual([4 * MINUTE]);
       } finally {
-        await getStateAdapter().delete("junior:cache_warming:gaps:user:1:none");
-        await getStateAdapter().delete(
-          `junior:cache_warming:gaps:conversation:${conversationId}:user:1:none`,
-        );
+        await clearGaps();
       }
     },
   );
