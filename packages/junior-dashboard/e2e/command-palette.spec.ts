@@ -373,3 +373,96 @@ test("closed Inbox matches show under Done, after the open ones", async ({
     }),
   ).toBeVisible();
 });
+
+test("lists the open repository's matching conversations first", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(
+    `${dashboard.baseURL}/code/00000000-0000-4000-8000-000000000003`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "getsentry/junior", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  // "Investigate checkout latency" matches the title better, but it has no
+  // change in this repository.
+  await palette.getByRole("combobox").fill("ate");
+  const conversations = palette.getByRole("group", { name: "Conversations" });
+  await expect(conversations.getByRole("option").first()).toHaveAccessibleName(
+    /Package release and self-update/,
+  );
+  await expect(
+    conversations.getByRole("option", { name: /Investigate checkout latency/ }),
+  ).toBeVisible();
+});
+
+test("searches a plugin page from the palette, with its group first", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/user-pages", (route) =>
+    route.fulfill({
+      json: [
+        {
+          description: "Deploy checklists that a fixture plugin owns.",
+          id: "checklists",
+          label: "Checklists",
+          navigation: "profile",
+          pluginDisplayName: "Fixture",
+          pluginName: "fixture",
+        },
+      ],
+    }),
+  );
+  const checklists = Array.from({ length: 24 }, (_, index) => ({
+    id: `checklist-${index + 1}`,
+    title:
+      index === 20
+        ? "Deploy the payments service"
+        : `Routine checklist ${index + 1}`,
+  }));
+  const queries: string[] = [];
+  await page.route("**/api/user-pages/fixture/checklists*", (route) => {
+    const query = new URL(route.request().url()).searchParams.get("q") ?? "";
+    queries.push(query);
+    return route.fulfill({
+      json: {
+        records: checklists.filter((record) =>
+          record.title.toLowerCase().includes(query.toLowerCase()),
+        ),
+        searchPlaceholder: "Search checklists",
+        type: "list",
+      },
+    });
+  });
+
+  await page.setViewportSize({ height: 700, width: 1280 });
+  await page.goto(`${dashboard.baseURL}/plugins/fixture/checklists`);
+  await expect(
+    page.getByRole("heading", { name: "Routine checklist 1", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  // "Deployment investigation failed" is a Conversation match too.
+  await palette.getByRole("combobox").fill("deploy");
+  const first = palette.getByRole("group").first();
+  await expect(first).toHaveAccessibleName("Checklists");
+  await expect(
+    palette.getByRole("group", { name: "Conversations" }),
+  ).toBeVisible();
+  const match = first.getByRole("option").first();
+  await expect(match).toHaveAccessibleName(/Deploy the payments service/);
+  expect(queries).toContain("deploy");
+
+  await match.click();
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/plugins/fixture/checklists#record-checklist-21`,
+  );
+  const record = page.locator("#record-checklist-21");
+  await expect(record).toHaveAttribute("aria-current", "true");
+  await expect(record).toBeInViewport();
+});

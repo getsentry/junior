@@ -1,5 +1,5 @@
 import { Boxes, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useLocation, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
@@ -15,17 +15,17 @@ import {
 } from "../../components/ui/alert-dialog";
 import { LoadingView } from "../../components/LoadingView";
 import { LoadMorePagination } from "../../components/Pagination";
-import { SearchInput } from "../../components/SearchInput";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MemoryPage } from "../memory/MemoryPage";
 import { pathWithSearch } from "../../searchParams";
-import { dashboardContainerClass } from "../../styles";
+import { cn, dashboardContainerClass } from "../../styles";
 import {
   usePluginUserPageData,
   type PluginUserPageRecord,
   type PluginUserPageRecordAction,
 } from "./pluginUserPageData";
+import { pluginUserPageRecordAnchor } from "./pluginUserPageRoutes";
 
 /** Render the memory library for its first-class permalink route. */
 export function MemoryPermalinkRoute(props: { pages: PluginUserPageLink[] }) {
@@ -67,15 +67,20 @@ export function PluginUserPageRoute(props: { pages: PluginUserPageLink[] }) {
 
 /** Render a plugin-owned page with the bounded generic list UI. */
 export function PluginUserPage(props: { page: PluginUserPageLink }) {
-  const {
-    action,
-    content,
-    query,
-    records,
-    runAction,
-    searchText,
-    setSearchText,
-  } = usePluginUserPageData(props.page);
+  const { action, content, query, records, runAction } = usePluginUserPageData(
+    props.page,
+  );
+  // ⌘K opens the page at a record through the URL hash.
+  const { hash } = useLocation();
+  const target = hash ? decodeURIComponent(hash.slice(1)) : undefined;
+  const targetShown = records.some(
+    (record) => pluginUserPageRecordAnchor(record.id) === target,
+  );
+  useEffect(() => {
+    if (target && targetShown) {
+      document.getElementById(target)?.scrollIntoView({ block: "center" });
+    }
+  }, [target, targetShown]);
   // Keep the action after close so the closing dialog keeps its text.
   const [confirming, setConfirming] = useState<{
     action: PluginUserPageRecordAction;
@@ -116,16 +121,6 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
             ))}
           </section>
         ) : null}
-        {content?.searchPlaceholder ? (
-          <SearchInput
-            className="w-full"
-            label={content.searchPlaceholder}
-            onChange={setSearchText}
-            placeholder={content.searchPlaceholder}
-            size="default"
-            value={searchText}
-          />
-        ) : null}
         {query.error ? (
           <Card padding="md">
             <InlineError>
@@ -146,7 +141,20 @@ export function PluginUserPage(props: { page: PluginUserPageLink }) {
         ) : (
           <div className="grid gap-3">
             {records.map((record) => (
-              <Card key={record.id} padding="md">
+              <Card
+                aria-current={
+                  pluginUserPageRecordAnchor(record.id) === target
+                    ? "true"
+                    : undefined
+                }
+                className={cn(
+                  pluginUserPageRecordAnchor(record.id) === target &&
+                    "border-dashboard-border-emphasis bg-dashboard-fill-soft",
+                )}
+                id={pluginUserPageRecordAnchor(record.id)}
+                key={record.id}
+                padding="md"
+              >
                 <div className="flex items-start gap-3">
                   <h2 className="m-0 min-w-0 flex-1 font-display text-base font-medium text-dashboard-text">
                     {record.title}

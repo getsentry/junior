@@ -138,6 +138,36 @@ test("renders an empty registered plugin page", async ({ page, dashboard }) => {
   await expect(page.getByText("No memories yet.")).toBeVisible();
 });
 
+test("opens an old library search link as the plain library", async ({
+  page,
+  dashboard,
+}) => {
+  const queries: (string | null)[] = [];
+  await page.route("**/api/user-pages/memory/memories*", async (route) => {
+    queries.push(new URL(route.request().url()).searchParams.get("q"));
+    await route.fulfill({
+      json: {
+        type: "list",
+        records: [{ id: "memory-1", title: "First page memory." }],
+      },
+    });
+  });
+
+  await page.goto(`${dashboard.baseURL}/memories/library?q=runbook`);
+
+  await expect(
+    page.getByRole("heading", { name: "What Junior remembers" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: /^View memory details: First page memory/,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Search results")).toHaveCount(0);
+  expect(queries.length).toBeGreaterThan(0);
+  expect(queries).not.toContain("runbook");
+});
+
 test("shows the memory overview error state", async ({ page, dashboard }) => {
   await page.route("**/api/plugins/memory/dashboard", async (route) => {
     await route.fulfill({ json: { error: "Unavailable" }, status: 500 });

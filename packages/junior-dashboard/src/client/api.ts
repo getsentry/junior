@@ -216,9 +216,13 @@ export function useCodeRepositoryData(repositoryId: string | undefined) {
   });
 }
 
-/** Fetch conversations linked to one repository through its code changes. */
+/**
+ * Fetch conversations linked to one repository through its code changes,
+ * optionally matching `search` on the server.
+ */
 export function useCodeRepositoryConversationsData(
   repositoryId: string | undefined,
+  search = "",
 ) {
   return useQuery({
     enabled: Boolean(repositoryId),
@@ -226,10 +230,11 @@ export function useCodeRepositoryConversationsData(
       "dashboard",
       "conversations",
       "code-repository",
-      { repositoryId },
+      { repositoryId, search },
     ],
     queryFn: ({ signal }) => {
       const params = new URLSearchParams({ codeRepositoryId: repositoryId! });
+      if (search) params.set("q", search);
       return fetchDashboardJson(
         conversationFeedSchema,
         `/api/conversations?${params.toString()}`,

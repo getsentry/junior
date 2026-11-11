@@ -12,8 +12,8 @@ import {
 const NAV_ICONS: Record<string, LucideIcon> = {
   automations: Zap,
   code: CodeXml,
+  inbox: Inbox,
   "memory:memories": Brain,
-  review: Inbox,
   system: Gauge,
 };
 

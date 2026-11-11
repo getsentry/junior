@@ -1,5 +1,10 @@
 import { pluginUserPageContentSchema } from "@sentry/junior-plugin-api";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Brain,
   FolderGit2,
@@ -34,6 +39,12 @@ import { locationPath, memoryPath, peoplePath } from "../format";
 import { fetchDashboardJson } from "../http";
 import { AUTOMATION_RUN_PARAM } from "../pages/automations/AutomationRunDetails";
 import { codeRepositoryPath } from "../pages/code/codeRepositoryRoutes";
+import {
+  pluginUserPageApiPath,
+  pluginUserPageRecordPath,
+} from "../pages/user/pluginUserPageRoutes";
+import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
+import { navItemIcon } from "./layout/navIcons";
 import { matchedItem, type PaletteItem } from "./paletteItem";
 
 const LIMIT = 8;
@@ -50,6 +61,11 @@ const AREA_KEYS = {
   Runs: "automations",
 } as const;
 
+/** The repository ID of the open repository page, if one shows. */
+export function repositoryIdForPath(pathname: string): string | undefined {
+  return REPOSITORY_PATH.exec(pathname)?.[1];
+}
+
 /** The directory group of the page that shows, which ranks first. */
 export function directoryGroupForPath(pathname: string): string | undefined {
   if (pathname.startsWith("/system/people") || pathname.startsWith("/people/"))
@@ -64,16 +80,29 @@ export function directoryGroupForPath(pathname: string): string | undefined {
 }
 
 /**
+ * The group of the generic plugin page that shows: the page's label, from
+ * its nav item. The memory library has its own route and group.
+ */
+export function pluginPageGroupForPath(
+  navItems: readonly DashboardHeaderNavItem[],
+  pathname: string,
+): string | undefined {
+  return navItems.find(
+    (item) => item.to === pathname && pluginUserPageApiPath(item.to),
+  )?.label;
+}
+
+/**
  * Rows from the dashboard's directories: People, Locations, Repositories,
- * the open repository's Changes, Memories, Runs, and the open
- * Conversation's Events. A directory reads only while there is typed text
- * or its page shows. Memories match on the server; the others filter the
- * list they load, as their pages did.
+ * the open repository's Changes, Memories, Runs, each generic plugin page,
+ * and the open Conversation's Events. A directory reads only while there
+ * is typed text or its page shows. Memories match on the server; the others
+ * filter the list they load, as their pages did.
  */
 export function useDirectoryPaletteItems(input: {
   activeGroup?: string;
   conversationId?: string;
-  navKeys: ReadonlySet<string>;
+  navItems: readonly DashboardHeaderNavItem[];
   pathname: string;
   /** Typed text, for lists the palette filters itself. */
   query: string;
@@ -81,14 +110,12 @@ export function useDirectoryPaletteItems(input: {
   search: string;
 }): PaletteItem[] {
   const query = input.query || undefined;
+  const navKeys = new Set(input.navItems.map((item) => item.key));
   const wanted = (group: keyof typeof AREA_KEYS) =>
-    input.navKeys.has(AREA_KEYS[group]) &&
+    navKeys.has(AREA_KEYS[group]) &&
     (Boolean(input.query) || input.activeGroup === group);
   // With no typed text, only the page's own directory shows.
-  const rows = (
-    group: keyof typeof AREA_KEYS | "Events",
-    items: (PaletteItem | undefined)[],
-  ) =>
+  const rows = (group: string, items: (PaletteItem | undefined)[]) =>
     query || input.activeGroup === group
       ? items
           .filter((item): item is PaletteItem => Boolean(item))
@@ -99,7 +126,7 @@ export function useDirectoryPaletteItems(input: {
   const people = useActorDirectoryData(wanted("People"));
   const locations = useLocationDirectoryData(wanted("Locations"));
   const repositories = useCodeOverviewData(wanted("Repositories"));
-  const repositoryId = REPOSITORY_PATH.exec(input.pathname)?.[1];
+  const repositoryId = repositoryIdForPath(input.pathname);
   const repository = useCodeRepositoryData(
     wanted("Changes") ? repositoryId : undefined,
   );
@@ -119,6 +146,24 @@ export function useDirectoryPaletteItems(input: {
   const memoriesCurrent =
     !memories.isPlaceholderData && input.query.trim() === input.search;
   const events = useEventItems(input.conversationId, input.query);
+  const pluginPages = input.navItems.flatMap((item) => {
+    const api = pluginUserPageApiPath(item.to);
+    return api ? [{ ...item, api }] : [];
+  });
+  const pluginContents = useQueries({
+    queries: pluginPages.map((page) => ({
+      enabled: Boolean(input.query) || input.activeGroup === page.label,
+      queryKey: ["dashboard", "palette", "plugin-page", page.key, input.search],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        fetchDashboardJson(
+          pluginUserPageContentSchema,
+          `${page.api}${input.search ? `?${new URLSearchParams({ q: input.search })}` : ""}`,
+          signal,
+        ),
+      placeholderData: keepPreviousData,
+      retry: false,
+    })),
+  });
 
   return [
     ...rows(
@@ -223,6 +268,30 @@ export function useDirectoryPaletteItems(input: {
       ),
     ),
     ...rows("Events", events),
+    // A plugin page's own rows, from the list its page reads. Picking one
+    // opens the page at that row.
+    ...pluginPages.flatMap((page, index) => {
+      const content = pluginContents[index];
+      const current =
+        !content?.isPlaceholderData && input.query.trim() === input.search;
+      return rows(
+        page.label,
+        (current ? (content?.data?.records ?? []) : []).map((record) => {
+          const item = {
+            group: page.label,
+            icon: navItemIcon(page.key),
+            id: `plugin-page-${page.key}-${record.id}`,
+            label: record.title.slice(0, LABEL_LENGTH),
+            to: pluginUserPageRecordPath(page.to, record.id),
+          };
+          // A page with a search placeholder matched the text on the
+          // server, so its rows stay. Others match title and description.
+          return content?.data?.searchPlaceholder
+            ? (matchedItem(item, query) ?? { ...item, score: 1 })
+            : matchedItem(item, query, [record.description]);
+        }),
+      );
+    }),
   ];
 }
 

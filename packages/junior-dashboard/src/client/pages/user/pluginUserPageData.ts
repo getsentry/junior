@@ -12,20 +12,21 @@ import {
 } from "@sentry/junior-plugin-api";
 
 import { deleteDashboardResource, fetchDashboardJson } from "../../http";
-import { useDebouncedSearchParam } from "../../searchParams";
 
 export type PluginUserPageRecord = PluginUserPageContent["records"][number];
 export type PluginUserPageRecordAction = NonNullable<
   PluginUserPageRecord["actions"]
 >[number];
 
-/** Load one plugin page with shared search, pagination, and action behavior. */
+/**
+ * Load one plugin page with shared filter, pagination, and action behavior.
+ * Text search lives in the command palette.
+ */
 export function usePluginUserPageData(page: PluginUserPageLink) {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const actionStarted = useRef(false);
   const filter = searchParams.get("filter")?.trim() ?? "";
-  const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
 
   const query = useInfiniteQuery({
     initialPageParam: undefined as string | undefined,
@@ -35,12 +36,10 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
       page.pluginName,
       page.id,
       filter,
-      searchQuery,
     ],
     queryFn: ({ pageParam, signal }) => {
       const params = new URLSearchParams();
       if (filter) params.set("filter", filter);
-      if (searchQuery) params.set("q", searchQuery);
       if (pageParam) params.set("cursor", pageParam);
       const search = params.toString();
       return fetchDashboardJson(
@@ -108,9 +107,6 @@ export function usePluginUserPageData(page: PluginUserPageLink) {
     query,
     records,
     runAction,
-    searchQuery,
-    searchText,
     setFilter,
-    setSearchText,
   };
 }

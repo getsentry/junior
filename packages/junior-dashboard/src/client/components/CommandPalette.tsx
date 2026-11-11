@@ -15,7 +15,11 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 
-import { useAutomationsData, useConversationsData } from "../api";
+import {
+  useAutomationsData,
+  useCodeRepositoryConversationsData,
+  useConversationsData,
+} from "../api";
 import { formatCompactAge } from "../conversations/conversationAge";
 import {
   FOCUS_REPLY_STATE,
@@ -38,6 +42,8 @@ import { navItemIcon } from "./layout/navIcons";
 import { paneTabForPath } from "./layout/PaneNav";
 import {
   directoryGroupForPath,
+  pluginPageGroupForPath,
+  repositoryIdForPath,
   useDirectoryPaletteItems,
 } from "./paletteDirectories";
 import type { PaletteItem } from "./paletteItem";
@@ -166,10 +172,18 @@ function CommandPaletteBody(props: {
   );
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  // On a repository page, its matching Conversations lead their group.
+  const repositorySearched = useCodeRepositoryConversationsData(
+    search ? repositoryIdForPath(pathname) : undefined,
+    search,
+  );
+  // A generic plugin page's rows lead on it, as a directory's do.
+  const activeGroup =
+    props.activeGroup ?? pluginPageGroupForPath(props.navItems, pathname);
   const directories = useDirectoryPaletteItems({
-    activeGroup: props.activeGroup,
+    activeGroup,
     conversationId: props.currentConversationId,
-    navKeys: new Set(props.navItems.map((item) => item.key)),
+    navItems: props.navItems,
     pathname,
     query: query.trim(),
     search,
@@ -187,11 +201,15 @@ function CommandPaletteBody(props: {
     Boolean(search) &&
     query.trim() === search &&
     !automationsSearched.isPlaceholderData;
+  const repositorySearchedCurrent =
+    Boolean(search) &&
+    query.trim() === search &&
+    !repositorySearched.isPlaceholderData;
   const items = useMemo(
     () =>
       paletteItems({
         actions: props.actions,
-        activeGroup: props.activeGroup,
+        activeGroup,
         automations: automations.data?.automations ?? [],
         automationsSearched: automationsSearchedCurrent
           ? (automationsSearched.data?.automations ?? [])
@@ -203,6 +221,9 @@ function CommandPaletteBody(props: {
         inboxSearched: inboxSearchedCurrent ? inboxSearched.items : [],
         navItems: props.navItems,
         query: query.trim(),
+        repositorySearched: repositorySearchedCurrent
+          ? buildConversations(repositorySearched.data?.conversations ?? [])
+          : [],
         searched: searchedCurrent
           ? buildConversations(searched.data?.conversations ?? [])
           : [],
@@ -216,11 +237,13 @@ function CommandPaletteBody(props: {
       inboxSearched.items,
       inboxSearchedCurrent,
       directories,
+      activeGroup,
       props.actions,
-      props.activeGroup,
       props.currentConversationId,
       props.navItems,
       query,
+      repositorySearched.data?.conversations,
+      repositorySearchedCurrent,
       searched.data?.conversations,
       searchedCurrent,
     ],
@@ -310,6 +333,8 @@ function paletteItems(input: {
   inboxSearched: ReviewItemPayload[];
   navItems: DashboardHeaderNavItem[];
   query: string;
+  /** Server matches linked to the open repository page. */
+  repositorySearched: Conversation[];
   searched: Conversation[];
 }): PaletteItem[] {
   const others = (conversations: Conversation[]) =>
@@ -390,18 +415,34 @@ function paletteItems(input: {
   // Sort is stable, so equal scores keep the feed's order.
   const ranked = (rows: PaletteItem[]) =>
     rows.filter((row) => row.score > 0).sort((a, b) => b.score - a.score);
-  const conversations = ranked(
-    others(input.feed).map((conversation) =>
-      conversationItem(conversation, "Conversations", query),
-    ),
+  // The open repository's matches lead; the server matched them on more
+  // than the title, so each one stays.
+  const inRepository = new Set(
+    input.repositorySearched.map((conversation) => conversation.id),
   );
+  const conversations = [
+    ...others(input.repositorySearched).map((conversation) => {
+      const item = conversationItem(conversation, "Conversations", query);
+      return { ...item, score: Math.max(item.score, 1) };
+    }),
+    ...ranked(
+      others(input.feed)
+        .filter((conversation) => !inRepository.has(conversation.id))
+        .map((conversation) =>
+          conversationItem(conversation, "Conversations", query),
+        ),
+    ),
+  ];
   const matchedPages = ranked(
     [...input.actions.map(actionItem), ...pages.map(pageItem)].map((item) => {
       const match = quickOpenMatch(item.label, query);
       return { ...item, matches: match?.indices, score: match?.score ?? 0 };
     }),
   );
-  const shown = new Set(input.feed.map((conversation) => conversation.id));
+  const shown = new Set([
+    ...input.feed.map((conversation) => conversation.id),
+    ...inRepository,
+  ]);
   const more = others(input.searched)
     .filter((conversation) => !shown.has(conversation.id))
     .slice(0, MORE_LIMIT)
