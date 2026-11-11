@@ -279,3 +279,94 @@ test("ranks the active tab's results first", async ({ page, dashboard }) => {
     page.getByRole("button", { name: new RegExp(rollout.title) }),
   ).toHaveAttribute("aria-expanded", "true");
 });
+
+test("searches the directory pages, with the page's group first", async ({
+  context,
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize({ height: 800, width: 1280 });
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  const firstMatch = async (
+    path: string,
+    query: string,
+    group: string,
+    name: RegExp,
+  ) => {
+    await page.goto(`${dashboard.baseURL}${path}`);
+    await page.keyboard.press("ControlOrMeta+k");
+    await palette.getByRole("combobox").fill(query);
+    const first = palette.getByRole("group").first();
+    await expect(first).toHaveAccessibleName(group);
+    const match = first.getByRole("option").first();
+    await expect(match).toHaveAccessibleName(name);
+    return match;
+  };
+
+  await (
+    await firstMatch("/system/people", "avery", "People", /Avery Example/)
+  ).click();
+  await expect(page).toHaveURL(/\/people\/avery%40example\.com$/);
+
+  await (
+    await firstMatch(
+      "/system/locations",
+      "checkout",
+      "Locations",
+      /#proj-checkout/,
+    )
+  ).click();
+  await expect(page).toHaveURL(/\/system\/locations\/mock%3ACQA123$/);
+
+  await (
+    await firstMatch("/code", "junior", "Repositories", /getsentry\/junior/)
+  ).click();
+  await expect(
+    page.getByRole("heading", { name: "getsentry/junior", exact: true }),
+  ).toBeVisible();
+
+  // On a repository, its changes lead, and one opens on its provider.
+  await context.route("https://github.com/**", (route) =>
+    route.fulfill({ body: "" }),
+  );
+  const change = await firstMatch(
+    new URL(page.url()).pathname,
+    "repository context",
+    "Changes",
+    /Keep repository context across turns/,
+  );
+  const opened = context.waitForEvent("page");
+  await change.click();
+  await expect(await opened).toHaveURL(
+    "https://github.com/getsentry/junior/pull/781",
+  );
+
+  await (
+    await firstMatch("/automations/runs", "weekly", "Runs", /Weekly project/)
+  ).click();
+  await expect(page).toHaveURL(/\/automations\/runs\?run=/);
+  await expect(page.getByRole("dialog", { name: "Run details" })).toBeVisible();
+});
+
+test("closed Inbox matches show under Done, after the open ones", async ({
+  page,
+  dashboard,
+}) => {
+  await mockReviewItems(page);
+  await page.goto(`${dashboard.baseURL}/review`);
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("license entry");
+  const groups = palette.getByRole("group");
+  await expect(groups.nth(0)).toHaveAccessibleName("Inbox");
+  await expect(groups.nth(1)).toHaveAccessibleName("Done");
+  const closed = groups.nth(1).getByRole("option").first();
+  await expect(closed).toHaveAccessibleName(/initech license entry/);
+  await closed.click();
+  await expect(page).toHaveURL(/\/review\?bundle=done&item=item-initech$/);
+  await expect(
+    page.getByRole("region", {
+      name: "Review the initech license entry: how it closed",
+    }),
+  ).toBeVisible();
+});

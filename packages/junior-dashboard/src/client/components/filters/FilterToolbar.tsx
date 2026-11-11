@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 
 import { useDetailsPanel } from "../DetailsPanel";
-import { SearchInput } from "../SearchInput";
 import { Button } from "../ui/button";
 import { cn } from "../../styles";
 
@@ -14,9 +13,9 @@ export type ActiveFilter = {
 };
 
 /**
- * The search bar of a filtered page: search, the button that opens its
- * `FilterPanel`, and one removable chip per set filter. A page that the
- * command palette searches has no search here. Beside an open panel
+ * The filter bar of a filtered page: the button that opens its
+ * `FilterPanel`, and one removable chip per set filter. The command
+ * palette is the search. Beside an open panel
  * the chips repeat it, so they hide. `children` adds controls after the
  * button, such as a sort.
  */
@@ -28,12 +27,6 @@ export function FilterToolbar(props: {
     onToggle(): void;
     open: boolean;
   };
-  search?: {
-    label: string;
-    onChange(value: string): void;
-    placeholder: string;
-    value: string;
-  };
 }) {
   const { filters } = props;
   const beside = useDetailsPanel();
@@ -43,21 +36,7 @@ export function FilterToolbar(props: {
       : [];
   return (
     <div className="grid gap-3">
-      <div
-        className={cn(
-          "flex items-center gap-2",
-          !props.search && "justify-end",
-        )}
-      >
-        {props.search ? (
-          <SearchInput
-            className="flex-1"
-            label={props.search.label}
-            onChange={props.search.onChange}
-            placeholder={props.search.placeholder}
-            value={props.search.value}
-          />
-        ) : null}
+      <div className="flex items-center justify-end gap-2">
         {filters ? (
           <Button
             aria-expanded={filters.open}

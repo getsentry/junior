@@ -6,10 +6,6 @@ test("explores location activity", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/locations?q=proj`);
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/locations?q=proj`);
-  await expect(
-    page.getByRole("searchbox", { name: "Search locations" }),
-  ).toHaveValue("proj");
-  await page.getByRole("searchbox", { name: "Search locations" }).fill("");
 
   await expect(
     page.getByRole("heading", { name: "Locations", exact: true }),

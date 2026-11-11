@@ -170,7 +170,6 @@ export function useCodeRepositoryData(repositoryId: string | undefined) {
 /** Fetch conversations linked to one repository through its code changes. */
 export function useCodeRepositoryConversationsData(
   repositoryId: string | undefined,
-  search = "",
 ) {
   return useQuery({
     enabled: Boolean(repositoryId),
@@ -178,11 +177,10 @@ export function useCodeRepositoryConversationsData(
       "dashboard",
       "conversations",
       "code-repository",
-      { repositoryId, search },
+      { repositoryId },
     ],
     queryFn: ({ signal }) => {
       const params = new URLSearchParams({ codeRepositoryId: repositoryId! });
-      if (search) params.set("q", search);
       return fetchDashboardJson(
         conversationFeedSchema,
         `/api/conversations?${params.toString()}`,
@@ -277,8 +275,9 @@ export function useAutomationVersionsData(
 }
 
 /** Fetch the actor directory used by the People dashboard route. */
-export function useActorDirectoryData() {
+export function useActorDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "people"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
@@ -351,8 +350,9 @@ export function usePersonalSpendData(enabled: boolean) {
 }
 
 /** Fetch the public location directory and private activity aggregate. */
-export function useLocationDirectoryData() {
+export function useLocationDirectoryData(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dashboard", "locations"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(

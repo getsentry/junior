@@ -52,6 +52,7 @@ import { ConversationPageDock } from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import { readDetailsOpen, saveDetailsOpen } from "./conversationSidebarLayout";
 import { useZenMode } from "../components/layout/PaneNav";
+import { useReportEventLogShown } from "../components/paletteEventLog";
 import { useDetailsPanel } from "../components/DetailsPanel";
 import {
   ConversationMemoryContext,
@@ -261,6 +262,7 @@ export function ConversationPage(props: {
     setView("raw");
   }
   const view = eventOpen ? "raw" : viewState;
+  useReportEventLogShown(view === "raw");
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
@@ -876,7 +878,6 @@ export function ConversationPage(props: {
                         }
                         onOpenSubagentTranscript={onOpenSubagentTranscript}
                         search={search}
-                        onSearchChange={setSearch}
                         searchMatch={searchMatch.index}
                         onSearchMatches={searchMatch.setMatches}
                         selectedEventSeq={selectedEventSeq}

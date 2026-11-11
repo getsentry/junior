@@ -135,7 +135,7 @@ export function ReviewDeskPage() {
     forViewer: true,
   });
   const isDone = view === "done";
-  const { items: doneItems, query: doneQuery } = useReviewItemsData({
+  const { items: doneList, query: doneQuery } = useReviewItemsData({
     closed: true,
     enabled: isDone,
     forViewer: true,
@@ -187,6 +187,16 @@ export function ReviewDeskPage() {
         ? [linked, ...list]
         : list,
     [linked, list],
+  );
+  // Done shows a linked closed item that is past its first page too.
+  const doneItems = useMemo(
+    () =>
+      linked &&
+      linked.status !== "open" &&
+      !doneList.some((item) => item.id === linked.id)
+        ? [linked, ...doneList]
+        : doneList,
+    [doneList, linked],
   );
 
   const nowMs = Date.now();
@@ -325,9 +335,13 @@ export function ReviewDeskPage() {
             ],
       );
 
-  const linkedKey = itemParam
-    ? rows.find((row) => row.items.some((item) => item.id === itemParam))?.key
-    : undefined;
+  // A Done row's key is its item id.
+  const linkedKey = !itemParam
+    ? undefined
+    : isDone
+      ? doneItems.find((item) => item.id === itemParam)?.id
+      : rows.find((row) => row.items.some((item) => item.id === itemParam))
+          ?.key;
   const [expandedKey, setExpandedKey] = useState<string>();
   const [activeKey, setActiveKey] = useState<string>();
   const [snoozeMenuKey, setSnoozeMenuKey] = useState<string>();

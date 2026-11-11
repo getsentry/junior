@@ -8,6 +8,7 @@ import { RouterProvider } from "react-router/dom";
 import { Toaster } from "./client/components/ui/toast";
 import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DashboardShell } from "./client/App";
+import { EventLogShownProvider } from "./client/components/paletteEventLog";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
 import {
@@ -128,7 +129,16 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter(
-  [{ path: "*", element: <DashboardShell /> }],
+  [
+    {
+      path: "*",
+      element: (
+        <EventLogShownProvider>
+          <DashboardShell />
+        </EventLogShownProvider>
+      ),
+    },
+  ],
   { basename: window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/" },
 );
 

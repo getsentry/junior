@@ -151,7 +151,7 @@ test("shows the memory overview error state", async ({ page, dashboard }) => {
   await expect(page.getByText("Loading memory summary")).not.toBeVisible();
 });
 
-test("searches, paginates, and forgets plugin page records", async ({
+test("paginates, finds, and forgets plugin page records", async ({
   page,
   dashboard,
 }) => {
@@ -246,27 +246,6 @@ test("searches, paginates, and forgets plugin page records", async ({
       name: /^View memory details: First page memory/,
     }),
   ).toBeVisible();
-  const searchbox = page.getByRole("searchbox", { name: "Search memories" });
-  await searchbox.fill("runbook");
-  await expect(page).toHaveURL(/q=runbook/);
-  await expect(
-    page.getByRole("button", { name: "Load more" }),
-  ).not.toBeVisible();
-  await expect(
-    page.getByRole("button", {
-      name: /^View memory details: Deploy runbooks live in Notion/,
-    }),
-  ).toBeVisible();
-  await expect(page.locator("mark")).toHaveText(["runbook"]);
-  await screenshot(page, "memories-search");
-
-  await searchbox.fill("");
-  await expect(page).not.toHaveURL(/q=/);
-  await expect(
-    page.getByRole("button", {
-      name: /^View memory details: First page memory/,
-    }),
-  ).toBeVisible();
   await page.getByRole("button", { name: "Load more" }).click();
   await expect(
     page.getByRole("button", {
@@ -274,20 +253,17 @@ test("searches, paginates, and forgets plugin page records", async ({
     }),
   ).toBeVisible();
 
-  await searchbox.fill("runbook");
-  await expect(page).toHaveURL(/q=runbook/);
-  await expect(searchbox).toBeFocused();
-  await expect(
-    page.getByRole("button", {
-      name: /^View memory details: Deploy runbooks live in Notion/,
-    }),
-  ).toBeVisible();
+  // ⌘K searches memories on the server, and picking one opens it.
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("runbook");
+  const memories = palette.getByRole("group").first();
+  await expect(memories).toHaveAccessibleName("Memories");
+  const match = memories.getByRole("option").first();
+  await expect(match).toHaveAccessibleName(/Deploy runbooks live in Notion/);
+  await match.click();
+  await expect(page).toHaveURL(/\/memories\/memory-search$/);
 
-  await page
-    .getByRole("button", {
-      name: /^View memory details: Deploy runbooks live in Notion/,
-    })
-    .click();
   await page
     .getByRole("complementary", { name: "Memory details" })
     .getByRole("button", { name: "Forget this memory" })
@@ -299,14 +275,8 @@ test("searches, paginates, and forgets plugin page records", async ({
       button.click();
       button.click();
     });
-  await expect(
-    page.getByText("No memories matched your search."),
-  ).toBeVisible();
-  expect(forgetRequests).toBe(1);
-
-  await searchbox.fill("");
-  await expect(page).not.toHaveURL(/q=/);
   await expect(page.getByText("No memories yet.")).toBeVisible();
+  expect(forgetRequests).toBe(1);
 
   await memoryNavigation.getByRole("link", { name: "Overview" }).click();
   await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);

@@ -4,6 +4,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import {
   CalendarClock,
+  CircleCheck,
   Inbox,
   LockKeyhole,
   MessageSquare,
@@ -12,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 import { useAutomationsData, useConversationsData } from "../api";
 import { formatCompactAge } from "../conversations/conversationAge";
@@ -29,10 +30,16 @@ import {
   automationSelectPath,
 } from "../pages/automations/AutomationSidebarList";
 import { useReviewItemsData } from "../review-desk/queries";
-import { reviewItemPath } from "../review-desk/reviewItemFormat";
+import { doneItemPath, reviewItemPath } from "../review-desk/reviewItemFormat";
 import type { Conversation } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
+import { paneTabForPath } from "./layout/PaneNav";
+import {
+  directoryGroupForPath,
+  useDirectoryPaletteItems,
+} from "./paletteDirectories";
+import type { PaletteItem } from "./paletteItem";
 import { MatchedLabel } from "./MatchedLabel";
 import { quickOpenMatch } from "./quickOpenMatch";
 import {
@@ -54,27 +61,27 @@ export const COMMAND_PALETTE_SHORTCUT = platformShortcut("k");
 /** Name of the command palette and the controls that open it. */
 export const COMMAND_PALETTE_LABEL = "Go to conversation";
 
-type PaletteItem = {
-  group: string;
-  icon: LucideIcon;
-  id: string;
-  label: string;
-  /** Label indices that the typed text matched. */
-  matches?: number[];
-  meta?: string;
-  score: number;
-  /** Navigation state for the destination page. */
-  state?: typeof FOCUS_REPLY_STATE;
-} & ({ run(): void; to?: undefined } | { run?: undefined; to: string });
-
-/** The pane tab that shows, whose results rank first. */
-export type PaletteTab = "automations" | "conversations" | "inbox";
+type PaletteTab = "automations" | "conversations" | "inbox";
 
 const TAB_GROUPS: Record<PaletteTab, string> = {
   automations: "Automations",
   conversations: "Conversations",
   inbox: "Inbox",
 };
+
+/**
+ * The palette group of the page that shows, which ranks first: a
+ * directory such as People or Runs, the event log's Events, or the pane
+ * tab's group.
+ */
+export function paletteGroupForPath(
+  pathname: string,
+  eventLogShown: boolean,
+): string | undefined {
+  if (eventLogShown) return "Events";
+  const tab = paneTabForPath(pathname);
+  return directoryGroupForPath(pathname) ?? (tab && TAB_GROUPS[tab]);
+}
 
 /** A command that acts on the page, such as Zen mode, rather than going somewhere. */
 type PaletteAction = {
@@ -93,7 +100,8 @@ type PaletteAction = {
  */
 export function CommandPalette(props: {
   actions?: PaletteAction[];
-  activeTab?: PaletteTab;
+  /** The group of the page that shows, from `paletteGroupForPath`. */
+  activeGroup?: string;
   /** Left out of the rows: the viewer is already there. */
   currentConversationId?: string;
   navItems: DashboardHeaderNavItem[];
@@ -119,7 +127,7 @@ export function CommandPalette(props: {
     >
       <CommandPaletteBody
         actions={props.actions ?? []}
-        activeTab={props.activeTab}
+        activeGroup={props.activeGroup}
         currentConversationId={props.currentConversationId}
         navItems={props.navItems}
         onClose={() => onOpenChange(false)}
@@ -131,7 +139,7 @@ export function CommandPalette(props: {
 /** Mounted only while open, so the server search runs only then. */
 function CommandPaletteBody(props: {
   actions: PaletteAction[];
-  activeTab?: PaletteTab;
+  activeGroup?: string;
   currentConversationId?: string;
   navItems: DashboardHeaderNavItem[];
   onClose(): void;
@@ -156,6 +164,15 @@ function CommandPaletteBody(props: {
     new URLSearchParams({ pageSize: "20", q: search }).toString(),
   );
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const directories = useDirectoryPaletteItems({
+    activeGroup: props.activeGroup,
+    conversationId: props.currentConversationId,
+    navKeys: new Set(props.navItems.map((item) => item.key)),
+    pathname,
+    query: query.trim(),
+    search,
+  });
   const list = useRef<HTMLDivElement>(null);
   // Hide server rows until they match the typed text, so stale or
   // placeholder rows never show for the wrong query.
@@ -173,12 +190,13 @@ function CommandPaletteBody(props: {
     () =>
       paletteItems({
         actions: props.actions,
-        activeTab: props.activeTab,
+        activeGroup: props.activeGroup,
         automations: automations.data?.automations ?? [],
         automationsSearched: automationsSearchedCurrent
           ? (automationsSearched.data?.automations ?? [])
           : [],
         currentConversationId: props.currentConversationId,
+        directories,
         feed: buildConversations(feed.data?.conversations ?? []),
         inbox: inbox.items,
         inboxSearched: inboxSearchedCurrent ? inboxSearched.items : [],
@@ -196,8 +214,9 @@ function CommandPaletteBody(props: {
       inbox.items,
       inboxSearched.items,
       inboxSearchedCurrent,
+      directories,
       props.actions,
-      props.activeTab,
+      props.activeGroup,
       props.currentConversationId,
       props.navItems,
       query,
@@ -224,7 +243,7 @@ function CommandPaletteBody(props: {
       <CommandInput
         aria-label="Conversation or page"
         onValueChange={setQuery}
-        placeholder="Search conversations, Inbox, automations, and pages…"
+        placeholder="Search conversations, Inbox, automations, and more…"
         spellCheck={false}
         value={query}
       >
@@ -277,11 +296,13 @@ function CommandPaletteBody(props: {
  */
 function paletteItems(input: {
   actions: PaletteAction[];
-  activeTab?: PaletteTab;
+  activeGroup?: string;
   automations: AutomationSummary[];
   /** Server matches on title, instruction, skill, and resource. */
   automationsSearched: AutomationSummary[];
   currentConversationId?: string;
+  /** Directory rows, already matched and ranked. */
+  directories: PaletteItem[];
   feed: Conversation[];
   inbox: ReviewItemPayload[];
   /** Server matches on title and body. */
@@ -330,17 +351,21 @@ function paletteItems(input: {
   const automations = input.automations.map((automation) =>
     automationItem(automation, query),
   );
-  // The active tab's rows lead, under the tab's name.
+  // The page's rows lead, under its group's name. A tab names its rows;
+  // a directory's are its group.
   const lead = (
-    rows: Record<PaletteTab, PaletteItem[]>,
+    tabRows: Record<string, PaletteItem[]>,
     rest: PaletteItem[][],
   ) => {
-    const tab = input.activeTab;
-    if (!tab) return rest.flat();
-    const first = rows[tab].map((row) => ({ ...row, group: TAB_GROUPS[tab] }));
+    const all = [...rest.flat(), ...input.directories];
+    const group = input.activeGroup;
+    if (!group) return all;
+    const first = (
+      tabRows[group] ?? all.filter((row) => row.group === group)
+    ).map((row) => ({ ...row, group }));
     return [
       ...first,
-      ...rest.flat().filter((row) => !first.some((item) => item.id === row.id)),
+      ...all.filter((row) => !first.some((item) => item.id === row.id)),
     ];
   };
 
@@ -353,9 +378,9 @@ function paletteItems(input: {
       .map((conversation) => conversationItem(conversation, "Recent"));
     return lead(
       {
-        automations: automations.slice(0, RECENT_LIMIT),
-        conversations: recent,
-        inbox: inbox.slice(0, RECENT_LIMIT),
+        [TAB_GROUPS.automations]: automations.slice(0, RECENT_LIMIT),
+        [TAB_GROUPS.conversations]: recent,
+        [TAB_GROUPS.inbox]: inbox.slice(0, RECENT_LIMIT),
       },
       [recent, input.actions.map(actionItem), pages.map(pageItem)],
     );
@@ -389,13 +414,17 @@ function paletteItems(input: {
       ...local,
       ...server.filter((row) => !local.some((item) => item.id === row.id)),
     ].slice(0, MORE_LIMIT);
-  // The Inbox opens only open items, so closed matches stay out.
+  // Closed matches open in Done, after the open ones.
   const matchedInbox = withServerMatches(
     ranked(inbox),
     input.inboxSearched
       .filter((item) => item.status === "open")
       .map((item) => inboxItem(item, query)),
   );
+  const matchedDone = input.inboxSearched
+    .filter((item) => item.status !== "open")
+    .slice(0, MORE_LIMIT)
+    .map((item) => doneItem(item, query));
   const matchedAutomations = withServerMatches(
     ranked(automations),
     input.automationsSearched.map((automation) =>
@@ -406,15 +435,16 @@ function paletteItems(input: {
     (matchedPages[0]?.score ?? 0) > (conversations[0]?.score ?? 0);
   return lead(
     {
-      automations: matchedAutomations,
-      conversations,
-      inbox: matchedInbox,
+      [TAB_GROUPS.automations]: matchedAutomations,
+      [TAB_GROUPS.conversations]: conversations,
+      [TAB_GROUPS.inbox]: matchedInbox,
     },
     [
       ...(pagesFirst
         ? [matchedPages, conversations]
         : [conversations, matchedPages]),
       matchedInbox,
+      matchedDone,
       matchedAutomations,
       more,
     ],
@@ -431,6 +461,20 @@ function inboxItem(item: ReviewItemPayload, query?: string): PaletteItem {
     matches: match?.indices,
     score: match?.score ?? 0,
     to: reviewItemPath(item.id),
+  };
+}
+
+function doneItem(item: ReviewItemPayload, query?: string): PaletteItem {
+  const match = query ? quickOpenMatch(item.title, query) : undefined;
+  return {
+    group: "Done",
+    icon: CircleCheck,
+    id: `done-item-${item.id}`,
+    label: item.title,
+    matches: match?.indices,
+    // The server matched the text, so the row stays without a title match.
+    score: match?.score ?? 1,
+    to: doneItemPath(item.id),
   };
 }
 

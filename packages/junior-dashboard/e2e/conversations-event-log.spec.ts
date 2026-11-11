@@ -110,31 +110,22 @@ test("inspects all reporting events and searches full event data", async ({
     name: "Event 1: turn_lifecycle",
     exact: true,
   });
-  // Keyboard selection follows the filtered rows and keeps details open.
-  const eventSearch = log.getByRole("searchbox", { name: "Search events" });
-  await eventSearch.fill("turn_lifecycle");
+  // Keyboard selection moves through the rows and keeps details open.
   await otherEntry.focus();
   await otherEntry.press("ArrowDown");
   const laterEntry = log.getByRole("button", {
-    name: "Event 8: turn_lifecycle",
+    name: "Event 2: turn_context",
     exact: true,
   });
   await expect(laterEntry).toBeFocused();
   await expect(laterEntry).toHaveAttribute("aria-expanded", "true");
   await expect(otherEntry).toHaveAttribute("aria-expanded", "false");
-  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
-  await laterEntry.press("ArrowDown");
-  await expect(laterEntry).toBeFocused();
-  await expect(page).toHaveURL(/[?&]event=8(&|$)/);
-  // The step buttons follow the same filtered rows.
-  await expect(
-    panel.getByRole("button", { name: "Next event" }),
-  ).toBeDisabled();
+  await expect(page).toHaveURL(/[?&]event=2(&|$)/);
+  // The step buttons follow the same rows.
   await panel.getByRole("button", { name: "Previous event" }).click();
   await expect(page).toHaveURL(/[?&]event=1(&|$)/);
   await laterEntry.press("ArrowUp");
   await expect(otherEntry).toBeFocused();
-  await eventSearch.fill("");
   await expect(
     panel.getByRole("heading", { name: "turn_lifecycle", exact: true }),
   ).toBeVisible();
@@ -274,14 +265,23 @@ test("inspects all reporting events and searches full event data", async ({
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect(page).not.toHaveURL(/[?&]event=/);
 
-  const search = page.getByPlaceholder("Search events…");
-  await search.fill("memory-checkout-runbook");
-  await expect(entries).toHaveCount(1);
-  await expect(entries).toHaveAttribute("aria-label", "Event 2: turn_context");
-  await search.fill("no-such-event-data");
-  await expect(log.getByText("No events match your search.")).toBeVisible();
-  await search.fill("");
-  await expect(entries).toHaveCount(report.events.length);
+  // While the log shows, ⌘K finds events by their full data, first.
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("memory-checkout-runbook");
+  const events = palette.getByRole("group").first();
+  await expect(events).toHaveAccessibleName("Events");
+  await expect(events.getByRole("option")).toHaveCount(1);
+  await events.getByRole("option").click();
+  await expect(page).toHaveURL(/[?&]event=2(&|$)/);
+  await expect(
+    log.getByRole("button", { name: "Event 2: turn_context", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page
+    .getByRole("complementary", { name: "Event details", exact: true })
+    .getByRole("button", { name: "Close event details" })
+    .click();
+  await expect(page).not.toHaveURL(/[?&]event=/);
   // The title in the Event log breadcrumb leads back to the Conversation.
   await page.getByTitle("Back to conversation").click();
   await expect(log).toBeHidden();
@@ -550,11 +550,17 @@ test("mounts only the event log rows near the viewport", async ({
   await entry(1000).hover();
   await screenshot(page, "conversation-event-log-virtual");
 
-  // Search reads every loaded event, not only the mounted rows.
+  // ⌘K reads every loaded event, not only the mounted rows.
   await expect(entry(1234)).not.toBeAttached();
-  await log.getByRole("searchbox", { name: "Search events" }).fill("row 1234.");
-  await expect(log.getByRole("status")).toHaveText("1 of 2000 loaded events");
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await palette.getByRole("combobox").fill("row 1234.");
+  await palette
+    .getByRole("group", { name: "Events" })
+    .getByRole("option")
+    .click();
   await expect(entry(1234)).toBeInViewport();
+  await expect(entry(1234)).toHaveAttribute("aria-expanded", "true");
 });
 
 for (const width of [1440, 390]) {

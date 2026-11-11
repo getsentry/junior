@@ -18,7 +18,11 @@ import {
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { Maximize2 } from "lucide-react";
-import { CommandPalette } from "./components/CommandPalette";
+import {
+  CommandPalette,
+  paletteGroupForPath,
+} from "./components/CommandPalette";
+import { useEventLogShown } from "./components/paletteEventLog";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
 import {
   ListPane,
@@ -309,7 +313,7 @@ export function DashboardShell() {
         workspaceActive={workspace}
       >
         <ShellCommandPalette
-          activeTab={paneTabForPath(location.pathname)}
+          pathname={location.pathname}
           currentConversationId={conversationId}
           navItems={[...primaryNavItems, ...profileNavItems]}
           onOpenChange={setCommandPaletteOpen}
@@ -805,13 +809,18 @@ function LegacyAutomationsRedirect() {
 }
 
 /** The command palette, with Zen mode among its actions where it exists. */
-function ShellCommandPalette(
-  props: Omit<Parameters<typeof CommandPalette>[0], "actions">,
-) {
+function ShellCommandPalette({
+  pathname,
+  ...props
+}: Omit<Parameters<typeof CommandPalette>[0], "actions" | "activeGroup"> & {
+  pathname: string;
+}) {
   const zen = useZenMode();
+  const eventLogShown = useEventLogShown();
   return (
     <CommandPalette
       {...props}
+      activeGroup={paletteGroupForPath(pathname, eventLogShown)}
       actions={
         zen.available
           ? [

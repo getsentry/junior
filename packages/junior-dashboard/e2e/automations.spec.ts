@@ -457,9 +457,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   ).toBeVisible();
   failList = false;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(
-    page.getByText("Automations could not be loaded."),
-  ).toBeHidden();
+  await expect(page.getByText("Automations could not be loaded.")).toBeHidden();
   await setState("Active");
   await expect(weeklySummary).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -548,7 +546,6 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/automations/runs`);
 
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
-  await expect(page.getByLabel("Search runs")).toBeVisible();
   await screenshot(page, "automations-runs");
   await expect(page.getByRole("button", { name: /^Filters/ })).toBeVisible();
   await expect(page.getByText("Weekly project summary").first()).toBeVisible();

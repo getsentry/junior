@@ -10,6 +10,11 @@ export function reviewItemPath(id: string): string {
   return `/review?item=${encodeURIComponent(id)}`;
 }
 
+/** Open Done with one closed item expanded. */
+export function doneItemPath(id: string): string {
+  return `/review?${new URLSearchParams({ bundle: "done", item: id })}`;
+}
+
 /**
  * Return the subject URL when it is safe to link. Agents and plugins supply
  * it, and URL validation also accepts `javascript:` and `data:` URLs.

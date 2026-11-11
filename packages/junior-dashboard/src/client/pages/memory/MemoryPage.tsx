@@ -13,7 +13,6 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
-import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
 import {
   selectTimeSeries,
@@ -140,16 +139,8 @@ function MemoryLibrary(props: {
   libraryPath: string;
   page: PluginUserPageLink;
 }) {
-  const {
-    action,
-    content,
-    query,
-    records,
-    runAction,
-    searchQuery,
-    searchText,
-    setSearchText,
-  } = usePluginUserPageData(props.page);
+  const { action, content, query, records, runAction, searchQuery } =
+    usePluginUserPageData(props.page);
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
@@ -244,16 +235,6 @@ function MemoryLibrary(props: {
                   {searchQuery ? "Search results" : "What Junior remembers"}
                 </h2>
               </div>
-              {content?.searchPlaceholder ? (
-                <SearchInput
-                  className="w-full max-w-md sm:w-auto"
-                  label={content.searchPlaceholder}
-                  onChange={setSearchText}
-                  placeholder={content.searchPlaceholder}
-                  size="default"
-                  value={searchText}
-                />
-              ) : null}
             </div>
 
             {loading ? (
