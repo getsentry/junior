@@ -71,6 +71,20 @@ If the plugin is disabled, the automation remains visible but cannot receive eve
 
 Each event automation can start at most 10 runs in a rolling minute. Set `limits.eventAutomationRunLimit` in `createApp()` to change the count (`maxRuns`) and the window (`windowMs`), for example 100 runs per hour. The limit applies to that one automation, so other automations on the same trigger keep running. When an automation reaches the limit, Junior blocks it and sends its creator a direct message. Resume the automation after you narrow its trigger.
 
+## Task and Results
+
+Each automation runs a written instruction or an installed skill. A skill automation can add a short context, such as a repo or who to tag. Choose the skill when one already does the work, so changes to the skill reach every automation that runs it.
+
+The destination and outcomes set where results go, not the instruction. A run ends with one result:
+
+| Result        | What happens                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| Message       | Junior posts one message to each outcome. A Slack channel-message run posts in the message's thread. |
+| No action     | Junior posts nothing. Use this when a condition in the instruction is not met.                       |
+| Misconfigured | Junior blocks the automation and sends its creator a direct message with the reason.                 |
+
+So write what to post and when to post nothing, and leave out where to post. A run cannot post a second message, post into another thread, or post to a channel that is not an outcome. Junior rejects an instruction that says "this channel" or "this thread", because the run does not see the conversation where you created it. Write a channel mention only where the run reads or acts on that channel.
+
 ## Access and Delivery
 
 - Automations run as Junior and deliver to the Slack channel or DM currently set as the automation destination.

@@ -1,6 +1,6 @@
 ---
 name: junior
-description: Build, review, or update Junior extension skills and plugins. Use when users ask to create a Junior SKILL.md, app skill, plugin, plugin.yaml, packaged plugin, MCP-backed plugin, OAuth or credentialed plugin, or to validate Junior extension files. Do not use for ordinary Junior usage, provider workflows, generic code editing, or non-Junior agent-skill authoring.
+description: Build, review, or update Junior extension skills and plugins. Use when users ask to create a Junior SKILL.md, app skill, plugin, plugin.yaml, packaged plugin, MCP-backed plugin, OAuth or credentialed plugin, to write how a skill sets up its automations, or to validate Junior extension files. Do not use for ordinary Junior usage, provider workflows, generic code editing, or non-Junior agent-skill authoring.
 ---
 
 # Junior
@@ -13,6 +13,7 @@ Create or repair Junior extension files.
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | Choose app skill, app plugin, packaged plugin, or repo-local location    | [references/placement-and-discovery.md](references/placement-and-discovery.md)               |
 | Write or review a `SKILL.md` file                                        | [references/skill-authoring.md](references/skill-authoring.md)                               |
+| Write a skill section that sets up automations                           | [references/automation-setup.md](references/automation-setup.md)                             |
 | Write or review `plugin.yaml`                                            | [references/plugin-manifest.md](references/plugin-manifest.md)                               |
 | Decide where credentials, MCP, packages, OAuth, config, and setup belong | [references/runtime-authority.md](references/runtime-authority.md)                           |
 | Package a reusable plugin for npm or this monorepo                       | [references/packaging.md](references/packaging.md)                                           |

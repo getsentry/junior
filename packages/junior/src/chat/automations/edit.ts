@@ -4,6 +4,7 @@
  */
 import { getFirstRunAtMs } from "@/chat/scheduled-automations/cadence";
 import { AutomationEditError, requireCredentialStart } from "./edit-rules";
+import { requireAutomationTaskText } from "./instruction-references";
 import type { AutomationEditFields } from "./edit-schema";
 import type { TaskOutcome, User } from "@sentry/junior-plugin-api";
 import type { AutomationEdit, AutomationUpdate } from "@/api/schema/automation";
@@ -140,6 +141,14 @@ export async function updateViewerAutomation(
   if (input.kind !== current.kind)
     throw new AutomationEditError("The trigger type cannot change.", "kind");
   requireAutomationRevision(current.task, input.revision);
+  if (input.task) {
+    requireAutomationTaskText(input.task, {
+      creator: current.task.createdBy,
+      destinationChannelId: current.task.destination.channelId,
+      requester: automationEditor(user, current),
+      current: current.task.task,
+    });
+  }
   return saveViewerEdit(user, current, input);
 }
 
