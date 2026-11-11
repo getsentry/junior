@@ -335,6 +335,8 @@ async function copyForkEvents(args: {
 
   // Later rows keep the history version of the fork point. A later source
   // compaction is not copied, so its version must not become current.
+  // Raw SQL from before no-raw-sql-queries. Move it to the query builder.
+  // ast-grep-ignore: no-raw-sql-queries
   await getSqlExecutor()
     .db()
     .execute(

@@ -171,6 +171,8 @@ export async function readCodeWindows(args: {
   );
   const [summaryResult, activityResult, activityHourResult] = await Promise.all(
     [
+      // Raw SQL from before no-raw-sql-queries. Move it to the query builder.
+      // ast-grep-ignore: no-raw-sql-queries
       db.execute(sql`
       WITH recent_changes AS (
         SELECT
@@ -230,6 +232,8 @@ export async function readCodeWindows(args: {
         )::double precision AS "medianCostUsd"
       FROM recent_changes
     `),
+      // Raw SQL from before no-raw-sql-queries. Move it to the query builder.
+      // ast-grep-ignore: no-raw-sql-queries
       db.execute(sql`
       WITH days AS (
         SELECT generate_series(
@@ -271,6 +275,8 @@ export async function readCodeWindows(args: {
       LEFT JOIN daily ON daily.day = days.day
       ORDER BY days.day
     `),
+      // Raw SQL from before no-raw-sql-queries. Move it to the query builder.
+      // ast-grep-ignore: no-raw-sql-queries
       db.execute(sql`
       WITH hours AS (
         SELECT generate_series(
@@ -390,6 +396,8 @@ export async function readCodeOverview(nowMs = Date.now()) {
   const windows = await readCodeWindows({ nowMs });
   const conversationTreeCost = conversationTreeCostExpr();
   const [repositoryResult, recentChanges] = await Promise.all([
+    // Raw SQL from before no-raw-sql-queries. Move it to the query builder.
+    // ast-grep-ignore: no-raw-sql-queries
     db.execute(sql`
       WITH recent_changes AS (
         SELECT

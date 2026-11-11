@@ -1,0 +1,22 @@
+id: no-raw-sql-queries
+language: TypeScript
+severity: error
+message: Build table queries with the Drizzle query builder. Keep sql`` to expressions inside a builder query, or to statements without a table, such as advisory locks.
+note: Raw statements lose column types and schema renames. Use db.$with for CTEs and innerJoinLateral or leftJoinLateral for lateral joins.
+files:
+  - packages/*/src/**/*.ts
+  - packages/*/src/**/*.tsx
+rule:
+  pattern: $DB.execute($STATEMENT)
+  has:
+    field: arguments
+    has:
+      kind: call_expression
+      all:
+        - has:
+            field: function
+            regex: ^sql$
+        - has:
+            field: arguments
+            kind: template_string
+            regex: (?i)\bfrom\b

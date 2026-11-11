@@ -1,22 +1,36 @@
-import { sql } from "drizzle-orm";
-import * as z from "zod";
+import {
+  and,
+  countDistinct,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  notExists,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations } from "@/db/schema";
+import {
+  juniorCodeChanges,
+  juniorConversationBriefs,
+  juniorConversations,
+} from "@/db/schema";
 import { conversationUsageCostExpr } from "./aggregate";
 
-const outcomeBucketSchema = z
-  .object({
-    date: z.string(),
-    mergedCodeChangeCostUsd: z.number(),
-    mergedCodeChanges: z.number().int().nonnegative(),
-    outcomeCostUsd: z.number(),
-    outcomes: z.number().int().nonnegative(),
-  })
-  .strict();
+export interface OutcomeBucket {
+  date: string;
+  mergedCodeChangeCostUsd: number;
+  mergedCodeChanges: number;
+  outcomeCostUsd: number;
+  outcomes: number;
+}
 
-export type OutcomeBucket = z.infer<typeof outcomeBucketSchema>;
-
-const resultSchema = z.object({ rows: z.array(outcomeBucketSchema) });
+const changes = juniorCodeChanges;
+const linked = alias(juniorConversations, "linked");
+// A code change lists every Conversation that worked on it.
+const linksChange = sql`${linked.conversationId} = any(${changes.conversationIds})`;
 
 /**
  * Count outcomes per UTC day or hour, with the conversation cost that
@@ -37,87 +51,172 @@ export async function readOutcomeBuckets(
   db: JuniorDatabase,
   options: { bucket: "day" | "hour"; start: Date; end: Date },
 ): Promise<OutcomeBucket[]> {
-  const format =
-    options.bucket === "day" ? sql`'YYYY-MM-DD'` : sql`'YYYY-MM-DD"T"HH24'`;
-  const { start, end } = options;
-  const cost = conversationUsageCostExpr(juniorConversations.usage);
-  const result = await db.execute(sql`
-    WITH code_links AS (
-      SELECT DISTINCT
-        changes.id AS change_id,
-        changes.state,
-        changes.merged_at,
-        coalesce(linked.root_conversation_id, linked.conversation_id) AS root_id
-      FROM junior_code_changes AS changes
-      CROSS JOIN LATERAL unnest(changes.conversation_ids) AS ids(conversation_id)
-      INNER JOIN junior_conversations AS linked
-        ON linked.conversation_id = ids.conversation_id
-    ), root_merges AS (
-      SELECT root_id, count(*)::double precision AS merged
-      FROM code_links
-      WHERE state = 'merged'
-      GROUP BY root_id
-    ), window_merges AS (
-      SELECT change_id, merged_at, root_id
-      FROM code_links
-      WHERE state = 'merged'
-        AND merged_at >= ${start}
-        AND merged_at <= ${end}
-    ), brief_roots AS (
-      SELECT roots.conversation_id AS root_id, roots.last_activity_at
-      FROM junior_conversations AS roots
-      CROSS JOIN LATERAL (
-        SELECT briefs.content
-        FROM junior_conversation_briefs AS briefs
-        WHERE briefs.conversation_id = roots.conversation_id
-        ORDER BY briefs.version DESC
-        LIMIT 1
-      ) AS latest
-      WHERE roots.parent_conversation_id IS NULL
-        AND roots.last_activity_at >= ${start}
-        AND roots.last_activity_at <= ${end}
-        AND latest.content->'outcome'->>'status' IN ('done', 'answered')
-        AND NOT EXISTS (
-          SELECT 1 FROM code_links WHERE code_links.root_id = roots.conversation_id
-        )
-    ), tree_costs AS (
-      -- Roots reference themselves, so the root index finds each tree.
-      SELECT
-        ${juniorConversations.rootConversationId} AS root_id,
-        coalesce(sum(${cost}), 0)::double precision AS cost_usd
-      FROM ${juniorConversations}
-      WHERE ${juniorConversations.rootConversationId} IN (
-        SELECT root_id FROM window_merges
-        UNION
-        SELECT root_id FROM brief_roots
-      )
-      GROUP BY 1
-    ), outcomes AS (
-      SELECT
-        to_char(window_merges.merged_at AT TIME ZONE 'UTC', ${format}) AS date,
-        true AS merged,
-        sum(coalesce(tree_costs.cost_usd, 0) / root_merges.merged) AS cost_usd
-      FROM window_merges
-      INNER JOIN root_merges USING (root_id)
-      LEFT JOIN tree_costs USING (root_id)
-      GROUP BY window_merges.change_id, 1
-      UNION ALL
-      SELECT
-        to_char(brief_roots.last_activity_at AT TIME ZONE 'UTC', ${format}),
-        false,
-        coalesce(tree_costs.cost_usd, 0)
-      FROM brief_roots
-      LEFT JOIN tree_costs USING (root_id)
+  const [merges, briefRoots] = await Promise.all([
+    readWindowMerges(db, options),
+    readBriefOutcomeRoots(db, options),
+  ]);
+  const mergeRoots = [...new Set(merges.map((merge) => merge.rootId))];
+  const [rootMerges, treeCosts] = await Promise.all([
+    readRootMergeCounts(db, mergeRoots),
+    readTreeCosts(db, [
+      ...mergeRoots,
+      ...briefRoots.map((root) => root.rootId),
+    ]),
+  ]);
+
+  const dateLength = options.bucket === "day" ? 10 : 13;
+  const buckets = new Map<string, OutcomeBucket>();
+  const bucketAt = (instant: Date) => {
+    const date = instant.toISOString().slice(0, dateLength);
+    let bucket = buckets.get(date);
+    if (!bucket) {
+      bucket = {
+        date,
+        mergedCodeChangeCostUsd: 0,
+        mergedCodeChanges: 0,
+        outcomeCostUsd: 0,
+        outcomes: 0,
+      };
+      buckets.set(date, bucket);
+    }
+    return bucket;
+  };
+
+  // A change linked to several roots is one outcome that takes a share of
+  // each root's cost.
+  const changeCosts = new Map<string, { costUsd: number; mergedAt: Date }>();
+  for (const merge of merges) {
+    const share =
+      (treeCosts.get(merge.rootId) ?? 0) / (rootMerges.get(merge.rootId) ?? 1);
+    const change = changeCosts.get(merge.changeId);
+    if (change) change.costUsd += share;
+    else
+      changeCosts.set(merge.changeId, {
+        costUsd: share,
+        mergedAt: merge.mergedAt,
+      });
+  }
+  for (const change of changeCosts.values()) {
+    const bucket = bucketAt(change.mergedAt);
+    bucket.mergedCodeChanges += 1;
+    bucket.mergedCodeChangeCostUsd += change.costUsd;
+    bucket.outcomes += 1;
+    bucket.outcomeCostUsd += change.costUsd;
+  }
+  for (const root of briefRoots) {
+    const bucket = bucketAt(root.lastActivityAt);
+    bucket.outcomes += 1;
+    bucket.outcomeCostUsd += treeCosts.get(root.rootId) ?? 0;
+  }
+  return [...buckets.values()];
+}
+
+async function readWindowMerges(
+  db: JuniorDatabase,
+  options: { start: Date; end: Date },
+) {
+  const rows = await db
+    .selectDistinct({
+      changeId: changes.id,
+      mergedAt: changes.mergedAt,
+      rootId: linked.rootConversationId,
+    })
+    .from(changes)
+    .innerJoin(linked, linksChange)
+    .where(
+      and(
+        eq(changes.state, "merged"),
+        gte(changes.mergedAt, options.start),
+        lte(changes.mergedAt, options.end),
+      ),
+    );
+  return rows.flatMap(({ changeId, mergedAt, rootId }) =>
+    mergedAt && rootId ? [{ changeId, mergedAt, rootId }] : [],
+  );
+}
+
+async function readBriefOutcomeRoots(
+  db: JuniorDatabase,
+  options: { start: Date; end: Date },
+) {
+  const roots = juniorConversations;
+  const briefs = juniorConversationBriefs;
+  const latestBrief = db
+    .select({
+      status: sql<string | null>`${briefs.content}->'outcome'->>'status'`.as(
+        "status",
+      ),
+    })
+    .from(briefs)
+    .where(eq(briefs.conversationId, roots.conversationId))
+    .orderBy(desc(briefs.version))
+    .limit(1)
+    .as("latest_brief");
+  return await db
+    .select({
+      lastActivityAt: roots.lastActivityAt,
+      rootId: roots.conversationId,
+    })
+    .from(roots)
+    .innerJoinLateral(latestBrief, sql`true`)
+    .where(
+      and(
+        isNull(roots.parentConversationId),
+        gte(roots.lastActivityAt, options.start),
+        lte(roots.lastActivityAt, options.end),
+        inArray(latestBrief.status, ["done", "answered"]),
+        notExists(
+          db
+            .select({ id: changes.id })
+            .from(changes)
+            .innerJoin(linked, linksChange)
+            .where(eq(linked.rootConversationId, roots.conversationId)),
+        ),
+      ),
+    );
+}
+
+/** Merged code changes of all time per root, so each merge gets its share. */
+async function readRootMergeCounts(
+  db: JuniorDatabase,
+  rootIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (!rootIds.length) return new Map();
+  const rows = await db
+    .select({
+      merged: countDistinct(changes.id),
+      rootId: linked.rootConversationId,
+    })
+    .from(changes)
+    .innerJoin(linked, linksChange)
+    .where(
+      and(
+        eq(changes.state, "merged"),
+        inArray(linked.rootConversationId, [...rootIds]),
+      ),
     )
-    SELECT
-      date,
-      count(*) FILTER (WHERE merged)::integer AS "mergedCodeChanges",
-      coalesce(sum(cost_usd) FILTER (WHERE merged), 0)::double precision
-        AS "mergedCodeChangeCostUsd",
-      count(*)::integer AS "outcomes",
-      coalesce(sum(cost_usd), 0)::double precision AS "outcomeCostUsd"
-    FROM outcomes
-    GROUP BY date
-  `);
-  return resultSchema.parse(result).rows;
+    .groupBy(linked.rootConversationId);
+  return new Map(
+    rows.flatMap((row) => (row.rootId ? [[row.rootId, row.merged]] : [])),
+  );
+}
+
+async function readTreeCosts(
+  db: JuniorDatabase,
+  rootIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (!rootIds.length) return new Map();
+  const conversations = juniorConversations;
+  const rows = await db
+    .select({
+      costUsd: sql<number>`coalesce(sum(${conversationUsageCostExpr(conversations.usage)}), 0)::double precision`,
+      rootId: conversations.rootConversationId,
+    })
+    .from(conversations)
+    // Roots reference themselves, so the root index finds each tree.
+    .where(inArray(conversations.rootConversationId, [...new Set(rootIds)]))
+    .groupBy(conversations.rootConversationId);
+  return new Map(
+    rows.flatMap((row) => (row.rootId ? [[row.rootId, row.costUsd]] : [])),
+  );
 }
