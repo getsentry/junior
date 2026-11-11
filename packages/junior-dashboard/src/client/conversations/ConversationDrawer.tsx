@@ -40,7 +40,7 @@ export interface ConversationDrawerTarget {
 /**
  * Show a Conversation in a side drawer through the ordinary authorized
  * detail API. The opener names it with `icon` and the target, and can add
- * its own `details` across the bottom of the header.
+ * its own `details` under the status line.
  */
 export function ConversationDrawer(props: ConversationDrawerProps) {
   if (!props.target) return null;
@@ -144,6 +144,24 @@ function ConversationDrawerContent(
               {label}
             </h2>
           </div>
+          {searchOpenVisible ? (
+            <TranscriptSearchBar
+              className="inset-x-4 md:left-auto md:right-5 md:w-80"
+              inputRef={searchInputRef}
+              match={searchMatch}
+              onChange={setSearch}
+              onClose={closeSearch}
+              value={search}
+            />
+          ) : null}
+        </>
+      }
+      onClose={props.onClose}
+      openKey={props.target.conversationId}
+      // Status and details span the header, not only the space beside the
+      // actions, so they stay on one line in a narrow drawer.
+      subheader={
+        <>
           <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-dashboard-text-muted">
             {agentName ? (
               <span className="font-medium text-dashboard-text">
@@ -176,21 +194,9 @@ function ConversationDrawerContent(
           <code className="mt-1 block min-w-0 break-all font-mono text-xs text-dashboard-text-faint">
             {props.target.conversationId}
           </code>
-          {searchOpenVisible ? (
-            <TranscriptSearchBar
-              className="inset-x-4 md:left-auto md:right-5 md:w-80"
-              inputRef={searchInputRef}
-              match={searchMatch}
-              onChange={setSearch}
-              onClose={closeSearch}
-              value={search}
-            />
-          ) : null}
+          {props.details}
         </>
       }
-      onClose={props.onClose}
-      openKey={props.target.conversationId}
-      subheader={props.details}
       titleId={titleId}
       width="wide"
     >

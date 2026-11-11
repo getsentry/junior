@@ -1,10 +1,10 @@
 import type { AutomationRun } from "@sentry/junior/api/schema";
 import { CalendarClock, MessageSquareText, Zap } from "lucide-react";
-import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { CopyButton } from "../../components/CopyButton";
-import { DetailsPanel } from "../../components/DetailsPanel";
+import { Drawer } from "../../components/Drawer";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatusChip } from "../../components/StatusChip";
@@ -121,7 +121,8 @@ export function RunConversationLink(props: { conversationId?: string }) {
 
 /**
  * Show one run. A run with a Conversation opens in the conversation drawer,
- * with its result, cost, and setup in the header. Other runs show only those.
+ * with its result, cost, and setup in the header. Other runs get the same
+ * header over an empty state.
  */
 export function AutomationRunDetails(props: {
   loading: boolean;
@@ -132,19 +133,21 @@ export function AutomationRunDetails(props: {
   showAutomation: boolean;
 }) {
   const { run } = props;
+  const titleId = useId();
+  const TriggerIcon = run?.kind === "event" ? Zap : CalendarClock;
+  const icon = (
+    <TriggerIcon
+      aria-hidden="true"
+      className="shrink-0 text-dashboard-text-muted"
+      size={16}
+      strokeWidth={2}
+    />
+  );
   if (run?.conversationId) {
-    const TriggerIcon = run.kind === "scheduled" ? CalendarClock : Zap;
     return (
       <ConversationDrawer
         details={<RunDetails run={run} showAutomation={props.showAutomation} />}
-        icon={
-          <TriggerIcon
-            aria-hidden="true"
-            className="shrink-0 text-dashboard-text-muted"
-            size={16}
-            strokeWidth={2}
-          />
-        }
+        icon={icon}
         onClose={props.onClose}
         target={{
           conversationId: run.conversationId,
@@ -154,55 +157,68 @@ export function AutomationRunDetails(props: {
       />
     );
   }
-  const title = run ? automationRunTitle(run, run.automationTitle) : "Run";
+  // Same header as the conversation drawer, so every run reads alike.
   return (
-    <DetailsPanel
-      label="Run details"
-      onClose={props.onClose}
-      // Run details slide over the page, so the page keeps its layout.
-      overlay
-      sheetTitle={title}
-      title={
-        <h2 className="m-0 line-clamp-2 break-words font-display text-base font-medium text-dashboard-text">
-          {title}
-        </h2>
+    <Drawer
+      closeLabel="Close run details"
+      header={
+        <div className="flex min-w-0 items-center gap-2">
+          {icon}
+          <h2
+            className="m-0 min-w-0 break-words font-display text-lg font-medium leading-tight tracking-tight text-dashboard-text"
+            id={titleId}
+          >
+            {run ? automationRunTitle(run, run.automationTitle) : "Run"}
+          </h2>
+        </div>
       }
+      onClose={props.onClose}
+      openKey="automation-run"
+      subheader={
+        run ? (
+          <RunDetails
+            run={run}
+            showAutomation={props.showAutomation}
+            showStatus
+          />
+        ) : null
+      }
+      titleId={titleId}
+      width="wide"
     >
-      {/* Up and Down swap the run inside the open panel, so reset only the
-          content, not the panel and its slide-in. */}
-      <div
-        className="grid min-w-0 gap-4 p-4 [overflow-wrap:anywhere]"
-        key={run?.executionId}
-      >
-        {run ? (
-          <>
-            <StatusChip
-              size="compact"
-              tone={automationRunStatusTone(run.status)}
-            >
-              {run.status}
-            </StatusChip>
-            <RunDetails run={run} showAutomation={props.showAutomation} />
-            <EmptyTelemetry>
-              No Conversation was recorded for this run.
-            </EmptyTelemetry>
-          </>
-        ) : props.loading ? (
-          <PageContentSkeleton label="Loading run details" variant="panel" />
-        ) : (
-          <p className="m-0 text-sm text-dashboard-text-muted">
-            This run is not in the loaded runs.
-          </p>
-        )}
-      </div>
-    </DetailsPanel>
+      {run ? (
+        <EmptyTelemetry>
+          No Conversation was recorded for this run.
+        </EmptyTelemetry>
+      ) : props.loading ? (
+        <PageContentSkeleton label="Loading run details" variant="panel" />
+      ) : (
+        <p className="m-0 text-sm text-dashboard-text-muted">
+          This run is not in the loaded runs.
+        </p>
+      )}
+    </Drawer>
   );
 }
 
 /** When it ran, what it cost, the setup that ran, and why it failed. */
-function RunDetails(props: { run: AutomationRun; showAutomation: boolean }) {
+function RunDetails(props: {
+  run: AutomationRun;
+  showAutomation: boolean;
+  /** Lead with the result when no conversation header shows it. */
+  showStatus?: boolean;
+}) {
   const { run } = props;
   const items: ReactNode[] = [
+    props.showStatus ? (
+      <StatusChip
+        key="status"
+        size="compact"
+        tone={automationRunStatusTone(run.status)}
+      >
+        {run.status}
+      </StatusChip>
+    ) : null,
     formatRuntime(run.durationMs),
     run.totalTokens === undefined
       ? null

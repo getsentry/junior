@@ -51,15 +51,18 @@ import type { ConversationTranscript, SystemData } from "../src/client/types";
 vi.mock("../src/client/components/Drawer", () => ({
   Drawer: ({
     header,
+    subheader,
     actions,
     children,
   }: {
     header: ReactNode;
+    subheader?: ReactNode;
     actions?: ReactNode;
     children: ReactNode;
   }) => (
     <>
       {header}
+      {subheader}
       {actions}
       {children}
     </>
