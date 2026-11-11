@@ -44,10 +44,11 @@ async function checkRepository(
   repositoryFullName: string,
 ): Promise<boolean> {
   let unknown = false;
-  for (const pullRequest of await listOpenGitHubPullRequests(
+  const { pullRequests } = await listOpenGitHubPullRequests(
     args.search,
     repositoryFullName,
-  )) {
+  );
+  for (const pullRequest of pullRequests) {
     if (pullRequest.mergeable === "UNKNOWN") unknown = true;
     if (pullRequest.mergeable !== "CONFLICTING") continue;
     const events = gitHubMergeConflictEvents({

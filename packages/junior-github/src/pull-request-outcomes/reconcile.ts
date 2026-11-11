@@ -58,7 +58,7 @@ interface ReconcileArgs {
     number: number;
     repositoryFullName: string;
   }): Promise<unknown>;
-  log: Pick<PluginLogger, "error">;
+  log: Pick<PluginLogger, "error" | "warn">;
   nowMs: number;
   search: SearchOpenPullRequests;
   state: PluginState;
@@ -69,17 +69,25 @@ async function reconcileRepository(
   repositoryFullName: string,
   numbers: number[],
 ): Promise<void> {
-  const open = new Set(
-    (await listOpenGitHubPullRequests(args.search, repositoryFullName)).map(
-      (pullRequest) => pullRequest.number,
-    ),
+  const { complete, pullRequests } = await listOpenGitHubPullRequests(
+    args.search,
+    repositoryFullName,
   );
+  if (!complete) {
+    // A pull request past the search limit is open, but not in the list.
+    // The reads would find the same open pull requests every day.
+    args.log.warn("GitHub pull request reconcile skipped a partial search", {
+      repository: repositoryFullName,
+    });
+    return;
+  }
+  const open = new Set(pullRequests.map((pullRequest) => pullRequest.number));
   const missing = numbers.filter((number) => !open.has(number));
   for (const number of missing.slice(0, READ_LIMIT)) {
     const pullRequest = pullRequestSchema.parse(
       await args.loadPullRequest({ number, repositoryFullName }),
     );
-    // A pull request past the search limit of 500 can still be open.
+    // The search index can lag behind GitHub.
     if (pullRequest.state === "open") continue;
     const outcome = normalizeGitHubPullRequestOutcome({
       body: {

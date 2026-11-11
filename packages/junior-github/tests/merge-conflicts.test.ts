@@ -536,6 +536,7 @@ describe("merge conflict check on webhook events", () => {
     const day = 24 * 60 * 60_000;
     let searches: number;
     let reads: number[];
+    let morePages: boolean;
 
     /** A pull request as the REST API returns it. */
     function closedPullRequest(number: number, merged: boolean) {
@@ -562,6 +563,7 @@ describe("merge conflict check on webhook events", () => {
       vi.useFakeTimers({ now, toFake: ["Date"] });
       searches = 0;
       reads = [];
+      morePages = false;
       vi.stubEnv(
         "GITHUB_APP_BOT_EMAIL",
         "1234+sentry-junior[bot]@users.noreply.github.com",
@@ -582,7 +584,9 @@ describe("merge conflict check on webhook events", () => {
                     url: "https://github.com/getsentry/junior/pull/947",
                   },
                 ],
-                pageInfo: { endCursor: null, hasNextPage: false },
+                pageInfo: morePages
+                  ? { endCursor: `page-${searches}`, hasNextPage: true }
+                  : { endCursor: null, hasNextPage: false },
               },
             },
           });
@@ -665,6 +669,15 @@ describe("merge conflict check on webhook events", () => {
       await heartbeat(now + day);
       expect(searches).toBe(2);
       expect(reads).toEqual([946, 949, 950]);
+    });
+
+    it("reads no pull request when the search has more than it lists", async () => {
+      morePages = true;
+      await heartbeat(now);
+
+      expect(searches).toBe(5);
+      expect(reads).toEqual([]);
+      expect(codeChanges).toEqual([]);
     });
   });
 });

@@ -49,12 +49,12 @@ export interface OpenGitHubPullRequest {
 
 /**
  * Return the open Junior pull requests of one repository. The read stops
- * after 500 pull requests, so a larger list is not complete.
+ * after 500 pull requests. `complete` is false when GitHub has more.
  */
 export async function listOpenGitHubPullRequests(
   search: SearchOpenPullRequests,
   repositoryFullName: string,
-): Promise<OpenGitHubPullRequest[]> {
+): Promise<{ complete: boolean; pullRequests: OpenGitHubPullRequest[] }> {
   const pullRequests: OpenGitHubPullRequest[] = [];
   let after: string | undefined;
   for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -71,8 +71,10 @@ export async function listOpenGitHubPullRequests(
         url: node.url,
       });
     }
-    if (!result.pageInfo.hasNextPage || !result.pageInfo.endCursor) break;
+    if (!result.pageInfo.hasNextPage || !result.pageInfo.endCursor) {
+      return { complete: true, pullRequests };
+    }
     after = result.pageInfo.endCursor;
   }
-  return pullRequests;
+  return { complete: false, pullRequests };
 }
