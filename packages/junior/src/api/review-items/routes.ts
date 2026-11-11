@@ -38,37 +38,46 @@ import {
 } from "@/chat/review-items/store";
 import type { ReviewItemDelivery } from "@/chat/review-items/changes";
 
-// A list shows at most this many archived matches, with the first page.
-// Only open items page, oldest first. Creation time never changes, and an
-// item that closes while a person reads only leaves the open order, so a
-// cursor never skips or repeats an item.
+// A list of open items shows at most this many archived matches, with the
+// first page. Open items page oldest first. Creation time never changes, and
+// an item that closes while a person reads only leaves the open order, so a
+// cursor never skips or repeats an item. A `status` list of closed items
+// pages newest closed first: an item closes once, so its place never moves.
 const ARCHIVED_LIMIT = 50;
 
-/** The list that a cursor belongs to. */
+/**
+ * The list that a cursor belongs to. `status` names the closed statuses of
+ * a closed list, such as `done,dismissed`; an open list has none.
+ */
 type ListFilters = Pick<
   ReviewItemFilters,
   "conversationId" | "forUserId" | "query"
->;
+> & { status?: string };
 
 const cursorSchema = z
   .object({
+    closedAtMs: z.number().int().optional(),
     conversationId: z.string().min(1).optional(),
     createdAtMs: z.number().int(),
     forUserId: z.string().min(1).optional(),
     id: z.string().min(1),
     query: z.string().min(1).optional(),
+    status: z.string().min(1).optional(),
     version: z.literal(2),
   })
   .strict();
 
 /**
- * Encode the last open item of a page as the cursor of the next page. The
+ * Encode the last item of a page as the cursor of the next page. The
  * cursor names its list, so it cannot page through a different list.
  */
 function encodeCursor(item: ReviewItem, filters: ListFilters): string {
   return Buffer.from(
     JSON.stringify({
       ...filters,
+      ...(filters.status && item.closedAt
+        ? { closedAtMs: item.closedAt.getTime() }
+        : undefined),
       createdAtMs: item.createdAt.getTime(),
       id: item.id,
       version: 2,
@@ -81,7 +90,7 @@ function encodeCursor(item: ReviewItem, filters: ListFilters): string {
 function decodeCursor(
   cursor: string,
   filters: ListFilters,
-): ReviewItemPosition | undefined {
+): (ReviewItemPosition & { closedAt?: Date }) | undefined {
   try {
     const parsed = cursorSchema.parse(
       JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
@@ -89,11 +98,19 @@ function decodeCursor(
     if (
       parsed.conversationId !== filters.conversationId ||
       parsed.forUserId !== filters.forUserId ||
-      parsed.query !== filters.query
+      parsed.query !== filters.query ||
+      parsed.status !== filters.status ||
+      (filters.status !== undefined && parsed.closedAtMs === undefined)
     ) {
       return undefined;
     }
-    return { createdAt: new Date(parsed.createdAtMs), id: parsed.id };
+    return {
+      ...(parsed.closedAtMs !== undefined
+        ? { closedAt: new Date(parsed.closedAtMs) }
+        : undefined),
+      createdAt: new Date(parsed.createdAtMs),
+      id: parsed.id,
+    };
   } catch {
     return undefined;
   }
@@ -168,6 +185,9 @@ export function createReviewItemRoutes(services: {
           : undefined),
         ...(query.for === "viewer" ? { forUserId: viewer.id } : undefined),
         ...(query.q ? { query: query.q } : undefined),
+        ...(query.status[0] === "open"
+          ? undefined
+          : { status: [...query.status].sort().join(",") }),
       };
       const after = query.cursor
         ? decodeCursor(query.cursor, filters)
@@ -188,6 +208,25 @@ export function createReviewItemRoutes(services: {
           )
         : reviewItemReaderForUser(viewer);
       // Read one more item than a page to learn whether more follow.
+      if (filters.status) {
+        const closed = await searchReviewItems(db, reader, {
+          ...filters,
+          limit: query.limit + 1,
+          order: "closed",
+          statuses: query.status,
+          ...(after?.closedAt
+            ? { closedBefore: { closedAt: after.closedAt, id: after.id } }
+            : undefined),
+        });
+        const page = closed.slice(0, query.limit);
+        const last = page.at(-1);
+        return jsonResponse(reviewItemListSchema, {
+          items: page.map((item) => reviewItemPayload(item, viewer)),
+          ...(closed.length > query.limit && last
+            ? { nextCursor: encodeCursor(last, filters) }
+            : undefined),
+        });
+      }
       const open = await searchReviewItems(db, reader, {
         ...filters,
         limit: query.limit + 1,

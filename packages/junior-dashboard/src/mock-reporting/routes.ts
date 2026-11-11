@@ -733,9 +733,13 @@ export function createMockReportingApi(): Hono<{
   // Answer Review item reads and actions from the mock items, so the
   // dashboard does not query a database that has no review item tables.
   app.get("/review-items", (c) => {
-    const { conversationId, q } = c.req.query();
+    const { conversationId, q, status } = c.req.query();
     return jsonResponse(reviewItemListSchema, {
-      items: readMockReviewItems(NOW_MS, { conversationId, q: q || undefined }),
+      items: readMockReviewItems(NOW_MS, {
+        closed: Boolean(status && status !== "open"),
+        conversationId,
+        q: q || undefined,
+      }),
     });
   });
   app.get("/review-items/count", () =>

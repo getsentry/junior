@@ -19,19 +19,25 @@ export type InboxView =
   | "all"
   | "automations"
   | "decisions"
+  | "done"
   | "needs-you"
   | "prs"
   | `c:${string}`;
 
 /**
  * Read the bundle from the URL. `bundle` names a bundle in the list, and
- * `filter=needs-you` opens the items that wait on the viewer. The inbox
- * opens on All.
+ * `filter=needs-you` opens the items that wait on the viewer. `bundle=done`
+ * opens the closed items. The inbox opens on All.
  */
 export function parseInboxView(params: URLSearchParams): InboxView {
   if (params.get("filter") === "needs-you") return "needs-you";
   const value = params.get("bundle");
-  if (value === "prs" || value === "decisions" || value === "automations")
+  if (
+    value === "prs" ||
+    value === "decisions" ||
+    value === "automations" ||
+    value === "done"
+  )
     return value;
   if (value?.startsWith("c:") && value.length > 2) return value as InboxView;
   return "all";
@@ -66,8 +72,9 @@ export function itemsInView(
   if (view === "prs") return items.filter(isPullRequestItem);
   if (view === "decisions") return items.filter(isDecisionItem);
   if (view === "needs-you") return items.filter(itemNeedsViewer);
-  // Automation attention comes from the Automation list, not Review items.
-  if (view === "automations") return [];
+  // Automation attention comes from the Automation list, not Review items,
+  // and Done lists closed items from their own list.
+  if (view === "automations" || view === "done") return [];
   const id = view.slice(2);
   return items.filter((item) => item.addedByConversationId === id);
 }
@@ -114,17 +121,31 @@ const TIME_SECTIONS = [
   { key: "earlier", label: "Earlier" },
 ] as const;
 
-/**
- * Put a row in Today, This week, or Earlier, by how long it has waited, so
- * new activity on an old ask does not move it up.
- */
-function timeSectionOf(row: InboxBundle, nowMs: number): string {
-  const at = Date.parse(row.waitingSince);
+/** Put a time in Today, This week, or Earlier. */
+function timeSectionAt(iso: string, nowMs: number): string {
+  const at = Date.parse(iso);
   const startOfToday = new Date(nowMs);
   startOfToday.setHours(0, 0, 0, 0);
   if (at >= startOfToday.getTime()) return "today";
   if (at >= startOfToday.getTime() - 6 * 86_400_000) return "week";
   return "earlier";
+}
+
+/**
+ * Group closed items for Done: Today, This week, and Earlier, by when they
+ * closed, newest closed first as the list reads them. Empty groups drop out.
+ */
+export function doneSections(
+  items: readonly ReviewItemPayload[],
+  nowMs: number,
+): { items: ReviewItemPayload[]; key: string; label: string }[] {
+  return TIME_SECTIONS.map((section) => ({
+    ...section,
+    items: items.filter(
+      (item) =>
+        timeSectionAt(item.closedAt ?? item.updatedAt, nowMs) === section.key,
+    ),
+  })).filter((section) => section.items.length > 0);
 }
 
 /**
@@ -232,8 +253,9 @@ function byConversation(
 
 /**
  * Group the rows of a bundle the way its filter reads best. All leads with
- * what waits on the viewer (To do), longest wait first, then Today, This week, and
- * Earlier. Pull requests group by state, decisions and the needs-you view by
+ * what waits on the viewer (To do), longest wait first, then Today, This
+ * week, and Earlier, by how long each row has waited, so new activity on an
+ * old ask does not move it up. Pull requests group by state, decisions and the needs-you view by
  * Conversation, and one Conversation by item kind. Empty groups drop out.
  */
 export function viewSections(
@@ -257,7 +279,7 @@ export function viewSections(
             rows: rows.filter(
               (row) =>
                 !row.needsYou &&
-                timeSectionOf(row, options.nowMs) === section.key,
+                timeSectionAt(row.waitingSince, options.nowMs) === section.key,
             ),
           })),
         ]

@@ -27,10 +27,13 @@ export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
  * List the open Review items that the viewer can see, one page at a time.
  * A search also finds archived items, with the first page. `items` holds the
  * items of every loaded page, and `query` loads more. `forViewer` drops the
- * items that are assigned only to other people.
+ * items that are assigned only to other people. `closed` lists the done and
+ * dismissed items instead, newest closed first.
  */
 export function useReviewItemsData(filters: {
+  closed?: boolean;
   conversationId?: string;
+  enabled?: boolean;
   forViewer?: boolean;
   q?: string;
 }) {
@@ -40,8 +43,10 @@ export function useReviewItemsData(filters: {
   }
   if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
+  if (filters.closed) params.set("status", "done,dismissed");
   const search = params.toString();
   const query = useInfiniteQuery({
+    enabled: filters.enabled ?? true,
     initialPageParam: undefined as string | undefined,
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list", search],
     queryFn: ({ pageParam, signal }) => {
