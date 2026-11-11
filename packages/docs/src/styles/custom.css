@@ -101,9 +101,12 @@ body:has(.jr-hero-stage) .content-panel {
   padding: 0;
 }
 
-/* The page body is empty; only the hero renders. */
+/*
+ * The page body holds only the demo dialog, which renders in the top layer.
+ * Drop the body's box so the hero stays one screen.
+ */
 body:has(.jr-hero-stage) .sl-markdown-content {
-  display: none;
+  display: contents;
 }
 
 /*
@@ -257,6 +260,91 @@ body:has(.jr-hero-stage) .sl-container {
   padding: 0;
 }
 
+/* The demo thumbnail sits in the free space right of the note's lines. */
+.jr-demo-thumb {
+  background: var(--jr-cream);
+  border: 0;
+  box-shadow: calc(1 * var(--u)) calc(1.2 * var(--u)) 0 rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  padding: calc(0.7 * var(--u));
+  position: absolute;
+  right: calc(6.5 * var(--u));
+  rotate: 5deg;
+  top: 50%;
+  transition:
+    rotate 100ms ease,
+    scale 100ms ease;
+  translate: 0 -50%;
+  width: calc(13 * var(--u));
+}
+
+.jr-demo-thumb:hover {
+  rotate: 2deg;
+  scale: 1.05;
+}
+
+.jr-demo-thumb img {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.jr-demo-thumb svg {
+  fill: var(--jr-pink);
+  height: calc(4.5 * var(--u));
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  translate: -50% -50%;
+  width: calc(4.5 * var(--u));
+}
+
+.jr-demo-thumb svg path {
+  fill: var(--jr-cream);
+}
+
+.jr-demo-dialog {
+  background: var(--jr-black);
+  border: 4px solid var(--jr-cream);
+  box-shadow: 10px 10px 0 var(--jr-violet);
+  max-width: none;
+  padding: 0;
+  width: min(64rem, calc(100vw - 2.5rem));
+}
+
+/* The theme sets the body's first-child top margin to 0. Center the dialog. */
+.jr-demo-dialog:modal {
+  margin: auto;
+}
+
+.jr-demo-dialog::backdrop {
+  background: rgba(24, 16, 36, 0.85);
+}
+
+.jr-demo-dialog form {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.jr-demo-close {
+  background: var(--jr-pink);
+  border: 0;
+  color: var(--jr-black);
+  cursor: pointer;
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  padding: 0.55rem 0.9rem;
+  text-transform: uppercase;
+}
+
+.jr-demo-dialog video {
+  aspect-ratio: 16 / 9;
+  display: block;
+  width: 100%;
+}
+
 :root:not([data-has-sidebar]) .hero .sl-link-button {
   border: 4px solid var(--jr-black);
   border-radius: 0;
@@ -328,6 +416,15 @@ body:has(.jr-hero-stage) footer table {
     position: static;
     transform: rotate(-2deg);
     width: 100%;
+  }
+
+  .jr-demo-thumb {
+    display: block;
+    margin: calc(2 * var(--u)) auto 0;
+    position: static;
+    rotate: 2deg;
+    translate: none;
+    width: 60%;
   }
 }
 
