@@ -203,3 +203,6 @@ Read this first after a sandbox reset or context loss.
 - PR body edits via `gh api PATCH` return 403 from the sandbox token. #3090
   body still says `0096` (now `0100`); #3124 body still has the stale
   --no-verify note. Fix when a PR-edit path is available.
+- #3124 review (Thomas, comment 4532089003 "Promise.all?"): submitWalkthrough
+  now reads diff, head files, and cited messages with one Promise.all.
+  Commit 748e8877c. Feedback marked addressed, thread resolved.
