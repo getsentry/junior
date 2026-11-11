@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
 
+import { useDetailsPanel } from "../DetailsPanel";
 import { SearchInput } from "../SearchInput";
 import { Button } from "../ui/button";
 import { cn } from "../../styles";
@@ -14,8 +15,9 @@ export type ActiveFilter = {
 
 /**
  * The search bar of a filtered page: search, the button that opens its
- * `FilterPanel`, and one removable chip per set filter. `children` adds
- * controls after the button, such as a sort.
+ * `FilterPanel`, and one removable chip per set filter. Beside an open panel
+ * the chips repeat it, so they hide. `children` adds controls after the
+ * button, such as a sort.
  */
 export function FilterToolbar(props: {
   children?: ReactNode;
@@ -33,7 +35,11 @@ export function FilterToolbar(props: {
   };
 }) {
   const { filters } = props;
-  const chips = filters?.active ?? [];
+  const beside = useDetailsPanel();
+  const chips =
+    filters && filters.active.length > 0 && !(filters.open && beside)
+      ? filters.active
+      : [];
   return (
     <div className="grid gap-3">
       <div className="flex items-center gap-2">

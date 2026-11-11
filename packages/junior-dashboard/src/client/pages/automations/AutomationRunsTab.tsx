@@ -1,4 +1,4 @@
-import { useMemo, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type {
   AutomationExecution,
   AutomationExecutionList,
@@ -106,7 +106,6 @@ export function AutomationRunsTab(props: {
           data={query.data}
           executions={executions}
           onResultChange={setResult}
-          onRowsKeyDown={selection.onRowsKeyDown}
           onSelect={selection.toggle}
           range={props.range}
           result={result}
@@ -128,7 +127,6 @@ function AutomationRunsView(props: {
   data: AutomationExecutionList;
   executions: AutomationExecution[];
   onResultChange(value: (typeof RESULT_OPTIONS)[number]): void;
-  onRowsKeyDown(event: KeyboardEvent<HTMLElement>): void;
   onSelect(executionId: string): void;
   range: TimeRangeDays;
   result: (typeof RESULT_OPTIONS)[number];
@@ -205,11 +203,7 @@ function AutomationRunsView(props: {
                 <div>Tokens</div>
                 <div>Cost</div>
               </div>
-              <div
-                className="min-w-0"
-                onKeyDown={props.onRowsKeyDown}
-                role="list"
-              >
+              <div className="min-w-0" role="list">
                 {props.executions.map((execution) => (
                   <ExecutionRow
                     execution={execution}
