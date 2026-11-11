@@ -56,7 +56,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
     page.getByText(/6 merged changes and 90 answered or done conversations/),
   ).toBeVisible();
   await expect(
-    page.getByLabel("Running cost per outcome per day"),
+    page.getByLabel("7-day rolling cost per outcome per day"),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
@@ -79,6 +79,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.evaluate(() => window.scrollTo(0, 0));
   await screenshot(page, "system-cache-tokens", { view: "desktop" });
   await page.getByRole("button", { name: "24h", exact: true }).click();
+  await expect(
+    page.getByLabel("6-hour rolling cost per outcome per hour"),
+  ).toBeVisible();
   await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
   await page.getByText("Largest cache writes", { exact: true }).click();
   const largestWrites = page.getByRole("table", {

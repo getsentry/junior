@@ -9,6 +9,7 @@ import {
   selectTimeSeries,
   timeRangeBucketUnit,
   timeRangeDetail,
+  type TimeRangeBucketUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
@@ -32,6 +33,19 @@ function periodTotals(days: ConversationMetricDay[]) {
       tokens: 0,
     },
   );
+}
+
+// Longer series in the same bucket size, so rolling windows start full.
+function outcomeCostHistory(
+  stats: ConversationStatsReport,
+  bucketUnit: TimeRangeBucketUnit,
+  days: ConversationMetricDay[],
+): readonly ConversationMetricDay[] {
+  if (bucketUnit === "day") return stats.metricDays;
+  if (bucketUnit === "hour" && stats.metricHours?.length) {
+    return stats.metricHours;
+  }
+  return days;
 }
 
 /** Present selectable daily runtime and model-usage trends. */
@@ -104,7 +118,11 @@ export function SystemActivity(props: {
           value={formatCostSummary({ total: totals.costUsd })}
         />
       </div>
-      <OutcomeCostChart bucketUnit={bucketUnit} days={days} />
+      <OutcomeCostChart
+        bucketUnit={bucketUnit}
+        days={days}
+        history={outcomeCostHistory(props.stats, bucketUnit, days)}
+      />
       <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />
       <ConversationActivityChart bucketUnit={bucketUnit} days={days} />
       <GuardianActivity bucketUnit={bucketUnit} days={guardianDays} />

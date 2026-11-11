@@ -38,30 +38,68 @@ type Point = {
   outcomes: number;
 };
 
+// Each scale smooths over a window that fits its range: 6 hours for 24h,
+// 1 day for 7d, and 7 days for 30d and 90d.
+const ROLLING_WINDOW: Record<
+  TimeRangeBucketUnit,
+  { buckets: number; label: string }
+> = {
+  "6hour": { buckets: 4, label: "1-day" },
+  day: { buckets: 7, label: "7-day" },
+  hour: { buckets: 6, label: "6-hour" },
+};
+
+type CostTotals = Pick<Point, "mergedCodeChanges" | "outcomes"> & {
+  mergedCodeChangeCostUsd: number;
+  outcomeCostUsd: number;
+};
+
+function sumCosts(buckets: readonly ConversationMetricDay[]): CostTotals {
+  return buckets.reduce(
+    (total, bucket) => ({
+      mergedCodeChangeCostUsd:
+        total.mergedCodeChangeCostUsd + (bucket.mergedCodeChangeCostUsd ?? 0),
+      mergedCodeChanges:
+        total.mergedCodeChanges + (bucket.mergedCodeChanges ?? 0),
+      outcomeCostUsd: total.outcomeCostUsd + (bucket.outcomeCostUsd ?? 0),
+      outcomes: total.outcomes + (bucket.outcomes ?? 0),
+    }),
+    {
+      mergedCodeChangeCostUsd: 0,
+      mergedCodeChanges: 0,
+      outcomeCostUsd: 0,
+      outcomes: 0,
+    },
+  );
+}
+
+function unitCosts(totals: CostTotals): Pick<Point, "merged" | "outcome"> {
+  return {
+    merged: totals.mergedCodeChanges
+      ? totals.mergedCodeChangeCostUsd / totals.mergedCodeChanges
+      : null,
+    outcome: totals.outcomes ? totals.outcomeCostUsd / totals.outcomes : null,
+  };
+}
+
 /**
- * Running mean cost from the first bucket through each bucket. One bucket
- * often has no outcome, or one costly merge, so per-bucket ratios are mostly
- * noise. The last point equals the mean of the whole range.
+ * Mean cost over the window that ends on each of the last `points` buckets.
+ * One bucket often has no outcome, or one costly merge, so a ratio per bucket
+ * is mostly noise. A bucket without a full window of history has no value, so
+ * a line never starts on a partial window.
  */
-function runningCosts(days: readonly ConversationMetricDay[]): Point[] {
-  let outcomes = 0;
-  let outcomeCostUsd = 0;
-  let mergedCodeChanges = 0;
-  let mergedCodeChangeCostUsd = 0;
-  return days.map((day) => {
-    outcomes += day.outcomes ?? 0;
-    outcomeCostUsd += day.outcomeCostUsd ?? 0;
-    mergedCodeChanges += day.mergedCodeChanges ?? 0;
-    mergedCodeChangeCostUsd += day.mergedCodeChangeCostUsd ?? 0;
-    return {
-      date: day.date,
-      merged: mergedCodeChanges
-        ? mergedCodeChangeCostUsd / mergedCodeChanges
-        : null,
-      mergedCodeChanges,
-      outcome: outcomes ? outcomeCostUsd / outcomes : null,
-      outcomes,
-    };
+function rollingCosts(
+  history: readonly ConversationMetricDay[],
+  points: number,
+  windowBuckets: number,
+): Point[] {
+  const start = Math.max(0, history.length - points);
+  return history.slice(start).map((bucket, offset) => {
+    const end = start + offset + 1;
+    const totals = sumCosts(
+      end >= windowBuckets ? history.slice(end - windowBuckets, end) : [],
+    );
+    return { date: bucket.date, ...totals, ...unitCosts(totals) };
   });
 }
 
@@ -76,13 +114,20 @@ function formatAxisCost(value: number): string {
     : `$${formatCompactNumber(value)}`;
 }
 
-/** Plot the running cost per outcome and per merged code change. */
+/**
+ * Plot the rolling cost per outcome and per merged code change at the bucket
+ * size of the selected range. `history` holds the same buckets as `days`, and
+ * may start earlier so the first points get a full window.
+ */
 export function OutcomeCostChart(props: {
   bucketUnit: TimeRangeBucketUnit;
   days: ConversationMetricDay[];
+  history: readonly ConversationMetricDay[];
 }) {
-  const data = runningCosts(props.days);
-  const last = data.at(-1);
+  const window = ROLLING_WINDOW[props.bucketUnit];
+  const data = rollingCosts(props.history, props.days.length, window.buckets);
+  const period = sumCosts(props.days);
+  const periodCosts = unitCosts(period);
   const maximum = Math.max(
     Number.EPSILON,
     ...data.flatMap((point) => [point.outcome ?? 0, point.merged ?? 0]),
@@ -90,7 +135,7 @@ export function OutcomeCostChart(props: {
   return (
     <Card>
       <ChartHeader
-        description={`${formatCompactNumber(last?.mergedCodeChanges)} merged changes and ${formatCompactNumber((last?.outcomes ?? 0) - (last?.mergedCodeChanges ?? 0))} answered or done conversations. Running mean over the period.`}
+        description={`${formatCompactNumber(period.mergedCodeChanges)} merged changes and ${formatCompactNumber(period.outcomes - period.mergedCodeChanges)} answered or done conversations. Lines are ${window.label} rolling means; the legend shows the period mean.`}
         title="Cost per outcome"
         trailing={
           <ChartLegend
@@ -98,7 +143,7 @@ export function OutcomeCostChart(props: {
             inline
             items={SERIES.map((series) => ({
               ...series,
-              value: formatUnitCost(last?.[series.key] ?? null),
+              value: formatUnitCost(periodCosts[series.key]),
             }))}
           />
         }
@@ -111,7 +156,7 @@ export function OutcomeCostChart(props: {
           )}
         >
           <ComposedChart
-            aria-label={`Running cost per outcome per ${timeRangeBucketPerLabel(props.bucketUnit)}`}
+            aria-label={`${window.label} rolling cost per outcome per ${timeRangeBucketPerLabel(props.bucketUnit)}`}
             data={data}
             margin={activityChartMargin}
             role="img"
