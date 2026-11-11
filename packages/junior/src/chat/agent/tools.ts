@@ -420,6 +420,9 @@ export async function wireAgentTools(
     ...(args.run.walkthroughGeneration
       ? { walkthroughGeneration: args.run.walkthroughGeneration }
       : undefined),
+    ...(args.run.walkthroughQuestions
+      ? { walkthroughQuestions: args.run.walkthroughQuestions }
+      : undefined),
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),

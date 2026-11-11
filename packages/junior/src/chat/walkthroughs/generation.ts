@@ -21,6 +21,10 @@ import {
   readPluginCodeChangeStack,
 } from "@/chat/plugins/code-change-hooks";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  readWalkthroughQuestions,
+  type WalkthroughQuestions,
+} from "./questions";
 import type { WalkthroughGeneration } from "./submit-tool";
 import {
   failWalkthroughVersion,
@@ -136,18 +140,24 @@ export async function startWalkthrough(input: {
 }
 
 /**
- * The Walkthrough that a Conversation's Turn generates, if any, and the step
- * that ends it. A Turn that ends without a stored Walkthrough fails its
- * version, so the next click can retry.
+ * The Walkthrough work of a Conversation's Turn, if any: a generation and
+ * the step that ends it, or the questions it answers. A generation Turn that
+ * ends without a stored Walkthrough fails its version, so the next click can
+ * retry.
  */
 export async function readWalkthroughRun(conversationId: string): Promise<
   | {
-      generation: WalkthroughGeneration;
-      finish: () => Promise<void>;
+      generation?: WalkthroughGeneration;
+      questions?: WalkthroughQuestions;
+      finish?: () => Promise<void>;
     }
   | undefined
 > {
-  const version = await getGeneratingWalkthroughVersion(conversationId);
+  const [version, questions] = await Promise.all([
+    getGeneratingWalkthroughVersion(conversationId),
+    readWalkthroughQuestions(conversationId),
+  ]);
+  if (questions) return { questions };
   if (!version) return undefined;
   return {
     generation: {

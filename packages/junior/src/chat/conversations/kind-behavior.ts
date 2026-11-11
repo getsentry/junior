@@ -36,6 +36,11 @@ export type TurnBehavior = {
     noReply: boolean;
     finishAutomationRun: boolean;
     submitWalkthrough: boolean;
+    /**
+     * `readWalkthrough` and `readWalkthroughCode`. A Turn with them answers
+     * questions about one Walkthrough, so every other tool is disabled.
+     */
+    walkthroughQuestions: boolean;
   };
   /** Tighter limits than the app defaults, for Turns that nobody watches. */
   limits?: { maxToolCalls: number; maxCostUsd: number };
@@ -54,6 +59,7 @@ const ROOT: TurnBehavior = {
     noReply: true,
     finishAutomationRun: false,
     submitWalkthrough: false,
+    walkthroughQuestions: false,
   },
 };
 
@@ -80,6 +86,7 @@ const AGENT_IN_CHILD: TurnBehavior = {
     noReply: true,
     finishAutomationRun: false,
     submitWalkthrough: false,
+    walkthroughQuestions: false,
   },
 };
 
@@ -110,9 +117,23 @@ const WALKTHROUGH_GENERATION: TurnBehavior = {
     noReply: false,
     finishAutomationRun: false,
     submitWalkthrough: true,
+    walkthroughQuestions: false,
   },
   // A run that reads several large diffs stays well under these.
   limits: { maxToolCalls: 80, maxCostUsd: 5 },
+};
+
+// A question about a Walkthrough reads the Walkthrough, its code changes, and
+// public Conversations, and replies in the reviewer's hidden Conversation.
+const WALKTHROUGH_QUESTIONS: TurnBehavior = {
+  ...WALKTHROUGH_GENERATION,
+  delivery: "location",
+  tools: {
+    ...WALKTHROUGH_GENERATION.tools,
+    submitWalkthrough: false,
+    walkthroughQuestions: true,
+  },
+  limits: { maxToolCalls: 20, maxCostUsd: 1 },
 };
 
 /**
@@ -121,7 +142,8 @@ const WALKTHROUGH_GENERATION: TurnBehavior = {
  * dispatch Turn is the only gated Turn on an `automation` Conversation, and a
  * person's reply or a Watch Event Turn there runs like a Turn on a root.
  *
- * `walkthroughGeneration` marks a Walkthrough generation run, a temporary
+ * `walkthroughGeneration` marks a Walkthrough generation run, and
+ * `walkthroughQuestions` a question about a Walkthrough. Both are a temporary
  * bridge until a `walkthrough` kind exists.
  */
 export function turnBehavior(args: {
@@ -129,8 +151,10 @@ export function turnBehavior(args: {
   personInput: boolean;
   automationRun: boolean;
   walkthroughGeneration?: boolean;
+  walkthroughQuestions?: boolean;
 }): TurnBehavior {
   if (args.walkthroughGeneration) return WALKTHROUGH_GENERATION;
+  if (args.walkthroughQuestions) return WALKTHROUGH_QUESTIONS;
   if (args.automationRun) return AUTOMATION_RUN;
   if (isTopLevelKind(args.kind)) return ROOT;
   if (!args.personInput) return AGENT_IN_CHILD;

@@ -107,3 +107,34 @@ export const juniorWalkthroughAnswers = pgTable(
     }).onDelete("cascade"),
   ],
 );
+
+/**
+ * One reviewer's questions about one version: a private, hidden Conversation
+ * that answers from the Walkthrough. Lists hide Conversations that appear
+ * here. No foreign key to the Conversation: the row exists before the first
+ * question creates it, so lists never show it.
+ */
+export const juniorWalkthroughQuestions = pgTable(
+  "junior_walkthrough_questions",
+  {
+    versionId: uuid("version_id").notNull(),
+    userId: text("user_id").notNull(),
+    conversationId: text("conversation_id").notNull(),
+    createdAt: timestamptz("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "junior_walkthrough_questions_pk",
+      columns: [table.versionId, table.userId],
+    }),
+    // Serves the list filter and the Turn lookup by Conversation.
+    uniqueIndex("junior_walkthrough_questions_conversation_idx").on(
+      table.conversationId,
+    ),
+    foreignKey({
+      name: "junior_walkthrough_questions_version_id_fk",
+      columns: [table.versionId],
+      foreignColumns: [juniorWalkthroughVersions.id],
+    }).onDelete("cascade"),
+  ],
+);

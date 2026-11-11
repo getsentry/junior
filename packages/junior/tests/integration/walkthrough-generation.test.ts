@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  createLocalSource,
+  defineJuniorPlugin,
+} from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { createApp, defineJuniorPlugins } from "@/app";
@@ -10,8 +13,20 @@ import {
   closeConversationFixture,
   createConversationFixture,
 } from "../fixtures/conversation";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
+import { turnBehavior } from "@/chat/conversations/kind-behavior";
+import { getConversationStore } from "@/chat/db";
+import { createTools } from "@/chat/tools";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { readWalkthroughRun } from "@/chat/walkthroughs/generation";
-import { getWalkthroughVersion } from "@/chat/walkthroughs/store";
+import {
+  walkthroughDocumentSchema,
+  walkthroughOutputSchema,
+} from "@/chat/walkthroughs/schema";
+import {
+  completeWalkthroughVersion,
+  getWalkthroughVersion,
+} from "@/chat/walkthroughs/store";
 
 const sha = (digit: string) => digit.repeat(40);
 const PATCH = [
@@ -53,8 +68,8 @@ function codePlugin() {
             files: [{ path: "src/retry.ts", status: "modified", patch: PATCH }],
           };
         },
-        async readFile() {
-          return undefined;
+        async readFile({ path }) {
+          return path === "src/caller.ts" ? "wait(delayMs);\n" : undefined;
         },
       },
     },
@@ -87,6 +102,55 @@ async function setup(walkthroughs: boolean) {
       failureReason?: string;
     };
   return { app, fixture, get, post };
+}
+
+/** A stored document for a version of the one-layer stack. */
+function readyDocument(versionId: string) {
+  return walkthroughDocumentSchema.parse({
+    schemaVersion: 1,
+    versionId,
+    contentVersionId: versionId,
+    repository: "getsentry/junior",
+    layers: [
+      {
+        pr: 3088,
+        title: "Wait longer between retries",
+        url: "https://github.com/getsentry/junior/pull/3088",
+        baseSha: sha("a"),
+        headSha: sha("b"),
+        additions: 1,
+        deletions: 1,
+      },
+    ],
+    excerpts: [],
+    skipped: [],
+    checks: [],
+    messages: [],
+    content: walkthroughOutputSchema.parse({
+      title: "Retries wait longer",
+      intent: "This PR raises the retry delay.",
+      diagram: {
+        nodes: [{ id: "retry", label: "Retry", column: 0, row: 0 }],
+        edges: [],
+      },
+      chapters: [
+        {
+          id: "change",
+          type: "feature",
+          slot: "change",
+          caption: "The delay goes from 2 to 3.",
+          body: "Retries wait longer.",
+          asks: ["Why 3?"],
+        },
+      ],
+    }),
+    updates: [],
+    meta: {
+      modelId: "test-model",
+      promptVersion: 1,
+      createdAt: new Date().toISOString(),
+    },
+  });
 }
 
 const START = {
@@ -141,7 +205,7 @@ describe("Walkthrough generation", () => {
     const version = await getWalkthroughVersion(started.id);
     const run = await readWalkthroughRun(version!.generationConversationId!);
 
-    await run!.finish();
+    await run!.finish!();
     await expect(get(started.id)).resolves.toMatchObject({ status: "failed" });
     await expect(
       readWalkthroughRun(version!.generationConversationId!),
@@ -149,5 +213,82 @@ describe("Walkthrough generation", () => {
 
     const retry = (await (await post(START)).json()) as { id: string };
     expect(retry.id).not.toBe(started.id);
+  });
+
+  it("answers each reviewer's questions in one hidden, read-only Conversation", async () => {
+    const { app, post } = await setup(true);
+    const started = (await (await post(START)).json()) as { id: string };
+    const questions = `/api/walkthroughs/${started.id}/questions`;
+    const ask = (message: string, idempotencyKey: string) =>
+      app.request(questions, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message, idempotencyKey }),
+      });
+
+    // A generating version has no story to ask about yet.
+    expect((await ask("Why 3?", "q0")).status).toBe(409);
+
+    const storage = createMemoryAttachmentStorage();
+    await completeWalkthroughVersion(storage, {
+      id: started.id,
+      document: readyDocument(started.id),
+    });
+    const first = await ask("Why 3?", "q1");
+    expect(first.status).toBe(202);
+    const { conversationId } = (await first.json()) as {
+      conversationId: string;
+    };
+    const second = (await (await ask("Is 3 enough?", "q2")).json()) as {
+      conversationId: string;
+    };
+    expect(second.conversationId).toBe(conversationId);
+    expect(await (await app.request(questions)).json()).toEqual({
+      conversationId,
+    });
+    expect(
+      (await getConversationStore().get({ conversationId }))?.visibility,
+    ).toBe("private");
+    const feed = (await (await app.request("/api/conversations")).json()) as {
+      conversations: unknown[];
+    };
+    expect(feed.conversations).toEqual([]);
+
+    // Its Turns read the Walkthrough and its code, and nothing else runs.
+    const run = await readWalkthroughRun(conversationId);
+    expect(run).toEqual({
+      questions: expect.objectContaining({ versionId: started.id }),
+    });
+    const tools = createTools([], {}, {
+      conversationId,
+      destination: { platform: "local", conversationId },
+      egress: { fetch: async () => new Response("ok") },
+      source: createLocalSource(conversationId),
+      workspace: {} as ToolRuntimeContext["workspace"],
+      attachmentStorage: storage,
+      turnTools: turnBehavior({
+        kind: "root",
+        personInput: true,
+        automationRun: false,
+        walkthroughQuestions: true,
+      }).tools,
+      walkthroughQuestions: run!.questions!,
+    } satisfies ToolRuntimeContext);
+    expect(tools.bash?.disabledReason).toBeDefined();
+    expect(tools.readWalkthrough?.disabledReason).toBeUndefined();
+    await expect(
+      tools.readWalkthrough!.execute!({}, { toolCallId: "doc" }),
+    ).resolves.toMatchObject({
+      walkthrough: { chapters: [{ id: "change", asks: ["Why 3?"] }] },
+    });
+    await expect(
+      tools.readWalkthroughCode!.execute!(
+        { pr: 3088, path: "src/caller.ts" },
+        { toolCallId: "file" },
+      ),
+    ).resolves.toMatchObject({ text: "wait(delayMs);\n" });
+    await expect(
+      tools.readWalkthroughCode!.execute!({ pr: 1 }, { toolCallId: "other" }),
+    ).rejects.toThrow(/not in this Walkthrough/);
   });
 });

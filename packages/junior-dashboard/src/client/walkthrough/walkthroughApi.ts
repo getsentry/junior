@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import {
+  acceptedConversationMessageSchema,
   walkthroughAnswerSchema,
   walkthroughAnswersSchema,
+  walkthroughQuestionsSchema,
   walkthroughVersionSchema,
 } from "@sentry/junior/api/schema";
 
 import { useDashboardCoreData } from "../api";
 import { useToastManager } from "../components/ui/toast";
+import { conversationDetailQueryKey } from "../conversations/queries";
 import { fetchDashboardJson, post, put } from "../http";
 import type { DecisionAnswer } from "./WalkthroughDecision";
 import type { AnswerMap, WalkthroughTarget } from "./walkthroughModel";
@@ -109,6 +112,47 @@ export function useStartWalkthrough() {
     },
     onError: () => {
       toasts.add({ title: "Could not start the Walkthrough", type: "error" });
+    },
+  });
+}
+
+function questionsQueryKey(id: string) {
+  return ["dashboard", "walkthrough", id, "questions"] as const;
+}
+
+/** The viewer's questions Conversation on one version, once they asked. */
+export function useWalkthroughQuestionsConversation(id: string) {
+  return useQuery({
+    queryKey: questionsQueryKey(id),
+    queryFn: async ({ signal }) =>
+      (
+        await fetchDashboardJson(
+          walkthroughQuestionsSchema,
+          `/api/walkthroughs/${encodeURIComponent(id)}/questions`,
+          signal,
+        )
+      ).conversationId ?? null,
+  });
+}
+
+/**
+ * Ask one question. The first question creates the viewer's hidden
+ * Conversation; later ones add to it.
+ */
+export function useAskWalkthroughQuestion(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { message: string; idempotencyKey: string }) =>
+      post(
+        acceptedConversationMessageSchema,
+        `/api/walkthroughs/${encodeURIComponent(id)}/questions`,
+        body,
+      ),
+    onSuccess: (accepted) => {
+      queryClient.setQueryData(questionsQueryKey(id), accepted.conversationId);
+      return queryClient.invalidateQueries({
+        queryKey: conversationDetailQueryKey(accepted.conversationId),
+      });
     },
   });
 }

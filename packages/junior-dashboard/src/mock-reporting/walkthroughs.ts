@@ -1,14 +1,17 @@
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
+import type { User } from "@sentry/junior-plugin-api";
 import {
   walkthroughAnswerSchema,
   walkthroughAnswersSchema,
+  walkthroughQuestionsSchema,
   walkthroughVersionSchema,
   type WalkthroughAnswerResponse,
   type WalkthroughVersionResponse,
 } from "@sentry/junior/api/schema";
 
 import { ACTIVE_CONVERSATION_ID } from "./fixtures";
+import { createMockConversation } from "./sends";
 // Real documents from the first Walkthrough cost runs: one PR, and a stack.
 import singleRun from "./walkthroughs/pr3071.json";
 import stackRun from "./walkthroughs/stack3089.json";
@@ -70,11 +73,19 @@ function pendingVersion(
   };
 }
 
+/** Add one web message to a mock Conversation and answer like the API. */
+type MockSend = (
+  conversationId: string,
+  body: { idempotencyKey: string; message: string },
+  viewer: User,
+) => Promise<Response>;
+
 /**
  * Serve Walkthrough fixtures. Starting one returns a generating version that
- * turns ready after a few seconds, so the page shows both states.
+ * turns ready after a few seconds, so the page shows both states. Questions
+ * get the fixed reply of every mock send.
  */
-export function createMockWalkthroughRoutes(): Hono<{
+export function createMockWalkthroughRoutes(options: { send: MockSend }): Hono<{
   Variables: JuniorApiVariables;
 }> {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
@@ -82,8 +93,11 @@ export function createMockWalkthroughRoutes(): Hono<{
   const stack = readyVersion(stackRun);
   const ready = new Map([single, stack].map((v) => [v.id, v]));
   const startedAtMs = new Map<string, number>();
-  // Answers live until the dev server restarts, like a fresh reviewer.
+  // Answers and questions live until the dev server restarts, like a fresh
+  // reviewer.
   const answers = new Map<string, Map<string, WalkthroughAnswerResponse>>();
+  const questions = new Map<string, string>();
+  const questionsKey = (id: string, viewer: User) => `${id}\u0000${viewer.id}`;
 
   app.post("/", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
@@ -149,6 +163,46 @@ export function createMockWalkthroughRoutes(): Hono<{
     mine.set(answer.decisionId, answer);
     answers.set(id, mine);
     return jsonResponse(walkthroughAnswerSchema, answer);
+  });
+
+  app.get("/:id/questions", (c) => {
+    const viewer = c.get("viewer");
+    const conversationId = viewer
+      ? questions.get(questionsKey(c.req.param("id"), viewer))
+      : undefined;
+    return jsonResponse(
+      walkthroughQuestionsSchema,
+      conversationId ? { conversationId } : {},
+    );
+  });
+
+  app.post("/:id/questions", async (c) => {
+    const viewer = c.get("viewer");
+    if (!viewer) return c.json({ error: "Sign in to ask." }, 401);
+    const id = c.req.param("id");
+    const version = ready.get(id);
+    if (!version) return c.json({ error: "Walkthrough not found." }, 404);
+    const body = (await c.req.json()) as {
+      idempotencyKey: string;
+      message: string;
+    };
+    const key = questionsKey(id, viewer);
+    const conversationId =
+      questions.get(key) ??
+      createMockConversation({
+        actorIdentity: { email: viewer.email },
+        idempotencyKey: `walkthrough-questions:${id}`,
+        message: body.message,
+        title: `Questions about the Walkthrough of #${version.codeChanges.at(-1)?.number}`,
+        unlisted: true,
+        visibility: "private",
+      });
+    questions.set(key, conversationId);
+    const accepted = await options.send(conversationId, body, viewer);
+    return new Response(accepted.body, {
+      status: 202,
+      headers: accepted.headers,
+    });
   });
 
   return app;

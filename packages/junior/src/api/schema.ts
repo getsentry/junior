@@ -33,6 +33,7 @@ export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
 export {
   walkthroughAnswerSchema,
   walkthroughAnswersSchema,
+  walkthroughQuestionsSchema,
   walkthroughVersionSchema,
 } from "./schema/walkthrough";
 export type {

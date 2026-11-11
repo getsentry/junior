@@ -174,6 +174,7 @@ import {
   requestContextSummary,
 } from "@/chat/agent/context-summary";
 import { exclusiveToolName } from "@/chat/agent/exclusive-tools";
+import { WALKTHROUGH_QUESTIONS_SKILL } from "@/chat/walkthroughs/questions";
 import {
   createToolBatchStats,
   recordToolBatch,
@@ -309,6 +310,7 @@ async function executeAgentRunInPrivacyContext(
     personInput: isPersonInput(run.source.kind),
     automationRun: run.dispatch?.declaresResult === true,
     walkthroughGeneration: run.walkthroughGeneration !== undefined,
+    walkthroughQuestions: run.walkthroughQuestions !== undefined,
   });
   // TODO(dcramer): Gate every answer tool here, not only the Automation run.
   const requireAutomationResult = behavior.gated;
@@ -485,17 +487,24 @@ async function executeAgentRunInPrivacyContext(
         "messaging.message.id": slackSource?.messageTs ?? "",
       });
     }
-    // An Automation in skill mode names its skill in the dispatch, so its
-    // text is not parsed for one.
+    // An Automation in skill mode names its skill in the dispatch, and every
+    // Walkthrough question runs its skill, so their text is not parsed for one.
     const dispatchSkill = run.dispatch?.skill;
-    const skillInvocation = dispatchSkill
-      ? { skillName: dispatchSkill }
+    const runtimeSkill =
+      dispatchSkill ??
+      (run.walkthroughQuestions ? WALKTHROUGH_QUESTIONS_SKILL : undefined);
+    const skillInvocation = runtimeSkill
+      ? { skillName: runtimeSkill }
       : parseSkillInvocation(userInput, availableSkills);
     const invokedSkill = skillInvocation
       ? findSkillByName(skillInvocation.skillName, availableSkills)
       : null;
-    if (dispatchSkill && !invokedSkill) {
-      throw new Error(missingAutomationSkillReason(dispatchSkill));
+    if (runtimeSkill && !invokedSkill) {
+      throw new Error(
+        dispatchSkill
+          ? missingAutomationSkillReason(dispatchSkill)
+          : `Skill "${runtimeSkill}" is not installed.`,
+      );
     }
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);

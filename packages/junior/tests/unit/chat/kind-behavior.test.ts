@@ -17,6 +17,7 @@ const rootTurn = {
     noReply: true,
     finishAutomationRun: false,
     submitWalkthrough: false,
+    walkthroughQuestions: false,
   },
 };
 
@@ -38,6 +39,7 @@ const childAgentTurn = {
     noReply: true,
     finishAutomationRun: false,
     submitWalkthrough: false,
+    walkthroughQuestions: false,
   },
 };
 
@@ -106,8 +108,36 @@ describe("turnBehavior", () => {
         noReply: false,
         finishAutomationRun: false,
         submitWalkthrough: true,
+        walkthroughQuestions: false,
       },
       limits: { maxToolCalls: 80, maxCostUsd: 5 },
+    });
+  });
+
+  it("gives a Walkthrough question the read tools and a reply, and nothing that reaches people", () => {
+    expect(
+      turnBehavior({
+        kind: "root",
+        personInput: true,
+        automationRun: false,
+        walkthroughQuestions: true,
+      }),
+    ).toEqual({
+      delivery: "location",
+      promptMode: "conversation",
+      gated: false,
+      tools: {
+        agents: "none",
+        reviewDesk: false,
+        subscriptions: false,
+        userCustomization: false,
+        reportBlocked: false,
+        noReply: false,
+        finishAutomationRun: false,
+        submitWalkthrough: false,
+        walkthroughQuestions: true,
+      },
+      limits: { maxToolCalls: 20, maxCostUsd: 1 },
     });
   });
 

@@ -11,6 +11,10 @@ import {
 } from "@/chat/walkthroughs/answers";
 import { startWalkthrough } from "@/chat/walkthroughs/generation";
 import {
+  askWalkthroughQuestion,
+  readWalkthroughQuestionsConversationId,
+} from "@/chat/walkthroughs/questions";
+import {
   getWalkthroughVersion,
   readWalkthroughCostUsd,
   readWalkthroughDocument,
@@ -18,6 +22,7 @@ import {
 } from "@/chat/walkthroughs/store";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { jsonResponse, throwApiError } from "../http";
+import { acceptedConversationMessageSchema } from "../schema/conversation";
 import type { JuniorApiEnv } from "../route";
 import {
   startWalkthroughBodySchema,
@@ -26,6 +31,8 @@ import {
   walkthroughAnswerSchema,
   walkthroughAnswersSchema,
   walkthroughParamsSchema,
+  walkthroughQuestionBodySchema,
+  walkthroughQuestionsSchema,
   walkthroughVersionSchema,
   type WalkthroughAnswerResponse,
   type WalkthroughVersionResponse,
@@ -223,6 +230,66 @@ export function createWalkthroughRoutes(options: {
         decisionId,
       });
       return jsonResponse(walkthroughAnswerSchema, answerResponse(answer));
+    },
+  );
+
+  // Each reviewer asks in their own private Conversation.
+  app.get(
+    "/:id/questions",
+    requireViewer,
+    validateRequest(
+      "param",
+      walkthroughParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const version = await readableVersion(
+        context.req.valid("param").id,
+        viewer,
+      );
+      const conversationId = await readWalkthroughQuestionsConversationId({
+        versionId: version.id,
+        userId: viewer.id,
+      });
+      return jsonResponse(
+        walkthroughQuestionsSchema,
+        conversationId ? { conversationId } : {},
+      );
+    },
+  );
+
+  app.post(
+    "/:id/questions",
+    requireViewer,
+    validateRequest(
+      "param",
+      walkthroughParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      walkthroughQuestionBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const version = await readableVersion(
+        context.req.valid("param").id,
+        viewer,
+      );
+      if (version.status !== "ready") {
+        throwApiError(409, "Walkthrough is not ready.");
+      }
+      const accepted = await askWalkthroughQuestion({
+        ...context.req.valid("json"),
+        version,
+        viewer,
+        queue: options.queue,
+      });
+      return jsonResponse(acceptedConversationMessageSchema, accepted, {
+        status: 202,
+      });
     },
   );
 

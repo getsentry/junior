@@ -226,3 +226,30 @@ function markdownLocation(location: { label: string; url?: string }): string {
     ? `[\`${location.label}\`](${location.url})`
     : `\`${location.label}\``;
 }
+
+/** The chapter that a question is about, as the question quotes it. */
+export type QuestionChapter = { title: string; caption: string };
+
+/**
+ * Write a question about one chapter. The quote line names the chapter, so
+ * the agent and the transcript both see it.
+ */
+export function chapterQuestion(
+  chapter: QuestionChapter | undefined,
+  text: string,
+): string {
+  if (!chapter) return text;
+  return `> **${chapter.title}** · ${chapter.caption}\n\n${text}`;
+}
+
+const CHAPTER_QUOTE = /^> \*\*(.+?)\*\* · .*\n\n/;
+
+/** Split a question into its chapter title, if it names one, and its text. */
+export function readChapterQuestion(message: string): {
+  chapter?: string;
+  text: string;
+} {
+  const match = CHAPTER_QUOTE.exec(message);
+  if (!match) return { text: message };
+  return { chapter: match[1], text: message.slice(match[0].length) };
+}

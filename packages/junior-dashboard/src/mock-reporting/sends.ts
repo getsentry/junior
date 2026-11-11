@@ -32,6 +32,8 @@ type MockCreatedConversation = {
   createdAtMs: number;
   fork?: MockFork;
   title?: string;
+  /** Lists hide it, like a Walkthrough questions Conversation. */
+  unlisted?: boolean;
   visibility?: "private" | "public";
 };
 
@@ -66,6 +68,8 @@ export function createMockConversation(args: {
   actorIdentity: ActorIdentity;
   idempotencyKey: string;
   message: string;
+  title?: string;
+  unlisted?: boolean;
   visibility?: "private" | "public";
 }): string {
   const conversationId = mockConversationId(
@@ -77,7 +81,8 @@ export function createMockConversation(args: {
       actorIdentity: args.actorIdentity,
       conversationId,
       createdAtMs: Date.now(),
-      title: titleFromMessage(args.message),
+      title: args.title ?? titleFromMessage(args.message),
+      ...(args.unlisted ? { unlisted: true } : undefined),
       ...(args.visibility ? { visibility: args.visibility } : undefined),
     });
   }
@@ -137,10 +142,15 @@ export function keepMockQuickQuestion(conversationId: string): boolean {
   return true;
 }
 
-/** Return whether lists hide this Conversation: an unkept Quick question. */
+/**
+ * Return whether lists hide this Conversation: an unkept Quick question, or
+ * one created unlisted.
+ */
 export function isUnlistedMockConversation(conversationId: string): boolean {
+  const created = createdConversations.get(conversationId);
+  if (created?.unlisted) return true;
   return (
-    Boolean(createdConversations.get(conversationId)?.fork?.quickQuestion) &&
+    Boolean(created?.fork?.quickQuestion) &&
     !keptQuickQuestionIds.has(conversationId)
   );
 }

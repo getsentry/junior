@@ -9,6 +9,7 @@ import type {
   TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
+import type { WalkthroughQuestions } from "@/chat/walkthroughs/questions";
 import type { WalkthroughGeneration } from "@/chat/walkthroughs/submit-tool";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
@@ -301,6 +302,12 @@ export type AgentRun = {
    * sets it. `turnBehavior` then gives the Turn `submitWalkthrough`.
    */
   walkthroughGeneration?: WalkthroughGeneration;
+  /**
+   * Walkthrough that this Run answers questions about. Only the Turn worker
+   * sets it. `turnBehavior` then gives the Turn the Walkthrough read tools
+   * and disables the rest.
+   */
+  walkthroughQuestions?: WalkthroughQuestions;
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */

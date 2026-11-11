@@ -27,7 +27,10 @@ export function CountBadge(props: { count: number; label: string }) {
 const asideClass =
   "grid min-h-0 min-w-0 border-l border-dashboard-border bg-dashboard-bg-elevated";
 
-/** Questions alone, for a version that has no review yet. Wide screens only. */
+/**
+ * Questions alone, for a version that is not ready, so it takes no questions
+ * and has no review yet. Wide screens only.
+ */
 export function WalkthroughQuestionsPanel() {
   const panel = useDetailsPanel();
   if (!panel) return null;
@@ -53,6 +56,7 @@ export function WalkthroughSidePanel(props: {
   onSheetClose(): void;
   onTabChange(tab: WalkthroughSideTab): void;
   openCount: number;
+  questions: ReactNode;
   review: ReactNode;
   sheetOpen: boolean;
   tab: WalkthroughSideTab;
@@ -77,7 +81,7 @@ export function WalkthroughSidePanel(props: {
         </TabsTrigger>
       </TabsList>
       <TabsContent className="grid min-h-0" value="questions">
-        <WalkthroughQuestions />
+        {props.questions}
       </TabsContent>
       <TabsContent
         className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"

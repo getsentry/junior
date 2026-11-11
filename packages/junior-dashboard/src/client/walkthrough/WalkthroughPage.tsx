@@ -28,6 +28,7 @@ import {
 import { useDocumentTitle } from "../documentTitle";
 import { DisplayText } from "../display-text/DisplayText";
 import { WalkthroughChapterView } from "./WalkthroughChapterView";
+import { WalkthroughQuestions } from "./WalkthroughQuestions";
 import { WalkthroughRail } from "./WalkthroughRail";
 import { WalkthroughReview } from "./WalkthroughReview";
 import {
@@ -143,6 +144,17 @@ function ReadyWalkthrough(props: {
           onSheetClose={() => setSheetOpen(false)}
           onTabChange={setTab}
           openCount={open}
+          questions={
+            <WalkthroughQuestions
+              chapter={{
+                id: chapter.id,
+                title: chapterTitle(chapter),
+                caption: chapter.caption,
+                asks: chapter.asks,
+              }}
+              versionId={version.id}
+            />
+          }
           review={
             <WalkthroughReview
               activeChapter={index}

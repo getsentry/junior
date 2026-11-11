@@ -32,6 +32,7 @@ import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import {
   juniorWalkthroughAnswers,
+  juniorWalkthroughQuestions,
   juniorWalkthroughVersions,
 } from "./schema/walkthroughs";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
@@ -67,6 +68,7 @@ export {
   juniorAutomations,
   juniorUsers,
   juniorWalkthroughAnswers,
+  juniorWalkthroughQuestions,
   juniorWalkthroughVersions,
   juniorWorkspaceRepos,
   juniorWorkspaces,
@@ -103,6 +105,7 @@ export const juniorSqlSchema = {
   juniorAutomations,
   juniorUsers,
   juniorWalkthroughAnswers,
+  juniorWalkthroughQuestions,
   juniorWalkthroughVersions,
   juniorWorkspaceRepos,
   juniorWorkspaces,

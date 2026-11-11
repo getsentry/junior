@@ -195,7 +195,10 @@ export function createMockReportingApi(): Hono<{
   app.get("/board", () =>
     jsonResponse(boardReportSchema, readMockBoard(Date.now())),
   );
-  app.route("/walkthroughs", createMockWalkthroughRoutes());
+  app.route(
+    "/walkthroughs",
+    createMockWalkthroughRoutes({ send: acceptMockSend }),
+  );
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );

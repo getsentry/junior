@@ -32,6 +32,14 @@ import {
   createSubmitWalkthroughTool,
   SUBMIT_WALKTHROUGH_TOOL_NAME,
 } from "@/chat/walkthroughs/submit-tool";
+import {
+  createReadWalkthroughCodeTool,
+  READ_WALKTHROUGH_CODE_TOOL_NAME,
+} from "@/chat/walkthroughs/read-code-tool";
+import {
+  createReadWalkthroughTool,
+  READ_WALKTHROUGH_TOOL_NAME,
+} from "@/chat/walkthroughs/read-tool";
 import { FINISH_AUTOMATION_RUN_TOOL_NAME } from "@/chat/automation-result";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { createEventTools } from "@/chat/tools/events";
@@ -104,6 +112,16 @@ export interface CreateToolsOptions {
   automationSkills?: readonly SkillMetadata[];
   pluginSandbox?: PluginSandbox;
 }
+
+// Tools that a question about a Walkthrough may call. Each one only reads.
+const WALKTHROUGH_QUESTION_TOOLS: ReadonlySet<string> = new Set([
+  READ_WALKTHROUGH_TOOL_NAME,
+  READ_WALKTHROUGH_CODE_TOOL_NAME,
+  "readConversationEvent",
+  "searchConversationEvents",
+  "reportProgress",
+  "systemTime",
+]);
 
 /**
  * Build the model-facing tool registry from runtime-owned context and capabilities.
@@ -256,6 +274,15 @@ export function createTools(
       context.walkthroughGeneration,
     );
   }
+  if (turnTools.walkthroughQuestions && context.walkthroughQuestions) {
+    tools[READ_WALKTHROUGH_TOOL_NAME] = createReadWalkthroughTool(
+      context,
+      context.walkthroughQuestions,
+    );
+    tools[READ_WALKTHROUGH_CODE_TOOL_NAME] = createReadWalkthroughCodeTool(
+      context.walkthroughQuestions,
+    );
+  }
   if (turnTools.reportBlocked) {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool();
   }
@@ -399,5 +426,15 @@ export function createTools(
     tools[name] = pluginTool;
   }
 
+  if (turnTools.walkthroughQuestions) {
+    for (const [name, tool] of Object.entries(tools)) {
+      if (WALKTHROUGH_QUESTION_TOOLS.has(name)) continue;
+      tools[name] = {
+        ...tool,
+        disabledReason:
+          "A question about a Walkthrough only reads the Walkthrough, its code changes, and Conversations.",
+      };
+    }
+  }
   return tools;
 }

@@ -710,6 +710,7 @@ export function createConversationTurnWorker(
               destination,
               source,
               walkthroughGeneration: walkthrough?.generation,
+              walkthroughQuestions: walkthrough?.questions,
               ...(conversationLocation
                 ? { location: conversationLocation }
                 : undefined),
@@ -770,7 +771,7 @@ export function createConversationTurnWorker(
                 );
               }
 
-              await walkthrough?.finish();
+              await walkthrough?.finish?.();
               modelFailureCaptureAttempted =
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({

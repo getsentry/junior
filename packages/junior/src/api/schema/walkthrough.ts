@@ -67,3 +67,16 @@ export type WalkthroughAnswerResponse = z.output<
 export const walkthroughAnswersSchema = z
   .object({ answers: z.array(walkthroughAnswerSchema) })
   .strict();
+
+/** One question about a ready version. */
+export const walkthroughQuestionBodySchema = z
+  .object({
+    idempotencyKey: z.string().trim().min(1).max(200),
+    message: z.string().trim().min(1).max(8_000),
+  })
+  .strict();
+
+/** The viewer's questions Conversation on one version, once they asked. */
+export const walkthroughQuestionsSchema = z
+  .object({ conversationId: z.string().optional() })
+  .strict();
