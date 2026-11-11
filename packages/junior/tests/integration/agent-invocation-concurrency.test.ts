@@ -61,7 +61,11 @@ async function searchAgents() {
 
 function taskModel(request: AgentRun): StreamFn {
   return createModelStream([
-    { type: "text", text: `result:${request.instruction.text}` },
+    {
+      type: "toolCall",
+      name: "reply",
+      arguments: { text: `result:${request.instruction.text}` },
+    },
   ]);
 }
 
@@ -267,8 +271,9 @@ describe("agent invocation identity and concurrency", () => {
       }
       return createModelStream([
         {
-          type: "text",
-          text: `result:${task}`,
+          type: "toolCall",
+          name: "reply",
+          arguments: { text: `result:${task}` },
           waitFor: release.promise,
         },
       ]);
@@ -471,7 +476,11 @@ describe("agent invocation identity and concurrency", () => {
       createModelStream([
         request.instruction.text === "failing sibling"
           ? { type: "error", errorMessage: "sibling failed" }
-          : { type: "text", text: "successful sibling result" },
+          : {
+              type: "toolCall",
+              name: "reply",
+              arguments: { text: "successful sibling result" },
+            },
       ]),
     );
     try {

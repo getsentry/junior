@@ -60,12 +60,12 @@ const AUTOMATION_RUN_RULES = [
 
 /**
  * Block 2, `<child-agent-run>`: the job rules for a run that a parent agent
- * started. No person reads the run, and its final text is its result.
+ * started. No person reads the run, and only its `reply` reaches the parent.
  */
 const CHILD_AGENT_RUN_RULES = [
-  "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. The parent agent reads your final reply; no person reads this run.",
+  "- A parent agent started you. Your input is a task or message from the parent, a result or message from one of your own child agents, or an event from one of your own watches. That input is the job. No person reads this run.",
   "- Do the work now. Do not ask questions, ask for approval, or offer options.",
-  `- Your final text reply goes to the parent as finished work. When the task cannot be finished, end the run with \`${REPORT_BLOCKED_TOOL_NAME}\` instead.`,
+  `- Assistant text is never delivered. End each Turn with one of \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`. \`${REPLY_TOOL_NAME}\` sends your finished work to the parent. Use \`${NO_REPLY_TOOL_NAME}\` when the parent needs nothing from this Turn, such as a watch event that changed nothing. When the task cannot be finished, use \`${REPORT_BLOCKED_TOOL_NAME}\`.`,
   "- Your reply is to the parent agent, not to a person. Call each person by the Slack mention that your input gives for them, not by a provider handle or a name, so the parent knows who they are.",
 ];
 
@@ -201,12 +201,12 @@ const AUTOMATION_FAILURE_REPORTING_RULES = [
 ];
 
 /**
- * Block 6, `<failure-reporting>` for child agent runs. A text reply is finished
+ * Block 6, `<failure-reporting>` for child agent runs. A `reply` is finished
  * work, so a failure that stops the task goes in the blocked report.
  */
 const CHILD_AGENT_FAILURE_REPORTING_RULES = [
-  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in a text reply.`,
-  "- Keep raw tool payloads and internal routing metadata out of the final reply.",
+  `- When a failure or a missing part stops the task, put what you checked and what is missing in \`${REPORT_BLOCKED_TOOL_NAME}\`, not in \`${REPLY_TOOL_NAME}\`.`,
+  `- Keep raw tool payloads and internal routing metadata out of \`${REPLY_TOOL_NAME}\`.`,
 ];
 
 /** Block 6 `<output>` line for every mode: how to report finished work. */

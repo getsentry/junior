@@ -7,7 +7,10 @@ export {
   MAX_INPUT_IMAGE_BYTES,
 } from "../chat/attachments/input";
 export type { InputImage, MessageAttachment } from "../chat/attachments/input";
-export { isAgentInvocationResultEventType } from "../chat/agent-invocations/result-event-type";
+export {
+  AGENT_REPLY_EVENT_TYPE,
+  isAgentInvocationResultEventType,
+} from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
   buttonUserInputField,

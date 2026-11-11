@@ -426,7 +426,9 @@ export async function wireAgentTools(
       // Automations have stored outcomes since #1788, and older dispatch
       // records have passed the 7-day state TTL.
       reply:
-        args.behavior.tools.reply && args.run.dispatch?.outcomes?.length !== 0,
+        args.run.dispatch?.outcomes?.length === 0
+          ? "none"
+          : args.behavior.tools.reply,
     },
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }

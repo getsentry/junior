@@ -246,8 +246,8 @@ export function createTools(
     tools.messageAgent = createMessageAgentTool(context.messageAgent);
   }
 
-  if (turnTools.reply) {
-    tools[REPLY_TOOL_NAME] = createReplyTool();
+  if (turnTools.reply !== "none") {
+    tools[REPLY_TOOL_NAME] = createReplyTool(turnTools.reply);
   }
   if (turnTools.reportBlocked !== "none") {
     tools[REPORT_BLOCKED_TOOL_NAME] = createReportBlockedTool(

@@ -79,11 +79,10 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import { buildTurnResult } from "@/chat/services/turn-result";
-import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { buildTurnResult } from "@/chat/services/turn-result";
 import {
-  REPLY_TOOL_NAME,
+  isAnswerToolName,
   readTurnAnswer,
   remindMissingAnswer,
 } from "@/chat/turn-answer";
@@ -113,6 +112,7 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
+  GATED_TURN_LIMIT_WRAP_UP_MESSAGE,
   TURN_LIMIT_WRAP_UP_MESSAGE,
   TurnBudgetExceededError,
   TurnToolCallLimitExceededError,
@@ -178,6 +178,9 @@ import {
 } from "@/chat/agent/tool-batch";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
+// Past a turn limit, a gated Turn gets this many failed answer calls before
+// its run ends without an answer.
+const MAX_FAILED_ANSWER_CALLS_PAST_LIMIT = 2;
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -677,6 +680,9 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
+    // A gated Turn's answer calls past a limit, and how many of them failed.
+    const answerCallsPastLimit = new Set<string>();
+    let failedAnswerCallsPastLimit = 0;
     // Model calls that a retry discarded. They still cost money.
     let discardedRetryUsage: AgentTurnUsage | undefined;
     const turnLimitGate = createTurnLimitGate(runResume.turnLimitWrappedUp);
@@ -1071,11 +1077,16 @@ async function executeAgentRunInPrivacyContext(
             ),
           ) ?? 0;
         const overBudget = turnCostUsd >= botConfig.maxTurnCostUsd;
-        const decision = turnLimitGate({
-          assistantMessage,
-          overLimit:
-            overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
-        });
+        const overLimit =
+          overBudget || toolCallCount > botConfig.maxToolCallsPerTurn;
+        // A gated Turn must answer, so its answer tool runs past a limit.
+        if (behavior.gated && isAnswerToolName(toolCall.name)) {
+          if (overLimit || runResume.turnLimitWrappedUp) {
+            answerCallsPastLimit.add(toolCall.id);
+          }
+          return undefined;
+        }
+        const decision = turnLimitGate({ assistantMessage, overLimit });
         if (decision === "allow") {
           return undefined;
         }
@@ -1085,7 +1096,12 @@ async function executeAgentRunInPrivacyContext(
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
-          return { block: true, reason: TURN_LIMIT_WRAP_UP_MESSAGE };
+          return {
+            block: true,
+            reason: behavior.gated
+              ? GATED_TURN_LIMIT_WRAP_UP_MESSAGE
+              : TURN_LIMIT_WRAP_UP_MESSAGE,
+          };
         }
         // The tool-call total only grows, so a stop under it came from spend.
         const limitError =
@@ -1118,19 +1134,22 @@ async function executeAgentRunInPrivacyContext(
             ? projectedResult
             : undefined;
         // A reply, blocked report, or no-reply is the last step of the run.
-        if (
-          (toolCall.name === REPLY_TOOL_NAME ||
-            toolCall.name === REPORT_BLOCKED_TOOL_NAME ||
-            toolCall.name === NO_REPLY_TOOL_NAME) &&
-          !isError &&
-          !override
-        ) {
+        if (isAnswerToolName(toolCall.name) && !isError && !override) {
           // People often answer a Turn that posted nothing, so it warms like
           // a reply. An Automation run that ends almost never gets one.
           if (toolCall.name === NO_REPLY_TOOL_NAME && !behavior.gated) {
             cacheWarming.noReplyEnded();
           }
           return { terminate: true };
+        }
+        // Past a limit, the second failed answer call ends the run without
+        // an answer.
+        if (
+          isError &&
+          answerCallsPastLimit.has(toolCall.id) &&
+          ++failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+        ) {
+          return { ...override, terminate: true };
         }
         return override;
       },
@@ -1142,6 +1161,10 @@ async function executeAgentRunInPrivacyContext(
           if (hookSignal?.aborted) {
             return undefined;
           }
+          // A stop of this Conversation ends the Turn at the next step, also
+          // when no stop request reached this worker.
+          await durability.checkStop?.();
+          signal?.throwIfAborted();
           // Pi waits for this hook before each later model call. The span
           // shows that wait between `gen_ai.chat` spans.
           const stepUpdate = await withSpan(
@@ -1529,9 +1552,14 @@ async function executeAgentRunInPrivacyContext(
                 continue;
               }
 
-              const answerReminder = answerReminderUsed
-                ? undefined
-                : remindMissingAnswer(agent!.state.messages, turnStartIndex());
+              const answerReminder =
+                answerReminderUsed ||
+                failedAnswerCallsPastLimit >= MAX_FAILED_ANSWER_CALLS_PAST_LIMIT
+                  ? undefined
+                  : remindMissingAnswer(
+                      agent!.state.messages,
+                      turnStartIndex(),
+                    );
               if (answerReminder) {
                 answerReminderUsed = true;
                 agent!.state.messages = answerReminder;
@@ -1665,7 +1693,11 @@ async function executeAgentRunInPrivacyContext(
       ...(behavior.gated
         ? {
             answer: readTurnAnswer(turnMessages()) ?? "missing",
-            missingAnswerFails: Boolean(run.dispatch),
+            // The dispatch Turn of an Automation run fails without an
+            // answer, so the run history shows it.
+            missingAnswerError: run.dispatch
+              ? "Automation run ended without an answer."
+              : behavior.missingAnswerError,
           }
         : undefined),
     });

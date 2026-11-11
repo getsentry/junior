@@ -19,9 +19,8 @@ export type AgentTools = "none" | "children" | "children_and_parent";
 export type TurnBehavior = {
   /**
    * `location`: the runtime delivers the final response to the Location.
-   * `conversation`: the final response stays in the Conversation. A child
-   * agent's response goes to its parent, and an Automation run posts only the
-   * text of its `reply` call.
+   * `conversation`: the final response stays in the Conversation. Only the
+   * text of a `reply` call leaves it.
    */
   delivery: "location" | "conversation";
   promptMode: PromptMode;
@@ -30,13 +29,22 @@ export type TurnBehavior = {
    * reminded once.
    */
   gated: boolean;
+  /**
+   * The error that fails a gated Turn that still has no answer after the
+   * reminder. Without it, the Turn ends quietly.
+   */
+  missingAnswerError?: string;
   tools: {
     agents: AgentTools;
     reviewDesk: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
-    /** Declare the reply that the runtime posts. Only a gated Turn has it. */
-    reply: boolean;
+    /**
+     * Where a `reply` goes. Only a gated Turn has it. `parent`: the parent
+     * agent's inbox. `automation`: the run's Destination, then its Slack
+     * thread.
+     */
+    reply: "none" | "parent" | "automation";
     /**
      * Who gets a blocked report. `parent`: the parent agent. `automation`:
      * the Automation is blocked with the reason.
@@ -55,7 +63,7 @@ const ROOT: TurnBehavior = {
     reviewDesk: true,
     subscriptions: true,
     userCustomization: true,
-    reply: false,
+    reply: "none",
     reportBlocked: "none",
     noReply: true,
   },
@@ -69,21 +77,29 @@ const PERSON_IN_THREAD: TurnBehavior = {
   tools: { ...ROOT.tools, agents: "none" },
 };
 
-// Every other Turn on a child is an agent invocation: an agent wrote its
-// input, and its final response goes back to its parent.
-const AGENT_IN_CHILD: TurnBehavior = {
+// Every other Turn on a Thread comes from its parent, its child agents, or its
+// Watches. Its final response stays in the Thread, and only a `reply` reaches
+// the parent.
+const AGENT_IN_THREAD: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
-  gated: false,
+  gated: true,
   tools: {
     agents: "children_and_parent",
     reviewDesk: false,
     subscriptions: false,
     userCustomization: false,
-    reply: false,
+    reply: "parent",
     reportBlocked: "parent",
     noReply: true,
   },
+};
+
+// A Task does work for its parent, so its parent learns when it ends without
+// an answer.
+const AGENT_IN_TASK: TurnBehavior = {
+  ...AGENT_IN_THREAD,
+  missingAnswerError: "No reply was sent.",
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -94,7 +110,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   gated: true,
   tools: {
     ...ROOT.tools,
-    reply: true,
+    reply: "automation",
     reportBlocked: "automation",
   },
 };
@@ -108,8 +124,10 @@ export function turnBehavior(args: {
   if (args.kind === "automation") {
     return args.personInput ? ROOT : AUTOMATION_RUN;
   }
-  if (!args.personInput) return AGENT_IN_CHILD;
-  if (args.kind === "thread") return PERSON_IN_THREAD;
+  if (args.kind === "thread") {
+    return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+  }
+  if (!args.personInput) return AGENT_IN_TASK;
   // Only an agent writes input to a task.
   throw new Error("A task Conversation cannot have a person's input");
 }

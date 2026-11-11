@@ -16,6 +16,7 @@ import { isChildAgentSessionStopped } from "./list";
 import {
   getChildAgentLockName,
   parseAgentInvocationResultMessageId,
+  parseAgentReplyMessageId,
 } from "./ids";
 import {
   getLatestAgentInvocationForConversation,
@@ -131,8 +132,8 @@ export async function stopChildAgentsBelow(
 }
 
 /**
- * Skip the `appended` results that still wait in a Conversation's mailbox, so
- * they start no Turn. A result that the Conversation already read keeps its
+ * Skip the `appended` results and replies that still wait in a Conversation's
+ * mailbox, so they start no Turn. A result that the Conversation already read keeps its
  * status. Call this after the tree stop: it skipped each `pending` result and
  * stopped each child agent, so no result becomes `appended` after this read.
  *
@@ -148,10 +149,11 @@ async function skipUnreadResults(
 ): Promise<void> {
   const messages =
     (await getConversationWorkState({ conversationId, state }))?.messages ?? [];
+  // A child's `reply` is its result, so a stop skips it too.
   const invocationIds = messages.flatMap((message) => {
-    const invocationId = parseAgentInvocationResultMessageId(
-      message.inboundMessageId,
-    );
+    const invocationId =
+      parseAgentInvocationResultMessageId(message.inboundMessageId) ??
+      parseAgentReplyMessageId(message.inboundMessageId);
     return invocationId ? [invocationId] : [];
   });
   if (invocationIds.length === 0) {

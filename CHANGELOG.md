@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.296.0
+
+Junior now warms eligible caches, clarifies automation and telemetry, strengthens authorization, improves diagnostics and maintenance, and requires one type-name update.
+
+### New Features ✨
+
+Cache warming, dashboard insights, automation outcomes, compaction timing, and precise GraphQL authorization improve operations.
+
+#### Cache Warming
+
+- Cap the image data of a snapshot by @BYK with @sentry-junior in [#3179](https://github.com/getsentry/junior/pull/3179)
+- Warm after a Turn that ends with noReply by @BYK with @sentry-junior in [#3162](https://github.com/getsentry/junior/pull/3162)
+- Store snapshot images by content hash by @BYK with @sentry-junior in [#3161](https://github.com/getsentry/junior/pull/3161)
+
+#### Dashboard
+
+- Show your week under the home composer by @betegon with @sentry-junior in [#3171](https://github.com/getsentry/junior/pull/3171)
+- Show live data in a Preview with a personal token by @BYK with @sentry-junior in [#3180](https://github.com/getsentry/junior/pull/3180)
+- Chart cost per outcome on the System page by @BYK with @sentry-junior in [#3177](https://github.com/getsentry/junior/pull/3177)
+- Polish Automations filters, order, and details by @dcramer with @sentry-junior in [#3134](https://github.com/getsentry/junior/pull/3134)
+
+#### Other
+
+- (automations) Answer Automation runs with reply, noReply and reportBlocked by @dcramer with @sentry-junior in [#3145](https://github.com/getsentry/junior/pull/3145)
+- (compaction) Start background summaries at 85% of the threshold by @thomasjiangcy with @sentry-junior in [#3158](https://github.com/getsentry/junior/pull/3158)
+- (egress) Read GraphQL operations for grant hooks by @sentry-junior in [#3146](https://github.com/getsentry/junior/pull/3146)
+
+### Bug Fixes 🐛
+
+Delegations, skill search, Neon diagnostics, PR stacking, self-updates, skill invocation, and post-compaction telemetry now behave correctly.
+
+- (agents) Call noReply instead of a status after delegating by @BYK with @sentry-junior in [#3187](https://github.com/getsentry/junior/pull/3187)
+- (dashboard) Clear skill search when a pick closes the picker by @sentry-junior in [#3138](https://github.com/getsentry/junior/pull/3138)
+- (db) Report the reason for a failed Neon WebSocket connect by @BYK with @sentry-junior in [#3166](https://github.com/getsentry/junior/pull/3166)
+- (github) Do not stack pull requests from the trunk or on looping base branches by @adinauer and @thomasjiangcy with @sentry-junior in [#3153](https://github.com/getsentry/junior/pull/3153)
+- (self-update) Wait 15 minutes between npm availability checks by @dcramer with @sentry-junior in [#3148](https://github.com/getsentry/junior/pull/3148)
+- (skills) Parse $skill at the start of an Automation instruction by @dcramer with @sentry-junior in [#3188](https://github.com/getsentry/junior/pull/3188)
+- (telemetry) Record the input after a compaction on the next gen_ai.chat span by @thomasjiangcy with @sentry-junior in [#3154](https://github.com/getsentry/junior/pull/3154)
+
+### Documentation 📚
+
+- (telemetry) Trim TELEMETRY.md to an index and core recipes by @dcramer with @sentry-junior in [#3157](https://github.com/getsentry/junior/pull/3157)
+
+### Internal Changes 🔧
+
+Dashboard controls, database cleanup, API polling, telemetry logging, and conversation-state naming receive focused internal updates.
+
+#### Dashboard
+
+- Use shadcn DropdownMenu for conversation and profile menus by @MathurAditya724 with @sentry-junior in [#3175](https://github.com/getsentry/junior/pull/3175)
+- Use the full shadcn Field for fieldsets and choice rows by @MathurAditya724 with @sentry-junior in [#3176](https://github.com/getsentry/junior/pull/3176)
+- Add Alert and Button variants and drop hand-styled buttons by @MathurAditya724 with @sentry-junior in [#3173](https://github.com/getsentry/junior/pull/3173)
+- Skip the activity of running Threads in the feed token by @BYK with @sentry-junior in [#3167](https://github.com/getsentry/junior/pull/3167)
+
+#### Db
+
+- Drop legacy origin columns and awaiting_resume status by @dcramer with @sentry-junior in [#3190](https://github.com/getsentry/junior/pull/3190)
+- Move raw SQL statements to the Drizzle query builder by @sentry-junior in [#3183](https://github.com/getsentry/junior/pull/3183)
+- Keep idle Neon pool clients for 5 minutes by @BYK with @sentry-junior in [#3163](https://github.com/getsentry/junior/pull/3163)
+
+#### Other
+
+- (api) Read the agent tree only for a full detail by @BYK with @sentry-junior in [#3182](https://github.com/getsentry/junior/pull/3182)
+- (compaction) Remove the background summary request log by @thomasjiangcy with @sentry-junior in [#3156](https://github.com/getsentry/junior/pull/3156)
+- (task-execution) Rename Redis Conversation to ConversationExecutionState by @dcramer with @sentry-junior in [#3189](https://github.com/getsentry/junior/pull/3189)
+
 ## 0.295.0
 
 Junior now protects credentials, strengthens automation and review workflows, documents safer deployment, and hardens testing and CI while requiring deployment preparation.

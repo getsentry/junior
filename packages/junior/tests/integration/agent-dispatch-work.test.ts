@@ -10,9 +10,7 @@ import {
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
-import { completeAgentInvocation } from "@/chat/agent-invocations/store";
-import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { enqueueAgentReplyToParent } from "@/chat/agent-invocations/result";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   readScheduledAutomation,
@@ -360,7 +358,7 @@ describe("agent dispatch conversation work", () => {
     expect(threadPosts()).toEqual(["Scheduled digest", "The change merged."]);
     expect(modelStream).toHaveBeenCalledTimes(6);
 
-    // A child result Turn replies in the run's thread.
+    // A Turn on a child's reply replies in the run's thread.
     const child = await createAgentInvocation({
       actor: { name: "automation-run", platform: "system" },
       destination,
@@ -369,14 +367,11 @@ describe("agent dispatch conversation work", () => {
       parentConversationId: conversationId,
       reasoningLevel: "medium",
     });
-    const childResult = (await completeAgentInvocation({
-      invocationId: child.invocationId,
-      result: "The release is green.",
-      status: "completed",
-    })) as TerminalAgentInvocation;
-    await enqueueAgentInvocationResult(childResult, {
+    await enqueueAgentReplyToParent({
       nowMs: Date.now() - 60_000,
       queue,
+      reply: { text: "The release is green.", toolCallId: "call-child-reply" },
+      sender: child,
       state,
     });
     await processNext();
