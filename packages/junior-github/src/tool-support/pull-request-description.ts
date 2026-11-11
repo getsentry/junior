@@ -70,7 +70,8 @@ export async function writePullRequestDescription(
       escapeXml(input.context),
       "</description-context>",
     ].join("\n"),
-    maxTokens: 1_000,
+    // Room for a long description of a large change; a cut-off reply fails to parse.
+    maxTokens: 2_000,
   });
   return descriptionSchema.parse(result.object).body.trim();
 }
