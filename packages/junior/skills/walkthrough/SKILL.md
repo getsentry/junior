@@ -36,30 +36,32 @@ generation. Say that Walkthroughs start from the dashboard, and stop.
 
 ## Chapters
 
-The type sets the structure. Use its opening and its checks, then skip,
-merge, reorder, or add chapters when the change needs it. A mixed change
-draws on each of its types.
+The type suggests the structure: its opening, its checks, and its
+chapters. Skip, merge, reorder, or add chapters when the change needs it. A
+mixed change draws on each of its types.
 
-| Type        | Opening                                               | What a reviewer must check                             |
-| ----------- | ----------------------------------------------------- | ------------------------------------------------------ |
-| Bug fix     | What broke, and the root cause                        | Is it really the root cause; what else the fix affects |
-| Feature     | The problem, and what changes for the user            | The gap it fills; how it is tested                     |
-| Refactor    | What stays the same, and why the refactor is worth it | Proof that behavior does not change; the exceptions    |
-| Migration   | Why it is needed                                      | Safe to run; rollback                                  |
-| Performance | The hot path, and the numbers                         | Are the numbers real                                   |
-| Dependency  | What changed upstream                                 | Blast radius                                           |
-| UI          | Before and after                                      | States and edge cases                                  |
+| Type        | Opening                                               | What a reviewer must check                             | Suggested chapters                                                                                                                       |
+| ----------- | ----------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Bug fix     | What broke, and the root cause                        | Is it really the root cause; what else the fix affects | What broke and the root cause → proof it is the root cause → the fix → proof the fix works → side effects → what to watch after it ships |
+| Feature     | The problem, and what changes for the user            | The gap it fills; how it is tested                     | The problem → how it works → what it touches → how it is tested → what to watch after it ships                                           |
+| Refactor    | What stays the same, and why the refactor is worth it | Proof that behavior does not change; the exceptions    | What stays the same → proof behavior does not change → exceptions                                                                        |
+| Migration   | Why it is needed                                      | Safe to run; rollback                                  | Why → what changes in the data → safe to run → rollback                                                                                  |
+| Performance | The hot path, and the numbers                         | Are the numbers real                                   | The hot path → the change → the numbers                                                                                                  |
+| Dependency  | What changed upstream                                 | Blast radius                                           | What changed upstream → blast radius → rollback                                                                                          |
+| UI          | Before and after                                      | States and edge cases                                  | Before and after → states and edge cases                                                                                                 |
 
 Every Walkthrough has two chapters:
 
-- **The opening** comes first, with `role: "opening"`. Write the type's
-  opening in the reader's terms: what was wrong, missing, or hard before
-  this change, then what changes. Do not open on mechanics. For a stack or
-  a mixed change, add a short map that names each part by what it does,
-  and show the diagram. Say where the review risk is. For a small PR, this
-  can be a short paragraph.
+- **The opening** comes first, with `role: "opening"`. It is the first
+  suggested chapter. Write the type's opening in the reader's terms: what
+  was wrong, missing, or hard before this change, then what changes. Do
+  not open on mechanics. For a stack or a mixed change, add a short map
+  that names each part by what it does, and show the diagram. Say where
+  the review risk is. For a small PR, this can be a short paragraph.
 - **How we know it works**, with `role: "proof"`: the tests, checks, or
-  runs that show the change does what it says.
+  runs that show the change does what it says. A suggested proof chapter,
+  such as "proof the fix works", "how it is tested", or "the numbers", has
+  this role. If the type suggests none, add one.
 
 Give every other chapter `role: "other"`. Spend chapters on the checks in
 the table: risky or decision-heavy parts get room. A part that is
