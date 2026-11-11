@@ -24,7 +24,7 @@ import {
 import { DisplayText } from "../display-text/DisplayText";
 import { formatTime } from "../format";
 import { fetchDashboardJson } from "../http";
-import { conversationSideReadQueryKey } from "./queries";
+import { conversationSideReadQueryKey } from "./conversationSideReads";
 import {
   Collapsible,
   CollapsibleContent,

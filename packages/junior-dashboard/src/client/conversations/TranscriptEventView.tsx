@@ -31,6 +31,7 @@ function batchSummary(events: readonly { label?: string }[]): string {
 
 /** Render an Event Message whose heading expands its full text. */
 export function TranscriptEventView(props: {
+  conversationId: string;
   message: TranscriptViewMessage;
   /** Keeps the text open while the row unmounts outside the viewport. */
   openKey?: string;
@@ -144,6 +145,7 @@ export function TranscriptEventView(props: {
         <div className={cn("grid min-w-0 gap-2", !onlyChanges && "mt-2")}>
           {changes.map((record, index) => (
             <ReviewItemChangeRow
+              conversationId={props.conversationId}
               fallback={onlyChanges && changes.length === 1 ? view : null}
               key={index}
               record={record}

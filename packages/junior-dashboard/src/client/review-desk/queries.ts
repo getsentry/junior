@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -15,6 +15,7 @@ import {
   reviewItemSchema,
   reviewItemWaitingConversationsSchema,
   type ReviewItemActionBody,
+  type ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { conversationDetailTitle } from "../format";
@@ -23,21 +24,16 @@ import { fetchDashboardJson, post } from "../http";
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 
-/**
- * List the open Review items that the viewer can see, one page at a time.
- * `items` holds the items of every loaded page, and `query` loads more.
- * `forViewer` drops the items that are assigned only to other people.
- * `closed` lists the done and dismissed items instead, newest closed first.
- * `q` matches title and body text; the first page then also holds closed
- * matches.
- */
-export function useReviewItemsData(filters: {
+type ReviewItemListFilters = {
+  /** Lists the done and dismissed items instead, newest closed first. */
   closed?: boolean;
   conversationId?: string;
   enabled?: boolean;
   forViewer?: boolean;
   q?: string;
-}) {
+};
+
+function reviewItemListSearch(filters: ReviewItemListFilters) {
   const params = new URLSearchParams();
   if (filters.conversationId) {
     params.set("conversationId", filters.conversationId);
@@ -45,11 +41,27 @@ export function useReviewItemsData(filters: {
   if (filters.forViewer) params.set("for", "viewer");
   if (filters.q) params.set("q", filters.q);
   if (filters.closed) params.set("status", "done,dismissed");
-  const search = params.toString();
+  return params.toString();
+}
+
+/** Key the Review item list that these filters read. */
+export function reviewItemListQueryKey(filters: ReviewItemListFilters) {
+  return [...REVIEW_ITEMS_QUERY_KEY, "list", reviewItemListSearch(filters)];
+}
+
+/**
+ * List the open Review items that the viewer can see, one page at a time.
+ * `items` holds the items of every loaded page, and `query` loads more.
+ * `forViewer` drops the items that are assigned only to other people.
+ * `closed` lists the done and dismissed items instead. `q` matches title
+ * and body text; the first page then also holds closed matches.
+ */
+export function useReviewItemsData(filters: ReviewItemListFilters) {
+  const search = reviewItemListSearch(filters);
   const query = useInfiniteQuery({
     enabled: filters.enabled ?? true,
     initialPageParam: undefined as string | undefined,
-    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "list", search],
+    queryKey: reviewItemListQueryKey(filters),
     queryFn: ({ pageParam, signal }) => {
       const pageParams = new URLSearchParams(search);
       if (pageParam) pageParams.set("cursor", pageParam);
@@ -71,10 +83,17 @@ export function useReviewItemsData(filters: {
   return { items, query };
 }
 
-/** Read one Review item, for a link to an item outside the current list. */
-export function useReviewItemData(id: string | undefined) {
+/**
+ * Read one Review item, for a link to an item outside the current list.
+ * `placeholder` shows until the read finishes.
+ */
+export function useReviewItemData(
+  id: string | undefined,
+  placeholder?: ReviewItemPayload,
+) {
   return useQuery({
     enabled: Boolean(id),
+    placeholderData: placeholder,
     queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
@@ -84,6 +103,33 @@ export function useReviewItemData(id: string | undefined) {
       ),
     retry: false,
   });
+}
+
+/**
+ * Read one Review item that a Conversation's transcript shows. An item in
+ * the Conversation's list comes from there, so it refreshes with the list
+ * and needs no read of its own. The list holds only open items, so a
+ * closed item, or one on a later page, loads by itself.
+ */
+export function useConversationReviewItemData(
+  conversationId: string,
+  id: string,
+) {
+  const { items, query } = useReviewItemsData({ conversationId });
+  const listed = items.find((item) => item.id === id);
+  // An item that closes leaves the list. Its row keeps the listed item
+  // until its own read finishes, so the row does not blank.
+  const lastListed = useRef(listed);
+  if (listed) lastListed.current = listed;
+  // Wait for this Conversation's list before reading the item by itself.
+  const waiting = query.isPending || query.isPlaceholderData;
+  const direct = useReviewItemData(
+    listed || waiting ? undefined : id,
+    lastListed.current,
+  );
+  return listed
+    ? { data: listed, isError: false }
+    : { data: direct.data, isError: direct.isError };
 }
 
 /**
@@ -156,6 +202,13 @@ export function useReviewItemAction() {
         reviewItemSchema,
         `/api/review-items/${encodeURIComponent(args.id)}/actions`,
         args.body,
+      ),
+    // The row of an item that this closes reads it by itself, so it starts
+    // from the answer.
+    onSuccess: (item) =>
+      queryClient.setQueryData(
+        [...REVIEW_ITEMS_QUERY_KEY, "detail", item.id],
+        item,
       ),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY }),
