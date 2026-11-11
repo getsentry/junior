@@ -1,0 +1,102 @@
+name: Evals
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled]
+
+concurrency:
+  group: evals-pr-descriptions-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  select:
+    name: pr-descriptions / select
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      should_run: ${{ steps.decision.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
+        id: changes
+        with:
+          # The PR description writer, the GitHub PR tools that call it, and
+          # the files that run this suite.
+          filters: |
+            relevant:
+              - 'packages/junior-github/src/tool-support/pull-request-description.ts'
+              - 'packages/junior-github/src/tools/create-pull-request.ts'
+              - 'packages/junior-github/src/tools/update-pull-request.ts'
+              - 'packages/junior-evals/evals/pr-descriptions/**'
+              - 'packages/junior-evals/vitest.evals.pr-descriptions.config.ts'
+              - '.github/workflows/evals-pr-descriptions.yml'
+              - 'packages/junior-evals/scripts/select-suite.sh'
+              - 'packages/junior-evals/scripts/require-results.sh'
+      - id: decision
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+          RELEVANT: ${{ steps.changes.outputs.relevant }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: packages/junior-evals/scripts/select-suite.sh pr-descriptions
+
+  pr-descriptions:
+    name: pr-descriptions / run
+    needs: select
+    if: needs.select.outputs.should_run == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: write
+    env:
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Run PR description evals
+        id: run
+        continue-on-error: true
+        env:
+          VITEST_EVALS_OUTPUT_FILE: pr-descriptions-results.json
+          VITEST_EVALS_REPORT_LEVEL: info
+          # The write token of Roach. With it, the run records new requests.
+          ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:pr-descriptions
+      - name: Require PR description eval results
+        id: results
+        if: steps.run.conclusion != 'skipped'
+        run: packages/junior-evals/scripts/require-results.sh packages/junior-evals/pr-descriptions-results.json
+      - name: Publish PR description eval summary
+        if: steps.results.conclusion == 'success'
+        uses: getsentry/vitest-evals@abea6a519955e5df56ecb2a2d83bae9c821561e1 # v0.16.1
+        with:
+          results: packages/junior-evals/pr-descriptions-results.json
+          publish-check: true
+          check-name: pr-descriptions / score
+          fail-on-failures: true
+      - name: Upload PR description eval results
+        if: steps.results.conclusion == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr-descriptions-evals
+          path: packages/junior-evals/pr-descriptions-results.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Report evals to Sentry Evals
+        if: ${{ !cancelled() && steps.results.outcome == 'success' }}
+        env:
+          SENTRY_EVALS_API_KEY: ${{ secrets.SENTRY_EVALS_API_KEY }}
+        run: node packages/junior-evals/scripts/report.mjs pr-descriptions packages/junior-evals/pr-descriptions-results.json

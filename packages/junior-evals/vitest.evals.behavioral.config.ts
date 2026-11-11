@@ -120,6 +120,7 @@ export default defineConfig({
           exclude: [
             "evals/guardian/**",
             "evals/integration/**",
+            "evals/pr-descriptions/**",
             `${codingSuiteRoot}/**`,
             `${googleSuiteRoot}/**`,
             `${memorySuiteRoot}/**`,

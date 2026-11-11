@@ -27,7 +27,7 @@ is required. A missing key skips uploads, including on fork pull requests.
 
 Each suite uploads one run after execution. Behavioral and integration combine
 all shards. Dataset names are `junior-behavioral`, `junior-integration`,
-`junior-guardian`, and `junior-classifiers`. The job summary links to the run.
+`junior-guardian`, `junior-classifiers`, and `junior-pr-descriptions`. The job summary links to the run.
 Existing score gates and artifacts stay in place, including when tests fail.
 
 `scripts/report.mjs` maps Vitest results to scores, errors, transcripts, duration,
@@ -93,12 +93,13 @@ Only needed for the token-based fallback above. Create an AI Gateway key in the 
 
 ## Triggering Evals On A PR
 
-Four independent workflows run on pull requests. All use the display name `Evals`, with separate concurrency groups:
+Five independent workflows run on pull requests. All use the display name `Evals`, with separate concurrency groups:
 
 - `evals-behavioral.yml` runs Slack/agent evals when behavioral eval files/harness changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
 - `evals-integration.yml` runs system evals when integration eval files/harness changed or the PR has `trigger-evals-integration` / `trigger-evals`
 - `evals-guardian.yml` runs isolated Guardian snapshots when Guardian eval files/harness changed or the PR has `trigger-evals-guardian` / `trigger-evals`
 - `evals-classifiers.yml` runs isolated classifier snapshots when classifier eval files/harnesses or classifier source changed or the PR has `trigger-evals-classifiers` / `trigger-evals`
+- `evals-pr-descriptions.yml` runs the PR description writer evals when the writer, the GitHub PR tools, or the suite changed or the PR has `trigger-evals-pr-descriptions` / `trigger-evals`
 
 Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals, except Guardian policy and classifier changes.
 

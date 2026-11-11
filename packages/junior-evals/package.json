@@ -11,6 +11,7 @@
     "evals:integration": "vitest run -c vitest.evals.integration.config.ts",
     "evals:guardian": "vitest run -c vitest.evals.guardian.config.ts",
     "evals:classifiers": "vitest run -c vitest.evals.classifiers.config.ts",
+    "evals:pr-descriptions": "vitest run -c vitest.evals.pr-descriptions.config.ts",
     "evals:record": "ROACH_MODE=record vitest run -c vitest.evals.behavioral.config.ts"
   },
   "devDependencies": {
