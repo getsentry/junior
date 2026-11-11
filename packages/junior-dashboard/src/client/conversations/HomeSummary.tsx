@@ -74,7 +74,9 @@ export function HomeSummary() {
         <SummaryCard
           aside={
             <HomeDayStrip
-              changes={code.data.activityChanges}
+              // Open changes first, then by last update, so the week's
+              // changes fit in the report's limit.
+              changes={code.data.changes}
               days={merges.days}
             />
           }

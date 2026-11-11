@@ -17,10 +17,6 @@ const ACTIVITY_DAYS = 90;
  * stale open change is not cut off by newer completed changes.
  */
 const PERSON_CHANGE_LIMIT = 100;
-/** Days of code changes in a person report's `activityChanges`. */
-const ACTIVITY_CHANGE_DAYS = 7;
-// Far above one person's week. Past it, the oldest activity drops out.
-const ACTIVITY_CHANGE_LIMIT = 200;
 
 const summaryRowSchema = z
   .object({
@@ -489,42 +485,6 @@ export async function readCodeOverview(nowMs = Date.now()) {
 }
 
 /**
- * Read one person's code changes opened, merged, or closed in the last 7 UTC
- * days, latest activity first.
- */
-async function readPersonActivityChanges(args: {
-  nowMs: number;
-  userId: string;
-}) {
-  const changes = juniorCodeChanges;
-  const start = startOfUtcDay(args.nowMs - (ACTIVITY_CHANGE_DAYS - 1) * DAY_MS);
-  const rows = await getDb()
-    .select(codeChangeReportColumns)
-    .from(changes)
-    .innerJoin(
-      juniorCodeRepositories,
-      eq(changes.repositoryId, juniorCodeRepositories.id),
-    )
-    .where(
-      and(
-        changeScopeFilter({ userId: args.userId }),
-        or(
-          gte(changes.openedAt, start),
-          gte(changes.mergedAt, start),
-          and(eq(changes.state, "closed"), gte(changes.closedAt, start)),
-        ),
-      ),
-    )
-    .orderBy(
-      desc(
-        sql`greatest(${changes.openedAt}, ${changes.mergedAt}, ${changes.closedAt})`,
-      ),
-    )
-    .limit(ACTIVITY_CHANGE_LIMIT);
-  return rows.map(codeChangeReport);
-}
-
-/**
  * Read person-scoped code activity and recent code changes linked through
  * conversation actors on Junior-owned code changes.
  */
@@ -534,9 +494,8 @@ export async function readPersonCodeOverview(args: {
 }) {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
-  const [windows, activityChanges, changes] = await Promise.all([
+  const [windows, changes] = await Promise.all([
     readCodeWindows({ nowMs, userId: args.userId }),
-    readPersonActivityChanges({ nowMs, userId: args.userId }),
     db
       .select(codeChangeReportColumns)
       .from(juniorCodeChanges)
@@ -554,7 +513,6 @@ export async function readPersonCodeOverview(args: {
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
-    activityChanges,
     activitySixHours: windows.activitySixHours,
     changes: changes.map(codeChangeReport),
     generatedAt: windows.windowEnd.toISOString(),

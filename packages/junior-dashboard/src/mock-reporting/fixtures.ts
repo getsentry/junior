@@ -3624,18 +3624,20 @@ export function readMockPeopleCode(
       merged: 1,
     }),
   ];
+  // Older changes stay off the home day strip, so its counts match `merges`.
   const weekStartMs = Date.parse(activityDays.at(-7)!.date);
+  const beforeWeek = (change: (typeof overview.changes)[number]) =>
+    [change.openedAt, change.mergedAt, change.closedAt].every(
+      (at) => at === undefined || Date.parse(at) < weekStartMs,
+    );
   return {
-    activityChanges: [
-      ...doneThisWeek,
-      ...openChanges.filter(
-        (change) => Date.parse(change.openedAt) >= weekStartMs,
-      ),
-    ],
     activityDays,
     changes: [
       ...openChanges,
-      ...overview.changes.filter((change) => change.state !== "open"),
+      ...doneThisWeek,
+      ...overview.changes.filter(
+        (change) => change.state !== "open" && beforeWeek(change),
+      ),
     ],
     generatedAt: overview.generatedAt,
     summary: { ...overview.summary, open: openChanges.length },
