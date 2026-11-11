@@ -29,6 +29,7 @@ Anyone who can talk to Junior can read what the Junior account can see. Share
 calendars and files with that account only when that is acceptable. Junior
 edits a Doc only for a requester who can edit it through their own email,
 their domain, or an editable link. Access through a Google group is not
-checked. Junior shares a Doc it creates only with the requester.
+checked. Junior shares a Doc it creates only with the requester, but Junior's
+account owns that Doc, so anyone who can talk to Junior can read it.
 
 Plugin setup: https://junior.sentry.dev/extend/

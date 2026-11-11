@@ -42,6 +42,9 @@ const createdSchema = z.object({
 /**
  * Create a Google Doc owned by Junior's account and share it with the
  * requester as an editor. Sharing with anyone else is left to the requester.
+ *
+ * Junior's account keeps the Doc, so the read tools can still find and read it
+ * for anyone who talks to Junior, like any other file shared with that account.
  */
 export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -55,7 +58,7 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
       return `Create Google Doc "${input.title}"${input.content ? ` with ${input.content.length} characters of content` : ""} and share it with the requester as an editor.`;
     },
     description:
-      "Create a Google Doc owned by your own Google account, optionally with Markdown content, and share it with the requester as an editor. Nobody else gets access; the requester can share it further.",
+      "Create a Google Doc owned by your own Google account, optionally with Markdown content, and share it with the requester as an editor. The Doc is not private: anyone who can talk to you can ask you to find and read it. Do not put content in it that other people who use you must not see.",
     inputSchema,
     outputSchema,
     async execute(input) {
