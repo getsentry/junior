@@ -435,25 +435,28 @@ these spans for warmup and backfill outcomes in production.
 
 Attributes on the `cache_warming.warmup` span:
 
-| Attribute                              | Type    | Meaning                                                   |
-| -------------------------------------- | ------- | --------------------------------------------------------- |
-| `app.cache_warming.trigger`            | string  | `idle` or `tool_wait`                                     |
-| `app.cache_warming.outcome`            | string  | `completed`, `skipped`, `missed`, or `failed`             |
-| `app.cache_warming.skip_reason`        | string  | `cache_expired`, `breaker_open`, `stopped`, or a decision |
-| `app.cache_warming.cycle`              | int     | warmup number in the idle period or tool wait             |
-| `app.cache_warming.prefix_tokens`      | int     | cached prefix tokens that the warmup keeps                |
-| `app.cache_warming.cache_ttl_left_ms`  | int     | idle only: time left before the cache expires             |
-| `app.cache_warming.work_state`         | string  | idle only: `open`, `done`, or `none`                      |
-| `app.cache_warming.archived`           | boolean | idle only: the Conversation or its root was archived      |
-| `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                        |
-| `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                          |
-| `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                 |
-| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used its parent segment's gaps  |
-| `app.cost.total_usd`                   | double  | cost of the warmup call                                   |
-| `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                   |
+| Attribute                              | Type    | Meaning                                                                     |
+| -------------------------------------- | ------- | --------------------------------------------------------------------------- |
+| `app.cache_warming.trigger`            | string  | `idle` or `tool_wait`                                                       |
+| `app.cache_warming.outcome`            | string  | `completed`, `skipped`, `missed`, or `failed`                               |
+| `app.cache_warming.skip_reason`        | string  | `cache_expired`, `breaker_open`, `prompt_changed`, `stopped`, or a decision |
+| `app.cache_warming.cycle`              | int     | warmup number in the idle period or tool wait                               |
+| `app.cache_warming.prefix_tokens`      | int     | cached prefix tokens that the warmup keeps                                  |
+| `app.cache_warming.cache_ttl_left_ms`  | int     | idle only: time left before the cache expires                               |
+| `app.cache_warming.work_state`         | string  | idle only: `open`, `done`, or `none`                                        |
+| `app.cache_warming.archived`           | boolean | idle only: the Conversation or its root was archived                        |
+| `app.cache_warming.return_probability` | double  | chance of a return in the next TTL                                          |
+| `app.cache_warming.returns_per_warmup` | double  | best expected returns per warmup                                            |
+| `app.cache_warming.threshold`          | double  | returns per warmup that make a warmup pay                                   |
+| `app.cache_warming.parent_prior`       | boolean | idle only: a thin segment used its parent segment's gaps                    |
+| `app.cost.total_usd`                   | double  | cost of the warmup call                                                     |
+| `gen_ai.usage.cache_read.input_tokens` | int     | cached tokens that the warmup call read                                     |
 
 - A decision `skip_reason` is a `decideWarmup` reason, such as `few_gaps`
   or `unlikely_return`.
+- `prompt_changed`: idle only. The system prompt of this deployment differs
+  from the prompt of the cached request, such as after a deploy. The idle
+  period stops warming.
 - `work_state` and `archived` are read when the idle period starts. They
   pick its gap segment: `user|system:1|2-3|4+:open|done|none`, or
   `archived:open|done|none`. The `cache_warming.warmup.*` and
