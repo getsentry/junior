@@ -1,9 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import {
-  REVIEW_ITEM_DETAIL_QUERY_KEY,
-  reviewItemListQueryKey,
-} from "../review-desk/queries";
+import { reviewItemListQueryKey } from "../review-desk/queries";
 
 const CONVERSATION_SIDE_READS = ["agents", "memories", "watches"] as const;
 
@@ -19,16 +16,15 @@ export function conversationSideReadQueryKey(
 }
 
 /**
- * Refresh the side reads and this Conversation's Review items when a fetch
- * brings a new ETag. Side reads do not poll. A new ETag means the
+ * Refresh the side reads and this Conversation's Review item list when a
+ * fetch brings a new ETag. Side reads do not poll. A new ETag means the
  * Conversation changed, so the details panel may be stale too. Only mounted
  * reads refetch.
  *
- * The `reviewItems` token in `/api/versions` refreshes the count and the
- * waiting Conversations: both read only the open items that need the
- * viewer, which that token covers. It does not cover single items, which
- * can be notices, for Everyone, for other people, or closed. So the items
- * that the transcript shows refresh here.
+ * The transcript reads its open items from that list. The `reviewItems`
+ * token in `/api/versions` refreshes the count and the waiting
+ * Conversations: both read only the open items that need the viewer, which
+ * that token covers.
  */
 export function refreshSideReadsOnChange(
   client: QueryClient,
@@ -51,5 +47,4 @@ export function refreshSideReadsOnChange(
   void client.invalidateQueries({
     queryKey: reviewItemListQueryKey({ conversationId }),
   });
-  void client.invalidateQueries({ queryKey: REVIEW_ITEM_DETAIL_QUERY_KEY });
 }

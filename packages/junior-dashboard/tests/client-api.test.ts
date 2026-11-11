@@ -1,6 +1,8 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import { createHash } from "node:crypto";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { webMessageId } from "@sentry/junior/api/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
@@ -22,9 +24,9 @@ import {
 } from "../src/client/conversations/queries";
 import { conversationSideReadQueryKey } from "../src/client/conversations/conversationSideReads";
 import {
-  REVIEW_ITEM_DETAIL_QUERY_KEY,
   REVIEW_ITEMS_QUERY_KEY,
   reviewItemListQueryKey,
+  useConversationReviewItemData,
 } from "../src/client/review-desk/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
 
@@ -198,6 +200,37 @@ describe("dashboard client API", () => {
     ).rejects.toThrow("Conversation history cursor did not advance");
   });
 
+  it("reads a transcript Review item from its Conversation's list", () => {
+    const conversationId = "slack:C1:123";
+    const client = new QueryClient();
+    client.setQueryData(reviewItemListQueryKey({ conversationId }), {
+      pageParams: [undefined],
+      pages: [{ items: [{ id: "listed", title: "Listed item" }] }],
+    });
+    const detail = (id: string) =>
+      client.getQueryCache().find({
+        exact: true,
+        queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+      });
+    const render = (id: string) =>
+      renderToStaticMarkup(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(function Row() {
+            const { data } = useConversationReviewItemData(conversationId, id);
+            return data?.title ?? "loading";
+          }),
+        ),
+      );
+
+    expect(render("listed")).toBe("Listed item");
+    expect(detail("listed")).toBeUndefined();
+    // An item that the list leaves out, such as a closed one, loads by itself.
+    expect(render("closed")).toBe("loading");
+    expect(detail("closed")).toBeDefined();
+  });
+
   it("revalidates detail without caching the mailbox or bypassing sign-in", async () => {
     let signedIn = true;
     const sessionAuth = auth({
@@ -222,12 +255,13 @@ describe("dashboard client API", () => {
     const client = new QueryClient();
     const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
     const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
-    // The details panel and the transcript read these beside the detail
-    // report. The versions poll refreshes the other Review item reads.
+    // The details panel reads these beside the detail report, and the
+    // transcript reads its open items from the list. The versions poll
+    // refreshes the other Review item reads.
     const sideReads = [
       conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
       reviewItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
-      [...REVIEW_ITEM_DETAIL_QUERY_KEY, "item-1"],
+      [...REVIEW_ITEMS_QUERY_KEY, "detail", "item-1"],
       reviewItemListQueryKey({ conversationId: "slack:C1:other" }),
       [...REVIEW_ITEMS_QUERY_KEY, "count"],
       [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
@@ -265,7 +299,7 @@ describe("dashboard client API", () => {
       expect(sideReadsInvalidated()).toEqual([
         true,
         true,
-        true,
+        false,
         false,
         false,
         false,

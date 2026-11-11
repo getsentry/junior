@@ -23,12 +23,6 @@ import { fetchDashboardJson, post } from "../http";
 /** Prefix of every Review item read, for refreshes after a change. */
 export const REVIEW_ITEMS_QUERY_KEY = ["dashboard", "review-items"] as const;
 
-/** Prefix of every single Review item read. */
-export const REVIEW_ITEM_DETAIL_QUERY_KEY = [
-  ...REVIEW_ITEMS_QUERY_KEY,
-  "detail",
-] as const;
-
 type ReviewItemListFilters = {
   conversationId?: string;
   forViewer?: boolean;
@@ -86,7 +80,7 @@ export function useReviewItemsData(filters: ReviewItemListFilters) {
 export function useReviewItemData(id: string | undefined) {
   return useQuery({
     enabled: Boolean(id),
-    queryKey: [...REVIEW_ITEM_DETAIL_QUERY_KEY, id],
+    queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         reviewItemSchema,
@@ -95,6 +89,26 @@ export function useReviewItemData(id: string | undefined) {
       ),
     retry: false,
   });
+}
+
+/**
+ * Read one Review item that a Conversation's transcript shows. An item in
+ * the Conversation's list comes from there, so it refreshes with the list
+ * and needs no read of its own. The list holds only open items, so a
+ * closed item, or one on a later page, loads by itself.
+ */
+export function useConversationReviewItemData(
+  conversationId: string,
+  id: string,
+) {
+  const { items, query } = useReviewItemsData({ conversationId });
+  const listed = items.find((item) => item.id === id);
+  // Wait for this Conversation's list before reading the item by itself.
+  const waiting = query.isPending || query.isPlaceholderData;
+  const direct = useReviewItemData(listed || waiting ? undefined : id);
+  return listed
+    ? { data: listed, isError: false }
+    : { data: direct.data, isError: direct.isError };
 }
 
 /**
