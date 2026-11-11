@@ -13,37 +13,13 @@ const alertVariants = cva(
           "border-rose-300/20 bg-rose-300/[0.08] text-rose-100 *:data-[slot=alert-description]:text-rose-100/70 *:[svg]:text-rose-300",
         warning:
           "border-amber-300/25 bg-amber-300/5 text-dashboard-text *:[svg]:text-amber-300",
-        accent:
-          "border-dashboard-accent/15 bg-dashboard-accent/[0.07] text-dashboard-accent-text/80",
-      },
-      layout: {
-        default: "",
-        /** Form recovery text. Flex, so the text column keeps its content width. */
-        notice: "flex min-w-0 rounded-md p-4 has-[>svg]:gap-x-3",
-        /** Full-width strip at the edge of the page. */
+        /** Full-width strip at the edge of the page. Callers set its tone colors. */
         banner:
           "flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-none border-0 border-t px-3 py-1.5 text-center font-sans text-xs",
-        /** Message text in the flow, without a surface. */
-        inline: "block rounded-none border-0 bg-transparent p-0",
       },
     },
-    compoundVariants: [
-      {
-        variant: "destructive",
-        layout: "notice",
-        className:
-          "border-rose-300/25 bg-rose-300/5 text-dashboard-text *:[svg]:text-rose-300",
-      },
-      {
-        variant: "warning",
-        layout: "banner",
-        className: "border-amber-300/15 bg-amber-300/[0.07] text-amber-100/80",
-      },
-      { variant: "destructive", layout: "inline", className: "text-rose-300" },
-    ],
     defaultVariants: {
       variant: "default",
-      layout: "default",
     },
   },
 );
@@ -51,7 +27,6 @@ const alertVariants = cva(
 /** Show a message in a live region. Pass `role="status"` for polite updates. */
 function Alert({
   className,
-  layout,
   variant,
   ...props
 }: ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
@@ -59,7 +34,7 @@ function Alert({
     <div
       data-slot="alert"
       role="alert"
-      className={cn(alertVariants({ layout, variant }), className)}
+      className={cn(alertVariants({ variant }), className)}
       {...props}
     />
   );

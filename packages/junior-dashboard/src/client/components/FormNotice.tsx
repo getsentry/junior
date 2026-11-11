@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
+import { cn } from "../styles";
 import { Alert, AlertTitle } from "./ui/alert";
 
 /** Keep form recovery text and actions visible without truncation. */
@@ -10,12 +11,16 @@ export function FormNotice(props: {
 }) {
   const error = props.tone === "error";
   return (
-    // The children hold links and buttons, so they skip AlertDescription and
-    // its link styles.
+    // Flex, not the Alert grid: the text column keeps its content width and
+    // its margin collapses with the first paragraph. The children hold links
+    // and buttons, so they skip AlertDescription and its link styles.
     <Alert
-      layout="notice"
       role={error ? "alert" : "status"}
-      variant={error ? "destructive" : "warning"}
+      className={cn(
+        "flex min-w-0 rounded-md p-4 has-[>svg]:gap-x-3",
+        error && "border-rose-300/25 bg-rose-300/5 *:[svg]:text-rose-300",
+      )}
+      variant={error ? "default" : "warning"}
     >
       <TriangleAlert aria-hidden className="size-4.5 shrink-0" />
       <div className="min-w-0">

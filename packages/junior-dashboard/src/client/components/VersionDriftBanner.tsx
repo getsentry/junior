@@ -8,7 +8,12 @@ export function VersionDriftBanner(props: { serverVersion?: string }) {
   if (!dashboardVersionDrift(props.serverVersion)) return null;
 
   return (
-    <Alert aria-live="polite" layout="banner" role="status" variant="accent">
+    <Alert
+      aria-live="polite"
+      className="border-dashboard-accent/15 bg-dashboard-accent/[0.07] text-dashboard-accent-text/80"
+      role="status"
+      variant="banner"
+    >
       <span>The dashboard changed. Refresh to load the latest version.</span>
       <Button
         className="text-xs font-semibold leading-normal text-dashboard-accent-text underline decoration-dashboard-accent/40 underline-offset-2 hover:text-dashboard-text-solid"
