@@ -67,6 +67,13 @@ describe("sentry org read access", () => {
     expect(
       grantFor("GET", "https://sentry.io/api/0/users/me/regions/"),
     ).toBeUndefined();
+    // The CLI's hosted docs service gets user OAuth, never the org token.
+    expect(
+      grantFor(
+        "POST",
+        "https://sentry-init-agent.getsentry.workers.dev/api/docs/query",
+      ),
+    ).toBeUndefined();
   });
 
   it("issues the configured token for the org read grant", async () => {

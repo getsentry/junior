@@ -21,7 +21,7 @@ import {
   SENTRY_METRIC_ALERT_SUGGESTED_EVENTS,
 } from "./events/metric-alert.js";
 import {
-  SENTRY_API_DOMAINS,
+  SENTRY_CREDENTIAL_DOMAINS,
   issueSentryCredential,
   sentryGrantForEgress,
 } from "./org-read.js";
@@ -83,7 +83,7 @@ export function sentryPlugin(): PluginRegistration {
       credentials: {
         authTokenEnv: "SENTRY_AUTH_TOKEN",
         authTokenPlaceholder: "host_managed_credential",
-        domains: SENTRY_API_DOMAINS,
+        domains: SENTRY_CREDENTIAL_DOMAINS,
         type: "oauth-bearer",
       },
       description:

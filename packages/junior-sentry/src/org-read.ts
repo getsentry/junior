@@ -14,6 +14,18 @@ import type {
 
 export const SENTRY_API_DOMAINS = ["sentry.io", "us.sentry.io", "de.sentry.io"];
 
+/**
+ * Hosts that get the user's Sentry OAuth token.
+ *
+ * The Sentry CLI's hosted docs service (`sentry docs <question>`) checks the
+ * caller's sentry.io token before it answers. It never gets the org read
+ * token, which stays on the Sentry API hosts.
+ */
+export const SENTRY_CREDENTIAL_DOMAINS = [
+  ...SENTRY_API_DOMAINS,
+  "sentry-init-agent.getsentry.workers.dev",
+];
+
 const ORG_READ_GRANT = "org-read";
 const LEASE_MS = 60 * 60 * 1000;
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
