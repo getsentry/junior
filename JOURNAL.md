@@ -220,3 +220,22 @@ Read this first after a sandbox reset or context loss.
   note and the 2,441-test claim (Thomas approved). Use
   `github_updatePullRequest` (not gh api PATCH) for PR metadata; pass the
   body without the attribution/footer block — the tool appends it.
+
+### 2026-11-11 — slice 4b start ("proceed with the full stack", Thomas)
+
+- Scope: 4b → 8. Slice 9 (post as the user) stays blocked on the core
+  viewer-token review.
+- Decisions for 4b (see DECISIONS.md):
+  - Generation Conversation is public. It reads the source Conversation only
+    when that is public; otherwise the run uses the code changes alone.
+    Matches Thomas: "if you aren't the one who created the PR with junior,
+    that transcript and its brief needs to be public".
+  - Merged/closed layers leave the stack (plugin readStack), except the one
+    asked for. Commit fca443e5f on slice 2.
+  - Version row keeps full layer data (title, body, url, commits, line
+    counts) as `WalkthroughCodeChange`; `cost_usd` column dropped — cost is
+    the sum of the generation Conversation's `cost_usd` metric rows. Commit
+    2885b0c37 on slice 3; migration 0100 regenerated.
+  - 4a uses WalkthroughCodeChange for layers (c7e9591b8).
+- #3052 (open, dcramer): same-Destination private access; web Conversations
+  each have their own Destination, so it does not change the decision above.

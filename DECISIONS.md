@@ -276,3 +276,16 @@ nothing before that.
 
 Later: `walkthrough` kind (#3059 + kind backfill), captured screenshots,
 PR-opened event pointer, explainer videos (fframes vs Remotion).
+
+## 2026-11-11 — 4b decisions
+
+- **Generation Conversation visibility: public.** Reads of the source
+  Conversation follow normal access: public source → readable; private
+  source → skipped, run uses the code changes only. Rejected: private
+  generation owned by the clicker (cannot read another private tree under
+  `canAccessConversation`), child of the source (would leak private content
+  to a clicker who is not a member).
+- **Merged layers: skipped** in readStack; the requested layer stays even if
+  closed. The whole stack is the review unit, and merged work is done.
+- **Cost: from Conversation metrics**, not a column. One source of truth;
+  covers every slice of a resumed Turn.
