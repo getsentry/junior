@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
-import { getAgentInvocationIdForResult } from "./ids";
+import { getConversationWorkState } from "@/chat/task-execution/store";
+import { getAgentInvocationIdForResult, isAgentReplyMessageId } from "./ids";
 import {
   agentInvocationSchema,
   type AgentInvocation,
@@ -181,6 +182,33 @@ export async function listOpenAgentInvocations(
 }
 
 /**
+ * Return whether a terminal agent invocation sends its result to the parent.
+ * A child's final response stays in its Conversation, and a `reply` that
+ * reached the parent (its id is in `parentInboundMessageIds`) answered for
+ * the invocation. A failure after that, such as a lost worker before the
+ * Turn was saved, is not sent either.
+ */
+export function sendsResultToParent(
+  invocation: { invocationId: string; result?: string | null; status: string },
+  parentInboundMessageIds: readonly string[],
+): boolean {
+  const replied = parentInboundMessageIds.some((messageId) =>
+    isAgentReplyMessageId(messageId, invocation.invocationId),
+  );
+  switch (invocation.status) {
+    case "completed":
+      // Only a row saved before `reply` existed sends its final text.
+      // TODO(dcramer): Remove one release after getsentry/junior#3160, when
+      // no completed row from before it can still be in flight.
+      return !replied && Boolean(invocation.result?.trim());
+    case "failed":
+      return !replied;
+    default:
+      return true;
+  }
+}
+
+/**
  * Return whether a child Conversation has work that will start another agent
  * invocation on it: another open agent invocation, an open child agent, or a
  * sent child agent result that no agent invocation has received yet.
@@ -193,21 +221,33 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   }
   const db = getSqlExecutor().db();
   // A `replaced` child result is never sent. A later agent invocation of
-  // that child agent sends its report instead. A completed result is never
-  // sent either: only its `reply` reaches the parent.
-  const sent = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
+  // that child agent sends its report instead.
+  const marked = await db
+    .select({
+      invocationId: juniorAgentInvocations.invocationId,
+      result: juniorAgentInvocations.result,
+      status: juniorAgentInvocations.status,
+    })
     .from(juniorAgentInvocations)
     .where(
       and(
         eq(juniorAgentInvocations.parentConversationId, conversationId),
-        ne(juniorAgentInvocations.status, "completed"),
         inArray(juniorAgentInvocations.parentMailboxStatus, [
           "pending",
           "appended",
         ]),
       ),
     );
+  // Only a completed or failed result can be answered by a `reply`.
+  const inboundMessageIds = marked.some(
+    (row) => row.status === "completed" || row.status === "failed",
+  )
+    ? ((await getConversationWorkState({ conversationId }))?.execution
+        .inboundMessageIds ?? [])
+    : [];
+  const sent = marked.filter((row) =>
+    sendsResultToParent(row, inboundMessageIds),
+  );
   if (sent.length === 0) {
     return false;
   }

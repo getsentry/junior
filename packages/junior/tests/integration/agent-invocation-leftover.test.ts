@@ -42,6 +42,9 @@ describe("agent invocation left over from earlier work", () => {
   it.each([
     { state: "running" as const, saved: "nothing" as const },
     { state: "paused" as const, saved: "nothing" as const },
+    // Its worker died after the `reply` reached the parent but before the
+    // Turn was saved.
+    { state: "running" as const, saved: "unsaved reply" as const },
     // Its `reply` reached the parent before the newer work ended its Turn.
     { state: "running" as const, saved: "reply" as const },
     { state: "paused" as const, saved: "reply" as const },
@@ -51,6 +54,7 @@ describe("agent invocation left over from earlier work", () => {
     "ends a leftover $state child invocation that saved $saved before new mailbox input runs",
     async ({ state: orphanState, saved }) => {
       const replied = saved === "reply";
+      const sentReply = replied || saved === "unsaved reply";
       const { conversationStore, fixture } = await prepareParentConversation();
       const activeAtRun: unknown[] = [];
       // Integration tests do not run the agent. The runner reads the run and
@@ -84,7 +88,7 @@ describe("agent invocation left over from earlier work", () => {
         }
         const orphanTurnId = getAgentInvocationTurnId(orphan.invocationId);
         const reply = { text: "Orphan found it", toolCallId: "call-reply" };
-        if (replied) {
+        if (sentReply) {
           await enqueueAgentReplyToParent({
             queue,
             reply,
@@ -177,20 +181,23 @@ describe("agent invocation left over from earlier work", () => {
         ).toBe(false);
         // The newer work does not continue the earlier task, so the earlier
         // agent invocation sends its own result before the newer one ends.
-        // One that already replied completes and sends nothing more.
+        // One that already replied sends nothing more.
         await expect(
           getAgentInvocation(orphan.invocationId),
         ).resolves.toMatchObject({
           parentMailboxStatus: "appended",
-          status: saved === "nothing" ? "failed" : "completed",
+          status:
+            saved === "nothing" || saved === "unsaved reply"
+              ? "failed"
+              : "completed",
         });
         const orphanResult = expect.objectContaining({
-          inboundMessageId: replied
+          inboundMessageId: sentReply
             ? getAgentReplyMessageId(orphan.invocationId, reply.toolCallId)
             : getAgentInvocationResultMessageId(orphan.invocationId),
           input: expect.objectContaining({
             text: expect.stringMatching(
-              replied
+              sentReply
                 ? /^<agent-result [^>]*status="completed"[\s\S]*\nOrphan found it\n/
                 : saved === "text"
                   ? /^<agent-result [^>]*status="completed"[\s\S]*\nLegacy finding\n/

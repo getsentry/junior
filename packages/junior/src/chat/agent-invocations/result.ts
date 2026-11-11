@@ -40,12 +40,13 @@ import {
   getLatestAgentInvocationForConversation,
   isTerminalAgentInvocation,
   markAgentInvocationParentMailboxAppended,
+  sendsResultToParent,
 } from "./store";
 import { isWatchEvent } from "@/chat/conversations/session-stop";
 import { renderUntrustedTag } from "@/chat/input-tags";
 import type { Reply } from "@/chat/turn-answer";
 import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
-import { listUnreportedSiblingAgents, sendsCompletedResult } from "./list";
+import { listUnreportedSiblingAgents } from "./list";
 import {
   agentInvocationResultEventType,
   AGENT_REPLY_EVENT_TYPE,
@@ -242,12 +243,7 @@ export async function enqueueAgentInvocationResult(
     invocation.parentConversationId,
     options.state,
   );
-  // A child's final response stays in its Conversation. Only its `reply`
-  // reaches the parent, so a completed agent invocation sends nothing.
-  if (
-    invocation.status === "completed" &&
-    !sendsCompletedResult(invocation, parentInboundMessageIds)
-  ) {
+  if (!sendsResultToParent(invocation, parentInboundMessageIds)) {
     await markAgentInvocationParentMailboxAppended(
       invocation.invocationId,
       nowMs,

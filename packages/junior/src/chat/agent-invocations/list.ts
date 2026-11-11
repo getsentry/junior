@@ -16,6 +16,7 @@ import {
   invocationFromRow,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  sendsResultToParent,
 } from "./store";
 import {
   CHILD_AGENT_RESULTS,
@@ -195,25 +196,6 @@ export async function listChildAgents(
 }
 
 /**
- * Return whether a completed agent invocation still sends its result text to
- * the parent. Only a row saved before `reply` existed does: its text is a
- * final response, and no `reply` of it is in `parentInboundMessageIds`.
- * TODO(dcramer): Remove one release after getsentry/junior#3160, when no
- * completed row from before it can still be in flight.
- */
-export function sendsCompletedResult(
-  invocation: { invocationId: string; result?: string | null },
-  parentInboundMessageIds: readonly string[],
-): boolean {
-  return (
-    Boolean(invocation.result?.trim()) &&
-    !parentInboundMessageIds.some((messageId) =>
-      isAgentReplyMessageId(messageId, invocation.invocationId),
-    )
-  );
-}
-
-/**
  * List the other child agents of one parent whose results have not reached
  * the parent yet. A child counts while it runs and after it finishes until its
  * result is appended to the parent mailbox. A running child whose `reply` is
@@ -257,14 +239,10 @@ export async function listUnreportedSiblingAgents(
         ),
       ),
   ]);
-  // A completed agent invocation sends no result, so it is not waited for.
+  // A result that is not sent is not waited for.
   const withPendingResult = new Set(
     pendingResults
-      .filter(
-        (row) =>
-          row.status !== "completed" ||
-          sendsCompletedResult(row, parentInboundMessageIds),
-      )
+      .filter((row) => sendsResultToParent(row, parentInboundMessageIds))
       .map((row) => row.childConversationId),
   );
   const unanswered = new Set(

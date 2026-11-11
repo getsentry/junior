@@ -94,16 +94,20 @@ describe("nested agent invocations", () => {
       });
 
       // A child that finishes while its own child runs does not report yet.
-      for (const invocation of [child, helper]) {
-        await expect(
-          complete(invocation.invocationId, "Started a helper."),
-        ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
-      }
-      const grandResult = await complete(
-        grandHelper.invocationId,
-        "Grand helper fact: 42.",
-      );
+      await expect(
+        complete(child.invocationId, "Started a helper."),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      // A completed row saved before `reply` existed still sends its text,
+      // so the helper waits for it too.
+      const grandResult = (await completeAgentInvocation({
+        invocationId: grandHelper.invocationId,
+        result: "Grand helper fact: 42.",
+        status: "completed",
+      })) as TerminalAgentInvocation;
       expect(grandResult).toMatchObject({ parentMailboxStatus: "pending" });
+      await expect(
+        complete(helper.invocationId, "Started a helper."),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
       await enqueueAgentInvocationResult(grandResult, { queue, state });
 
       // searchAgents shows the state of open work. A `replaced` child still
