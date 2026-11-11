@@ -116,12 +116,19 @@ export const GOOGLE_OPERATIONS = {
     method: "GET",
     path: /^\/drive\/v3\/files$/,
   },
-  // `drive.file` limits this to files Junior's OAuth client created.
+  // `drive.file` limits the two permission writes to files that Junior's
+  // OAuth client created.
   "google.drive.permission.create": {
     access: "write",
     host: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
+  },
+  "google.drive.permission.delete": {
+    access: "write",
+    host: GOOGLE_API_DOMAIN,
+    method: "DELETE",
+    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions\/[A-Za-z0-9_-]+$/,
   },
   "google.drive.permissions.list": {
     access: "read",

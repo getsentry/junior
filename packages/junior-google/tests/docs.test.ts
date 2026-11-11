@@ -241,11 +241,16 @@ describe("Google Docs write tools", () => {
     expect(replaced).toMatchObject({ occurrences_changed: 3 });
   });
 
-  it("creates a Doc shared only with the requester, then writes its content", async () => {
+  it("creates a Doc, writes it, makes the requester the owner, and removes Junior's access", async () => {
     const { calls, run } = docTools([
       Response.json({ documentId: DOC_ID, revisionId: "rev-0", title: "Plan" }),
-      Response.json({ id: "perm-1" }),
       Response.json({ documentId: DOC_ID, replies: [] }),
+      Response.json({ id: "perm-owner", role: "owner" }),
+      permissions(
+        { emailAddress: REQUESTER, id: "perm-owner" },
+        { emailAddress: "Junior@example.com", id: "perm-junior" },
+      ),
+      new Response(null, { status: 204 }),
     ]);
 
     const result = await run("createGoogleDoc", {
@@ -253,28 +258,67 @@ describe("Google Docs write tools", () => {
       title: "Plan",
     });
 
-    const [create, share, update] = await calls();
+    const [create, update, transfer, list, remove] = await calls();
     expect(create!.url.toString()).toBe(
       "https://docs.googleapis.com/v1/documents",
     );
     expect(create!.body).toEqual({ title: "Plan" });
-    expect(share!.operation).toBe("google.drive.permission.create");
-    expect(share!.url.searchParams.get("sendNotificationEmail")).toBe("false");
-    expect(share!.body).toEqual({
-      emailAddress: REQUESTER,
-      role: "writer",
-      type: "user",
-    });
+    // Content goes in while Junior's account can still edit.
     expect(update!.body.requests[0]).toEqual({
       insertText: { location: { index: 1 }, text: "Hello" },
     });
     expect(update!.body.writeControl).toEqual({ requiredRevisionId: "rev-0" });
+    expect(transfer!.operation).toBe("google.drive.permission.create");
+    expect(transfer!.url.searchParams.get("transferOwnership")).toBe("true");
+    // Google refuses an ownership transfer without the email.
+    expect(transfer!.url.searchParams.has("sendNotificationEmail")).toBe(false);
+    expect(transfer!.body).toEqual({
+      emailAddress: REQUESTER,
+      role: "owner",
+      type: "user",
+    });
+    expect(list!.operation).toBe("google.drive.permissions.list");
+    expect(remove!.operation).toBe("google.drive.permission.delete");
+    expect(remove!.url.pathname).toBe(
+      `/drive/v3/files/${DOC_ID}/permissions/perm-junior`,
+    );
     expect(result).toEqual({
       target: "createGoogleDoc",
       document_id: DOC_ID,
       title: "Plan",
       url: DOC_LINK,
     });
+  });
+
+  it("says a new Doc is not private when the hand-over fails", async () => {
+    const created = () =>
+      Response.json({ documentId: DOC_ID, revisionId: "rev-0", title: "Plan" });
+    const forbidden = () =>
+      Response.json({ error: { message: "Denied" } }, { status: 403 });
+
+    const transferFailed = docTools([created(), forbidden()]).run(
+      "createGoogleDoc",
+      { title: "Plan" },
+    );
+    await expect(transferFailed).rejects.toThrow(
+      `Created Google Doc "Plan" (${DOC_LINK}), but could not make ${REQUESTER} its owner`,
+    );
+    await expect(transferFailed).rejects.toThrow(
+      "Your own Google account still owns it, so the Doc is not private",
+    );
+
+    const removeFailed = docTools([
+      created(),
+      Response.json({ id: "perm-owner" }),
+      permissions({ emailAddress: ACCOUNT_EMAIL, id: "perm-junior" }),
+      forbidden(),
+    ]).run("createGoogleDoc", { title: "Plan" });
+    await expect(removeFailed).rejects.toThrow(
+      "could not remove your own Google account's access",
+    );
+    await expect(removeFailed).rejects.toThrow(
+      `That account can still read and edit the Doc, so it is not private. The requester can remove ${ACCOUNT_EMAIL}`,
+    );
   });
 
   it("refuses an edit Junior's account or the requester cannot make", async () => {

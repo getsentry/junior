@@ -34,6 +34,9 @@ packages/junior-github/src/tools/update-pull-request-feedback.ts	throw new Error
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub pull request response did not include node_id.", );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubErrorMessage(payload)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`, );
+packages/junior-google/src/tools/create-doc.ts	throw new Error( `Created ${doc}, but could not write its content: ${reason(error)}. The Doc is empty, your own Google account still owns it, and the requester has no access to it.`, { cause: error }, );
+packages/junior-google/src/tools/create-doc.ts	throw new Error( `Created ${doc}, but could not make ${requester} its owner: ${reason(error)}. Your own Google account still owns it, so the Doc is not private, and the requester has no access to it.`, { cause: error }, );
+packages/junior-google/src/tools/create-doc.ts	throw new Error( `Made ${requester} the owner of ${doc}, but could not remove your own Google account's access: ${reason(error)}. That account can still read and edit the Doc, so it is not private. The requester can remove ${ctx.accountEmail} in the Doc's sharing settings.`, { cause: error }, );
 # Vercel auth, rate-limit, and upstream failures are not repairable by changing tool input.
 packages/junior-vercel/src/tools/actions.ts	throw new Error(message);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);

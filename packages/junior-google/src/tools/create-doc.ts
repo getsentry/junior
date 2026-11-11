@@ -39,12 +39,20 @@ const createdSchema = z.object({
   title: z.string(),
 });
 
+const ownPermissionsSchema = z.object({
+  permissions: z
+    .array(z.object({ emailAddress: z.string().optional(), id: z.string() }))
+    .default([]),
+});
+
 /**
- * Create a Google Doc owned by Junior's account and share it with the
- * requester as an editor. Sharing with anyone else is left to the requester.
+ * Create a Google Doc, write its content, then hand it to the requester.
  *
- * Junior's account keeps the Doc, so the read tools can still find and read it
- * for anyone who talks to Junior, like any other file shared with that account.
+ * Junior's account creates the Doc, so it is the owner at first. Any file
+ * that account can open is readable through the read tools by anyone who
+ * talks to Junior. So the tool makes the requester the owner and then removes
+ * Junior's own access. Each failure after the create names the Doc and says
+ * who can still open it, so a Doc is never reported private when it is not.
  */
 export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
   return definePluginTool({
@@ -55,10 +63,10 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
       readOnlyHint: false,
     },
     describeProposal(input) {
-      return `Create Google Doc "${input.title}"${input.content ? ` with ${input.content.length} characters of content` : ""} and share it with the requester as an editor.`;
+      return `Create Google Doc "${input.title}"${input.content ? ` with ${input.content.length} characters of content` : ""}, make the requester its owner (Google emails them), and remove your own access.`;
     },
     description:
-      "Create a Google Doc owned by your own Google account, optionally with Markdown content, and share it with the requester as an editor. The Doc is not private: anyone who can talk to you can ask you to find and read it. Do not put content in it that other people who use you must not see.",
+      "Create a Google Doc with optional Markdown content and hand it to the requester: they become the owner, Google emails them about it, and your own Google account loses access. You cannot read or edit the Doc afterward unless the requester shares it with that account again. Only works for requesters in the same Google Workspace organization as that account.",
     inputSchema,
     outputSchema,
     async execute(input) {
@@ -69,7 +77,7 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
       const requester = await requesterEmail(ctx);
       if (!requester) {
         throw new PluginToolInputError(
-          "The requester's email is unknown, so the Doc cannot be shared with them.",
+          "The requester's email is unknown, so the Doc cannot be handed to them.",
         );
       }
       requireAllowedEmails([requester], ctx.allowedDomains);
@@ -84,32 +92,86 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
       }
       const created = createdSchema.parse(response.body);
       const ref = { fileId: created.documentId };
-      // Share first, so the requester can open the Doc even when the content
-      // write fails.
-      await googleFileRequest(ctx, ref, {
-        body: { emailAddress: requester, role: "writer", type: "user" },
-        operation: "google.drive.permission.create",
-        path: `/drive/v3/files/${ref.fileId}/permissions`,
-        query: { sendNotificationEmail: "false", supportsAllDrives: "true" },
-      });
+      const url = docUrl(created.documentId);
+      const doc = `Google Doc "${created.title}" (${url})`;
+      const reason = (error: unknown) =>
+        error instanceof Error ? error.message : String(error);
+
+      // Write before the hand-over, while Junior's account can still edit.
       if (converted) {
-        // A new Doc body is one empty paragraph that starts at index 1.
-        await batchUpdateDoc(
-          ctx,
-          ref,
-          insertMarkdownRequests(converted, {
-            index: 1,
-            prefix: "",
-            suffix: "",
-          }),
-          created.revisionId,
+        try {
+          // A new Doc body is one empty paragraph that starts at index 1.
+          await batchUpdateDoc(
+            ctx,
+            ref,
+            insertMarkdownRequests(converted, {
+              index: 1,
+              prefix: "",
+              suffix: "",
+            }),
+            created.revisionId,
+          );
+        } catch (error) {
+          throw new Error(
+            `Created ${doc}, but could not write its content: ${reason(error)}. The Doc is empty, your own Google account still owns it, and the requester has no access to it.`,
+            { cause: error },
+          );
+        }
+      }
+
+      try {
+        // Google requires the email for an ownership transfer. Junior's
+        // account becomes a writer.
+        await googleFileRequest(ctx, ref, {
+          body: { emailAddress: requester, role: "owner", type: "user" },
+          operation: "google.drive.permission.create",
+          path: `/drive/v3/files/${ref.fileId}/permissions`,
+          query: { supportsAllDrives: "true", transferOwnership: "true" },
+        });
+      } catch (error) {
+        throw new Error(
+          `Created ${doc}, but could not make ${requester} its owner: ${reason(error)}. Your own Google account still owns it, so the Doc is not private, and the requester has no access to it.`,
+          { cause: error },
         );
       }
+
+      try {
+        const listed = await googleFileRequest(ctx, ref, {
+          operation: "google.drive.permissions.list",
+          path: `/drive/v3/files/${ref.fileId}/permissions`,
+          query: {
+            fields: "permissions(emailAddress,id)",
+            supportsAllDrives: "true",
+          },
+        });
+        const own = ownPermissionsSchema
+          .parse(listed.body)
+          .permissions.find(
+            (permission) =>
+              permission.emailAddress?.toLowerCase() === ctx.accountEmail,
+          );
+        if (own) {
+          const removed = await googleApiRequest(ctx, {
+            operation: "google.drive.permission.delete",
+            path: `/drive/v3/files/${ref.fileId}/permissions/${own.id}`,
+            query: { supportsAllDrives: "true" },
+          });
+          if (removed.status !== 204 && removed.status !== 200) {
+            throw googleApiError("google.drive.permission.delete", removed);
+          }
+        }
+      } catch (error) {
+        throw new Error(
+          `Made ${requester} the owner of ${doc}, but could not remove your own Google account's access: ${reason(error)}. That account can still read and edit the Doc, so it is not private. The requester can remove ${ctx.accountEmail} in the Doc's sharing settings.`,
+          { cause: error },
+        );
+      }
+
       return {
         target: "createGoogleDoc" as const,
         document_id: created.documentId,
         title: created.title,
-        url: docUrl(created.documentId),
+        url,
       };
     },
   });
