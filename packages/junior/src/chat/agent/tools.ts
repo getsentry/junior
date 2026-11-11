@@ -78,6 +78,10 @@ import {
 } from "@/chat/agent/types";
 import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
+import {
+  credentialAuditAttributes,
+  credentialAuditSource,
+} from "@/chat/credentials/audit";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
 import { incrementStat } from "@/stats";
 import { botConfig } from "@/chat/config";
@@ -139,6 +143,7 @@ export async function createRunSandbox(
     egressSignals: args.run.environment?.sandboxEgressSignals,
     conversationId: args.run.conversationId,
     credentialEgress: args.run.credentialContext,
+    credentialAuditSource: credentialAuditSource(args.run.source),
     actor: args.currentActor,
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
@@ -333,6 +338,7 @@ export async function wireAgentTools(
   args: ToolWiringArgs,
 ): Promise<ToolWiring> {
   const runSource = args.run.source;
+  const auditSource = credentialAuditSource(runSource);
   const credentialUserId = args.run.credentialContext
     ? credentialUserSubjectId(args.run.credentialContext)
     : undefined;
@@ -391,6 +397,7 @@ export async function wireAgentTools(
   const mcpToolManager = new McpToolManager(
     pluginCatalogRuntime.getMcpProviders(),
     {
+      auditAttributes: credentialAuditAttributes(auditSource),
       authProviderFactory: mcpAuth.authProviderFactory,
       serviceAccountProviderFactory: mcpAuth.serviceAccountProviderFactory,
       onAuthorizationRequired: (provider, _error, context) =>
@@ -423,6 +430,7 @@ export async function wireAgentTools(
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
+      credentialAuditSource: auditSource,
       credentialContext: args.run.credentialContext,
       pluginAuth: {
         async handleAuthRequired(signal) {

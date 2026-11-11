@@ -1,4 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
   parseSandboxEgressAuthRequiredSignal,
@@ -157,6 +158,7 @@ export function createSandboxEgressCredentialToken(input: {
   conversationId?: string;
   credentials: CredentialContext;
   egressId: string;
+  source?: CredentialAuditSource;
   ttlMs?: number;
 }): string {
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
@@ -169,6 +171,7 @@ export function createSandboxEgressCredentialToken(input: {
     egressId: input.egressId,
     expiresAtMs: now + ttlMs,
     contextId: randomUUID(),
+    ...(input.source ? { source: input.source } : undefined),
   };
   const payload = `${SANDBOX_EGRESS_TOKEN_VERSION}.${base64Url(
     JSON.stringify(context),

@@ -359,6 +359,10 @@ describe("sandbox egress proxy integration", () => {
     // for the missing-env-token case. This should be normalized to an egress credential error
     // before reaching the proxy, and the proxy should return the canonical auth-required 401.
     delete process.env.SANDBOX_EGRESS_TEST_TOKEN; // remove env token so broker has no credential
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
 
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
@@ -374,8 +378,21 @@ describe("sandbox egress proxy integration", () => {
       proxiedRequest({ forwardURL }),
       { verifyOidc: async () => ({ sandbox_id: EGRESS_ID }) },
     );
+    unregister();
 
     expect(response.status).toBe(401);
+    // A refused request is on record with its decision and reason.
+    expect(
+      records.find(
+        (record) =>
+          record.attributes["app.egress.policy.decision"] !== undefined,
+      )?.attributes,
+    ).toMatchObject({
+      "app.egress.policy.decision": "denied",
+      "app.sandbox.egress.policy.reason": expect.any(String),
+      "server.address": PROVIDER_HOST,
+      "user.id": ACTOR_ID,
+    });
     const body = await response.text();
     expect(body).toContain("junior-auth-required");
     expect(body).toContain("provider=sandbox-egress-test");
@@ -661,8 +678,22 @@ describe("sandbox egress proxy integration", () => {
     );
     expect(writeAudit?.attributes).toMatchObject({
       "app.actor.type": "user",
+      "app.credential.account": "app",
+      "app.egress.policy.decision": "allowed",
       "app.log.audit": true,
       "gen_ai.conversation.id": "conversation-1",
+      "user.id": ACTOR_ID,
+    });
+    // Reads are on record too, not only writes.
+    const readAudit = records.find(
+      (record) =>
+        record.eventName === "sandbox.egress.upstream.requested" &&
+        record.attributes["http.request.method"] === "GET",
+    );
+    expect(readAudit?.attributes).toMatchObject({
+      "app.egress.policy.decision": "allowed",
+      "app.grant.access": "read",
+      "app.log.audit": true,
       "user.id": ACTOR_ID,
     });
   });
@@ -1054,6 +1085,10 @@ describe("sandbox egress proxy integration", () => {
       refreshToken: "github-refresh-token",
       scope: "repo",
     });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
@@ -1098,9 +1133,19 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
+    unregister();
+
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ url: assetUrl });
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(
+      records.find(
+        (record) => record.eventName === "sandbox.egress.upstream.requested",
+      )?.attributes,
+    ).toMatchObject({
+      "app.credential.account": "actor",
+      "app.grant.name": "user-write",
+    });
   });
 
   it("uses GitHub App installation credentials for workflow dispatch", async () => {
@@ -1111,9 +1156,18 @@ describe("sandbox egress proxy integration", () => {
         actions: "write",
       },
     });
+    const records: EmittedLogRecord[] = [];
+    const unregister = modules.logging.registerLogRecordSink((record) => {
+      records.push(record);
+    });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      credentials: { actor: { platform: "system", name: "scheduler" } },
       egressId: EGRESS_ID,
+      source: {
+        kind: "scheduled_automation",
+        automationId: "auto-1",
+        automationRunId: "run-1",
+      },
       ttlMs: 60_000,
     });
     const networkPolicy = buildVercelNetworkPolicy({
@@ -1148,9 +1202,25 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
+    unregister();
+
     expect(response.status).toBe(204);
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
     expect(tokenRequests).toEqual([{}]);
+    const writeAudit = records.find(
+      (record) => record.eventName === "sandbox.egress.upstream.requested",
+    );
+    expect(writeAudit?.attributes).toMatchObject({
+      "app.actor.type": "system",
+      "app.credential.account": "app",
+      "app.egress.policy.decision": "allowed",
+      "app.github.repository": "getsentry/junior",
+      "app.grant.name": "installation-write",
+      "app.log.audit": true,
+      "app.source.kind": "scheduled_automation",
+      "app.task.id": "auto-1",
+      "app.task.run.id": "run-1",
+    });
   });
 
   it("returns a Junior egress error instead of forwarding an unreadable body", async () => {

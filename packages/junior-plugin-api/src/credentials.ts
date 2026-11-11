@@ -51,6 +51,16 @@ export const pluginStoredTokensSchema = z
 export const pluginGrantSchema = z
   .object({
     access: pluginGrantAccessSchema,
+    /**
+     * Provider facts for the write audit event, such as the target repository.
+     * Keys use the plugin's `app.<provider>.*` names. Telemetry only.
+     */
+    auditAttributes: z
+      .record(
+        z.string().regex(/^app\.[a-z0-9_]+(?:\.[a-z0-9_]+)+$/),
+        z.union([z.string(), z.boolean(), z.array(z.string())]),
+      )
+      .optional(),
     leaseScope: nonBlankStringSchema.optional(),
     name: pluginGrantNameSchema,
     reason: nonBlankStringSchema.optional(),

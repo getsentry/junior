@@ -647,11 +647,31 @@ function requireRepositoryTarget(upstreamUrl: URL): void {
   );
 }
 
+/**
+ * Select the GitHub grant for one egress request, and name its repository
+ * for the write audit event.
+ */
 export async function githubGrantForEgress(
   ctx: EgressHookContext,
 ): Promise<GitHubGrant> {
-  const method = ctx.request.method.toUpperCase();
   const upstreamUrl = new URL(ctx.request.url);
+  const grant = await selectGitHubGrant(ctx, upstreamUrl);
+  const repository = githubRepositoryFromUrl(upstreamUrl);
+  return repository
+    ? {
+        ...grant,
+        auditAttributes: {
+          "app.github.repository": `${repository.owner}/${repository.name}`,
+        },
+      }
+    : grant;
+}
+
+async function selectGitHubGrant(
+  ctx: EgressHookContext,
+  upstreamUrl: URL,
+): Promise<GitHubGrant> {
+  const method = ctx.request.method.toUpperCase();
   applyGitHubEgressPolicy({
     ...(ctx.request.bodyText !== undefined
       ? { bodyText: ctx.request.bodyText }
@@ -709,11 +729,15 @@ export async function githubGrantForEgress(
     ctx.request.bodyText,
   );
   if (hostMutationRepository) {
-    return grantForAccess(
-      "write",
-      "github.installation-write",
-      "installation-write",
-    );
+    return {
+      ...grantForAccess(
+        "write",
+        "github.installation-write",
+        "installation-write",
+      ),
+      // GraphQL URLs name no repository; the host operation does.
+      auditAttributes: { "app.github.repository": hostMutationRepository },
+    };
   }
 
   const graphqlAccess = githubGraphqlAccess(

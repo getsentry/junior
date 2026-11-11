@@ -3,6 +3,7 @@ import type {
   PluginAuthorization,
   PluginEgress,
 } from "@sentry/junior-plugin-api";
+import type { CredentialAuditSource } from "@/chat/credentials/audit";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { executeCredentialedEgressRequest } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
@@ -25,6 +26,7 @@ interface PluginEgressAuth {
 }
 
 interface PluginEgressDeps {
+  credentialAuditSource?: CredentialAuditSource;
   credentialContext?: CredentialContext;
   fetch?: typeof fetch;
   pluginAuth: PluginEgressAuth;
@@ -32,19 +34,24 @@ interface PluginEgressDeps {
 
 function credentialContextForPluginEgress(
   credentialContext: CredentialContext,
+  source: CredentialAuditSource | undefined,
 ): SandboxEgressCredentialContext {
   return {
     credentials: credentialContext,
     contextId: randomUUID(),
     egressId: `plugin-egress:${randomUUID()}`,
     expiresAtMs: Date.now() + 30 * 60 * 1000,
+    source,
   };
 }
 
 /** Create host-owned provider egress for plugin runtime tools. */
 export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
   const credentialContext = deps.credentialContext
-    ? credentialContextForPluginEgress(deps.credentialContext)
+    ? credentialContextForPluginEgress(
+        deps.credentialContext,
+        deps.credentialAuditSource,
+      )
     : undefined;
 
   return {

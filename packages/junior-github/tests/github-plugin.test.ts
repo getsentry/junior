@@ -2454,6 +2454,7 @@ Conversation: \`local:test:old-conversation\`
       name: "installation-write",
       access: "write",
       reason: "github.installation-write",
+      auditAttributes: { "app.github.repository": "getsentry/junior" },
     });
     await expect(
       grantForEgress({
