@@ -79,6 +79,7 @@ import {
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import {
   isAnswerToolName,
@@ -1134,6 +1135,11 @@ async function executeAgentRunInPrivacyContext(
             : undefined;
         // A reply, blocked report, or no-reply is the last step of the run.
         if (isAnswerToolName(toolCall.name) && !isError && !override) {
+          // People often answer a Turn that posted nothing, so it warms like
+          // a reply. An Automation run that ends almost never gets one.
+          if (toolCall.name === NO_REPLY_TOOL_NAME && !behavior.gated) {
+            cacheWarming.noReplyEnded();
+          }
           return { terminate: true };
         }
         // Past a limit, the second failed answer call ends the run without
