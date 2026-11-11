@@ -91,6 +91,19 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
   return { close, listRef, runId, toggle };
 }
 
+// The panel scrolls on an element that stays mounted, so start each run at
+// its top. Stop at the panel so the page behind it keeps its place.
+function scrollPanelToTop(node: HTMLElement | null) {
+  const panel = node?.closest("[data-dashboard-modal]");
+  for (
+    let el = node?.parentElement;
+    el && panel?.contains(el);
+    el = el.parentElement
+  ) {
+    el.scrollTop = 0;
+  }
+}
+
 /** Open a run's Conversation from its row without opening run details. */
 export function RunConversationLink(props: { conversationId?: string }) {
   if (!props.conversationId) return <span aria-hidden="true" />;
@@ -148,7 +161,11 @@ export function AutomationRunDetails(props: {
     >
       {/* Up and Down swap the run inside the open panel, so reset only the
           content, not the panel and its slide-in. */}
-      <div className="p-4 [overflow-wrap:anywhere]" key={run?.executionId}>
+      <div
+        className="p-4 [overflow-wrap:anywhere]"
+        key={run?.executionId}
+        ref={scrollPanelToTop}
+      >
         {run ? (
           <AutomationRunContent
             run={run}
