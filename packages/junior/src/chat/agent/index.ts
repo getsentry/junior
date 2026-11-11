@@ -312,6 +312,9 @@ async function executeAgentRunInPrivacyContext(
   });
   // TODO(dcramer): Gate every answer tool here, not only the Automation run.
   const requireAutomationResult = behavior.gated;
+  const maxToolCalls =
+    behavior.limits?.maxToolCalls ?? botConfig.maxToolCallsPerTurn;
+  const maxCostUsd = behavior.limits?.maxCostUsd ?? botConfig.maxTurnCostUsd;
   const input = {
     actor: run.instruction.actor,
     messageText: run.instruction.text,
@@ -1090,11 +1093,10 @@ async function executeAgentRunInPrivacyContext(
               usageSinceCurrentBoundary(currentAgentMessages()),
             ),
           ) ?? 0;
-        const overBudget = turnCostUsd >= botConfig.maxTurnCostUsd;
+        const overBudget = turnCostUsd >= maxCostUsd;
         const decision = turnLimitGate({
           assistantMessage,
-          overLimit:
-            overBudget || toolCallCount > botConfig.maxToolCallsPerTurn,
+          overLimit: overBudget || toolCallCount > maxToolCalls,
         });
         if (decision === "allow") {
           return undefined;
@@ -1109,9 +1111,9 @@ async function executeAgentRunInPrivacyContext(
         }
         // The tool-call total only grows, so a stop under it came from spend.
         const limitError =
-          toolCallCount > botConfig.maxToolCallsPerTurn && !overBudget
-            ? new TurnToolCallLimitExceededError(botConfig.maxToolCallsPerTurn)
-            : new TurnBudgetExceededError(botConfig.maxTurnCostUsd);
+          toolCallCount > maxToolCalls && !overBudget
+            ? new TurnToolCallLimitExceededError(maxToolCalls)
+            : new TurnBudgetExceededError(maxCostUsd);
         pendingPiHookError ??= limitError;
         return {
           block: true,

@@ -85,7 +85,7 @@ describe("turnBehavior", () => {
     },
   );
 
-  it("gives a Walkthrough generation the submit tool and nothing that reaches people", () => {
+  it("gives a Walkthrough generation the submit tool, tight limits, and nothing that reaches people", () => {
     expect(
       turnBehavior({
         kind: "root",
@@ -107,6 +107,7 @@ describe("turnBehavior", () => {
         finishAutomationRun: false,
         submitWalkthrough: true,
       },
+      limits: { maxToolCalls: 80, maxCostUsd: 5 },
     });
   });
 

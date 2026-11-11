@@ -4,14 +4,20 @@
  * second click on an unchanged stack reuse the running or finished version.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, lt, ne, sql } from "drizzle-orm";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { getDb } from "@/chat/db";
-import { juniorWalkthroughVersions } from "@/db/schema";
+import {
+  juniorConversationMetrics,
+  juniorWalkthroughVersions,
+} from "@/db/schema";
 import type { WalkthroughCodeChange } from "@/db/schema/walkthroughs";
 import { walkthroughDocumentSchema, type WalkthroughDocument } from "./schema";
 
 export type WalkthroughVersion = typeof juniorWalkthroughVersions.$inferSelect;
+
+/** A generation that runs longer than this died, such as in a crash. */
+const GENERATION_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * Key of one stack at its commits. The same code changes at the same commits
@@ -61,6 +67,26 @@ export async function startWalkthroughVersion(input: {
   createdByUserId?: string;
 }): Promise<{ version: WalkthroughVersion; started: boolean }> {
   const snapshotKey = walkthroughSnapshotKey(input.codeChanges);
+  // A dead generation must not block every later click on this snapshot.
+  await getDb()
+    .update(juniorWalkthroughVersions)
+    .set({
+      status: "failed",
+      failureReason: "Generation timed out.",
+      completedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(juniorWalkthroughVersions.provider, input.provider),
+        eq(juniorWalkthroughVersions.repository, input.repository),
+        eq(juniorWalkthroughVersions.snapshotKey, snapshotKey),
+        eq(juniorWalkthroughVersions.status, "generating"),
+        lt(
+          juniorWalkthroughVersions.createdAt,
+          new Date(Date.now() - GENERATION_TIMEOUT_MS),
+        ),
+      ),
+    );
   const [row] = await getDb()
     .insert(juniorWalkthroughVersions)
     .values({
@@ -96,6 +122,48 @@ export async function getWalkthroughVersion(
     .where(eq(juniorWalkthroughVersions.id, id))
     .limit(1);
   return row;
+}
+
+/** The version that a generation Conversation is still generating, if any. */
+export async function getGeneratingWalkthroughVersion(
+  generationConversationId: string,
+): Promise<WalkthroughVersion | undefined> {
+  const [row] = await getDb()
+    .select()
+    .from(juniorWalkthroughVersions)
+    .where(
+      and(
+        eq(
+          juniorWalkthroughVersions.generationConversationId,
+          generationConversationId,
+        ),
+        eq(juniorWalkthroughVersions.status, "generating"),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/** What a version's generation Conversation has cost so far. */
+export async function readWalkthroughCostUsd(
+  version: Pick<WalkthroughVersion, "generationConversationId">,
+): Promise<number | undefined> {
+  if (!version.generationConversationId) return undefined;
+  const [row] = await getDb()
+    .select({
+      total: sql<number | null>`sum(${juniorConversationMetrics.value})`,
+    })
+    .from(juniorConversationMetrics)
+    .where(
+      and(
+        eq(
+          juniorConversationMetrics.conversationId,
+          version.generationConversationId,
+        ),
+        eq(juniorConversationMetrics.metric, "cost_usd"),
+      ),
+    );
+  return row?.total ?? undefined;
 }
 
 /**

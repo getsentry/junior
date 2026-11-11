@@ -37,6 +37,8 @@ export type TurnBehavior = {
     finishAutomationRun: boolean;
     submitWalkthrough: boolean;
   };
+  /** Tighter limits than the app defaults, for Turns that nobody watches. */
+  limits?: { maxToolCalls: number; maxCostUsd: number };
 };
 
 const ROOT: TurnBehavior = {
@@ -109,6 +111,8 @@ const WALKTHROUGH_GENERATION: TurnBehavior = {
     finishAutomationRun: false,
     submitWalkthrough: true,
   },
+  // A run that reads several large diffs stays well under these.
+  limits: { maxToolCalls: 80, maxCostUsd: 5 },
 };
 
 /**

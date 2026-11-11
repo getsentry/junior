@@ -215,6 +215,9 @@ const app = await createApp({
     // with the updateUserCustomization tool. Junior adds it to each Turn of
     // that user as <user-customization>.
     "user-customization": true,
+    // Walkthroughs of code changes. One generates only when a person asks
+    // for it. Needs a plugin that reads code changes, such as GitHub.
+    walkthroughs: true,
   },
 });
 ```

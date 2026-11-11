@@ -24,6 +24,11 @@ const CODE_CHANGE_READ_SYSTEM_ACTOR = {
   name: "code-change-read",
 } as const;
 
+/** Whether a plugin can read the code changes of this provider. */
+export function canReadCodeChanges(provider: string): boolean {
+  return Boolean(pluginFor(provider)?.hooks?.codeChanges);
+}
+
 /** Read the stack that contains one code change, bottom first. */
 export async function readPluginCodeChangeStack(input: {
   provider: string;

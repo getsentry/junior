@@ -15,6 +15,7 @@ import { createUserPageRoutes } from "./api/user-pages/routes";
 import { createAutomationRoutes } from "./api/automations/routes";
 import { createUserCustomizationRoutes } from "./api/user-customization/routes";
 import { createReviewItemRoutes } from "./api/review-items/routes";
+import { createWalkthroughRoutes } from "./api/walkthroughs/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
@@ -147,6 +148,7 @@ export function createJuniorApi(
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());
   app.route("/api/workspaces", createWorkspaceRoutes());
+  app.route("/api/walkthroughs", createWalkthroughRoutes({ queue }));
   app.notFound(() =>
     jsonResponse(
       apiErrorSchema,

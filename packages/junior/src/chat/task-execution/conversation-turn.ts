@@ -53,6 +53,7 @@ import {
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { readWalkthroughRun } from "@/chat/walkthroughs/generation";
 import { botConfig } from "@/chat/config";
 import {
   latestConversationMessageSeq,
@@ -676,6 +677,7 @@ export function createConversationTurnWorker(
           const piMessages = await loadProjection({
             conversationId: context.conversationId,
           });
+          const walkthrough = await readWalkthroughRun(context.conversationId);
           failureCode = "agent_run_failed";
           currentRunId = `conversation-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
@@ -707,6 +709,7 @@ export function createConversationTurnWorker(
               // code reads AgentRun.location and no Run consumer needs it.
               destination,
               source,
+              walkthroughGeneration: walkthrough?.generation,
               ...(conversationLocation
                 ? { location: conversationLocation }
                 : undefined),
@@ -767,6 +770,7 @@ export function createConversationTurnWorker(
                 );
               }
 
+              await walkthrough?.finish();
               modelFailureCaptureAttempted =
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
