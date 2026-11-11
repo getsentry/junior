@@ -561,12 +561,12 @@ A compaction replaces the history when its estimate is above the threshold.
   waited on prepared-summary swaps, also when the swap was `not_ready` or
   `discarded`. It includes the wait for a running summary at the input
   limit. It is absent when no swap span ran.
-- After each replacement, the next model request logs
-  `context_compaction.next_request.completed` with
+- The `gen_ai.chat` span of the first model request after a replacement has
   `app.compaction.next_input.size` (provider-reported input, cache included),
   `app.compaction.threshold`, `app.compaction.mode`, and
   `app.compaction.next_input.over_threshold`. When it is `true`, the
-  replacement did not get the history below the threshold.
+  replacement did not get the history below the threshold. A request that
+  reports no input does not count, so the next request gets them.
 - Sentry data scrubbing removes the values of attribute keys that contain
   `token`. So these keys do not contain it, but the estimates count tokens.
 
@@ -670,6 +670,13 @@ Turn wait on compaction.
 ```text
 dataset=spans query='span.op:chat.turn has:tags[app.turn.compaction_wait_ms,number]'
 fields=count(),p50(tags[app.turn.compaction_wait_ms,number]),p95(tags[app.turn.compaction_wait_ms,number]),p50(span.duration)
+```
+
+Input of the first model request after a replacement.
+
+```text
+dataset=spans query='span.op:gen_ai.chat has:app.compaction.next_input.over_threshold'
+fields=app.compaction.mode,app.compaction.next_input.over_threshold,count(),p50(tags[app.compaction.next_input.size,number]),p95(tags[app.compaction.next_input.size,number])
 ```
 
 ## Thread Context
