@@ -524,10 +524,16 @@ export function createEndStoppedChildWork(options: {
     const turns = await listActiveMailboxTurns(conversationId);
     // A Turn sends its `reply` before it saves, so a lost worker can follow
     // a reply that the parent already has. Its Turn id comes from its record
-    // or, before the first save, from its input.
+    // or, before the first save, from its input, which is still pending.
+    // `inboundMessageIds` also holds the input of earlier Turns.
+    const pending =
+      (await getConversationWorkState({ conversationId }))?.execution
+        .pendingMessages ?? [];
     const turnIds = new Set([
       ...turns.map((turn) => turn.turnId),
-      ...inboundMessageIds.map(buildDeterministicTurnId),
+      ...pending.map((message) =>
+        buildDeterministicTurnId(message.inboundMessageId),
+      ),
     ]);
     const sender =
       await getLatestAgentInvocationForConversation(conversationId);

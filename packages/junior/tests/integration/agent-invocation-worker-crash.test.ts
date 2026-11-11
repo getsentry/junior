@@ -28,7 +28,9 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   appendAndEnqueueInboundMessage,
+  appendInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
+  dropPendingMessages,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import {
@@ -177,11 +179,13 @@ describe("agent invocation worker crash", () => {
 
   // A child Turn on the Conversation loop has no agent invocation to fail.
   // When every try is killed, a Task's parent learns it, and a Thread keeps
-  // the stored failure. A Task that already replied sent its answer.
+  // the stored failure. A Task whose lost Turn already replied sent its
+  // answer. A reply of an earlier Turn does not answer the lost one.
   it.each([
-    { kind: "task" as const, notices: 1, replied: false },
-    { kind: "task" as const, notices: 0, replied: true },
-    { kind: "thread" as const, notices: 0, replied: false },
+    { kind: "task" as const, notices: 1, replied: "no" },
+    { kind: "task" as const, notices: 0, replied: "this Turn" },
+    { kind: "task" as const, notices: 1, replied: "an earlier Turn" },
+    { kind: "thread" as const, notices: 0, replied: "no" },
   ])(
     "tells only a Task's parent when every try of its Conversation loop Turn is killed ($kind, replied: $replied)",
     async ({ kind, notices, replied }) => {
@@ -221,7 +225,40 @@ describe("agent invocation worker crash", () => {
           state,
         });
         vi.setSystemTime(Date.now() + 60_000);
-        if (replied) {
+        if (replied === "an earlier Turn") {
+          // An earlier Turn read its input and replied.
+          const earlier = getAgentReplyMessageId(
+            helper.invocationId,
+            "earlier-reply",
+          );
+          await appendInboundMessage({
+            message: {
+              conversationId: child.childConversationId,
+              createdAtMs: Date.now() - 1,
+              delivery: "defer",
+              inboundMessageId: earlier,
+              input: { text: "Earlier fact." },
+              receivedAtMs: Date.now() - 1,
+              source: "event",
+            },
+            state,
+          });
+          await dropPendingMessages({
+            conversationId: child.childConversationId,
+            inboundMessageIds: [earlier],
+            state,
+          });
+          await createDeliverToParent({ queue, state })({
+            actor: EVENT_SYSTEM_ACTOR,
+            conversationId: child.childConversationId,
+            result: {
+              kind: "reply",
+              reply: { text: "Earlier answer.", toolCallId: "call-earlier" },
+            },
+            turnId: buildDeterministicTurnId(earlier),
+          });
+        }
+        if (replied === "this Turn") {
           // The Turn sent its `reply`, and then its worker was lost.
           await createDeliverToParent({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,

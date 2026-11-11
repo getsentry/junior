@@ -282,18 +282,20 @@ describe("stopping child agents", () => {
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       // A reply that the Turn sent before the stop reaches the parent's
       // mailbox after the stop dropped the unread ones.
-      await enqueueChildResultToParent({
-        actor: EVENT_SYSTEM_ACTOR,
-        messageKey: getTurnReplyKey("turn_watch-event", "call-late-reply"),
-        nowMs: beforeStopMs,
-        queue: harness.queue,
-        result: {
-          kind: "reply",
-          reply: { text: "Late finding.", toolCallId: "call-late-reply" },
-        },
-        sender: child,
-        state: harness.state,
-      });
+      const sendLateReply = async () =>
+        await enqueueChildResultToParent({
+          actor: EVENT_SYSTEM_ACTOR,
+          messageKey: getTurnReplyKey("turn_watch-event", "call-late-reply"),
+          nowMs: beforeStopMs,
+          queue: harness.queue,
+          result: {
+            kind: "reply",
+            reply: { text: "Late finding.", toolCallId: "call-late-reply" },
+          },
+          sender: child,
+          state: harness.state,
+        });
+      await sendLateReply();
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       // The parent gives the child a new task in the same Turn.
       const retask = await createAgentInvocationForMessage(
@@ -313,6 +315,8 @@ describe("stopping child agents", () => {
       await expect(
         getConversationStoppedAtMs(child.childConversationId),
       ).resolves.toBeUndefined();
+      // The stopped Turn's retry sends the dropped reply again.
+      await sendLateReply();
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       expect(runner.runs).toHaveLength(0);
     } finally {
