@@ -108,6 +108,8 @@ async function requireRequesterCanEdit(
   );
 }
 
+// Elements also carry `startIndex`, so an image or a page break comes back as
+// an element without `textRun` instead of being dropped.
 const docParagraphSchema = z.object({
   elements: z
     .array(z.object({ textRun: z.object({ content: z.string() }).optional() }))
@@ -120,6 +122,7 @@ const docSchema = z.object({
       z.object({
         endIndex: z.number(),
         paragraph: docParagraphSchema.optional(),
+        startIndex: z.number().optional(),
       }),
     ),
   }),
@@ -165,6 +168,7 @@ export async function readDocBody(
 ): Promise<{
   /** Index after the last character of the body, as Docs counts it. */
   endIndex: number;
+  /** Undefined when the body starts with a table or another non-paragraph. */
   first: DocParagraph | undefined;
   last: DocParagraph | undefined;
   revisionId: string;
@@ -174,23 +178,29 @@ export async function readDocBody(
     path: `/v1/documents/${ref.fileId}`,
     query: {
       fields:
-        "revisionId,body(content(endIndex,paragraph(elements(textRun(content)))))",
+        "revisionId,body(content(endIndex,startIndex,paragraph(elements(startIndex,textRun(content)))))",
     },
   });
   const doc = docSchema.parse(response.body);
   const content = doc.body.content;
   return {
     endIndex: content.at(-1)?.endIndex ?? 1,
-    first: content.find((element) => element.paragraph)?.paragraph,
+    // The section break before index 1 has no start index.
+    first: content.find((element) => element.startIndex === 1)?.paragraph,
     last: content.at(-1)?.paragraph,
     revisionId: doc.revisionId,
   };
 }
 
-/** True when a paragraph holds only its final newline. */
+/**
+ * True when a paragraph holds only its final newline. A paragraph with an
+ * image or another non-text element is not empty.
+ */
 export function isEmptyParagraph(paragraph: DocParagraph | undefined): boolean {
   return (
-    paragraph?.elements
+    paragraph !== undefined &&
+    paragraph.elements.every((element) => element.textRun) &&
+    paragraph.elements
       .map((element) => element.textRun?.content ?? "")
       .join("") === "\n"
   );

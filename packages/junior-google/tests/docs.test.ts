@@ -56,10 +56,12 @@ function docBody(...paragraphs: string[]) {
   let index = 1;
   const content: unknown[] = [{ endIndex: 1 }];
   for (const text of paragraphs) {
+    const startIndex = index;
     index += text.length;
     content.push({
       endIndex: index,
-      paragraph: { elements: [{ textRun: { content: text } }] },
+      paragraph: { elements: [{ startIndex, textRun: { content: text } }] },
+      startIndex,
     });
   }
   return Response.json({ body: { content }, revisionId: "rev-1" });
@@ -194,6 +196,68 @@ describe("Google Docs write tools", () => {
     });
   });
 
+  it("keeps an image paragraph apart, and refuses to add text before a table", async () => {
+    const imageOnly = Response.json({
+      body: {
+        content: [
+          { endIndex: 1 },
+          {
+            endIndex: 3,
+            paragraph: {
+              elements: [
+                { startIndex: 1 },
+                { startIndex: 2, textRun: { content: "\n" } },
+              ],
+            },
+            startIndex: 1,
+          },
+        ],
+      },
+      revisionId: "rev-1",
+    });
+    const tableFirst = Response.json({
+      body: {
+        content: [
+          { endIndex: 1 },
+          { endIndex: 9, startIndex: 1 },
+          {
+            endIndex: 10,
+            paragraph: {
+              elements: [{ startIndex: 9, textRun: { content: "\n" } }],
+            },
+            startIndex: 9,
+          },
+        ],
+      },
+      revisionId: "rev-1",
+    });
+    const editable = () => [
+      driveFile(),
+      permissions({ emailAddress: REQUESTER, role: "writer", type: "user" }),
+    ];
+    const { calls, run } = docTools([
+      ...editable(),
+      imageOnly,
+      Response.json({ documentId: DOC_ID, replies: [] }),
+      ...editable(),
+      tableFirst,
+    ]);
+
+    await run("insertGoogleDocContent", { content: "Hi", document: DOC_ID });
+    await expect(
+      run("insertGoogleDocContent", {
+        content: "Hi",
+        document: DOC_ID,
+        position: "start",
+      }),
+    ).rejects.toThrow('"Rethinking" starts with a table');
+
+    // The image paragraph is not empty, so the text goes after a new line.
+    expect((await calls())[3]!.body.requests[0]).toEqual({
+      insertText: { location: { index: 2 }, text: "\nHi" },
+    });
+  });
+
   it("replaces the whole body, and replaces text without reading the body", async () => {
     const { calls, run } = docTools([
       driveFile(),
@@ -246,10 +310,7 @@ describe("Google Docs write tools", () => {
       Response.json({ documentId: DOC_ID, revisionId: "rev-0", title: "Plan" }),
       Response.json({ documentId: DOC_ID, replies: [] }),
       Response.json({ id: "perm-owner", role: "owner" }),
-      permissions(
-        { emailAddress: REQUESTER, id: "perm-owner" },
-        { emailAddress: "Junior@example.com", id: "perm-junior" },
-      ),
+      Response.json({ user: { permissionId: "perm-junior" } }),
       new Response(null, { status: 204 }),
     ]);
 
@@ -258,7 +319,7 @@ describe("Google Docs write tools", () => {
       title: "Plan",
     });
 
-    const [create, update, transfer, list, remove] = await calls();
+    const [create, update, transfer, about, remove] = await calls();
     expect(create!.url.toString()).toBe(
       "https://docs.googleapis.com/v1/documents",
     );
@@ -277,7 +338,7 @@ describe("Google Docs write tools", () => {
       role: "owner",
       type: "user",
     });
-    expect(list!.operation).toBe("google.drive.permissions.list");
+    expect(about!.operation).toBe("google.drive.about.get");
     expect(remove!.operation).toBe("google.drive.permission.delete");
     expect(remove!.url.pathname).toBe(
       `/drive/v3/files/${DOC_ID}/permissions/perm-junior`,
@@ -310,8 +371,8 @@ describe("Google Docs write tools", () => {
     const removeFailed = docTools([
       created(),
       Response.json({ id: "perm-owner" }),
-      permissions({ emailAddress: ACCOUNT_EMAIL, id: "perm-junior" }),
-      forbidden(),
+      Response.json({ user: { permissionId: "perm-junior" } }),
+      Response.json({ error: { message: "Not found" } }, { status: 404 }),
     ]).run("createGoogleDoc", { title: "Plan" });
     await expect(removeFailed).rejects.toThrow(
       "could not remove your own Google account's access",

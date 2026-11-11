@@ -92,6 +92,12 @@ export const GOOGLE_OPERATIONS = {
     method: "GET",
     path: /^\/v1\/documents\/[A-Za-z0-9_-]+$/,
   },
+  "google.drive.about.get": {
+    access: "read",
+    host: GOOGLE_API_DOMAIN,
+    method: "GET",
+    path: /^\/drive\/v3\/about$/,
+  },
   "google.drive.comments.list": {
     access: "read",
     host: GOOGLE_API_DOMAIN,

@@ -39,11 +39,7 @@ const createdSchema = z.object({
   title: z.string(),
 });
 
-const ownPermissionsSchema = z.object({
-  permissions: z
-    .array(z.object({ emailAddress: z.string().optional(), id: z.string() }))
-    .default([]),
-});
+const aboutSchema = z.object({ user: z.object({ permissionId: z.string() }) });
 
 /**
  * Create a Google Doc, write its content, then hand it to the requester.
@@ -136,29 +132,26 @@ export function createCreateGoogleDocTool(ctx: GoogleToolContext) {
       }
 
       try {
-        const listed = await googleFileRequest(ctx, ref, {
-          operation: "google.drive.permissions.list",
-          path: `/drive/v3/files/${ref.fileId}/permissions`,
-          query: {
-            fields: "permissions(emailAddress,id)",
-            supportsAllDrives: "true",
-          },
+        // Drive gives each account one permission id on every file. Deleting
+        // it by id does not depend on how a permission list shows the email.
+        const about = await googleApiRequest(ctx, {
+          operation: "google.drive.about.get",
+          path: "/drive/v3/about",
+          query: { fields: "user(permissionId)" },
         });
-        const own = ownPermissionsSchema
-          .parse(listed.body)
-          .permissions.find(
-            (permission) =>
-              permission.emailAddress?.toLowerCase() === ctx.accountEmail,
-          );
-        if (own) {
-          const removed = await googleApiRequest(ctx, {
-            operation: "google.drive.permission.delete",
-            path: `/drive/v3/files/${ref.fileId}/permissions/${own.id}`,
-            query: { supportsAllDrives: "true" },
-          });
-          if (removed.status !== 204 && removed.status !== 200) {
-            throw googleApiError("google.drive.permission.delete", removed);
-          }
+        if (about.status !== 200) {
+          throw googleApiError("google.drive.about.get", about);
+        }
+        const { permissionId } = aboutSchema.parse(about.body).user;
+        const removed = await googleApiRequest(ctx, {
+          operation: "google.drive.permission.delete",
+          path: `/drive/v3/files/${ref.fileId}/permissions/${permissionId}`,
+          query: { supportsAllDrives: "true" },
+        });
+        // After the transfer the account is a writer, so anything other than
+        // a delete, such as a 404, leaves its access unknown.
+        if (removed.status !== 204 && removed.status !== 200) {
+          throw googleApiError("google.drive.permission.delete", removed);
         }
       } catch (error) {
         throw new Error(

@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  PluginToolInputError,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -54,6 +55,11 @@ export function createInsertGoogleDocContentTool(ctx: GoogleToolContext) {
       const converted = convertDocMarkdown(input.content);
       const doc = await requireEditableDoc(ctx, input.document);
       const body = await readDocBody(ctx, doc.ref);
+      if (input.position === "start" && !body.first) {
+        throw new PluginToolInputError(
+          `"${doc.title}" starts with a table, and Google Docs cannot add text before it. Use position "end" instead.`,
+        );
+      }
       const requests =
         input.position === "start"
           ? insertMarkdownRequests(converted, {
