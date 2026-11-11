@@ -119,6 +119,15 @@ test("runs a skill with optional context instead of an instruction", async ({
           description: "Triage a live incident into a suspects-first note.",
         },
         {
+          name: "diff-quality",
+          description: "Run a quality pass on a diff before it ships itself.",
+        },
+        {
+          name: "self-update",
+          description: "Update this app to the latest Junior release.",
+          pluginProvider: "github",
+        },
+        {
           name: "tpm",
           description: "Run the TPM bug digest from Linear.",
           pluginProvider: "linear",
@@ -135,7 +144,14 @@ test("runs a skill with optional context instead of an instruction", async ({
   ).toBeVisible();
   await page.getByLabel("Skill", { exact: true }).click();
   await screenshot(page, "automation-skill-picker", { view: "desktop" });
-  await page.getByPlaceholder("Search by name or description").fill("release");
+  const search = page.getByPlaceholder("Search by name or description");
+  // A name match outranks a description match, even from a plugin.
+  await search.fill("self");
+  await expect(
+    page.getByRole("listbox", { name: "Suggestions" }).getByRole("option"),
+  ).toHaveText([/^self-update/, /^diff-quality/]);
+  await screenshot(page, "automation-skill-search", { view: "desktop" });
+  await search.fill("release");
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Skill", { exact: true })).toContainText(
     "Manual only",
