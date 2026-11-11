@@ -671,6 +671,16 @@ after-01 rail/header, 02 PR popover, 03 chapter without diagram, 04 review
 Open, 05 card open, 06 card answered, 07 review All, 08 Open after answers,
 09 Copy review menu, 10 single PR.
 
+Added (Thomas): the cost in the header line links to the version's generation
+Conversation (`generationConversationId` on the version response, from the
+row). That page already has the transcript and `ConversationUsageBreakdown`.
+Lists hide generation Conversations; `GET /api/conversations/:id` serves one
+to any signed-in viewer (200, checked in walkthrough-versions; a missing id
+is 404). Mock: `walkthrough-generations.ts` adds generations for #3071 and
+the stack, hidden from lists, with costs equal to the fixtures. The mock
+update version has no generation link. Head `e4f10560e`. Screenshot:
+after-11 generation Conversation with usage open.
+
 #### Open
 
 - Update Turns: `added_chapters` views are not checked against old views.
