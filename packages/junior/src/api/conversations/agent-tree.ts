@@ -26,7 +26,7 @@ export async function readConversationAgentTree(
   conversation: { conversationId: string; parentConversationId?: string },
   readAccess: ConversationAccessReader,
 ): Promise<ConversationAgentTreeNode[] | undefined> {
-  // Every detail request calls this, and a root Conversation must not need
+  // Every full detail read calls this, and a root Conversation must not need
   // any read.
   if (!conversation.parentConversationId) {
     return undefined;
