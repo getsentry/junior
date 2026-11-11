@@ -131,10 +131,12 @@ export function createSubmitWalkthroughTool(
       excerpts: z.number().int().nonnegative(),
     }),
     execute: async (output) => {
-      const { files, skipped } = await loadDiff();
       const codeRefs = codeCitations(output);
-      const contextFiles = await readContextFiles(codeRefs, loadHeadFile);
-      const messages = await readCitedMessages(context, generation, output);
+      const [{ files, skipped }, contextFiles, messages] = await Promise.all([
+        loadDiff(),
+        readContextFiles(codeRefs, loadHeadFile),
+        readCitedMessages(context, generation, output),
+      ]);
       const knownUrls = new Set(
         generation.layers.flatMap((layer) => [
           layer.url,
