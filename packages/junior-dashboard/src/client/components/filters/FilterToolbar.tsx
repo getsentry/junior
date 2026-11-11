@@ -48,14 +48,13 @@ export function FilterToolbar(props: {
           label={props.search.label}
           onChange={props.search.onChange}
           placeholder={props.search.placeholder}
-          size="default"
           value={props.search.value}
         />
         {filters ? (
           <Button
             aria-expanded={filters.open}
             className={cn(
-              "h-11 shrink-0",
+              "shrink-0",
               filters.open && "bg-dashboard-surface-active",
             )}
             onClick={filters.onToggle}

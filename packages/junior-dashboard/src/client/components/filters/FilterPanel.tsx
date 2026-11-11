@@ -39,7 +39,9 @@ export function FilterPanel(props: {
         </h2>
       }
     >
-      <div className="grid gap-5 px-3 py-4">{props.children}</div>
+      <div className="grid divide-y divide-dashboard-border-subtle px-3">
+        {props.children}
+      </div>
     </DetailsPanel>
   );
 }
@@ -61,16 +63,16 @@ export function FilterOptions(props: {
     props.value && !props.options.some((option) => option.value === props.value)
       ? [...props.options, { label: props.value, value: props.value }]
       : props.options;
-  const hidden = expanded ? 0 : Math.max(0, options.length - COLLAPSED_OPTIONS);
-  const shown = hidden
-    ? options.filter(
+  const shown = expanded
+    ? options
+    : options.filter(
         (option, index) =>
           index < COLLAPSED_OPTIONS || option.value === props.value,
-      )
-    : options;
+      );
+  const hidden = options.length - shown.length;
   return (
-    <section aria-label={props.label} className="grid gap-1">
-      <h3 className="m-0 px-2 pb-1 font-sans text-xs font-medium text-dashboard-text-muted">
+    <section aria-label={props.label} className="grid gap-1.5 py-4">
+      <h3 className="m-0 px-2 font-sans text-sm font-semibold text-dashboard-text">
         {props.label}
       </h3>
       <div aria-label={`Filter by ${props.label.toLowerCase()}`} role="group">
@@ -85,7 +87,7 @@ export function FilterOptions(props: {
           />
         ))}
       </div>
-      {options.length > COLLAPSED_OPTIONS ? (
+      {expanded || hidden > 0 ? (
         <button
           className="w-fit cursor-pointer rounded-md border-0 bg-transparent px-2 py-1 font-sans text-xs text-dashboard-text-muted hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
           onClick={() => setExpanded((open) => !open)}
@@ -108,12 +110,12 @@ function FilterOptionButton(props: {
     <button
       aria-pressed={props.selected}
       className={cn(
-        "flex min-h-8 w-full cursor-pointer items-center justify-between gap-3 rounded-md border-0 bg-transparent px-2 py-1 text-left font-sans text-sm transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+        "flex min-h-8 w-full cursor-pointer items-center justify-between gap-3 rounded-md border-0 px-2 py-1 text-left font-sans text-sm transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
         !props.selected
-          ? "text-dashboard-text-muted hover:text-dashboard-text"
+          ? "bg-transparent text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text"
           : props.subtle
-            ? "text-dashboard-text"
-            : "bg-dashboard-surface-active font-medium text-dashboard-text",
+            ? "bg-transparent text-dashboard-text hover:bg-dashboard-fill-hover"
+            : "bg-dashboard-accent/[0.12] font-medium text-dashboard-accent-text hover:bg-dashboard-accent/[0.16]",
       )}
       onClick={props.onClick}
       title={props.label}
