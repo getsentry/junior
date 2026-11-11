@@ -1815,10 +1815,15 @@ Conversation: \`local:test:old-conversation\`
             );
           }
           if (operation === "github.pull.list") {
-            // Only feat/bottom has an open pull request, so main is the trunk.
+            // An open sync pull request from main must not join the stack.
+            const head = new URL(request.url).searchParams.get("head");
+            if (head === "getsentry:main") {
+              return Response.json([
+                { number: 600, base: { ref: "feat/long-lived" } },
+              ]);
+            }
             return Response.json(
-              new URL(request.url).searchParams.get("head") ===
-                "getsentry:feat/bottom"
+              head === "getsentry:feat/bottom"
                 ? [{ number: 700, base: { ref: "main" } }]
                 : [],
             );
@@ -1853,6 +1858,67 @@ Conversation: \`local:test:old-conversation\`
       await expect(stackWrite.request.json()).resolves.toEqual({
         pull_requests: write.pullRequests,
       });
+    },
+  );
+
+  it.each([
+    { name: "a sync from the trunk", head: "main", bottomBase: "main" },
+    { name: "base branches that loop", head: "feat/a", bottomBase: "feat/a" },
+  ])(
+    "does not stack a pull request on a loop of base branches: $name",
+    async ({ head, bottomBase }) => {
+      const repo = { default_branch: "main", full_name: "getsentry/junior" };
+      const ctx = githubToolsContext({
+        egressFetch: async ({ operation, request }) => {
+          if (operation === "github.pull.create") {
+            return Response.json(
+              {
+                number: 701,
+                html_url: "https://github.com/getsentry/junior/pull/701",
+                head: { ref: head, repo },
+                base: { ref: "feat/long-lived", repo },
+              },
+              { status: 201 },
+            );
+          }
+          if (operation === "github.pull.list") {
+            // Pull request 700 merges feat/long-lived into the head of 701.
+            const branch = new URL(request.url).searchParams.get("head");
+            if (branch === "getsentry:feat/long-lived") {
+              return Response.json([
+                { number: 700, base: { ref: bottomBase } },
+              ]);
+            }
+            return Response.json(
+              branch === `getsentry:${head}`
+                ? [{ number: 701, base: { ref: "feat/long-lived" } }]
+                : [],
+            );
+          }
+          if (operation === "github.stack.read") return Response.json([]);
+          return Response.json({ number: 9, pull_requests: [] });
+        },
+      });
+      const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createPullRequest;
+
+      const result = await tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Update long-lived branch",
+          head,
+          base: "feat/long-lived",
+        },
+        { toolCallId: "call-create-looped-pull-request" },
+      );
+
+      expect(result).toMatchObject({ number: 701 });
+      expect(result).not.toHaveProperty("stack");
+      expect(
+        ctx
+          .egressRequests()
+          .filter(({ request }) => request.method === "POST")
+          .map(({ operation }) => operation),
+      ).not.toContainEqual(expect.stringMatching(/^github\.stack\./));
     },
   );
 
