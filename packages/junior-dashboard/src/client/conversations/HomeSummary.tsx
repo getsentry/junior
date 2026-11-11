@@ -20,15 +20,13 @@ import {
   TooltipTitle,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { peoplePath } from "../format";
 import { useReviewItemCountData } from "../review-desk/queries";
 import { cn } from "../styles";
 
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
-/** Open code changes shown before and after the reader expands the list. */
+/** Open code changes shown before the reader expands the list. */
 const OPEN_LIMIT = 3;
-const OPEN_EXPANDED_LIMIT = 10;
 
 // Sums the last 7 UTC day buckets and the 7 before them.
 function weeklyMerges(days: CodeActivityDay[]) {
@@ -109,7 +107,10 @@ export function HomeSummary() {
         />
       </div>
       {open.length > 0 ? (
-        <OpenChangeList changes={open} email={email} nowMs={nowMs} />
+        <>
+          <OpenChangeList changes={open} nowMs={nowMs} />
+          <OpenChangeList changes={open} iconOnlySort nowMs={nowMs} />
+        </>
       ) : null}
     </section>
   );
@@ -197,33 +198,43 @@ function DayStrip(props: { days: CodeActivityDay[] }) {
  */
 function OpenChangeList(props: {
   changes: CodeChangeSummaryReport[];
-  email: string;
+  /** Temporary: compare an icon-only sort toggle. Keep one before merge. */
+  iconOnlySort?: boolean;
   nowMs: number;
 }) {
   const [newestFirst, setNewestFirst] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const sorted = newestFirst ? [...props.changes].reverse() : props.changes;
-  const limit = expanded ? OPEN_EXPANDED_LIMIT : OPEN_LIMIT;
-  const hidden = Math.min(sorted.length, OPEN_EXPANDED_LIMIT) - OPEN_LIMIT;
+  const hidden = sorted.length - OPEN_LIMIT;
+  const sortLabel = newestFirst ? "Newest first" : "Oldest first";
+  const sortButton = (
+    <button
+      aria-label={props.iconOnlySort ? sortLabel : undefined}
+      className={quietButtonClass}
+      onClick={() => setNewestFirst(!newestFirst)}
+      type="button"
+    >
+      {props.iconOnlySort ? null : sortLabel}
+      <ArrowUpDown aria-hidden="true" className="size-3" />
+    </button>
+  );
   return (
     <div className="grid gap-2">
       <div className="flex h-4 items-center justify-between gap-4">
         <h3 className="m-0 font-sans text-xs font-medium leading-4 text-dashboard-text-muted">
           Waiting to merge
         </h3>
-        {sorted.length > 1 ? (
-          <button
-            className={quietButtonClass}
-            onClick={() => setNewestFirst(!newestFirst)}
-            type="button"
-          >
-            {newestFirst ? "Newest first" : "Oldest first"}
-            <ArrowUpDown aria-hidden="true" className="size-3" />
-          </button>
-        ) : null}
+        {sorted.length < 2 ? null : props.iconOnlySort ? (
+          <Tooltip>
+            <TooltipTrigger render={sortButton} />
+            <TooltipContent size="compact">{sortLabel}</TooltipContent>
+          </Tooltip>
+        ) : (
+          sortButton
+        )}
       </div>
       <ul className="m-0 grid list-none gap-0.5 p-0">
-        {sorted.slice(0, limit).map((change) => (
+        {(expanded ? sorted : sorted.slice(0, OPEN_LIMIT)).map((change) => (
           <OpenChangeRow change={change} key={change.id} nowMs={props.nowMs} />
         ))}
         {hidden > 0 ? (
@@ -236,14 +247,6 @@ function OpenChangeList(props: {
             >
               {expanded ? "Show less" : `${hidden} more`}
             </button>
-            {expanded && sorted.length > OPEN_EXPANDED_LIMIT ? (
-              <Link
-                className={cn(quietButtonClass, "no-underline")}
-                to={`${peoplePath(props.email)}#code`}
-              >
-                All {sorted.length}
-              </Link>
-            ) : null}
           </li>
         ) : null}
       </ul>
@@ -253,8 +256,9 @@ function OpenChangeList(props: {
 
 // Fixed row height, so HomeSummaryLoading matches the list.
 const rowClass = "flex h-8 min-w-0 items-center justify-between gap-6";
+// List controls sit below the row text in contrast, so rows stay the focus.
 const quietButtonClass =
-  "inline-flex h-4 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-sans text-xs leading-4 text-dashboard-text-muted hover:text-dashboard-text focus-visible:text-dashboard-text";
+  "inline-flex h-4 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-sans text-xs font-normal leading-4 text-dashboard-text-faint hover:text-dashboard-text-muted focus-visible:text-dashboard-text-muted";
 
 function OpenChangeRow(props: {
   change: CodeChangeSummaryReport;

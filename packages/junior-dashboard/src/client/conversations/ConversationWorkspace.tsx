@@ -347,8 +347,10 @@ export function ConversationWorkspace(props: {
         className={
           sidebarFits
             ? // The tall bottom pad lifts the create view above the middle,
-              // so the summary that hangs below it fits in the pane.
-              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-48"
+              // so the summary that hangs below it fits in the pane. Gutters
+              // on both edges keep it centered when the summary grows enough
+              // to show a scrollbar.
+              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-48 [scrollbar-gutter:stable_both-edges]"
             : // Narrow screens dock the composer at the bottom, in thumb
               // reach.
               cn(
