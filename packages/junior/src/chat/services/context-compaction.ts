@@ -707,6 +707,11 @@ async function compactActiveAboveThreshold(
   const retainUserMessages =
     args.mode === "blocking" && pendingMessages.length > 0;
   const inputLimitTokens = getAgentContextInputLimitTokens(args.modelId);
+  // `app.compaction.skip_reason`. `over_target`: the kept context is above
+  // the target without a summary. `last_over_threshold`: the first model call
+  // after the latest full compaction was above the threshold.
+  // `over_input_limit`: the kept context is at the input limit, so no summary
+  // fits. The first two compact again at the input limit.
   const skip = (
     reason: "last_over_threshold" | "over_input_limit" | "over_target",
   ) => {

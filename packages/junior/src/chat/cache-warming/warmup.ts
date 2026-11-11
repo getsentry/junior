@@ -495,7 +495,23 @@ export function createCacheWarmingRecorder(
 
 /**
  * Run one scheduled cache warming message. A message for an idle period that
- * already ended does nothing.
+ * already ended does nothing and makes no span.
+ *
+ * Each warmup decision has one `cache_warming.warmup` span, with the warmup
+ * call as a child `gen_ai.chat` span (`junior.cache_warmup`). A tool wait
+ * warmup (`tool-wait.ts`) has the same span in the trace of its Turn.
+ * `app.cache_warming.outcome`:
+ * - `missed`: the warmup call did not read the cached prefix. It logs
+ *   `cache_warming.warmup.failed` and reports to Sentry.
+ * - `failed`: the warmup call threw.
+ * - `skipped`: `skip_reason` is `cache_expired`, `breaker_open`,
+ *   `prompt_changed` (a deploy changed the system prompt, so the idle period
+ *   stops), `stopped` (warming stopped or the tools returned first; no log),
+ *   or a `decideWarmup` reason.
+ *
+ * `work_state` and `archived` are read when the idle period starts and pick
+ * its `gapSegment`. Decision attributes are absent when the warmup skipped
+ * before the decision. Cost and usage are absent when no call completed.
  */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,

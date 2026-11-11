@@ -216,6 +216,22 @@ function payloadAttributes(
  * expired cache. Also counts and estimates the request's images.
  * Pass the payload that Pi gives to `onPayload`. Never throws: telemetry must
  * not fail the request.
+ *
+ * To classify a cache miss, compare a `gen_ai.chat` span with the previous
+ * call in the same `gen_ai.conversation.id`:
+ * 1. `prefix.before_last_reply.hash` differs from the previous
+ *    `prefix.hash`: Junior changed the prefix. The system or tools hash shows
+ *    a prompt or tool change; `thinking.type` or `effort` shows a settings
+ *    change; with all part hashes equal, the model or a thinking budget
+ *    changed. `messages.before_last_reply.hash` not equal to the previous
+ *    `messages.hash` means a history rewrite, expected with
+ *    `gen_ai.conversation.compacted`.
+ * 2. Equal, with a gap of 5 minutes or more: the cache expired.
+ * 3. Equal, with a shorter gap: the provider or the gateway did not use it.
+ *
+ * `images.estimate` is the only per-image number, because Anthropic usage has
+ * no per-image split. Check it against the change in
+ * `gen_ai.usage.input_tokens` from the previous call.
  */
 export function requestPrefixAttributes(
   payload: unknown,
