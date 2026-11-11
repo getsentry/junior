@@ -715,6 +715,13 @@
       "when": 1794414686731,
       "tag": "0101_drop_legacy_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1794424045885,
+      "tag": "0102_agent_invocation_fork",
+      "breakpoints": true
     }
   ]
 }

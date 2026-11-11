@@ -7,7 +7,7 @@ import {
 } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
-type SpawnInput = { agent_type?: string | null; kind?: string | null };
+type SpawnInput = { fork?: boolean | null; kind?: string | null };
 
 function spawnInput(call: ToolCall): SpawnInput {
   return (call.input as SpawnInput | undefined) ?? {};
@@ -36,9 +36,7 @@ describe("Implicit Delegation", () => {
       "thread",
     );
     // A brief can carry each track, so no child needs this conversation.
-    expect(spawned.map((call) => spawnInput(call).agent_type)).not.toContain(
-      "fork",
-    );
+    expect(spawned.map((call) => spawnInput(call).fork)).not.toContain(true);
   });
 
   test("when a request needs only a few direct tool calls, do the work without a child agent", async ({
