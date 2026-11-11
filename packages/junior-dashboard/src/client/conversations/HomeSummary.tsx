@@ -2,7 +2,7 @@ import type {
   CodeActivityDay,
   CodeChangeSummaryReport,
 } from "@sentry/junior/api/schema";
-import { ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, GitPullRequest } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -12,7 +12,6 @@ import {
   contributionLevelClass,
 } from "../components/charts/contributionLevel";
 import { Card } from "../components/layout/Card";
-import { OutboundLink } from "../components/OutboundLink";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Tooltip,
@@ -22,6 +21,7 @@ import {
 } from "../components/ui/tooltip";
 import { useReviewItemCountData } from "../review-desk/queries";
 import { cn } from "../styles";
+import { SidebarAnnotationIcon } from "./ConversationMeta";
 
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
@@ -108,8 +108,14 @@ export function HomeSummary() {
       </div>
       {open.length > 0 ? (
         <>
-          <OpenChangeList changes={open} nowMs={nowMs} />
-          <OpenChangeList changes={open} iconOnlySort nowMs={nowMs} />
+          {ROW_STYLES.map((rowStyle) => (
+            <OpenChangeList
+              changes={open}
+              key={rowStyle}
+              nowMs={nowMs}
+              rowStyle={rowStyle}
+            />
+          ))}
         </>
       ) : null}
     </section>
@@ -192,50 +198,66 @@ function DayStrip(props: { days: CodeActivityDay[] }) {
   );
 }
 
+/** Temporary: row styles to compare. Keep one before merge. */
+type RowStyle = "pr-icon" | "pr-icon-muted" | "plain" | "meta-icon";
+
+const ROW_STYLES: RowStyle[] = [
+  "pr-icon",
+  "pr-icon-muted",
+  "plain",
+  "meta-icon",
+];
+
+const ROW_STYLE_LABELS: Record<RowStyle, string> = {
+  "meta-icon": "D · PR icon before the repository",
+  plain: "C · No icon",
+  "pr-icon": "A · Open PR icon",
+  "pr-icon-muted": "B · Grey PR icon, green on hover",
+};
+
 /**
  * Open code changes, oldest first. The label row holds the only control, a
  * sort toggle, so the list has no table header. The last row expands it.
  */
 function OpenChangeList(props: {
   changes: CodeChangeSummaryReport[];
-  /** Temporary: compare an icon-only sort toggle. Keep one before merge. */
-  iconOnlySort?: boolean;
   nowMs: number;
+  rowStyle: RowStyle;
 }) {
   const [newestFirst, setNewestFirst] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const sorted = newestFirst ? [...props.changes].reverse() : props.changes;
   const hidden = sorted.length - OPEN_LIMIT;
-  const sortLabel = newestFirst ? "Newest first" : "Oldest first";
-  const sortButton = (
-    <button
-      aria-label={props.iconOnlySort ? sortLabel : undefined}
-      className={quietButtonClass}
-      onClick={() => setNewestFirst(!newestFirst)}
-      type="button"
-    >
-      {props.iconOnlySort ? null : sortLabel}
-      <ArrowUpDown aria-hidden="true" className="size-3" />
-    </button>
-  );
+  const SortIcon = newestFirst ? ArrowUp : ArrowDown;
   return (
     <div className="grid gap-2">
+      <div className="font-mono text-2xs text-dashboard-accent-text">
+        {ROW_STYLE_LABELS[props.rowStyle]}
+      </div>
       <div className="flex h-4 items-center justify-between gap-4">
         <h3 className="m-0 font-sans text-xs font-medium leading-4 text-dashboard-text-muted">
           Waiting to merge
         </h3>
-        {sorted.length < 2 ? null : props.iconOnlySort ? (
-          <Tooltip>
-            <TooltipTrigger render={sortButton} />
-            <TooltipContent size="compact">{sortLabel}</TooltipContent>
-          </Tooltip>
-        ) : (
-          sortButton
+        {sorted.length < 2 ? null : (
+          <button
+            aria-label={newestFirst ? "Newest first" : "Oldest first"}
+            className={quietButtonClass}
+            onClick={() => setNewestFirst(!newestFirst)}
+            type="button"
+          >
+            {newestFirst ? "Newest" : "Oldest"}
+            <SortIcon aria-hidden="true" className="size-3" />
+          </button>
         )}
       </div>
       <ul className="m-0 grid list-none gap-0.5 p-0">
         {(expanded ? sorted : sorted.slice(0, OPEN_LIMIT)).map((change) => (
-          <OpenChangeRow change={change} key={change.id} nowMs={props.nowMs} />
+          <OpenChangeRow
+            change={change}
+            key={change.id}
+            nowMs={props.nowMs}
+            rowStyle={props.rowStyle}
+          />
         ))}
         {hidden > 0 ? (
           <li className={rowClass}>
@@ -263,25 +285,48 @@ const quietButtonClass =
 function OpenChangeRow(props: {
   change: CodeChangeSummaryReport;
   nowMs: number;
+  rowStyle: RowStyle;
 }) {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
   return (
-    <li className={rowClass}>
-      <div className="min-w-0 truncate font-sans text-sm text-dashboard-text">
+    <li className={cn(rowClass, "group")}>
+      <div className="flex min-w-0 items-center gap-2.5 font-sans text-sm text-dashboard-text">
+        {props.rowStyle === "pr-icon" ? (
+          <SidebarAnnotationIcon decorative icon="git-pull-request" size={14} />
+        ) : null}
+        {props.rowStyle === "pr-icon-muted" ? (
+          <GitPullRequest
+            aria-hidden="true"
+            className="shrink-0 text-dashboard-text-faint transition-colors group-hover:text-[#3fb950] light:group-hover:text-[#1a7f37]"
+            size={14}
+            strokeWidth={2.25}
+          />
+        ) : null}
         {change.url ? (
-          <OutboundLink
-            className="inline-flex max-w-full items-center text-inherit no-underline hover:text-dashboard-accent-text"
+          // The row reads as a PR without the outbound icon; it still opens
+          // GitHub in a new tab.
+          <a
+            className="min-w-0 truncate text-inherit no-underline underline-offset-2 hover:underline"
             href={change.url}
+            rel="noreferrer"
+            target="_blank"
           >
-            <span className="truncate">{title}</span>
-          </OutboundLink>
+            {title}
+          </a>
         ) : (
-          title
+          <span className="min-w-0 truncate">{title}</span>
         )}
       </div>
-      <div className="flex shrink-0 items-baseline gap-4 font-sans text-xs text-dashboard-text-muted tabular-nums">
-        <span className="hidden sm:inline">
+      <div className="flex shrink-0 items-center gap-4 font-sans text-xs text-dashboard-text-muted tabular-nums">
+        <span className="hidden items-center gap-1.5 sm:inline-flex">
+          {props.rowStyle === "meta-icon" ? (
+            <SidebarAnnotationIcon
+              decorative
+              icon="git-pull-request"
+              size={12}
+            />
+          ) : null}
           {change.repository} #{change.number}
         </span>
         <span className="w-10 text-right">
