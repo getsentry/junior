@@ -441,10 +441,11 @@ export interface CacheWarmingRecorder {
   /**
    * Mark that an answer tool call of the last request ended the run. After
    * `noReply` or `reportBlocked`, `stop` starts the idle period from that
-   * request, as a final response would. A `gated` Automation run starts none,
-   * because it almost never gets an answer.
+   * request, as a final response would. An Automation run (Prompt mode
+   * `automation`) starts none, because it almost never gets an answer. A
+   * child agent's Turn does: its parent or a person can return to it.
    */
-  answerToolEnded(toolName: string, gated: boolean): void;
+  answerToolEnded(toolName: string): void;
   /** Stop the warmups of this run. Call it when the run ends. */
   stop(): Promise<void>;
 }
@@ -548,8 +549,11 @@ export function createCacheWarmingRecorder(
       }
     },
     toolsReturned: toolWait.toolsReturned,
-    answerToolEnded: (toolName, gated) => {
-      answerToolEnding = gated ? undefined : ANSWER_TOOL_ENDINGS[toolName];
+    answerToolEnded: (toolName) => {
+      answerToolEnding =
+        systemPrompt.mode === "automation"
+          ? undefined
+          : ANSWER_TOOL_ENDINGS[toolName];
     },
     stop: async () => {
       try {
