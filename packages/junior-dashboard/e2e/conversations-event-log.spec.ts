@@ -517,11 +517,14 @@ test("mounts only the event log rows near the viewport", async ({
 
   // Arrow keys move past the end of the mounted range and mount the rows
   // they reach. The row that holds the reader's place can stay mounted
-  // further down, so find the first gap from the top.
+  // further down, so the target is the first gap from the top. When that
+  // row is already near the top, the mounted rows have no gap, and the
+  // target is the row after the last one.
   const seqs = await mounted.evaluateAll((rows) =>
     rows.map((row) => Number(row.getAttribute("data-event-seq"))),
   );
-  const target = seqs.findIndex((seq, index) => seq !== index + 1) + 1;
+  const gap = seqs.findIndex((seq, index) => seq !== index + 1);
+  const target = gap === -1 ? Math.max(...seqs) + 1 : gap + 1;
   expect(target).toBeGreaterThan(1);
   await expect(entry(target)).not.toBeAttached();
   await entry(1).focus();
