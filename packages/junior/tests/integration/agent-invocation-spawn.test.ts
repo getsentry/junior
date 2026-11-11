@@ -33,8 +33,8 @@ import {
 } from "@/chat/agent-dispatch/heartbeat";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
+  createEventSource,
   createLocalSource,
-  createWebSource,
   type ObjectAnnotation,
 } from "@sentry/junior-plugin-api";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
@@ -523,6 +523,102 @@ describe("agent invocation spawn and result delivery", () => {
     }
   });
 
+  it("delivers the cards of a Conversation loop Turn's reply, not of the spawn's Turn", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const events = getConversationEventStore();
+    const lifecycle = new ConversationTurnLifecycleService(events);
+    const change = (key: string): ObjectAnnotation => ({
+      kind: "object",
+      objectType: "code_change",
+      key,
+      label: key,
+      title: "Fix the parser",
+      url: "https://github.com/getsentry/junior/pull/1",
+      status: "open",
+    });
+    // One Turn of the child selects the card of one change.
+    const runTurn = async (turnId: string, key: string, atMs: number) => {
+      await lifecycle.start({
+        conversationId: created.childConversationId,
+        createdAtMs: atMs,
+        inputMessageIds: [`input:${turnId}`],
+        surface: "internal",
+        turnId,
+      });
+      await events.append(created.childConversationId, [
+        {
+          createdAtMs: atMs + 1,
+          data: {
+            type: "tool_result",
+            toolName: "github_createPullRequest",
+            details: {
+              objectCards: await saveObjectAnnotations(
+                created.childConversationId,
+                "github",
+                [change(key)],
+              ),
+            },
+            isError: false,
+          },
+        },
+      ]);
+    };
+    const created = await createAgentInvocation(
+      { ...slackInvocationInput, idempotencyKey: "loop-cards" },
+      2_000,
+    );
+    try {
+      const spawnTurnId = getAgentInvocationTurnId(created.invocationId);
+      await runTurn(spawnTurnId, "getsentry/junior#1", 2_000);
+      await lifecycle.complete({
+        conversationId: created.childConversationId,
+        createdAtMs: 2_010,
+        outcome: "success",
+        turnId: spawnTurnId,
+      });
+      await completeAgentInvocation({
+        invocationId: created.invocationId,
+        result: "",
+        status: "completed",
+      });
+      // A Watch Event Turn on the child's Conversation loop replies before
+      // it ends.
+      await runTurn("turn_watch-event", "getsentry/junior#2", 3_000);
+      await createDeliverToParent({ queue, state })({
+        actor: EVENT_SYSTEM_ACTOR,
+        conversationId: created.childConversationId,
+        result: {
+          kind: "reply",
+          reply: { text: "Opened #2.", toolCallId: "call-reply" },
+        },
+        turnId: "turn_watch-event",
+      });
+
+      await lifecycle.start({
+        conversationId: slackParentConversationId,
+        createdAtMs: 4_000,
+        inputMessageIds: [
+          getAgentReplyMessageId(
+            created.invocationId,
+            getTurnReplyKey("turn_watch-event", "call-reply"),
+          ),
+        ],
+        surface: "slack",
+        turnId: "parent-loop-reply-turn",
+      });
+      await expect(
+        loadPendingMessageCards(slackParentConversationId),
+      ).resolves.toEqual([
+        expect.objectContaining({ key: "getsentry/junior#2" }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("names a finished sibling whose result has not reached the parent", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
@@ -640,7 +736,12 @@ describe("agent invocation spawn and result delivery", () => {
             ],
             mode: "running",
             sliceId: 1,
-            source: createWebSource(replied.childConversationId, "public"),
+            source: createEventSource({
+              eventKey: "deploy-1",
+              eventType: "deployment.failed",
+              identifier: "getsentry/junior",
+              namespace: "github",
+            }),
             surface: "api",
             turnId,
           });

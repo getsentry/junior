@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
 import {
+  createDeliverToParent,
   enqueueAgentInvocationResult,
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
@@ -16,8 +17,10 @@ import type {
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
+  appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
@@ -33,6 +36,7 @@ import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
   createHarness,
   finishInvocation,
+  sendPersonMessage,
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
@@ -93,15 +97,16 @@ describe("child Turns on the Conversation loop", () => {
   });
 
   // A grandchild result still runs on an agent invocation, so a rollback
-  // leaves no unread result that `main` would wait for. A reply runs on the
-  // Conversation loop. Both keep the grants of the timer Turn that spawned
-  // the grandchild.
+  // leaves no unread result that `main` would wait for. It keeps the grants
+  // of the timer Turn that spawned the grandchild. A reply from a later
+  // Watch Event Turn on the grandchild's Conversation loop runs as the Actor
+  // only, as on `main`.
   it.each([
-    { input: "result", onInvocation: true },
-    { input: "reply", onInvocation: false },
+    { input: "result", grants: true },
+    { input: "reply", grants: false },
   ] as const)(
-    "runs a grandchild $input as the spawn's Actor with its grants",
-    async ({ input, onInvocation }) => {
+    "runs a grandchild $input as the spawn's Actor (grants: $grants)",
+    async ({ input, grants }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -129,7 +134,24 @@ describe("child Turns on the Conversation loop", () => {
             state: harness.state,
           });
         } else {
-          await sendHelperReply(harness, helper);
+          await completeAgentInvocation({
+            invocationId: helper.invocationId,
+            result: "",
+            status: "completed",
+          });
+          await createDeliverToParent({
+            queue: harness.queue,
+            state: harness.state,
+          })({
+            actor: EVENT_SYSTEM_ACTOR,
+            conversationId: helper.childConversationId,
+            result: {
+              kind: "reply",
+              reply: { text: "Deploy failed.", toolCallId: "call-reply" },
+            },
+            turnId: "turn_watch-event",
+          });
+          vi.setSystemTime(Date.now() + 60_000);
         }
         await harness.processUntilRun(childId);
 
@@ -137,43 +159,108 @@ describe("child Turns on the Conversation loop", () => {
         expect(run).toMatchObject({
           actor: EVENT_SYSTEM_ACTOR,
           conversationId: childId,
-          credentialContext,
         });
-        expect(run.agentInvocationId !== undefined).toBe(onInvocation);
+        // Without the spawn's grants, the run has only the Actor's own.
+        expect(run.credentialContext).toEqual(
+          grants ? credentialContext : { actor: EVENT_SYSTEM_ACTOR },
+        );
+        expect(run.agentInvocationId !== undefined).toBe(grants);
       } finally {
         await harness.close();
       }
     },
   );
 
-  it("shows a child as running while its Turn runs on the Conversation loop", async () => {
+  // Only a gated Turn answers the parent, so only it keeps the child
+  // running. A person's Turn in a Thread does not.
+  it.each([
+    { input: "helper reply", running: true },
+    { input: "person message", running: false },
+  ] as const)(
+    "shows a Thread as running only while a Turn that answers runs ($input)",
+    async ({ input, running }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const childId = await startIdleChild(harness, "thread");
+        const seen: unknown[] = [];
+        harness.onPersonRun(async (run) => {
+          seen.push(
+            await createSearchAgentsTool({
+              conversationId: slackParentConversationId,
+            }).execute!({}, {}),
+            (
+              await listUnreportedSiblingAgents(
+                slackParentConversationId,
+                "agent:sibling",
+                [],
+              )
+            ).map((agent) => agent.childConversationId),
+          );
+          expect(run.agentInvocationId).toBeUndefined();
+          throw new Error("stop after reading the run");
+        });
+        if (input === "helper reply") {
+          await sendHelperReply(harness, await createHelper(childId));
+        } else {
+          await sendPersonMessage(harness, childId, "person-message");
+        }
+        await harness.processUntilRun(childId);
+
+        expect(seen).toEqual([
+          {
+            agents: [
+              expect.objectContaining({
+                status: running ? "running" : "idle",
+              }),
+            ],
+          },
+          running ? [childId] : [],
+        ]);
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
+  it("shows a child as running while its Watch Event waits in the mailbox", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
       const childId = await startIdleChild(harness, "task");
-      const seen: unknown[] = [];
-      harness.onPersonRun(async (run) => {
-        seen.push(
-          await createSearchAgentsTool({
-            conversationId: slackParentConversationId,
-          }).execute!({}, {}),
-          (
-            await listUnreportedSiblingAgents(
-              slackParentConversationId,
-              "agent:sibling",
-              [],
-            )
-          ).map((agent) => agent.childConversationId),
-        );
-        expect(run.agentInvocationId).toBeUndefined();
-        throw new Error("stop after reading the run");
+      // The Event is in its debounce window, so no worker has taken it.
+      await appendAndEnqueueInboundMessage({
+        message: createEventInboundMessage({
+          event: {
+            eventKey: "deploy-1",
+            eventType: "deployment.failed",
+            identifier: "getsentry/junior",
+            namespace: "github",
+            occurredAtMs: Date.now(),
+            trustedSummary: "A deployment failed.",
+          },
+          subscription: { conversationId: childId, id: "watch-1" },
+          text: "Deploy failed.",
+        }),
+        queue: harness.queue,
+        state: harness.state,
       });
-      await sendHelperReply(harness, await createHelper(childId));
-      await harness.processUntilRun(childId);
 
-      expect(seen).toEqual([
-        { agents: [expect.objectContaining({ status: "running" })] },
-        [childId],
+      await expect(
+        createSearchAgentsTool({
+          conversationId: slackParentConversationId,
+        }).execute!({}, {}),
+      ).resolves.toEqual({
+        agents: [expect.objectContaining({ status: "running" })],
+      });
+      await expect(
+        listUnreportedSiblingAgents(
+          slackParentConversationId,
+          "agent:sibling",
+          [],
+        ),
+      ).resolves.toEqual([
+        expect.objectContaining({ childConversationId: childId }),
       ]);
     } finally {
       await harness.close();

@@ -553,9 +553,11 @@ function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
 
 /**
  * Return whether a stop skipped this result or reply, so it starts no work.
- * A message that a child sent before its stop is still delivered. While the
- * sending child is stopped, its reply is dropped when it was sent after the
- * stop, or when the stop skipped the agent invocation that it names.
+ * A message that a child sent before its stop is still delivered. A reply is
+ * dropped when the stop skipped the agent invocation that it names and it was
+ * sent before that, also after the child gets a new task. While the sending
+ * child is stopped, its reply is also dropped when it was sent after the
+ * stop.
  */
 async function isSkippedAgentResult(
   input: ChildAgentInput,
@@ -567,6 +569,11 @@ async function isSkippedAgentResult(
     invocation.parentMailboxStatus === "skipped";
   if (input.kind !== "reply") {
     return input.kind === "result" && skipped;
+  }
+  // A reply from work that a stop skipped stays dropped, also after the
+  // parent gives the child a new task.
+  if (skipped && message.createdAtMs <= invocation.updatedAtMs) {
+    return true;
   }
   const stoppedAtMs = await getConversationStoppedAtMs(
     invocation.childConversationId,
@@ -814,15 +821,19 @@ export async function withAgentInvocationResultActors(
       if (await isSkippedAgentResult(input, invocation, entry.message)) {
         return undefined;
       }
-      return entry.message.input.authorId === resultAuthorId(invocation.actor)
+      if (entry.message.input.authorId !== resultAuthorId(invocation.actor)) {
+        return { ...entry, actor: EVENT_SYSTEM_ACTOR };
+      }
+      // Only a result continues the work of the Turn that spawned the child,
+      // so only a result keeps that Turn's grants, such as a timer owner's. A
+      // reply or message runs as the Actor only.
+      return input.kind === "result" && invocation.credentialContext
         ? {
             ...entry,
             actor: invocation.actor,
-            ...(invocation.credentialContext
-              ? { credentialContext: invocation.credentialContext }
-              : undefined),
+            credentialContext: invocation.credentialContext,
           }
-        : { ...entry, actor: EVENT_SYSTEM_ACTOR };
+        : { ...entry, actor: invocation.actor };
     }),
   );
   const kept = batch.filter((entry) => entry !== undefined);

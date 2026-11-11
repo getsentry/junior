@@ -10,6 +10,7 @@ import {
 import {
   getAgentInvocationIdForResult,
   getAgentInvocationTurnId,
+  getAgentReplyMessageId,
 } from "@/chat/agent-invocations/ids";
 import {
   completeAgentInvocation,
@@ -20,10 +21,16 @@ import type {
   CreateAgentInvocationInput,
   TerminalAgentInvocation,
 } from "@/chat/agent-invocations/types";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import {
+  createAndEnqueueAgentInvocation,
+  enqueueAgentInvocation,
+} from "@/chat/agent-invocations/work";
 import { stopConversation } from "@/chat/conversations/stop";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { markConversationsStopped } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  markConversationsStopped,
+} from "@/chat/conversations/session-stop";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -108,6 +115,17 @@ describe("stopping child agents", () => {
       });
       const processing = harness.processNext(running.childConversationId);
       await runner.started();
+      // The child replies, and the parent has not read the reply at the stop.
+      await enqueueChildResultToParent({
+        queue: harness.queue,
+        result: {
+          kind: "reply",
+          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
+        },
+        messageKey: "call-old-reply",
+        sender: running,
+        state: harness.state,
+      });
 
       await expect(stopAgent(running.childConversationId)).resolves.toEqual({
         conversation_id: running.childConversationId,
@@ -135,7 +153,14 @@ describe("stopping child agents", () => {
         status: "stopped",
       });
       // The parent asked for the stop, so no result Turn wakes it.
-      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        expect.objectContaining({
+          inboundMessageId: getAgentReplyMessageId(
+            running.invocationId,
+            "call-old-reply",
+          ),
+        }),
+      ]);
       await expect(
         loadTurnEvents(running.childConversationId),
       ).resolves.toContainEqual(
@@ -173,16 +198,23 @@ describe("stopping child agents", () => {
         conversation_id: running.childConversationId,
         stopped: false,
       });
-      // A message from the parent starts new work on the stopped child.
-      await expect(
-        createAgentInvocationForMessage({
+      // A message from the parent starts new work on the stopped child, in
+      // the same parent Turn as the stop.
+      const retask = await createAgentInvocationForMessage(
+        {
           ...invocationInput,
           childConversationId: running.childConversationId,
           idempotencyKey: "after-stop",
           input: "short task",
           parentToolCallId: "call-after-stop",
-        }),
-      ).resolves.toMatchObject({
+        },
+        Date.now() + 1,
+      );
+      await enqueueAgentInvocation(retask.invocation, {
+        queue: harness.queue,
+        state: harness.state,
+      });
+      expect(retask).toMatchObject({
         invocation: {
           agentName: "researcher",
           childConversationId: running.childConversationId,
@@ -190,6 +222,15 @@ describe("stopping child agents", () => {
         },
         queued: false,
       });
+      await expect(
+        getConversationStoppedAtMs(running.childConversationId),
+      ).resolves.toBeUndefined();
+      // The new task does not bring back the stopped work's reply.
+      await expect(
+        harness.processNext(parentConversationId),
+      ).resolves.toMatchObject({ status: "completed" });
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
+      expect(runner.runs).toHaveLength(1);
     } finally {
       await harness.close();
     }

@@ -3,8 +3,15 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
+import {
+  isPersonInput,
+  turnBehavior,
+} from "@/chat/conversations/kind-behavior";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
-import type { ConversationStatus } from "@/chat/conversations/store";
+import type {
+  ConversationKind,
+  ConversationStatus,
+} from "@/chat/conversations/store";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import {
   juniorAgentBindings,
@@ -16,8 +23,8 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
   getAgentInvocationIdForResult,
   isAgentReplyMessageId,
-  isTurnReplyMessageId,
   parseAgentReplyMessageId,
+  parseTurnReplyMessageId,
 } from "./ids";
 import {
   invocationFromRow,
@@ -189,11 +196,15 @@ export async function listChildAgents(
         conversations
           .filter(
             (row) =>
+              row.executionStatus === "pending" ||
               row.executionStatus === "running" ||
               row.executionStatus === "paused",
           )
           .map(async (row) =>
-            (await runsOnConversationLoop(row.conversationId))
+            (await runsOnConversationLoop(
+              row.conversationId,
+              conversationKindFromRow(row),
+            ))
               ? row.conversationId
               : undefined,
           ),
@@ -227,21 +238,35 @@ export async function listChildAgents(
     .sort((left, right) => right.updatedAtMs - left.updatedAtMs);
 }
 
+// Only a gated Turn answers the parent. A person's Turn in a Thread does not.
+function answersParent(kind: ConversationKind, source: string | undefined) {
+  const personInput = isPersonInput(source);
+  return !personInput && turnBehavior({ kind, personInput }).gated;
+}
+
 /**
- * Return whether a child's work runs on the Conversation loop. That Turn
- * holds its input in the mailbox until it commits it, and then keeps an open
+ * Return whether a child has work on the Conversation loop that will answer
+ * its parent. That Turn holds its input in the mailbox until it commits it,
+ * such as a Watch Event in its debounce window, and then keeps an open
  * mailbox Turn. Agent invocation input and Turns are not such work.
  */
-async function runsOnConversationLoop(conversationId: string) {
+async function runsOnConversationLoop(
+  conversationId: string,
+  kind: ConversationKind,
+) {
   const work = await getConversationWorkState({ conversationId });
   if (
     work?.execution.pendingMessages.some(
-      (message) => message.input.metadata?.kind !== "agent_invocation",
+      (message) =>
+        message.input.metadata?.kind !== "agent_invocation" &&
+        answersParent(kind, message.source),
     )
   ) {
     return true;
   }
-  return (await listActiveMailboxTurns(conversationId)).length > 0;
+  return (await listActiveMailboxTurns(conversationId)).some((turn) =>
+    answersParent(kind, turn.source?.kind),
+  );
 }
 
 // The children whose open Conversation loop Turn has a reply in the parent's
@@ -280,12 +305,8 @@ async function listAnsweredLoopChildren(
               sender.invocationId === reply.invocationId &&
               sender.childConversationId === childConversationId,
           ) &&
-          turns.some((turn) =>
-            isTurnReplyMessageId(
-              reply.messageId,
-              reply.invocationId,
-              turn.turnId,
-            ),
+          turns.some(
+            (turn) => parseTurnReplyMessageId(reply.messageId) === turn.turnId,
           ),
       )
         ? childConversationId
