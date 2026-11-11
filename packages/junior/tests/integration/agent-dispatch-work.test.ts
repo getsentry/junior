@@ -350,6 +350,16 @@ describe("agent dispatch conversation work", () => {
       channel: destination.channelId,
       thread_ts: "1700000000.000200",
     });
+    // The first reply binds the thread, so a person's reply before any later
+    // Turn reaches this Conversation.
+    await expect(
+      getConversationStore().getConversationIdByProviderConversation({
+        provider: "slack",
+        providerConversationId: "1700000000.000200",
+        providerDestinationId: destination.channelId,
+        providerTenantId: destination.teamId,
+      }),
+    ).resolves.toBe(conversationId);
 
     // Watch Event Turns reply in the run's thread, or stay quiet.
     await watchEvent("watch-merged", "pull_request.merged");
@@ -379,14 +389,6 @@ describe("agent dispatch conversation work", () => {
 
     // A person's reply in the run's thread runs in the run's Conversation and
     // gets its final response.
-    await expect(
-      getConversationStore().getConversationIdByProviderConversation({
-        provider: "slack",
-        providerConversationId: "1700000000.000200",
-        providerDestinationId: destination.channelId,
-        providerTenantId: destination.teamId,
-      }),
-    ).resolves.toBe(conversationId);
     await handleSlackWebhookAndFlush({
       request: slackWebhookRequest(
         slackEnvelope({
