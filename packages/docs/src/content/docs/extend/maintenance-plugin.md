@@ -63,9 +63,9 @@ The `self-update` skill uses the app's existing package manager and repository t
 
 ## Skills
 
-| Skill         | Purpose                                                                                                                                                                       |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `self-update` | Updates `@sentry/junior` and enabled `@sentry/junior-*` packages to the latest published release, syncs the lockfile, runs checks and builds, and opens a draft pull request. |
+| Skill         | Purpose                                                                                                                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `self-update` | Updates `@sentry/junior` and enabled `@sentry/junior-*` packages to the latest published release, syncs the lockfile, runs checks and builds, and opens a pull request ready for review. |
 
 The `self-update` skill also builds a best-effort release summary from npm publish timestamps and merged PRs, and compares app config against Junior's example app to catch config-shape drift before checks run.
 
