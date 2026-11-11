@@ -199,6 +199,101 @@ test("the list loads older Conversations as it scrolls", async ({
   expect(await scroller.evaluate((node) => node.scrollTop)).toBe(scrollTop);
 });
 
+test("a failed page still lets another list show its loaded rows", async ({
+  dashboard,
+  page,
+}) => {
+  // The lists share the feed pages, but each shows its own number of rows.
+  const older = Array.from({ length: 40 }, (_, index) => index + 1);
+  let oldestAttempts = 0;
+  await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+    const url = new URL(route.request().url());
+    const cursor = url.searchParams.get("cursor");
+    if (cursor === "oldest") {
+      oldestAttempts += 1;
+      if (oldestAttempts === 1) {
+        return route.fulfill({ json: { error: "Failed" }, status: 500 });
+      }
+    }
+    if (cursor) {
+      const response = await route.fetch({ url: url.origin + url.pathname });
+      const feed = await response.json();
+      const template = feed.conversations.at(-1);
+      const row = (id: string, title: string, day: number) => ({
+        ...template,
+        conversationId: `slack:COLD:${id}`,
+        displayTitle: title,
+        lastProgressAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
+        lastSeenAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
+        pinnedAt: undefined,
+        startedAt: `2026-06-${String(day).padStart(2, "0")}T09:00:00.000Z`,
+        status: "completed",
+      });
+      return route.fulfill({
+        json:
+          cursor === "older"
+            ? {
+                ...feed,
+                conversations: older.map((index) =>
+                  row(String(index), `Older conversation ${index}`, 28),
+                ),
+                nextCursor: "oldest",
+              }
+            : {
+                ...feed,
+                conversations: [row("oldest", "The oldest conversation", 1)],
+                nextCursor: undefined,
+              },
+      });
+    }
+    const response = await route.fetch();
+    return route.fulfill({
+      response,
+      json: { ...(await response.json()), nextCursor: "older" },
+    });
+  });
+  await mockReviewItems(page);
+  const retry = page.getByRole("button", { name: "Try again" });
+  const scrollToEnd = (name: string) =>
+    page
+      .getByRole("region", { name })
+      .locator(".overflow-y-auto")
+      .first()
+      .evaluate((node) => (node.scrollTop = node.scrollHeight));
+
+  // Conversations loads every page it can, until one fails.
+  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  await expect(async () => {
+    await scrollToEnd("Conversations");
+    await expect(retry).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  expect(oldestAttempts).toBe(1);
+
+  // The Inbox shows its first rows. The failure does not stop the rows
+  // that are already loaded from showing as the reader scrolls.
+  await page
+    .getByRole("navigation", { name: "Inbox" })
+    .getByRole("link", { name: /^Inbox\b/ })
+    .click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  const last = page.getByRole("link", { name: /Older conversation 40\b/ });
+  await expect(async () => {
+    await scrollToEnd("Inbox");
+    await expect(last).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  // Once they all show, Try again loads the failed page.
+  await expect(async () => {
+    await scrollToEnd("Inbox");
+    await expect(retry).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  expect(oldestAttempts).toBe(1);
+  await retry.click();
+  await expect(
+    page.getByRole("link", { name: /The oldest conversation/ }),
+  ).toBeVisible();
+  await expect(retry).toHaveCount(0);
+});
+
 test.describe("on a phone", () => {
   test.use({ viewport: { height: 844, width: 390 } });
 

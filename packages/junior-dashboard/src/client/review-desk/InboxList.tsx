@@ -387,10 +387,12 @@ export function InboxList(props: {
           : view === "done"
             ? [donePages]
             : [];
-  const failed = pages.filter((source) => source.failed);
+  // A failed page read stops only new reads. Rows already loaded still
+  // show as the reader scrolls, and Try again shows once they all do.
+  const failed = hidden > 0 ? [] : pages.filter((source) => source.failed);
   const more =
-    failed.length === 0 &&
-    (hidden > 0 || pages.some((source) => source.hasMore));
+    hidden > 0 ||
+    (failed.length === 0 && pages.some((source) => source.hasMore));
   const loadingMore = pages.some((source) => source.loadingMore);
   const loadNext = useEffectEvent(() => {
     if (hidden > 0) state.showMore();
