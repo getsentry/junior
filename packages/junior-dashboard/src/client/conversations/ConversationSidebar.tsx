@@ -154,7 +154,6 @@ export function ConversationSidebar(props: {
   );
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)] overflow-hidden border-r border-dashboard-border bg-dashboard-surface-panel">
-      <InboxLink count={props.waitingConversations.size} />
       {/* The list wraps the always-shown scroll area, so a pointer that
           rests on it through the first load, or on its padding or
           scrollbar, still holds the order. */}
@@ -171,6 +170,7 @@ export function ConversationSidebar(props: {
             className="h-full"
             viewportClassName="px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
+            <InboxLink count={props.waitingConversations.size} />
             {props.error ? (
               <div className="p-2">
                 <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -282,21 +282,25 @@ function ConversationRowsLoading() {
 }
 
 /**
- * Float the count of Conversations that wait on the viewer at the top right
- * of the list, so it takes no row. It opens the Inbox on their Review items,
+ * Float the count of Conversations that wait on the viewer at the right of
+ * the first section heading, so it takes no row. It scrolls with the list,
+ * so it never covers a row. It opens the Inbox on their Review items,
  * grouped by Conversation. The rows stay in place and carry the waiting
  * marker.
  */
 function InboxLink(props: { count: number }) {
   if (props.count === 0) return null;
   return (
-    <Link
-      className="absolute top-1.5 right-3 z-10 flex items-center gap-1 rounded-lg bg-dashboard-surface-raised px-2 py-1 font-sans text-xs font-semibold text-dashboard-accent-text no-underline shadow-sm ring-1 ring-dashboard-accent/30 transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
-      to={NEEDS_YOU_INBOX_PATH}
-    >
-      {props.count} in Inbox
-      <ArrowRight aria-hidden="true" size={13} />
-    </Link>
+    // A zero-height anchor at the top of the scrolled content.
+    <div className="relative h-0">
+      <Link
+        className="absolute top-1 right-1.5 z-10 flex items-center gap-1 rounded-lg bg-dashboard-surface-raised px-2 py-0.5 font-sans text-xs font-semibold text-dashboard-accent-text no-underline shadow-sm ring-1 ring-dashboard-accent/30 transition-colors hover:bg-dashboard-fill-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus"
+        to={NEEDS_YOU_INBOX_PATH}
+      >
+        {props.count} in Inbox
+        <ArrowRight aria-hidden="true" size={13} />
+      </Link>
+    </div>
   );
 }
 
