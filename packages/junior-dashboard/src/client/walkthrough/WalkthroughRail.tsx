@@ -12,6 +12,9 @@ import { chapterTitle, typeLabels } from "./walkthroughModel";
 
 const NO_WATCHES = new Map();
 
+/** How a chapter differs from what the reviewer last saw. */
+export type ChapterMark = "changed" | "new";
+
 const railHeadingClass =
   "m-0 font-sans text-sm font-semibold text-dashboard-text";
 
@@ -19,6 +22,8 @@ const railHeadingClass =
 export function WalkthroughRail(props: {
   activeIndex?: number;
   chapters: readonly WalkthroughChapter[];
+  /** Chapters that changed or were added since the reviewer looked. */
+  marks?: ReadonlyMap<string, ChapterMark>;
   onSelect?(index: number): void;
   /** The Conversation that made the PR, when the viewer may read it. */
   sourceConversationId?: string;
@@ -65,6 +70,7 @@ export function WalkthroughRail(props: {
         <ChapterList
           activeIndex={props.activeIndex}
           chapters={props.chapters}
+          marks={props.marks}
           onSelect={props.onSelect}
         />
       ) : null}
@@ -75,6 +81,7 @@ export function WalkthroughRail(props: {
 function ChapterList(props: {
   activeIndex?: number;
   chapters: readonly WalkthroughChapter[];
+  marks?: ReadonlyMap<string, ChapterMark>;
   onSelect?(index: number): void;
 }) {
   // A slot can repeat, such as three "The change" chapters. The caption then
@@ -96,6 +103,7 @@ function ChapterList(props: {
           <ol className="m-0 grid list-none gap-0.5 p-0">
             {group.chapters.map(({ chapter, index }) => {
               const active = index === props.activeIndex;
+              const mark = props.marks?.get(chapter.id);
               return (
                 <li key={chapter.id}>
                   <button
@@ -112,7 +120,7 @@ function ChapterList(props: {
                     <span className="w-4 shrink-0 text-right text-xs tabular-nums text-dashboard-text-faint">
                       {index + 1}
                     </span>
-                    <span className="grid min-w-0 gap-0.5">
+                    <span className="grid min-w-0 flex-1 gap-0.5">
                       {chapterTitle(chapter)}
                       {(titleCounts.get(chapterTitle(chapter)) ?? 0) > 1 ? (
                         <span className="line-clamp-2 text-xs text-dashboard-text-faint">
@@ -120,6 +128,11 @@ function ChapterList(props: {
                         </span>
                       ) : null}
                     </span>
+                    {mark ? (
+                      <span className="shrink-0 text-xs text-amber-200">
+                        {mark === "new" ? "New" : "Changed"}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               );

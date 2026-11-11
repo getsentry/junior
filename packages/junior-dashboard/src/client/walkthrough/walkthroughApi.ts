@@ -42,7 +42,10 @@ function answersQueryKey(id: string) {
   return ["dashboard", "walkthrough", id, "answers"] as const;
 }
 
-/** The viewer's answers on one version, by decision id. */
+/**
+ * The viewer's answers on one version and the versions before it, by
+ * decision id.
+ */
 export function useWalkthroughAnswers(id: string): AnswerMap {
   const query = useQuery({
     queryKey: answersQueryKey(id),
@@ -78,7 +81,11 @@ export function useSaveWalkthroughAnswer(id: string) {
       const previous = queryClient.getQueryData<AnswerMap>(key);
       queryClient.setQueryData<AnswerMap>(key, {
         ...previous,
-        [answer.decisionId]: { ...answer, updatedAt: new Date().toISOString() },
+        [answer.decisionId]: {
+          ...answer,
+          versionId: id,
+          updatedAt: new Date().toISOString(),
+        },
       });
       return { previous };
     },

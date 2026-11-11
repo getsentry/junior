@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Check, PencilLine } from "lucide-react";
-import type { WalkthroughAnswerResponse } from "@sentry/junior/api/schema";
+import type {
+  WalkthroughAnswerResponse,
+  WalkthroughUpdate,
+} from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
@@ -9,15 +12,26 @@ import { cn } from "../styles";
 import type { AnswerMap, ReviewDecision } from "./walkthroughModel";
 
 /** What a reviewer saves for one decision. */
-export type DecisionAnswer = Omit<WalkthroughAnswerResponse, "updatedAt">;
+export type DecisionAnswer = Omit<
+  WalkthroughAnswerResponse,
+  "updatedAt" | "versionId"
+>;
 
-/** One decision the reviewer answers with Agree, or Request change and a note. */
+/**
+ * One decision the reviewer answers with Agree, or Request change and a note.
+ * After an update, a reopened decision shows the earlier answer, and a change
+ * request that the update answers asks whether the change answers it.
+ */
 export function WalkthroughDecision(props: {
   answer: AnswerMap[string] | undefined;
   decision: ReviewDecision;
+  /** The update item that answers the reviewer's change request. */
+  feedback?: WalkthroughUpdate["items"][number];
   onAnswer(answer: DecisionAnswer): void;
+  /** The answer before the code changed. */
+  reopened?: AnswerMap[string];
 }) {
-  const { answer, decision } = props;
+  const { answer, decision, feedback, reopened } = props;
   const [draft, setDraft] = useState(answer?.note ?? "");
   const [editing, setEditing] = useState(false);
   return (
@@ -32,9 +46,26 @@ export function WalkthroughDecision(props: {
       )}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="m-0 min-w-0 flex-1 text-sm text-dashboard-text">
-          <DisplayText inline text={decision.question} />
-        </p>
+        <div className="grid min-w-0 flex-1 gap-1">
+          {feedback ? (
+            <p className="m-0 text-sm font-medium text-dashboard-text">
+              Does this answer your feedback?
+            </p>
+          ) : null}
+          <p
+            className={cn(
+              "m-0 text-sm",
+              feedback ? "text-dashboard-text-subtle" : "text-dashboard-text",
+            )}
+          >
+            <DisplayText inline text={decision.question} />
+          </p>
+          {reopened && !answer ? (
+            <p className="m-0 text-xs text-dashboard-text-muted">
+              {reopenedText(reopened, Boolean(feedback))}
+            </p>
+          ) : null}
+        </div>
         <div className="flex shrink-0 gap-2">
           <Button
             aria-pressed={answer?.value === "agree"}
@@ -46,19 +77,19 @@ export function WalkthroughDecision(props: {
             variant={answer?.value === "agree" ? "primary" : "default"}
           >
             <Check aria-hidden="true" className="size-4" />
-            Agree
+            {feedback ? "Yes" : "Agree"}
           </Button>
           <Button
             aria-pressed={answer?.value === "change"}
             onClick={() => {
-              setDraft(answer?.note ?? "");
+              setDraft(answer?.note ?? reopened?.note ?? "");
               setEditing(true);
             }}
             type="button"
             variant={answer?.value === "change" ? "primary" : "default"}
           >
             <PencilLine aria-hidden="true" className="size-4" />
-            Request change
+            {feedback ? "Not yet" : "Request change"}
           </Button>
         </div>
       </div>
@@ -105,4 +136,12 @@ export function WalkthroughDecision(props: {
       ) : null}
     </div>
   );
+}
+
+function reopenedText(answer: AnswerMap[string], feedback: boolean): string {
+  const asked = answer.note ? `asked: ${answer.note}` : "asked for a change";
+  if (feedback) return `You ${asked}`;
+  return answer.value === "agree"
+    ? "Reopened: the code changed since you agreed."
+    : `Reopened: the code changed since you ${asked}`;
 }

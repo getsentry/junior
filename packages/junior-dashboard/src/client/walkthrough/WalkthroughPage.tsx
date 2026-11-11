@@ -7,7 +7,7 @@ import {
   type Ref,
 } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import type {
   WalkthroughDocument,
   WalkthroughVersionResponse,
@@ -27,6 +27,10 @@ import {
 } from "../components/ui/tooltip";
 import { useDocumentTitle } from "../documentTitle";
 import { DisplayText } from "../display-text/DisplayText";
+import {
+  WalkthroughChangeSummaryView,
+  WalkthroughVersions,
+} from "./WalkthroughChanges";
 import { WalkthroughChapterView } from "./WalkthroughChapterView";
 import { WalkthroughQuestions } from "./WalkthroughQuestions";
 import { WalkthroughRail } from "./WalkthroughRail";
@@ -46,9 +50,18 @@ import {
 import {
   chapterTitle,
   openDecisionCount,
+  reviewAnswers,
   reviewDecisions,
   versionTarget,
 } from "./walkthroughModel";
+import {
+  addedChapterRanks,
+  chapterChanges,
+  changeSummary,
+  lastSeenRank,
+  walkthroughChapters,
+} from "./walkthroughUpdates";
+import type { ChapterMark } from "./WalkthroughRail";
 
 /** Read one Walkthrough: a story with code as evidence. */
 export function WalkthroughPage() {
@@ -83,12 +96,30 @@ function ReadyWalkthrough(props: {
   version: WalkthroughVersionResponse;
 }) {
   const { document, version } = props;
-  const chapters = document.content.chapters;
+  const chapters = useMemo(() => walkthroughChapters(document), [document]);
   const [index, setIndex] = useState(0);
   const mainRef = useRef<HTMLElement>(null);
   const chapter = chapters[index] ?? chapters[0];
   const decisions = useMemo(() => reviewDecisions(document), [document]);
-  const answers = useWalkthroughAnswers(version.id);
+  const lineageAnswers = useWalkthroughAnswers(version.id);
+  // Answers carry over from earlier versions until the code they judged
+  // changes. Reopened ones are shown only as context.
+  const {
+    current: answers,
+    reopened,
+    feedback,
+  } = reviewAnswers(document, decisions, lineageAnswers);
+  const seen = lastSeenRank(document, lineageAnswers);
+  const changes = chapterChanges(document, seen);
+  const added = addedChapterRanks(document);
+  const summary = changeSummary(document, seen);
+  const marks = new Map<string, ChapterMark>();
+  for (const c of chapters) {
+    if ((added.get(c.id) ?? 0) > seen) marks.set(c.id, "new");
+    else if (changes.get(c.id)?.some((change) => change.unseen)) {
+      marks.set(c.id, "changed");
+    }
+  }
   const save = useSaveWalkthroughAnswer(version.id);
   const open = openDecisionCount(decisions, answers);
   const asksHere = (at: number) => decisions.some((d) => d.chapterIndex === at);
@@ -134,6 +165,7 @@ function ReadyWalkthrough(props: {
         <WalkthroughRail
           activeIndex={index}
           chapters={chapters}
+          marks={marks}
           onSelect={openChapter}
           sourceConversationId={document.sourceConversationId}
           version={version}
@@ -176,13 +208,24 @@ function ReadyWalkthrough(props: {
       version={version}
     >
       <div className="grid max-w-5xl content-start gap-6 px-6 py-6 sm:px-8">
+        {summary ? (
+          <WalkthroughChangeSummaryView
+            chapters={chapters}
+            onOpenChapter={openChapter}
+            summary={summary}
+          />
+        ) : null}
         <WalkthroughChapterView
+          added={marks.get(chapter.id) === "new"}
           answers={answers}
           chapter={chapter}
+          changes={changes.get(chapter.id) ?? []}
           decisions={decisions.filter((d) => d.chapterIndex === index)}
           document={document}
+          feedback={feedback}
           index={index}
           onAnswer={(answer) => save.mutate(answer)}
+          reopened={reopened}
           total={chapters.length}
         />
         <div className="flex items-center justify-between border-t border-dashboard-border-subtle pt-4">
@@ -218,6 +261,9 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
   const title = top?.title ?? "Walkthrough";
   useDocumentTitle(`Walkthrough · ${title}`);
   const failed = version.status === "failed";
+  const previous = version.versions
+    .filter((entry) => entry.status === "ready" && entry.id !== version.id)
+    .at(-1);
 
   return (
     <WalkthroughFrame
@@ -255,11 +301,21 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
               as="strong"
               className="font-display text-2xl leading-tight font-medium text-dashboard-text"
             >
-              Writing the Walkthrough…
+              {previous
+                ? "Updating the Walkthrough…"
+                : "Writing the Walkthrough…"}
             </ShimmerText>
             <p className="m-0 text-base leading-7 text-dashboard-text-subtle">
               This takes a few minutes. You can leave this page and come back.
             </p>
+            {previous ? (
+              <Link
+                className="w-fit text-sm text-dashboard-text underline underline-offset-4"
+                to={`/walkthroughs/${encodeURIComponent(previous.id)}`}
+              >
+                Read the previous version
+              </Link>
+            ) : null}
           </>
         )}
       </div>
@@ -298,6 +354,7 @@ function WalkthroughFrame(props: {
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <WalkthroughVersions version={props.version} />
             {cost !== undefined ? (
               <Tooltip>
                 <TooltipTrigger

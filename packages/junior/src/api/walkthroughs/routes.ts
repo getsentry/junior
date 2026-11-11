@@ -5,7 +5,7 @@ import { getDb } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  readWalkthroughAnswers,
+  readWalkthroughLineageAnswers,
   saveWalkthroughAnswer,
   type WalkthroughAnswer,
 } from "@/chat/walkthroughs/answers";
@@ -16,6 +16,8 @@ import {
 } from "@/chat/walkthroughs/questions";
 import {
   getWalkthroughVersion,
+  listWalkthroughLineage,
+  readWalkthroughAncestorIds,
   readWalkthroughCostUsd,
   readWalkthroughDocument,
   type WalkthroughVersion,
@@ -43,11 +45,12 @@ import { requireViewer } from "../viewer";
 async function walkthroughResponse(
   version: WalkthroughVersion,
 ): Promise<WalkthroughVersionResponse> {
-  const [costUsd, document] = await Promise.all([
+  const [costUsd, document, lineage] = await Promise.all([
     readWalkthroughCostUsd(version),
     version.status === "ready"
       ? readWalkthroughDocument(getAttachmentStorage(), version)
       : undefined,
+    listWalkthroughLineage(version),
   ]);
   return {
     id: version.id,
@@ -58,6 +61,11 @@ async function walkthroughResponse(
       ({ body: _body, ...change }) => change,
     ),
     createdAt: version.createdAt.toISOString(),
+    versions: lineage.map((entry) => ({
+      id: entry.id,
+      status: entry.status,
+      createdAt: entry.createdAt.toISOString(),
+    })),
     ...(costUsd !== undefined ? { costUsd } : undefined),
     ...(version.failureReason
       ? { failureReason: version.failureReason }
@@ -105,6 +113,7 @@ async function readableVersion(
 function answerResponse(answer: WalkthroughAnswer): WalkthroughAnswerResponse {
   return {
     decisionId: answer.decisionId,
+    versionId: answer.versionId,
     value: answer.value,
     ...(answer.note ? { note: answer.note } : undefined),
     updatedAt: answer.updatedAt.toISOString(),
@@ -176,6 +185,8 @@ export function createWalkthroughRoutes(options: {
   );
 
   // Answers belong to the viewer. Nobody reads another reviewer's answers.
+  // Answers on earlier versions come too, so an update keeps what still
+  // holds.
   app.get(
     "/:id/answers",
     requireViewer,
@@ -190,8 +201,8 @@ export function createWalkthroughRoutes(options: {
         context.req.valid("param").id,
         viewer,
       );
-      const answers = await readWalkthroughAnswers({
-        versionId: version.id,
+      const answers = await readWalkthroughLineageAnswers({
+        versionIds: await readWalkthroughAncestorIds(version.id),
         userId: viewer.id,
       });
       return jsonResponse(walkthroughAnswersSchema, {

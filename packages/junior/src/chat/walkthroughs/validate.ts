@@ -33,11 +33,18 @@ export function contextFileKey(pr: number, path: string): string {
   return `${pr}:${path}`;
 }
 
-/** Parent version facts that an update may refer to. */
+/** Previous version facts that an update may refer to. */
 export type WalkthroughParentRefs = {
   chapterIds: ReadonlySet<string>;
+  /** Chapters whose cited code changed. Each needs an update item. */
+  changedChapterIds: ReadonlySet<string>;
+  /** Decision and earlier update item ids. New ids must not reuse them. */
+  decisionIds: ReadonlySet<string>;
   /** Decisions that got "change" feedback. */
   changedDecisionIds: ReadonlySet<string>;
+  diagramIds: ReadonlySet<string>;
+  /** `contextFileKey` of files whose diff changed. Only these need coverage. */
+  changedFiles: ReadonlySet<string>;
 };
 
 /**
@@ -95,13 +102,27 @@ export function validateWalkthrough(
   return problems;
 }
 
-/** Return problems with an update. Old chapters cannot change, only be touched. */
+/**
+ * Return problems with an update. Old chapters cannot change, only be
+ * touched, and only the code that changed since the previous version needs
+ * coverage.
+ */
 export function validateWalkthroughUpdate(
   output: WalkthroughUpdateOutput,
   refs: WalkthroughInputRefs,
   parent: WalkthroughParentRefs,
 ): string[] {
   const problems: string[] = [];
+  const newIds = [
+    ...output.items.flatMap((i) => [i.id, ...i.decisions.map((d) => d.id)]),
+    ...output.added_chapters.flatMap((c) => c.decisions.map((d) => d.id)),
+  ];
+  problems.push(...duplicateIds("decision or item", newIds));
+  for (const id of newIds) {
+    if (parent.decisionIds.has(id)) {
+      problems.push(`Id ${id} is already used by the previous version.`);
+    }
+  }
   for (const item of output.items) {
     if (!parent.chapterIds.has(item.touches)) {
       problems.push(
@@ -118,18 +139,31 @@ export function validateWalkthroughUpdate(
       ...citationProblems(item.id, item.body, item.evidence.length),
     );
   }
-  for (const chapter of output.addedChapters) {
+  const touched = new Set(output.items.map((item) => item.touches));
+  for (const id of parent.changedChapterIds) {
+    if (!touched.has(id)) {
+      problems.push(
+        `The code that chapter ${id} cites changed, but no update item touches it.`,
+      );
+    }
+  }
+  for (const chapter of output.added_chapters) {
     if (parent.chapterIds.has(chapter.id)) {
       problems.push(`Added chapter ${chapter.id} reuses an existing id.`);
     }
-    problems.push(...chapterProblems(chapter, refs, undefined));
+    problems.push(...chapterProblems(chapter, refs, parent.diagramIds));
   }
   problems.push(
     ...coverageProblems(
-      refs,
+      {
+        ...refs,
+        files: refs.files.filter((file) =>
+          parent.changedFiles.has(contextFileKey(file.pr, file.path)),
+        ),
+      },
       [
         ...output.items.flatMap((i) => i.evidence),
-        ...output.addedChapters.flatMap((c) => c.evidence),
+        ...output.added_chapters.flatMap((c) => c.evidence),
       ],
       output.not_covered,
     ),

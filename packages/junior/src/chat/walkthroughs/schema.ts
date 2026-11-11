@@ -240,7 +240,10 @@ export const walkthroughOutputSchema = z
   })
   .strict();
 
-/** What the model writes for an update. Old chapters stay frozen. */
+/**
+ * What the model writes for an update. Old chapters stay frozen: each item
+ * says what changed in one of them and why.
+ */
 export const walkthroughUpdateOutputSchema = z
   .object({
     items: z
@@ -248,7 +251,7 @@ export const walkthroughUpdateOutputSchema = z
         z
           .object({
             id: idSchema,
-            /** Chapter id in the parent version. */
+            /** Chapter id in the previous version. */
             touches: idSchema,
             /** Decision id with "change" feedback that this item answers. */
             answers: idSchema.optional(),
@@ -261,7 +264,7 @@ export const walkthroughUpdateOutputSchema = z
       )
       .max(8),
     /** New concerns that do not fit an old chapter. */
-    addedChapters: z.array(walkthroughChapterSchema).max(4).default([]),
+    added_chapters: z.array(walkthroughChapterSchema).max(4).default([]),
     not_covered: notCoveredSchema,
   })
   .strict();
@@ -357,12 +360,42 @@ export const walkthroughDocumentSchema = z
         .strict(),
     ),
     content: walkthroughOutputSchema,
+    /**
+     * Fingerprint of each changed file's diff. The next version compares
+     * them to find the code that changed, so a rebase alone changes nothing.
+     */
+    files: z
+      .array(
+        z
+          .object({
+            pr: z.number().int().positive(),
+            path: z.string().min(1),
+            hash: z.string().min(1),
+          })
+          .strict(),
+      )
+      .default([]),
     /** Update layers on top of `content`, oldest first. */
     updates: z.array(
       walkthroughUpdateOutputSchema.extend({
         versionId: z.string().min(1),
-        pushes: z.number().int().positive(),
         createdAt: z.string().datetime(),
+        /** Chapters whose cited code changed. Their decisions reopen. */
+        changedChapters: z.array(idSchema),
+        /** Layers whose commits moved since the previous version. */
+        movedLayers: z.array(z.number().int().positive()),
+        /** Layers that joined the stack. */
+        newLayers: z.array(z.number().int().positive()),
+        /** Layers that left the stack, such as by merging. */
+        leftLayers: z.array(
+          z
+            .object({
+              pr: z.number().int().positive(),
+              title: sentence(200),
+              url: z.string().url(),
+            })
+            .strict(),
+        ),
       }),
     ),
     meta: z
@@ -380,6 +413,7 @@ export type WalkthroughOutput = z.infer<typeof walkthroughOutputSchema>;
 export type WalkthroughUpdateOutput = z.infer<
   typeof walkthroughUpdateOutputSchema
 >;
+export type WalkthroughUpdate = WalkthroughDocument["updates"][number];
 export type WalkthroughChapter = z.infer<typeof walkthroughChapterSchema>;
 export type WalkthroughEvidence = z.infer<typeof evidenceSchema>;
 export type WalkthroughDecision = z.infer<typeof decisionSchema>;

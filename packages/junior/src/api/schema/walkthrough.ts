@@ -37,6 +37,16 @@ export const walkthroughVersionSchema = z
     failureReason: z.string().optional(),
     createdAt: z.string(),
     completedAt: z.string().optional(),
+    /** Every version of this Walkthrough, oldest first, this one included. */
+    versions: z.array(
+      z
+        .object({
+          id: z.string(),
+          status: z.enum(["generating", "ready", "failed"]),
+          createdAt: z.string(),
+        })
+        .strict(),
+    ),
     document: walkthroughDocumentSchema.optional(),
   })
   .strict();
@@ -57,13 +67,21 @@ export const walkthroughAnswerBodySchema = z
   .strict();
 
 export const walkthroughAnswerSchema = walkthroughAnswerBodySchema
-  .extend({ decisionId: z.string(), updatedAt: z.string() })
+  .extend({
+    decisionId: z.string(),
+    /** The version the answer was given on: this one or an earlier one. */
+    versionId: z.string(),
+    updatedAt: z.string(),
+  })
   .strict();
 export type WalkthroughAnswerResponse = z.output<
   typeof walkthroughAnswerSchema
 >;
 
-/** The viewer's answers on one version. */
+/**
+ * The viewer's answers on one version and the versions before it. Each
+ * decision has its latest answer. The reader decides which ones still hold.
+ */
 export const walkthroughAnswersSchema = z
   .object({ answers: z.array(walkthroughAnswerSchema) })
   .strict();

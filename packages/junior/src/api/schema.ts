@@ -46,6 +46,7 @@ export type {
   WalkthroughDocument,
   WalkthroughEvidence,
   WalkthroughExcerpt,
+  WalkthroughUpdate,
 } from "../chat/walkthroughs/schema";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";

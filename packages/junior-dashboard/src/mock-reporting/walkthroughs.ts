@@ -11,6 +11,12 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { ACTIVE_CONVERSATION_ID } from "./fixtures";
+import {
+  mockBaseAnswers,
+  mockLineage,
+  mockUpdateDocument,
+  MOCK_UPDATE_IDS,
+} from "./walkthrough-update";
 import { createMockConversation } from "./sends";
 // Real documents from the first Walkthrough cost runs: one PR, and a stack.
 import singleRun from "./walkthroughs/pr3071.json";
@@ -56,6 +62,46 @@ function readyVersion(run: unknown): WalkthroughVersionResponse {
   };
 }
 
+/** A copy of the stack fixture and a hand-written update of it. */
+function updateLineage(
+  stack: WalkthroughVersionResponse,
+): [WalkthroughVersionResponse, WalkthroughVersionResponse] {
+  const document = stack.document;
+  if (!document) throw new Error("The stack fixture has no document");
+  const base = {
+    ...stack,
+    id: MOCK_UPDATE_IDS.base,
+    document: {
+      ...document,
+      versionId: MOCK_UPDATE_IDS.base,
+      contentVersionId: MOCK_UPDATE_IDS.base,
+    },
+  };
+  const updateDocument = mockUpdateDocument(base.document);
+  const update: WalkthroughVersionResponse = {
+    ...base,
+    id: MOCK_UPDATE_IDS.update,
+    codeChanges: updateDocument.layers.map((layer) => ({
+      number: layer.pr,
+      title: layer.title,
+      url: layer.url,
+      headSha: layer.headSha,
+      baseSha: layer.baseSha,
+      additions: layer.additions,
+      deletions: layer.deletions,
+    })),
+    createdAt: "2026-11-11T05:55:00.000Z",
+    completedAt: "2026-11-11T06:00:00.000Z",
+    document: updateDocument,
+  };
+  const { costUsd: _costUsd, ...withoutCost } = update;
+  const versions = mockLineage([base, withoutCost]);
+  return [
+    { ...base, versions },
+    { ...withoutCost, versions },
+  ];
+}
+
 function pendingVersion(
   ready: WalkthroughVersionResponse,
   id: string,
@@ -91,11 +137,15 @@ export function createMockWalkthroughRoutes(options: { send: MockSend }): Hono<{
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   const single = readyVersion(singleRun);
   const stack = readyVersion(stackRun);
-  const ready = new Map([single, stack].map((v) => [v.id, v]));
+  const [base, update] = updateLineage(stack);
+  const ready = new Map([single, stack, base, update].map((v) => [v.id, v]));
+  const parents = new Map([[update.id, base.id]]);
   const startedAtMs = new Map<string, number>();
   // Answers and questions live until the dev server restarts, like a fresh
-  // reviewer.
-  const answers = new Map<string, Map<string, WalkthroughAnswerResponse>>();
+  // reviewer. The update lineage starts with answers on its first version.
+  const answers = new Map<string, Map<string, WalkthroughAnswerResponse>>([
+    [base.id, new Map(mockBaseAnswers().map((a) => [a.decisionId, a]))],
+  ]);
   const questions = new Map<string, string>();
   const questionsKey = (id: string, viewer: User) => `${id}\u0000${viewer.id}`;
 
@@ -141,11 +191,24 @@ export function createMockWalkthroughRoutes(options: { send: MockSend }): Hono<{
     );
   });
 
-  app.get("/:id/answers", (c) =>
-    jsonResponse(walkthroughAnswersSchema, {
-      answers: [...(answers.get(c.req.param("id"))?.values() ?? [])],
-    }),
-  );
+  // Like the API: each decision's answer from the nearest version.
+  app.get("/:id/answers", (c) => {
+    const nearest = new Map<string, WalkthroughAnswerResponse>();
+    for (
+      let id: string | undefined = c.req.param("id");
+      id;
+      id = parents.get(id)
+    ) {
+      for (const answer of answers.get(id)?.values() ?? []) {
+        if (!nearest.has(answer.decisionId)) {
+          nearest.set(answer.decisionId, answer);
+        }
+      }
+    }
+    return jsonResponse(walkthroughAnswersSchema, {
+      answers: [...nearest.values()],
+    });
+  });
 
   app.put("/:id/answers/:decisionId", async (c) => {
     const id = c.req.param("id");
@@ -157,6 +220,7 @@ export function createMockWalkthroughRoutes(options: { send: MockSend }): Hono<{
     const answer = walkthroughAnswerSchema.parse({
       ...body,
       decisionId: c.req.param("decisionId"),
+      versionId: id,
       updatedAt: new Date().toISOString(),
     });
     const mine = answers.get(id) ?? new Map();

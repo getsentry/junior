@@ -30,8 +30,10 @@ import {
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import {
   createSubmitWalkthroughTool,
+  createWalkthroughReads,
   SUBMIT_WALKTHROUGH_TOOL_NAME,
 } from "@/chat/walkthroughs/submit-tool";
+import { createWalkthroughUpdateTools } from "@/chat/walkthroughs/update-tools";
 import {
   createReadWalkthroughCodeTool,
   READ_WALKTHROUGH_CODE_TOOL_NAME,
@@ -273,10 +275,26 @@ export function createTools(
   }
 
   if (turnTools.submitWalkthrough && context.walkthroughGeneration) {
-    tools[SUBMIT_WALKTHROUGH_TOOL_NAME] = createSubmitWalkthroughTool(
-      context,
-      context.walkthroughGeneration,
-    );
+    const generation = context.walkthroughGeneration;
+    const reads = createWalkthroughReads(generation);
+    const { parentVersionId } = generation;
+    if (parentVersionId) {
+      // An update reads the previous version and submits update items.
+      Object.assign(
+        tools,
+        createWalkthroughUpdateTools(
+          context,
+          { ...generation, parentVersionId },
+          reads,
+        ),
+      );
+    } else {
+      tools[SUBMIT_WALKTHROUGH_TOOL_NAME] = createSubmitWalkthroughTool(
+        context,
+        generation,
+        reads,
+      );
+    }
   }
   if (turnTools.walkthroughQuestions && context.walkthroughQuestions) {
     tools[READ_WALKTHROUGH_TOOL_NAME] = createReadWalkthroughTool(

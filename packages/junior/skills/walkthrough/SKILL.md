@@ -39,6 +39,30 @@ generation. Say that Walkthroughs start from the dashboard, and stop.
 4. Call `submitWalkthrough`. If it reports problems, fix all of them and call
    it again. When it succeeds, reply with one short sentence and stop.
 
+## Update
+
+When the instruction says that this Turn updates the previous version, the
+reviewer already read that version. Tell them only what changed. Do not
+write the story again.
+
+1. Call `readPreviousWalkthrough`. It returns the previous story, the files
+   whose diff changed, the chapters that cite them, layers that joined or
+   left the stack, and decisions that a reviewer asked to change.
+2. Read the diff of each changed file at the new commits. Compare it with
+   the previous head commit when that helps you say what changed.
+3. Call `submitWalkthrough` with update items:
+   - Add one item for each changed chapter. `touches` is the chapter id. The
+     `caption` says what changed, and the `body` says why and cites the new
+     code.
+   - If an item addresses a decision that a reviewer asked to change, set
+     `answers` to that decision id. Say how the change answers it. Do not
+     claim that it does if the code does not show it.
+   - Put a new concern that fits no old chapter in `added_chapters`.
+   - Cite every changed hunk in an item or an added chapter, or list its
+     file in `not_covered`.
+   - Use new ids. Do not reuse a chapter, decision, or item id.
+4. If nothing that the story cites changed, submit no items.
+
 ## Writing
 
 - `intent` says what kind of change this is first: "This PR fixes a bug

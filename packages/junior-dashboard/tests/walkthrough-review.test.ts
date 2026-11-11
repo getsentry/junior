@@ -1,15 +1,31 @@
 import { describe, expect, it } from "vitest";
 
+import { walkthroughVersionSchema } from "@sentry/junior/api/schema";
 import {
+  reviewAnswers,
+  reviewDecisions,
   reviewMarkdown,
   type ReviewDecision,
 } from "../src/client/walkthrough/walkthroughModel";
+import {
+  changeSummary,
+  lastSeenRank,
+  walkthroughChapters,
+} from "../src/client/walkthrough/walkthroughUpdates";
+import {
+  mockBaseAnswers,
+  mockUpdateDocument,
+  MOCK_UPDATE_IDS,
+} from "../src/mock-reporting/walkthrough-update";
+import stackRun from "../src/mock-reporting/walkthroughs/stack3089.json";
 
 const updatedAt = "2026-11-11T00:00:00.000Z";
+const versionId = "v1";
 const decisions: ReviewDecision[] = [
   {
     id: "fork-prs",
     question: "Should forks stop the stack walk?",
+    chapterId: "github-reads",
     chapterIndex: 1,
     prs: [3088],
     location: {
@@ -20,6 +36,7 @@ const decisions: ReviewDecision[] = [
   {
     id: "no-fk",
     question: "Is no foreign key fine here?",
+    chapterId: "versions-table",
     chapterIndex: 2,
     prs: [3088],
     location: { label: "src/db/schema/walkthroughs.ts:39" },
@@ -27,6 +44,7 @@ const decisions: ReviewDecision[] = [
   {
     id: "other-layer",
     question: "Does this belong in #3090?",
+    chapterId: "submit-tool",
     chapterIndex: 3,
     prs: [3090],
   },
@@ -41,12 +59,19 @@ describe("Walkthrough review text", () => {
             decisionId: "fork-prs",
             value: "change",
             note: "Stop at forks.",
+            versionId,
             updatedAt,
           },
-          "no-fk": { decisionId: "no-fk", value: "agree", updatedAt },
+          "no-fk": {
+            decisionId: "no-fk",
+            value: "agree",
+            versionId,
+            updatedAt,
+          },
           "other-layer": {
             decisionId: "other-layer",
             value: "change",
+            versionId,
             updatedAt,
           },
         },
@@ -68,5 +93,52 @@ describe("Walkthrough review text", () => {
     expect(
       reviewMarkdown({ answers: {}, comment: " ", decisions, pr: 3088 }),
     ).toBe("");
+  });
+});
+
+describe("Walkthrough answers after an update", () => {
+  const base = walkthroughVersionSchema.parse(stackRun).document!;
+  const document = mockUpdateDocument({
+    ...base,
+    versionId: MOCK_UPDATE_IDS.base,
+    contentVersionId: MOCK_UPDATE_IDS.base,
+  });
+  const answers = Object.fromEntries(
+    mockBaseAnswers().map((answer) => [answer.decisionId, answer]),
+  );
+
+  it("keeps answers whose code did not change and reopens the rest", () => {
+    const result = reviewAnswers(document, reviewDecisions(document), answers);
+    expect(Object.keys(result.current)).toEqual(["fork-prs"]);
+    expect(Object.keys(result.reopened).sort()).toEqual([
+      "no-fk",
+      "runs-as-clicker",
+    ]);
+    // The change request that the update answers asks for a verdict.
+    expect(Object.keys(result.feedback)).toEqual(["no-fk"]);
+  });
+
+  it("lists what changed since the reviewer last answered", () => {
+    const seen = lastSeenRank(document, answers);
+    expect(seen).toBe(0);
+    const chapters = walkthroughChapters(document);
+    expect(
+      changeSummary(document, seen)?.chapters.map((entry) => [
+        chapters[entry.index]?.id,
+        entry.added,
+      ]),
+    ).toEqual([
+      ["versions-table", false],
+      ["start-flow", false],
+      ["dashboard-page", true],
+    ]);
+    // Answers on the update itself do not hide what changed.
+    expect(
+      lastSeenRank(document, {
+        ...answers,
+        "fork-prs": { ...answers["fork-prs"]!, versionId: document.versionId },
+      }),
+    ).toBe(0);
+    expect(changeSummary(document, 1)).toBeUndefined();
   });
 });

@@ -28,8 +28,10 @@ import {
 import type { WalkthroughGeneration } from "./submit-tool";
 import {
   failWalkthroughVersion,
+  findWalkthroughParent,
   getGeneratingWalkthroughVersion,
   startWalkthroughVersion,
+  walkthroughSnapshotKey,
   type WalkthroughVersion,
 } from "./store";
 
@@ -72,14 +74,18 @@ function generationInstruction(version: WalkthroughVersion): string {
     ...(version.sourceConversationId
       ? [`Source Conversation: ${version.sourceConversationId}`]
       : []),
+    ...(version.parentVersionId
+      ? ["", "This Turn updates the previous version of this Walkthrough."]
+      : []),
   ].join("\n");
 }
 
 /**
  * Start a Walkthrough of the stack that contains one code change. A second
  * request for the same stack at the same commits gets the running or ready
- * version. Returns undefined when no plugin reads the provider's code
- * changes, or the provider does not know the code change.
+ * version. When the stack has new commits since a ready version, the new
+ * version updates that one. Returns undefined when no plugin reads the
+ * provider's code changes, or the provider does not know the code change.
  */
 export async function startWalkthrough(input: {
   viewer: User;
@@ -101,6 +107,11 @@ export async function startWalkthrough(input: {
   const sourceConversationId = await findSourceConversationId(
     stack.codeChanges.map((change) => change.body),
   );
+  const parent = await findWalkthroughParent({
+    provider: input.provider,
+    repository: input.repository,
+    numbers: stack.codeChanges.map((change) => change.number),
+  });
   const idempotencyKey = `walkthrough:${randomUUID()}`;
   const { version, started } = await startWalkthroughVersion({
     provider: input.provider,
@@ -112,6 +123,11 @@ export async function startWalkthrough(input: {
     }),
     createdByUserId: input.viewer.id,
     ...(sourceConversationId ? { sourceConversationId } : undefined),
+    // The same snapshot reuses the parent itself, so it is not its own parent.
+    ...(parent &&
+    parent.snapshotKey !== walkthroughSnapshotKey(stack.codeChanges)
+      ? { parentVersionId: parent.id }
+      : undefined),
   });
   if (!started) return version;
 
@@ -166,6 +182,9 @@ export async function readWalkthroughRun(conversationId: string): Promise<
       repository: version.repository,
       layers: version.codeChanges,
       modelId: botConfig.modelId,
+      ...(version.parentVersionId
+        ? { parentVersionId: version.parentVersionId }
+        : undefined),
       ...(version.sourceConversationId
         ? { sourceConversationId: version.sourceConversationId }
         : undefined),

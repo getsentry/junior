@@ -22,21 +22,27 @@ import { buildWalkthroughExcerpts } from "./excerpts";
 import {
   WALKTHROUGH_SCHEMA_VERSION,
   walkthroughOutputSchema,
+  type WalkthroughCodeRef,
   type WalkthroughDocument,
-  type WalkthroughOutput,
+  type WalkthroughEvidence,
+  type WalkthroughExcerpt,
 } from "./schema";
 import { completeWalkthroughVersion } from "./store";
-import { contextFileKey, validateWalkthrough } from "./validate";
+import { walkthroughFileHashes } from "./update";
+import {
+  contextFileKey,
+  validateWalkthrough,
+  type WalkthroughInputRefs,
+} from "./validate";
 
 export const SUBMIT_WALKTHROUGH_TOOL_NAME = "submitWalkthrough";
 /** Bump when the skill or tool contract changes what the model writes. */
-const WALKTHROUGH_PROMPT_VERSION = 1;
+export const WALKTHROUGH_PROMPT_VERSION = 2;
 /** Files that one submission may cite head-side code from. */
 const MAX_CONTEXT_FILES = 30;
 const MESSAGE_TEXT_LIMIT = 400;
 const URL_PATTERN = /https?:\/\/[^\s<>()"'`\]]+/g;
 
-/** One code change of the stack, as the provider reported it at click time. */
 /**
  * What a generation Turn writes. Only the Walkthrough worker sets this, so
  * `submitWalkthrough` exists only in generation Turns.
@@ -48,6 +54,8 @@ export type WalkthroughGeneration = {
   /** Bottom first. */
   layers: WalkthroughCodeChange[];
   sourceConversationId?: string;
+  /** The version an update builds on. A full generation has none. */
+  parentVersionId?: string;
   modelId: string;
 };
 
@@ -56,12 +64,14 @@ type LoadedDiff = {
   skipped: WalkthroughDocument["skipped"];
 };
 
-/** Create `submitWalkthrough` for one generation Turn. */
-export function createSubmitWalkthroughTool(
-  context: ToolRuntimeContext,
-  generation: WalkthroughGeneration,
-) {
-  // Retries in one Turn reuse provider reads.
+/** Provider reads that the tools of one generation Turn share. */
+export type WalkthroughReads = ReturnType<typeof createWalkthroughReads>;
+
+/**
+ * Create the provider reads for one generation Turn. Retries and every tool
+ * of the Turn reuse them.
+ */
+export function createWalkthroughReads(generation: WalkthroughGeneration) {
   let diff: Promise<LoadedDiff> | undefined;
   const fileCache = new Map<string, Promise<string | undefined>>();
   const signal = () => AbortSignal.timeout(30_000);
@@ -106,6 +116,15 @@ export function createSubmitWalkthroughTool(
     return file;
   };
 
+  return { loadDiff, loadHeadFile };
+}
+
+/** Create `submitWalkthrough` for one full generation Turn. */
+export function createSubmitWalkthroughTool(
+  context: ToolRuntimeContext,
+  generation: WalkthroughGeneration,
+  reads: WalkthroughReads,
+) {
   return zodTool({
     annotations: {
       destructiveHint: false,
@@ -122,68 +141,34 @@ export function createSubmitWalkthroughTool(
       excerpts: z.number().int().nonnegative(),
     }),
     execute: async (output) => {
-      const codeRefs = codeCitations(output);
+      const evidence = output.chapters.flatMap((chapter) => chapter.evidence);
+      const codeRefs = codeCitations(evidence);
       const [{ files, skipped }, contextFiles, messages] = await Promise.all([
-        loadDiff(),
-        readContextFiles(codeRefs, loadHeadFile),
-        readCitedMessages(context, generation, output),
+        reads.loadDiff(),
+        readContextFiles(codeRefs, reads.loadHeadFile),
+        readCitedMessages(context, generation, evidence),
       ]);
-      const knownUrls = new Set(
-        generation.layers.flatMap((layer) => [
-          layer.url,
-          ...urlsIn(layer.body),
-        ]),
+      const problems = validateWalkthrough(
+        output,
+        inputRefs(generation, files, contextFiles, messages),
       );
-      for (const message of messages) {
-        for (const url of urlsIn(message.text)) knownUrls.add(url);
-      }
-      const problems = validateWalkthrough(output, {
-        files,
-        contextFiles,
-        messageSeqs: new Set(messages.map((message) => message.seq)),
-        knownUrls,
-        checkIds: new Set(),
-      });
       if (problems.length > 0) {
         throw new ToolInputError(
           `The Walkthrough has ${problems.length} problem(s). Fix them and call ${SUBMIT_WALKTHROUGH_TOOL_NAME} again:\n${problems.map((p) => `- ${p}`).join("\n")}`,
         );
       }
-      if (!context.attachmentStorage) {
-        throw new Error("Walkthrough generation needs attachment storage");
-      }
-      const excerpts = buildWalkthroughExcerpts(
-        codeRefs,
-        files,
-        contextFiles,
-      ).map((excerpt) => {
-        const layer = generation.layers.find((l) => l.number === excerpt.pr);
-        const url =
-          layer &&
-          codeLineUrl({
-            provider: generation.provider,
-            repository: generation.repository,
-            sha: excerpt.side === "head" ? layer.headSha : layer.baseSha,
-            path: excerpt.path,
-            line: excerpt.start,
-          });
-        return url ? { ...excerpt, url } : excerpt;
-      });
+      const excerpts = linkedExcerpts(
+        generation,
+        buildWalkthroughExcerpts(codeRefs, files, contextFiles),
+      );
       const document: WalkthroughDocument = {
         schemaVersion: WALKTHROUGH_SCHEMA_VERSION,
         versionId: generation.versionId,
         contentVersionId: generation.versionId,
         repository: generation.repository,
-        layers: generation.layers.map((layer) => ({
-          pr: layer.number,
-          title: layer.title,
-          url: layer.url,
-          headSha: layer.headSha,
-          baseSha: layer.baseSha,
-          additions: layer.additions,
-          deletions: layer.deletions,
-        })),
+        layers: documentLayers(generation),
         excerpts,
+        files: walkthroughFileHashes(files),
         skipped,
         checks: [],
         ...(generation.sourceConversationId
@@ -198,35 +183,96 @@ export function createSubmitWalkthroughTool(
           createdAt: new Date().toISOString(),
         },
       };
-      const stored = await completeWalkthroughVersion(
-        context.attachmentStorage,
-        { id: generation.versionId, document },
-      );
-      if (!stored) {
-        throw new Error(
-          `Walkthrough version ${generation.versionId} is no longer generating`,
-        );
-      }
+      await storeWalkthrough(context, document);
       return { version_id: generation.versionId, excerpts: excerpts.length };
     },
   });
 }
 
-function codeCitations(output: WalkthroughOutput) {
-  return output.chapters.flatMap((chapter) =>
-    chapter.evidence.flatMap((evidence) =>
-      evidence.kind === "code"
-        ? [
-            {
-              pr: evidence.pr,
-              path: evidence.path,
-              side: evidence.side,
-              start: evidence.start,
-              end: evidence.end,
-            },
-          ]
-        : [],
-    ),
+/** Store a checked document and mark its version ready. */
+export async function storeWalkthrough(
+  context: ToolRuntimeContext,
+  document: WalkthroughDocument,
+): Promise<void> {
+  if (!context.attachmentStorage) {
+    throw new Error("Walkthrough generation needs attachment storage");
+  }
+  const stored = await completeWalkthroughVersion(context.attachmentStorage, {
+    id: document.versionId,
+    document,
+  });
+  if (!stored) {
+    throw new Error(
+      `Walkthrough version ${document.versionId} is no longer generating`,
+    );
+  }
+}
+
+/** The stack layers as a document stores them. */
+export function documentLayers(
+  generation: WalkthroughGeneration,
+): WalkthroughDocument["layers"] {
+  return generation.layers.map((layer) => ({
+    pr: layer.number,
+    title: layer.title,
+    url: layer.url,
+    headSha: layer.headSha,
+    baseSha: layer.baseSha,
+    additions: layer.additions,
+    deletions: layer.deletions,
+  }));
+}
+
+/** What a submission may cite, as read from the provider and the source. */
+export function inputRefs(
+  generation: WalkthroughGeneration,
+  files: WalkthroughDiffFile[],
+  contextFiles: Map<string, string>,
+  messages: WalkthroughDocument["messages"],
+): WalkthroughInputRefs {
+  const knownUrls = new Set(
+    generation.layers.flatMap((layer) => [layer.url, ...urlsIn(layer.body)]),
+  );
+  for (const message of messages) {
+    for (const url of urlsIn(message.text)) knownUrls.add(url);
+  }
+  return {
+    files,
+    contextFiles,
+    messageSeqs: new Set(messages.map((message) => message.seq)),
+    knownUrls,
+    checkIds: new Set(),
+  };
+}
+
+/** Link each excerpt to its first line at the cited commit. */
+export function linkedExcerpts(
+  generation: WalkthroughGeneration,
+  excerpts: WalkthroughExcerpt[],
+): WalkthroughExcerpt[] {
+  return excerpts.map((excerpt) => {
+    const layer = generation.layers.find((l) => l.number === excerpt.pr);
+    const url =
+      layer &&
+      codeLineUrl({
+        provider: generation.provider,
+        repository: generation.repository,
+        sha: excerpt.side === "head" ? layer.headSha : layer.baseSha,
+        path: excerpt.path,
+        line: excerpt.start,
+      });
+    return url ? { ...excerpt, url } : excerpt;
+  });
+}
+
+/** The code citations in a list of evidence, without notes. */
+export function codeCitations(
+  evidence: readonly WalkthroughEvidence[],
+): WalkthroughCodeRef[] {
+  return evidence.flatMap((e) =>
+    e.kind === "code"
+      ? [{ pr: e.pr, path: e.path, side: e.side, start: e.start, end: e.end }]
+      : [],
   );
 }
 
@@ -234,8 +280,8 @@ function codeCitations(output: WalkthroughOutput) {
  * Read each head-side cited file at its PR's head commit. A citation outside
  * the diff resolves against this text; the validator decides which need it.
  */
-async function readContextFiles(
-  refs: ReturnType<typeof codeCitations>,
+export async function readContextFiles(
+  refs: readonly WalkthroughCodeRef[],
   loadHeadFile: (pr: number, path: string) => Promise<string | undefined>,
 ): Promise<Map<string, string>> {
   const wanted = new Map(
@@ -259,19 +305,15 @@ async function readContextFiles(
 }
 
 /** Copy the cited messages of the source Conversation that this Actor can read. */
-async function readCitedMessages(
+export async function readCitedMessages(
   context: ToolRuntimeContext,
   generation: WalkthroughGeneration,
-  output: WalkthroughOutput,
+  evidence: readonly WalkthroughEvidence[],
 ): Promise<WalkthroughDocument["messages"]> {
   const sourceId = generation.sourceConversationId;
   if (!sourceId) return [];
   const seqs = [
-    ...new Set(
-      output.chapters.flatMap((chapter) =>
-        chapter.evidence.flatMap((e) => (e.kind === "message" ? [e.seq] : [])),
-      ),
-    ),
+    ...new Set(evidence.flatMap((e) => (e.kind === "message" ? [e.seq] : []))),
   ];
   if (seqs.length === 0) return [];
   await assertCanReadConversationEvents(context, sourceId);

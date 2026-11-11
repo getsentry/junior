@@ -5,8 +5,15 @@ import {
   type WalkthroughDocument,
   type WalkthroughEvidence,
   type WalkthroughExcerpt,
+  type WalkthroughUpdate,
   type WalkthroughVersionResponse,
 } from "@sentry/junior/api/schema";
+
+import {
+  answerState,
+  feedbackItem,
+  walkthroughChapters,
+} from "./walkthroughUpdates";
 
 type Check = WalkthroughDocument["checks"][number];
 type Message = WalkthroughDocument["messages"][number];
@@ -132,6 +139,7 @@ export type AnswerMap = Readonly<Record<string, WalkthroughAnswerResponse>>;
 export type ReviewDecision = {
   id: string;
   question: string;
+  chapterId: string;
   chapterIndex: number;
   /** Layers this decision is about. */
   prs: number[];
@@ -139,41 +147,91 @@ export type ReviewDecision = {
   location?: { label: string; url?: string };
 };
 
-/** Every decision in reading order. */
+/**
+ * Every decision in reading order. Decisions that updates add sit with the
+ * chapter they touch.
+ */
 export function reviewDecisions(
   document: WalkthroughDocument,
 ): ReviewDecision[] {
   const excerpts = new Map(document.excerpts.map((e) => [e.id, e]));
   const allPrs = document.layers.map((layer) => layer.pr);
-  return document.content.chapters.flatMap((chapter, chapterIndex) =>
-    chapter.decisions.map((decision) => {
-      const own =
-        decision.evidence === undefined
-          ? undefined
-          : chapter.evidence[decision.evidence];
-      // A decision about prose is about the chapter's first code, and one
-      // with no code at all is about every layer.
-      const code =
-        own?.kind === "code"
-          ? own
-          : chapter.evidence.find((e) => e.kind === "code");
-      const prs = own ? evidencePrs([own]) : evidencePrs(chapter.evidence);
-      return {
-        id: decision.id,
-        question: decision.question,
-        chapterIndex,
-        prs: prs.length ? prs : allPrs,
-        ...(code?.kind === "code"
-          ? {
-              location: {
-                label: `${code.path}:${code.start}`,
-                url: excerpts.get(codeExcerptId(code))?.url,
-              },
-            }
-          : undefined),
-      };
-    }),
+  const chapters = walkthroughChapters(document);
+  const indexOf = new Map(chapters.map((c, index) => [c.id, index]));
+  const items = document.updates.flatMap((update) => update.items);
+  return chapters.flatMap((chapter, chapterIndex) =>
+    [
+      { evidence: chapter.evidence, decisions: chapter.decisions },
+      ...items
+        .filter((item) => indexOf.get(item.touches) === chapterIndex)
+        .map((item) => ({
+          evidence: item.evidence,
+          decisions: item.decisions,
+        })),
+    ].flatMap(({ evidence, decisions }) =>
+      decisions.map((decision) => {
+        const own =
+          decision.evidence === undefined
+            ? undefined
+            : evidence[decision.evidence];
+        // A decision about prose is about the chapter's first code, and one
+        // with no code at all is about every layer.
+        const code =
+          own?.kind === "code" ? own : evidence.find((e) => e.kind === "code");
+        const prs = own ? evidencePrs([own]) : evidencePrs(evidence);
+        return {
+          id: decision.id,
+          question: decision.question,
+          chapterId: chapter.id,
+          chapterIndex,
+          prs: prs.length ? prs : allPrs,
+          ...(code?.kind === "code"
+            ? {
+                location: {
+                  label: `${code.path}:${code.start}`,
+                  url: excerpts.get(codeExcerptId(code))?.url,
+                },
+              }
+            : undefined),
+        };
+      }),
+    ),
   );
+}
+
+/**
+ * Split the viewer's answers on this lineage into the ones that still hold
+ * and the ones that an update reopened. A reopened answer is context: the
+ * code it judged changed. A change request that an update answers reopens
+ * too, so the reviewer can say whether the change answers it.
+ */
+export function reviewAnswers(
+  document: WalkthroughDocument,
+  decisions: readonly ReviewDecision[],
+  answers: AnswerMap,
+): {
+  current: AnswerMap;
+  reopened: AnswerMap;
+  feedback: Readonly<Record<string, WalkthroughUpdate["items"][number]>>;
+} {
+  const current: Record<string, WalkthroughAnswerResponse> = {};
+  const reopened: Record<string, WalkthroughAnswerResponse> = {};
+  const feedback: Record<string, WalkthroughUpdate["items"][number]> = {};
+  for (const decision of decisions) {
+    const answer = answers[decision.id];
+    if (!answer) continue;
+    const item = feedbackItem(document, decision.id, answer);
+    if (item) feedback[decision.id] = item;
+    if (
+      item ||
+      answerState(document, decision.chapterId, answer) === "reopened"
+    ) {
+      reopened[decision.id] = answer;
+    } else {
+      current[decision.id] = answer;
+    }
+  }
+  return { current, reopened, feedback };
 }
 
 /** Decisions the viewer has not answered yet. */

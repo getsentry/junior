@@ -53,6 +53,13 @@
   "costUsd": 2.2965502,
   "createdAt": "2026-11-11T01:00:37.507Z",
   "completedAt": "2026-11-11T01:11:20.327Z",
+  "versions": [
+    {
+      "id": "abe0cd49-e6f3-497c-ae11-7b04724d442b",
+      "status": "ready",
+      "createdAt": "2026-11-11T01:00:37.507Z"
+    }
+  ],
   "document": {
     "schemaVersion": 1,
     "versionId": "abe0cd49-e6f3-497c-ae11-7b04724d442b",

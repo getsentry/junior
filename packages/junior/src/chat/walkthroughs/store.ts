@@ -4,7 +4,7 @@
  * second click on an unchanged stack reuse the running or finished version.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { getDb } from "@/chat/db";
 import {
@@ -122,6 +122,96 @@ export async function getWalkthroughVersion(
     .where(eq(juniorWalkthroughVersions.id, id))
     .limit(1);
   return row;
+}
+
+/**
+ * The newest ready version of a stack that shares a layer with these code
+ * changes. An update builds on it. A stack that lost or gained layers is still
+ * the same Walkthrough.
+ */
+export async function findWalkthroughParent(input: {
+  provider: string;
+  repository: string;
+  numbers: readonly number[];
+}): Promise<WalkthroughVersion | undefined> {
+  if (input.numbers.length === 0) return undefined;
+  const numbers = sql.join(
+    input.numbers.map((n) => sql`${n}`),
+    sql`, `,
+  );
+  const [row] = await getDb()
+    .select()
+    .from(juniorWalkthroughVersions)
+    .where(
+      and(
+        eq(juniorWalkthroughVersions.provider, input.provider),
+        eq(juniorWalkthroughVersions.repository, input.repository),
+        eq(juniorWalkthroughVersions.status, "ready"),
+        sql`exists (
+          select 1 from jsonb_array_elements(${juniorWalkthroughVersions.codeChanges}) change
+          where (change->>'number')::int in (${numbers})
+        )`,
+      ),
+    )
+    .orderBy(desc(juniorWalkthroughVersions.completedAt))
+    .limit(1);
+  return row;
+}
+
+/** A version and its ancestors, nearest first. */
+export async function readWalkthroughAncestorIds(
+  id: string,
+): Promise<string[]> {
+  // The path stops the walk at a repeated id, so a bad link cannot loop.
+  const up = sql`(
+    with recursive up(id, parent_version_id, depth, path) as (
+      select id, parent_version_id, 0, array[id]
+      from junior_walkthrough_versions where id = ${id}::uuid
+      union all
+      select v.id, v.parent_version_id, up.depth + 1, up.path || v.id
+      from junior_walkthrough_versions v
+      join up on v.id = up.parent_version_id
+      where v.id <> all(up.path)
+    )
+    select id, depth from up
+  ) version_lineage`;
+  const rows = await getDb()
+    .select({ id: juniorWalkthroughVersions.id })
+    .from(juniorWalkthroughVersions)
+    .innerJoin(up, eq(sql`version_lineage.id`, juniorWalkthroughVersions.id))
+    .orderBy(asc(sql`version_lineage.depth`));
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Every version in a lineage, oldest first: the ancestors, the version, and
+ * the versions that build on it. Failed versions are left out, except the
+ * version itself.
+ */
+export async function listWalkthroughLineage(
+  version: Pick<WalkthroughVersion, "id">,
+): Promise<WalkthroughVersion[]> {
+  const descendants = sql`(
+    with recursive down(id, path) as (
+      select id, array[id] from junior_walkthrough_versions
+      where id = ${version.id}::uuid
+      union all
+      select v.id, down.path || v.id
+      from junior_walkthrough_versions v
+      join down on v.parent_version_id = down.id
+      where v.id <> all(down.path)
+    )
+    select id from down
+  )`;
+  const ancestors = await readWalkthroughAncestorIds(version.id);
+  const rows = await getDb()
+    .select()
+    .from(juniorWalkthroughVersions)
+    .where(
+      sql`(${inArray(juniorWalkthroughVersions.id, ancestors)} or ${juniorWalkthroughVersions.id} in ${descendants})`,
+    )
+    .orderBy(asc(juniorWalkthroughVersions.createdAt));
+  return rows.filter((row) => row.status !== "failed" || row.id === version.id);
 }
 
 /** The version that a generation Conversation is still generating, if any. */

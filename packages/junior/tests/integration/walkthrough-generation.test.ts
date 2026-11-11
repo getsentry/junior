@@ -18,15 +18,19 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore } from "@/chat/db";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { readWalkthroughDiff } from "@/chat/walkthroughs/diff";
 import { readWalkthroughRun } from "@/chat/walkthroughs/generation";
 import {
   walkthroughDocumentSchema,
   walkthroughOutputSchema,
+  walkthroughUpdateOutputSchema,
 } from "@/chat/walkthroughs/schema";
 import {
   completeWalkthroughVersion,
   getWalkthroughVersion,
+  readWalkthroughDocument,
 } from "@/chat/walkthroughs/store";
+import { walkthroughFileHashes } from "@/chat/walkthroughs/update";
 
 const sha = (digit: string) => digit.repeat(40);
 const PATCH = [
@@ -36,8 +40,11 @@ const PATCH = [
   "+export const delayMs = 3;",
 ].join("\n");
 
-/** A code plugin with a two-layer stack whose top layer changes one file. */
-function codePlugin() {
+/** The commit and patch the plugin serves; an update test pushes to them. */
+type PluginState = { headSha: string; patch: string };
+
+/** A code plugin with a one-layer stack that changes one file. */
+function codePlugin(state: PluginState) {
   return defineJuniorPlugin({
     manifest: {
       name: "github",
@@ -56,7 +63,7 @@ function codePlugin() {
                 body: "Raises the delay.",
                 url: "https://github.com/getsentry/junior/pull/3088",
                 baseSha: sha("a"),
-                headSha: sha("b"),
+                headSha: state.headSha,
                 additions: 1,
                 deletions: 1,
               },
@@ -65,7 +72,9 @@ function codePlugin() {
         },
         async readDiff() {
           return {
-            files: [{ path: "src/retry.ts", status: "modified", patch: PATCH }],
+            files: [
+              { path: "src/retry.ts", status: "modified", patch: state.patch },
+            ],
           };
         },
         async readFile({ path }) {
@@ -77,8 +86,9 @@ function codePlugin() {
 }
 
 async function setup(walkthroughs: boolean) {
+  const state: PluginState = { headSha: sha("b"), patch: PATCH };
   await createApp({
-    plugins: defineJuniorPlugins([codePlugin()]),
+    plugins: defineJuniorPlugins([codePlugin(state)]),
     experimental: { walkthroughs },
   });
   const fixture = await createConversationFixture();
@@ -101,7 +111,7 @@ async function setup(walkthroughs: boolean) {
       status: string;
       failureReason?: string;
     };
-  return { app, fixture, get, post };
+  return { app, fixture, get, post, state };
 }
 
 /** A stored document for a version of the one-layer stack. */
@@ -139,11 +149,26 @@ function readyDocument(versionId: string) {
           type: "feature",
           slot: "change",
           caption: "The delay goes from 2 to 3.",
-          body: "Retries wait longer.",
+          body: "Retries wait longer [1].",
+          evidence: [
+            { kind: "code", pr: 3088, path: "src/retry.ts", start: 2, end: 2 },
+          ],
+          decisions: [
+            {
+              id: "delay-ok",
+              question: "Is 3 long enough?",
+              origin: { kind: "not_asked" },
+            },
+          ],
           asks: ["Why 3?"],
         },
       ],
     }),
+    files: walkthroughFileHashes(
+      readWalkthroughDiff(3088, [
+        { path: "src/retry.ts", status: "modified", patch: PATCH },
+      ]).files,
+    ),
     updates: [],
     meta: {
       modelId: "test-model",
@@ -213,6 +238,124 @@ describe("Walkthrough generation", () => {
 
     const retry = (await (await post(START)).json()) as { id: string };
     expect(retry.id).not.toBe(started.id);
+  });
+
+  it("updates a ready version on new commits, keeping what did not change", async () => {
+    const { app, post, state } = await setup(true);
+    const storage = createMemoryAttachmentStorage();
+    const first = (await (await post(START)).json()) as { id: string };
+    await completeWalkthroughVersion(storage, {
+      id: first.id,
+      document: readyDocument(first.id),
+    });
+    await app.request(`/api/walkthroughs/${first.id}/answers/delay-ok`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: "change", note: "Make it 5." }),
+    });
+
+    // The same commits reuse the ready version. A push starts an update.
+    expect(((await (await post(START)).json()) as { id: string }).id).toBe(
+      first.id,
+    );
+    state.headSha = sha("c");
+    state.patch = PATCH.replace("delayMs = 3", "delayMs = 5");
+    const update = (await (await post(START)).json()) as { id: string };
+    expect(update.id).not.toBe(first.id);
+    const version = await getWalkthroughVersion(update.id);
+    expect(version?.parentVersionId).toBe(first.id);
+    const run = await readWalkthroughRun(version!.generationConversationId!);
+    expect(run?.generation?.parentVersionId).toBe(first.id);
+
+    const conversationId = version!.generationConversationId!;
+    const tools = createTools([], {}, {
+      conversationId,
+      destination: { platform: "local", conversationId },
+      egress: { fetch: async () => new Response("ok") },
+      source: createLocalSource(conversationId),
+      workspace: {} as ToolRuntimeContext["workspace"],
+      attachmentStorage: storage,
+      turnTools: turnBehavior({
+        kind: "root",
+        personInput: false,
+        automationRun: false,
+        walkthroughGeneration: true,
+      }).tools,
+      walkthroughGeneration: run!.generation!,
+    } satisfies ToolRuntimeContext);
+    await expect(
+      tools.readPreviousWalkthrough!.execute!({}, { toolCallId: "read" }),
+    ).resolves.toMatchObject({
+      changed_files: [{ pr: 3088, path: "src/retry.ts" }],
+      changed_chapters: ["change"],
+      feedback_decisions: ["delay-ok"],
+    });
+
+    // The chapter whose code changed needs an item.
+    const submit = tools.submitWalkthrough!;
+    await expect(
+      submit.execute!(walkthroughUpdateOutputSchema.parse({ items: [] }), {
+        toolCallId: "empty",
+      }),
+    ).rejects.toThrow(/chapter change cites changed/);
+    await submit.execute!(
+      walkthroughUpdateOutputSchema.parse({
+        items: [
+          {
+            id: "delay-five",
+            touches: "change",
+            answers: "delay-ok",
+            caption: "The delay is now 5.",
+            body: "The delay goes up to 5, as asked [1].",
+            evidence: [
+              {
+                kind: "code",
+                pr: 3088,
+                path: "src/retry.ts",
+                start: 2,
+                end: 2,
+              },
+            ],
+          },
+        ],
+      }),
+      { toolCallId: "update" },
+    );
+
+    // The update keeps the story and adds what changed. The reviewer's
+    // answer on the first version comes with the update, and both
+    // versions are listed.
+    const listed = (await (
+      await app.request(`/api/walkthroughs/${update.id}`)
+    ).json()) as { status: string; versions: Array<{ id: string }> };
+    expect(listed.status).toBe("ready");
+    expect(listed.versions.map((v) => v.id)).toEqual([first.id, update.id]);
+    const stored = await readWalkthroughDocument(
+      storage,
+      (await getWalkthroughVersion(update.id))!,
+    );
+    expect(stored).toMatchObject({
+      parentVersionId: first.id,
+      contentVersionId: first.id,
+      content: { chapters: [{ id: "change" }] },
+      updates: [
+        {
+          changedChapters: ["change"],
+          items: [{ id: "delay-five", answers: "delay-ok" }],
+        },
+      ],
+    });
+    await expect(
+      (await app.request(`/api/walkthroughs/${update.id}/answers`)).json(),
+    ).resolves.toEqual({
+      answers: [
+        expect.objectContaining({
+          decisionId: "delay-ok",
+          versionId: first.id,
+          value: "change",
+        }),
+      ],
+    });
   });
 
   it("answers each reviewer's questions in one hidden, read-only Conversation", async () => {
