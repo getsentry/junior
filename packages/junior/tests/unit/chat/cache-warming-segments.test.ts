@@ -85,9 +85,9 @@ const toolCall = (name: string): AssistantMessage => ({
   stopReason: "toolUse",
 });
 
-// Run one Turn that calls a tool and then `noReply`, like one agent run does.
-// The agent marks `noReplyEnded` only outside an Automation run.
-async function endTurnWithNoReply(noReplyEnded: boolean) {
+// Run one Turn that calls a tool and then an answer tool that ends the run,
+// like one agent run does.
+async function endTurnWithAnswerTool(toolName: string, gated: boolean) {
   const recorder = createCacheWarmingRecorder(conversationId, true, runPrompt);
   const stream = recorder.wrap((() => undefined) as never);
   stream(model, context, {});
@@ -95,8 +95,8 @@ async function endTurnWithNoReply(noReplyEnded: boolean) {
   recorder.toolsReturned();
   vi.advanceTimersByTime(MINUTE);
   stream(model, context, {});
-  await recorder.record(toolCall("noReply"));
-  if (noReplyEnded) recorder.noReplyEnded();
+  await recorder.record(toolCall(toolName));
+  recorder.answerToolEnded(toolName, gated);
   await recorder.stop();
 }
 
@@ -183,20 +183,30 @@ describe("cache warming gap segments", () => {
     ).toEqual([7 * MINUTE]);
   });
 
-  it("starts an idle period from the noReply call of a Turn", async () => {
-    vi.useFakeTimers();
-    mocks.sendCacheWarmup.mockClear();
-    await endTurnWithNoReply(false);
-    expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
+  it.each(["noReply", "reportBlocked"])(
+    "starts an idle period from the %s call of a Turn outside an Automation run",
+    async (toolName) => {
+      vi.useFakeTimers();
+      mocks.sendCacheWarmup.mockClear();
+      try {
+        await endTurnWithAnswerTool(toolName, true);
+        expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
 
-    await endTurnWithNoReply(true);
-    scheduledWarmup();
-    // The person returns 4 minutes after the `noReply` call.
-    vi.advanceTimersByTime(4 * MINUTE);
-    await endTurn(true);
+        await endTurnWithAnswerTool(toolName, false);
+        scheduledWarmup();
+        // The person returns 4 minutes after the answer tool call.
+        vi.advanceTimersByTime(4 * MINUTE);
+        await endTurn(true);
 
-    expect(await segmentGaps("user:1:none")).toEqual([4 * MINUTE]);
-  });
+        expect(await segmentGaps("user:1:none")).toEqual([4 * MINUTE]);
+      } finally {
+        await getStateAdapter().delete("junior:cache_warming:gaps:user:1:none");
+        await getStateAdapter().delete(
+          `junior:cache_warming:gaps:conversation:${conversationId}:user:1:none`,
+        );
+      }
+    },
+  );
 
   it("records each gap in the segment of the plugin work and archive state when the idle period started", async () => {
     vi.useFakeTimers();
@@ -624,15 +634,18 @@ describe("cache warming gap segments", () => {
     }
     mocks.sendCacheWarmup.mockClear();
     // Random bytes do not compress, like a screenshot.
-    const randomImage = () => randomBytes(1024 * 1024).toString("base64");
+    const randomImage = (bytes = 1024 * 1024) =>
+      randomBytes(bytes).toString("base64");
     const imageKeyOf = (imageData: string) =>
       `junior:cache_warming:image:${conversationId}:${createHash("sha256")
         .update(imageData)
         .digest("hex")}`;
     const data = randomImage();
     const imageKey = imageKeyOf(data);
-    // With `data`, 9.3 MiB of base64, over the 8 MiB image limit.
-    const moreImages = Array.from({ length: 6 }, randomImage);
+    // With `data`, 33.3 MiB of base64, over the 32 MiB image limit.
+    const moreImages = Array.from({ length: 3 }, () =>
+      randomImage(8 * 1024 * 1024),
+    );
     const imageContext: Context = {
       ...context,
       messages: [

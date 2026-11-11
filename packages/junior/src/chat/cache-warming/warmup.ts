@@ -23,9 +23,11 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai/compat";
 import type { Platform } from "@sentry/junior-plugin-api";
+import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
 import {
@@ -76,7 +78,13 @@ const CONVERSATION_GAPS_MAX = 50;
 /** The Turn count of a Conversation resets after this long with no call. */
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 /** How the Turn before an idle period ended. */
-type TurnEnding = "reply" | "no_reply";
+type TurnEnding = "reply" | "no_reply" | "blocked";
+// Answer tools that end the run without a final response. People often answer
+// a Turn that posted nothing or that ended blocked, so it warms like a reply.
+const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
+  [NO_REPLY_TOOL_NAME]: "no_reply",
+  [REPORT_BLOCKED_TOOL_NAME]: "blocked",
+};
 
 /** Warming stops when the snapshot of the idle period is deleted. */
 interface WarmState {
@@ -427,10 +435,12 @@ export interface CacheWarmingRecorder {
   /** Mark that the tools of the last request returned. */
   toolsReturned(): void;
   /**
-   * Mark that a `noReply` call of the last request ended the run. Then `stop`
-   * starts the idle period from that request, as a final response would.
+   * Mark that an answer tool call of the last request ended the run. After
+   * `noReply` or `reportBlocked`, `stop` starts the idle period from that
+   * request, as a final response would. A `gated` Automation run starts none,
+   * because it almost never gets an answer.
    */
-  noReplyEnded(): void;
+  answerToolEnded(toolName: string, gated: boolean): void;
   /** Stop the warmups of this run. Call it when the run ends. */
   stop(): Promise<void>;
 }
@@ -455,11 +465,11 @@ export function createCacheWarmingRecorder(
   systemPrompt: SystemPromptKey,
 ): CacheWarmingRecorder {
   let lastRequest: ModelRequest | undefined;
-  // The last finished call, for an idle period that `noReply` starts.
+  // The last finished call, for an idle period that an answer tool starts.
   let lastCall:
     | { request: ModelRequest; message: AssistantMessage }
     | undefined;
-  let noReplyEnded = false;
+  let answerToolEnding: TurnEnding | undefined;
   // After the first call of the run ends the idle period, the next mid-turn
   // calls have nothing to record. This keeps them free of state reads.
   let idleEnded = false;
@@ -534,8 +544,8 @@ export function createCacheWarmingRecorder(
       }
     },
     toolsReturned: toolWait.toolsReturned,
-    noReplyEnded: () => {
-      noReplyEnded = true;
+    answerToolEnded: (toolName, gated) => {
+      answerToolEnding = gated ? undefined : ANSWER_TOOL_ENDINGS[toolName];
     },
     stop: async () => {
       try {
@@ -546,9 +556,9 @@ export function createCacheWarmingRecorder(
             error instanceof Error ? error.message : String(error),
         });
       }
-      // The `noReply` call stopped the run, so no final response came. Its
+      // The answer tool call stopped the run, so no final response came. Its
       // request holds the prefix that the next Turn reads.
-      if (!noReplyEnded || !lastCall) return;
+      if (!answerToolEnding || !lastCall) return;
       try {
         await recordModelCall(
           conversationId,
@@ -556,7 +566,7 @@ export function createCacheWarmingRecorder(
           systemPrompt,
           lastCall.request,
           lastCall.message,
-          "no_reply",
+          answerToolEnding,
         );
       } catch (error) {
         logWarn("cache_warming.model_call.record_failed", {
@@ -597,11 +607,12 @@ export function createCacheWarmingRecorder(
  * with `app.cache_warming.stored` false for a snapshot over a limit.
  *
  * `work_state` and `archived` are read when the idle period starts and pick
- * its `gapSegment`. `turn_ending` is `reply` or `no_reply`: how the Turn
- * before the idle period ended. `waiting_on` is `child` (a child agent still
- * ran) or `review` (the Turn asked a Review item) when the idle period
- * starts, and picks the segment's `waitingGapSegment` child. `timer_due_ms`
- * is the idle time at which a timer is due, when it is due within
+ * its `gapSegment`. `turn_ending` is how the Turn before the idle period
+ * ended: `reply` (a final response), `no_reply` (`noReply`), or `blocked`
+ * (`reportBlocked`). `waiting_on` is `child` (a child agent still ran) or
+ * `review` (the Turn asked a Review item) when the idle period starts, and
+ * picks the segment's `waitingGapSegment` child. `timer_due_ms` is the idle
+ * time at which a timer is due, when it is due within
  * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
  * five. Decision attributes are absent when the warmup skipped before the
  * decision. Of them, `timer_floor` is true for a warmup that only the timer
