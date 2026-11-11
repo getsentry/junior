@@ -1,29 +1,18 @@
 import type {
   CodeActivityDay,
   CodeChangeSummaryReport,
-  CodeRepositoryActivityDay,
 } from "@sentry/junior/api/schema";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useActorCodeData, useDashboardCoreData } from "../api";
-import { ActivityTooltipRows } from "../components/charts/ActivityChart";
-import {
-  contributionLevel,
-  contributionLevelClass,
-} from "../components/charts/contributionLevel";
 import { Card } from "../components/layout/Card";
 import { Skeleton } from "../components/ui/skeleton";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTitle,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { useReviewItemCountData } from "../review-desk/queries";
 import { cn } from "../styles";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
+import { HomeDayStrip } from "./HomeDayStrip";
 
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
@@ -76,7 +65,7 @@ export function HomeSummary() {
       <div className="grid grid-cols-3 gap-3">
         <SummaryCard
           aside={
-            <DayStrip
+            <HomeDayStrip
               days={merges.days}
               repositoryDays={code.data.activityRepositoryDays}
             />
@@ -162,80 +151,6 @@ function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
       vs last week
     </>
   );
-}
-
-/** One cell per day in GitHub greens. Hover shows the day per repository. */
-function DayStrip(props: {
-  days: CodeActivityDay[];
-  repositoryDays: CodeRepositoryActivityDay[];
-}) {
-  const max = Math.max(1, ...props.days.map((day) => day.merged));
-  return (
-    <div className="flex gap-0.5" role="list" aria-label="Merges per day">
-      {props.days.map((day) => {
-        const repositories = props.repositoryDays.filter(
-          (row) => row.date === day.date,
-        );
-        const summary = activitySummary(sumActivity(repositories));
-        return (
-          <Tooltip key={day.date}>
-            <TooltipTrigger
-              render={
-                <span
-                  aria-label={`${formatDay(day.date)}: ${summary}`}
-                  className={cn(
-                    "size-[7px] rounded-[1.5px] outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
-                    contributionLevelClass(contributionLevel(day.merged, max)),
-                  )}
-                  role="listitem"
-                  tabIndex={0}
-                />
-              }
-            />
-            <TooltipContent sideOffset={6}>
-              <TooltipTitle>{formatDay(day.date)}</TooltipTitle>
-              <div className="text-dashboard-text">{summary}</div>
-              {repositories.length > 0 ? (
-                <div className="mt-2 border-t border-dashboard-border-subtle pt-2">
-                  <ActivityTooltipRows
-                    rows={repositories.map((row) => [
-                      row.repository,
-                      activitySummary(row),
-                    ])}
-                  />
-                </div>
-              ) : null}
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
-    </div>
-  );
-}
-
-type ActivityCounts = Pick<
-  CodeRepositoryActivityDay,
-  "closed" | "created" | "merged"
->;
-
-function sumActivity(rows: ActivityCounts[]): ActivityCounts {
-  return rows.reduce(
-    (total, row) => ({
-      closed: total.closed + row.closed,
-      created: total.created + row.created,
-      merged: total.merged + row.merged,
-    }),
-    { closed: 0, created: 0, merged: 0 },
-  );
-}
-
-function activitySummary(counts: ActivityCounts): string {
-  const parts = [
-    counts.merged > 0 ? `${counts.merged} merged` : undefined,
-    counts.created > 0 ? `${counts.created} opened` : undefined,
-    counts.closed > 0 ? `${counts.closed} closed` : undefined,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : "No activity";
 }
 
 /**
@@ -379,13 +294,4 @@ function HomeSummaryLoading() {
       </div>
     </div>
   );
-}
-
-function formatDay(date: string): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-    weekday: "short",
-  });
 }
