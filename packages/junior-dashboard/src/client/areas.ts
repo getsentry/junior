@@ -78,7 +78,8 @@ export function useArea(
     return {
       items: more.filter((item) => item.to.startsWith("/plugins/")),
       label: "Pages",
-      root: "/plugins",
+      // No page lists the plugin pages, so phones open each one directly.
+      root: "",
     };
   return { items: more, label: "More", root: "" };
 }

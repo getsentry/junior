@@ -37,7 +37,9 @@ export function useCurrentAnchor(
     let frame = 0;
     const update = () => {
       frame = 0;
-      const line = anchorScrollMargin() + 1;
+      const margin = anchorScrollMargin();
+      const line = margin + 1;
+      const chromeBottom = margin - SCROLL_GAP_PX;
       const page = document.scrollingElement;
       const atEnd =
         page !== null &&
@@ -48,13 +50,15 @@ export function useCurrentAnchor(
         const top = document.getElementById(id)?.getBoundingClientRect().top;
         if (top === undefined) continue;
         if (next === undefined || top <= line) next = id;
-        if (atEnd && id === target && top < window.innerHeight) {
+        const shows = top >= chromeBottom && top < window.innerHeight;
+        if (atEnd && id === target && shows) {
           setCurrent(id);
           return;
         }
         if (atEnd) next = id;
       }
-      setCurrent(next);
+      // Headings not mounted yet: keep the hash's section until they are.
+      if (next !== undefined) setCurrent(next);
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);

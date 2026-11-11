@@ -56,6 +56,7 @@ export function MemoryPageLayout(props: { children: ReactNode }) {
       }
       items={memoryNavigationItems}
       listedInPane
+      opensOnPhone
     >
       {library ? (
         <div className="min-h-0">{props.children}</div>

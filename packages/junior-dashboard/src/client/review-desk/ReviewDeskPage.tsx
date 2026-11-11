@@ -149,7 +149,7 @@ export function ReviewDeskPage() {
 
   return (
     <div className={shellClass}>
-      <ListPane className={itemParam ? "max-md:hidden" : undefined}>
+      <ListPane className={itemParam ? "max-md:hidden" : undefined} tab="inbox">
         <ReviewDeskSidebar
           blocked={blockedAutomations}
           collapsed={collapsed}
@@ -196,7 +196,8 @@ export function ReviewDeskPage() {
       <section
         aria-label="Selected review item"
         className={cn(
-          "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden",
+          // The second column, so a hidden pane leaves the `auto` one empty.
+          "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden md:col-start-2",
           !itemParam && "max-md:hidden",
           detailsOpen && "xl:grid-cols-[minmax(0,1fr)_25rem]",
         )}

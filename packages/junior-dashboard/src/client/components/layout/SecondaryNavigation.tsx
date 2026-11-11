@@ -31,6 +31,11 @@ export function SecondaryNavigation(props: {
    * show only while the pane hides, and phones open on the list instead.
    */
   listedInPane?: boolean;
+  /**
+   * Phones open the area on this page, not on the list, so they keep the
+   * page links. Memories does: its Overview is a page of sections.
+   */
+  opensOnPhone?: boolean;
 }) {
   const paneOpen = usePaneShows();
   const desktopLinks = !props.listedInPane || !paneOpen;
@@ -73,7 +78,7 @@ export function SecondaryNavigation(props: {
           </nav>
         }
       />
-      {props.listedInPane ? null : (
+      {props.listedInPane && !props.opensOnPhone ? null : (
         <div className="border-b border-dashboard-border px-4 pt-2 sm:px-8 md:hidden">
           <SegmentedNav ariaLabel={props.ariaLabel} fill items={props.items} />
         </div>
