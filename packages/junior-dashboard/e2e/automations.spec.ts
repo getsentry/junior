@@ -579,6 +579,8 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   await expect(filters).toBeVisible();
   await filterOption(page, "status", "Failed").click();
   await expect(page).toHaveURL(/status=failed/);
+  // Wait for the filtered list before reading its first row.
+  await expect(page.locator('[data-run-id="event-1-run-1"]')).toHaveCount(0);
 
   // Rows open run details in a slide-out panel over the list and filters.
   // The row link still opens the Conversation.
@@ -662,7 +664,11 @@ test("opens one automation's runs, filters by result, and redirects old history 
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/scheduled-1/runs?range=90&run=scheduled-1-run-2`,
   );
-  await expect(failedRun).toHaveAttribute("aria-expanded", "true");
+  // The modal drawer hides the page from the accessibility tree, so read the
+  // row control by its run.
+  await expect(
+    page.locator('[data-run-id="scheduled-1-run-2"] button[aria-expanded]'),
+  ).toHaveAttribute("aria-expanded", "true");
   const details = page.getByRole("dialog");
   await expect(
     details.getByRole("heading", { name: "Ship notes for the release train" }),
@@ -685,7 +691,19 @@ test("opens one automation's runs, filters by result, and redirects old history 
   );
   await screenshot(page, "automation-run-details", { lightTheme: true });
 
-  // Up and Down move the selection while details are open.
+  // Up and Down move the selection while details are open. Stepping between
+  // runs with a Conversation keeps the open drawer instead of a new one.
+  await details.evaluate((element) => {
+    element.dataset.stepped = "";
+  });
+  await page.keyboard.press("ArrowUp");
+  await expect(page).toHaveURL(/run=scheduled-1-run-1$/);
+  await expect(
+    details.getByText("Scheduled operation completed successfully."),
+  ).toBeVisible();
+  await expect(page.locator("[data-stepped]")).toHaveCount(1);
+  await page.keyboard.press("ArrowDown");
+  await expect(page).toHaveURL(/run=scheduled-1-run-2$/);
   await page.keyboard.press("ArrowDown");
   await expect(page).toHaveURL(/run=scheduled-1-run-3$/);
   await expect(
@@ -724,6 +742,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   ).toBeVisible();
   await expect(details.getByText(/not in the loaded runs/)).toHaveCount(0);
   await page.getByRole("button", { name: "Close transcript" }).click();
+  // A filter can change while the drawer closes.
   await result.getByRole("tab", { name: /^Failed/ }).click();
   await result.getByRole("tab", { name: /^All/ }).click();
   await expect(page).not.toHaveURL(/[?&]result=/);

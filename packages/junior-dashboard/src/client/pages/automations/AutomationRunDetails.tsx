@@ -20,6 +20,8 @@ import {
   automationPath,
   formatCompactNumber,
   formatCostSummary,
+  formatMessageTimestamp,
+  formatRelativeMessageTimestamp,
   formatRuntime,
 } from "../../format";
 import { cn, dashboardInlineLinkClass } from "../../styles";
@@ -42,16 +44,14 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
   const [searchParams, setSearchParams] = useSearchParams();
   const listRef = useRef<HTMLDivElement>(null);
   const runId = searchParams.get(AUTOMATION_RUN_PARAM) ?? undefined;
-  const select = (id: string | undefined) =>
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        if (id) next.set(AUTOMATION_RUN_PARAM, id);
-        else next.delete(AUTOMATION_RUN_PARAM);
-        return next;
-      },
-      { replace: true },
-    );
+  const select = (id: string | undefined) => {
+    // The drawer closes after its exit animation, so a filter can change
+    // first. Start from the live URL, not this render's params.
+    const next = new URLSearchParams(window.location.search);
+    if (id) next.set(AUTOMATION_RUN_PARAM, id);
+    else next.delete(AUTOMATION_RUN_PARAM);
+    setSearchParams(next, { replace: true });
+  };
   // A list row holds its controls; a strip bar is the control itself.
   const rowControl = (id: string) => {
     const run = `[data-run-id="${CSS.escape(id)}"]`;
@@ -149,9 +149,12 @@ export function AutomationRunDetails(props: {
         details={<RunDetails run={run} showAutomation={props.showAutomation} />}
         icon={icon}
         onClose={props.onClose}
+        // Up and Down swap the run inside the open drawer.
+        openKey={RUN_DRAWER_KEY}
         target={{
           conversationId: run.conversationId,
           label: automationRunTitle(run, run.automationTitle),
+          startedAt: runStartedAt(run),
           status: run.status,
         }}
       />
@@ -173,7 +176,7 @@ export function AutomationRunDetails(props: {
         </div>
       }
       onClose={props.onClose}
-      openKey="automation-run"
+      openKey={RUN_DRAWER_KEY}
       subheader={
         run ? (
           <RunDetails
@@ -201,6 +204,14 @@ export function AutomationRunDetails(props: {
   );
 }
 
+const RUN_DRAWER_KEY = "automation-run";
+
+// Older runs record only when they finished, which is within the run's
+// duration of its start.
+function runStartedAt(run: AutomationRun) {
+  return run.startedAt ?? run.executedAt;
+}
+
 /** When it ran, what it cost, the setup that ran, and why it failed. */
 function RunDetails(props: {
   run: AutomationRun;
@@ -218,6 +229,15 @@ function RunDetails(props: {
       >
         {run.status}
       </StatusChip>
+    ) : null,
+    props.showStatus ? (
+      <time
+        dateTime={runStartedAt(run)}
+        key="started"
+        title={formatMessageTimestamp(Date.parse(runStartedAt(run)), true)}
+      >
+        Started {formatRelativeMessageTimestamp(Date.parse(runStartedAt(run)))}
+      </time>
     ) : null,
     formatRuntime(run.durationMs),
     run.totalTokens === undefined

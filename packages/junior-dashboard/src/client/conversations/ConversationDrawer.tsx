@@ -33,6 +33,9 @@ export interface ConversationDrawerTarget {
   conversationId: string;
   /** Task title or agent name, shown before the child loads. */
   label?: string;
+  /** When the opener's work started, such as a run. Defaults to the
+   * Conversation start, which can be much earlier. */
+  startedAt?: string;
   /** Status from the opener, such as how a child agent or a run ended. */
   status?: string;
 }
@@ -44,20 +47,16 @@ export interface ConversationDrawerTarget {
  */
 export function ConversationDrawer(props: ConversationDrawerProps) {
   if (!props.target) return null;
-  // Remount per Conversation so search/view state does not leak across reuse.
-  return (
-    <ConversationDrawerContent
-      {...props}
-      key={props.target.conversationId}
-      target={props.target}
-    />
-  );
+  return <ConversationDrawerContent {...props} target={props.target} />;
 }
 
 type ConversationDrawerProps = {
   details?: ReactNode;
   icon: ReactNode;
   onClose: () => void;
+  /** Keep one drawer open while the target changes, such as when stepping
+   * through runs. By default each Conversation opens its own drawer. */
+  openKey?: string;
   target: ConversationDrawerTarget | undefined;
 };
 
@@ -69,6 +68,16 @@ function ConversationDrawerContent(
   const [search, setSearch] = useState("");
   const searchMatch = useTranscriptSearchMatch(search);
   const [searchOpen, setSearchOpen] = useState(false);
+  // A new target starts with fresh search and view state, without remounting
+  // the drawer that shows it.
+  const conversationId = props.target.conversationId;
+  const [shownId, setShownId] = useState(conversationId);
+  if (shownId !== conversationId) {
+    setShownId(conversationId);
+    setView("rich");
+    setSearch("");
+    setSearchOpen(false);
+  }
 
   const detail = query.data;
   const label =
@@ -80,7 +89,8 @@ function ConversationDrawerContent(
     props.target.agentName && props.target.agentName !== label
       ? props.target.agentName
       : undefined;
-  const startedAt = detail ? Date.parse(detail.startedAt) : undefined;
+  const startedAtIso = props.target.startedAt ?? detail?.startedAt;
+  const startedAt = startedAtIso ? Date.parse(startedAtIso) : undefined;
   const searchOpenVisible =
     view === "rich" && (searchOpen || search.length > 0);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +167,7 @@ function ConversationDrawerContent(
         </>
       }
       onClose={props.onClose}
-      openKey={props.target.conversationId}
+      openKey={props.openKey ?? conversationId}
       // Status and details span the header, not only the space beside the
       // actions, so they stay on one line in a narrow drawer.
       subheader={
@@ -173,10 +183,10 @@ function ConversationDrawerContent(
                 {status}
               </StatusChip>
             ) : null}
-            {detail && startedAt !== undefined ? (
+            {startedAtIso && startedAt !== undefined ? (
               <time
                 className="tabular-nums"
-                dateTime={detail.startedAt}
+                dateTime={startedAtIso}
                 title={formatMessageTimestamp(startedAt, true)}
               >
                 Started {formatRelativeMessageTimestamp(startedAt)}
@@ -218,6 +228,7 @@ function ConversationDrawerContent(
         </Alert>
       ) : detail ? (
         <Transcript
+          key={conversationId}
           hasPreviousPage={query.hasPreviousPage}
           historyError={query.historyError}
           historyVersion={query.historyVersion}
