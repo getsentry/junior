@@ -138,7 +138,6 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
       details={
         selection.runId ? (
           <AutomationRunDetails
-            key={selection.runId}
             loading={loading}
             onClose={selection.close}
             run={selectedRun}

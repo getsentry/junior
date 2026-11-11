@@ -89,7 +89,6 @@ export function AutomationRunsTab(props: {
       details={
         selection.runId ? (
           <AutomationRunDetails
-            key={selection.runId}
             loading={!query.data && !query.error}
             onClose={selection.close}
             run={runs.find((run) => run.executionId === selection.runId)}

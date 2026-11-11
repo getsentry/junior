@@ -146,7 +146,9 @@ export function AutomationRunDetails(props: {
         </h2>
       }
     >
-      <div className="p-4 [overflow-wrap:anywhere]">
+      {/* Up and Down swap the run inside the open panel, so reset only the
+          content, not the panel and its slide-in. */}
+      <div className="p-4 [overflow-wrap:anywhere]" key={run?.executionId}>
         {run ? (
           <AutomationRunContent
             run={run}
