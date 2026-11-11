@@ -3,6 +3,8 @@ import { Check, X } from "lucide-react";
 
 import { BottomSheet } from "../BottomSheet";
 import { useDetailsPanel } from "../DetailsPanel";
+import { MatchedLabel } from "../MatchedLabel";
+import { quickOpenMatch } from "../quickOpenMatch";
 import { SearchInput } from "../SearchInput";
 import { Button } from "../ui/button";
 import { cn } from "../../styles";
@@ -121,15 +123,24 @@ export function FilterOptions(props: {
       ? [...props.options, { label: props.value, value: props.value }]
       : props.options;
   const searchable = options.length > SHOWN_OPTIONS;
-  const needle = search.trim().toLowerCase();
-  const matches = (
-    needle
-      ? options.filter((option) => option.label.toLowerCase().includes(needle))
-      : options
-  ).slice(0, SHOWN_OPTIONS);
-  const shown = options.filter(
-    (option) => matches.includes(option) || option.value === props.value,
-  );
+  const query = search.trim();
+  // Rank like the other dashboard pickers, best match first.
+  const rows = query
+    ? options
+        .flatMap((option) => {
+          const match = quickOpenMatch(option.label, query);
+          return match
+            ? [{ option, matches: match.indices, score: match.score }]
+            : [];
+        })
+        .sort((left, right) => right.score - left.score)
+    : options.map((option) => ({ option, matches: undefined }));
+  const top = rows.slice(0, SHOWN_OPTIONS);
+  const selected = options.find((option) => option.value === props.value);
+  const shown =
+    selected && !top.some((row) => row.option === selected)
+      ? [...top, { option: selected, matches: undefined }]
+      : top;
   return (
     <section aria-label={props.label} className="grid gap-1.5 py-4">
       <div className="px-2">
@@ -144,10 +155,14 @@ export function FilterOptions(props: {
         />
       ) : null}
       <div aria-label={`Filter by ${props.label.toLowerCase()}`} role="group">
-        {[{ label: "All", value: "" }, ...shown].map((option) => (
+        {[
+          { option: { label: "All", value: "" }, matches: undefined },
+          ...shown,
+        ].map(({ option, matches }) => (
           <FilterOptionButton
             key={option.value || "all"}
             label={option.label}
+            matches={matches}
             onClick={() => props.onChange(option.value)}
             selected={option.value === props.value}
             // "All" is the default, so only a chosen option stands out.
@@ -155,8 +170,10 @@ export function FilterOptions(props: {
           />
         ))}
       </div>
-      {needle && matches.length === 0 ? (
-        <p className="m-0 px-2 text-xs text-dashboard-text-muted">No matches</p>
+      {query && rows.length === 0 ? (
+        <p className="m-0 px-2 text-xs text-dashboard-text-muted">
+          No matches.
+        </p>
       ) : null}
     </section>
   );
@@ -164,6 +181,7 @@ export function FilterOptions(props: {
 
 function FilterOptionButton(props: {
   label: string;
+  matches?: number[];
   onClick(): void;
   selected: boolean;
   subtle: boolean;
@@ -183,7 +201,9 @@ function FilterOptionButton(props: {
       title={props.label}
       type="button"
     >
-      <span className="min-w-0 truncate">{props.label}</span>
+      <span className="min-w-0 truncate">
+        <MatchedLabel label={props.label} matches={props.matches} />
+      </span>
       {props.selected && !props.subtle ? (
         <Check aria-hidden="true" className="shrink-0" size={14} />
       ) : null}

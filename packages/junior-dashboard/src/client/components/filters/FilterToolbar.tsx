@@ -59,7 +59,7 @@ export function FilterToolbar(props: {
                   aria-expanded={filters.open}
                   aria-label={
                     filters.active.length
-                      ? `Filters (${filters.active.length})`
+                      ? `Filters ${filters.active.length}`
                       : "Filters"
                   }
                   className="relative w-9 shrink-0 px-0"

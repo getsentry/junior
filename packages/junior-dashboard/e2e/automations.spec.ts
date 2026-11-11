@@ -422,11 +422,13 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await page.getByRole("button", { name: /^Filters/ }).click();
   const findDestination = page.getByLabel("Search destination options");
   await findDestination.fill("TEAM-07");
+  // The best match follows "All".
   await expect(
     page
       .getByRole("group", { name: "Filter by destination", exact: true })
-      .getByRole("button"),
-  ).toHaveText(["All", "#team-07"]);
+      .getByRole("button")
+      .nth(1),
+  ).toHaveText("#team-07");
   await findDestination.fill("");
   await filterOption(page, "destination", "#project-updates").click();
   await filterOption(page, "state", "Active").click();
@@ -462,7 +464,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileFilters = page.getByRole("button", { name: /^Filters/ });
   await expect(mobileFilters).toHaveAttribute("aria-expanded", "false");
-  await expect(mobileFilters).toHaveAccessibleName("Filters (4)");
+  await expect(mobileFilters).toHaveAccessibleName("Filters 4");
   await expect(
     page.getByRole("group", { name: "Filter by creator" }),
   ).toHaveCount(0);
@@ -483,7 +485,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     .getByRole("button", { name: "Close", exact: true })
     .click();
   await page.reload();
-  await expect(mobileFilters).toHaveAccessibleName("Filters (4)");
+  await expect(mobileFilters).toHaveAccessibleName("Filters 4");
   await mobileFilters.click();
   await expect(filterOption(page, "state", "Blocked")).toHaveAttribute(
     "aria-pressed",
