@@ -29,7 +29,9 @@ const resultSchema = z.object({ rows: z.array(outcomeBucketSchema) });
  *   `done` or `answered`, at its last activity. Its whole tree cost counts.
  *
  * Roots with only open or closed code changes count nothing until a change
- * merges, so one Conversation is never both kinds of outcome.
+ * merges, so one Conversation is never both kinds of outcome. A merged change
+ * with no linked Conversation has an unknown cost, not a zero cost, so it is
+ * left out instead of making the mean look cheaper.
  */
 export async function readOutcomeBuckets(
   db: JuniorDatabase,
