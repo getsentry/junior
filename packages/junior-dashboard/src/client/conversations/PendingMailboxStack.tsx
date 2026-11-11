@@ -36,7 +36,8 @@ import { Spinner } from "../components/ui/spinner";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import {
   conversationAttachmentUrl,
-  inputImageSrc,
+  isImageFile,
+  useFileUrl,
 } from "./TranscriptAttachment";
 import {
   TranscriptHeadingMeta,
@@ -250,7 +251,24 @@ function PendingAuthorAvatar(props: {
   return <ParticipantAvatar participant={author} size="list" />;
 }
 
-/** Show small previews so the reader can tell which images a queued message has. */
+function PendingLocalImage(props: {
+  file: File;
+  imageClassName: string;
+  triggerClassName: string;
+}) {
+  const src = useFileUrl(props.file);
+  if (!src) return null;
+  return (
+    <ImageAttachment
+      filename={props.file.name}
+      imageClassName={props.imageClassName}
+      src={src}
+      triggerClassName={props.triggerClassName}
+    />
+  );
+}
+
+/** Show small previews so the reader can tell which files a queued message has. */
 function PendingAttachmentThumbnails(props: {
   conversationId?: string;
   message: ConversationMailboxMessage;
@@ -258,21 +276,26 @@ function PendingAttachmentThumbnails(props: {
   const thumbnailClassName = "size-6 rounded object-cover";
   const triggerClassName =
     "block size-6 flex-none overflow-hidden rounded border border-dashboard-border bg-dashboard-fill-faint transition-colors hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-dashboard-focus";
-  const localImages = props.message.images ?? [];
+  const localFiles = props.message.files ?? [];
   const attachments = props.message.attachments ?? [];
-  if (localImages.length === 0 && attachments.length === 0) return null;
+  if (localFiles.length === 0 && attachments.length === 0) return null;
 
   return (
     <span className="flex flex-none items-center gap-1">
-      {localImages.map((image, index) => (
-        <ImageAttachment
-          filename={image.filename}
-          imageClassName={thumbnailClassName}
-          key={`local:${index}`}
-          src={inputImageSrc(image)}
-          triggerClassName={triggerClassName}
-        />
-      ))}
+      {localFiles.map((file, index) =>
+        isImageFile(file) ? (
+          <PendingLocalImage
+            file={file}
+            imageClassName={thumbnailClassName}
+            key={`local:${index}`}
+            triggerClassName={triggerClassName}
+          />
+        ) : (
+          <PendingMetaIcon key={`local:${index}`} label={file.name}>
+            <FileText aria-hidden="true" size={14} />
+          </PendingMetaIcon>
+        ),
+      )}
       {attachments.map((attachment) => {
         const isImage = INPUT_IMAGE_TYPES.some(
           (type) => type === attachment.contentType,

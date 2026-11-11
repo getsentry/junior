@@ -1,7 +1,5 @@
 import {
-  inputImageSchema,
-  MAX_INPUT_IMAGES,
-  MAX_INPUT_IMAGE_BYTES,
+  MAX_INPUT_ATTACHMENTS,
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
@@ -134,22 +132,23 @@ export const conversationFeedQuerySchema = z
   })
   .strict();
 
+/** Client key that makes a retried send the same Message. */
+export const idempotencyKeySchema = z.string().trim().min(1).max(200);
+
 export const createConversationMessageBodySchema = z
   .object({
-    idempotencyKey: z.string().trim().min(1).max(200),
+    idempotencyKey: idempotencyKeySchema,
     message: z.string().trim().max(32_000),
-    images: z.array(inputImageSchema).max(MAX_INPUT_IMAGES).optional(),
+    /** Uploads from `POST /api/conversations/attachment-uploads`. */
+    uploadIds: z
+      .array(z.string().min(1).max(64))
+      .max(MAX_INPUT_ATTACHMENTS)
+      .optional(),
   })
   .strict()
   .refine(
-    (body) => Boolean(body.message || body.images?.length),
-    "Add a message or an image.",
-  )
-  .refine(
-    (body) =>
-      (body.images ?? []).reduce((sum, image) => sum + image.data.length, 0) <=
-      (MAX_INPUT_IMAGE_BYTES * 4) / 3,
-    "Images must total 3 MB or less.",
+    (body) => Boolean(body.message || body.uploadIds?.length),
+    "Add a message or a file.",
   );
 
 export const createConversationBodySchema =

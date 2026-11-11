@@ -29,7 +29,7 @@ import {
   expectAccepted,
   jsonRequest,
   steerQueuedWebMessage,
-  webImage,
+  uploadWebFiles,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
 import { actOnWebReviewItem } from "./review-desk";
@@ -434,17 +434,24 @@ export async function createFixtureAgent(
       const path = started
         ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
         : "/api/conversations";
+      const idempotencyKey = started
+        ? fixtureId("web-message", 32)
+        : record.idempotencyKey;
+      const uploadIds = input.files?.length
+        ? await uploadWebFiles(api, {
+            ...(started ? { conversationId: record.conversationId } : {}),
+            files: input.files,
+            idempotencyKey,
+            viewerEmail: record.viewerEmail,
+          })
+        : undefined;
       const accepted = await expectAccepted(
         await api.request(
           path,
           jsonRequest(record.viewerEmail, {
-            idempotencyKey: started
-              ? fixtureId("web-message", 32)
-              : record.idempotencyKey,
+            idempotencyKey,
             message: input.text,
-            ...(input.images?.length
-              ? { images: input.images.map(webImage) }
-              : undefined),
+            ...(uploadIds ? { uploadIds } : undefined),
           }),
         ),
       );

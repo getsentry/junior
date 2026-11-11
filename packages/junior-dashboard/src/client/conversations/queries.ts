@@ -13,7 +13,6 @@ import type {
   ConversationEventPage,
   ConversationFeed,
   ConversationPendingMessagesReport,
-  InputImage,
 } from "@sentry/junior/api/schema";
 import {
   acceptedConversationMessageSchema,
@@ -31,6 +30,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { REVIEW_ITEMS_QUERY_KEY } from "../review-desk/queries";
+import { postWebMessage } from "./attachmentUploads";
 import { readResponseJson } from "../sentry";
 import {
   DashboardApiError,
@@ -269,9 +269,9 @@ export function useCreateConversation() {
     mutationFn: (args: {
       idempotencyKey: string;
       message: string;
-      images?: InputImage[];
+      files?: File[];
       visibility?: "private" | "public";
-    }) => post(acceptedConversationMessageSchema, "/api/conversations", args),
+    }) => postWebMessage("/api/conversations", args),
     onSuccess: (accepted, args) => {
       queryClient.setQueryData<ConversationOutboxMessage[]>(
         conversationOutboxQueryKey(accepted.conversationId),
@@ -359,12 +359,12 @@ export function useAppendConversationMessage(conversationId: string) {
       /** Show the send in the transcript instead of the queue. */
       inline?: boolean;
       message: string;
-      images?: InputImage[];
+      files?: File[];
     }) =>
-      post(
-        acceptedConversationMessageSchema,
+      postWebMessage(
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
         body,
+        conversationId,
       ),
     onMutate: async (args) => {
       // Use the durable id from the first render. No server read is needed,

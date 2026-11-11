@@ -141,8 +141,7 @@ function groupTurns(items: HistoryItem[]): {
       continue;
     }
     // A real turn stores what it read from a file. History has no such data.
-    const files = item.kind === "web_message" ? item.images : item.files;
-    if (files?.length) {
+    if (item.files?.length) {
       throw new Error("history takes no files; send the file in a call");
     }
     // A real turn stores the text that it read from a forwarded message.
