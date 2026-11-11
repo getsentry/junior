@@ -71,12 +71,14 @@ The `self-update` skill also builds a best-effort release summary from npm publi
 
 The detailed step-by-step workflow lives in the skill itself.
 
+`self-update` runs only when a person or an automation names it. Junior does not start it on its own.
+
 ## Verify
 
-In Slack, ask Junior to update its Junior dependencies:
+In Slack, ask Junior to run the skill:
 
 ```text
-update this Junior app to the latest Junior packages
+$self-update
 ```
 
 Confirm that Junior reports the current and target versions, bumps package files on a branch, runs checks, and opens or prepares a draft pull request.
