@@ -101,7 +101,7 @@ export async function loadPullRequestLifecycles(
   );
   return await githubRequest("https://api.github.com", "/graphql", {
     body: {
-      query: `query($owner: String!, $name: String!, ${variables.join(", ")}) { repository(owner: $owner, name: $name) { databaseId nameWithOwner ${pullRequests.join(" ")} } } fragment lifecycle on PullRequest { author { __typename login } closedAt createdAt databaseId headRefName isDraft merged mergedAt number state title updatedAt }`,
+      query: `query($owner: String!, $name: String!, ${variables.join(", ")}) { repository(owner: $owner, name: $name) { databaseId nameWithOwner ${pullRequests.join(" ")} } } fragment lifecycle on PullRequest { assignees(first: 20) { nodes { login } } author { __typename login } closedAt createdAt databaseId headRefName isDraft merged mergedAt number state title updatedAt }`,
       variables: {
         name,
         owner,

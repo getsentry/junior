@@ -344,6 +344,8 @@ export function githubPlugin(
           codeChanges: ctx.codeChanges,
           db,
           events: ctx.events,
+          loadCommitPages: async (target) =>
+            await loadPullRequestCommitPages(installationEnv, target),
           loadLifecycles: async (input) =>
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,

@@ -18,6 +18,12 @@ import type {
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
+import {
+  loadGitHubPullRequestPeople,
+  withGitHubPullRequestPeople,
+  type GitHubCommitPageLoader,
+  type GitHubPullRequestTarget,
+} from "../webhooks/pull-request-people.js";
 import { normalizeGitHubPullRequestOutcome } from "../webhooks/pull-request-outcome.js";
 import { applyGitHubPullRequestOutcome } from "./apply.js";
 import { listGitHubStaleOpenPullRequests } from "./store.js";
@@ -32,14 +38,16 @@ const RECONCILE_MS = 24 * 60 * 60_000;
 const REPOSITORY_LIMIT = 1;
 
 /**
- * Pull requests per GraphQL query. The query has no connections, so it costs
- * one rate limit point. 100 is the GraphQL page size, which keeps the query
- * and its response small. A repository with more stale open rows uses more
- * queries, so no row waits for others.
+ * Pull requests per GraphQL query. 100 is the GraphQL page size, which keeps
+ * the query near one rate limit point and its response small. A repository
+ * with more stale open rows uses more queries, so no row waits for others.
  */
 const PULL_REQUESTS_PER_QUERY = 100;
 
 const lifecycleSchema = z.object({
+  assignees: z.object({
+    nodes: z.array(z.object({ login: z.string().min(1) }).nullable()),
+  }),
   // GraphQL omits the `[bot]` suffix that REST and webhooks give an app.
   author: z
     .object({ __typename: z.string(), login: z.string().min(1) })
@@ -75,6 +83,10 @@ interface ReconcileArgs {
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
   events: EventPublisher;
+  /** Read the commits of one pull request, for the people of a merge. */
+  loadCommitPages(
+    target: GitHubPullRequestTarget,
+  ): Promise<GitHubCommitPageLoader>;
   /** Read the lifecycle of some pull requests with one GraphQL query. */
   loadLifecycles(input: {
     numbers: number[];
@@ -95,6 +107,9 @@ function closedWebhookBody(
   return {
     action: "closed",
     pull_request: {
+      assignees: pullRequest.assignees.nodes.flatMap((assignee) =>
+        assignee ? [{ login: assignee.login }] : [],
+      ),
       closed_at: pullRequest.closedAt,
       created_at: pullRequest.createdAt,
       draft: pullRequest.isDraft,
@@ -148,7 +163,20 @@ async function reconcileRepository(
       // Publish before the write. When the publish fails, the row stays open
       // and the next reconcile tries again. The events have the key of the
       // webhook events for this close, so a Watch gets the close once.
-      for (const event of gitHubPullRequestTerminalEvents(body)) {
+      // Like the webhook, a merge names the people involved.
+      const events = await withGitHubPullRequestPeople({
+        body,
+        deliveryId: "reconcile",
+        events: gitHubPullRequestTerminalEvents(body),
+        hasMatch: args.events.hasMatch,
+        load: async (target) =>
+          await loadGitHubPullRequestPeople({
+            logins: target.logins,
+            loadPage: await args.loadCommitPages(target),
+          }),
+        log: args.log,
+      });
+      for (const event of events) {
         await args.events.publish({ ...event, objectType: "code_change" });
       }
       await applyGitHubPullRequestOutcome({

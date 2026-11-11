@@ -541,6 +541,7 @@ describe("merge conflict check on webhook events", () => {
       const closed = number === 946 || number === 949;
       const merged = number === 946;
       return {
+        assignees: { nodes: [{ login: "octocat" }] },
         author: { __typename: "Bot", login: "sentry-junior" },
         closedAt: closed ? new Date(now - day).toISOString() : null,
         createdAt: new Date(now - 3 * day).toISOString(),
@@ -564,6 +565,19 @@ describe("merge conflict check on webhook events", () => {
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
+          () =>
+            HttpResponse.json([
+              {
+                author: { login: "jane" },
+                commit: {
+                  message:
+                    "Fix the close\n\nCo-authored-by: Sam <sam@example.com>",
+                },
+              },
+            ]),
+        ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { variables } = (await request.json()) as {
             variables: Record<string, unknown>;
@@ -682,6 +696,11 @@ describe("merge conflict check on webhook events", () => {
           },
           objectType: "code_change",
           occurredAtMs: now - day,
+          people: [
+            { handle: "octocat", provider: "github" },
+            { handle: "jane", provider: "github" },
+            { email: "sam@example.com" },
+          ],
           terminal: true,
           trustedSummary: "GitHub PR getsentry/junior#946 was merged.",
         }),
@@ -703,6 +722,7 @@ describe("merge conflict check on webhook events", () => {
             action: "closed",
             installation: { id: 456 },
             pull_request: {
+              assignees: [{ login: "octocat" }],
               closed_at: merged.closedAt,
               created_at: merged.createdAt,
               id: merged.databaseId,
@@ -718,7 +738,9 @@ describe("merge conflict check on webhook events", () => {
         }),
       );
       expect(closes()).toHaveLength(2);
-      expect(new Set(closes().map((event) => event.eventKey)).size).toBe(1);
+      const [reconciled, webhook] = closes();
+      expect(reconciled?.eventKey).toBe(webhook?.eventKey);
+      expect(reconciled?.people).toEqual(webhook?.people);
     });
 
     it("keeps a close open for the next reconcile when its event fails", async () => {
