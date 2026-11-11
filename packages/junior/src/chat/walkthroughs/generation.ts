@@ -104,14 +104,23 @@ export async function startWalkthrough(input: {
   if (!stack) return undefined;
 
   const actor = webActorFromUser(input.viewer);
-  const sourceConversationId = await findSourceConversationId(
-    stack.codeChanges.map((change) => change.body),
-  );
-  const parent = await findWalkthroughParent({
+  const found = await findWalkthroughParent({
     provider: input.provider,
     repository: input.repository,
     numbers: stack.codeChanges.map((change) => change.number),
   });
+  // The same snapshot reuses the parent itself, so it is not its own parent.
+  const parent =
+    found && found.snapshotKey !== walkthroughSnapshotKey(stack.codeChanges)
+      ? found
+      : undefined;
+  // An update keeps the parent's messages, so it keeps the parent's source
+  // and its read check, even after that source turned private.
+  const sourceConversationId =
+    parent?.sourceConversationId ??
+    (await findSourceConversationId(
+      stack.codeChanges.map((change) => change.body),
+    ));
   const idempotencyKey = `walkthrough:${randomUUID()}`;
   const { version, started } = await startWalkthroughVersion({
     provider: input.provider,
@@ -123,11 +132,7 @@ export async function startWalkthrough(input: {
     }),
     createdByUserId: input.viewer.id,
     ...(sourceConversationId ? { sourceConversationId } : undefined),
-    // The same snapshot reuses the parent itself, so it is not its own parent.
-    ...(parent &&
-    parent.snapshotKey !== walkthroughSnapshotKey(stack.codeChanges)
-      ? { parentVersionId: parent.id }
-      : undefined),
+    ...(parent ? { parentVersionId: parent.id } : undefined),
   });
   if (!started) return version;
 

@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -15,7 +16,7 @@ import {
 } from "../fixtures/conversation";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { readWalkthroughDiff } from "@/chat/walkthroughs/diff";
@@ -31,6 +32,7 @@ import {
   readWalkthroughDocument,
 } from "@/chat/walkthroughs/store";
 import { walkthroughFileHashes } from "@/chat/walkthroughs/update";
+import { juniorWalkthroughVersions } from "@/db/schema";
 
 const sha = (digit: string) => digit.repeat(40);
 const PATCH = [
@@ -241,13 +243,27 @@ describe("Walkthrough generation", () => {
   });
 
   it("updates a ready version on new commits, keeping what did not change", async () => {
-    const { app, post, state } = await setup(true);
+    const { app, fixture, post, state } = await setup(true);
     const storage = createMemoryAttachmentStorage();
     const first = (await (await post(START)).json()) as { id: string };
     await completeWalkthroughVersion(storage, {
       id: first.id,
       document: readyDocument(first.id),
     });
+    // The first version quotes a source that is private now. The PR no
+    // longer leads to it, but the update must keep its read check.
+    const sourceId = "local:web:walkthrough-private-source";
+    await getConversationStore().recordActivity({
+      conversationId: sourceId,
+      destination: { platform: "local", conversationId: sourceId },
+      actor: { email: fixture.actor.email! },
+      source: "web",
+      visibility: "private",
+    });
+    await getDb()
+      .update(juniorWalkthroughVersions)
+      .set({ sourceConversationId: sourceId })
+      .where(eq(juniorWalkthroughVersions.id, first.id));
     await app.request(`/api/walkthroughs/${first.id}/answers/delay-ok`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -263,7 +279,10 @@ describe("Walkthrough generation", () => {
     const update = (await (await post(START)).json()) as { id: string };
     expect(update.id).not.toBe(first.id);
     const version = await getWalkthroughVersion(update.id);
-    expect(version?.parentVersionId).toBe(first.id);
+    expect(version).toMatchObject({
+      parentVersionId: first.id,
+      sourceConversationId: sourceId,
+    });
     const run = await readWalkthroughRun(version!.generationConversationId!);
     expect(run?.generation?.parentVersionId).toBe(first.id);
 
