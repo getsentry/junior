@@ -171,6 +171,7 @@ export async function readCodeWindows(args: {
   );
   const [summaryResult, activityResult, activityHourResult] = await Promise.all(
     [
+      // oxlint-disable-next-line junior/no-raw-sql-queries -- Predates the rule. Move it to the query builder.
       db.execute(sql`
       WITH recent_changes AS (
         SELECT
@@ -230,6 +231,7 @@ export async function readCodeWindows(args: {
         )::double precision AS "medianCostUsd"
       FROM recent_changes
     `),
+      // oxlint-disable-next-line junior/no-raw-sql-queries -- Predates the rule. Move it to the query builder.
       db.execute(sql`
       WITH days AS (
         SELECT generate_series(
@@ -271,6 +273,7 @@ export async function readCodeWindows(args: {
       LEFT JOIN daily ON daily.day = days.day
       ORDER BY days.day
     `),
+      // oxlint-disable-next-line junior/no-raw-sql-queries -- Predates the rule. Move it to the query builder.
       db.execute(sql`
       WITH hours AS (
         SELECT generate_series(
@@ -390,6 +393,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
   const windows = await readCodeWindows({ nowMs });
   const conversationTreeCost = conversationTreeCostExpr();
   const [repositoryResult, recentChanges] = await Promise.all([
+    // oxlint-disable-next-line junior/no-raw-sql-queries -- Predates the rule. Move it to the query builder.
     db.execute(sql`
       WITH recent_changes AS (
         SELECT
