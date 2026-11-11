@@ -6,26 +6,35 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { useActorCodeData, useDashboardCoreData } from "../api";
+import {
+  contributionLevel,
+  contributionLevelClass,
+} from "../components/charts/contributionLevel";
 import { Card } from "../components/layout/Card";
 import { OutboundLink } from "../components/OutboundLink";
 import { Skeleton } from "../components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTitle,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import { useReviewItemCountData } from "../review-desk/queries";
 import { cn } from "../styles";
 
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
-/** An open code change older than this reads as stale. */
-const STALE_DAYS = 7;
 const OPEN_LIMIT = 3;
 
 // Sums the last 7 UTC day buckets and the 7 before them.
 function weeklyMerges(days: CodeActivityDay[]) {
-  const merged = days.slice(-2 * WEEK_DAYS).map((day) => day.merged);
-  const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
+  const recent = days.slice(-2 * WEEK_DAYS);
+  const sum = (values: CodeActivityDay[]) =>
+    values.reduce((total, day) => total + day.merged, 0);
   return {
-    days: merged.slice(-WEEK_DAYS),
-    lastWeek: sum(merged.slice(0, -WEEK_DAYS)),
-    thisWeek: sum(merged.slice(-WEEK_DAYS)),
+    days: recent.slice(-WEEK_DAYS),
+    lastWeek: sum(recent.slice(0, -WEEK_DAYS)),
+    thisWeek: sum(recent.slice(-WEEK_DAYS)),
   };
 }
 
@@ -58,18 +67,21 @@ export function HomeSummary() {
   }
 
   return (
-    <section aria-label="Your week" className="grid gap-6 pt-6">
+    <section aria-label="Your week" className="grid gap-8">
       <div className="grid grid-cols-3 gap-3">
         <SummaryCard
+          aside={<DayStrip days={merges.days} />}
           detail={<MergeDelta {...merges} />}
           label="Merged this week"
           value={merges.thisWeek}
-        >
-          <DayStrip days={merges.days} />
-        </SummaryCard>
+        />
         <SummaryCard
           detail={
-            open[0] ? `Oldest ${formatAge(open[0].openedAt, nowMs)}` : "None"
+            open[0] ? (
+              <>
+                oldest <AgeText nowMs={nowMs} openedAt={open[0].openedAt} />
+              </>
+            ) : null
           }
           label="Open"
           value={open.length}
@@ -78,13 +90,13 @@ export function HomeSummary() {
           detail={
             needsViewer > 0 ? (
               <Link
-                className="text-inherit no-underline hover:text-dashboard-accent-text"
+                className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
                 to="/review"
               >
-                On your Review desk
+                on your Review desk
               </Link>
             ) : (
-              "All clear"
+              "all clear"
             )
           }
           label="Needs you"
@@ -92,11 +104,11 @@ export function HomeSummary() {
         />
       </div>
       {open.length > 0 ? (
-        <div className="grid gap-1">
-          <h3 className="m-0 px-1 font-sans text-xs font-medium text-dashboard-text-muted">
+        <div className="grid gap-2">
+          <h3 className="m-0 font-sans text-xs font-medium text-dashboard-text-muted">
             Waiting to merge
           </h3>
-          <ul className="m-0 grid list-none p-0">
+          <ul className="m-0 grid list-none gap-0.5 p-0">
             {open.slice(0, OPEN_LIMIT).map((change) => (
               <OpenChangeRow change={change} key={change.id} nowMs={nowMs} />
             ))}
@@ -108,24 +120,26 @@ export function HomeSummary() {
 }
 
 function SummaryCard(props: {
-  children?: ReactNode;
+  aside?: ReactNode;
   detail: ReactNode;
   label: string;
   value: number;
 }) {
   return (
-    <Card className="grid gap-1 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="font-display text-2xl font-light leading-none tracking-[-0.03em] text-dashboard-text">
+    <Card className="grid gap-3 px-4 py-3.5">
+      <div className="flex h-4 items-center justify-between gap-3">
+        <span className="truncate font-sans text-xs font-medium text-dashboard-text-muted">
+          {props.label}
+        </span>
+        {props.aside}
+      </div>
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="font-display text-3xl font-light leading-none tracking-[-0.04em] text-dashboard-text tabular-nums">
           {props.value}
-        </div>
-        {props.children}
-      </div>
-      <div className="mt-2 truncate font-sans text-xs font-medium text-dashboard-text">
-        {props.label}
-      </div>
-      <div className="truncate font-sans text-xs text-dashboard-text-muted">
-        {props.detail}
+        </span>
+        <span className="min-w-0 truncate font-sans text-xs text-dashboard-text-muted">
+          {props.detail}
+        </span>
       </div>
     </Card>
   );
@@ -133,10 +147,15 @@ function SummaryCard(props: {
 
 function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
   const delta = props.thisWeek - props.lastWeek;
-  if (delta === 0) return <>Same as last week</>;
+  if (delta === 0) return <>same as last week</>;
   return (
     <>
-      <span className={cn(delta > 0 && "text-emerald-300")}>
+      <span
+        className={cn(
+          "font-medium",
+          delta > 0 ? "text-emerald-300" : "text-dashboard-text",
+        )}
+      >
         {delta > 0 ? `+${delta}` : `−${-delta}`}
       </span>{" "}
       vs last week
@@ -144,22 +163,31 @@ function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
   );
 }
 
-/** One square per day, brighter with more merges. */
-function DayStrip(props: { days: number[] }) {
-  const max = Math.max(1, ...props.days);
+/** One cell per day in GitHub greens. Hover shows the day's merges. */
+function DayStrip(props: { days: CodeActivityDay[] }) {
+  const max = Math.max(1, ...props.days.map((day) => day.merged));
   return (
-    <div aria-hidden="true" className="flex gap-0.5 pt-1">
-      {props.days.map((count, index) => (
-        <span
-          className={cn(
-            "size-1.5 rounded-[1px]",
-            count === 0 ? "bg-dashboard-border" : "bg-amber-400",
-          )}
-          key={index}
-          style={
-            count === 0 ? undefined : { opacity: 0.4 + (0.6 * count) / max }
-          }
-        />
+    <div className="flex gap-0.5" role="list" aria-label="Merges per day">
+      {props.days.map((day) => (
+        <Tooltip key={day.date}>
+          <TooltipTrigger
+            render={
+              <span
+                aria-label={`${formatDay(day.date)}: ${mergeCount(day.merged)}`}
+                className={cn(
+                  "size-[7px] rounded-[1.5px] outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus",
+                  contributionLevelClass(contributionLevel(day.merged, max)),
+                )}
+                role="listitem"
+                tabIndex={0}
+              />
+            }
+          />
+          <TooltipContent sideOffset={6}>
+            <TooltipTitle>{formatDay(day.date)}</TooltipTitle>
+            <div className="text-dashboard-text">{mergeCount(day.merged)}</div>
+          </TooltipContent>
+        </Tooltip>
       ))}
     </div>
   );
@@ -171,9 +199,8 @@ function OpenChangeRow(props: {
 }) {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
-  const stale = ageDays(change.openedAt, props.nowMs) >= STALE_DAYS;
   return (
-    <li className="flex min-w-0 items-baseline justify-between gap-4 rounded-md px-1 py-1.5">
+    <li className="flex min-w-0 items-baseline justify-between gap-6 py-1.5">
       <div className="min-w-0 truncate font-sans text-sm text-dashboard-text">
         {change.url ? (
           <OutboundLink
@@ -186,18 +213,30 @@ function OpenChangeRow(props: {
           title
         )}
       </div>
-      <div className="flex shrink-0 items-baseline gap-3 font-mono text-xs text-dashboard-text-muted">
+      <div className="flex shrink-0 items-baseline gap-4 font-sans text-xs text-dashboard-text-muted tabular-nums">
         <span className="hidden sm:inline">
           {change.repository} #{change.number}
         </span>
-        <span
-          className={cn("w-8 text-right", stale && "text-amber-300")}
-          title={stale ? "Open for a week or more" : undefined}
-        >
-          {formatAge(change.openedAt, props.nowMs)}
+        <span className="w-10 text-right">
+          <AgeText nowMs={props.nowMs} openedAt={change.openedAt} />
         </span>
       </div>
     </li>
+  );
+}
+
+/** Age of an open code change: plain up to 3 days, amber to 7, red after. */
+function AgeText(props: { nowMs: number; openedAt: string }) {
+  const days = Math.floor((props.nowMs - Date.parse(props.openedAt)) / DAY_MS);
+  return (
+    <span
+      className={cn(
+        days > 7 && "font-medium text-rose-300",
+        days >= 4 && days <= 7 && "font-medium text-amber-300",
+      )}
+    >
+      {days < 1 ? "today" : `${days}d`}
+    </span>
   );
 }
 
@@ -205,25 +244,28 @@ function HomeSummaryLoading() {
   return (
     <div
       aria-label="Loading your week"
-      className="grid grid-cols-3 gap-3 pt-6"
+      className="grid grid-cols-3 gap-3"
       role="status"
     >
       {[0, 1, 2].map((index) => (
-        <Card className="grid gap-2 p-4" key={index}>
-          <Skeleton className="h-6 w-8" />
-          <Skeleton className="mt-1 h-3 w-20" />
-          <Skeleton className="h-3 w-24" />
+        <Card className="grid gap-3 px-4 py-3.5" key={index}>
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-7 w-28" />
         </Card>
       ))}
     </div>
   );
 }
 
-function ageDays(openedAt: string, nowMs: number): number {
-  return Math.floor((nowMs - Date.parse(openedAt)) / DAY_MS);
+function mergeCount(count: number): string {
+  return count === 1 ? "1 merge" : `${count} merges`;
 }
 
-function formatAge(openedAt: string, nowMs: number): string {
-  const days = ageDays(openedAt, nowMs);
-  return days < 1 ? "today" : `${days}d`;
+function formatDay(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+    weekday: "short",
+  });
 }

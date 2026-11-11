@@ -346,9 +346,9 @@ export function ConversationWorkspace(props: {
       <div
         className={
           sidebarFits
-            ? // The bottom pad matches the toggle row, so the create view
-              // sits in the middle of the pane.
-              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-13"
+            ? // The tall bottom pad lifts the create view above the middle,
+              // so the summary that hangs below it fits in the pane.
+              "grid min-h-0 place-items-center overflow-y-auto overscroll-contain px-6 pb-48"
             : // Narrow screens dock the composer at the bottom, in thumb
               // reach.
               cn(
@@ -479,7 +479,7 @@ function NewConversationView(props: {
   return (
     <section
       aria-label="New conversation"
-      className="mx-auto grid w-full max-w-3xl gap-3"
+      className="relative mx-auto grid w-full max-w-3xl gap-3"
     >
       <h2
         className={cn(
@@ -519,7 +519,13 @@ function NewConversationView(props: {
           props.onSubmit(message, idempotencyKey, visibility, images)
         }
       />
-      {props.docked ? null : <HomeSummary />}
+      {props.docked ? null : (
+        // Hangs below the composer and takes no layout space, so the
+        // composer stays centered while the summary loads.
+        <div className="absolute inset-x-0 top-full pt-8">
+          <HomeSummary />
+        </div>
+      )}
     </section>
   );
 }

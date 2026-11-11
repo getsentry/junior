@@ -3582,7 +3582,7 @@ export function readMockPeopleCode(
         2391,
         "getsentry/junior",
         "Retry Slack uploads after a rate limit",
-        9,
+        6,
       ),
       openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12),
       ...overview.changes.filter((change) => change.state !== "open"),
