@@ -470,6 +470,13 @@ describe("cache warming gap segments", () => {
         2 * MINUTE,
         3 * MINUTE,
       ]);
+      // The Conversation keeps the child's return apart from a person's.
+      const conversationGaps = (segment: string) =>
+        state.getList<number>(
+          `junior:cache_warming:gaps:conversation:${parentConversationId}:${segment}`,
+        );
+      expect(await conversationGaps("user:1:none:child")).toEqual([2 * MINUTE]);
+      expect(await conversationGaps("user:1:none")).toEqual([]);
     } finally {
       for (const segment of [
         "user:1:none",
@@ -477,6 +484,11 @@ describe("cache warming gap segments", () => {
         "user:1:none:review",
       ]) {
         await state.delete(`junior:cache_warming:gaps:${segment}`);
+        for (const id of [conversationId, parentConversationId]) {
+          await state.delete(
+            `junior:cache_warming:gaps:conversation:${id}:${segment}`,
+          );
+        }
       }
       await state.delete("junior:cache_warming:breaker:anthropic:outcomes");
     }

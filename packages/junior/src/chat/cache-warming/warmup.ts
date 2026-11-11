@@ -164,12 +164,16 @@ const segmentAttributes = (warm: WarmState) => ({
     ? { "app.cache_warming.timer_due_ms": warm.timerDueIdleMs }
     : undefined),
 });
+// Segment whose gaps decide the warmups of an idle period. The Conversation's
+// gaps use it too, so a child agent's return does not count as a person's.
+const decisionSegment = (warm: WarmState) =>
+  warm.waitingOn
+    ? waitingGapSegment(warm.segment, warm.waitingOn)
+    : warm.segment;
 // Segments that record the gap of an idle period, most specific first. The
 // segment keeps every gap, so its waiting children can lean on it.
-const recordedSegments = (warm: WarmState) => [
-  ...(warm.waitingOn ? [waitingGapSegment(warm.segment, warm.waitingOn)] : []),
-  warm.segment,
-];
+const recordedSegments = (warm: WarmState) =>
+  warm.waitingOn ? [decisionSegment(warm), warm.segment] : [warm.segment];
 // Whether the timer floor still warms after the horizon.
 const timerPending = (warm: WarmState, idleMs: number) =>
   warm.timerDueIdleMs !== undefined &&
@@ -221,7 +225,7 @@ async function recordGap(
     });
   }
   await state.appendToList(
-    conversationGapsKey(conversationId, warm.segment),
+    conversationGapsKey(conversationId, decisionSegment(warm)),
     gapMs,
     {
       maxLength: CONVERSATION_GAPS_MAX,
@@ -730,7 +734,7 @@ export async function runCacheWarmup(
       }
       const decision = decideWarmup({
         conversationGapsMs: await state.getList<number>(
-          conversationGapsKey(conversationId, warm.segment),
+          conversationGapsKey(conversationId, decisionSegment(warm)),
         ),
         globalGapsMs,
         priorGapsMs,
