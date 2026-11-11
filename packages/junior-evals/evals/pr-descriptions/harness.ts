@@ -20,6 +20,8 @@ interface PullRequestDescriptionEvalInput {
   context: string;
   /** Exact text, such as issue references and links, that must stay. */
   mustInclude?: string[];
+  /** Exact text, such as secrets and mentions, that must not appear. */
+  mustNotInclude?: string[];
   title?: string;
 }
 
@@ -38,6 +40,7 @@ const FORBIDDEN = [
     name: "a checks section",
     pattern: /^\s*(?:#+\s*|\*\*)(?:checks|verification|test plan|testing)\b/im,
   },
+  { name: "a heading", pattern: /^#{1,6}\s/m },
 ];
 
 /** Lightweight vitest-evals harness for PR description cases. */
@@ -63,6 +66,9 @@ export const pullRequestDescriptionHarness = createHarness<
       ...(input.mustInclude ?? [])
         .filter((text) => !description.includes(text))
         .map((text) => `dropped "${text}"`),
+      ...(input.mustNotInclude ?? [])
+        .filter((text) => description.includes(text))
+        .map((text) => `kept "${text}"`),
     ];
     if (problems.length > 0) {
       throw new Error(`Description ${problems.join("; ")}:\n${description}`);
