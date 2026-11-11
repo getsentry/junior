@@ -90,11 +90,10 @@ const AUTOMATION_RUN: TurnBehavior = {
 };
 
 /**
- * Return the behavior of one Turn. `automationRun` marks a Scheduled or Event
- * automation run. It is a temporary bridge until Conversation kind
- * `automation` replaces it.
- *
- * TODO(dcramer): Remove `automationRun` when kind `automation` ships.
+ * Return the behavior of one Turn. `automationRun` marks the dispatch Turn of
+ * a Scheduled or Event automation run. Kind alone cannot mark it: the
+ * dispatch Turn is the only gated Turn on an `automation` Conversation, and a
+ * person's reply or a Watch Event Turn there runs like a Turn on a root.
  */
 export function turnBehavior(args: {
   kind: ConversationKind;
