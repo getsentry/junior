@@ -8,7 +8,10 @@ import {
   completeAgentInvocation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import {
+  enqueueAgentInvocationResult,
+  enqueueAgentReplyToParent,
+} from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -210,6 +213,49 @@ describe("nested agent invocations", () => {
           invocationId: child.invocationId,
           status: "blocked",
         }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+
+      // A sibling's reply that still waits in another child's mailbox starts
+      // a later agent invocation there, so that child does not report yet.
+      const busy = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "busy-child",
+      });
+      const [busyQuiet, busyReplied] = await Promise.all(
+        ["busy-quiet", "busy-replied"].map((idempotencyKey) =>
+          createAgentInvocation({
+            ...slackInvocationInput,
+            idempotencyKey,
+            parentConversationId: busy.childConversationId,
+          }),
+        ),
+      );
+      await completeAgentInvocation({
+        errorMessage: "Started helpers.",
+        invocationId: busy.invocationId,
+        status: "blocked",
+      });
+      await enqueueAgentReplyToParent({
+        queue,
+        reply: { text: "Sibling finding.", toolCallId: "call-reply" },
+        sender: busyReplied!,
+        state,
+      });
+      for (const [invocation, result] of [
+        [busyReplied!, "Sibling finding."],
+        [busyQuiet!, ""],
+      ] as const) {
+        await enqueueAgentInvocationResult(
+          (await completeAgentInvocation({
+            invocationId: invocation.invocationId,
+            result,
+            status: "completed",
+          })) as TerminalAgentInvocation,
+          { queue, state },
+        );
+      }
+      await expect(
+        getAgentInvocation(busy.invocationId),
       ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
 
       // The helper ends with `noReply`, so it sends the child nothing. No

@@ -323,7 +323,8 @@ export async function reportReplacedAgentInvocation(
 /**
  * Send the `replaced` result of a child Conversation when its open child work
  * ended and sent it nothing, such as a helper that ended with `noReply`. No
- * later agent invocation of the child would send the report.
+ * later agent invocation of the child would send the report. Input that still
+ * waits in the child's mailbox starts one, so that one reports instead.
  */
 export async function reportReplacedWithoutOpenWork(
   conversationId: string,
@@ -336,6 +337,10 @@ export async function reportReplacedWithoutOpenWork(
     latest.parentMailboxStatus !== "replaced" ||
     (await hasOpenChildWork(latest))
   ) {
+    return undefined;
+  }
+  const waiting = await getConversationWorkState({ conversationId });
+  if ((waiting?.messages.length ?? 0) > 0) {
     return undefined;
   }
   return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
