@@ -79,7 +79,7 @@ async function sendParentMessage(harness: Harness, toolCallId: string) {
       state: harness.state,
     })!,
   ).execute!(
-    { text: "Also check the retry path.", to: "researcher" },
+    { text: "Also check the retry path.", to: harness.agentName },
     {
       toolCallId,
     },
