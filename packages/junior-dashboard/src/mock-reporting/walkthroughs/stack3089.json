@@ -61,7 +61,7 @@
     }
   ],
   "document": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "versionId": "abe0cd49-e6f3-497c-ae11-7b04724d442b",
     "contentVersionId": "abe0cd49-e6f3-497c-ae11-7b04724d442b",
     "repository": "getsentry/junior",
@@ -3922,8 +3922,9 @@
       "chapters": [
         {
           "id": "gap",
-          "caption": "A model summary of a PR can quote code that does not exist, so the model may only cite.",
-          "body": "Reviewers of an agent-written stack get either the raw diff or a summary that can invent code. The Walkthrough format fixes the shape: the model cites PRs, files, line ranges and message seqs, never copies text, and each change type has fixed slots [1].",
+          "label": "The problem",
+          "caption": "A summary of an agent-written stack can quote code that does not exist.",
+          "body": "A reviewer of an agent-written stack gets the raw diff, which is long, or a model summary, which can invent code. This stack adds Walkthroughs: one guided story whose every claim cites a PR, a file and line range, or a message, and never copies text [1]. Junior re-reads each citation from the provider before it stores the story, so what the reader sees is what the code says.",
           "view": {
             "pr": 3087,
             "show": [
@@ -3952,52 +3953,83 @@
             }
           ],
           "decisions": [],
-          "asks": ["Why not let the model quote code directly?"],
-          "type": "feature",
-          "slot": "gap"
+          "asks": ["Why not let the model quote code directly?"]
         },
         {
-          "id": "format",
-          "caption": "A pure validator, diff parser, and excerpt builder decide what may be stored.",
-          "body": "validateWalkthrough returns problems: unresolved citations, uncited markers, wrong slots, a cause with no code, and any hunk neither cited nor in not_covered [1]. Mechanical files are dropped before the model sees them and only counted [2]. Excerpts are copied from the provider diff, not from model output [3].",
+          "id": "start-flow",
+          "label": "Starting a Walkthrough",
+          "caption": "A click claims one version, and only the winning click queues a hidden generation Turn.",
+          "body": "A reviewer clicks Walkthrough on a PR. The API reads the open stack around it and claims a version for that exact set of commits [1]. Only the click that wins the claim starts a hidden web Conversation whose Turn writes the story; if queueing fails, the version fails [2]. A second click on the same commits joins that version instead of starting another [3], and a version still generating after 30 minutes fails on the next click [4].",
+          "view": {
+            "pr": 3133,
+            "show": [
+              "click",
+              "route",
+              "hooks",
+              "version",
+              "turn",
+              "e-click",
+              "e-stack",
+              "e-claim",
+              "e-queue"
+            ],
+            "highlight": ["route"],
+            "added": ["route", "e-queue"],
+            "broken": []
+          },
           "evidence": [
             {
               "kind": "code",
-              "pr": 3087,
-              "path": "packages/junior/src/chat/walkthroughs/validate.ts",
+              "pr": 3133,
+              "path": "packages/junior/src/api/walkthroughs/routes.ts",
               "side": "head",
-              "start": 43,
-              "end": 96
+              "start": 93,
+              "end": 118
             },
             {
               "kind": "code",
-              "pr": 3087,
-              "path": "packages/junior/src/chat/walkthroughs/diff.ts",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/walkthroughs/generation.ts",
               "side": "head",
-              "start": 125,
-              "end": 150
+              "start": 96,
+              "end": 135
             },
             {
               "kind": "code",
-              "pr": 3087,
-              "path": "packages/junior/src/chat/walkthroughs/excerpts.ts",
+              "pr": 3090,
+              "path": "packages/junior/src/chat/walkthroughs/store.ts",
               "side": "head",
-              "start": 15,
-              "end": 49
+              "start": 50,
+              "end": 87
+            },
+            {
+              "kind": "code",
+              "pr": 3133,
+              "path": "packages/junior/src/chat/walkthroughs/store.ts",
+              "side": "head",
+              "start": 19,
+              "end": 20
             }
           ],
-          "decisions": [],
-          "asks": [
-            "What counts as a mechanical file?",
-            "Can a citation point outside the diff?"
+          "decisions": [
+            {
+              "id": "runs-as-clicker",
+              "origin": { "kind": "not_asked" },
+              "evidence": 1,
+              "claim": "The generation sandbox can use the credentials of the person who clicked.",
+              "concern": "The Turn runs in a public Conversation."
+            }
           ],
-          "type": "feature",
-          "slot": "change"
+          "asks": [
+            "What if two people click at once?",
+            "Is the source Conversation always used?"
+          ]
         },
         {
           "id": "hooks",
-          "caption": "Plugins get a read-only codeChanges hook group so core never calls GitHub itself.",
-          "body": "Core must not call provider APIs, so 3088 adds an optional codeChanges group: readStack, readDiff and readFile, which return undefined only for missing items [2]. Their context carries plugin egress [1]. Core picks the plugin by provider name and gives it a system Actor whose auth handler never prompts anyone [3].",
+          "label": "Reading the stack",
+          "caption": "Plugins read the stack, diffs, and files, so core never calls GitHub itself.",
+          "body": "Core must not call provider APIs, so plugins get a read-only codeChanges hook group that reads a stack, a diff, or a file [1]. Core picks the plugin by provider and runs it as a system Actor that never prompts anyone [2]. GitHub finds the stack through its Stacks API, or walks base branches until the trunk, a fork, or 10 levels [3][4]. Diffs compare exact base and head commits, so a later push cannot change what the story describes [5].",
           "view": {
             "pr": 3088,
             "show": ["hooks", "route", "submit", "e-stack", "e-reread"],
@@ -4006,14 +4038,6 @@
             "broken": []
           },
           "evidence": [
-            {
-              "kind": "code",
-              "pr": 3088,
-              "path": "packages/junior-plugin-api/src/code.ts",
-              "side": "head",
-              "start": 2,
-              "end": 3
-            },
             {
               "kind": "code",
               "pr": 3088,
@@ -4029,18 +4053,7 @@
               "side": "head",
               "start": 105,
               "end": 133
-            }
-          ],
-          "decisions": [],
-          "asks": ["Which credentials do these reads use?"],
-          "type": "feature",
-          "slot": "change"
-        },
-        {
-          "id": "github-reads",
-          "caption": "GitHub reads the open stack around a PR and diffs exact commits.",
-          "body": "readStack asks the Stacks API, falls back to walking base branches, and drops merged or closed layers except the one asked for [1]. The walk stops at the trunk, a fork in the chain, or 10 levels [2][4]. readDiff compares the exact base and head SHAs, so a later push cannot change what is described [3].",
-          "evidence": [
+            },
             {
               "kind": "code",
               "pr": 3088,
@@ -4064,126 +4077,27 @@
               "side": "head",
               "start": 182,
               "end": 203
-            },
-            {
-              "kind": "code",
-              "pr": 3088,
-              "path": "packages/junior-github/tests/code-changes.test.ts",
-              "side": "head",
-              "start": 89,
-              "end": 119
             }
           ],
           "decisions": [
             {
               "id": "fork-prs",
               "origin": { "kind": "not_asked" },
-              "evidence": 1,
+              "evidence": 3,
               "claim": "Missing a stacked PR whose head is in a fork is acceptable.",
               "concern": "The fallback walk matches parents by owner:branch, so it cannot find fork heads."
             }
           ],
-          "asks": ["What happens when the repo has no Stacks API?"],
-          "type": "feature",
-          "slot": "change"
-        },
-        {
-          "id": "versions-table",
-          "caption": "Each generation gets a version row, and one live version is allowed per snapshot.",
-          "body": "Migration 0100 adds junior_walkthrough_versions with a partial unique index: one non-failed version per provider, repository and snapshot key [1][2]. startWalkthroughVersion inserts with onConflictDoNothing and returns the live row on conflict, so a second click joins instead of generating twice [3][4].",
-          "view": {
-            "pr": 3090,
-            "show": ["route", "version", "storage", "e-claim"],
-            "highlight": ["version"],
-            "added": ["version"],
-            "broken": []
-          },
-          "evidence": [
-            {
-              "kind": "code",
-              "pr": 3090,
-              "path": "packages/junior/migrations/0100_walkthrough_versions.sql",
-              "side": "head",
-              "start": 1,
-              "end": 20
-            },
-            {
-              "kind": "code",
-              "pr": 3090,
-              "path": "packages/junior/src/db/schema/walkthroughs.ts",
-              "side": "head",
-              "start": 39,
-              "end": 75
-            },
-            {
-              "kind": "code",
-              "pr": 3090,
-              "path": "packages/junior/src/chat/walkthroughs/store.ts",
-              "side": "head",
-              "start": 50,
-              "end": 87
-            },
-            {
-              "kind": "code",
-              "pr": 3090,
-              "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
-              "side": "head",
-              "start": 104,
-              "end": 142
-            }
-          ],
-          "decisions": [
-            {
-              "id": "no-fk",
-              "origin": { "kind": "not_asked" },
-              "evidence": 1,
-              "claim": "generation_conversation_id needs no foreign key.",
-              "concern": "A deleted generation Conversation leaves its version pointing at nothing."
-            }
-          ],
-          "asks": ["Where does the document itself live?"],
-          "type": "migration",
-          "slot": "change"
-        },
-        {
-          "id": "safe-to-run",
-          "caption": "The migration only adds a table, but every list query gains one NOT EXISTS probe.",
-          "body": "The migration only adds a table and indexes. Its one live effect: listedConversation adds a NOT EXISTS probe on generation_conversation_id to every list and search [1], served by that column's unique index. A test shows a generation Conversation drops out of the list [2]. To roll back, revert code first: the filter needs the table.",
-          "evidence": [
-            {
-              "kind": "code",
-              "pr": 3090,
-              "path": "packages/junior/src/chat/conversations/sql/listed.ts",
-              "side": "head",
-              "start": 10,
-              "end": 19
-            },
-            {
-              "kind": "code",
-              "pr": 3090,
-              "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
-              "side": "head",
-              "start": 166,
-              "end": 183
-            }
-          ],
-          "decisions": [
-            {
-              "id": "list-probe-cost",
-              "origin": { "kind": "missing_signal" },
-              "evidence": 0,
-              "claim": "A synthetic 100k-row measurement of the extra list probe is enough to ship.",
-              "concern": "Every list and search pays for the probe, and no real data was measured."
-            }
-          ],
-          "asks": ["Does this slow the home list?"],
-          "type": "migration",
-          "slot": "safe_to_run"
+          "asks": [
+            "Which credentials do these reads use?",
+            "What happens when the repo has no Stacks API?"
+          ]
         },
         {
           "id": "submit-tool",
-          "caption": "submitWalkthrough re-reads every cited fact from trusted sources before it stores anything.",
-          "body": "The model explores in its untrusted sandbox, led by a skill hidden from other Turns [1], then calls submitWalkthrough [4]. The tool re-reads diffs and head files through the plugin hooks, rebuilds known URLs and message seqs, and returns validator problems as a tool input error to fix [2]. Messages are copied only after an access check [3].",
+          "label": "Checking every citation",
+          "caption": "submitWalkthrough re-reads every cited fact and rejects the story until each citation resolves.",
+          "body": "The model reads the diffs in its sandbox, led by a skill that only generation Turns get [1]. Its submit tool re-reads diffs and files through the plugin hooks, and copies cited messages only after an access check [2][3]. A pure validator returns every problem, such as a citation that does not resolve or a changed hunk that nothing cites, and the model fixes them and submits again [4]. Code excerpts come from the provider diff, never from the model [5], and mechanical files are only counted [6].",
           "view": {
             "pr": 3124,
             "show": [
@@ -4232,11 +4146,27 @@
             },
             {
               "kind": "code",
-              "pr": 3124,
-              "path": "packages/junior/src/chat/tools/index.ts",
+              "pr": 3087,
+              "path": "packages/junior/src/chat/walkthroughs/validate.ts",
               "side": "head",
-              "start": 31,
-              "end": 34
+              "start": 43,
+              "end": 96
+            },
+            {
+              "kind": "code",
+              "pr": 3087,
+              "path": "packages/junior/src/chat/walkthroughs/excerpts.ts",
+              "side": "head",
+              "start": 15,
+              "end": 49
+            },
+            {
+              "kind": "code",
+              "pr": 3087,
+              "path": "packages/junior/src/chat/walkthroughs/diff.ts",
+              "side": "head",
+              "start": 125,
+              "end": 150
             }
           ],
           "decisions": [
@@ -4248,14 +4178,17 @@
               "concern": "In this generation, gh and git failed with Missing GITHUB_APP_ID."
             }
           ],
-          "asks": ["What if the model cites a file it never read?"],
-          "type": "feature",
-          "slot": "change"
+          "asks": [
+            "What if the model cites a file it never read?",
+            "What counts as a mechanical file?",
+            "Can a citation point outside the diff?"
+          ]
         },
         {
           "id": "isolation",
-          "caption": "Only a generation Turn gets the submit tool, and it cannot reach people or agents.",
-          "body": "A new WALKTHROUGH_GENERATION behavior is the only one with submitWalkthrough on. It also turns off agents, the review desk, subscriptions, user customization and noReply [1][2]. The tool is built only when that flag and AgentRun.walkthroughGeneration are both set [3][4], and only the Turn worker sets that field.",
+          "label": "What a generation Turn may do",
+          "caption": "Only a generation Turn gets the submit tool, with its own caps and no way to reach people.",
+          "body": "A new generation behavior is the only one with submitWalkthrough on, and it turns off agents, the review desk, subscriptions, user customization, and noReply [1][2]. The tool exists only when that behavior and the run's generation field are both set, and only the Turn worker sets the field [3][4]. The same behavior caps a generation at 80 tool calls and $5, and other Turns keep their limits [5][6].",
           "evidence": [
             {
               "kind": "code",
@@ -4289,83 +4222,37 @@
               "side": "head",
               "start": 308,
               "end": 314
-            }
-          ],
-          "decisions": [],
-          "asks": ["Could a normal chat Turn call submitWalkthrough?"],
-          "type": "feature",
-          "slot": "change"
-        },
-        {
-          "id": "start-flow",
-          "caption": "A click claims a version, and only the winning click queues one hidden generation Turn.",
-          "body": "POST /api/walkthroughs reads the stack, then claims a version [1]. Only the click that wins the claim creates a public web Conversation whose first message is $walkthrough plus the commits; if enqueue fails, the version fails [2]. A version still generating after 30 minutes is failed on the next click for that snapshot [3][4].",
-          "view": {
-            "pr": 3133,
-            "show": [
-              "click",
-              "route",
-              "hooks",
-              "version",
-              "turn",
-              "e-click",
-              "e-stack",
-              "e-claim",
-              "e-queue"
-            ],
-            "highlight": ["route"],
-            "added": ["route", "e-queue"],
-            "broken": []
-          },
-          "evidence": [
-            {
-              "kind": "code",
-              "pr": 3133,
-              "path": "packages/junior/src/api/walkthroughs/routes.ts",
-              "side": "head",
-              "start": 93,
-              "end": 118
             },
             {
               "kind": "code",
               "pr": 3133,
-              "path": "packages/junior/src/chat/walkthroughs/generation.ts",
+              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
               "side": "head",
-              "start": 96,
-              "end": 135
+              "start": 114,
+              "end": 115
             },
             {
               "kind": "code",
               "pr": 3133,
-              "path": "packages/junior/src/chat/walkthroughs/store.ts",
+              "path": "packages/junior/src/chat/agent/index.ts",
               "side": "head",
-              "start": 19,
-              "end": 20
-            },
-            {
-              "kind": "code",
-              "pr": 3133,
-              "path": "packages/junior/src/chat/walkthroughs/store.ts",
-              "side": "head",
-              "start": 70,
-              "end": 89
+              "start": 1094,
+              "end": 1112
             }
           ],
           "decisions": [
             {
-              "id": "runs-as-clicker",
-              "origin": { "kind": "not_asked" },
-              "evidence": 1,
-              "claim": "The generation sandbox can use the credentials of the person who clicked.",
-              "concern": "The Turn runs in a public Conversation."
+              "id": "limit-values",
+              "origin": { "kind": "assumed" },
+              "evidence": 4,
+              "claim": "The 80-call and $5 caps are safe defaults.",
+              "concern": "No real cost run backs them yet; the PR defers that."
             }
           ],
           "asks": [
-            "What if two people click at once?",
-            "Is the source Conversation always used?"
-          ],
-          "type": "feature",
-          "slot": "change"
+            "Could a normal chat Turn call submitWalkthrough?",
+            "Do the limits change for normal Turns?"
+          ]
         },
         {
           "id": "finish",
@@ -4423,59 +4310,74 @@
             }
           ],
           "asks": ["What happens to a Turn that yields and resumes?"],
-          "type": "feature",
-          "slot": "change"
+          "label": "When a generation fails"
         },
         {
-          "id": "limits",
-          "caption": "Generation Turns get their own cap of 80 tool calls and $5.",
-          "body": "TurnBehavior gains optional limits, and the generation behavior sets 80 tool calls and $5 [1][2]. The agent run reads them and falls back to the app defaults [3], then uses them in the existing limit gate and error messages [4]. Other Turns keep the same limits as before.",
+          "id": "versions-table",
+          "label": "Storage and migration",
+          "caption": "Each version is a row, one live version per snapshot, and lists hide generation Conversations.",
+          "body": "Migration 0100 adds junior_walkthrough_versions with a partial unique index: one live version per provider, repository, and snapshot [1][2]. It only adds a table and indexes. Its one effect on existing reads is a NOT EXISTS probe on generation_conversation_id in every list and search, so generation Conversations stay out of lists [3][4]. To roll back, revert the code first, because the filter needs the table.",
+          "view": {
+            "pr": 3090,
+            "show": ["route", "version", "storage", "e-claim"],
+            "highlight": ["version"],
+            "added": ["version"],
+            "broken": []
+          },
           "evidence": [
             {
               "kind": "code",
-              "pr": 3133,
-              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "pr": 3090,
+              "path": "packages/junior/migrations/0100_walkthrough_versions.sql",
               "side": "head",
-              "start": 40,
-              "end": 41
+              "start": 1,
+              "end": 20
             },
             {
               "kind": "code",
-              "pr": 3133,
-              "path": "packages/junior/src/chat/conversations/kind-behavior.ts",
+              "pr": 3090,
+              "path": "packages/junior/src/db/schema/walkthroughs.ts",
               "side": "head",
-              "start": 114,
-              "end": 115
+              "start": 39,
+              "end": 75
             },
             {
               "kind": "code",
-              "pr": 3133,
-              "path": "packages/junior/src/chat/agent/index.ts",
+              "pr": 3090,
+              "path": "packages/junior/src/chat/conversations/sql/listed.ts",
               "side": "head",
-              "start": 315,
-              "end": 317
+              "start": 10,
+              "end": 19
             },
             {
               "kind": "code",
-              "pr": 3133,
-              "path": "packages/junior/src/chat/agent/index.ts",
+              "pr": 3090,
+              "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
               "side": "head",
-              "start": 1094,
-              "end": 1112
+              "start": 166,
+              "end": 183
             }
           ],
           "decisions": [
             {
-              "id": "limit-values",
-              "origin": { "kind": "assumed" },
+              "id": "no-fk",
+              "origin": { "kind": "not_asked" },
               "evidence": 1,
-              "claim": "The 80-call and $5 caps are safe defaults.",
-              "concern": "No real cost run backs them yet; the PR defers that."
+              "claim": "generation_conversation_id needs no foreign key.",
+              "concern": "A deleted generation Conversation leaves its version pointing at nothing."
+            },
+            {
+              "id": "list-probe-cost",
+              "origin": { "kind": "missing_signal" },
+              "evidence": 2,
+              "claim": "A synthetic 100k-row measurement of the extra list probe is enough to ship.",
+              "concern": "Every list and search pays for the probe, and no real data was measured."
             }
           ],
-          "asks": ["Do the limits change for normal Turns?"],
-          "type": "feature",
-          "slot": "change"
+          "asks": [
+            "Where does the document itself live?",
+            "Does this slow the home list?"
+          ]
         },
         {
           "id": "after-ship",
@@ -4517,116 +4419,7 @@
             }
           ],
           "asks": ["How do we know generations succeed in production?"],
-          "type": "ship_check",
-          "slot": "after_ship"
-        }
-      ],
-      "splits": [
-        {
-          "pr": 3124,
-          "reason": "Mixes the submit tool feature with a mechanical snake_case rename of not_covered and check_id."
-        }
-      ],
-      "not_covered": [
-        {
-          "pr": 3087,
-          "path": "packages/junior/tests/unit/walkthroughs/diff.test.ts",
-          "reason": "Unit tests of patch parsing, skip counts, and excerpts."
-        },
-        {
-          "pr": 3087,
-          "path": "packages/junior/tests/unit/walkthroughs/validate.test.ts",
-          "reason": "Unit tests of each validator rule."
-        },
-        {
-          "pr": 3088,
-          "path": "packages/junior-github/src/plugin.ts",
-          "reason": "Registers githubCodeChangeHooks on the GitHub plugin."
-        },
-        {
-          "pr": 3088,
-          "path": "packages/junior-plugin-api/src/hooks.ts",
-          "reason": "Adds the optional codeChanges field to PluginHooks."
-        },
-        {
-          "pr": 3090,
-          "path": "packages/junior/migrations/meta/_journal.json",
-          "reason": "Generated migration journal entry."
-        },
-        {
-          "pr": 3090,
-          "path": "packages/junior/src/db/schema.ts",
-          "reason": "Re-exports the new table."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/src/chat/agent/tools.ts",
-          "reason": "Passes walkthroughGeneration into the tool context."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/src/chat/agent/types.ts",
-          "reason": "Adds the optional AgentRun field."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/src/chat/tools/types.ts",
-          "reason": "Adds the optional tool context field."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/src/chat/walkthroughs/schema.ts",
-          "reason": "Renames notCovered and checkId to snake_case."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/src/chat/walkthroughs/validate.ts",
-          "reason": "Follows the snake_case rename."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/tests/integration/walkthrough-versions.test.ts",
-          "reason": "Integration test of the tool gate and the stored document."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
-          "reason": "Asserts the new behavior row."
-        },
-        {
-          "pr": 3124,
-          "path": "packages/junior/tests/unit/walkthroughs/validate.test.ts",
-          "reason": "Follows the snake_case rename."
-        },
-        {
-          "pr": 3133,
-          "path": "packages/docs/src/content/docs/reference/config-and-env.md",
-          "reason": "Documents the walkthroughs experiment flag."
-        },
-        {
-          "pr": 3133,
-          "path": "packages/junior/src/api.ts",
-          "reason": "Mounts the routes at /api/walkthroughs."
-        },
-        {
-          "pr": 3133,
-          "path": "packages/junior/src/api/schema/walkthrough.ts",
-          "reason": "Request and response schemas for the routes."
-        },
-        {
-          "pr": 3133,
-          "path": "packages/junior/src/chat/experimental.ts",
-          "reason": "Adds the walkthroughs flag name."
-        },
-        {
-          "pr": 3133,
-          "path": "packages/junior/src/chat/plugins/code-change-hooks.ts",
-          "reason": "Adds canReadCodeChanges, a provider check used by startWalkthrough."
-        },
-        {
-          "pr": 3133,
-          "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts",
-          "reason": "Asserts the new limits."
+          "label": "What to watch after it ships"
         }
       ],
       "diagrams": [
@@ -4795,6 +4588,94 @@
               "from": "turn",
               "to": "version",
               "label": "fail on end"
+            }
+          ]
+        }
+      ],
+      "types": ["feature", "migration"],
+      "also_changed": [
+        {
+          "reason": "Tests of the rules above",
+          "files": [
+            {
+              "pr": 3087,
+              "path": "packages/junior/tests/unit/walkthroughs/diff.test.ts"
+            },
+            {
+              "pr": 3087,
+              "path": "packages/junior/tests/unit/walkthroughs/validate.test.ts"
+            },
+            {
+              "pr": 3088,
+              "path": "packages/junior-github/tests/code-changes.test.ts"
+            },
+            {
+              "pr": 3124,
+              "path": "packages/junior/tests/integration/walkthrough-versions.test.ts"
+            },
+            {
+              "pr": 3124,
+              "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts"
+            },
+            {
+              "pr": 3124,
+              "path": "packages/junior/tests/unit/walkthroughs/validate.test.ts"
+            },
+            {
+              "pr": 3133,
+              "path": "packages/junior/tests/unit/chat/kind-behavior.test.ts"
+            }
+          ]
+        },
+        {
+          "reason": "Wiring, types, and re-exports",
+          "files": [
+            { "pr": 3088, "path": "packages/junior-github/src/plugin.ts" },
+            { "pr": 3088, "path": "packages/junior-plugin-api/src/hooks.ts" },
+            { "pr": 3090, "path": "packages/junior/src/db/schema.ts" },
+            { "pr": 3124, "path": "packages/junior/src/chat/agent/tools.ts" },
+            { "pr": 3124, "path": "packages/junior/src/chat/agent/types.ts" },
+            { "pr": 3124, "path": "packages/junior/src/chat/tools/types.ts" },
+            { "pr": 3133, "path": "packages/junior/src/api.ts" },
+            { "pr": 3133, "path": "packages/junior/src/chat/experimental.ts" },
+            {
+              "pr": 3133,
+              "path": "packages/junior/src/chat/plugins/code-change-hooks.ts"
+            }
+          ]
+        },
+        {
+          "reason": "A snake_case rename of two fields",
+          "files": [
+            {
+              "pr": 3124,
+              "path": "packages/junior/src/chat/walkthroughs/schema.ts"
+            },
+            {
+              "pr": 3124,
+              "path": "packages/junior/src/chat/walkthroughs/validate.ts"
+            }
+          ]
+        },
+        {
+          "reason": "Request schemas and the experiment flag docs",
+          "files": [
+            {
+              "pr": 3133,
+              "path": "packages/docs/src/content/docs/reference/config-and-env.md"
+            },
+            {
+              "pr": 3133,
+              "path": "packages/junior/src/api/schema/walkthrough.ts"
+            }
+          ]
+        },
+        {
+          "reason": "Generated migration journal",
+          "files": [
+            {
+              "pr": 3090,
+              "path": "packages/junior/migrations/meta/_journal.json"
             }
           ]
         }

@@ -90,7 +90,7 @@ export function WalkthroughReview(props: {
               }
               key={group.chapterIndex}
             >
-              <h3 className="m-0 truncate px-2 font-sans text-xs font-medium text-dashboard-text-faint">
+              <h3 className="m-0 px-2 font-sans text-xs font-medium break-words text-dashboard-text-faint">
                 <DisplayText
                   inline
                   links={false}
@@ -147,7 +147,7 @@ const dotClasses = {
   skip: "bg-dashboard-text-faint",
 } as const;
 
-/** One claim on one line. The row opens the chapter that asks it. */
+/** One claim, wrapped in full. The row opens the chapter that asks it. */
 function ClaimRow(props: {
   answer: AnswerMap[string] | undefined;
   decision: ReviewDecision;
@@ -156,16 +156,16 @@ function ClaimRow(props: {
   const status = props.answer?.value ?? "open";
   return (
     <button
-      className="flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-left text-sm text-dashboard-text-subtle hover:bg-dashboard-surface-hover hover:text-dashboard-text"
+      className="flex w-full cursor-pointer items-start gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-left text-sm leading-snug text-dashboard-text-subtle hover:bg-dashboard-surface-hover hover:text-dashboard-text"
       onClick={props.onOpen}
       type="button"
     >
-      <span
-        aria-hidden="true"
-        className={cn("size-2 shrink-0 rounded-full", dotClasses[status])}
-      />
+      {/* One line tall, so the dot sits on the first line of a long claim. */}
+      <span aria-hidden="true" className="flex h-[1lh] shrink-0 items-center">
+        <span className={cn("size-2 rounded-full", dotClasses[status])} />
+      </span>
       <span className="sr-only">{statusLabels[status]}:</span>
-      <span className="min-w-0 flex-1 truncate">
+      <span className="min-w-0 flex-1 break-words">
         <DisplayText inline links={false} text={props.decision.claim} />
       </span>
     </button>
@@ -288,7 +288,7 @@ function CopyReview(props: {
                   }}
                   type="button"
                 >
-                  <span className="truncate text-sm text-dashboard-text">
+                  <span className="text-sm break-words text-dashboard-text">
                     #{l.pr} {l.title}
                   </span>
                   <span className="text-xs text-dashboard-text-muted">

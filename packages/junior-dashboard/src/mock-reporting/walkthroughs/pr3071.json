@@ -25,7 +25,7 @@
     }
   ],
   "document": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "versionId": "64fd6d43-3066-4852-919b-3925cd9059a5",
     "contentVersionId": "64fd6d43-3066-4852-919b-3925cd9059a5",
     "repository": "getsentry/junior",
@@ -538,8 +538,7 @@
           ],
           "decisions": [],
           "asks": ["Why do this now?", "Does any caller lose a condition?"],
-          "type": "refactor",
-          "slot": "claim"
+          "label": "The shared filter"
         },
         {
           "id": "token-matches",
@@ -578,8 +577,7 @@
           "asks": [
             "Would this test have caught a token that drifted from the rows?"
           ],
-          "type": "refactor",
-          "slot": "proof"
+          "label": "Proof it matches"
         },
         {
           "id": "board-and-left-out",
@@ -623,36 +621,7 @@
             }
           ],
           "asks": ["Why does purge not use the helper?"],
-          "type": "refactor",
-          "slot": "exceptions"
-        }
-      ],
-      "splits": [],
-      "not_covered": [
-        {
-          "pr": 3071,
-          "path": "packages/junior/src/api/board/read.ts",
-          "reason": "Uncited hunk only adds the listedConversation import."
-        },
-        {
-          "pr": 3071,
-          "path": "packages/junior/src/api/conversations/list.ts",
-          "reason": "Uncited hunk only adds the listedConversation import."
-        },
-        {
-          "pr": 3071,
-          "path": "packages/junior/src/chat/agent-invocations/search-top-level.ts",
-          "reason": "Uncited hunk only adds the listedConversation import."
-        },
-        {
-          "pr": 3071,
-          "path": "packages/junior/src/chat/briefs/search.ts",
-          "reason": "Uncited hunks only swap the unused isNull import for listedConversation."
-        },
-        {
-          "pr": 3071,
-          "path": "packages/junior/tests/integration/api/conversations/fork.test.ts",
-          "reason": "Uncited hunk only imports versionsSchema for the token check."
+          "label": "What stays different"
         }
       ],
       "diagrams": [
@@ -670,6 +639,33 @@
             { "id": "structural", "label": "Purge & other root checks" }
           ],
           "edges": []
+        }
+      ],
+      "types": ["refactor"],
+      "also_changed": [
+        {
+          "reason": "Only import the new helper",
+          "files": [
+            { "pr": 3071, "path": "packages/junior/src/api/board/read.ts" },
+            {
+              "pr": 3071,
+              "path": "packages/junior/src/api/conversations/list.ts"
+            },
+            {
+              "pr": 3071,
+              "path": "packages/junior/src/chat/agent-invocations/search-top-level.ts"
+            },
+            { "pr": 3071, "path": "packages/junior/src/chat/briefs/search.ts" }
+          ]
+        },
+        {
+          "reason": "Imports a schema for the token check",
+          "files": [
+            {
+              "pr": 3071,
+              "path": "packages/junior/tests/integration/api/conversations/fork.test.ts"
+            }
+          ]
         }
       ]
     },

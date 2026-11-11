@@ -6,8 +6,10 @@ disable-model-invocation: true
 
 # Walkthrough
 
-A Walkthrough helps a reviewer who has no context understand a code change
-without reading all of its code. The story leads. Code is the evidence.
+A Walkthrough turns a code change or a whole stack, 1 PR or 10, into one
+guided story. The prose and its citations alone must walk a reviewer with no
+context through the work. Commits, diffs, and checks are evidence, not
+structure: never write one chapter per PR or per commit.
 
 ## Input
 
@@ -23,21 +25,30 @@ generation. Say that Walkthroughs start from the dashboard, and stop.
 1. Read the diff of each code change at the given commits. Use `gh pr diff`
    or a shallow clone and `git diff BASE...HEAD`. Read callers or other
    unchanged code when the change affects them.
-2. If there is a source Conversation ID, read it to learn the intent. Start
-   with the most recent messages and go back only as far as you need. If you
-   cannot read it, continue with the code changes alone.
-3. Pick the change type of each part. Each type has fixed slots, in this
-   reading order. Fill the slots that apply; do not invent structure.
-   - `feature`: `how_it_works`, `gap`, `change`
-   - `bug_fix`: `broken`, `cause`, `fix`, `side_effects`, `proof`
-   - `refactor`: `claim`, `proof`, `exceptions`
-   - `migration`: `why`, `change`, `safe_to_run`, `rollback`
-   - `dependency`: `what_changed`, `blast_radius`, `rollback`
-   - `performance`: `hot_path`, `change`, `numbers`
-   - `ui`: `before_after`
-   - `ship_check`: `after_ship` (what telemetry shows whether it worked)
-4. Call `submitWalkthrough`. If it reports problems, fix all of them and call
-   it again. When it succeeds, reply with one short sentence and stop.
+2. A readable source Conversation tells the intent. Read it as you need.
+3. Decide what kind of change the whole Walkthrough is, and set `types`. A
+   mixed change has more than one.
+4. Plan the story, then call `submitWalkthrough`. If it reports problems,
+   fix all of them and call it again. When it succeeds, reply with one short
+   sentence and stop.
+
+## Chapters
+
+Each type suggests chapters. Skip, merge, reorder, or add chapters when the
+change needs it, and draw on more than one type for a mixed change.
+
+- Bug fix: root cause, and proof that it is the root cause; the fix; proof
+  that the fix works; side effects; what to watch after it ships.
+- Feature: the problem; how it works; what it touches; how it is tested;
+  what to watch after it ships.
+- Migration: why; what changes in the data; safe to run; rollback.
+- Refactor: what stays the same; proof that behavior does not change;
+  exceptions.
+- Performance: the hot path; the change; the numbers.
+- Dependency: what changed upstream; blast radius; rollback.
+- UI: before and after; states and edge cases.
+
+Use 8 chapters or fewer for one PR, and 10 or fewer for a stack.
 
 ## Update
 
@@ -59,7 +70,7 @@ write the story again.
      claim that it does if the code does not show it.
    - Put a new concern that fits no old chapter in `added_chapters`.
    - Cite every changed hunk in an item or an added chapter, or list its
-     file in `not_covered`.
+     file in `also_changed`.
    - Use new ids. Do not reuse a chapter, decision, or item id.
 4. If nothing that the story cites changed, submit no items.
 
@@ -67,15 +78,14 @@ write the story again.
 
 - `intent` says what kind of change this is first: "This PR fixes a bug
   where…", "This stack adds…".
-- Each chapter `caption` is its title in the chapter list. Make each one
-  unique: a stack has many chapters in the same slot, and only the caption
-  tells them apart.
-- Each chapter `body` is two or three short sentences of prose for a reader
-  with no context. Cite each evidence item by its 1-based index, such as
-  `[2]`, and cite every item.
-- For a bug fix, the cause chapter must cite code or a check that shows the
-  cause. Show evidence. Do not claim that the cause is proven.
-- `side_effects` names what else the fix touches and whether that is safe.
+- Each chapter `label` is its title: a few words, such as "Root cause".
+  The `caption` is one sentence that says what the chapter shows. Make each
+  label and each caption unique.
+- Each chapter `body` is one short paragraph for a reader with no context.
+  Cite each evidence item by its 1-based index, such as `[2]`, and cite
+  every item. A chapter can cite code from several PRs.
+- Show evidence for a root cause, such as code or a check. Do not claim that
+  the cause is proven.
 - Add a decision only for something the reader must judge: an assumption that
   nobody confirmed, a behavior change, a missing signal, or a question that
   nobody asked.
@@ -83,8 +93,6 @@ write the story again.
   change, such as "Three retries are enough to recover a lost lock." Never
   write it as a question. Put what could make the claim wrong in `concern`.
 - `asks` are questions a reader is likely to ask at that chapter.
-- If one code change mixes types, such as a feature and a refactor, add a
-  `splits` entry for it.
 
 ## Diagrams
 
@@ -93,10 +101,9 @@ write the story again.
   and how they connect. Junior lays the diagram out.
 - A chapter `view` names the `pr` of the diagram that it shows and the node
   and edge ids to show. The other parts fade.
-- Most chapters have no view. Add one where a code change comes in, and
-  again only when a chapter shows a part of the flow that the reader has not
-  seen yet, or marks a broken part. Junior rejects a view that shows only
-  parts an earlier chapter showed.
+- Most chapters have no view. Add one only when the story reaches a part of
+  the flow that the reader has not seen yet, or marks a broken part. Junior
+  rejects a view that shows only parts an earlier chapter showed.
 
 ## Evidence
 
@@ -107,7 +114,8 @@ write the story again.
 - `message`: the seq of a message in the source Conversation.
 - `link`: only a URL that appears in a PR body or a cited message.
 - Every changed file that is not mechanical must be cited by a chapter or
-  listed in `not_covered` with the reason it does not matter.
+  listed in `also_changed`. Group listed files under a short reason, such
+  as "Tests of the validator". Never add a chapter only to cite a file.
 
 ## Limits
 

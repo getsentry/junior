@@ -14,7 +14,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { ConversationLinkRow } from "../conversations/ConversationLinkedWork";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { cn } from "../styles";
 
@@ -110,17 +109,7 @@ function PullRequests(props: { version: WalkthroughVersionResponse }) {
     );
   }
   // Layers are stored bottom first. Read the stack top down, like GitHub.
-  const links = [...version.codeChanges].reverse().map((change) => ({
-    // Same shape as a code change annotation, so each row matches Linked
-    // work in the Conversation details panel.
-    description: change.title,
-    key: `${version.provider}:${change.number}`,
-    label: `${version.repository}#${change.number}`,
-    objectType: "code_change" as const,
-    plugin: version.provider,
-    status: "open",
-    url: change.url,
-  }));
+  const changes = [...version.codeChanges].reverse();
   return (
     <Popover>
       <PopoverTrigger
@@ -132,7 +121,7 @@ function PullRequests(props: { version: WalkthroughVersionResponse }) {
             )}
             type="button"
           >
-            {links.length} PRs
+            {changes.length} PRs
             <ChevronDown aria-hidden="true" className="size-3.5" />
           </button>
         }
@@ -142,11 +131,23 @@ function PullRequests(props: { version: WalkthroughVersionResponse }) {
         aria-label="Pull requests"
         className="w-96 p-2"
       >
-        {/* Every PR shows: the popover is already the "show more". */}
+        {/* Every PR shows, with its whole title: the popover is already
+            the "show more". */}
         <ul className="m-0 grid list-none gap-0.5 p-0">
-          {links.map((link) => (
-            <li key={link.key}>
-              <ConversationLinkRow link={link} />
+          {changes.map((change) => (
+            <li
+              className="grid gap-0.5 px-2 py-1.5 text-sm"
+              key={change.number}
+            >
+              <OutboundLink
+                className={cn(linkClass, "w-fit font-medium")}
+                href={change.url}
+              >
+                {version.repository}#{change.number}
+              </OutboundLink>
+              <span className="break-words text-dashboard-text-muted">
+                {change.title}
+              </span>
             </li>
           ))}
         </ul>

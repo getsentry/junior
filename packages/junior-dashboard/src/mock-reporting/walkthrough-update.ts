@@ -181,8 +181,7 @@ export function mockUpdateDocument(
         added_chapters: [
           {
             id: "dashboard-page",
-            type: "feature",
-            slot: "change",
+            label: "Reading it in the dashboard",
             caption:
               "The dashboard opens a Walkthrough and waits while it is written.",
             body: "A ready version renders its story, and any other version shows the writing or failed state [1].",
@@ -191,7 +190,7 @@ export function mockUpdateDocument(
             asks: [],
           },
         ],
-        not_covered: [],
+        also_changed: [],
       },
     ],
   };

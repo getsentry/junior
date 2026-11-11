@@ -7,12 +7,13 @@
  * excerpts, message text, skipped files, checks, cost) and stores a
  * `WalkthroughDocument`. The dashboard renders only the stored document.
  *
- * Text limits are part of the contract. A caption is one sentence, so a
- * Walkthrough stays a story and does not turn into a wall of text.
+ * A Walkthrough is one story for the whole stack. Chapters follow the
+ * story, not the PRs or commits, so the schema fixes no chapter structure.
+ * Text limits keep each chapter a short paragraph.
  */
 import * as z from "zod";
 
-export const WALKTHROUGH_SCHEMA_VERSION = 2;
+export const WALKTHROUGH_SCHEMA_VERSION = 3;
 
 /** Stable slug. Chapter and decision ids stay the same across versions. */
 const idSchema = z
@@ -23,21 +24,18 @@ const caption = sentence(160);
 const shaSchema = z.string().regex(/^[0-9a-f]{7,40}$/);
 
 /**
- * Change types and their fixed slots, in reading order. The model fills slots.
- * It does not invent structure, so every bug fix reads the same way.
+ * Kinds of change. They suggest chapters in the skill; they fix nothing here.
+ * A mixed change has more than one.
  */
-export const WALKTHROUGH_TEMPLATES = {
-  feature: ["how_it_works", "gap", "change"],
-  bug_fix: ["broken", "cause", "fix", "side_effects", "proof"],
-  refactor: ["claim", "proof", "exceptions"],
-  migration: ["why", "change", "safe_to_run", "rollback"],
-  dependency: ["what_changed", "blast_radius", "rollback"],
-  performance: ["hot_path", "change", "numbers"],
-  ui: ["before_after"],
-  ship_check: ["after_ship"],
-} as const;
-
-export type WalkthroughChangeType = keyof typeof WALKTHROUGH_TEMPLATES;
+const WALKTHROUGH_CHANGE_TYPES = [
+  "feature",
+  "bug_fix",
+  "refactor",
+  "migration",
+  "dependency",
+  "performance",
+  "ui",
+] as const;
 
 /**
  * The diagram of one code change. Chapters choose what to show. A stack gets
@@ -168,53 +166,47 @@ const decisionSchema = z
   .strict();
 
 /**
- * Short prose under the caption: the story for a reader with no context. It
- * cites evidence by 1-based index, such as "[2]", and cites every piece.
- * Two or three sentences, not a wall of text.
+ * Prose under the caption: the story for a reader with no context. It cites
+ * evidence by 1-based index, such as "[2]", and cites every piece. One short
+ * paragraph, so the prose alone carries the reader.
  */
-const bodySchema = z.string().trim().min(1).max(360);
+const bodySchema = z.string().trim().min(1).max(600);
 
-const chapterBase = {
-  id: idSchema,
-  caption,
-  body: bodySchema,
-  view: diagramViewSchema.optional(),
-  evidence: z.array(evidenceSchema).max(4).default([]),
-  decisions: z.array(decisionSchema).max(3).default([]),
-  /** Questions a reader is likely to ask here. */
-  asks: z.array(sentence(80)).max(3).default([]),
-};
-
-const changeTypes = Object.keys(WALKTHROUGH_TEMPLATES) as [
-  WalkthroughChangeType,
-  ...WalkthroughChangeType[],
-];
-const slots = [...new Set(Object.values(WALKTHROUGH_TEMPLATES).flat())] as [
-  string,
-  ...string[],
-];
-
-/**
- * One flat chapter shape. A union per change type would repeat the chapter
- * body in the JSON Schema eight times. `findWalkthroughProblems` checks that
- * the slot belongs to the type.
- */
+/** One chapter of the story. It cites at least one piece of evidence. */
 export const walkthroughChapterSchema = z
   .object({
-    ...chapterBase,
-    type: z.enum(changeTypes),
-    slot: z.enum(slots),
+    id: idSchema,
+    /** The chapter title: a few words, such as "Root cause" or "The fix". */
+    label: sentence(40),
+    caption,
+    body: bodySchema,
+    view: diagramViewSchema.optional(),
+    evidence: z.array(evidenceSchema).min(1).max(6),
+    decisions: z.array(decisionSchema).max(3).default([]),
+    /** Questions a reader is likely to ask here. */
+    asks: z.array(sentence(80)).max(3).default([]),
   })
   .strict();
 
-/** Changed files that no chapter cites, with the reason they do not matter. */
-const notCoveredSchema = z
+/**
+ * Changed files that no chapter cites, grouped by why the story leaves them
+ * out, such as "Tests of the validator". The reader still sees them.
+ */
+const alsoChangedSchema = z
   .array(
     z
       .object({
-        pr: z.number().int().positive(),
-        path: z.string().min(1),
-        reason: sentence(120),
+        reason: sentence(80),
+        files: z
+          .array(
+            z
+              .object({
+                pr: z.number().int().positive(),
+                path: z.string().min(1),
+              })
+              .strict(),
+          )
+          .min(1),
       })
       .strict(),
   )
@@ -230,16 +222,13 @@ export const walkthroughOutputSchema = z
      * else, such as "This PR fixes a bug where…" or "This stack adds…".
      */
     intent: sentence(200),
+    /** What kind of change the whole Walkthrough is. */
+    types: z.array(z.enum(WALKTHROUGH_CHANGE_TYPES)).min(1).max(3),
     diagrams: z.array(diagramSchema).min(1).max(10),
-    chapters: z.array(walkthroughChapterSchema).min(1).max(12),
-    /** A layer that mixes change types, such as a feature and a refactor. */
-    splits: z
-      .array(
-        z.object({ pr: z.number().int().positive(), reason: caption }).strict(),
-      )
-      .default([]),
+    /** `validateWalkthrough` caps the count by stack size. */
+    chapters: z.array(walkthroughChapterSchema).min(1).max(10),
     /** Every changed file that is not mechanical and that no chapter cites. */
-    not_covered: notCoveredSchema,
+    also_changed: alsoChangedSchema,
   })
   .strict();
 
@@ -268,7 +257,7 @@ export const walkthroughUpdateOutputSchema = z
       .max(8),
     /** New concerns that do not fit an old chapter. */
     added_chapters: z.array(walkthroughChapterSchema).max(4).default([]),
-    not_covered: notCoveredSchema,
+    also_changed: alsoChangedSchema,
   })
   .strict();
 

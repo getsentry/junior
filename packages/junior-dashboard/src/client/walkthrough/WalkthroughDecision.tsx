@@ -60,14 +60,14 @@ export function WalkthroughDecision(props: {
   if (answer && !expanded && !editing) {
     return (
       <Accent status={status}>
-        <p className="m-0 flex min-w-0 items-baseline gap-1.5 text-sm text-dashboard-text-muted">
+        <p className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm text-dashboard-text-muted">
           <span className="inline-flex shrink-0 items-center gap-1 self-center font-medium text-dashboard-text-subtle">
             {answer.value === "agree" ? (
               <Check aria-hidden="true" className="size-3.5" />
             ) : null}
             {answeredLabels[answer.value]}
           </span>
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 break-words">
             <DisplayText
               inline
               links={false}

@@ -35,11 +35,16 @@ describe("Walkthrough citations", () => {
       document.content.chapters[0]!.evidence,
     );
     const html = renderToStaticMarkup(
-      <CitedProse refs={refs} scope="claim" text="It calls it[2][3][9]." />,
+      <CitedProse
+        onOpen={() => {}}
+        openOnFocus
+        refs={refs}
+        text="It calls it[2][3][9]."
+      />,
     );
-    expect(html).toContain('aria-label="Reference 2: list.ts:150"');
+    expect(html).toContain('aria-label="Evidence 2: list.ts:150"');
     expect(html).toContain(">,</span>");
     expect(html).not.toContain("[9]");
-    expect(html).not.toContain("Reference 9");
+    expect(html).not.toContain("Evidence 9");
   });
 });

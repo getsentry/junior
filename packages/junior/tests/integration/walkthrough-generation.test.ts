@@ -119,7 +119,7 @@ async function setup(walkthroughs: boolean) {
 /** A stored document for a version of the one-layer stack. */
 function readyDocument(versionId: string) {
   return walkthroughDocumentSchema.parse({
-    schemaVersion: 2,
+    schemaVersion: 3,
     versionId,
     contentVersionId: versionId,
     repository: "getsentry/junior",
@@ -141,6 +141,7 @@ function readyDocument(versionId: string) {
     content: walkthroughOutputSchema.parse({
       title: "Retries wait longer",
       intent: "This PR raises the retry delay.",
+      types: ["feature"],
       diagrams: [
         {
           pr: 3088,
@@ -151,8 +152,7 @@ function readyDocument(versionId: string) {
       chapters: [
         {
           id: "change",
-          type: "feature",
-          slot: "change",
+          label: "The change",
           caption: "The delay goes from 2 to 3.",
           body: "Retries wait longer [1].",
           evidence: [

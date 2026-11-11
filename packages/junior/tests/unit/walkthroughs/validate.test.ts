@@ -34,8 +34,7 @@ const refs = {
 function causeChapter(evidence: unknown[], body = "Every run fails [1].") {
   return {
     id: "cause",
-    type: "bug_fix",
-    slot: "cause",
+    label: "Root cause",
     caption: "Each deployment takes its own lock.",
     body,
     evidence,
@@ -46,6 +45,7 @@ function output(overrides: Record<string, unknown> = {}) {
   return walkthroughOutputSchema.parse({
     title: "Automations run once per tick",
     intent: "This PR fixes a bug where an automation ran twice during deploys.",
+    types: ["bug_fix"],
     diagrams: [
       {
         pr: 3150,
@@ -61,7 +61,9 @@ function output(overrides: Record<string, unknown> = {}) {
         { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
       ]),
     ],
-    not_covered: [{ pr: 3150, path: retryFile, reason: "Retry count only." }],
+    also_changed: [
+      { reason: "Retry count only.", files: [{ pr: 3150, path: retryFile }] },
+    ],
     ...overrides,
   });
 }
@@ -72,8 +74,8 @@ describe("validateWalkthrough", () => {
   });
 
   it("reports hunks that the story skips without saying so", () => {
-    expect(validateWalkthrough(output({ not_covered: [] }), refs)).toEqual([
-      "src/retry.ts lines 1-3 (head) in PR #3150 are not cited, and the file is not in not_covered.",
+    expect(validateWalkthrough(output({ also_changed: [] }), refs)).toEqual([
+      "src/retry.ts lines 1-3 (head) in PR #3150 are not cited, and the file is not in also_changed.",
     ]);
   });
 
@@ -193,20 +195,6 @@ describe("validateWalkthrough", () => {
     expect(problems).toEqual([]);
   });
 
-  it("rejects a cause chapter that cites only prose", () => {
-    const problems = validateWalkthrough(
-      output({
-        chapters: [causeChapter([{ kind: "message", seq: 12 }])],
-        not_covered: [
-          { pr: 3150, path: lockFile, reason: "Shown elsewhere." },
-          { pr: 3150, path: retryFile, reason: "Retry count only." },
-        ],
-      }),
-      refs,
-    );
-    expect(problems).toEqual(["The cause chapter cites no code or check."]);
-  });
-
   it("rejects prose that cites missing evidence or skips evidence", () => {
     const uncited = output({
       chapters: [
@@ -222,7 +210,7 @@ describe("validateWalkthrough", () => {
     ]);
   });
 
-  it("rejects repeated captions, question decisions, repeated views, and diagrams that do not fit the stack", () => {
+  it("rejects repeated labels and captions, question decisions, repeated views, and diagrams that do not fit the stack", () => {
     const evidence = [
       { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
     ];
@@ -252,6 +240,7 @@ describe("validateWalkthrough", () => {
           {
             ...causeChapter(evidence),
             id: "lock-again",
+            label: "Lock check",
             caption: "The lock is checked once more.",
             view: { pr: 3150, show: ["lock"] },
           },
@@ -261,6 +250,7 @@ describe("validateWalkthrough", () => {
     );
     expect(problems).toEqual([
       "A diagram is for PR #3151, which is not in the stack.",
+      "Chapters cause and cause-again have the same label. Make each label unique.",
       "Chapters cause and cause-again have the same caption. Make each caption unique.",
       "Decision lock-ttl is a question. Write the claim as a statement, and put the doubt in concern.",
       "Chapter cause-again shows the diagram for PR #3152, which has none.",
@@ -268,19 +258,18 @@ describe("validateWalkthrough", () => {
     ]);
   });
 
-  it("rejects a slot that the change type does not have", () => {
-    const wrong = output({
-      chapters: [
-        {
-          ...causeChapter([
-            { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
-          ]),
-          type: "migration",
-        },
-      ],
-    });
-    expect(validateWalkthrough(wrong, refs)).toEqual([
-      "Chapter cause uses slot cause, which migration does not have.",
+  it("caps the chapters of one PR at 8", () => {
+    const evidence = [
+      { kind: "code", pr: 3150, path: lockFile, start: 21, end: 23 },
+    ];
+    const chapters = Array.from({ length: 9 }, (_, n) => ({
+      ...causeChapter(evidence),
+      id: `part-${n}`,
+      label: `Part ${n}`,
+      caption: `Part ${n} of the story.`,
+    }));
+    expect(validateWalkthrough(output({ chapters }), refs)).toEqual([
+      "The Walkthrough has 9 chapters. Use 8 or fewer: merge chapters, and list files the story does not need in also_changed.",
     ]);
   });
 });

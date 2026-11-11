@@ -26,6 +26,7 @@ import {
   WalkthroughChangeSummaryView,
   WalkthroughVersions,
 } from "./WalkthroughChanges";
+import { WalkthroughAlsoChanged } from "./WalkthroughAlsoChanged";
 import { WalkthroughChapterView } from "./WalkthroughChapterView";
 import { WalkthroughMeta } from "./WalkthroughMeta";
 import { WalkthroughQuestions } from "./WalkthroughQuestions";
@@ -178,7 +179,8 @@ function ReadyWalkthrough(props: {
             <WalkthroughQuestions
               chapter={{
                 id: chapter.id,
-                title: chapterTitle(chapter),
+                label: chapterTitle(chapter),
+                title: chapter.caption,
                 asks: chapter.asks,
               }}
               versionId={version.id}
@@ -221,10 +223,14 @@ function ReadyWalkthrough(props: {
           document={document}
           feedback={feedback}
           index={index}
+          key={chapter.id}
           onAnswer={(answer) => save.mutate(answer)}
           reopened={reopened}
           total={chapters.length}
         />
+        {index === chapters.length - 1 ? (
+          <WalkthroughAlsoChanged document={document} />
+        ) : null}
         <div className="flex items-center justify-between border-t border-dashboard-border-subtle pt-4">
           <Button
             disabled={index === 0}

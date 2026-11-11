@@ -37,7 +37,7 @@ import {
 
 export const SUBMIT_WALKTHROUGH_TOOL_NAME = "submitWalkthrough";
 /** Bump when the skill or tool contract changes what the model writes. */
-export const WALKTHROUGH_PROMPT_VERSION = 3;
+export const WALKTHROUGH_PROMPT_VERSION = 4;
 /** Files that one submission may cite head-side code from. */
 const MAX_CONTEXT_FILES = 30;
 const MESSAGE_TEXT_LIMIT = 400;

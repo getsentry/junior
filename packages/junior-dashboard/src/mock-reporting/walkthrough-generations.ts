@@ -118,7 +118,7 @@ export function mockGenerationConversations(nowMs: number) {
             { chapters: args.prs.length * 2 + 2 },
             JSON.stringify({
               ok: false,
-              problems: ["A hunk is neither cited nor in not_covered."],
+              problems: ["A hunk is neither cited nor in also_changed."],
             }),
             `${turnId}:submit-1`,
           ),

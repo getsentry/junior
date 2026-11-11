@@ -144,8 +144,8 @@ describe("Walkthrough answers after an update", () => {
         entry.added,
       ]),
     ).toEqual([
-      ["versions-table", false],
       ["start-flow", false],
+      ["versions-table", false],
       ["dashboard-page", true],
     ]);
     // Answers on the update itself do not hide what changed.

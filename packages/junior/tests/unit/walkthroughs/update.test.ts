@@ -45,14 +45,13 @@ function previous(): WalkthroughDocument {
   ];
   const chapter = (id: string, pr: number, path: string) => ({
     id,
-    type: "feature",
-    slot: "change",
+    label: `Chapter ${id}`,
     caption: `Chapter ${id}.`,
     body: "It changes [1].",
     evidence: [{ kind: "code", pr, path, start: 1, end: 1 }],
   });
   return walkthroughDocumentSchema.parse({
-    schemaVersion: 2,
+    schemaVersion: 3,
     versionId: "v1",
     contentVersionId: "v1",
     repository: "getsentry/junior",
@@ -67,6 +66,7 @@ function previous(): WalkthroughDocument {
     content: {
       title: "Locks and retries",
       intent: "This stack adds a lock and changes retries.",
+      types: ["feature"],
       diagrams: [
         {
           pr: 1,

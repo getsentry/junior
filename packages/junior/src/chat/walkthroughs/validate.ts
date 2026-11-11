@@ -1,9 +1,9 @@
 /**
  * Checks that schema parsing cannot do. Every reference must resolve, and the
- * story must not skip risky code without saying so.
+ * story must not skip changed code without saying so. The story's structure
+ * is the model's choice, so nothing here checks it.
  */
 import {
-  WALKTHROUGH_TEMPLATES,
   type WalkthroughChapter,
   type WalkthroughCodeRef,
   type WalkthroughDecision,
@@ -36,6 +36,17 @@ export type WalkthroughInputRefs = {
 export function contextFileKey(pr: number, path: string): string {
   return `${pr}:${path}`;
 }
+
+/**
+ * Most chapters a story may have. A long Walkthrough stops being a guide, and
+ * a stack gets a little more room than one PR.
+ */
+const MAX_CHAPTERS = { single: 8, stack: 10 } as const;
+
+/** Changed files that the story leaves out, as `also_changed` lists them. */
+type AlsoChanged = readonly {
+  files: readonly { pr: number; path: string }[];
+}[];
 
 /** Node and edge ids of each diagram, by code change. */
 export type DiagramIds = ReadonlyMap<number, ReadonlySet<string>>;
@@ -80,27 +91,21 @@ export function validateWalkthrough(
 ): string[] {
   const problems: string[] = [...diagramProblems(output.diagrams, refs)];
   const diagrams = walkthroughDiagramIds(output.diagrams);
+  const max = refs.prs.size > 1 ? MAX_CHAPTERS.stack : MAX_CHAPTERS.single;
+  if (output.chapters.length > max) {
+    problems.push(
+      `The Walkthrough has ${output.chapters.length} chapters. Use ${max} or fewer: merge chapters, and list files the story does not need in also_changed.`,
+    );
+  }
   problems.push(
     ...duplicateIds(
       "chapter",
       output.chapters.map((c) => c.id),
     ),
-  );
-  // The caption is the chapter title, and a slot such as "The change"
-  // repeats, so only the caption tells chapters apart.
-  const captions = new Map<string, string>();
-  for (const chapter of output.chapters) {
-    const key = chapter.caption.trim().toLowerCase();
-    const first = captions.get(key);
-    if (first) {
-      problems.push(
-        `Chapters ${first} and ${chapter.id} have the same caption. Make each caption unique.`,
-      );
-    } else {
-      captions.set(key, chapter.id);
-    }
-  }
-  problems.push(
+    // The label is the chapter title and the caption says what it shows, so
+    // each must tell chapters apart.
+    ...duplicateText(output.chapters, "label"),
+    ...duplicateText(output.chapters, "caption"),
     ...duplicateIds(
       "decision",
       output.chapters.flatMap((c) => c.decisions.map((d) => d.id)),
@@ -109,23 +114,12 @@ export function validateWalkthrough(
   for (const chapter of output.chapters) {
     problems.push(...chapterProblems(chapter, refs, diagrams));
   }
-  problems.push(...repeatedViewProblems(output.chapters));
-  const bugFixCause = output.chapters.find(
-    (c) => c.type === "bug_fix" && c.slot === "cause",
-  );
-  // The reader judges whether the cause is the root cause. They need code or
-  // a check to judge it, not the model's word.
-  if (
-    bugFixCause &&
-    !bugFixCause.evidence.some((e) => e.kind === "code" || e.kind === "check")
-  ) {
-    problems.push("The cause chapter cites no code or check.");
-  }
   problems.push(
+    ...repeatedViewProblems(output.chapters),
     ...coverageProblems(
       refs,
       output.chapters.flatMap((c) => c.evidence),
-      output.not_covered,
+      output.also_changed,
     ),
   );
   return problems;
@@ -195,7 +189,7 @@ export function validateWalkthroughUpdate(
         ...output.items.flatMap((i) => i.evidence),
         ...output.added_chapters.flatMap((c) => c.evidence),
       ],
-      output.not_covered,
+      output.also_changed,
     ),
   );
   return problems;
@@ -253,12 +247,6 @@ function chapterProblems(
     ...chapter.evidence.flatMap((e) => evidenceProblems(e, refs)),
     ...citationProblems(chapter.id, chapter.body, chapter.evidence.length),
   ];
-  const templateSlots: readonly string[] = WALKTHROUGH_TEMPLATES[chapter.type];
-  if (!templateSlots.includes(chapter.slot)) {
-    problems.push(
-      `Chapter ${chapter.id} uses slot ${chapter.slot}, which ${chapter.type} does not have.`,
-    );
-  }
   for (const decision of chapter.decisions) {
     problems.push(...claimProblems(decision));
     if (
@@ -390,16 +378,22 @@ function codeProblems(
 }
 
 /**
- * Every hunk sent to the model overlaps a code citation, or its file is listed
- * as not covered.
+ * Every hunk sent to the model overlaps a code citation, or its file is in
+ * `also_changed`. Listing a file is always enough, so coverage never forces
+ * a chapter.
  */
 function coverageProblems(
   refs: WalkthroughInputRefs,
   evidence: readonly WalkthroughEvidence[],
-  notCovered: readonly { pr: number; path: string }[],
+  alsoChanged: AlsoChanged,
 ): string[] {
+  const listed = new Set(
+    alsoChanged.flatMap((group) =>
+      group.files.map((file) => contextFileKey(file.pr, file.path)),
+    ),
+  );
   const excused = (file: WalkthroughDiffFile) =>
-    notCovered.some((n) => n.pr === file.pr && n.path === file.path);
+    listed.has(contextFileKey(file.pr, file.path));
   const cited = evidence.filter((e) => e.kind === "code");
   const problems: string[] = [];
   for (const file of refs.files) {
@@ -416,8 +410,29 @@ function coverageProblems(
       const range = hunk[side];
       if (covered || !range) continue;
       problems.push(
-        `${file.path} lines ${range.start}-${range.end} (${side}) in PR #${file.pr} are not cited, and the file is not in not_covered.`,
+        `${file.path} lines ${range.start}-${range.end} (${side}) in PR #${file.pr} are not cited, and the file is not in also_changed.`,
       );
+    }
+  }
+  return problems;
+}
+
+/** Chapters whose label or caption repeats, ignoring case. */
+function duplicateText(
+  chapters: readonly WalkthroughChapter[],
+  field: "label" | "caption",
+): string[] {
+  const seen = new Map<string, string>();
+  const problems: string[] = [];
+  for (const chapter of chapters) {
+    const key = chapter[field].trim().toLowerCase();
+    const first = seen.get(key);
+    if (first) {
+      problems.push(
+        `Chapters ${first} and ${chapter.id} have the same ${field}. Make each ${field} unique.`,
+      );
+    } else {
+      seen.set(key, chapter.id);
     }
   }
   return problems;

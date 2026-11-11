@@ -1,8 +1,9 @@
 import { Fragment } from "react";
-import { CircleCheck, CircleDashed, CircleX } from "lucide-react";
+import { CircleCheck, CircleDashed, CircleX, X } from "lucide-react";
 import { Link } from "react-router";
 
 import { OutboundLink } from "../components/OutboundLink";
+import { Button } from "../components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -13,15 +14,11 @@ import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { CitedEvidence } from "./walkthroughModel";
 
-/** DOM id of one reference, so a citation can scroll to it. */
-function referenceId(scope: string, n: number): string {
-  return `wt-ref-${scope}-${n}`.replace(/[^\w-]/g, "-");
-}
-
 function fileName(path: string): string {
   return path.split("/").at(-1) ?? path;
 }
 
+/** What a citation points at, in a few words. */
 function referenceLabel(ref: CitedEvidence): string {
   switch (ref.kind) {
     case "code":
@@ -31,19 +28,11 @@ function referenceLabel(ref: CitedEvidence): string {
     case "link":
       return ref.label;
     case "message":
-      return `Conversation: ${ref.message.text}`;
+      return "Message in the Conversation";
   }
 }
 
-function scrollToReference(id: string) {
-  const element = document.getElementById(id);
-  if (!element) return;
-  element.scrollIntoView({ behavior: "smooth", block: "center" });
-  element.dataset.flash = "true";
-  window.setTimeout(() => delete element.dataset.flash, 1200);
-}
-
-/** The number badge that a citation and its reference share. */
+/** The number badge that a citation and its evidence share. */
 function ReferenceNumber(props: { n: number }) {
   return (
     <span className="inline-grid h-4.5 min-w-4.5 place-items-center rounded bg-dashboard-fill-strong px-1 font-sans text-xs leading-none font-medium tabular-nums text-dashboard-text-muted">
@@ -52,17 +41,19 @@ function ReferenceNumber(props: { n: number }) {
   );
 }
 
-const flashClass =
-  "scroll-mt-24 transition-colors data-[flash=true]:bg-dashboard-accent/10";
-
 /**
- * Prose with "[n]" citations as superscript marks, like footnotes. Hover shows
- * what a mark points at, and a click scrolls to it.
+ * Prose with "[n]" citations as superscript marks, like footnotes. Hover
+ * names what a mark points at. A click, or focus when `openOnFocus`, opens
+ * that evidence.
  */
 export function CitedProse(props: {
   className?: string;
+  /** The open citation in this prose, if any. */
+  openN?: number;
+  /** Focus opens evidence too, when opening it does not move focus. */
+  openOnFocus: boolean;
+  onOpen(n: number): void;
   refs: readonly CitedEvidence[];
-  scope: string;
   text: string;
 }) {
   // Split into text runs and the citations that follow each run.
@@ -101,7 +92,12 @@ export function CitedProse(props: {
                       ,
                     </span>
                   ) : null}
-                  <CitationMark refItem={ref} scope={props.scope} />
+                  <CitationMark
+                    onOpen={() => props.onOpen(ref.n)}
+                    open={props.openN === ref.n}
+                    openOnFocus={props.openOnFocus}
+                    refItem={ref}
+                  />
                 </Fragment>
               ))}
             </span>
@@ -112,16 +108,26 @@ export function CitedProse(props: {
   );
 }
 
-function CitationMark(props: { refItem: CitedEvidence; scope: string }) {
+function CitationMark(props: {
+  onOpen(): void;
+  open: boolean;
+  openOnFocus: boolean;
+  refItem: CitedEvidence;
+}) {
   const ref = props.refItem;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
-            aria-label={`Reference ${ref.n}: ${referenceLabel(ref)}`}
-            className="ml-px inline cursor-pointer border-0 bg-transparent p-0 align-super font-sans text-2xs leading-none font-medium tabular-nums text-dashboard-accent-text hover:underline"
-            onClick={() => scrollToReference(referenceId(props.scope, ref.n))}
+            aria-expanded={props.open}
+            aria-label={`Evidence ${ref.n}: ${referenceLabel(ref)}`}
+            className={cn(
+              "ml-px inline cursor-pointer rounded-sm border-0 bg-transparent px-0.5 align-super font-sans text-2xs leading-none font-medium tabular-nums text-dashboard-accent-text hover:underline",
+              props.open && "bg-dashboard-accent/15",
+            )}
+            onClick={props.onOpen}
+            onFocus={props.openOnFocus ? props.onOpen : undefined}
             type="button"
           >
             {ref.n}
@@ -135,138 +141,85 @@ function CitationMark(props: { refItem: CitedEvidence; scope: string }) {
   );
 }
 
-const sourceLinkClass =
-  "text-dashboard-text-muted underline decoration-dashboard-border-heavy underline-offset-2 hover:text-dashboard-text";
-
 /**
- * Messages and links that the prose cites, as numbered footnotes. The name of
- * the source is the link: a message opens its Conversation.
+ * One cited piece of evidence, opened from its citation: code, a message, a
+ * check, or a link. It sits beside the prose, or in a drawer when the column
+ * is narrow.
  */
-export function ReferenceList(props: {
-  /** The Conversation that made the PR. Cited messages link to it. */
+export function EvidencePanel(props: {
   conversationId?: string;
-  refs: readonly CitedEvidence[];
-  scope: string;
+  onClose?(): void;
+  refItem: CitedEvidence;
+  stacked: boolean;
 }) {
-  const sources = props.refs.filter(
-    (r) => r.kind === "message" || r.kind === "link",
-  );
-  if (!sources.length) return null;
+  const ref = props.refItem;
   return (
-    <ol className="m-0 grid list-none gap-1 border-t border-dashboard-border-subtle p-0 pt-3">
-      {sources.map((ref) => (
-        <li
-          className={cn(
-            "grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-2 rounded px-1 py-0.5 text-sm text-dashboard-text-subtle",
-            flashClass,
-          )}
-          id={referenceId(props.scope, ref.n)}
-          key={ref.n}
-        >
+    <section
+      aria-label={`Evidence ${ref.n}`}
+      className="grid min-w-0 content-start gap-3"
+    >
+      <header className="flex items-start gap-2">
+        <span className="mt-0.5">
           <ReferenceNumber n={ref.n} />
-          {ref.kind === "link" ? (
-            <OutboundLink className={sourceLinkClass} href={ref.url}>
-              {ref.label}
-            </OutboundLink>
-          ) : ref.kind === "message" ? (
-            <span>
-              {props.conversationId ? (
-                <Link
-                  className={sourceLinkClass}
-                  to={conversationPath(props.conversationId)}
-                >
-                  Conversation
-                </Link>
-              ) : (
-                <span className="text-dashboard-text-muted">Conversation</span>
-              )}
-              <span className="text-dashboard-text-muted"> · </span>
-              <DisplayText inline text={ref.message.text} />
-            </span>
-          ) : null}
-        </li>
-      ))}
-    </ol>
+        </span>
+        <EvidenceTitle refItem={ref} stacked={props.stacked} />
+        {props.onClose ? (
+          <Button
+            aria-label="Close evidence"
+            className="-mt-2 -mr-2 ml-auto shrink-0"
+            onClick={props.onClose}
+            size="icon"
+            type="button"
+          >
+            <X aria-hidden="true" className="size-4" />
+          </Button>
+        ) : null}
+      </header>
+      <EvidenceBody conversationId={props.conversationId} refItem={ref} />
+    </section>
   );
 }
 
-/**
- * One cited code excerpt. When the column is wide, the note sits beside the
- * code. Code comes from the stored diff, never from the model.
- */
-export function CodeReference(props: {
-  refItem: CitedEvidence & { kind: "code" };
-  scope: string;
-  stacked: boolean;
-}) {
-  const { evidence, excerpt } = props.refItem;
-  const location = `${fileName(excerpt.path)}:${excerpt.start}`;
-  return (
-    <figure
-      className={cn(
-        "m-0 grid gap-3 rounded-md @3xl:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] @3xl:gap-5",
-        flashClass,
-      )}
-      id={referenceId(props.scope, props.refItem.n)}
-    >
-      <figcaption className="grid content-start gap-1.5 text-sm text-dashboard-text-subtle">
-        <span className="flex min-w-0 items-center gap-2 text-xs text-dashboard-text-muted">
-          <ReferenceNumber n={props.refItem.n} />
-          {excerpt.url ? (
+const sourceLinkClass =
+  "text-dashboard-text-subtle underline decoration-dashboard-border-heavy underline-offset-2 hover:text-dashboard-text";
+
+/** The full name of what the evidence is. Paths wrap; nothing is cut. */
+function EvidenceTitle(props: { refItem: CitedEvidence; stacked: boolean }) {
+  const ref = props.refItem;
+  const className = "min-w-0 text-sm break-words text-dashboard-text";
+  switch (ref.kind) {
+    case "code": {
+      const location = `${ref.excerpt.path}:${ref.excerpt.start}`;
+      return (
+        <span className={cn(className, "grid gap-0.5")}>
+          {ref.excerpt.url ? (
             <OutboundLink
-              className="min-w-0 truncate font-mono text-dashboard-text-muted hover:text-dashboard-text"
-              href={excerpt.url}
-              title={excerpt.path}
+              className={cn(sourceLinkClass, "font-mono break-all")}
+              href={ref.excerpt.url}
             >
               {location}
             </OutboundLink>
           ) : (
-            <span className="min-w-0 truncate font-mono" title={excerpt.path}>
-              {location}
-            </span>
+            <span className="font-mono break-all">{location}</span>
           )}
           {props.stacked ? (
-            <span className="shrink-0 font-mono">#{excerpt.pr}</span>
+            <span className="text-xs text-dashboard-text-muted">
+              #{ref.excerpt.pr}
+            </span>
           ) : null}
         </span>
-        {evidence.note ? (
-          <span>
-            <DisplayText inline text={evidence.note} />
-          </span>
-        ) : null}
-      </figcaption>
-      {/* Wrap long lines: a reviewer should not scroll sideways to read
-          the cited code. */}
-      <pre className="m-0 min-w-0 rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-1.5 font-mono text-sm leading-relaxed">
-        {excerpt.lines.map((line, index) => (
-          <div
-            className={cn(
-              "flex gap-3 px-3",
-              line.kind === "add" &&
-                "bg-emerald-400/10 text-emerald-200 light:text-emerald-800",
-              line.kind === "remove" &&
-                "bg-rose-400/10 text-rose-200 light:text-rose-800",
-              line.kind === "context" && "text-dashboard-text-muted",
-            )}
-            key={index}
-          >
-            <span
-              aria-hidden="true"
-              className="w-8 shrink-0 select-none text-right text-dashboard-text-faint"
-            >
-              {line.newLine ?? line.oldLine}
-            </span>
-            <span aria-hidden="true" className="w-3 shrink-0 select-none">
-              {line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}
-            </span>
-            <code className="min-w-0 break-words whitespace-pre-wrap">
-              {line.content}
-            </code>
-          </div>
-        ))}
-      </pre>
-    </figure>
-  );
+      );
+    }
+    case "link":
+      return (
+        <OutboundLink className={cn(className, sourceLinkClass)} href={ref.url}>
+          {ref.label}
+        </OutboundLink>
+      );
+    case "check":
+    case "message":
+      return <span className={className}>{referenceLabel(ref)}</span>;
+  }
 }
 
 const checkIcons = {
@@ -279,56 +232,104 @@ const checkIcons = {
   },
 } as const;
 
-/** Checks that back the story, such as CI results. */
-export function ProofCard(props: {
-  refs: readonly CitedEvidence[];
-  scope: string;
+function EvidenceBody(props: {
+  conversationId?: string;
+  refItem: CitedEvidence;
 }) {
-  const checks = props.refs.filter(
-    (r): r is CitedEvidence & { kind: "check" } => r.kind === "check",
-  );
-  if (!checks.length) return null;
-  return (
-    <ul className="m-0 grid list-none gap-0 divide-y divide-dashboard-border-subtle rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel p-0">
-      {checks.map((ref) => {
-        const icon = checkIcons[ref.check.status];
-        return (
-          <li
-            className={cn(
-              "grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-0.5 px-3 py-2.5",
-              flashClass,
+  const ref = props.refItem;
+  switch (ref.kind) {
+    case "code":
+      return (
+        <>
+          {ref.evidence.note ? (
+            <p className="m-0 text-sm text-dashboard-text-subtle">
+              <DisplayText inline text={ref.evidence.note} />
+            </p>
+          ) : null}
+          <CodeExcerpt excerpt={ref.excerpt} />
+        </>
+      );
+    case "message":
+      return (
+        <blockquote className="m-0 grid gap-2 border-l-2 border-dashboard-border-emphasis pl-3 text-sm text-dashboard-text-subtle">
+          <DisplayText text={ref.message.text} />
+          {props.conversationId ? (
+            <Link
+              className={cn(sourceLinkClass, "w-fit text-xs")}
+              to={conversationPath(props.conversationId)}
+            >
+              Open the Conversation
+            </Link>
+          ) : null}
+        </blockquote>
+      );
+    case "check": {
+      const icon = checkIcons[ref.check.status];
+      return (
+        <p className="m-0 flex items-start gap-2 text-sm text-dashboard-text-subtle">
+          <icon.Icon
+            aria-label={icon.label}
+            className={cn("mt-0.5 size-4 shrink-0", icon.className)}
+          />
+          <span className="grid gap-0.5">
+            {ref.check.detail ? (
+              <DisplayText inline text={ref.check.detail} />
+            ) : (
+              icon.label
             )}
-            id={referenceId(props.scope, ref.n)}
-            key={ref.n}
-          >
-            <ReferenceNumber n={ref.n} />
-            <icon.Icon
-              aria-label={icon.label}
-              className={cn("mt-0.5 size-4", icon.className)}
-            />
-            <span className="grid gap-0.5">
-              <span className="text-sm text-dashboard-text">
-                <DisplayText inline text={ref.check.label} />
-              </span>
-              {ref.check.detail ? (
-                <span className="text-xs text-dashboard-text-muted">
-                  <DisplayText inline text={ref.check.detail} />
-                </span>
-              ) : null}
-            </span>
             {ref.check.url ? (
               <OutboundLink
-                className="text-xs text-dashboard-text-muted hover:text-dashboard-text"
+                className={cn(sourceLinkClass, "w-fit text-xs")}
                 href={ref.check.url}
               >
-                Run
+                Open the run
               </OutboundLink>
-            ) : (
-              <span />
-            )}
-          </li>
-        );
-      })}
-    </ul>
+            ) : null}
+          </span>
+        </p>
+      );
+    }
+    case "link":
+      return (
+        <p className="m-0 text-xs break-all text-dashboard-text-muted">
+          {ref.url}
+        </p>
+      );
+  }
+}
+
+/** Cited code from the stored diff, never from the model. Lines wrap. */
+function CodeExcerpt(props: {
+  excerpt: (CitedEvidence & { kind: "code" })["excerpt"];
+}) {
+  return (
+    <pre className="m-0 min-w-0 rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel py-1.5 font-mono text-sm leading-relaxed">
+      {props.excerpt.lines.map((line, index) => (
+        <div
+          className={cn(
+            "flex gap-3 px-3",
+            line.kind === "add" &&
+              "bg-emerald-400/10 text-emerald-200 light:text-emerald-800",
+            line.kind === "remove" &&
+              "bg-rose-400/10 text-rose-200 light:text-rose-800",
+            line.kind === "context" && "text-dashboard-text-muted",
+          )}
+          key={index}
+        >
+          <span
+            aria-hidden="true"
+            className="w-8 shrink-0 select-none text-right text-dashboard-text-faint"
+          >
+            {line.newLine ?? line.oldLine}
+          </span>
+          <span aria-hidden="true" className="w-3 shrink-0 select-none">
+            {line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}
+          </span>
+          <code className="min-w-0 break-words whitespace-pre-wrap">
+            {line.content}
+          </code>
+        </div>
+      ))}
+    </pre>
   );
 }

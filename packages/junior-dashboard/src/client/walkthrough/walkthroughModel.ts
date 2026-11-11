@@ -18,51 +18,29 @@ import {
 type Check = WalkthroughDocument["checks"][number];
 type Message = WalkthroughDocument["messages"][number];
 
-/** The label of each slot. The model fills slots; it never names them. */
-const slotLabels: Record<string, string> = {
-  how_it_works: "How it works",
-  gap: "The gap",
-  change: "The change",
-  broken: "What broke",
-  cause: "The cause",
-  fix: "The fix",
-  side_effects: "Side effects",
-  proof: "How we know it works",
-  claim: "The claim",
-  exceptions: "Exceptions",
-  why: "Why",
-  safe_to_run: "Safe to run?",
-  rollback: "Rollback",
-  what_changed: "What changed",
-  blast_radius: "Blast radius",
-  hot_path: "Hot path",
-  numbers: "Numbers",
-  before_after: "Before and after",
-  after_ship: "After it ships",
-};
-
-export const typeLabels: Record<WalkthroughChapter["type"], string> = {
-  feature: "Feature",
-  bug_fix: "Bug fix",
-  refactor: "Refactor",
-  migration: "Migration",
-  dependency: "Dependency",
-  performance: "Performance",
-  ui: "UI",
-  ship_check: "Ship check",
-};
-
-/**
- * The heading of one chapter: its caption. A slot repeats, such as several
- * "The change" chapters in a stack, so the slot is only a label above it.
- */
+/** The chapter title. The caption under it says what the chapter shows. */
 export function chapterTitle(chapter: WalkthroughChapter): string {
-  return chapter.caption;
+  return chapter.label;
 }
 
-/** The slot label shown above a chapter heading. */
-export function chapterSlotLabel(chapter: WalkthroughChapter): string {
-  return slotLabels[chapter.slot] ?? chapter.slot;
+/** Files the story leaves out, by reason, from the story and its updates. */
+export function alsoChanged(
+  document: WalkthroughDocument,
+): WalkthroughDocument["content"]["also_changed"] {
+  const groups = new Map<string, { pr: number; path: string }[]>();
+  for (const group of [
+    ...document.content.also_changed,
+    ...document.updates.flatMap((update) => update.also_changed),
+  ]) {
+    const files = groups.get(group.reason) ?? [];
+    for (const file of group.files) {
+      if (!files.some((f) => f.pr === file.pr && f.path === file.path)) {
+        files.push(file);
+      }
+    }
+    groups.set(group.reason, files);
+  }
+  return [...groups].map(([reason, files]) => ({ reason, files }));
 }
 
 /** One numbered piece of chapter evidence, resolved against the document. */
@@ -108,9 +86,7 @@ export function citedEvidence(
 }
 
 /** Layers that a chapter's code cites. */
-export function evidencePrs(
-  evidence: readonly WalkthroughEvidence[],
-): number[] {
+function evidencePrs(evidence: readonly WalkthroughEvidence[]): number[] {
   return [
     ...new Set(evidence.flatMap((e) => (e.kind === "code" ? [e.pr] : []))),
   ];

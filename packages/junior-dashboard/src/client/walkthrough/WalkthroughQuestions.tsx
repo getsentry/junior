@@ -25,6 +25,8 @@ import {
 /** The chapter the reviewer is on, with the questions it suggests. */
 export type QuestionsChapter = QuestionChapter & {
   id: string;
+  /** The chapter title, short enough for the scope chip. */
+  label: string;
   asks: string[];
 };
 
@@ -226,16 +228,16 @@ function QuestionsChat(props: {
             chapter ? (
               <Button
                 aria-pressed={Boolean(scoped)}
-                className="h-7 max-w-full min-w-0 px-2 text-xs"
+                className="h-auto min-h-7 max-w-full min-w-0 px-2 py-1 text-left text-xs leading-snug"
                 onClick={() =>
                   setUnscopedChapterId(scoped ? chapter.id : undefined)
                 }
                 type="button"
                 variant="quiet"
               >
-                <span className="truncate">
+                <span className="min-w-0 break-words whitespace-normal">
                   {scoped
-                    ? `About: ${chapter.title}`
+                    ? `About: ${chapter.label}`
                     : "About: the Walkthrough"}
                 </span>
                 {scoped ? <X aria-hidden="true" size={12} /> : null}
