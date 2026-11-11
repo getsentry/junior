@@ -386,6 +386,18 @@ text.
 - On calls through the Pi stream wrapper, `app.ai.usage.cache_write_1h` is the
   part of `gen_ai.usage.cache_creation.input_tokens` written with 1h
   retention. The rest used 5m retention.
+- `gen_ai.usage.cache_hit_ratio` (double, 0 to 1) is
+  `gen_ai.usage.cache_read.input_tokens` divided by
+  `gen_ai.usage.input_tokens` for one call. It is not an OTel attribute.
+  Metric monitors cannot divide two sums, so alert on `avg()` of this value.
+  It is absent when the call reports no cache reads or no input.
+  `gen_ai.invoke_agent` spans also set it, for the usage of the whole phase.
+- `avg(gen_ai.usage.cache_hit_ratio)` gives each call the same weight. A
+  call with a low ratio, such as the first call of a Conversation, counts as
+  much as a large cached call. So the average is usually lower than the
+  token-weighted rate `sum(cache_read.input_tokens) / sum(input_tokens)`.
+  Cache warmups (`gen_ai.prompt.name:junior.cache_warmup`) also set it and
+  read almost all of the cache. Exclude them to see the agent calls only.
 
 To classify a cache miss, compare a call with the previous call in the same
 `gen_ai.conversation.id`:
@@ -409,6 +421,13 @@ Prefix hashes of each model call in a Conversation. Compare consecutive rows.
 dataset=spans query='span.op:gen_ai.chat gen_ai.conversation.id:"<conversation_id>"'
 fields=timestamp,trace,gen_ai.request.model,app.ai.request.prefix.hash,app.ai.request.prefix.before_last_reply.hash,app.ai.request.system_instructions.hash,app.ai.request.tools.hash,app.ai.request.messages.hash,app.ai.request.messages.before_last_reply.hash,app.ai.request.thinking.type,app.ai.request.effort,gen_ai.conversation.compacted,gen_ai.usage.cache_read.input_tokens,gen_ai.usage.cache_creation.input_tokens
 sort=timestamp
+```
+
+Per-call cache hit ratio of agent model calls.
+
+```text
+dataset=spans query='span.op:gen_ai.chat !gen_ai.prompt.name:junior.cache_warmup'
+fields=avg(gen_ai.usage.cache_hit_ratio),sum(gen_ai.usage.cache_read.input_tokens),sum(gen_ai.usage.input_tokens)
 ```
 
 ## Cache Warming
