@@ -327,6 +327,12 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
       ...automationReport.automations,
       ...Array.from({ length: 30 }, (_, index) => ({
         ...automationReport.automations[0]!,
+        // Enough Destinations that the filter needs its search box.
+        destination: {
+          ...automationReport.automations[0]!.destination,
+          channelId: `C-extra-${index}`,
+          label: `#team-${String(index).padStart(2, "0")}`,
+        },
         id: `scheduled-extra-${index}`,
         title: `Weekly summary ${String(index).padStart(2, "0")}`,
       })),
@@ -414,6 +420,14 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await expect(page).toHaveURL(listUrl);
   await expect(active.getByRole("listitem")).toHaveCount(31);
   await page.getByRole("button", { name: /^Filters/ }).click();
+  const findDestination = page.getByLabel("Search destination options");
+  await findDestination.fill("TEAM-07");
+  await expect(
+    page
+      .getByRole("group", { name: "Filter by destination", exact: true })
+      .getByRole("button"),
+  ).toHaveText(["All", "#team-07"]);
+  await findDestination.fill("");
   await filterOption(page, "destination", "#project-updates").click();
   await filterOption(page, "state", "Active").click();
   await expect(page).toHaveURL(/state=active/);

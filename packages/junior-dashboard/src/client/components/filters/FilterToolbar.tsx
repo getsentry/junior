@@ -17,7 +17,7 @@ export type ActiveFilter = {
  * The search bar of a filtered page: search, the button that opens its
  * `FilterPanel`, and one removable chip per set filter. Beside an open panel
  * the chips repeat it, so they hide. `children` adds controls after the
- * button, such as a sort.
+ * button, such as a sort. Render it as the `toolbar` of a `FilteredList`.
  */
 export function FilterToolbar(props: {
   children?: ReactNode;
