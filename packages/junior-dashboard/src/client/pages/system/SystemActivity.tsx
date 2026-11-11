@@ -2,7 +2,14 @@ import type {
   ConversationMetricDay,
   ConversationStatsReport,
 } from "@sentry/junior/api/schema";
-import { CircleDollarSign, MessageSquare, Sigma } from "lucide-react";
+import {
+  CircleDollarSign,
+  GitMerge,
+  MessageSquare,
+  MessagesSquare,
+  Repeat,
+  Sigma,
+} from "lucide-react";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import {
@@ -23,14 +30,26 @@ function periodTotals(days: ConversationMetricDay[]) {
     (total, day) => ({
       conversations: total.conversations + day.conversations,
       costUsd: total.costUsd + (day.costUsd ?? 0),
+      mergedCodeChangeCostUsd:
+        total.mergedCodeChangeCostUsd + (day.mergedCodeChangeCostUsd ?? 0),
+      mergedCodeChanges: total.mergedCodeChanges + (day.mergedCodeChanges ?? 0),
       tokens: total.tokens + (day.tokens ?? 0),
+      turns: total.turns + (day.turns ?? 0),
     }),
     {
       conversations: 0,
       costUsd: 0,
+      mergedCodeChangeCostUsd: 0,
+      mergedCodeChanges: 0,
       tokens: 0,
+      turns: 0,
     },
   );
+}
+
+/** Mean cost of one unit, or a dash when the period has no units. */
+function unitCost(costUsd: number, units: number): string {
+  return units > 0 ? formatCostSummary({ total: costUsd / units }) : "—";
 }
 
 /** Present selectable daily runtime and model-usage trends. */
@@ -101,6 +120,27 @@ export function SystemActivity(props: {
           icon={CircleDollarSign}
           label="Model spend"
           value={formatCostSummary({ total: totals.costUsd })}
+        />
+        <StatCard
+          detail={`Across ${formatCompactNumber(totals.turns)} Turns`}
+          icon={Repeat}
+          label="Cost per Turn"
+          value={unitCost(totals.costUsd, totals.turns)}
+        />
+        <StatCard
+          detail={`Across ${formatCompactNumber(totals.conversations)} conversations`}
+          icon={MessagesSquare}
+          label="Cost per conversation"
+          value={unitCost(totals.costUsd, totals.conversations)}
+        />
+        <StatCard
+          detail={`Linked conversation cost of ${formatCompactNumber(totals.mergedCodeChanges)} merged changes`}
+          icon={GitMerge}
+          label="Cost per merged change"
+          value={unitCost(
+            totals.mergedCodeChangeCostUsd,
+            totals.mergedCodeChanges,
+          )}
         />
       </div>
       <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />

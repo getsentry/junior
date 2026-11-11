@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
+import { recordCodeChange } from "@/chat/code/store";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -255,6 +256,18 @@ describe("conversation stats API", () => {
         ]);
       }
 
+      // A merged code change carries the cost of its linked conversation tree.
+      await recordCodeChange(fixture.sql.db(), "github", {
+        conversationIds: ["slack:C1:recent"],
+        mergedAt: new Date("2026-06-15T11:58:00.000Z"),
+        number: 7,
+        openedAt: new Date("2026-06-15T11:52:00.000Z"),
+        providerId: "change-7",
+        repository: { name: "getsentry/junior", providerId: "repository-1" },
+        state: "merged",
+        updatedAt: new Date("2026-06-15T11:58:00.000Z"),
+      });
+
       const response = await createJuniorApi().request(
         "http://localhost/api/conversations/stats",
       );
@@ -365,6 +378,7 @@ describe("conversation stats API", () => {
           date: "2026-06-14",
           durationMs: 500,
           tokens: 30,
+          turns: 1,
         }),
       );
       expect(report.metricDays.at(-1)).toEqual(
@@ -376,7 +390,10 @@ describe("conversation stats API", () => {
           date: "2026-06-15",
           durationMs: 1_604,
           inputTokens: 100,
+          mergedCodeChangeCostUsd: 0.003,
+          mergedCodeChanges: 1,
           tokens: 444,
+          turns: 3,
         }),
       );
       expect(report.metricHours).toHaveLength(7 * 24);
@@ -426,7 +443,10 @@ describe("conversation stats API", () => {
           date: "2026-06-15T11",
           durationMs: 1_504,
           inputTokens: 100,
+          mergedCodeChangeCostUsd: 0.003,
+          mergedCodeChanges: 1,
           tokens: 434,
+          turns: 2,
         }),
       );
       expect(

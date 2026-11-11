@@ -9,6 +9,10 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import {
+  readMergedCodeChangeBuckets,
+  type MergedCodeChangeBucket,
+} from "../code/merged-buckets";
 import { conversationAggregateColumns } from "./aggregate";
 import {
   readConversationMetricBuckets,
@@ -167,38 +171,47 @@ type MetricRow = {
   date: string;
   durationMs: number;
   inputTokens: number | null;
+  mergedCodeChangeCostUsd: number | null;
+  mergedCodeChanges: number | null;
   tokens: number | null;
+  turns: number | null;
 };
+
+function emptyMetricRow(date: string): MetricRow {
+  return {
+    cachedInputTokens: null,
+    cacheCreationTokens: null,
+    conversations: 0,
+    costUsd: null,
+    date,
+    durationMs: 0,
+    inputTokens: null,
+    mergedCodeChangeCostUsd: null,
+    mergedCodeChanges: null,
+    tokens: null,
+    turns: null,
+  };
+}
 
 function applyMetricBuckets(
   rows: Array<Pick<MetricRow, "conversations" | "date">>,
   metrics: ConversationMetricBucket[],
+  merged: MergedCodeChangeBucket[],
 ): MetricRow[] {
   const byDate = new Map<string, MetricRow>(
     rows.map((row) => [
       row.date,
-      {
-        ...row,
-        cachedInputTokens: null,
-        cacheCreationTokens: null,
-        costUsd: null,
-        durationMs: 0,
-        inputTokens: null,
-        tokens: null,
-      },
+      { ...emptyMetricRow(row.date), conversations: row.conversations },
     ]),
   );
+  for (const bucket of merged) {
+    const row = byDate.get(bucket.date) ?? emptyMetricRow(bucket.date);
+    row.mergedCodeChanges = bucket.merged;
+    row.mergedCodeChangeCostUsd = bucket.costUsd;
+    byDate.set(bucket.date, row);
+  }
   for (const metric of metrics) {
-    const row = byDate.get(metric.date) ?? {
-      cachedInputTokens: null,
-      cacheCreationTokens: null,
-      conversations: 0,
-      costUsd: null,
-      date: metric.date,
-      durationMs: 0,
-      inputTokens: null,
-      tokens: null,
-    };
+    const row = byDate.get(metric.date) ?? emptyMetricRow(metric.date);
     if (metric.metric === "cached_input_tokens") {
       row.cachedInputTokens = metric.value;
     } else if (metric.metric === "cache_creation_tokens") {
@@ -206,7 +219,10 @@ function applyMetricBuckets(
     } else if (metric.metric === "cost_usd") {
       row.costUsd = metric.value;
     } else if (metric.metric === "duration_ms") {
+      // Every Turn with metrics records a duration, so its row count is the
+      // Turn count.
       row.durationMs = metric.value;
+      row.turns = metric.count;
     } else if (metric.metric === "input_tokens") {
       row.inputTokens = metric.value;
     } else if (metric.metric === "total_tokens") {
@@ -236,7 +252,10 @@ function metricPoint(
         costUsd?: number | null;
         durationMs?: number;
         inputTokens?: number | null;
+        mergedCodeChangeCostUsd?: number | null;
+        mergedCodeChanges?: number | null;
         tokens?: number | null;
+        turns?: number | null;
       }
     | undefined,
 ): ConversationMetricDay {
@@ -257,8 +276,20 @@ function metricPoint(
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }
       : undefined),
+    ...(row?.mergedCodeChanges !== null && row?.mergedCodeChanges !== undefined
+      ? {
+          mergedCodeChangeCostUsd: addUsd(
+            undefined,
+            row.mergedCodeChangeCostUsd ?? 0,
+          ),
+          mergedCodeChanges: row.mergedCodeChanges,
+        }
+      : undefined),
     ...(row?.tokens !== null && row?.tokens !== undefined
       ? { tokens: row.tokens }
+      : undefined),
+    ...(row?.turns !== null && row?.turns !== undefined
+      ? { turns: row.turns }
       : undefined),
   };
 }
@@ -424,6 +455,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     metricHourRows,
     dayMetrics,
     hourMetrics,
+    dayMerged,
+    hourMerged,
   ] = await Promise.all([
     db
       .select(treeAggregateColumns)
@@ -535,12 +568,14 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       start: hourStart,
       end,
     }),
+    readMergedCodeChangeBuckets(db, { bucket: "day", start, end }),
+    readMergedCodeChangeBuckets(db, { bucket: "hour", start: hourStart, end }),
   ]);
   return {
     actorRows,
     locationRows,
-    metricHourRows: applyMetricBuckets(metricHourRows, hourMetrics),
-    metricRows: applyMetricBuckets(metricRows, dayMetrics),
+    metricHourRows: applyMetricBuckets(metricHourRows, hourMetrics, hourMerged),
+    metricRows: applyMetricBuckets(metricRows, dayMetrics, dayMerged),
     totals: totalsRows[0],
   };
 }

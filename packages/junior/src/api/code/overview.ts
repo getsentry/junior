@@ -89,9 +89,10 @@ function mergeRate(merged: number, closed: number): number | undefined {
 /**
  * Sum conversation-tree cost for one set of conversation ids.
  * Resolves each id to its root, then sums usage across that tree so child
- * turns are included exactly once per unique conversation tree.
+ * turns are included exactly once per unique conversation tree. `ids` is the
+ * conversation id array, `conversation_ids.ids` unless the caller names one.
  */
-function conversationTreeCostExpr() {
+export function conversationTreeCostExpr(ids: SQL = sql`conversation_ids.ids`) {
   return sql`
     coalesce((
       SELECT sum(
@@ -115,7 +116,7 @@ function conversationTreeCostExpr() {
       WHERE conversations.root_conversation_id IN (
         SELECT coalesce(roots.root_conversation_id, roots.conversation_id)
         FROM junior_conversations AS roots
-        WHERE roots.conversation_id = ANY (conversation_ids.ids)
+        WHERE roots.conversation_id = ANY (${ids})
       )
     ), 0::double precision)
   `;

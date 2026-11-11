@@ -18,6 +18,10 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
       cacheCreationTokens: index === 25 ? 190_000 : 10_000 + index * 100,
       tokens: 205_000,
       costUsd: 1.5,
+      turns: 12,
+      ...(index === 27
+        ? { mergedCodeChanges: 2, mergedCodeChangeCostUsd: 7.5 }
+        : {}),
     }));
     const metricHours = Array.from({ length: 24 }, (_, index) => ({
       ...metricDays[index],
@@ -38,6 +42,10 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
   await expect(page.getByText("Input cache")).toBeVisible();
+  await expect(page.getByText("Cost per Turn", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Linked conversation cost of 2 merged changes"),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
   ).toBeVisible();
