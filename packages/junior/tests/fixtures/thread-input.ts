@@ -40,6 +40,7 @@ export async function createHarness() {
   // starts lands here.
   const otherOpenTurns: string[] = [];
   let onInvocationRun: (() => Promise<never>) | undefined;
+  let onPersonRun: ((run: AgentRun) => Promise<never>) | undefined;
   const work = await createConversationWorkHarness({
     run: async (run) => {
       assertRunConsistency(
@@ -59,6 +60,9 @@ export async function createHarness() {
       );
       if (run.agentInvocationId && onInvocationRun) {
         await onInvocationRun();
+      }
+      if (!run.agentInvocationId && onPersonRun) {
+        await onPersonRun(run);
       }
       throw new Error("stop after reading the run");
     },
@@ -98,6 +102,10 @@ export async function createHarness() {
     /** Run `fn` in each later Agent invocation run. It ends the run. */
     onInvocationRun: (fn: () => Promise<never>) => {
       onInvocationRun = fn;
+    },
+    /** Run `fn` in each later run on the shared Conversation loop. */
+    onPersonRun: (fn: (run: AgentRun) => Promise<never>) => {
+      onPersonRun = fn;
     },
     otherOpenTurns,
     process,

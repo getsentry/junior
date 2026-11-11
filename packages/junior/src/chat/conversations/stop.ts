@@ -2,7 +2,7 @@ import type { StateAdapter } from "chat";
 import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
 import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { cancelSignInWait } from "@/chat/task-execution/conversation-turn";
+import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { InboundMessageClaim } from "@/chat/task-execution/state";
 import {

@@ -5,7 +5,7 @@ import {
   markConversationsStopped,
 } from "@/chat/conversations/session-stop";
 import { getSqlExecutor } from "@/chat/db";
-import { cancelSignInWait } from "@/chat/task-execution/conversation-turn";
+import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import {
   getConversationWorkState,
   stopConversationWork,

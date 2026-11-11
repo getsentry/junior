@@ -246,8 +246,10 @@ async function prepareLocalChatRun(
     await import("@/chat/local/sandbox-egress-signals");
   const { bindSpawnAgent } = await import("@/chat/agent-invocations/spawn");
   const { bindMessageAgent } = await import("@/chat/agent-invocations/message");
-  const { createChildConversationWorker } =
+  const { createChildConversationWorker, createDeliverToParent } =
     await import("@/chat/agent-invocations/result");
+  const { createConversationTurnWorker } =
+    await import("@/chat/task-execution/conversation-turn");
   const { skipInputAfterConversationStop } =
     await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
@@ -261,6 +263,11 @@ async function prepareLocalChatRun(
     }
     const childWorker = createChildConversationWorker(agentRunner, {
       queue: localConversationWork.queue,
+      runTurn: createConversationTurnWorker(
+        agentRunner,
+        undefined,
+        createDeliverToParent({ queue: localConversationWork.queue }),
+      ),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,

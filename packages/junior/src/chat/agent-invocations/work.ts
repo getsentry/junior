@@ -264,18 +264,18 @@ function agentInvocationProvenance(
     : contextProvenance;
 }
 
-/** Resolve invocation execution from mailbox input or durable active state. */
+/**
+ * Resolve the agent invocation that owns this work: the one named by its
+ * mailbox input, or for an empty wake the open one. Other work has none.
+ */
 export async function resolveAgentInvocationId(
   context: ConversationWorkerContext,
 ): Promise<string | undefined> {
   const mailboxInvocationId = invocationIdFromMessages(
     context.attempt.messages,
   );
-  if (mailboxInvocationId) {
+  if (mailboxInvocationId || context.attempt.messages.length > 0) {
     return mailboxInvocationId;
-  }
-  if (context.attempt.messages.length > 0) {
-    return undefined;
   }
   const active = await getActiveAgentInvocationForConversation(
     context.conversationId,
@@ -283,15 +283,20 @@ export async function resolveAgentInvocationId(
   if (active) {
     return active.invocationId;
   }
-  // A child Conversation never runs on a root worker. A wake after its last
-  // agent invocation ended, such as a late stop request, goes to that agent
-  // invocation, which only repeats its idempotent finish. A paused Turn of an
-  // ended agent invocation can have an event Source, and a root worker would
-  // try to resume it.
+  // An agent invocation can end, such as by a stop, while its Turn stays
+  // paused. Its wake goes to that agent invocation, which ends the Turn.
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
-  return latest?.invocationId;
+  const turn = latest
+    ? await getTurnRecord(
+        context.conversationId,
+        getAgentInvocationTurnId(latest.invocationId),
+      )
+    : undefined;
+  return turn?.state === "paused" || turn?.state === "running"
+    ? latest?.invocationId
+    : undefined;
 }
 
 /**

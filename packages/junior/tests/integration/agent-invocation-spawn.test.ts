@@ -15,7 +15,7 @@ import {
 } from "@/chat/agent-invocations/store";
 import {
   enqueueAgentInvocationResult,
-  enqueueAgentReplyToParent,
+  enqueueAgentAnswerToParent,
 } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -477,9 +477,16 @@ describe("agent invocation spawn and result delivery", () => {
         },
       ]);
       // The `reply` can reach the parent before the child's Turn ends.
-      await enqueueAgentReplyToParent({
+      await enqueueAgentAnswerToParent({
         queue,
-        reply: { text: "Opened getsentry/junior#1.", toolCallId: "call-reply" },
+        answer: {
+          kind: "reply",
+          reply: {
+            text: "Opened getsentry/junior#1.",
+            toolCallId: "call-reply",
+          },
+        },
+        messageKey: "call-reply",
         sender: created,
         state,
       });
@@ -537,9 +544,13 @@ describe("agent invocation spawn and result delivery", () => {
         status: "blocked",
       });
 
-      await enqueueAgentReplyToParent({
+      await enqueueAgentAnswerToParent({
         queue,
-        reply: { text: "First finding.", toolCallId: "call-reply" },
+        answer: {
+          kind: "reply",
+          reply: { text: "First finding.", toolCallId: "call-reply" },
+        },
+        messageKey: "call-reply",
         sender: first,
         state,
       });
@@ -575,9 +586,13 @@ describe("agent invocation spawn and result delivery", () => {
         2_500,
       );
       await markAgentInvocationRunning(replied.invocationId);
-      await enqueueAgentReplyToParent({
+      await enqueueAgentAnswerToParent({
         queue,
-        reply: { text: "First finding.", toolCallId: "call-reply" },
+        answer: {
+          kind: "reply",
+          reply: { text: "First finding.", toolCallId: "call-reply" },
+        },
+        messageKey: "call-reply",
         sender: replied,
         state,
       });
@@ -632,9 +647,13 @@ describe("agent invocation spawn and result delivery", () => {
       // Both replies start before either reaches the parent's mailbox.
       await Promise.all(
         siblings.map((sender) =>
-          enqueueAgentReplyToParent({
+          enqueueAgentAnswerToParent({
             queue,
-            reply: { text: "Finding.", toolCallId: "call-reply" },
+            answer: {
+              kind: "reply",
+              reply: { text: "Finding.", toolCallId: "call-reply" },
+            },
+            messageKey: "call-reply",
             sender,
             state,
           }),

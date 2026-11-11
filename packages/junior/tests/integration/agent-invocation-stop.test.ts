@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   enqueueAgentInvocationResult,
-  enqueueAgentReplyToParent,
+  enqueueAgentAnswerToParent,
 } from "@/chat/agent-invocations/result";
 import {
   createAgentInvocation,
@@ -348,9 +348,13 @@ describe("stopping child agents", () => {
         queue: harness.queue,
         state: harness.state,
       });
-      await enqueueAgentReplyToParent({
+      await enqueueAgentAnswerToParent({
         queue: harness.queue,
-        reply: { text: "Open helper finding.", toolCallId: "call-reply" },
+        answer: {
+          kind: "reply",
+          reply: { text: "Open helper finding.", toolCallId: "call-reply" },
+        },
+        messageKey: "call-reply",
         sender: openHelper,
         state: harness.state,
       });
@@ -381,7 +385,7 @@ describe("stopping child agents", () => {
           idempotencyKey: "tree-late-helper",
           parentConversationId: child.childConversationId,
         }),
-      ).rejects.toThrow("has no open work");
+      ).rejects.toThrow("is stopped and cannot give work");
       await expect(
         getAgentInvocation(doneHelper.invocationId),
       ).resolves.toMatchObject({

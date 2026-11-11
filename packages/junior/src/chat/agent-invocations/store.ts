@@ -2,7 +2,11 @@ import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorAgentInvocations } from "@/db/schema";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { getAgentInvocationIdForResult, isAgentReplyMessageId } from "./ids";
+import { isChildAgentInputMessage } from "./result-event-type";
+import {
+  getAgentInvocationResultMessageId,
+  isAgentReplyMessageId,
+} from "./ids";
 import {
   agentInvocationSchema,
   type AgentInvocation,
@@ -10,7 +14,8 @@ import {
   type TerminalAgentInvocation,
 } from "./types";
 
-const TERMINAL_AGENT_INVOCATION_STATUSES = [
+/** Statuses of a finished agent invocation. */
+export const TERMINAL_AGENT_INVOCATION_STATUSES = [
   "blocked",
   "completed",
   "failed",
@@ -211,7 +216,7 @@ export function sendsResultToParent(
 /**
  * Return whether a child Conversation has work that will start another agent
  * invocation on it: another open agent invocation, an open child agent, or a
- * sent child agent result that no agent invocation has received yet.
+ * child agent result that is sent but still waits in its mailbox.
  */
 async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   const conversationId = invocation.childConversationId;
@@ -219,12 +224,13 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
   if (open.some((row) => row.invocationId !== invocation.invocationId)) {
     return true;
   }
-  const db = getSqlExecutor().db();
   // A `replaced` child result is never sent. A later agent invocation of
   // that child agent sends its report instead.
-  const marked = await db
+  const marked = await getSqlExecutor()
+    .db()
     .select({
       invocationId: juniorAgentInvocations.invocationId,
+      parentMailboxStatus: juniorAgentInvocations.parentMailboxStatus,
       result: juniorAgentInvocations.result,
       status: juniorAgentInvocations.status,
     })
@@ -238,29 +244,19 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
         ]),
       ),
     );
-  // Only a completed or failed result can be answered by a `reply`.
-  const inboundMessageIds = marked.some(
-    (row) => row.status === "completed" || row.status === "failed",
-  )
-    ? ((await getConversationWorkState({ conversationId }))?.execution
-        .inboundMessageIds ?? [])
-    : [];
-  const sent = marked.filter((row) =>
-    sendsResultToParent(row, inboundMessageIds),
-  );
-  if (sent.length === 0) {
+  if (marked.length === 0) {
     return false;
   }
-  const received = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      inArray(
-        juniorAgentInvocations.invocationId,
-        sent.map((row) => getAgentInvocationIdForResult(row.invocationId)),
-      ),
-    );
-  return received.length < sent.length;
+  const work = await getConversationWorkState({ conversationId });
+  const unread = new Set(
+    work?.messages.map((message) => message.inboundMessageId),
+  );
+  return marked.some(
+    (row) =>
+      sendsResultToParent(row, work?.execution.inboundMessageIds ?? []) &&
+      (row.parentMailboxStatus === "pending" ||
+        unread.has(getAgentInvocationResultMessageId(row.invocationId))),
+  );
 }
 
 /** List bounded invocation records whose mailbox append still needs repair. */
@@ -323,8 +319,9 @@ export async function reportReplacedAgentInvocation(
 /**
  * Send the `replaced` result of a child Conversation when its open child work
  * ended and sent it nothing, such as a helper that ended with `noReply`. No
- * later agent invocation of the child would send the report. Event input that
- * still waits in the child's mailbox starts one, so that one reports instead.
+ * later agent invocation of the child would send the report. Input from its
+ * own child agents that still waits in its mailbox starts one, so that one
+ * reports instead.
  */
 export async function reportReplacedWithoutOpenWork(
   conversationId: string,
@@ -339,10 +336,10 @@ export async function reportReplacedWithoutOpenWork(
   ) {
     return undefined;
   }
-  // Only Event input, such as a child agent's reply or a Watch Event, starts
-  // an agent invocation of the child. A person's message in a Thread does not.
+  // Only input from the child's own child agents starts an agent invocation
+  // of the child. A Watch Event or a person's message in a Thread does not.
   const waiting = await getConversationWorkState({ conversationId });
-  if (waiting?.messages.some((message) => message.source === "event")) {
+  if (waiting?.messages.some(isChildAgentInputMessage)) {
     return undefined;
   }
   return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
@@ -511,5 +508,18 @@ export function isTerminalAgentInvocation(
 ): invocation is TerminalAgentInvocation {
   return TERMINAL_AGENT_INVOCATION_STATUSES.includes(
     invocation.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
+  );
+}
+
+/**
+ * Return whether the newest agent invocation of a child shows a stop. A tree
+ * stop leaves a `replaced` agent invocation with its finished status and
+ * marks it `skipped`, so that also means stopped.
+ */
+export function isStoppedAgentInvocation(invocation: AgentInvocation): boolean {
+  return (
+    invocation.status === "stopped" ||
+    (isTerminalAgentInvocation(invocation) &&
+      invocation.parentMailboxStatus === "skipped")
   );
 }

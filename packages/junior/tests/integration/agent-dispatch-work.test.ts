@@ -10,7 +10,7 @@ import {
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
-import { enqueueAgentReplyToParent } from "@/chat/agent-invocations/result";
+import { enqueueAgentAnswerToParent } from "@/chat/agent-invocations/result";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   readScheduledAutomation,
@@ -367,10 +367,17 @@ describe("agent dispatch conversation work", () => {
       parentConversationId: conversationId,
       reasoningLevel: "medium",
     });
-    await enqueueAgentReplyToParent({
+    await enqueueAgentAnswerToParent({
       nowMs: Date.now() - 60_000,
       queue,
-      reply: { text: "The release is green.", toolCallId: "call-child-reply" },
+      answer: {
+        kind: "reply",
+        reply: {
+          text: "The release is green.",
+          toolCallId: "call-child-reply",
+        },
+      },
+      messageKey: "call-child-reply",
       sender: child,
       state,
     });

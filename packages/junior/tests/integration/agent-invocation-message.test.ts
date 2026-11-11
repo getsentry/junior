@@ -309,7 +309,9 @@ describe("messageAgent", () => {
     }
   });
 
-  it("starts a new agent invocation when a grandchild messages a child, even after a stop", async () => {
+  // A child with an open agent invocation still runs input on the agent
+  // invocation worker, not on its shared Conversation loop.
+  it("starts a new agent invocation when a grandchild messages a child with open work, even after a stop", async () => {
     const { fixture } = await prepareSlackParentConversation();
     const runner = readRunsAgentRunner();
     const harness = await createConversationWorkHarness(runner.agentRunner);
@@ -353,7 +355,10 @@ describe("messageAgent", () => {
         status: "running",
       });
       expect(runner.runs).toEqual([
-        expect.objectContaining({ runId: started!.invocationId }),
+        expect.objectContaining({
+          agentInvocationId: started!.invocationId,
+          runId: started!.invocationId,
+        }),
       ]);
     } finally {
       await fixture.close();
