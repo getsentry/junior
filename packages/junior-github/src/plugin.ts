@@ -344,6 +344,7 @@ export function githubPlugin(
           botEmail: readEnv(botEmailEnv),
           codeChanges: ctx.codeChanges,
           db,
+          events: ctx.events,
           loadPullRequest: async (pullRequest) =>
             await loadPullRequest(installationEnv, pullRequest),
           log: ctx.log,

@@ -1,5 +1,5 @@
 import type { GitHubStatusIncident } from "../github-status.js";
-import { updateGitHubAnnotation } from "../annotations.js";
+import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
@@ -236,6 +236,7 @@ export function createGitHubWebhookRoute(args: {
           annotations: args.annotations,
           codeChanges: args.codeChanges,
           db: args.db,
+          log: args.log,
           outcome: pullRequestOutcome,
         });
         if (
@@ -272,19 +273,17 @@ export function createGitHubWebhookRoute(args: {
           issueOutcome,
         );
         if (recordedOutcome.applied && issueOutcome.state === "closed") {
-          await Promise.all(
-            recordedOutcome.conversationIds.map((conversationId) =>
-              updateGitHubAnnotation(
-                args.annotations.forConversation(conversationId),
-                {
-                  repo: issueOutcome.repositoryFullName,
-                  number: issueOutcome.number,
-                  objectType: "task",
-                  status: "closed",
-                },
-              ),
-            ),
-          );
+          await updateGitHubAnnotations({
+            annotations: args.annotations,
+            conversationIds: recordedOutcome.conversationIds,
+            log: args.log,
+            update: {
+              repo: issueOutcome.repositoryFullName,
+              number: issueOutcome.number,
+              objectType: "task",
+              status: "closed",
+            },
+          });
         }
       }
       const recordedIssueConversations = issueConversations

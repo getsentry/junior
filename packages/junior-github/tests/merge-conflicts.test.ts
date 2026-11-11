@@ -671,6 +671,52 @@ describe("merge conflict check on webhook events", () => {
       expect(reads).toEqual([946, 949, 950]);
     });
 
+    it("publishes a corrected close with the key of its webhook", async () => {
+      const closes = () =>
+        published.filter(
+          (event) =>
+            event.identifier === "getsentry/junior#946" &&
+            event.eventType === "pull_request.merged",
+        );
+      await heartbeat(now);
+      expect(closes()).toEqual([
+        expect.objectContaining({
+          data: {
+            openerUsername: "sentry-junior[bot]",
+            pullRequest: 946,
+            repo: "getsentry/junior",
+          },
+          objectType: "code_change",
+          occurredAtMs: now - day,
+          terminal: true,
+          trustedSummary: "GitHub PR getsentry/junior#946 was merged.",
+        }),
+      ]);
+      expect(
+        published.filter(
+          (event) => event.eventType === "pull_request.closed_unmerged",
+        ),
+      ).toHaveLength(2);
+
+      // The late webhook has the same key, so a Watch gets the merge once.
+      await deliver(
+        "delivery-merge",
+        signedRequest({
+          deliveryId: "delivery-merge",
+          eventName: "pull_request",
+          body: {
+            action: "closed",
+            installation: { id: 456 },
+            pull_request: closedPullRequest(946, true),
+            repository: { full_name: "getsentry/junior", id: 1 },
+            sender: { login: "jane" },
+          },
+        }),
+      );
+      expect(closes()).toHaveLength(2);
+      expect(new Set(closes().map((event) => event.eventKey)).size).toBe(1);
+    });
+
     it("reads no pull request when the search has more than it lists", async () => {
       morePages = true;
       await heartbeat(now);

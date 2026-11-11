@@ -5,11 +5,13 @@
  * does not deliver a close, or its handler fails, the row stays open. Once a
  * day for each repository, the heartbeat compares the stored open rows with
  * GitHub's open search. It reads each pull request that the search does not
- * list, and records a close through the webhook write path. The write is
- * guarded by `updatedAt`, so a replay cannot move a newer row back.
+ * list, and records a close through the webhook write path, with its
+ * merged or closed_unmerged event. The write is guarded by `updatedAt`, so a
+ * replay cannot move a newer row back.
  */
 import type {
   CodeChangePublisher,
+  EventPublisher,
   PluginConversationAnnotations,
   PluginLogger,
   PluginState,
@@ -20,6 +22,7 @@ import {
   listOpenGitHubPullRequests,
   type SearchOpenPullRequests,
 } from "../open-pull-requests.js";
+import { gitHubPullRequestTerminalEvents } from "../webhooks/events.js";
 import { normalizeGitHubPullRequestOutcome } from "../webhooks/pull-request-outcome.js";
 import { applyGitHubPullRequestOutcome } from "./apply.js";
 import { listGitHubStaleOpenPullRequests } from "./store.js";
@@ -53,6 +56,7 @@ interface ReconcileArgs {
   botEmail?: string;
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
+  events: EventPublisher;
   /** Read one pull request from the GitHub REST API. */
   loadPullRequest(pullRequest: {
     number: number;
@@ -89,21 +93,29 @@ async function reconcileRepository(
     );
     // The search index can lag behind GitHub.
     if (pullRequest.state === "open") continue;
+    const body = {
+      action: "closed",
+      pull_request: pullRequest,
+      repository: pullRequest.base.repo,
+    };
     const outcome = normalizeGitHubPullRequestOutcome({
-      body: {
-        action: "closed",
-        pull_request: pullRequest,
-        repository: pullRequest.base.repo,
-      },
+      body,
       botEmail: args.botEmail,
     });
     if (!outcome) continue;
-    await applyGitHubPullRequestOutcome({
+    const recorded = await applyGitHubPullRequestOutcome({
       annotations: args.annotations,
       codeChanges: args.codeChanges,
       db: args.db,
+      log: args.log,
       outcome,
     });
+    if (!recorded.applied) continue;
+    // These have the key of the webhook events for this close, so a Watch
+    // gets the close once, even when the webhook arrives later.
+    for (const event of gitHubPullRequestTerminalEvents(body)) {
+      await args.events.publish({ ...event, objectType: "code_change" });
+    }
   }
 }
 

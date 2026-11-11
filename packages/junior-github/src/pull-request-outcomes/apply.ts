@@ -7,8 +7,9 @@ import type {
   CodeChangeInput,
   CodeChangePublisher,
   PluginConversationAnnotations,
+  PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { updateGitHubAnnotation } from "../annotations.js";
+import { updateGitHubAnnotations } from "../annotations.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubPullRequestOutcomeInput,
@@ -41,11 +42,13 @@ function githubCodeChange(
 /**
  * Record one pull request outcome. When the stored row changes, update the
  * code index, and mark the chip of each linked conversation merged or closed.
+ * A failed chip is logged, so it does not stop the work after it.
  */
 export async function applyGitHubPullRequestOutcome(args: {
   annotations: PluginConversationAnnotations;
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
+  log?: Pick<PluginLogger, "error">;
   outcome: GitHubPullRequestOutcomeInput;
 }): Promise<Awaited<ReturnType<typeof recordGitHubPullRequestOutcome>>> {
   const { outcome } = args;
@@ -55,20 +58,17 @@ export async function applyGitHubPullRequestOutcome(args: {
     githubCodeChange(outcome, recorded.conversationIds),
   );
   if (outcome.state !== "open") {
-    const status = outcome.state === "merged" ? "merged" : "closed";
-    await Promise.all(
-      recorded.conversationIds.map((conversationId) =>
-        updateGitHubAnnotation(
-          args.annotations.forConversation(conversationId),
-          {
-            repo: outcome.repositoryFullName,
-            number: outcome.number,
-            objectType: "code_change",
-            status,
-          },
-        ),
-      ),
-    );
+    await updateGitHubAnnotations({
+      annotations: args.annotations,
+      conversationIds: recorded.conversationIds,
+      log: args.log,
+      update: {
+        repo: outcome.repositoryFullName,
+        number: outcome.number,
+        objectType: "code_change",
+        status: outcome.state === "merged" ? "merged" : "closed",
+      },
+    });
   }
   return recorded;
 }

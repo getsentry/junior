@@ -1,5 +1,6 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
+  conversationAnnotationInputSchema,
   eventMatches,
   type ConversationAnnotationInput,
   type EventInput,
@@ -351,7 +352,7 @@ describe("GitHub webhook events", () => {
 
     expect(events).toEqual([
       {
-        eventKey: "github:delivery-merge:pull_request.merged",
+        eventKey: "github:getsentry/junior#946:pull_request.merged",
         eventType: "pull_request.merged",
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
@@ -360,7 +361,7 @@ describe("GitHub webhook events", () => {
         data: { repo: "getsentry/junior", pullRequest: 946 },
       },
       {
-        eventKey: "github:delivery-merge:pull_request.merged",
+        eventKey: "github:getsentry/junior#946:pull_request.merged",
         eventType: "pull_request.merged",
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
@@ -3298,6 +3299,109 @@ describe("GitHub-owned pull request outcomes", () => {
           identifier: "getsentry/junior",
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("updates each chip when one stored chip has facts for another object type", async () => {
+    const fixture = await createGitHubFixture();
+    const key = "getsentry/junior#946";
+    // Like the core store, each conversation validates what it saves.
+    const chips = new Map<string, ConversationAnnotationInput>([
+      [
+        "slack:C123:1712345.0001",
+        {
+          facts: { labels: ["bug"], type: "task" },
+          key,
+          kind: "object",
+          label: key,
+          objectType: "task",
+          title: "Fix the bug",
+          url: "https://github.com/getsentry/junior/pull/946",
+        },
+      ],
+    ]);
+    try {
+      const route = createGitHubWebhookRoute({
+        annotations: {
+          forConversation(conversationId) {
+            return {
+              async upsert(annotation) {
+                chips.set(
+                  conversationId,
+                  conversationAnnotationInputSchema.parse(annotation),
+                );
+              },
+              async remove() {},
+              async list() {
+                const chip = chips.get(conversationId);
+                return chip
+                  ? [
+                      {
+                        ...chip,
+                        createdAt: "2026-07-01T12:00:00.000Z",
+                        plugin: "github",
+                        updatedAt: "2026-07-01T12:00:00.000Z",
+                      },
+                    ]
+                  : [];
+              },
+            };
+          },
+        },
+        appIdEnv: "GITHUB_APP_ID",
+        botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
+        classifyPullRequestCommits: async () => "mixed",
+        codeChanges: {
+          async associateConversations() {},
+          async recordActivity() {},
+          async record() {},
+        },
+        db: fixture.db(),
+        installationId: () => "456",
+        installationIdEnv: "GITHUB_INSTALLATION_ID",
+        markFeedbackReviewing: async () => {},
+        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+        events: { async publish() {} },
+        webhookSecret: () => "test-secret",
+      });
+      const opened = pullRequestPayload({
+        pull_request: {
+          ...(pullRequestPayload().pull_request as Record<string, unknown>),
+          body: "<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-conversation-id:slack%3AC456%3A1719999.0002 -->\n<!-- junior-session-footer:end -->",
+        },
+      });
+      expect((await route.handler(signedRequest(opened))).status).toBe(202);
+      const merged = pullRequestPayload({
+        action: "closed",
+        pull_request: {
+          ...(opened.pull_request as Record<string, unknown>),
+          closed_at: "2026-07-03T12:00:00.000Z",
+          merged: true,
+          merged_at: "2026-07-03T12:00:00.000Z",
+          updated_at: "2026-07-03T12:00:00.000Z",
+        },
+      });
+      expect((await route.handler(signedRequest(merged))).status).toBe(202);
+
+      expect(Object.fromEntries(chips)).toEqual({
+        "slack:C123:1712345.0001": {
+          key,
+          kind: "object",
+          label: key,
+          objectType: "code_change",
+          status: "merged",
+          title: "Fix the bug",
+          url: "https://github.com/getsentry/junior/pull/946",
+        },
+        "slack:C456:1719999.0002": expect.objectContaining({
+          kind: "resource_link",
+          status: "merged",
+        }),
+      });
+      const [row] = await fixture.db().select().from(juniorGitHubPullRequests);
+      expect(row?.commitComposition).toBe("mixed");
     } finally {
       await fixture.close();
     }
