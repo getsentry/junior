@@ -2355,199 +2355,12 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("treats GitHub GraphQL GET as read and denies ambiguous POST", async () => {
-    expect(
-      await grantForEgress({
-        method: "GET",
-        url: "https://api.github.com/graphql",
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-  });
-
-  it("selects installation-read for GitHub GraphQL read operations", async () => {
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query: `query IssueList {
-            repository(owner: "getsentry", name: "junior-prod") {
-              issues(first: 20) { nodes { number title } }
-            }
-          }`,
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query: "{ viewer { login } }",
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            'query SearchIssues { search(query: "mutation subscription", type: ISSUE, first: 1) { nodes { ... on Issue { number } } } }',
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-    expect(
-      await grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "ReadIssues",
-          query:
-            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
-        }),
-      }),
-    ).toMatchObject({
-      name: "installation-read",
-      access: "read",
-      reason: "github.graphql-read",
-    });
-  });
-
-  it("allows only the typed resolveReviewThread mutation with repository scope", async () => {
-    const bodyText = JSON.stringify({
-      operationName: "ResolveReviewThread",
-      query:
-        "mutation ResolveReviewThread($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { id isResolved } } }",
-      variables: { threadId: "PRRT_kwDOthread" },
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        operation: "github.pull.review-thread.resolve:getsentry/junior",
-        url: "https://api.github.com/graphql",
-        bodyText,
-      }),
-    ).resolves.toMatchObject({
-      name: "installation-write",
-      access: "write",
-      reason: "github.installation-write",
-      auditAttributes: { "app.github.repository": "getsentry/junior" },
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText,
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        operation: "github.pull.review-thread.resolve:getsentry/junior",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "AddIssueComment",
-          query:
-            'mutation AddIssueComment { addComment(input: {subjectId: "I_kwDO", body: "test"}) { clientMutationId } }',
-        }),
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-  });
-
-  it.each([
-    [
-      "MarkPullRequestReadyForReview",
-      "markPullRequestReadyForReview",
-      "github.pull.draft.update:",
-    ],
-    [
-      "ConvertPullRequestToDraft",
-      "convertPullRequestToDraft",
-      "github.pull.draft.update:",
-    ],
-    ["AddReviewReaction", "addReaction", "github.pull.review-reaction.update:"],
-    [
-      "RemoveReviewReaction",
-      "removeReaction",
-      "github.pull.review-reaction.update:",
-    ],
-  ])(
-    "allows only the typed %s mutation with repository scope",
-    async (operationName, field, operationPrefix) => {
-      const bodyText = JSON.stringify({
-        operationName,
-        query: `mutation ${operationName}($id: ID!) { ${field}(input: {pullRequestId: $id}) { pullRequest { isDraft } } }`,
-        variables: { id: "PR_kwDO" },
-      });
-      await expect(
-        grantForEgress({
-          method: "POST",
-          operation: `${operationPrefix}getsentry/junior`,
-          url: "https://api.github.com/graphql",
-          bodyText,
-        }),
-      ).resolves.toMatchObject({
-        name: "installation-write",
-        access: "write",
-      });
-      await expect(
-        grantForEgress({
-          method: "POST",
-          url: "https://api.github.com/graphql",
-          bodyText,
-        }),
-      ).rejects.toThrow("GraphQL mutations are not enabled");
-      await expect(
-        grantForEgress({
-          method: "POST",
-          operation: "github.pull.review-thread.resolve:getsentry/junior",
-          url: "https://api.github.com/graphql",
-          bodyText,
-        }),
-      ).rejects.toThrow("GraphQL mutations are not enabled");
-    },
-  );
-
   it("routes pull request review and feedback writes to typed tools", async () => {
     await expect(
       grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
         bodyText: JSON.stringify({ event: "COMMENT", body: "review" }),
-      }),
-    ).rejects.toThrow("must use the github_submitPullRequestReview tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "AddPullRequestReview",
-          query:
-            "mutation AddPullRequestReview($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { pullRequestReview { id } } }",
-        }),
       }),
     ).rejects.toThrow("must use the github_submitPullRequestReview tool");
     await expect(
@@ -2568,89 +2381,6 @@ Conversation: \`local:test:old-conversation\`
       name: "installation-write",
       access: "write",
     });
-  });
-
-  it("denies GitHub GraphQL mutations and unparseable bodies", async () => {
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query: `mutation AddIssueComment {
-            addComment(input: {subjectId: "I_kwDO", body: "test"}) {
-              clientMutationId
-            }
-          }`,
-        }),
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            "fragment prFields on PullRequest { number } mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { ...prFields } } }",
-        }),
-      }),
-    ).rejects.toThrow("must use the github_updatePullRequest tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: "{",
-      }),
-    ).rejects.toThrow("GraphQL mutations are not enabled");
-  });
-
-  it("denies GraphQL createIssue mutations from raw egress", async () => {
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "CreateIssue",
-          query:
-            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createIssue tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "CreateIssue",
-          query:
-            'fragment createIssueFields on Mutation { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } } mutation CreateIssue { ...createIssueFields }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createIssue tool");
-  });
-
-  it("denies GraphQL createPullRequest mutations from raw egress", async () => {
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "OpenPullRequest",
-          query:
-            'query ReadPulls { repository(owner: "getsentry", name: "junior") { pullRequests(first: 1) { nodes { number } } } } mutation OpenPullRequest($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { number } } }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createPullRequest tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          operationName: "OpenPullRequest",
-          query:
-            'fragment createPullRequestFields on Mutation { createPullRequest(input: {repositoryId: "repo", title: "test", headRefName: "branch", baseRefName: "main"}) { pullRequest { number } } } mutation OpenPullRequest { ...createPullRequestFields }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
   it("denies raw issue and pull request metadata updates", async () => {
@@ -2684,16 +2414,6 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("Use github_getIssue");
     await expect(
       grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            "query IssueByNumber($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { issueOrPullRequest(number: $number) { ... on Issue { title } } } }",
-        }),
-      }),
-    ).rejects.toThrow("Use github_getIssue");
-    await expect(
-      grantForEgress({
         method: "GET",
         operation: "github.issue.get",
         url: "https://api.github.com/repos/getsentry/junior/issues/2768",
@@ -2703,16 +2423,6 @@ Conversation: \`local:test:old-conversation\`
       grantForEgress({
         method: "GET",
         url: "https://api.github.com/repos/getsentry/junior/issues/2768/comments",
-      }),
-    ).resolves.toMatchObject({ access: "read" });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            'query { repository(owner: "getsentry", name: "junior") { issues(first: 1) { nodes { number } } } }',
-        }),
       }),
     ).resolves.toMatchObject({ access: "read" });
   });

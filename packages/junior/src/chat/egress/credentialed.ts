@@ -3,6 +3,7 @@ import {
   credentialAuditAttributes,
 } from "@/chat/credentials/audit";
 import { isGitReceivePack, readGitPush } from "@/chat/egress/git-push";
+import { isGraphqlPost, readGraphqlRequest } from "@/chat/egress/graphql";
 import { logAudit, logException, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
@@ -308,63 +309,34 @@ function unreadableBodyResponse(eventId: string | undefined): Response {
   );
 }
 
-type GitHubBodyInspection = "graphql" | "pull-request-review";
-
-/** Identify GitHub writes whose body determines whether a grant is safe. */
-function githubBodyInspection(input: {
+/** Identify GitHub review writes whose body decides whether a grant is safe. */
+function isGitHubPullRequestReviewPost(input: {
   provider: string;
   requestMethod: string;
   upstreamUrl: URL;
-}): GitHubBodyInspection | undefined {
-  if (
-    input.provider !== "github" ||
-    input.requestMethod.toUpperCase() !== "POST" ||
-    input.upstreamUrl.hostname.toLowerCase() !== "api.github.com"
-  ) {
-    return undefined;
-  }
-  const pathname = input.upstreamUrl.pathname.toLowerCase();
-  if (pathname.endsWith("/graphql")) {
-    return "graphql";
-  }
-  return /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/events)?$/.test(
-    pathname,
-  )
-    ? "pull-request-review"
-    : undefined;
+}): boolean {
+  return (
+    input.provider === "github" &&
+    input.requestMethod.toUpperCase() === "POST" &&
+    input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+\/events)?$/.test(
+      input.upstreamUrl.pathname.toLowerCase(),
+    )
+  );
 }
 
-function grantSelectionBodyTooLargeMessage(
-  inspection: GitHubBodyInspection,
-): string {
-  return inspection === "graphql"
-    ? "GitHub GraphQL request body is too large to inspect before issuing credentials."
-    : "GitHub pull request review request body is too large to inspect before issuing credentials.";
-}
-
-function grantSelectionBodyText(input: {
-  body: ArrayBuffer | undefined;
-  provider: string;
-  request: Request;
-  upstreamUrl: URL;
-}): string | undefined {
-  if (input.body === undefined) {
+function grantSelectionBodyText(
+  body: ArrayBuffer | undefined,
+): string | undefined {
+  if (body === undefined) {
     return undefined;
   }
-  if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
-    const inspection = githubBodyInspection({
-      provider: input.provider,
-      requestMethod: input.request.method,
-      upstreamUrl: input.upstreamUrl,
-    });
-    if (inspection) {
-      throw new EgressPolicyDenied(
-        grantSelectionBodyTooLargeMessage(inspection),
-      );
-    }
-    return undefined;
+  if (body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
+    throw new EgressPolicyDenied(
+      "GitHub pull request review request body is too large to inspect before issuing credentials.",
+    );
   }
-  return new TextDecoder().decode(input.body);
+  return new TextDecoder().decode(body);
 }
 
 function responseContentLength(upstream: Response): number | undefined {
@@ -629,24 +601,21 @@ export async function executeCredentialedEgressRequest(input: {
       }),
     );
   }
-  const bodyForGrantSelection = githubBodyInspection({
-    provider,
-    requestMethod: request.method,
-    upstreamUrl,
-  })
-    ? body
-    : undefined;
   let grantSelection: SandboxEgressGrantSelection;
   try {
     grantSelection = await selectSandboxEgressGrant({
-      bodyText: grantSelectionBodyText({
-        body: bodyForGrantSelection,
+      ...(isGitHubPullRequestReviewPost({
         provider,
-        request,
+        requestMethod: request.method,
         upstreamUrl,
-      }),
+      })
+        ? { bodyText: grantSelectionBodyText(body) }
+        : undefined),
       ...(isGitReceivePack(request.method, upstreamUrl)
         ? { gitPush: readGitPush(body) }
+        : undefined),
+      ...(isGraphqlPost(request.method, upstreamUrl)
+        ? { graphql: readGraphqlRequest(body) }
         : undefined),
       ...(operation ? { operation } : undefined),
       provider,
