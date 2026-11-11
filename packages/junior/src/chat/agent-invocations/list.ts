@@ -7,6 +7,9 @@ import {
   isPersonInput,
   turnBehavior,
 } from "@/chat/conversations/kind-behavior";
+import { isWatchEvent } from "@/chat/conversations/session-stop";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type {
   ConversationKind,
@@ -19,7 +22,10 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { listActiveMailboxTurns } from "@/chat/task-execution/mailbox-turn";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  getConversationWorkState,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
 import {
   getAgentInvocationIdForResult,
   isAgentReplyMessageId,
@@ -28,10 +34,15 @@ import {
 } from "./ids";
 import {
   invocationFromRow,
+  isStoppedAgentInvocation,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
   sendsResultToParent,
 } from "./store";
+import {
+  AGENT_INVOCATION_EVENT_NAMESPACE,
+  isAgentInvocationResultEventType,
+} from "./result-event-type";
 import {
   CHILD_AGENT_RESULTS,
   type AgentInvocation,
@@ -204,6 +215,7 @@ export async function listChildAgents(
             (await runsOnConversationLoop(
               row.conversationId,
               conversationKindFromRow(row),
+              byChild.get(row.conversationId)![0]!,
             ))
               ? row.conversationId
               : undefined,
@@ -245,21 +257,44 @@ function answersParent(kind: ConversationKind, source: string | undefined) {
 }
 
 /**
- * Return whether a child has work on the Conversation loop that will answer
- * its parent. That Turn holds its input in the mailbox until it commits it,
- * such as a Watch Event in its debounce window, and then keeps an open
- * mailbox Turn. Agent invocation input and Turns are not such work.
+ * Return whether one mailbox input starts a Turn on the child's Conversation
+ * loop. This follows `startAgentInvocationsForChildInput`: a Watch Event
+ * does, and so does a reply or message from the child's own child agent. A
+ * result, or input to a child whose latest work a stop skipped or that waits
+ * for its own child agents, starts an agent invocation instead.
+ */
+function startsLoopTurn(message: InboundMessage, latest: AgentInvocation) {
+  if (isWatchEvent(message)) {
+    return true;
+  }
+  const metadata = message.input.metadata;
+  return (
+    isEventMailboxMetadata(metadata) &&
+    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
+    !isAgentInvocationResultEventType(metadata.event.eventType) &&
+    !isStoppedAgentInvocation(latest) &&
+    !(
+      isTerminalAgentInvocation(latest) &&
+      latest.parentMailboxStatus === "replaced"
+    )
+  );
+}
+
+/**
+ * Return whether a child whose `latest` agent invocation ended has work on
+ * the Conversation loop that will answer its parent: input that waits in the
+ * mailbox until its Turn commits it, such as a Watch Event in its debounce
+ * window, or an open mailbox Turn that answers.
  */
 async function runsOnConversationLoop(
   conversationId: string,
   kind: ConversationKind,
+  latest: AgentInvocation,
 ) {
   const work = await getConversationWorkState({ conversationId });
   if (
-    work?.execution.pendingMessages.some(
-      (message) =>
-        message.input.metadata?.kind !== "agent_invocation" &&
-        answersParent(kind, message.source),
+    work?.execution.pendingMessages.some((message) =>
+      startsLoopTurn(message, latest),
     )
   ) {
     return true;
@@ -267,6 +302,23 @@ async function runsOnConversationLoop(
   return (await listActiveMailboxTurns(conversationId)).some((turn) =>
     answersParent(kind, turn.source?.kind),
   );
+}
+
+/**
+ * List the ids of a child's open Turns on the Conversation loop. A Turn keeps
+ * its input in the mailbox until it commits it, so before its first
+ * checkpoint its id comes from its first input.
+ */
+async function listOpenLoopTurnIds(conversationId: string) {
+  const [turns, work] = await Promise.all([
+    listActiveMailboxTurns(conversationId),
+    getConversationWorkState({ conversationId }),
+  ]);
+  const first = work?.execution.pendingMessages[0];
+  return [
+    ...turns.map((turn) => turn.turnId),
+    ...(first ? [buildDeterministicTurnId(first.inboundMessageId)] : []),
+  ];
 }
 
 // The children whose open Conversation loop Turn has a reply in the parent's
@@ -297,17 +349,14 @@ async function listAnsweredLoopChildren(
     );
   const answered = await Promise.all(
     children.map(async ({ childConversationId }) => {
-      const turns = await listActiveMailboxTurns(childConversationId);
+      const turnIds = await listOpenLoopTurnIds(childConversationId);
       return replies.some(
         (reply) =>
           senders.some(
             (sender) =>
               sender.invocationId === reply.invocationId &&
               sender.childConversationId === childConversationId,
-          ) &&
-          turns.some(
-            (turn) => parseTurnReplyMessageId(reply.messageId) === turn.turnId,
-          ),
+          ) && turnIds.includes(parseTurnReplyMessageId(reply.messageId) ?? ""),
       )
         ? childConversationId
         : undefined;

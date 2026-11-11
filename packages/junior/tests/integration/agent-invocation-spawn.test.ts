@@ -20,9 +20,14 @@ import {
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  appendAndEnqueueInboundMessage,
+  getConversationWorkState,
+} from "@/chat/task-execution/store";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import type { AgentRun } from "@/chat/agent/types";
@@ -670,8 +675,13 @@ describe("agent invocation spawn and result delivery", () => {
 
   // A running sibling on an agent invocation, or on its Conversation loop
   // with no open agent invocation, has answered once its reply for that work
-  // is in the parent's mailbox.
-  it.each(["agent invocation", "Conversation loop"] as const)(
+  // is in the parent's mailbox. Before its first checkpoint, a Turn on the
+  // Conversation loop still holds its input in the mailbox.
+  it.each([
+    "agent invocation",
+    "Conversation loop",
+    "Conversation loop before its first checkpoint",
+  ] as const)(
     "does not wait for a running sibling that already replied on its %s",
     async (runsOn) => {
       const { fixture } = await prepareSlackParentConversation();
@@ -722,29 +732,52 @@ describe("agent invocation spawn and result delivery", () => {
                 replied.childConversationId,
               ),
             );
-          const turnId = "turn_watch-event";
-          await saveTurnCheckpoint({
-            actor: EVENT_SYSTEM_ACTOR,
-            conversationId: replied.childConversationId,
-            destination: slackInvocationInput.destination,
-            messages: [
-              {
-                role: "user",
-                content: [{ type: "text", text: "Deploy failed." }],
-                timestamp: 3_000,
-              },
-            ],
-            mode: "running",
-            sliceId: 1,
-            source: createEventSource({
+          const event = createEventInboundMessage({
+            event: {
               eventKey: "deploy-1",
               eventType: "deployment.failed",
               identifier: "getsentry/junior",
               namespace: "github",
-            }),
-            surface: "api",
-            turnId,
+              occurredAtMs: 3_000,
+              trustedSummary: "A deployment failed.",
+            },
+            subscription: {
+              conversationId: replied.childConversationId,
+              id: "watch-1",
+            },
+            text: "Deploy failed.",
           });
+          const turnId = buildDeterministicTurnId(event.inboundMessageId);
+          if (runsOn === "Conversation loop") {
+            await saveTurnCheckpoint({
+              actor: EVENT_SYSTEM_ACTOR,
+              conversationId: replied.childConversationId,
+              destination: slackInvocationInput.destination,
+              messages: [
+                {
+                  role: "user",
+                  content: [{ type: "text", text: "Deploy failed." }],
+                  timestamp: 3_000,
+                },
+              ],
+              mode: "running",
+              sliceId: 1,
+              source: createEventSource({
+                eventKey: "deploy-1",
+                eventType: "deployment.failed",
+                identifier: "getsentry/junior",
+                namespace: "github",
+              }),
+              surface: "api",
+              turnId,
+            });
+          } else {
+            await appendAndEnqueueInboundMessage({
+              message: event,
+              queue,
+              state,
+            });
+          }
           await createDeliverToParent({ queue, state })({
             actor: EVENT_SYSTEM_ACTOR,
             conversationId: replied.childConversationId,
