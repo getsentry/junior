@@ -28,6 +28,28 @@ type PlainQuery = {
 
 const POOL_MAX = 10;
 
+// The WebSocket reports a failed connect as an `ErrorEvent`, which is not an
+// `Error`. Its `message` is often empty, and the reason is in `error`.
+function toConnectError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+  const event = (error ?? {}) as {
+    type?: unknown;
+    message?: unknown;
+    error?: unknown;
+  };
+  const reason =
+    (typeof event.message === "string" && event.message) ||
+    (event.error instanceof Error && event.error.message) ||
+    (typeof event.type === "string" && event.type) ||
+    String(error);
+  return new Error(
+    `WebSocket connect failed: ${reason}`,
+    event.error === undefined ? undefined : { cause: event.error },
+  );
+}
+
 /**
  * Sends a pool query over Neon's SQL-over-HTTP endpoint when no idle
  * WebSocket client is free.
@@ -139,7 +161,7 @@ class OverflowPool extends Pool {
         client.release();
         return;
       }
-      logException(error, "db.pool.client.connect_failed", {
+      logException(toConnectError(error), "db.pool.client.connect_failed", {
         "app.db.driver": "neon",
       });
     });
