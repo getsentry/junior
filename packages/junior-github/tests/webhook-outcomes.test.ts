@@ -303,7 +303,6 @@ function webhookRoute(
     classifyPullRequestCommits,
     codeChanges: {
       async associateConversations() {},
-      async recordActivity() {},
       async record() {},
     },
     db: fixture.db(),
@@ -2283,7 +2282,6 @@ describe("GitHub-owned pull request outcomes", () => {
         plugin: { name: "github" },
         codeChanges: {
           async associateConversations() {},
-          async recordActivity() {},
           record: codeChangesRecord,
         },
         events: { async publish() {} },
@@ -2308,91 +2306,6 @@ describe("GitHub-owned pull request outcomes", () => {
           state: "open",
         }),
       );
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("records activity by people on Junior-owned pull requests", async () => {
-    const fixture = await createGitHubFixture();
-    const recordActivity = vi.fn(async () => {});
-    vi.stubEnv(
-      "GITHUB_APP_BOT_EMAIL",
-      "264270552+sentry-junior[bot]@users.noreply.github.com",
-    );
-    vi.stubEnv("GITHUB_INSTALLATION_ID", "456");
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
-    try {
-      const [route] = githubPlugin().hooks!.routes!({
-        annotations: {
-          forConversation() {
-            return {
-              async upsert() {},
-              async remove() {},
-              async list() {
-                return [];
-              },
-            };
-          },
-        },
-        db: fixture.db(),
-        log: { error() {}, info() {}, warn() {} },
-        plugin: { name: "github" },
-        codeChanges: {
-          async associateConversations() {},
-          async record() {},
-          recordActivity,
-        },
-        events: { async publish() {} },
-      });
-      const comment = (input: { number: number; senderType: string }) => ({
-        action: "created",
-        comment: { body: "lgtm", created_at: "2026-07-02T09:30:00Z", id: 7 },
-        issue: {
-          number: input.number,
-          pull_request: { url: "https://api.github.com/pulls/946" },
-        },
-        repository: { full_name: "getsentry/junior", id: 2001 },
-        sender: { login: "octocat", type: input.senderType },
-      });
-
-      await route!.handler(signedRequest(pullRequestPayload()));
-      await route!.handler(
-        signedRequest(
-          comment({ number: 946, senderType: "Bot" }),
-          "issue_comment",
-        ),
-      );
-      await route!.handler(
-        signedRequest(
-          comment({ number: 947, senderType: "User" }),
-          "issue_comment",
-        ),
-      );
-      expect(recordActivity).not.toHaveBeenCalled();
-
-      await route!.handler(
-        signedRequest(
-          comment({ number: 946, senderType: "User" }),
-          "issue_comment",
-        ),
-      );
-      await route!.handler(
-        signedRequest(
-          {
-            action: "submitted",
-            pull_request: { number: 946 },
-            repository: { full_name: "getsentry/junior", id: 2001 },
-            review: { id: 8, submitted_at: "2026-07-02T10:00:00Z" },
-            sender: { login: "octocat", type: "User" },
-          },
-          "pull_request_review",
-        ),
-      );
-      expect(recordActivity.mock.calls).toEqual([
-        [{ at: new Date("2026-07-02T09:30:00Z"), providerId: "1001" }],
-        [{ at: new Date("2026-07-02T10:00:00Z"), providerId: "1001" }],
-      ]);
     } finally {
       await fixture.close();
     }
@@ -2454,7 +2367,6 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         codeChanges: {
           async associateConversations() {},
-          async recordActivity() {},
           async record() {},
         },
         db: fixture.db(),
@@ -2584,7 +2496,6 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         codeChanges: {
           async associateConversations() {},
-          async recordActivity() {},
           async record() {},
         },
         db: fixture.db(),
@@ -2713,7 +2624,6 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         codeChanges: {
           async associateConversations() {},
-          async recordActivity() {},
           async record() {},
         },
         db: fixture.db(),
@@ -2858,7 +2768,6 @@ describe("GitHub-owned pull request outcomes", () => {
       },
       codeChanges: {
         async associateConversations() {},
-        async recordActivity() {},
         async record() {},
       },
       users: {

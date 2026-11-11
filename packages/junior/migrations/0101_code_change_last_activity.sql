@@ -1,1 +1,0 @@
-ALTER TABLE "junior_code_changes" ADD COLUMN "last_activity_at" timestamp with time zone;

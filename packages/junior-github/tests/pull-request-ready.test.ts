@@ -207,7 +207,6 @@ function route(
     },
     codeChanges: {
       async associateConversations() {},
-      async recordActivity() {},
       async record() {},
     },
     db: fixture.db(),

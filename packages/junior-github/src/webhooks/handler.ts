@@ -21,7 +21,6 @@ import {
 } from "../issue-outcomes/store.js";
 import {
   type GitHubPullRequestOutcomeInput,
-  readGitHubPullRequestId,
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
@@ -35,7 +34,6 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
-import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
@@ -348,19 +346,6 @@ export function createGitHubWebhookRoute(args: {
         await args.codeChanges.associateConversations({
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
-        });
-      }
-      const pullRequestActivity = normalizeGitHubPullRequestActivity({
-        body,
-        eventName,
-      });
-      const activityPullRequestId = pullRequestActivity
-        ? await readGitHubPullRequestId(args.db, pullRequestActivity)
-        : undefined;
-      if (pullRequestActivity && activityPullRequestId) {
-        await args.codeChanges.recordActivity({
-          at: pullRequestActivity.at,
-          providerId: activityPullRequestId,
         });
       }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues

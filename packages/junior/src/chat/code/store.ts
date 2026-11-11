@@ -96,26 +96,6 @@ export async function recordCodeChange(
     });
 }
 
-/** Move a code change's last activity forward. Older activity is a no-op. */
-export async function recordCodeChangeActivity(
-  db: JuniorDatabase,
-  provider: string,
-  input: { at: Date; providerId: string },
-): Promise<void> {
-  await db
-    .update(juniorCodeChanges)
-    .set({
-      // GREATEST skips NULL, so the first activity sets the value.
-      lastActivityAt: sql`GREATEST(${juniorCodeChanges.lastActivityAt}, ${input.at.toISOString()}::timestamptz)`,
-    })
-    .where(
-      and(
-        eq(juniorCodeChanges.provider, provider),
-        eq(juniorCodeChanges.providerId, input.providerId),
-      ),
-    );
-}
-
 /** Add conversation links to an existing code change. */
 export async function associateCodeChangeConversations(
   db: JuniorDatabase,
