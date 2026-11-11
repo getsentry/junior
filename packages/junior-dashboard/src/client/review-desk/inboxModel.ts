@@ -334,8 +334,9 @@ export function automationSections(
 }
 
 /**
- * What a sweep would mark done in some rows. A sweep clears notices and FYI
- * items only. Items that wait on the viewer stay, and so do pinned items.
+ * What a sweep would mark done in some rows. A sweep clears notices (FYI)
+ * only. Every action item stays, including one assigned to Everyone, and
+ * so do pinned items.
  * Automations are not Review items, so a sweep never sees them.
  */
 export function sweepOf(
@@ -347,8 +348,8 @@ export function sweepOf(
     .filter(
       (item) =>
         item.status === "open" &&
+        item.kind === "notice" &&
         item.canAct &&
-        !itemNeedsViewer(item) &&
         !isPinned(item),
     );
 }

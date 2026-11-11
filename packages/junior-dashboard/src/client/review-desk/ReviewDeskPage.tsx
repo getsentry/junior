@@ -278,6 +278,17 @@ export function ReviewDeskPage() {
       label: "Pinned",
       rows: pinnedRows,
     });
+  // Automations are not Review items, so the server search skips them.
+  // Match them here, in the bundles that list them.
+  const needle = q.toLowerCase();
+  const searchedAutomations =
+    q && (view === "all" || view === "automations")
+      ? attentionAll.filter((automation) =>
+          [automation.title, automation.statusReason ?? ""].some((text) =>
+            text.toLowerCase().includes(needle),
+          ),
+        )
+      : [];
   const snoozedRows = q ? [] : viewRows(sleeping, view);
   const conversationCount = new Set(rows.map((row) => row.conversationId)).size;
   const viewLabel =
@@ -304,7 +315,10 @@ export function ReviewDeskPage() {
   const navigable = isDone
     ? doneKeys(doneItems, nowMs, collapsed)
     : q
-      ? rows.map((row) => row.key)
+      ? [
+          ...rows.map((row) => row.key),
+          ...searchedAutomations.map(automationKey),
+        ]
       : sections.flatMap((section) =>
           collapsed.has(section.key)
             ? []
@@ -368,7 +382,10 @@ export function ReviewDeskPage() {
   } else if (
     expandedKey &&
     expandedIndex === -1 &&
-    lastExpanded?.key === expandedKey
+    lastExpanded?.key === expandedKey &&
+    // A row in a collapsed section is hidden, not gone.
+    !rowByKey.has(expandedKey) &&
+    !automationByKey.has(expandedKey)
   ) {
     const next = navigable[Math.min(lastExpanded.index, navigable.length - 1)];
     setLastExpanded(undefined);
@@ -646,6 +663,7 @@ export function ReviewDeskPage() {
           ) : q ? (
             <ul aria-label="Search results" className="m-0 grid gap-2 p-0">
               {rows.map(rowView)}
+              {searchedAutomations.map(automationView)}
             </ul>
           ) : (
             <>
@@ -705,7 +723,11 @@ export function ReviewDeskPage() {
               Narrow the search to find older archived items.
             </p>
           ) : null}
-          {loaded && q && !isDone && rows.length === 0 ? (
+          {loaded &&
+          q &&
+          !isDone &&
+          rows.length === 0 &&
+          searchedAutomations.length === 0 ? (
             <p className="m-0 px-4 py-8 text-center text-sm text-dashboard-text-muted">
               No items match "{q}".
             </p>

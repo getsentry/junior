@@ -837,6 +837,26 @@ test("an automation row expands in place and only its buttons leave", async ({
   await expect(details).toContainText("Blocked: GitHub access expired.");
   await expect(details).toContainText("Last run blocked");
   await screenshot(page, "review-desk-automation", { view: "desktop" });
+  // Collapsing the section hides the open row; it opens no other row.
+  const blockedHeading = blocked.getByRole("button", { name: /^Blocked/ });
+  await blockedHeading.click();
+  await expect(page.getByRole("region", { name: /: attention$/ })).toHaveCount(
+    0,
+  );
+  await blockedHeading.click();
+  // A search finds Automations too, though the server search skips them.
+  await page
+    .getByRole("searchbox", { name: "Search review items" })
+    .fill("weekly project");
+  await expect(
+    page
+      .getByRole("list", { name: "Search results" })
+      .getByRole("button", { name: /Weekly project summary/ }),
+  ).toBeVisible();
+  await page.getByRole("searchbox", { name: "Search review items" }).fill("");
+  await expect(page).toHaveURL(/\/review\?bundle=automations$/);
+  // The row stays open through the collapse and the search.
+  await expect(details).toBeVisible();
   await details.getByRole("button", { name: "Resume" }).click();
   await expect
     .poll(() => lifecycle)
@@ -879,12 +899,21 @@ test("a sweep clears only FYI items, with an Undo", async ({
   dashboard,
   page,
 }) => {
+  // A question for Everyone is still a question, so a sweep leaves it.
+  const teamAsk = {
+    ...audit,
+    addedByConversationId: "slack:C789:1770021600.000900",
+    assignedToEveryone: true,
+    assignees: [],
+    id: "item-team-ask",
+    title: "Pick the on-call rotation",
+  };
   const actions = await mockReviewItems(page, {
-    open: [license, prReady, digest],
+    open: [license, prReady, digest, teamAsk],
   });
   await page.goto(`${dashboard.baseURL}/review`);
   // The notice in the question's bundle and the FYI digest go; the
-  // question stays.
+  // questions stay.
   const sweep = page.getByRole("button", {
     name: "Clear 2 in All",
   });
@@ -893,6 +922,9 @@ test("a sweep clears only FYI items, with an Undo", async ({
   await expect(digestRow).toHaveCount(0);
   const cleared = page.getByText("Cleared 2 items");
   await expect(cleared).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Pick the on-call rotation/ }),
+  ).toBeVisible();
   await screenshot(page, "review-desk-sweep", { view: "desktop" });
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(digestRow).toBeVisible();
