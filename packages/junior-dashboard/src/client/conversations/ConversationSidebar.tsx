@@ -168,7 +168,7 @@ export function ConversationSidebar(props: {
         {({ releaseHold, sections }) => (
           <ScrollArea
             className="h-full"
-            viewportClassName="px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+            viewportClassName="px-1.5 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
             <InboxLink count={props.waitingConversations.size} />
             {props.error ? (
