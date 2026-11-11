@@ -105,6 +105,8 @@ export const codeRepositoryReportSchema = z
 export const codePersonReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
+    /** Code changes opened, merged, or closed in the last 7 UTC days. */
+    activityChanges: z.array(codeChangeSummaryReportSchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
     activitySixHours: z.array(codeActivityDaySchema).optional(),
     changes: z.array(codeChangeSummaryReportSchema),

@@ -125,6 +125,10 @@ describe("people code API", () => {
           url: "https://github.com/getsentry/junior/pull/11",
         }),
       ]);
+      // Alice's merged change counts; her stale open one and Bob's do not.
+      expect(report.activityChanges).toEqual([
+        expect.objectContaining({ number: 11, state: "merged" }),
+      ]);
       expect(report.activityDays).toHaveLength(90);
       expect(report.activityDays.at(-3)).toEqual({
         closed: 0,

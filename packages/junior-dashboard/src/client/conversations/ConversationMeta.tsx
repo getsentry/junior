@@ -454,7 +454,8 @@ const SIDEBAR_ICON_PRESENTATION = {
   { className: string; Icon: typeof CircleDot; label: string }
 >;
 
-function SidebarAnnotationIcon(props: {
+/** Show a GitHub-style status icon for linked work, such as an open pull request. */
+export function SidebarAnnotationIcon(props: {
   icon: SidebarAnnotationIconName;
   size?: number;
   /** Hide accessible name when a parent already labels the control. */
