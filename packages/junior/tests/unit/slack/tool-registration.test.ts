@@ -285,7 +285,7 @@ describe("Slack tool registration", () => {
       } as ToolRuntimeContext);
       expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools.createAutomation?.disabledReason).toBeDefined();
-      // Without an inbound message, the reaction targets the thread root.
+      // Without an inbound message, the tool can still react to the thread root.
       expect(tools.addReaction?.disabledReason).toBeUndefined();
       expect(tools.addReviewItem?.disabledReason).toBeUndefined();
     }

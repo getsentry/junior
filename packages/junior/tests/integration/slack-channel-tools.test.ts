@@ -452,7 +452,7 @@ describe("slack channel tools", () => {
     });
   });
 
-  it("adds a reaction to the thread root when the Turn has no inbound message", async () => {
+  it("adds a reaction to the thread root only when asked for it in an Event Turn", async () => {
     queueSlackApiResponse("reactions.add", {
       body: reactionsAddOk(),
     });
@@ -468,8 +468,14 @@ describe("slack channel tools", () => {
       createToolState(),
     );
 
+    await expect(
+      executeTool(tool, { emoji: "white_check_mark" }),
+    ).rejects.toThrow("message: thread_root");
+    expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(0);
+
     const result = await executeTool(tool, {
       emoji: "white_check_mark",
+      message: "thread_root",
     });
 
     expect(result).toMatchObject({
