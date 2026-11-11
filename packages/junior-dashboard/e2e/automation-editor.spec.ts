@@ -180,6 +180,10 @@ test("runs a skill with optional context instead of an instruction", async ({
   await skillDrawer
     .getByRole("button", { name: "Close $release-check", exact: true })
     .click();
+  // Reopening after a pick starts from an empty search.
+  await page.getByLabel("Skill", { exact: true }).click();
+  await expect(search).toHaveValue("");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Add context", exact: true }).click();
   await page
     .getByLabel("Additional context", { exact: true })
