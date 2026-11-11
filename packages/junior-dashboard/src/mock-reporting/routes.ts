@@ -47,7 +47,6 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
-  boardReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryParamsSchema,
@@ -96,7 +95,6 @@ import {
   filterMockConversationsByRepository,
   readMockCodeRepository,
 } from "./code-repository";
-import { readMockBoard } from "./board";
 import {
   NOW_MS,
   readMockConversationChildAgents,
@@ -193,9 +191,6 @@ export function createMockReportingApi(): Hono<{
     return mockNotificationSettings(parsed.data);
   });
 
-  app.get("/board", () =>
-    jsonResponse(boardReportSchema, readMockBoard(Date.now())),
-  );
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
