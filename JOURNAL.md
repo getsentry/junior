@@ -361,3 +361,22 @@ Draft PR #3149 (`walkthrough/6-answers`, 474330e88), stacked on #3147.
     little odd in **Agreed**. Tune the decision prompt later.
   - Update items (`document.updates`) and confirm decisions come in slice 8.
 - Screenshots: `screenshots/slice-6/` on this branch.
+
+### 2026-11-11 — stack rebased onto main, migrations renumbered
+
+- Rebased #3087 → #3149 onto main 364bbb7cb with `gh stack rebase`.
+- Main had taken `0100` (`0100_automation_task_kind_repair`).
+  - Slice 3 (#3090): the old walkthrough migration files were dropped during
+    the rebase. A new commit adds `0101_walkthrough_versions` (2411d2d82). Its
+    SQL is identical to the old `0100`.
+  - Slice 6 (#3149): `0102_walkthrough_answers`, amended into the slice commit
+    (6cf0f8676). Its SQL is identical to the old `0101`.
+- One code conflict, on slice 4a: the `turnBehavior` JSDoc in
+  `kind-behavior.ts`. Main rewrote the `automationRun` paragraph; kept main's
+  text and added the `walkthroughGeneration` sentence.
+- Verified on 3, 4a, 4b and 6: migration-metadata, migration-locks, junior
+  tsc, and the walkthrough unit and integration tests. On 6, also tsc for
+  dashboard, github and plugin-api, and all dashboard tests (439).
+  file-length and test-architecture pass.
+- `gh stack push`: every PR in the stack reports MERGEABLE (blocked only as a
+  draft).
