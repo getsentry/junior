@@ -45,6 +45,7 @@ import {
   automationScheduleLabel,
   formatAutomationRunTime,
 } from "./automationFormat";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 
 const STRIP_RUNS = 48;
 const LISTED_RUNS = 6;
@@ -102,9 +103,7 @@ function AutomationActivity(props: {
     <section aria-label="Recent runs" className="min-w-0">
       <Card>
         <div className="flex items-baseline justify-between gap-3 px-4 pt-4">
-          <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
-            Recent runs
-          </h3>
+          <SectionTitle>Recent runs</SectionTitle>
           {/* Older runs stay reachable while recent history loads or fails. */}
           {runs.length > 0 || automation.totalRuns > 0 ? (
             <Link
@@ -294,9 +293,7 @@ function AutomationInstruction(props: { automation: AutomationSummary }) {
   return (
     <section aria-label="Instruction" className="min-w-0">
       <Card className="grid gap-3 p-4">
-        <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
-          Instruction
-        </h3>
+        <SectionTitle>Instruction</SectionTitle>
         {task.kind === "skill" ? (
           <p className="m-0 text-sm text-dashboard-text-muted">
             Runs <SkillLink name={task.skill} />

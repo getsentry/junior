@@ -18,6 +18,9 @@ consistent.
 - Keep pages thin: compose shared components and wire data.
 - Own page filters and secondary nav in one shared layout control. Sections
   must not each own a copy.
+- Title page, card, and panel sections with `layout/SectionTitle` (or a
+  shared component that uses it, such as `FactSection` and `CardHeader`).
+  Small muted text is for field and subsection labels only.
 - Filtered lists use `filters/FilterToolbar` (search, a Filters button, and
   chips) and a `filters/FilterPanel` with one `FilterOptions` per filter.
   `FilteredList` puts the panel beside the list, so the list narrows. Row

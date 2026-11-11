@@ -1,10 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Check, X } from "lucide-react";
 
 import { BottomSheet } from "../BottomSheet";
 import { useDetailsPanel } from "../DetailsPanel";
 import { Button } from "../ui/button";
 import { cn } from "../../styles";
+import { SectionTitle } from "../layout/SectionTitle";
 
 /** One choice in a `FilterOptions` list. */
 export type FilterOption = { label: string; value: string };
@@ -47,21 +48,6 @@ export function FilterPanel(props: {
 }) {
   const { onClose } = props;
   const beside = useDetailsPanel();
-  useEffect(() => {
-    if (!beside) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (
-        event.key === "Escape" &&
-        !event.defaultPrevented &&
-        !document.querySelector("[data-dashboard-modal]")
-      ) {
-        event.preventDefault();
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [beside, onClose]);
   const clear = props.onClear ? (
     <Button onClick={props.onClear} variant="quiet">
       Clear all
@@ -135,9 +121,9 @@ export function FilterOptions(props: {
   const hidden = options.length - shown.length;
   return (
     <section aria-label={props.label} className="grid gap-1.5 py-4">
-      <h3 className="m-0 px-2 font-sans text-sm font-semibold text-dashboard-text">
-        {props.label}
-      </h3>
+      <div className="px-2">
+        <SectionTitle>{props.label}</SectionTitle>
+      </div>
       <div aria-label={`Filter by ${props.label.toLowerCase()}`} role="group">
         {[{ label: "All", value: "" }, ...shown].map((option) => (
           <FilterOptionButton

@@ -247,7 +247,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     "aria-pressed",
     "true",
   );
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Close filters" }).click();
   await expect(
     page.getByRole("complementary", { name: "Filters" }),
   ).toHaveCount(0);
@@ -355,7 +355,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     "aria-pressed",
     "true",
   );
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Close filters" }).click();
   // Groups show every match at once, so there are no page controls.
   await page.goto(listUrl);
   await expect(active.getByRole("listitem")).toHaveCount(31);
@@ -417,7 +417,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
   await filterOption(page, "destination", "#project-updates").click();
   await filterOption(page, "state", "Active").click();
   await expect(page).toHaveURL(/state=active/);
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Close filters" }).click();
   await page.reload();
   await expect(
     page.getByRole("button", { name: "Remove creator filter", exact: true }),
@@ -427,7 +427,7 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     "aria-pressed",
     "true",
   );
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Close filters" }).click();
   delayList = true;
   await page.getByLabel("Search automations").fill("no match");
   await expect(page.getByText("Updating results…")).toBeVisible();

@@ -27,6 +27,7 @@ import { pathWithSearch, useDebouncedSearchParam } from "../../searchParams";
 import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
 import { automationNeedsAttention } from "./AutomationStatus";
+import { SectionTitle } from "../../components/layout/SectionTitle";
 
 const EMPTY: AutomationSummary[] = [];
 
@@ -250,9 +251,7 @@ function AutomationGroupSection(props: {
   if (!group.collapsed) {
     return (
       <section aria-label={group.label} className="grid gap-2.5">
-        <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
-          {heading}
-        </h3>
+        <SectionTitle>{heading}</SectionTitle>
         {rows}
       </section>
     );
