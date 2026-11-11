@@ -1253,15 +1253,16 @@ async function appendInboundMessageWithAdmission(args: {
       if (args.exclusive && hasRunnableWork(current)) {
         return { status: "active" };
       }
-      const message: InboundMessage = args.renderText
-        ? {
-            ...args.message,
-            input: {
-              ...args.message.input,
-              text: await args.renderText(current.execution.inboundMessageIds),
-            },
-          }
-        : args.message;
+      const text = args.renderText
+        ? await args.renderText(current.execution.inboundMessageIds)
+        : args.message.input.text;
+      if (text === undefined) {
+        return { status: "duplicate" };
+      }
+      const message: InboundMessage = {
+        ...args.message,
+        input: { ...args.message.input, text },
+      };
 
       let status: ExecutionStatus;
       if (current.execution.lease) {
@@ -1308,11 +1309,12 @@ async function appendInboundMessageWithAdmission(args: {
 /**
  * Render the text of one inbound message from the ids that already reached
  * its mailbox. It runs under the mailbox lock, so two appends that depend on
- * each other see each other.
+ * each other see each other. Undefined drops the message: nothing is
+ * appended, as for a duplicate.
  */
 export type RenderInboundText = (
   inboundMessageIds: readonly string[],
-) => Promise<string>;
+) => Promise<string | undefined>;
 
 /** Persist one inbound message idempotently in its conversation mailbox. */
 export async function appendInboundMessage(args: {

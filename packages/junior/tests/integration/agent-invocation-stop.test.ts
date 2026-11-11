@@ -277,7 +277,23 @@ describe("stopping child agents", () => {
         }),
       ]);
 
+      const beforeStopMs = Date.now();
       await stopAgent(child.childConversationId);
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
+      // A reply that the Turn sent before the stop reaches the parent's
+      // mailbox after the stop dropped the unread ones.
+      await enqueueChildResultToParent({
+        actor: EVENT_SYSTEM_ACTOR,
+        messageKey: getTurnReplyKey("turn_watch-event", "call-late-reply"),
+        nowMs: beforeStopMs,
+        queue: harness.queue,
+        result: {
+          kind: "reply",
+          reply: { text: "Late finding.", toolCallId: "call-late-reply" },
+        },
+        sender: child,
+        state: harness.state,
+      });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       // The parent gives the child a new task in the same Turn.
       const retask = await createAgentInvocationForMessage(

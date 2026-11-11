@@ -438,7 +438,18 @@ export async function enqueueChildResultToParent(args: {
       receivedAtMs: nowMs,
       source: "event",
     },
-    renderText: renderResultUnderLock(args.sender, rendered),
+    renderText: async (parentInboundMessageIds) =>
+      // A stop drops the unread replies of a Turn on the Conversation loop
+      // from the parent's mailbox. One sent before the stop can reach this
+      // lock after that drop, so a stopped sender's reply is dropped here.
+      parseTurnReplyMessageId(inboundMessageId) !== undefined &&
+      (await getConversationStoppedAtMs(args.sender.childConversationId)) !==
+        undefined
+        ? undefined
+        : await renderResultUnderLock(
+            args.sender,
+            rendered,
+          )(parentInboundMessageIds),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: args.state,
