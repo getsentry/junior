@@ -11,7 +11,6 @@ import { SUITE_EXPERIMENTAL } from "../fixtures/experimental-setup";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const CONVERSATION_ID = "local:operator:current";

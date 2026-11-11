@@ -733,6 +733,15 @@ previous Turn when agent history exists.
   `db.pool.client.connect_failed`.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
+- A gated Turn, such as an Automation run Turn, records how it ended in
+  `app.turn.answer` on `agent.message.generated`: `reply`, `noReply`,
+  `reportBlocked`, or `missing`. A Turn that stops without an answer logs
+  `agent.turn.answer.reminded` and gets one re-ask. If the answer is still
+  missing, it logs `agent.turn.answer.missing` and posts nothing. On the
+  dispatch Turn, the Automation run then fails. `app.turn.answer` replaces the
+  removed `app.automation.result`.
+  When `reportBlocked` on a later Turn of a run finds no Automation to
+  block, it logs `automation.block.unresolved`.
 - A mention turn calls `reactions.add` two times and gets `already_reacted`.
   #2318 tracks it. `already_reacted` on `reactions.add` and `no_reaction` on
   `reactions.remove` are success, so they do not log `slack.action.failed`.

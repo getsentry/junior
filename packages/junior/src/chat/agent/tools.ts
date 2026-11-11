@@ -416,7 +416,18 @@ export async function wireAgentTools(
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     turnId: args.run.turnId,
-    turnTools: args.behavior.tools,
+    turnTools: {
+      ...args.behavior.tools,
+      // An Automation with no outcomes posts nothing, so its run cannot
+      // reply. A dispatch record from before #1788 has no outcomes and sends
+      // to its Destination.
+      // TODO(dcramer): Remove the `undefined` case and the same check in
+      // `finishedRunReply` when automation dispatches require `outcomes`.
+      // Automations have stored outcomes since #1788, and older dispatch
+      // records have passed the 7-day state TTL.
+      reply:
+        args.behavior.tools.reply && args.run.dispatch?.outcomes?.length !== 0,
+    },
     ...(args.run.parentConversationId
       ? { parentConversationId: args.run.parentConversationId }
       : undefined),
@@ -460,19 +471,6 @@ export async function wireAgentTools(
         }
       : undefined),
     ...bindAgentTools(args.run, args.behavior.tools.agents),
-    ...(args.behavior.tools.finishAutomationRun
-      ? {
-          // A dispatch record from before #1788 has no outcomes and sends to
-          // its Destination.
-          // TODO(dcramer): Remove this fallback and the same check in
-          // `finishedRunReply` when automation dispatches require `outcomes`.
-          // Automations have stored outcomes since #1788, and older dispatch
-          // records have passed the 7-day state TTL.
-          automation: {
-            sendsMessage: args.run.dispatch?.outcomes?.length !== 0,
-          },
-        }
-      : undefined),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,

@@ -628,8 +628,8 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
-  // Automation runs have no Delivery port. Their declared message still goes
-  // to Slack, so they keep Slack formatting rules.
+  // Automation runs have no Delivery port. Their `reply` text still goes to
+  // Slack, so they keep Slack formatting rules.
   const platform =
     (args.run.delivery || args.promptMode === "automation") &&
     args.run.location?.provider === "slack"

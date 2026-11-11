@@ -17,7 +17,6 @@ import {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 async function executeTool<TInput>(tool: any, input: TInput) {

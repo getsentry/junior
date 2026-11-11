@@ -83,10 +83,10 @@ import { buildTurnResult } from "@/chat/services/turn-result";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import {
-  FINISH_AUTOMATION_RUN_TOOL_NAME,
-  readAutomationResult,
-  remindMissingAutomationResult,
-} from "@/chat/automation-result";
+  REPLY_TOOL_NAME,
+  readTurnAnswer,
+  remindMissingAnswer,
+} from "@/chat/turn-answer";
 import { decideReply } from "@/chat/services/assistant-reply";
 import {
   findProviderError,
@@ -282,7 +282,11 @@ export async function executeAgentRun(
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
         run,
-        conversation?.kind ?? "root",
+        // TODO(dcramer): Remove the `root` case one release after #3060 step
+        // 3. An Automation run in progress at deploy is stored as `root`.
+        run.dispatch?.declaresResult
+          ? "automation"
+          : (conversation?.kind ?? "root"),
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -304,10 +308,7 @@ async function executeAgentRunInPrivacyContext(
   const behavior = turnBehavior({
     kind: conversationKind,
     personInput: isPersonInput(run.source.kind),
-    automationRun: run.dispatch?.declaresResult === true,
   });
-  // TODO(dcramer): Gate every answer tool here, not only the Automation run.
-  const requireAutomationResult = behavior.gated;
   const input = {
     actor: run.instruction.actor,
     messageText: run.instruction.text,
@@ -1116,10 +1117,9 @@ async function executeAgentRunInPrivacyContext(
           timedOutResult || projectedResult !== result
             ? projectedResult
             : undefined;
-        // A declared Automation result, blocked report, or no-reply is the
-        // last step of the run.
+        // A reply, blocked report, or no-reply is the last step of the run.
         if (
-          (toolCall.name === FINISH_AUTOMATION_RUN_TOOL_NAME ||
+          (toolCall.name === REPLY_TOOL_NAME ||
             toolCall.name === REPORT_BLOCKED_TOOL_NAME ||
             toolCall.name === NO_REPLY_TOOL_NAME) &&
           !isError &&
@@ -1242,6 +1242,14 @@ async function executeAgentRunInPrivacyContext(
     });
 
     let newMessages: PiMessage[] = [];
+    // A resumed slice can prompt again, which moves the live Turn start, so
+    // read the answer from the saved start. A slice from before saved Turn
+    // starts reads only its own messages.
+    const turnStartIndex = () =>
+      existingSessionRecord?.turnStartMessageIndex ??
+      runResume.turnStartMessageIndex ??
+      runResume.beforeMessageCount;
+    const turnMessages = () => agent!.state.messages.slice(turnStartIndex());
     try {
       if (resumedFromSessionRecord) {
         agent.state.messages = shouldPromptAgent
@@ -1268,13 +1276,9 @@ async function executeAgentRunInPrivacyContext(
         spanContext,
         async (setInvokeAgentSpanAttributes) => {
           setAgentSpanAttributes = setInvokeAgentSpanAttributes;
-          // A declared Automation result is final. Each Automation run owns
-          // its dispatch Conversation, so a result in this history belongs to
-          // this run. A resumed slice returns it without calling the model.
-          if (
-            requireAutomationResult &&
-            readAutomationResult(agent!.state.messages)
-          ) {
+          // An answer is final. A resumed slice of a gated Turn returns it
+          // without calling the model.
+          if (behavior.gated && readTurnAnswer(turnMessages())) {
             return undefined;
           }
           const promptTimestamp = restoredPromptTimestamp ?? Date.now();
@@ -1445,7 +1449,7 @@ async function executeAgentRunInPrivacyContext(
               : agent!.continue();
           discardedRetryUsage = undefined;
           let actionConfirmationRetryUsed = false;
-          let automationResultReminderUsed = !requireAutomationResult;
+          let answerReminderUsed = !behavior.gated;
           let providerRetryAttempt = 0;
           let refusalFallbackUsed = false;
           let emptyOutputAttempt = 0;
@@ -1520,14 +1524,14 @@ async function executeAgentRunInPrivacyContext(
                 continue;
               }
 
-              const automationResultReminder = automationResultReminderUsed
+              const answerReminder = answerReminderUsed
                 ? undefined
-                : remindMissingAutomationResult(agent!.state.messages);
-              if (automationResultReminder) {
-                automationResultReminderUsed = true;
-                agent!.state.messages = automationResultReminder;
-                await runResume.persistSafeBoundary(automationResultReminder);
-                logWarn("agent.turn.automation_result.reminded", {});
+                : remindMissingAnswer(agent!.state.messages, turnStartIndex());
+              if (answerReminder) {
+                answerReminderUsed = true;
+                agent!.state.messages = answerReminder;
+                await runResume.persistSafeBoundary(answerReminder);
+                logWarn("agent.turn.answer.reminded", {});
                 run = agent!.continue();
                 continue;
               }
@@ -1650,7 +1654,12 @@ async function executeAgentRunInPrivacyContext(
       reasoningLevel,
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
-      requireAutomationResult,
+      ...(behavior.gated
+        ? {
+            answer: readTurnAnswer(turnMessages()) ?? "missing",
+            missingAnswerFails: Boolean(run.dispatch),
+          }
+        : undefined),
     });
     return {
       status: "completed",

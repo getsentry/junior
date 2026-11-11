@@ -179,8 +179,8 @@ export type AgentDispatch = {
    */
   skill?: string;
   /**
-   * The run ends with one declared Automation result. It gets no Delivery,
-   * and only a declared message posts. The dispatch layer sets this once.
+   * The run is an Automation run. It gets no Delivery, and only the text of
+   * its `reply` call posts. The dispatch layer sets this once.
    */
   declaresResult?: boolean;
 };

@@ -32,9 +32,10 @@ function refersTo(text: string, person: InstructionPerson): boolean {
  * "the Automation creator" as its creator, so the text calls the creator
  * that. Every other requester needs their Slack mention, because a display
  * name does not notify the person and it can match another person. A run
- * ends with a declared result, so a legacy no-reply marker does nothing. A
- * problem that the previous text already had stays allowed, so an edit does
- * not have to rewrite text that the requester did not change.
+ * ends with `reply`, `noReply`, or `reportBlocked`, so a legacy no-reply
+ * marker does nothing. A problem that the previous text already had stays
+ * allowed, so an edit does not have to rewrite text that the requester did
+ * not change.
  */
 function taskTextProblem(
   text: string,

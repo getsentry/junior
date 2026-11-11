@@ -1,4 +1,5 @@
 /** Run a mailbox Turn and store its assistant Messages. */
+import { blockRunAutomation } from "@/chat/automations/block-run";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   readMessageAttachments,
@@ -451,17 +452,16 @@ export function createConversationTurnWorker(
     // each supplies optional provider Delivery. Source must not select Delivery.
     const isEventTurn = source.kind === "event" || savedMessageIsEvent;
     // Only an Event Turn delivers here, and an Event has no person.
+    const postsToProvider = Boolean(conversationLocation) && isEventTurn;
     const deliverToProvider =
-      Boolean(conversationLocation) &&
-      isEventTurn &&
+      postsToProvider &&
       turnBehavior({
         kind: storedConversation?.kind ?? "root",
         personInput: false,
-        automationRun: false,
       }).delivery === "location";
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
-    const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
+    const surface = postsToProvider ? ("slack" as const) : ("api" as const);
 
     // Input timing applies to new input. A resumed slice continues the trace
     // of its first slice.
@@ -596,7 +596,7 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
-          options?: { quiet?: true },
+          options?: { quiet?: true; reply?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
@@ -614,7 +614,7 @@ export function createConversationTurnWorker(
           // Read the pause at reply time: a person can pause Delivery while
           // this Turn runs.
           if (
-            deliverToProvider &&
+            (options?.reply ? postsToProvider : deliverToProvider) &&
             !quiet &&
             !(await isConversationDeliveryPaused(context.conversationId))
           ) {
@@ -778,6 +778,12 @@ export function createConversationTurnWorker(
               modelFailureEventId = finalized.eventId;
               if (reply.diagnostics.outcome !== "success") {
                 await deliverAssistantMessage(reply.text);
+              } else if (reply.reply) {
+                await deliverAssistantMessage(reply.reply.text, {
+                  reply: true,
+                });
+              } else if (reply.blocked) {
+                await blockRunAutomation(context.conversationId, reply.blocked);
               } else if (reply.noReply?.note && isEventTurn) {
                 // The note of a no-reply Event Turn is its Quiet message.
                 await deliverAssistantMessage(reply.noReply.note, {

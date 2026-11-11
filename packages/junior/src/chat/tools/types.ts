@@ -73,11 +73,6 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage;
-  /** Present only when the Turn has finishAutomationRun. */
-  automation?: {
-    /** True when a successful run sends a message to stored Destinations. */
-    sendsMessage: boolean;
-  };
   /** Queue of the app. Without it, Review item tools use the Vercel queue. */
   conversationWorkQueue?: ConversationWorkQueue;
   messageAgent?: MessageAgent;

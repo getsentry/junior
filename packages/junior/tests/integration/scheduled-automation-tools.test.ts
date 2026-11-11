@@ -54,7 +54,6 @@ import {
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
