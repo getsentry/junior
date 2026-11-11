@@ -346,9 +346,9 @@ export function createTools(
           {
             addReaction: createSlackMessageAddReactionTool(slackContext, state),
           },
-          slackContext.messageTs
+          slackContext.messageTs || slackContext.threadTs
             ? undefined
-            : "It needs a Slack message in this Turn to react to.",
+            : "It needs a Slack message or thread in this Turn to react to.",
         ),
       );
     }

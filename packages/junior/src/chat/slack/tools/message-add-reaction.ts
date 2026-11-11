@@ -10,7 +10,10 @@ import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import type { ToolState } from "@/chat/tools/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
-/** Create the tool that reacts to the current inbound Slack message. */
+/**
+ * Create the tool that reacts to the current inbound Slack message, or to the
+ * Conversation's thread root when the Turn has no Slack message.
+ */
 export function createSlackMessageAddReactionTool(
   context: SlackToolContext,
   state: ToolState,
@@ -27,7 +30,7 @@ export function createSlackMessageAddReactionTool(
     },
     // The system prompt owns the no-reply protocol. This names when a
     // reaction is the whole reply, as `addReviewItem` does for its card.
-    description: `Add an emoji reaction to the current inbound Slack message. The person sees the reaction on their message. When the reaction is the whole reply, do not report it in text: end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
+    description: `Add an emoji reaction to the current inbound Slack message. In a Turn without an inbound message, such as an Event Turn, it reacts to the root message of the Conversation's thread. When the reaction is the whole reply, do not report it in text: end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
     inputSchema: z.object({
       emoji: z
         .string()
@@ -39,8 +42,12 @@ export function createSlackMessageAddReactionTool(
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ emoji }) => {
-      const targetChannelId = context.messageChannelId;
-      const targetMessageTs = context.messageTs;
+      // An Event Turn has no inbound message. The thread root stays inside
+      // the Conversation, so it is the only other safe target.
+      const targetChannelId = context.messageTs
+        ? context.messageChannelId
+        : context.locationChannelId;
+      const targetMessageTs = context.messageTs ?? context.threadTs;
       if (!targetChannelId || !targetMessageTs) {
         throw new ToolInputError(
           "No active Slack message is available for reactions.",

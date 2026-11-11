@@ -452,6 +452,38 @@ describe("slack channel tools", () => {
     });
   });
 
+  it("adds a reaction to the thread root when the Turn has no inbound message", async () => {
+    queueSlackApiResponse("reactions.add", {
+      body: reactionsAddOk(),
+    });
+    const {
+      messageChannelId: _messageChannelId,
+      messageTs: _messageTs,
+      ...eventTurnContext
+    } = createContext("pull request merged", {
+      threadTs: "1700000000.100",
+    });
+    const tool = createSlackMessageAddReactionTool(
+      eventTurnContext,
+      createToolState(),
+    );
+
+    const result = await executeTool(tool, {
+      emoji: "white_check_mark",
+    });
+
+    expect(result).toMatchObject({
+      channel_id: "C123",
+      message_ts: "1700000000.100",
+      emoji: "white_check_mark",
+    });
+    expect(getCapturedSlackApiCalls("reactions.add")[0]?.params).toMatchObject({
+      channel: "C123",
+      timestamp: "1700000000.100",
+      name: "white_check_mark",
+    });
+  });
+
   it("treats already_reacted as a safe reaction success", async () => {
     queueSlackApiError("reactions.add", {
       error: "already_reacted",
