@@ -373,14 +373,14 @@ test("opens and closes a conversation on mobile", async ({
   await expect(menu).toBeVisible();
   await menu.click();
   await expect(
-    page.getByRole("button", { name: "Search transcript" }),
+    page.getByRole("menuitem", { name: "Search transcript" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Open event log", exact: true }),
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "App menu" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "App menu" })).toBeVisible();
   await page
-    .getByRole("button", { name: "Conversation details", exact: true })
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
     .click();
   const details = page.getByRole("dialog", { name: "Conversation details" });
   await expect(details).toHaveAttribute("aria-modal", "true");
@@ -400,14 +400,14 @@ test("opens and closes a conversation on mobile", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await menu.click();
   await page
-    .getByRole("button", { name: "Conversation details", exact: true })
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
     .click();
   await details.getByRole("button", { name: "Close", exact: true }).click();
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
   await menu.click();
   await page
-    .getByRole("button", { name: "Conversation details", exact: true })
+    .getByRole("menuitem", { name: "Conversation details", exact: true })
     .click();
   // The sheet moves focus inside it.
   await expect(details.locator(":focus")).toHaveCount(1);
@@ -719,11 +719,11 @@ test("opens and closes a conversation on mobile", async ({
     .toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByRole("menuitem", { name: "Search transcript" }).click();
   await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page
-    .getByRole("button", { name: "Open event log", exact: true })
+    .getByRole("menuitem", { name: "Open event log", exact: true })
     .click();
   await expect(page.getByPlaceholder("Search events…")).toBeVisible();
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();

@@ -600,24 +600,26 @@ test("shows personal spend and groups profile and session actions", async ({
   await expect(popover).toContainText("7d $0.46");
   await expect(popover).toContainText("30d $0.46");
   await expect(
-    popover.getByRole("link", { name: "My profile" }),
+    popover.getByRole("menuitem", { name: "My profile" }),
   ).toHaveAttribute("href", "/people/dev%40example.com");
   await expect(
-    popover.getByRole("link", { name: "Settings", exact: true }),
+    popover.getByRole("menuitem", { name: "Settings", exact: true }),
   ).toHaveAttribute("href", "/settings");
   // Low-traffic pages live here instead of the primary nav.
   await expect(
-    popover.getByRole("link", { name: "Code", exact: true }),
+    popover.getByRole("menuitem", { name: "Code", exact: true }),
   ).toHaveAttribute("href", "/code");
   await expect(
-    popover.getByRole("link", { name: "System", exact: true }),
+    popover.getByRole("menuitem", { name: "System", exact: true }),
   ).toHaveAttribute("href", "/system");
   await expect(
     rail
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^(Code|System)$/ }),
   ).toHaveCount(0);
-  await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
+  await expect(
+    popover.getByRole("menuitem", { name: "Log out" }),
+  ).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
@@ -629,7 +631,7 @@ test("shows personal spend and groups profile and session actions", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
   // Better Auth returns 415 for a sign-out body without a JSON content type.
   expect((await signOutRequest).headers()["content-type"]).toBe(
     "application/json",
@@ -833,7 +835,7 @@ test("inspects and copies a child agent transcript", async ({
   );
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await expect(
-    page.getByRole("button", { name: "Pin", exact: true }),
+    page.getByRole("menuitem", { name: "Pin", exact: true }),
   ).toBeDisabled();
 });
 
