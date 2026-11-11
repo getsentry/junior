@@ -10,9 +10,13 @@ import {
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import {
+  ADD_REVIEW_REACTION,
+  OPEN_PULL_REQUEST_MERGEABILITY,
+  pullRequestLifecycles,
+} from "../graphql-documents.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
 import {
-  ADD_REVIEW_REACTION_MUTATION,
   graphqlReactionContent,
   pullRequestCommentReactionsPath,
   pullRequestFeedbackReactionContent,
@@ -94,14 +98,9 @@ export async function loadPullRequestLifecycles(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  const variables = input.numbers.map((_, index) => `$n${index}: Int!`);
-  const pullRequests = input.numbers.map(
-    (_, index) =>
-      `pr${index}: pullRequest(number: $n${index}) { ...lifecycle }`,
-  );
   return await githubRequest("https://api.github.com", "/graphql", {
     body: {
-      query: `query($owner: String!, $name: String!, ${variables.join(", ")}) { repository(owner: $owner, name: $name) { databaseId nameWithOwner ${pullRequests.join(" ")} } } fragment lifecycle on PullRequest { assignees(first: 20) { nodes { login } } author { __typename login } closedAt createdAt databaseId headRefName isDraft merged mergedAt number state title updatedAt }`,
+      ...pullRequestLifecycles(input.numbers.length),
       variables: {
         name,
         owner,
@@ -134,8 +133,7 @@ export async function searchOpenPullRequestMergeability(
   });
   return await githubRequest("https://api.github.com", "/graphql", {
     body: {
-      query:
-        "query($query: String!, $after: String) { search(query: $query, type: ISSUE, first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes { ... on PullRequest { number state mergeable headRefOid baseRefName url } } } }",
+      ...OPEN_PULL_REQUEST_MERGEABILITY,
       variables: {
         after: input.after ?? null,
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
@@ -180,8 +178,7 @@ export async function markPullRequestFeedbackReviewing(
     const result = z.object({ errors: z.array(z.unknown()).optional() }).parse(
       await githubRequest("https://api.github.com", "/graphql", {
         body: {
-          operationName: "AddReviewReaction",
-          query: ADD_REVIEW_REACTION_MUTATION,
+          ...ADD_REVIEW_REACTION,
           variables: {
             content: graphqlReactionContent(content),
             subjectId: review.node_id,
