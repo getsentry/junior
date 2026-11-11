@@ -23,7 +23,6 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 // The contract is the comment at the top of

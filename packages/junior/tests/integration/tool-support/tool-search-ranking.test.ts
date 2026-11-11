@@ -18,7 +18,6 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const CONVERSATION_ID = "local:test:tool-search-ranking";

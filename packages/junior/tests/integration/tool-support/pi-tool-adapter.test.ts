@@ -45,7 +45,6 @@ function runtimeContext() {
     turnTools: turnBehavior({
       kind: "root",
       personInput: true,
-      automationRun: false,
     }).tools,
     workspace: {} as any,
   };
@@ -310,23 +309,23 @@ describe("Pi tool adapter integration", () => {
       {},
       {
         ...runtimeContext(),
-        automation: { sendsMessage: false },
         messageAgent,
         parentConversationId: "local:test:parent",
         spawnAgent,
         // Every model-only tool at once, which no single Turn kind loads.
         turnTools: {
           ...runtimeContext().turnTools,
-          finishAutomationRun: true,
-          noReply: false,
-          reportBlocked: true,
+          reply: true,
+          noReply: true,
+          reportBlocked: "parent",
         },
       },
     );
     const tools = createPiAgentTools(registry, new SkillSandbox([], []), {});
     const modelOnlyTools = [
-      "finishAutomationRun",
       "messageAgent",
+      "noReply",
+      "reply",
       "reportBlocked",
       "spawnAgent",
     ];

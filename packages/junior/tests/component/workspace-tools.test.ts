@@ -29,7 +29,6 @@ import { readStats } from "@/stats";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } = vi.hoisted(

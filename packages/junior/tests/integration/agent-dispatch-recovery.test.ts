@@ -124,21 +124,15 @@ describe("agent dispatch recovery", () => {
       createModelStream([
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: {
-            result: "send_message",
-            message: "Resumed scheduled digest",
-          },
+          name: "reply",
+          arguments: { text: "Resumed scheduled digest" },
         },
-        // The declared result is final. The resumed slice must not call the
-        // model again and replace it.
+        // The reply is final. The resumed slice must not call the model
+        // again and replace it.
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: {
-            result: "send_message",
-            message: "Replaced scheduled digest",
-          },
+          name: "reply",
+          arguments: { text: "Replaced scheduled digest" },
         },
       ]),
     );

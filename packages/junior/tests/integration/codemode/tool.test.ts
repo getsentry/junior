@@ -17,7 +17,6 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 const ROOT_TURN_TOOLS = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const CONVERSATION_ID = "local:test:codemode-tool";

@@ -7,6 +7,8 @@ import {
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
@@ -40,12 +42,12 @@ vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
-/** Model output that ends an Automation run with a declared message. */
+/** Model output that ends an Automation run with a declared reply. */
 function sendMessage(message: string) {
   return {
     type: "toolCall" as const,
-    name: "finishAutomationRun",
-    arguments: { result: "send_message", message },
+    name: "reply",
+    arguments: { text: message },
   };
 }
 
@@ -225,7 +227,7 @@ describe("agent dispatch conversation work", () => {
     ).resolves.toBe("private");
   }, 15_000);
 
-  it("binds the default same-channel outcome reply to the dispatch's origin thread", async () => {
+  it("binds the run's reply to the dispatch's origin thread and replies to a Watch Event there", async () => {
     const dispatch = await createDispatch(
       "outcome-thread-binding",
       undefined,
@@ -242,20 +244,58 @@ describe("agent dispatch conversation work", () => {
     );
     const { queue, run, state } = await createConversationWorkHarness(
       createModelAgentRunner(
-        createModelStream([sendMessage("Scheduled digest")]),
+        createModelStream([
+          sendMessage("Scheduled digest"),
+          // A Watch Event Turn's final response is not delivered.
+          { type: "text", text: "Checking the merged change." },
+          sendMessage("The change merged."),
+        ]),
       ),
     );
+    const processNext = async () =>
+      await processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        run,
+        state,
+      });
 
     await enqueueAgentDispatch(dispatch, { queue, state });
-    await processConversationQueueMessage(queue.takeMessage(), {
-      queue,
-      run,
-      state,
-    });
+    await processNext();
 
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
       channel: destination.channelId,
+      thread_ts: "1700000000.000200",
+    });
+
+    // A Watch Event on the run's Conversation replies in the run's thread.
+    await appendAndEnqueueInboundMessage({
+      message: createEventInboundMessage({
+        event: {
+          eventKey: "watch-follow-up-merged",
+          eventType: "pull_request.merged",
+          identifier: "getsentry/junior#1563",
+          namespace: "github",
+          occurredAtMs: Date.now(),
+          trustedSummary: "Code change merged",
+        },
+        // Past the Event batch wait, so the Turn runs on this delivery.
+        receivedAtMs: Date.now() - 60_000,
+        subscription: {
+          conversationId: getDispatchConversationId(dispatch),
+          id: "watch-follow-up-subscription",
+        },
+        text: "Code change merged",
+      }),
+      queue,
+      state,
+    });
+    await processNext();
+
+    expect(slackApiOutbox.messages()).toHaveLength(2);
+    expect(slackApiOutbox.messages()[1]?.params).toMatchObject({
+      channel: destination.channelId,
+      text: "The change merged.",
       thread_ts: "1700000000.000200",
     });
   });
@@ -294,7 +334,7 @@ describe("agent dispatch conversation work", () => {
     ).toEqual(["D123", "C456"]);
   });
 
-  it("posts nothing for work with no outcomes, also when the run fails", async () => {
+  it("posts nothing for a run without a reply or outcomes, also when it fails", async () => {
     const dispatch = await createDispatch(
       "no-outcomes",
       undefined,
@@ -311,16 +351,37 @@ describe("agent dispatch conversation work", () => {
       "Apply the requested maintenance.",
       [],
     );
-    const agentRunner = createModelAgentRunner(
+    const quietDispatch = await createDispatch("no-reply");
+    const blockedDispatch = await createDispatch("blocked", undefined, {
+      kind: "event_automation",
+      automationId: "automation-1",
+      automationRunId: "automation-run-1",
+    });
+    const unansweredDispatch = await createDispatch("no-answer");
+    const modelStream = vi.fn(
       createModelStream([
         {
           type: "toolCall",
-          name: "finishAutomationRun",
-          arguments: { result: "no_action", reason: "Maintenance complete" },
+          name: "noReply",
+          arguments: { note: "Maintenance complete" },
         },
+        {
+          type: "toolCall",
+          name: "noReply",
+          arguments: { note: "Nothing changed." },
+        },
+        {
+          type: "toolCall",
+          name: "reportBlocked",
+          arguments: { missing: "The digest repository was archived." },
+        },
+        // A Turn without an answer gets one re-ask, then posts nothing.
+        { type: "text", text: "Here is the digest." },
+        { type: "text", text: "Here is the digest again." },
         { type: "toolCall", name: "systemTime", arguments: {} },
       ]),
     );
+    const agentRunner = createModelAgentRunner(modelStream);
     const runAgent = vi.spyOn(agentRunner, "run");
     const { queue, run, state } =
       await createConversationWorkHarness(agentRunner);
@@ -342,6 +403,28 @@ describe("agent dispatch conversation work", () => {
     });
     expect(runAgent).toHaveBeenCalledOnce();
     expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+
+    for (const answered of [
+      quietDispatch,
+      blockedDispatch,
+      unansweredDispatch,
+    ]) {
+      await enqueueAgentDispatch(answered, { queue, state });
+      await processNext();
+    }
+
+    expect(slackApiOutbox.messages()).toEqual([]);
+    expect(modelStream).toHaveBeenCalledTimes(5);
+    await expect(getDispatchRecord(quietDispatch.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(getDispatchRecord(blockedDispatch.id)).resolves.toMatchObject({
+      errorMessage: "The digest repository was archived.",
+      status: "blocked",
+    });
+    await expect(
+      getDispatchRecord(unansweredDispatch.id),
+    ).resolves.toMatchObject({ status: "completed" });
 
     // The second run pauses, and its resumed worker dies before it saves.
     // Recovery fails the run, and the failure still posts nothing.

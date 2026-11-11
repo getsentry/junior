@@ -5,11 +5,7 @@ import {
   slackChannel,
 } from "@junior-evals/fixture/insert";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
-import {
-  completedToolCalls,
-  toolCallsOf,
-  toolOutput,
-} from "@junior-evals/fixture/results";
+import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const reviewTrigger = {
@@ -75,7 +71,7 @@ describe("Event automation delivery", () => {
       }),
     ]);
     expect(delivery.replies[0]!.conversationId).toMatch(/^agent-dispatch:/);
-    expect(toolCallsOf("finishAutomationRun", followUp)).toEqual([]);
+    expect(toolCallsOf("reply", followUp)).toEqual([]);
   });
 
   test.for([
@@ -111,11 +107,9 @@ describe("Event automation delivery", () => {
       );
 
       expect(delivery.replies).toEqual([]);
-      // Check the saved result, not the call input. A message that is only
-      // the old marker is saved as `no_action`.
-      expect(
-        completedToolCalls("finishAutomationRun", delivery).map(toolOutput),
-      ).toEqual([expect.objectContaining({ result: "no_action" })]);
+      // `reply` rejects a message that is only the old marker.
+      expect(completedToolCalls("noReply", delivery)).toHaveLength(1);
+      expect(completedToolCalls("reply", delivery)).toEqual([]);
     },
   );
 
@@ -142,9 +136,7 @@ describe("Event automation delivery", () => {
       }),
     );
 
-    expect(
-      completedToolCalls("finishAutomationRun", blocked).map(toolOutput),
-    ).toEqual([expect.objectContaining({ result: "misconfigured" })]);
+    expect(completedToolCalls("reportBlocked", blocked)).toHaveLength(1);
     // The only post is the blocked notice, in the creator's direct message.
     expect(blocked.replies).toHaveLength(1);
     expect(blocked.replies[0]!.text).toContain("is blocked");

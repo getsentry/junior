@@ -1,45 +1,12 @@
 /**
- * Automation run result.
+ * What an Automation run posts and how its dispatch ends.
  *
- * A Scheduled automation or Event automation run ends with one declared
- * result. The run does not deliver its final response. The work owner
- * reads the declared result and applies the stored outcomes.
+ * A Scheduled automation or Event automation run ends its dispatch Turn with
+ * one answer. The run does not deliver its final response. The work owner
+ * reads the answer and applies the stored outcomes.
  */
-import * as z from "zod";
-import type { PiMessage } from "@/chat/pi/messages";
-import {
-  isAssistantMessage,
-  isToolResultError,
-  isToolResultMessage,
-  normalizeToolNameFromResult,
-} from "@/chat/pi/transcript";
-import { sanitizeAssistantText } from "@/chat/services/assistant-reply";
-
-/** Model-facing tool that ends an Automation run. */
-export const FINISH_AUTOMATION_RUN_TOOL_NAME = "finishAutomationRun";
-
-/** One declared result for an Automation run. */
-export const automationResultSchema = z.discriminatedUnion("result", [
-  z.object({
-    result: z.literal("send_message"),
-    // The declared message gets the same cleanup as a chat reply.
-    message: z
-      .string()
-      .transform(sanitizeAssistantText)
-      .pipe(z.string().min(1)),
-  }),
-  z.object({
-    result: z.literal("no_action"),
-    reason: z.string().trim().min(1),
-  }),
-  z.object({
-    result: z.literal("misconfigured"),
-    reason: z.string().trim().min(1),
-  }),
-]);
-
-/** One declared result for an Automation run. */
-export type AutomationResult = z.output<typeof automationResultSchema>;
+import type { Reply } from "@/chat/turn-answer";
+import type { BlockedReport } from "@/chat/agent-invocations/blocked-report";
 
 /** Dispatch facts that decide what a run posts. */
 export type RunDispatch =
@@ -54,7 +21,7 @@ export type RunDispatch =
  */
 export function finishedRunReply(
   result: {
-    automation?: AutomationResult;
+    reply?: Reply;
     diagnostics: { outcome: string };
     text: string;
   },
@@ -64,45 +31,17 @@ export function finishedRunReply(
     return result.diagnostics.outcome === "success" ? undefined : result.text;
   }
   return result.diagnostics.outcome === "success" &&
-    result.automation?.result === "send_message" &&
     dispatch.outcomes?.length !== 0
-    ? result.text
+    ? result.reply?.text
     : undefined;
 }
 
 /**
- * Read the last successful declared result from agent history items.
- *
- * Pass the whole run history, not only the current slice. An Automation run
- * owns its dispatch Conversation, and a resumed slice must see a result that
- * an earlier slice already saved.
- */
-export function readAutomationResult(
-  messages: readonly unknown[],
-): AutomationResult | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (
-      !isToolResultMessage(message) ||
-      isToolResultError(message) ||
-      normalizeToolNameFromResult(message) !== FINISH_AUTOMATION_RUN_TOOL_NAME
-    ) {
-      continue;
-    }
-    const parsed = automationResultSchema.safeParse(message.details);
-    if (parsed.success) {
-      return parsed.data;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Map one finished agent run to its dispatch outcome. A declared
- * `misconfigured` result becomes a blocked dispatch with the declared reason.
+ * Map one finished agent run to its dispatch outcome. A blocked report
+ * becomes a blocked dispatch with the reported reason.
  */
 export function runDispatchOutcome(result: {
-  automation?: AutomationResult;
+  blocked?: BlockedReport;
   diagnostics: { errorMessage?: string; outcome: string };
 }): { errorMessage?: string; outcome: "blocked" | "completed" | "failed" } {
   if (result.diagnostics.outcome !== "success") {
@@ -113,37 +52,8 @@ export function runDispatchOutcome(result: {
       outcome: "failed",
     };
   }
-  if (result.automation?.result === "misconfigured") {
-    return { errorMessage: result.automation.reason, outcome: "blocked" };
+  if (result.blocked) {
+    return { errorMessage: result.blocked.missing, outcome: "blocked" };
   }
   return { outcome: "completed" };
-}
-
-/** Reminder for an Automation run that stopped without a declared result. */
-const MISSING_RESULT_REMINDER =
-  "This automation run has not ended. Your text was not delivered. Call `finishAutomationRun` now with one result.";
-
-/**
- * Return agent history plus a reminder when the model stopped without a
- * declared result, or undefined when the run already declared one.
- */
-export function remindMissingAutomationResult(
-  messages: readonly PiMessage[],
-): PiMessage[] | undefined {
-  const last = messages.at(-1);
-  if (
-    !isAssistantMessage(last) ||
-    last.stopReason !== "stop" ||
-    readAutomationResult(messages)
-  ) {
-    return undefined;
-  }
-  return [
-    ...messages,
-    {
-      role: "user",
-      content: [{ type: "text", text: MISSING_RESULT_REMINDER }],
-      timestamp: Date.now(),
-    } as PiMessage,
-  ];
 }

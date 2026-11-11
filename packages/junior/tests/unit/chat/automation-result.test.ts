@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vitest";
-import {
-  finishedRunReply,
-  remindMissingAutomationResult,
-  runDispatchOutcome,
-  type AutomationResult,
-} from "@/chat/automation-result";
+import { finishedRunReply, runDispatchOutcome } from "@/chat/automation-result";
 import { postsRunNotices } from "@/chat/conversations/kind-behavior";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildTurnResult } from "@/chat/services/turn-result";
-import { createFinishAutomationRunTool } from "@/chat/tools/runtime/finish-automation-run";
+import { createReplyTool } from "@/chat/tools/runtime/reply";
+import { readTurnAnswer, remindMissingAnswer } from "@/chat/turn-answer";
 
 function assistant(
   fields:
@@ -42,135 +38,110 @@ function assistantStop(text: string): PiMessage {
   return assistant({ stopReason: "stop", text });
 }
 
-function declared(result: AutomationResult): PiMessage {
+function answered(toolName: string, details: unknown): PiMessage {
   return {
     role: "toolResult",
     toolCallId: "tool-1",
-    toolName: "finishAutomationRun",
+    toolName,
     isError: false,
-    content: [{ type: "text", text: JSON.stringify(result) }],
-    details: result,
+    content: [{ type: "text", text: JSON.stringify(details) }],
+    details,
     timestamp: 2,
-  };
+  } as PiMessage;
 }
 
-function automationTurnResult(args: {
-  newMessages: PiMessage[];
-  piMessages?: PiMessage[];
-}) {
+function gatedTurnResult(newMessages: PiMessage[]) {
   return buildTurnResult({
-    ...args,
+    newMessages,
     userInput: "Post the weekly digest.",
     toolCalls: [],
     generatedFileCount: 0,
     shouldTrace: false,
     modelId: "test-model",
     reasoningLevel: "medium",
-    requireAutomationResult: true,
+    answer: readTurnAnswer(newMessages) ?? "missing",
   });
 }
 
-function finish(sendsMessage: boolean, input: Record<string, unknown>) {
-  const tool = createFinishAutomationRunTool({ sendsMessage });
-  return tool.execute!(tool.prepareArguments!(input), {});
-}
+const messageOutcome = {
+  declaresResult: true,
+  outcomes: [{ action: "send_message" }],
+};
 
-describe("automation run result", () => {
-  it("reminds a run that stopped without a declared result", () => {
+describe("automation run answer", () => {
+  it("reminds a Turn that stopped without an answer in this Turn", () => {
+    const earlier = answered("reply", { text: "Yesterday's digest." });
     const draft = assistantStop("Here is the weekly digest.");
 
-    const reminded = remindMissingAutomationResult([draft]);
-
-    expect(reminded).toHaveLength(2);
-    expect(reminded?.at(-1)).toMatchObject({ role: "user" });
+    expect(remindMissingAnswer([earlier, draft], 1)?.at(-1)).toMatchObject({
+      role: "user",
+    });
     expect(
-      remindMissingAutomationResult([
-        declared({ result: "no_action", reason: "Nothing changed." }),
-        assistantStop("Done."),
-      ]),
+      remindMissingAnswer([answered("noReply", {}), assistantStop("Done.")], 0),
     ).toBeUndefined();
   });
 
-  it("fails a run that ends without a declared result and ignores its text", () => {
-    const result = automationTurnResult({
-      newMessages: [assistantStop("Here is the weekly digest.")],
-    });
+  it("posts nothing and completes when the Turn ends without an answer", () => {
+    const result = gatedTurnResult([assistantStop("Here is the digest.")]);
 
-    expect(result.text).toBe("");
-    expect(result.diagnostics.outcome).toBe("execution_failure");
-    expect(runDispatchOutcome(result)).toEqual({
-      errorMessage: "Automation run ended without a declared result.",
-      outcome: "failed",
-    });
+    expect(finishedRunReply(result, messageOutcome)).toBeUndefined();
+    expect(runDispatchOutcome(result)).toEqual({ outcome: "completed" });
   });
 
-  it("posts only the declared message when the model also writes text", () => {
-    const result = automationTurnResult({
-      newMessages: [
-        assistantStop("I checked the queue. Here is the digest for the team."),
-        declared({ result: "send_message", message: "The digest." }),
-      ],
-    });
-
-    expect(
-      finishedRunReply(result, {
-        declaresResult: true,
-        outcomes: [{ action: "send_message" }],
-      }),
-    ).toBe("The digest.");
-  });
-
-  it("keeps a result that an earlier slice saved when a later slice errs", () => {
-    const saved = declared({ result: "send_message", message: "The digest." });
-
-    const result = automationTurnResult({
-      newMessages: [
-        assistant({
-          stopReason: "error",
-          errorMessage: "Model provider quota exhausted",
-        }),
-      ],
-      piMessages: [saved],
-    });
+  it("keeps an answer when a later slice errs", () => {
+    const result = gatedTurnResult([
+      answered("reply", { text: "The digest." }),
+      assistant({ stopReason: "error", errorMessage: "Quota exhausted" }),
+    ]);
 
     expect(result.diagnostics.outcome).toBe("success");
-    expect(result.text).toBe("The digest.");
+    expect(finishedRunReply(result, messageOutcome)).toBe("The digest.");
   });
 
   it.each([
     {
-      result: { result: "send_message", message: "The digest." } as const,
+      name: "reply",
+      message: answered("reply", { text: "The digest." }),
       posted: "The digest.",
       dispatch: { outcome: "completed" },
     },
     {
-      result: { result: "no_action", reason: "Nothing changed." } as const,
+      name: "noReply",
+      message: answered("noReply", { note: "Nothing changed." }),
       posted: undefined,
       dispatch: { outcome: "completed" },
     },
     {
-      result: {
-        result: "misconfigured",
-        reason: "The release repository was archived.",
-      } as const,
+      name: "reportBlocked",
+      message: answered("reportBlocked", {
+        missing: "The release repository was archived.",
+      }),
       posted: undefined,
       dispatch: {
         errorMessage: "The release repository was archived.",
         outcome: "blocked",
       },
     },
+    // A run in progress at deploy can have this result from an earlier slice.
+    {
+      name: "finishAutomationRun",
+      message: answered("finishAutomationRun", {
+        result: "send_message",
+        message: "The digest.",
+      }),
+      posted: "The digest.",
+      dispatch: { outcome: "completed" },
+    },
   ])(
-    "maps a declared $result.result to its post and dispatch outcome",
-    ({ result, posted, dispatch }) => {
-      const turn = automationTurnResult({ newMessages: [declared(result)] });
+    "maps $name to its post and dispatch outcome",
+    ({ message, posted, dispatch }) => {
+      const result = gatedTurnResult([
+        assistantStop("I checked the queue. Here is the digest."),
+        message,
+      ]);
 
-      expect(
-        finishedRunReply(turn, {
-          declaresResult: true,
-          outcomes: [{ action: "send_message" }],
-        }),
-      ).toBe(posted);
-      expect(runDispatchOutcome(turn)).toEqual(dispatch);
+      expect(finishedRunReply(result, messageOutcome)).toBe(posted);
+      expect(runDispatchOutcome(result)).toEqual(dispatch);
     },
   );
 
@@ -189,29 +160,28 @@ describe("automation run result", () => {
   });
 });
 
-describe("finishAutomationRun", () => {
-  it("saves a message that is only the no-reply marker as no_action", async () => {
-    await expect(
-      finish(true, { result: "send_message", message: "[[NO_REPLY]]" }),
-    ).resolves.toMatchObject({ result: "no_action" });
-  });
+describe("reply", () => {
+  function call(tool: ReturnType<typeof createReplyTool>, text: string) {
+    return tool.execute!(tool.prepareArguments!({ text }), {});
+  }
 
-  it("rejects a result without its message or reason", async () => {
-    await expect(
-      finish(true, { result: "send_message" }),
-    ).rejects.toMatchObject({ name: "ToolInputError" });
-    await expect(finish(true, { result: "no_action" })).rejects.toMatchObject({
+  it("accepts one reply per Turn", async () => {
+    const tool = createReplyTool();
+
+    await expect(call(tool, "The digest.")).resolves.toMatchObject({
+      text: "The digest.",
+    });
+    await expect(call(tool, "Another digest.")).rejects.toMatchObject({
       name: "ToolInputError",
     });
   });
 
-  it("offers send_message only when the automation has a message outcome", () => {
-    const inputSchema = (sendsMessage: boolean) =>
-      JSON.stringify(
-        createFinishAutomationRunTool({ sendsMessage }).inputSchema,
-      );
-
-    expect(inputSchema(true)).toContain("send_message");
-    expect(inputSchema(false)).not.toContain("send_message");
+  it("rejects an empty reply and the legacy no-reply marker", async () => {
+    await expect(call(createReplyTool(), " ")).rejects.toMatchObject({
+      name: "ToolInputError",
+    });
+    await expect(call(createReplyTool(), "[[NO_REPLY]]")).rejects.toMatchObject(
+      { name: "ToolInputError" },
+    );
   });
 });

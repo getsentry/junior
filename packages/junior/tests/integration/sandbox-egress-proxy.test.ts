@@ -24,7 +24,6 @@ import { mswServer } from "../msw/server";
 const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
-  automationRun: false,
 }).tools;
 
 const ORIGINAL_ENV = { ...process.env };

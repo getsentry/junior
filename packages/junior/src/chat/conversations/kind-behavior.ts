@@ -21,20 +21,28 @@ export type TurnBehavior = {
    * `location`: the runtime delivers the final response to the Location.
    * `conversation`: the final response stays in the Conversation. A child
    * agent's response goes to its parent, and an Automation run posts only its
-   * declared result.
+   * declared reply.
    */
   delivery: "location" | "conversation";
   promptMode: PromptMode;
-  /** The Turn must end with its answer tool, or it is reminded once. */
+  /**
+   * The Turn must end with `reply`, `noReply`, or `reportBlocked`, or it is
+   * reminded once.
+   */
   gated: boolean;
   tools: {
     agents: AgentTools;
     reviewDesk: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
-    reportBlocked: boolean;
+    /** Declare the reply that the runtime posts. Only a gated Turn has it. */
+    reply: boolean;
+    /**
+     * Who gets a blocked report. `parent`: the parent agent. `automation`:
+     * the Automation is blocked with the reason.
+     */
+    reportBlocked: "none" | "parent" | "automation";
     noReply: boolean;
-    finishAutomationRun: boolean;
   };
 };
 
@@ -47,9 +55,9 @@ const ROOT: TurnBehavior = {
     reviewDesk: true,
     subscriptions: true,
     userCustomization: true,
-    reportBlocked: false,
+    reply: false,
+    reportBlocked: "none",
     noReply: true,
-    finishAutomationRun: false,
   },
 };
 
@@ -72,36 +80,34 @@ const AGENT_IN_CHILD: TurnBehavior = {
     reviewDesk: false,
     subscriptions: false,
     userCustomization: false,
-    reportBlocked: true,
+    reply: false,
+    reportBlocked: "parent",
     noReply: true,
-    finishAutomationRun: false,
   },
 };
 
+// The dispatch Turn and every Watch Event Turn of an Automation run must
+// answer. A person who replies in the run's thread gets a root Turn.
 const AUTOMATION_RUN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "automation",
   gated: true,
   tools: {
     ...ROOT.tools,
-    noReply: false,
-    finishAutomationRun: true,
+    reply: true,
+    reportBlocked: "automation",
   },
 };
 
-/**
- * Return the behavior of one Turn. `automationRun` marks the dispatch Turn of
- * a Scheduled or Event automation run. Kind alone cannot mark it: the
- * dispatch Turn is the only gated Turn on an `automation` Conversation, and a
- * person's reply or a Watch Event Turn there runs like a Turn on a root.
- */
+/** Return the behavior of one Turn. */
 export function turnBehavior(args: {
   kind: ConversationKind;
   personInput: boolean;
-  automationRun: boolean;
 }): TurnBehavior {
-  if (args.automationRun) return AUTOMATION_RUN;
-  if (isTopLevelKind(args.kind)) return ROOT;
+  if (args.kind === "root") return ROOT;
+  if (args.kind === "automation") {
+    return args.personInput ? ROOT : AUTOMATION_RUN;
+  }
   if (!args.personInput) return AGENT_IN_CHILD;
   if (args.kind === "thread") return PERSON_IN_THREAD;
   // Only an agent writes input to a task.

@@ -65,7 +65,6 @@ export function context(
     turnTools: turnBehavior({
       kind: "root",
       personInput: true,
-      automationRun: false,
     }).tools,
   } as ToolRuntimeContext;
 }
