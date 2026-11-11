@@ -27,7 +27,7 @@ export {
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
   type CompleteConversationStopResult,
-  type Conversation,
+  type ConversationExecutionState,
   type ConversationExecution,
   type ConversationStop,
   type ConversationWorkLease,
@@ -48,7 +48,7 @@ import type {
   AppendAndEnqueueExclusiveInboundMessageResult,
   AppendAndEnqueueInboundMessageResult,
   AppendExclusiveInboundMessageResult,
-  Conversation,
+  ConversationExecutionState,
   InboundMessage,
 } from "@/chat/task-execution/state";
 import {
@@ -82,7 +82,7 @@ function duplicateInboundNudgeIdempotencyKey(
 }
 
 function hasRecentEnqueueMarker(
-  conversation: Conversation,
+  conversation: ConversationExecutionState,
   nowMs: number,
 ): boolean {
   const lastEnqueuedAtMs = conversation.execution.lastEnqueuedAtMs;
