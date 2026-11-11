@@ -28,7 +28,7 @@ import {
 import { cn } from "../../styles";
 import {
   AutomationRunDetails,
-  AutomationRunsFrame,
+  AutomationListFrame,
   RunConversationLink,
   useAutomationRunSelection,
 } from "./AutomationRunDetails";
@@ -101,7 +101,7 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
     : undefined;
 
   return (
-    <AutomationRunsFrame
+    <AutomationListFrame
       details={
         selection.runId ? (
           <AutomationRunDetails
@@ -233,7 +233,7 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
           ) : null}
         </>
       )}
-    </AutomationRunsFrame>
+    </AutomationListFrame>
   );
 }
 

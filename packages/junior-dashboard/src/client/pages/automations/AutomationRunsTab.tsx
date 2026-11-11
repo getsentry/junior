@@ -29,7 +29,7 @@ import { cn } from "../../styles";
 import { AutomationExecutionStatusChart } from "./AutomationExecutionStatusChart";
 import {
   AutomationRunDetails,
-  AutomationRunsFrame,
+  AutomationListFrame,
   RunConversationLink,
   useAutomationRunSelection,
 } from "./AutomationRunDetails";
@@ -85,7 +85,7 @@ export function AutomationRunsTab(props: {
     executions.map((execution) => execution.executionId),
   );
   return (
-    <AutomationRunsFrame
+    <AutomationListFrame
       details={
         selection.runId ? (
           <AutomationRunDetails
@@ -120,7 +120,7 @@ export function AutomationRunsTab(props: {
       ) : (
         <PageContentSkeleton label="Loading runs" variant="list" />
       )}
-    </AutomationRunsFrame>
+    </AutomationListFrame>
   );
 }
 

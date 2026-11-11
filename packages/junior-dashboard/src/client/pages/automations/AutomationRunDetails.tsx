@@ -83,18 +83,26 @@ export function useAutomationRunSelection(runIds: readonly string[]) {
   return { close, listRef, onRowsKeyDown, runId, toggle };
 }
 
-/** Scroll a run list on its own, beside the selected run's details. */
-export function AutomationRunsFrame(props: {
+/**
+ * Scroll a list on its own, beside one panel: run details, or the filters of
+ * the Automations list, which need less width.
+ */
+export function AutomationListFrame(props: {
   children: ReactNode;
   details: ReactNode;
   label: string;
-  listRef: RefObject<HTMLDivElement | null>;
+  listRef?: RefObject<HTMLDivElement | null>;
+  narrow?: boolean;
 }) {
   return (
     <div
       className={cn(
         "grid h-full min-h-0 min-w-0",
-        props.details ? "xl:grid-cols-[minmax(0,1fr)_25rem]" : undefined,
+        props.details
+          ? props.narrow
+            ? "xl:grid-cols-[minmax(0,1fr)_19rem]"
+            : "xl:grid-cols-[minmax(0,1fr)_25rem]"
+          : undefined,
       )}
     >
       <div

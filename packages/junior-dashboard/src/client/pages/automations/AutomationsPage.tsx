@@ -12,7 +12,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../../components/ui/collapsible";
-import { AutomationFilters } from "./AutomationFilters";
+import {
+  AutomationFilterPanel,
+  AutomationFilterToolbar,
+} from "./AutomationFilters";
+import { AutomationListFrame } from "./AutomationRunDetails";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
@@ -83,6 +87,12 @@ export function AutomationsPage(props: { enabled: boolean }) {
     else next.delete(key);
     setSearchParams(next, { replace: true });
   };
+  const clearFilters = () => {
+    const next = new URLSearchParams(window.location.search);
+    for (const key of LANDING_FILTERS) if (key !== "q") next.delete(key);
+    setSearchParams(next, { replace: true });
+  };
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const automations = query.data?.automations ?? EMPTY;
   const groups = groupAutomations(automations);
   const loading = !query.data && !query.error;
@@ -91,13 +101,29 @@ export function AutomationsPage(props: { enabled: boolean }) {
     pathWithSearch(automationPath(id), location.search);
 
   return (
-    <>
+    <AutomationListFrame
+      details={
+        filtersOpen ? (
+          <AutomationFilterPanel
+            data={query.data}
+            filters={filters}
+            onChange={setFilter}
+            onClear={clearFilters}
+            onClose={() => setFiltersOpen(false)}
+          />
+        ) : null
+      }
+      label="Automations list"
+      narrow
+    >
       <PageHeader title="Automations" />
-      <AutomationFilters
+      <AutomationFilterToolbar
         data={query.data}
         filters={filters}
         onChange={setFilter}
         onSearch={setSearchText}
+        onToggle={() => setFiltersOpen((open) => !open)}
+        open={filtersOpen}
         searchText={searchText}
       />
       {loading ? (
@@ -137,25 +163,25 @@ export function AutomationsPage(props: { enabled: boolean }) {
           to find the rest.
         </p>
       ) : null}
-    </>
+    </AutomationListFrame>
   );
 }
 
-/** Order the page by what needs a person, then by what still runs. */
+/**
+ * Group by what needs a person, then by what still runs. Every group uses
+ * one order, latest run first, so the "Ran" times read top to bottom.
+ */
 function groupAutomations(automations: AutomationSummary[]): AutomationGroup[] {
-  const attention = automations.filter(
+  const sorted = [...automations].sort(byLatestRun);
+  const attention = sorted.filter(
     (automation) =>
       automation.status !== "completed" && automationNeedsAttention(automation),
   );
-  const rest = automations.filter(
-    (automation) => !attention.includes(automation),
-  );
+  const rest = sorted.filter((automation) => !attention.includes(automation));
   const groups: AutomationGroup[] = [
     { automations: attention, key: "attention", label: "Needs attention" },
     {
-      automations: rest
-        .filter((automation) => automation.status === "active")
-        .sort(byNextActivity),
+      automations: rest.filter((automation) => automation.status === "active"),
       key: "active",
       label: "Active",
     },
@@ -177,15 +203,11 @@ function groupAutomations(automations: AutomationSummary[]): AutomationGroup[] {
   return groups.filter((group) => group.automations.length > 0);
 }
 
-/** Soonest Scheduled run first; Event automations follow by latest run. */
-function byNextActivity(a: AutomationSummary, b: AutomationSummary): number {
-  const next = (automation: AutomationSummary) =>
-    automation.kind === "scheduled" && automation.nextRunAt
-      ? Date.parse(automation.nextRunAt)
-      : Number.POSITIVE_INFINITY;
+/** Latest run first. Automations that never ran follow, newest first. */
+function byLatestRun(a: AutomationSummary, b: AutomationSummary): number {
   return (
-    next(a) - next(b) ||
     (b.lastRunAt ?? "").localeCompare(a.lastRunAt ?? "") ||
+    b.createdAt.localeCompare(a.createdAt) ||
     a.title.localeCompare(b.title)
   );
 }

@@ -1,7 +1,7 @@
 /**
  * Read view of one Automation. Runs lead, because most visits ask "did it
- * work"; the definition sits beside them, so the cause of a failure and the
- * setting that fixes it are on one screen.
+ * work". The instruction follows in the main column, where long text has
+ * room; the rail keeps short settings, cost, and ownership beside the runs.
  */
 import type { ReactNode } from "react";
 import { MessageSquareText } from "lucide-react";
@@ -16,6 +16,7 @@ import {
   useAutomationVersionsData,
 } from "../../api";
 import { ActorAvatar } from "../../components/ActorAvatar";
+import { ClampedPreview } from "../../components/ClampedPreview";
 import { Fact, FactList, FactSection } from "../../components/FactSection";
 import { InlineError } from "../../components/InlineError";
 import { StatusDot } from "../../components/StatusDot";
@@ -47,7 +48,7 @@ import {
 const STRIP_RUNS = 48;
 const LISTED_RUNS = 6;
 
-/** Runs and problems on the left; what the Automation does on the right. */
+/** Problems, runs, and the instruction on the left; settings on the right. */
 export function AutomationOverview(props: {
   automation: AutomationSummary;
   editPath: string;
@@ -66,12 +67,13 @@ export function AutomationOverview(props: {
           }
         />
         <AutomationActivity automation={automation} query={executions} />
+        <AutomationInstruction automation={automation} />
       </div>
       <aside
         aria-label="Automation details"
         className="grid min-w-0 content-start gap-3"
       >
-        <AutomationDefinition automation={automation} />
+        <AutomationSettings automation={automation} />
         <AutomationCost
           automation={automation}
           days={executions.data?.executionDays}
@@ -280,58 +282,77 @@ function AutomationNext({ automation }: { automation: AutomationSummary }) {
   );
 }
 
-/** The saved definition in reading order: what, when, where, as whom. */
-function AutomationDefinition(props: { automation: AutomationSummary }) {
+/**
+ * What the Automation does, in full width. Long instructions show their
+ * first lines and expand in place, so they never push the runs off screen.
+ */
+function AutomationInstruction(props: { automation: AutomationSummary }) {
   const { automation } = props;
-  const creator = automation.ownedByViewer ? "you" : automation.createdBy;
   const { task } = automation;
   const written = task.kind === "skill" ? task.context : task.instruction;
   return (
-    <FactSection title="Definition">
-      {task.kind === "skill" ? (
-        <p className="m-0 text-sm text-dashboard-text-muted">
-          Runs the{" "}
-          <span className="font-mono text-dashboard-text">{task.skill}</span>{" "}
-          skill{task.context ? " with this context:" : "."}
-        </p>
-      ) : null}
-      {written ? (
-        <div className="text-sm leading-relaxed text-dashboard-text [overflow-wrap:anywhere]">
-          <DisplayText mentions={automation.mentions ?? []} text={written} />
-        </div>
-      ) : null}
-      <div className="border-t border-dashboard-border-subtle pt-2.5">
-        <FactList>
-          {automation.kind === "scheduled" ? (
-            <Fact label="When">{automationScheduleLabel(automation)}</Fact>
+    <section aria-label="Instruction" className="min-w-0">
+      <Card className="grid gap-3 p-4">
+        <h3 className="m-0 text-xs font-medium text-dashboard-text-muted">
+          Instruction
+        </h3>
+        {task.kind === "skill" ? (
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            Runs the{" "}
+            <span className="font-mono text-dashboard-text">{task.skill}</span>{" "}
+            skill{task.context ? " with this context:" : "."}
+          </p>
+        ) : null}
+        {written ? (
+          <ClampedPreview
+            className="text-sm leading-relaxed text-dashboard-text [overflow-wrap:anywhere]"
+            label="instruction"
+            lines={8}
+          >
+            <DisplayText mentions={automation.mentions ?? []} text={written} />
+          </ClampedPreview>
+        ) : null}
+      </Card>
+    </section>
+  );
+}
+
+/** When it runs, where it posts, and as whom. */
+function AutomationSettings(props: { automation: AutomationSummary }) {
+  const { automation } = props;
+  const creator = automation.ownedByViewer ? "you" : automation.createdBy;
+  return (
+    <FactSection title="Settings">
+      <FactList>
+        {automation.kind === "scheduled" ? (
+          <Fact label="When">{automationScheduleLabel(automation)}</Fact>
+        ) : (
+          <>
+            <Fact label="When">{automation.trigger.events.join(", ")}</Fact>
+            <Fact label="Resource">{automation.resource}</Fact>
+            {automation.trigger.filters.map((filter) => (
+              <Fact key={filter} label="Filter">
+                {filter}
+              </Fact>
+            ))}
+          </>
+        )}
+        <Fact label="Posts to">
+          {automation.outcomes.length ? (
+            <AutomationOutcomeList
+              destination={automation.destination}
+              outcomes={automation.outcomes}
+            />
           ) : (
-            <>
-              <Fact label="When">{automation.trigger.events.join(", ")}</Fact>
-              <Fact label="Resource">{automation.resource}</Fact>
-              {automation.trigger.filters.map((filter) => (
-                <Fact key={filter} label="Filter">
-                  {filter}
-                </Fact>
-              ))}
-            </>
+            automation.destination.label
           )}
-          <Fact label="Posts to">
-            {automation.outcomes.length ? (
-              <AutomationOutcomeList
-                destination={automation.destination}
-                outcomes={automation.outcomes}
-              />
-            ) : (
-              automation.destination.label
-            )}
-          </Fact>
-          <Fact label="Accounts">
-            {automation.credentialMode === "creator"
-              ? `Connected by ${creator}`
-              : "Junior’s only"}
-          </Fact>
-        </FactList>
-      </div>
+        </Fact>
+        <Fact label="Accounts">
+          {automation.credentialMode === "creator"
+            ? `Connected by ${creator}`
+            : "Junior’s only"}
+        </Fact>
+      </FactList>
     </FactSection>
   );
 }
