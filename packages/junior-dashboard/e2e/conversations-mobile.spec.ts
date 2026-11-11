@@ -720,7 +720,11 @@ test("opens and closes a conversation on mobile", async ({
 
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("menuitem", { name: "Search transcript" }).click();
-  await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
+  // The search field keeps focus after the menu closes.
+  await expect(
+    page.getByRole("menuitem", { name: "Open event log", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByPlaceholder("Search transcript…")).toBeFocused();
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page
     .getByRole("menuitem", { name: "Open event log", exact: true })
