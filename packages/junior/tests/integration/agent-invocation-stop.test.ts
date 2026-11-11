@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createDeliverToParent,
   enqueueAgentInvocationResult,
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
@@ -11,6 +13,7 @@ import {
   getAgentInvocationIdForResult,
   getAgentInvocationTurnId,
   getAgentReplyMessageId,
+  getTurnReplyKey,
 } from "@/chat/agent-invocations/ids";
 import {
   completeAgentInvocation,
@@ -231,6 +234,71 @@ describe("stopping child agents", () => {
       ).resolves.toMatchObject({ status: "completed" });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
       expect(runner.runs).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // A reply from a Turn on the child's Conversation loop names the child's
+  // finished spawn, which the stop does not mark, so the stop drops the reply
+  // from the parent's mailbox.
+  it("drops an unread reply from a child's Conversation loop Turn when the parent stops it", async () => {
+    const runner = abortableAgentRunner();
+    const harness = await createHarness(runner.agentRunner);
+    try {
+      const child = await harness.spawn({
+        agentName: "researcher",
+        idempotencyKey: "stop-loop-reply",
+        input: "watch deploys",
+      });
+      await completeAgentInvocation({
+        invocationId: child.invocationId,
+        result: "Watching.",
+        status: "completed",
+      });
+      await createDeliverToParent({
+        queue: harness.queue,
+        state: harness.state,
+      })({
+        actor: EVENT_SYSTEM_ACTOR,
+        conversationId: child.childConversationId,
+        result: {
+          kind: "reply",
+          reply: { text: "Old finding.", toolCallId: "call-old-reply" },
+        },
+        turnId: "turn_watch-event",
+      });
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        expect.objectContaining({
+          inboundMessageId: getAgentReplyMessageId(
+            child.invocationId,
+            getTurnReplyKey("turn_watch-event", "call-old-reply"),
+          ),
+        }),
+      ]);
+
+      await stopAgent(child.childConversationId);
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
+      // The parent gives the child a new task in the same Turn.
+      const retask = await createAgentInvocationForMessage(
+        {
+          ...invocationInput,
+          childConversationId: child.childConversationId,
+          idempotencyKey: "after-loop-stop",
+          input: "short task",
+          parentToolCallId: "call-after-loop-stop",
+        },
+        Date.now() + 1,
+      );
+      await enqueueAgentInvocation(retask.invocation, {
+        queue: harness.queue,
+        state: harness.state,
+      });
+      await expect(
+        getConversationStoppedAtMs(child.childConversationId),
+      ).resolves.toBeUndefined();
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([]);
+      expect(runner.runs).toHaveLength(0);
     } finally {
       await harness.close();
     }

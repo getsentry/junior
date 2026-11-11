@@ -301,6 +301,44 @@ describe("child Turns on the Conversation loop", () => {
     },
   );
 
+  // Routing, the stop skips, and the status read one rule, so a reply that
+  // the stop drops never shows the child as running.
+  it("does not wait for a child whose queued grandchild reply a stop drops", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "task");
+      const helper = await createHelper(childId);
+      await sendHelperReply(harness, helper);
+      await expect(
+        createStopAgentTool(childId).execute!(
+          { conversation_id: helper.childConversationId },
+          {},
+        ),
+      ).resolves.toMatchObject({ stopped: true });
+
+      await expect(
+        createSearchAgentsTool({
+          conversationId: slackParentConversationId,
+        }).execute!({}, {}),
+      ).resolves.toEqual({
+        agents: [expect.objectContaining({ status: "idle" })],
+      });
+      await expect(
+        listUnreportedSiblingAgents(
+          slackParentConversationId,
+          "agent:sibling",
+          [],
+        ),
+      ).resolves.toEqual([]);
+      const runCount = harness.runs.length;
+      await harness.drain(childId);
+      expect(harness.runs).toHaveLength(runCount);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("drops a grandchild reply sent after the grandchild was stopped", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

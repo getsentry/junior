@@ -26,6 +26,7 @@ import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import {
   appendAndEnqueueInboundMessage,
+  appendInboundMessage,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
@@ -772,6 +773,20 @@ describe("agent invocation spawn and result delivery", () => {
               turnId,
             });
           } else {
+            // An earlier input waits in another batch, so the Turn's input is
+            // not the first pending one.
+            await appendInboundMessage({
+              message: {
+                conversationId: replied.childConversationId,
+                createdAtMs: 2_900,
+                delivery: "defer",
+                inboundMessageId: "web:replied-child:person",
+                input: { text: "Any update?" },
+                receivedAtMs: 2_900,
+                source: "web",
+              },
+              state,
+            });
             await appendAndEnqueueInboundMessage({
               message: event,
               queue,

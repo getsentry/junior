@@ -2013,39 +2013,61 @@ export async function cancelHumanFacingPendingMessages(args: {
   cancelledInboundMessageIds: string[];
   cancelledMessages: InboundMessage[];
 }> {
-  const nowMs = args.nowMs ?? now();
   const requestedIds =
     args.inboundMessageIds === undefined
       ? undefined
       : new Set(args.inboundMessageIds);
+  const cancelledMessages = await removePendingMessages(
+    args,
+    (message) =>
+      isPersonInput(message.source) &&
+      (requestedIds === undefined ||
+        requestedIds.has(message.inboundMessageId)) &&
+      (args.receivedBeforeMs === undefined ||
+        message.receivedAtMs <= args.receivedBeforeMs),
+  );
+  return {
+    cancelledInboundMessageIds: cancelledMessages.map(
+      (message) => message.inboundMessageId,
+    ),
+    cancelledMessages,
+  };
+}
+
+/**
+ * Drop pending mailbox rows by id without a worker lease, such as unread
+ * input that a stop skips. Returns the ids that were dropped.
+ */
+export async function dropPendingMessages(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<string[]> {
+  const ids = new Set(args.inboundMessageIds);
+  const dropped = await removePendingMessages(args, (message) =>
+    ids.has(message.inboundMessageId),
+  );
+  return dropped.map((message) => message.inboundMessageId);
+}
+
+async function removePendingMessages(
+  args: { conversationId: string; nowMs?: number; state?: StateAdapter },
+  shouldRemove: (message: InboundMessage) => boolean,
+): Promise<InboundMessage[]> {
+  const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current) {
-      return { cancelledInboundMessageIds: [], cancelledMessages: [] };
+      return [];
     }
-
-    const cancelledInboundMessageIds: string[] = [];
-    const cancelledMessages: InboundMessage[] = [];
-    const pendingMessages: InboundMessage[] = [];
-    for (const message of current.execution.pendingMessages) {
-      const isRequested =
-        requestedIds === undefined ||
-        requestedIds.has(message.inboundMessageId);
-      const isInSnapshot =
-        args.receivedBeforeMs === undefined ||
-        message.receivedAtMs <= args.receivedBeforeMs;
-      if (isPersonInput(message.source) && isRequested && isInSnapshot) {
-        cancelledInboundMessageIds.push(message.inboundMessageId);
-        cancelledMessages.push(message);
-        continue;
-      }
-      pendingMessages.push(message);
+    const removed = current.execution.pendingMessages.filter(shouldRemove);
+    if (removed.length === 0) {
+      return removed;
     }
-
-    if (cancelledInboundMessageIds.length === 0) {
-      return { cancelledInboundMessageIds, cancelledMessages };
-    }
-
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => !removed.includes(message),
+    );
     const becomesIdle =
       current.execution.status === "pending" && pendingMessages.length === 0;
 
@@ -2068,8 +2090,7 @@ export async function cancelHumanFacingPendingMessages(args: {
         nowMs,
       ),
     );
-
-    return { cancelledInboundMessageIds, cancelledMessages };
+    return removed;
   });
 }
 

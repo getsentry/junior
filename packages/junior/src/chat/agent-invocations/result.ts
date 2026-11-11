@@ -5,7 +5,6 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   EVENT_WAIT_MS,
   eventBatchMessageMeta,
-  isEventMailboxMetadata,
   renderEventBatchInputs,
   timerWatchCredentialSubject,
   type EventMailboxMetadata,
@@ -38,6 +37,11 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
+import {
+  childAgentInput,
+  getChildAgentInputInvocation,
+  routeChildInput,
+} from "./child-input";
 import { createAgentInvocationFromLatest } from "./create";
 import {
   getAgentInvocationIdForEvents,
@@ -49,9 +53,7 @@ import {
   isAgentReplyMessageId,
 } from "./ids";
 import {
-  getAgentInvocation,
   getLatestAgentInvocationForConversation,
-  isStoppedAgentInvocation,
   isTerminalAgentInvocation,
   listAgentInvocationsForConversation,
   TERMINAL_AGENT_INVOCATION_STATUSES,
@@ -64,9 +66,9 @@ import { renderUntrustedTag } from "@/chat/input-tags";
 import { listUnreportedSiblingAgents } from "./list";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
+  AGENT_MESSAGE_EVENT_TYPE,
   agentInvocationResultEventType,
   AGENT_REPLY_EVENT_TYPE,
-  isAgentInvocationResultEventType,
 } from "./result-event-type";
 import type {
   AgentInvocation,
@@ -84,8 +86,6 @@ import {
 // TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
 // can pause for input or auth instead of failing (#881).
 const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
-/** Event type of a message that a child agent sends to its parent. */
-const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
 
 /**
  * Return the Inbound message author id for results sent by one Actor.
@@ -521,97 +521,13 @@ export function createEndStoppedChildWork(options: {
   };
 }
 
-type ChildAgentInput = {
-  invocationId: string;
-  kind: "message" | "reply" | "result";
-};
-
 /**
- * Read the agent invocation that one result or message Event refers to: the
- * finished child work for a result, or the open sender work for a message.
- */
-function childAgentInput(message: InboundMessage): ChildAgentInput | undefined {
-  const metadata = message.input.metadata;
-  if (
-    !isEventMailboxMetadata(metadata) ||
-    metadata.event.namespace !== AGENT_INVOCATION_EVENT_NAMESPACE
-  ) {
-    return undefined;
-  }
-  if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
-    return { invocationId: metadata.event.identifier, kind: "message" };
-  }
-  // A reply, like a message, can arrive before its sender's agent invocation
-  // ends.
-  if (metadata.event.eventType === AGENT_REPLY_EVENT_TYPE) {
-    return { invocationId: metadata.event.identifier, kind: "reply" };
-  }
-  return isAgentInvocationResultEventType(metadata.event.eventType)
-    ? { invocationId: metadata.event.identifier, kind: "result" }
-    : undefined;
-}
-
-/**
- * Return whether a stop skipped this result or reply, so it starts no work.
- * A message that a child sent before its stop is still delivered. A reply is
- * dropped when the stop skipped the agent invocation that it names and it was
- * sent before that, also after the child gets a new task. While the sending
- * child is stopped, its reply is also dropped when it was sent after the
- * stop.
- */
-async function isSkippedAgentResult(
-  input: ChildAgentInput,
-  invocation: AgentInvocation,
-  message: InboundMessage,
-): Promise<boolean> {
-  const skipped =
-    isTerminalAgentInvocation(invocation) &&
-    invocation.parentMailboxStatus === "skipped";
-  if (input.kind !== "reply") {
-    return input.kind === "result" && skipped;
-  }
-  // A reply from work that a stop skipped stays dropped, also after the
-  // parent gives the child a new task.
-  if (skipped && message.createdAtMs <= invocation.updatedAtMs) {
-    return true;
-  }
-  const stoppedAtMs = await getConversationStoppedAtMs(
-    invocation.childConversationId,
-  );
-  return (
-    stoppedAtMs !== undefined && (skipped || message.createdAtMs >= stoppedAtMs)
-  );
-}
-
-/**
- * Read the agent invocation of one result or message and check that it
- * belongs to a child of the Conversation that received it.
- */
-async function getChildAgentInputInvocation(
-  message: InboundMessage,
-  input: ChildAgentInput,
-): Promise<AgentInvocation> {
-  const invocation = await getAgentInvocation(input.invocationId);
-  if (
-    !invocation ||
-    (input.kind === "result" && !isTerminalAgentInvocation(invocation)) ||
-    invocation.parentConversationId !== message.conversationId
-  ) {
-    throw new Error(
-      `Agent invocation ${input.kind} ${input.invocationId} does not belong to ${message.conversationId}`,
-    );
-  }
-  return invocation;
-}
-
-/**
- * Give input to a child Conversation whose task is not done to that task: an
- * open agent invocation, or a finished one that waits for its own child
- * agents (`replaced`). Each result or message from its own child agents, or
- * each batch of its watch events while an agent invocation is open, starts a
- * new agent invocation that reports to the parent. A stopped child drops
- * input from its own child agents. Returns undefined for other input, which
- * runs on the Conversation loop.
+ * Give input to a child Conversation whose task is not done to that task, as
+ * `routeChildInput` decides. Each result or message from its own child
+ * agents, or each batch of its watch events while an agent invocation is
+ * open, starts a new agent invocation that reports to the parent. Returns
+ * undefined when no input goes to an agent invocation: the Conversation loop
+ * runs it and drops what a stop skips.
  *
  * TODO(dcramer): Remove with the legacy child worker (#3060 step 7).
  */
@@ -620,36 +536,23 @@ async function startAgentInvocationsForChildInput(
   options: { queue: ConversationWorkQueue; state?: StateAdapter },
 ): Promise<ConversationWorkerResult | undefined> {
   const messages = context.attempt.messages;
-  const inputs = messages.map(childAgentInput);
-  const isAgentInput = inputs.every((input) => input !== undefined);
-  const events = isAgentInput ? [] : parseEventMessages(messages);
-  if (messages.length === 0 || (!isAgentInput && events.length === 0)) {
-    return undefined;
-  }
   const latest = await getLatestAgentInvocationForConversation(
     context.conversationId,
   );
-  if (!latest) {
+  if (messages.length === 0 || !latest) {
     return undefined;
   }
-  const open = !isTerminalAgentInvocation(latest);
-  // A stopped child takes no new work from its own child agents, even from
-  // input sent before the stop.
-  if (isAgentInput && isStoppedAgentInvocation(latest)) {
-    await context.attempt.ack();
-    return { status: "completed" };
+  const stoppedAtMs = await getConversationStoppedAtMs(context.conversationId);
+  const routes = await Promise.all(
+    messages.map((message) => routeChildInput(message, latest, stoppedAtMs)),
+  );
+  if (!routes.includes("agent invocation")) {
+    return undefined;
   }
-  // A child agent's result still starts an agent invocation: `main` counts a
-  // result that none received as open child work, so after a rollback its
-  // parent would wait for the child forever.
-  // TODO(dcramer): Run results on the Conversation loop once every deployed
-  // `hasOpenChildWork` reads unread results from the mailbox.
-  const hasResult = inputs.some((input) => input?.kind === "result");
-  if (
-    !open &&
-    !hasResult &&
-    (!isAgentInput || latest.parentMailboxStatus !== "replaced")
-  ) {
+  const inputs = messages.map(childAgentInput);
+  const isAgentInput = inputs.every((input) => input !== undefined);
+  const events = isAgentInput ? [] : parseEventMessages(messages);
+  if (!isAgentInput && events.length === 0) {
     return undefined;
   }
   if (!isAgentInput) {
@@ -689,11 +592,11 @@ async function startAgentInvocationsForChildInput(
     return { status: "completed" };
   }
   for (const [index, message] of messages.entries()) {
-    const input = inputs[index]!;
-    const source = await getChildAgentInputInvocation(message, input);
-    if (await isSkippedAgentResult(input, source, message)) {
+    if (routes[index] === "dropped") {
       continue;
     }
+    const input = inputs[index]!;
+    const source = await getChildAgentInputInvocation(message, input);
     const invocation = await createAgentInvocationFromLatest({
       input: message.input.text.trim(),
       invocationId:
@@ -808,19 +711,29 @@ export async function withAgentInvocationResultActors(
   if (work.kind !== "mailbox") {
     return work;
   }
+  const conversationId = work.batch[0]?.message.conversationId;
+  const [latest, stoppedAtMs] = conversationId
+    ? await Promise.all([
+        getLatestAgentInvocationForConversation(conversationId),
+        getConversationStoppedAtMs(conversationId),
+      ])
+    : [undefined, undefined];
   const batch = await Promise.all(
     work.batch.map(async (entry) => {
       const input = childAgentInput(entry.message);
       if (!input) {
         return entry;
       }
+      if (
+        (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
+        "dropped"
+      ) {
+        return undefined;
+      }
       const invocation = await getChildAgentInputInvocation(
         entry.message,
         input,
       );
-      if (await isSkippedAgentResult(input, invocation, entry.message)) {
-        return undefined;
-      }
       if (entry.message.input.authorId !== resultAuthorId(invocation.actor)) {
         return { ...entry, actor: EVENT_SYSTEM_ACTOR };
       }
