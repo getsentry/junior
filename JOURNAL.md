@@ -206,3 +206,7 @@ Read this first after a sandbox reset or context loss.
 - #3124 review (Thomas, comment 4532089003 "Promise.all?"): submitWalkthrough
   now reads diff, head files, and cited messages with one Promise.all.
   Commit 748e8877c. Feedback marked addressed, thread resolved.
+- PR descriptions: #3090 now says `0100`; #3124 lost the stale --no-verify
+  note and the 2,441-test claim (Thomas approved). Use
+  `github_updatePullRequest` (not gh api PATCH) for PR metadata; pass the
+  body without the attribution/footer block — the tool appends it.
