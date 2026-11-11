@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type Ref,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Link, useParams } from "react-router";
 import type {
@@ -22,14 +15,15 @@ import { PageLayout } from "../components/layout/PageLayout";
 import { Button } from "../components/ui/button";
 import { useDocumentTitle } from "../documentTitle";
 import { DisplayText } from "../display-text/DisplayText";
-import {
-  WalkthroughChangeSummaryView,
-  WalkthroughVersions,
-} from "./WalkthroughChanges";
+import { WalkthroughChangeSummaryView } from "./WalkthroughChanges";
 import { WalkthroughAlsoChanged } from "./WalkthroughAlsoChanged";
 import { WalkthroughChapterView } from "./WalkthroughChapterView";
-import { WalkthroughMeta } from "./WalkthroughMeta";
-import { WalkthroughQuestions } from "./WalkthroughQuestions";
+import { WalkthroughFrame } from "./WalkthroughFrame";
+import {
+  useClaimQuestions,
+  WalkthroughQuestions,
+  type QuestionClaim,
+} from "./WalkthroughQuestions";
 import { WalkthroughRail } from "./WalkthroughRail";
 import { WalkthroughReview } from "./WalkthroughReview";
 import {
@@ -124,6 +118,9 @@ function ReadyWalkthrough(props: {
     asksHere(0) ? "review" : "questions",
   );
   const [sheetOpen, setSheetOpen] = useState(false);
+  const questions = useClaimQuestions(version.id);
+  // The claim whose card asked to ask about it, or to show its question.
+  const [claim, setClaim] = useState<QuestionClaim>();
 
   // Each pane scrolls on its own, so a new chapter starts at the top.
   useEffect(() => {
@@ -134,7 +131,15 @@ function ReadyWalkthrough(props: {
   // chapters show questions. The reviewer can still switch tabs.
   function openChapter(next: number) {
     setIndex(next);
+    setClaim(undefined);
     setTab(asksHere(next) ? "review" : "questions");
+  }
+
+  // Questions open beside the claim, so the reviewer can answer it after.
+  function claimQuestion(text: string, mode: QuestionClaim["mode"]) {
+    setClaim({ claim: text, mode });
+    setTab("questions");
+    if (!hasPanelSpace()) setSheetOpen(true);
   }
 
   useDocumentTitle(`Walkthrough · ${document.content.title}`);
@@ -155,13 +160,9 @@ function ReadyWalkthrough(props: {
         </Button>
       }
       intent={<DisplayText inline text={document.content.intent} />}
+      chapterId={chapter.id}
+      intro={index === 0}
       mainRef={mainRef}
-      meta={
-        <WalkthroughMeta
-          sourceConversationId={document.sourceConversationId}
-          version={version}
-        />
-      }
       rail={
         <WalkthroughRail
           activeIndex={index}
@@ -183,6 +184,8 @@ function ReadyWalkthrough(props: {
                 title: chapter.caption,
                 asks: chapter.asks,
               }}
+              claim={claim}
+              onClearClaim={() => setClaim(undefined)}
               versionId={version.id}
             />
           }
@@ -203,6 +206,7 @@ function ReadyWalkthrough(props: {
           tab={tab}
         />
       }
+      sourceConversationId={document.sourceConversationId}
       title={document.content.title}
       version={version}
     >
@@ -225,6 +229,8 @@ function ReadyWalkthrough(props: {
           index={index}
           key={chapter.id}
           onAnswer={(answer) => save.mutate(answer)}
+          onClaimQuestion={claimQuestion}
+          questions={questions}
           reopened={reopened}
           total={chapters.length}
         />
@@ -263,6 +269,7 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
   const top = version.codeChanges.at(-1);
   const title = top?.title ?? "Walkthrough";
   useDocumentTitle(`Walkthrough · ${title}`);
+  const mainRef = useRef<HTMLElement>(null);
   const failed = version.status === "failed";
   const previous = version.versions
     .filter((entry) => entry.status === "ready" && entry.id !== version.id)
@@ -270,7 +277,8 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
 
   return (
     <WalkthroughFrame
-      meta={<WalkthroughMeta version={version} />}
+      intro
+      mainRef={mainRef}
       rail={<WalkthroughRail chapters={[]} />}
       side={<WalkthroughQuestionsPanel />}
       title={title}
@@ -324,57 +332,5 @@ function PendingWalkthrough(props: { version: WalkthroughVersionResponse }) {
         )}
       </div>
     </WalkthroughFrame>
-  );
-}
-
-/**
- * Three panes, each with its own scroll: the rail, the story, and questions.
- * The page itself does not scroll.
- */
-function WalkthroughFrame(props: {
-  action?: ReactNode;
-  children: ReactNode;
-  intent?: ReactNode;
-  mainRef?: Ref<HTMLElement>;
-  /** Pull requests, source, and cost: one quiet line under the title. */
-  meta: ReactNode;
-  rail: ReactNode;
-  side: ReactNode;
-  title: string;
-  version: WalkthroughVersionResponse;
-}) {
-  return (
-    <div className="grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg lg:grid-cols-[18rem_minmax(0,1fr)]">
-      {props.rail}
-      <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]">
-        <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-dashboard-border px-6 py-4 sm:px-8">
-          <div className="grid min-w-0 max-w-3xl gap-1">
-            <h1 className="m-0 font-display text-xl leading-snug font-semibold text-dashboard-text">
-              {props.title}
-            </h1>
-            {props.intent ? (
-              <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
-                {props.intent}
-              </p>
-            ) : null}
-            {props.meta}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <WalkthroughVersions version={props.version} />
-            {props.action}
-          </div>
-        </header>
-        {/* The side panel starts at the header rule, so its border meets it. */}
-        <div className="grid min-h-0 min-w-0 xl:grid-cols-[minmax(0,1fr)_24rem]">
-          <main
-            className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
-            ref={props.mainRef}
-          >
-            {props.children}
-          </main>
-          {props.side}
-        </div>
-      </div>
-    </div>
   );
 }

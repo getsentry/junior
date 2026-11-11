@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, MessageCircleQuestion } from "lucide-react";
 import type {
   WalkthroughAnswerResponse,
   WalkthroughUpdate,
@@ -9,7 +9,11 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { DisplayText } from "../display-text/DisplayText";
 import { cn } from "../styles";
-import type { AnswerMap, ReviewDecision } from "./walkthroughModel";
+import type {
+  AnswerMap,
+  ClaimQuestion,
+  ReviewDecision,
+} from "./walkthroughModel";
 
 /** What a reviewer saves for one decision. */
 export type DecisionAnswer = Omit<
@@ -38,14 +42,20 @@ const answeredLabels = {
  */
 export function WalkthroughDecision(props: {
   answer: AnswerMap[string] | undefined;
+  /** The reviewer's question about this claim, once they asked one. */
+  asked?: ClaimQuestion;
   decision: ReviewDecision;
   /** The update item that answers the reviewer's change request. */
   feedback?: WalkthroughUpdate["items"][number];
   onAnswer(answer: DecisionAnswer): void;
+  /** Start a question about this claim beside the story. */
+  onAsk(): void;
+  /** Show the reviewer's question about this claim and its answer. */
+  onShowQuestion(): void;
   /** The answer before the code changed. */
   reopened?: AnswerMap[string];
 }) {
-  const { answer, decision, feedback, reopened } = props;
+  const { answer, asked, decision, feedback, reopened } = props;
   const [draft, setDraft] = useState(answer?.note ?? "");
   const [editing, setEditing] = useState(false);
   // "Change" on a folded answer opens the actions again.
@@ -87,15 +97,22 @@ export function WalkthroughDecision(props: {
 
   return (
     <Accent status={status}>
-      <div className="grid gap-1.5">
-        <p className="m-0 text-xs font-medium text-dashboard-text-faint">
-          {feedback ? "Does this answer your feedback?" : "Do you agree?"}
+      <div className="grid gap-2">
+        {/* Three parts, each named: the claim under review, why it is worth
+            a look, and what the reviewer can do about it. */}
+        <p className="m-0 text-xs font-medium text-dashboard-text-muted">
+          {feedback
+            ? "Does this answer your feedback?"
+            : "Claim to review: do you agree?"}
         </p>
-        <p className="m-0 text-sm text-dashboard-text">
+        <p className="m-0 text-base leading-7 text-dashboard-text">
           <DisplayText inline text={decision.claim} />
         </p>
         {decision.concern && !feedback ? (
-          <p className="m-0 text-sm text-dashboard-text-muted">
+          <p className="m-0 text-sm leading-6 text-dashboard-text-subtle">
+            <span className="font-medium text-dashboard-text">
+              Why it is worth checking:
+            </span>{" "}
             <DisplayText inline text={decision.concern} />
           </p>
         ) : null}
@@ -141,15 +158,14 @@ export function WalkthroughDecision(props: {
             </div>
           </form>
         ) : (
-          <p className="m-0 flex flex-wrap items-center gap-x-1.5 text-sm text-dashboard-text-faint">
-            <TextAction
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <AnswerButton
               current={answer?.value === "agree"}
               onClick={() => save("agree")}
             >
               {feedback ? "Yes" : "Agree"}
-            </TextAction>
-            <span aria-hidden="true">·</span>
-            <TextAction
+            </AnswerButton>
+            <AnswerButton
               current={answer?.value === "change"}
               onClick={() => {
                 setDraft(answer?.note ?? reopened?.note ?? "");
@@ -157,16 +173,38 @@ export function WalkthroughDecision(props: {
               }}
             >
               {feedback ? "Not yet" : "Request change"}
-            </TextAction>
-            <span aria-hidden="true">·</span>
-            <TextAction
+            </AnswerButton>
+            <AnswerButton
               current={answer?.value === "skip"}
               onClick={() => save("skip")}
             >
               Skip
-            </TextAction>
-          </p>
+            </AnswerButton>
+            <Button
+              className="h-8 px-3 text-sm"
+              onClick={props.onAsk}
+              type="button"
+              variant="quiet"
+            >
+              <MessageCircleQuestion aria-hidden="true" className="size-4" />
+              Ask about this
+            </Button>
+          </div>
         )}
+        {asked ? (
+          <p className="m-0 text-sm text-dashboard-text-muted">
+            {asked.answered
+              ? "You asked about this claim, and it has an answer."
+              : "You asked about this claim. The answer is on its way."}{" "}
+            <button
+              className="cursor-pointer rounded-sm border-0 bg-transparent p-0 text-sm text-dashboard-text underline underline-offset-4 hover:text-dashboard-text-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+              onClick={props.onShowQuestion}
+              type="button"
+            >
+              {asked.answered ? "Read the answer" : "See the question"}
+            </button>
+          </p>
+        ) : null}
       </div>
     </Accent>
   );
@@ -184,20 +222,32 @@ function Accent(props: {
   );
 }
 
-function TextAction(props: {
+/** One answer to a claim. The chosen one stays pressed. */
+function AnswerButton(props: {
   children: ReactNode;
   current?: boolean;
   onClick(): void;
 }) {
   return (
-    <button
+    <Button
       aria-pressed={props.current}
       className={cn(
-        "cursor-pointer rounded-sm border-0 bg-transparent p-0 text-sm hover:text-dashboard-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-        props.current
-          ? "font-medium text-dashboard-text"
-          : "text-dashboard-text-subtle",
+        "h-8 px-3 text-sm",
+        props.current && "border-dashboard-border-emphasis font-medium",
       )}
+      onClick={props.onClick}
+      type="button"
+    >
+      {props.current ? <Check aria-hidden="true" className="size-4" /> : null}
+      {props.children}
+    </Button>
+  );
+}
+
+function TextAction(props: { children: ReactNode; onClick(): void }) {
+  return (
+    <button
+      className="cursor-pointer rounded-sm border-0 bg-transparent p-0 text-sm text-dashboard-text-subtle hover:text-dashboard-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
       onClick={props.onClick}
       type="button"
     >

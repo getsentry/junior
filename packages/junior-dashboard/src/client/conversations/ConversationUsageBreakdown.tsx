@@ -246,6 +246,8 @@ export function hasConversationUsageBreakdown(props: {
  */
 export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
+  /** Start open, where the breakdown is the reason the reader came. */
+  defaultOpen?: boolean;
   detail?: ConversationDetailReport;
 }) {
   if (!hasConversationUsageBreakdown(props) || !props.conversation) {
@@ -444,7 +446,10 @@ export function ConversationUsageBreakdown(props: {
     .join(" · ");
 
   return (
-    <Collapsible className="min-w-0 border-t border-dashboard-border-subtle">
+    <Collapsible
+      className="min-w-0 border-t border-dashboard-border-subtle"
+      defaultOpen={props.defaultOpen}
+    >
       <h3 className="m-0">
         <CollapsibleTrigger className="group flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1 py-2 text-left font-sans text-xs font-semibold text-dashboard-text transition-colors hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-dashboard-focus">
           <ChevronRight

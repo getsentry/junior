@@ -17,8 +17,10 @@ import { CitedProse, EvidencePanel } from "./WalkthroughEvidence";
 import {
   chapterTitle,
   citedEvidence,
+  quotedClaim,
   type AnswerMap,
   type CitedEvidence,
+  type ClaimQuestion,
   type ReviewDecision,
 } from "./walkthroughModel";
 import type { ChapterChange } from "./walkthroughUpdates";
@@ -46,6 +48,10 @@ export function WalkthroughChapterView(props: {
   feedback: Readonly<Record<string, WalkthroughUpdate["items"][number]>>;
   index: number;
   onAnswer(answer: DecisionAnswer): void;
+  /** Ask about a claim, or show the question already asked about it. */
+  onClaimQuestion(claim: string, mode: "ask" | "show"): void;
+  /** The claims the reviewer asked about, keyed by the quoted claim. */
+  questions: ReadonlyMap<string, ClaimQuestion>;
   reopened: AnswerMap;
   total: number;
 }) {
@@ -87,10 +93,13 @@ export function WalkthroughChapterView(props: {
       {props.decisions.map((decision) => (
         <WalkthroughDecision
           answer={props.answers[decision.id]}
+          asked={props.questions.get(quotedClaim(decision.claim))}
           decision={decision}
           feedback={props.feedback[decision.id]}
           key={decision.id}
           onAnswer={props.onAnswer}
+          onAsk={() => props.onClaimQuestion(decision.claim, "ask")}
+          onShowQuestion={() => props.onClaimQuestion(decision.claim, "show")}
           reopened={props.reopened[decision.id]}
         />
       ))}

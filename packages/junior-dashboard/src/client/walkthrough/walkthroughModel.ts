@@ -276,28 +276,77 @@ function markdownLocation(location: { label: string; url?: string }): string {
 }
 
 /** The chapter that a question is about, as the question quotes it. */
-export type QuestionChapter = { title: string };
+export type QuestionChapter = {
+  title: string;
+  /** The claim the reviewer asks about, when the question starts from one. */
+  claim?: string;
+};
 
 /**
- * Write a question about one chapter. The quote line names the chapter by
- * its title, which is unique, so the agent and the transcript both see it.
+ * Write a question about one chapter. The quote names the chapter by its
+ * title, which is unique, so the agent and the transcript both see it. A
+ * question about a claim quotes the claim on the next line.
  */
 export function chapterQuestion(
   chapter: QuestionChapter | undefined,
   text: string,
 ): string {
   if (!chapter) return text;
-  return `> **${chapter.title}**\n\n${text}`;
+  const claim = chapter.claim ? `\n> ${oneLine(chapter.claim)}` : "";
+  return `> **${chapter.title}**${claim}\n\n${text}`;
 }
 
-const CHAPTER_QUOTE = /^> \*\*(.+?)\*\*\n\n/;
+// A claim is one quote line, so a line break in it would end the quote.
+function oneLine(text: string): string {
+  return text.replace(/\s*\n\s*/g, " ").trim();
+}
 
-/** Split a question into its chapter title, if it names one, and its text. */
+const CHAPTER_QUOTE = /^> \*\*(.+?)\*\*(?:\n> (.+))?\n\n/;
+
+/**
+ * Split a question into its chapter title and claim, when it names them,
+ * and its text.
+ */
 export function readChapterQuestion(message: string): {
   chapter?: string;
+  claim?: string;
   text: string;
 } {
   const match = CHAPTER_QUOTE.exec(message);
   if (!match) return { text: message };
-  return { chapter: match[1], text: message.slice(match[0].length) };
+  return {
+    chapter: match[1],
+    ...(match[2] ? { claim: match[2] } : undefined),
+    text: message.slice(match[0].length),
+  };
+}
+
+/** A reviewer's question about one claim, and whether it has an answer. */
+export type ClaimQuestion = { answered: boolean };
+
+/**
+ * Find the claims the reviewer asked about, keyed by the claim as quoted.
+ * A question has an answer once a reply follows it.
+ */
+export function claimQuestions(
+  messages: readonly { role: "user" | "assistant"; text: string }[],
+): Map<string, ClaimQuestion> {
+  const asked = new Map<string, ClaimQuestion>();
+  messages.forEach((message, index) => {
+    if (message.role !== "user") return;
+    const { claim } = readChapterQuestion(message.text);
+    if (!claim) return;
+    const answered = messages
+      .slice(index + 1)
+      .some((next) => next.role === "assistant");
+    asked.set(claim, {
+      answered: answered || asked.get(claim)?.answered === true,
+    });
+  });
+  return asked;
+}
+
+/** The claim as a question quotes it, to match it with `claimQuestions`. */
+export function quotedClaim(claim: string): string {
+  return oneLine(claim);
 }

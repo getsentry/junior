@@ -18,7 +18,11 @@ Walkthrough. Say that questions start from the Walkthrough page, and stop.
    Later Turns can use the result that is already in the history.
 2. A question that starts with a quoted chapter caption, such as
    `> **Plugins read code changes.**`, is about that chapter. Find the
-   chapter with that caption and start there.
+   chapter with that caption and start there. A second quoted line under
+   it, such as `> The 80-call and $5 caps are safe defaults.`, is a claim
+   from that chapter that the reviewer must agree with or not. The claim
+   is the subject: give the facts that settle it, say whether the code
+   supports it, and do not decide for the reviewer.
 3. Read code only when the answer needs it. `readWalkthroughCode` with a PR
    number returns that code change's diff. Add a `path` to read one file at
    its head commit, also a file that the change does not touch, such as a

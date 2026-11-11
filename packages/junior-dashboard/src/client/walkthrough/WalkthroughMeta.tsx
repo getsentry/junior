@@ -9,21 +9,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { cn } from "../styles";
+import { WalkthroughCost } from "./WalkthroughCost";
 
 const linkClass =
   "rounded-sm text-dashboard-text-subtle no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus";
 
 /**
  * One quiet line about the Walkthrough: its pull requests, the Conversation
- * that made them, and what it cost. The cost opens the generation
- * Conversation. The chapters get the attention.
+ * that made them, when given, and what it cost. The cost opens its usage.
+ * The chapters get the attention.
  */
 export function WalkthroughMeta(props: {
   /** The Conversation that made the PR, when the viewer may read it. */
@@ -37,51 +33,13 @@ export function WalkthroughMeta(props: {
   if (props.sourceConversationId) {
     items.push({
       key: "source",
-      node: (
-        <span>
-          Made in{" "}
-          <Link
-            className={linkClass}
-            to={conversationPath(props.sourceConversationId)}
-          >
-            Conversation
-          </Link>
-        </span>
-      ),
+      node: <WalkthroughSource conversationId={props.sourceConversationId} />,
     });
   }
   if (version.costUsd !== undefined) {
-    const cost = `$${version.costUsd.toFixed(2)}`;
     items.push({
       key: "cost",
-      node: (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              // The generation Conversation holds the transcript and the
-              // usage breakdown behind this number.
-              version.generationConversationId ? (
-                <Link
-                  className={cn(linkClass, "tabular-nums")}
-                  to={conversationPath(version.generationConversationId)}
-                >
-                  {cost}
-                </Link>
-              ) : (
-                <span className="tabular-nums">{cost}</span>
-              )
-            }
-          />
-          <TooltipContent>
-            {version.status === "generating"
-              ? "What this Walkthrough has cost so far"
-              : "What it cost to make this Walkthrough"}
-            {version.generationConversationId
-              ? ". Open the generation transcript and usage."
-              : null}
-          </TooltipContent>
-        </Tooltip>
-      ),
+      node: <WalkthroughCost className={linkClass} version={version} />,
     });
   }
   return (
@@ -93,6 +51,18 @@ export function WalkthroughMeta(props: {
         </Fragment>
       ))}
     </p>
+  );
+}
+
+/** The Conversation that made the PRs, as a link. */
+export function WalkthroughSource(props: { conversationId: string }) {
+  return (
+    <span>
+      Made in{" "}
+      <Link className={linkClass} to={conversationPath(props.conversationId)}>
+        Conversation
+      </Link>
+    </span>
   );
 }
 
