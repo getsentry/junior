@@ -520,6 +520,17 @@ const HOST_GRAPHQL_MUTATIONS = [
     operationName: "ConvertPullRequestToDraft",
     operationPrefix: "github.pull.draft.update:",
   },
+  // Feedback-status reactions on review bodies, which have no REST endpoint.
+  {
+    field: "addReaction",
+    operationName: "AddReviewReaction",
+    operationPrefix: "github.pull.review-reaction.update:",
+  },
+  {
+    field: "removeReaction",
+    operationName: "RemoveReviewReaction",
+    operationPrefix: "github.pull.review-reaction.update:",
+  },
 ] as const;
 
 function hostGraphqlMutationRepository(
