@@ -35,6 +35,7 @@ export function useCurrentAnchor(
     const list = ids.split(" ");
     const target = hash.slice(1);
     let frame = 0;
+    let waits = 0;
     const update = () => {
       frame = 0;
       const margin = anchorScrollMargin();
@@ -57,13 +58,20 @@ export function useCurrentAnchor(
         }
         if (atEnd) next = id;
       }
-      // Headings not mounted yet: keep the hash's section until they are.
-      if (next !== undefined) setCurrent(next);
+      if (next !== undefined) {
+        setCurrent(next);
+        return;
+      }
+      // The headings have not mounted yet. Their mount fires no scroll or
+      // resize, so look again on the next frames.
+      if (++waits < 60) schedule();
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(update);
     };
-    if (list.includes(target)) setCurrent(target);
+    // A new page drops the old page's section; the hash's section shows
+    // at once, else the first one.
+    setCurrent(list.includes(target) ? target : undefined);
     schedule();
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
