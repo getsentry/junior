@@ -8,7 +8,7 @@ import { and, eq, ne } from "drizzle-orm";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { getDb } from "@/chat/db";
 import { juniorWalkthroughVersions } from "@/db/schema";
-import type { WalkthroughSnapshotCodeChange } from "@/db/schema/walkthroughs";
+import type { WalkthroughCodeChange } from "@/db/schema/walkthroughs";
 import { walkthroughDocumentSchema, type WalkthroughDocument } from "./schema";
 
 export type WalkthroughVersion = typeof juniorWalkthroughVersions.$inferSelect;
@@ -18,7 +18,7 @@ export type WalkthroughVersion = typeof juniorWalkthroughVersions.$inferSelect;
  * always give the same key.
  */
 export function walkthroughSnapshotKey(
-  codeChanges: readonly WalkthroughSnapshotCodeChange[],
+  codeChanges: readonly WalkthroughCodeChange[],
 ): string {
   const parts = codeChanges.map(
     (change) => `${change.number}:${change.baseSha}:${change.headSha}`,
@@ -54,7 +54,7 @@ async function findLiveWalkthroughVersion(input: {
 export async function startWalkthroughVersion(input: {
   provider: string;
   repository: string;
-  codeChanges: WalkthroughSnapshotCodeChange[];
+  codeChanges: WalkthroughCodeChange[];
   generationConversationId: string;
   sourceConversationId?: string;
   parentVersionId?: string;
@@ -104,7 +104,7 @@ export async function getWalkthroughVersion(
  */
 export async function completeWalkthroughVersion(
   storage: AttachmentStorage,
-  input: { id: string; document: WalkthroughDocument; costUsd?: number },
+  input: { id: string; document: WalkthroughDocument },
 ): Promise<boolean> {
   const document = walkthroughDocumentSchema.parse(input.document);
   const documentKey = `walkthroughs/${input.id}.json`;
@@ -118,7 +118,6 @@ export async function completeWalkthroughVersion(
     .set({
       status: "ready",
       documentKey,
-      costUsd: input.costUsd ?? null,
       completedAt: new Date(),
     })
     .where(
@@ -135,14 +134,12 @@ export async function completeWalkthroughVersion(
 export async function failWalkthroughVersion(input: {
   id: string;
   reason: string;
-  costUsd?: number;
 }): Promise<void> {
   await getDb()
     .update(juniorWalkthroughVersions)
     .set({
       status: "failed",
       failureReason: input.reason,
-      costUsd: input.costUsd ?? null,
       completedAt: new Date(),
     })
     .where(

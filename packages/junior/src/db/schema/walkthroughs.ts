@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  doublePrecision,
   index,
   jsonb,
   pgTable,
@@ -11,11 +10,16 @@ import {
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
-/** One code change of a Walkthrough snapshot, at the commits it describes. */
-export type WalkthroughSnapshotCodeChange = {
+/** One code change of a Walkthrough, as the provider described it at its commits. */
+export type WalkthroughCodeChange = {
   number: number;
+  title: string;
+  body: string;
+  url: string;
   headSha: string;
   baseSha: string;
+  additions: number;
+  deletions: number;
 };
 
 type WalkthroughVersionStatus = "generating" | "ready" | "failed";
@@ -40,7 +44,7 @@ export const juniorWalkthroughVersions = pgTable(
     snapshotKey: text("snapshot_key").notNull(),
     /** The stack, bottom first, at the commits this version describes. */
     codeChanges: jsonb("code_changes")
-      .$type<WalkthroughSnapshotCodeChange[]>()
+      .$type<WalkthroughCodeChange[]>()
       .notNull(),
     /**
      * The hidden Conversation whose Turn generates this version. Lists hide
@@ -54,7 +58,6 @@ export const juniorWalkthroughVersions = pgTable(
     sourceConversationId: text("source_conversation_id"),
     status: text("status").$type<WalkthroughVersionStatus>().notNull(),
     documentKey: text("document_key"),
-    costUsd: doublePrecision("cost_usd"),
     failureReason: text("failure_reason"),
     createdByUserId: text("created_by_user_id"),
     createdAt: timestamptz("created_at").notNull(),

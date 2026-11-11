@@ -19,10 +19,16 @@ import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { closeConversationFixture } from "../fixtures/conversation";
 
 const OWNER_EMAIL = "owner@example.com";
-const codeChanges = [
-  { number: 3087, baseSha: "a".repeat(40), headSha: "b".repeat(40) },
-  { number: 3088, baseSha: "b".repeat(40), headSha: "c".repeat(40) },
-];
+const codeChanges = [3087, 3088].map((number, index) => ({
+  number,
+  title: `PR ${number}`,
+  body: "",
+  url: `https://github.com/getsentry/junior/pull/${number}`,
+  baseSha: "ab"[index]!.repeat(40),
+  headSha: "bc"[index]!.repeat(40),
+  additions: 1,
+  deletions: 0,
+}));
 
 async function publicConversation(conversationId: string) {
   await getConversationStore().recordActivity({
@@ -56,14 +62,9 @@ function document(versionId: string) {
     versionId,
     contentVersionId: versionId,
     repository: "getsentry/junior",
-    layers: codeChanges.map((change) => ({
-      pr: change.number,
-      title: `PR ${change.number}`,
-      url: `https://github.com/getsentry/junior/pull/${change.number}`,
-      headSha: change.headSha,
-      baseSha: change.baseSha,
-      additions: 1,
-      deletions: 0,
+    layers: codeChanges.map(({ number, body: _body, ...layer }) => ({
+      pr: number,
+      ...layer,
     })),
     excerpts: [],
     skipped: [],
@@ -128,11 +129,10 @@ describe("Walkthrough versions", () => {
       await completeWalkthroughVersion(storage, {
         id,
         document: stored,
-        costUsd: 1.25,
       }),
     ).toBe(true);
     const ready = await getWalkthroughVersion(id);
-    expect(ready).toMatchObject({ status: "ready", costUsd: 1.25 });
+    expect(ready).toMatchObject({ status: "ready" });
     expect(await readWalkthroughDocument(storage, ready!)).toEqual(stored);
     expect([...storage.objects.keys()]).toEqual([`walkthroughs/${id}.json`]);
 
