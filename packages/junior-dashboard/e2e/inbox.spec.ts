@@ -197,6 +197,7 @@ test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
   const nav = page.getByRole("navigation", { name: "Inbox" });
   await nav.getByRole("link", { name: /^Snoozed/ }).click();
   await expect(page).toHaveURL(/\/\?view=snoozed$/);
+  await page.getByRole("button", { name: `Show asks in ${checkout}` }).click();
   await page.getByRole("button", { name: "Wake" }).click();
   await expect(page.getByText("Nothing snoozed")).toBeVisible();
 });
@@ -372,6 +373,57 @@ test("the asks and Done load their next pages at the end of the list", async ({
     page.getByRole("button", { name: /initech license entry/ }),
   ).toBeVisible();
   expect(cursors).toEqual(expect.arrayContaining(["1", "2"]));
+});
+
+test("To do lists its rows while the count is pending or failed", async ({
+  dashboard,
+  page,
+}) => {
+  await mockReviewItems(page, { open: [license] });
+  const todo = page.getByRole("region", { name: "To do" });
+  const row = todo.getByRole("link", { name: new RegExp(license.title) });
+  // A failed count leaves the badge without a number, not To do empty.
+  await page.route("**/api/review-items/count", (route) =>
+    route.fulfill({ json: { error: "Failed" }, status: 500 }),
+  );
+  await page.goto(`${dashboard.baseURL}/`);
+  await expect(row).toBeVisible();
+  // A count that never answers does the same.
+  await page.unroute("**/api/review-items/count");
+  await page.route("**/api/review-items/count", () => undefined);
+  await page.reload();
+  await expect(row).toBeVisible();
+});
+
+test("a failed next page waits for Try again", async ({ dashboard, page }) => {
+  await mockReviewItems(page, {
+    open: [prReview, prMerge, prReady],
+    pageSize: 1,
+  });
+  let attempts = 0;
+  await page.route(/\/api\/review-items\?.*cursor=1(?:&|$)/, (route) => {
+    attempts += 1;
+    return attempts === 1
+      ? route.fulfill({ json: { error: "Failed" }, status: 500 })
+      : route.fallback();
+  });
+  await page.goto(`${dashboard.baseURL}/?view=prs`);
+  const retry = page.getByRole("button", { name: "Try again" });
+  await expect(page.getByText("Could not load more.")).toBeVisible();
+  // Two frames later, the list has not asked again on its own.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  expect(attempts).toBe(1);
+  await retry.click();
+  // The retried page loads, and the pages after it load on their own.
+  await expect(
+    page.locator("section[aria-label] section[aria-label]"),
+  ).toHaveText([/^Review requested/, /^Ready to merge/, /^Other/]);
+  await expect(retry).toHaveCount(0);
 });
 
 test("Done lists closed items, and a row expands in place", async ({

@@ -174,36 +174,6 @@ export function inboxItemKind(item: ReviewItemPayload): string {
   return state === "Other" ? "Approval" : state;
 }
 
-const COUNTED_KINDS: Record<string, string> = {
-  Approval: "approvals",
-  Question: "questions",
-};
-
-/**
- * Say in one short line what a row holds, after the newest item's title. A
- * row counts its kinds, as in `2 questions · Review requested · FYI`. The
- * newest item does not count when its title already starts with its kind,
- * as in `Ready to merge · #42`.
- */
-export function inboxRowReason(bundle: InboxBundle): string | undefined {
-  const counts = new Map<string, number>();
-  for (const item of bundle.items) {
-    const kind = inboxItemKind(item);
-    if (item === bundle.newest && item.title.startsWith(kind)) continue;
-    counts.set(kind, (counts.get(kind) ?? 0) + 1);
-  }
-  if (counts.size === 0) return undefined;
-  if (bundle.items.length === 1) return [...counts.keys()][0];
-  return [...counts]
-    .map(([kind, count]) => {
-      const plural = COUNTED_KINDS[kind];
-      if (plural)
-        return `${count} ${count === 1 ? kind.toLowerCase() : plural}`;
-      return count === 1 || kind === "FYI" ? kind : `${kind} (${count})`;
-    })
-    .join(" · ");
-}
-
 /** Group rows by a fixed list of labels, in that order. */
 function byLabels(
   rows: readonly InboxBundle[],

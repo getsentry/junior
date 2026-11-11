@@ -178,6 +178,8 @@ export function useOlderConversationPages(
   const nextCursor = last ? last.data?.nextCursor : firstPageCursor;
   return {
     conversations,
+    // A failed page waits for a retry; loadMore finds no cursor past it.
+    failed: Boolean(last?.isError),
     hasMore: Boolean(nextCursor) || Boolean(last?.isPending),
     loadingMore,
     loadMore: () => {
@@ -187,6 +189,7 @@ export function useOlderConversationPages(
         cursors: [...cursors, nextCursor],
       });
     },
+    retry: () => void last?.refetch(),
   };
 }
 

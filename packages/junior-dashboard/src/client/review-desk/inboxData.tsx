@@ -42,9 +42,12 @@ const InboxDataContext = createContext<InboxData | null>(null);
 
 /** The pages after the loaded ones, for infinite scroll. */
 export type InboxFeedPages = {
+  /** The last page failed. Loading stops until `retry` succeeds. */
+  failed: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   loadMore(): void;
+  retry(): void;
 };
 
 function useBuildInboxData(input: {

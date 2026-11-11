@@ -195,14 +195,23 @@ export function invalidateAutomationReads(queryClient: QueryClient) {
 export function scrollPages(query: {
   fetchNextPage(): void;
   hasNextPage: boolean;
+  isFetchNextPageError: boolean;
   isFetchingNextPage: boolean;
 }) {
   return {
+    // A failed page waits for a retry, so it does not load again in a loop.
+    failed: query.isFetchNextPageError,
     hasMore: query.hasNextPage,
     loadingMore: query.isFetchingNextPage,
     loadMore: () => {
-      if (query.hasNextPage && !query.isFetchingNextPage) query.fetchNextPage();
+      if (
+        query.hasNextPage &&
+        !query.isFetchingNextPage &&
+        !query.isFetchNextPageError
+      )
+        query.fetchNextPage();
     },
+    retry: () => query.fetchNextPage(),
   };
 }
 

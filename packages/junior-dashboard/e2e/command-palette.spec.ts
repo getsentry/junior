@@ -282,6 +282,39 @@ test("ranks the active tab's results first", async ({ page, dashboard }) => {
   ).toBeVisible();
 });
 
+test("a snoozed match opens Snoozed with its row expanded", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await mockReviewItems(page, { open: [rollout] });
+  await page.goto(dashboard.baseURL);
+  await page
+    .getByRole("button", { name: "Show asks in Investigate checkout latency" })
+    .click();
+  await page.getByRole("button", { name: "Snooze" }).click();
+  await page.getByRole("button", { name: "Tomorrow" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "To do" })
+      .getByRole("link", { name: /Investigate checkout latency/ }),
+  ).toHaveCount(0);
+
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  await page.keyboard.press("ControlOrMeta+k");
+  await palette.getByRole("combobox").fill("canary error");
+  await palette
+    .getByRole("group", { exact: true, name: "Inbox" })
+    .getByRole("option", { name: new RegExp(rollout.title) })
+    .click();
+  await expect(page).toHaveURL(/\/\?view=snoozed$/);
+  const asks = page.getByRole("region", { name: /: asks$/ });
+  await expect(asks).toContainText(rollout.title);
+  // It wakes from the open row.
+  await asks.getByRole("button", { name: "Wake" }).click();
+  await expect(page.getByText("Nothing snoozed")).toBeVisible();
+});
+
 test("searches the directory pages, with the page's group first", async ({
   context,
   page,

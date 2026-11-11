@@ -120,9 +120,11 @@ export function ConversationWorkspace(props: {
     );
   }, [feed.data?.conversations, older.conversations, pendingArchiveUpdates]);
   const feedPages = {
+    failed: older.failed,
     hasMore: older.hasMore,
     loadingMore: older.loadingMore,
     loadMore: older.loadMore,
+    retry: older.retry,
   };
   const openCreate = () => {
     createConversation.reset();

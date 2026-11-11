@@ -1,4 +1,5 @@
 import {
+  AlarmClockOff,
   Archive,
   ArchiveRestore,
   Check,
@@ -209,6 +210,8 @@ type InboxRowProps = {
   onSnooze?(choice: SnoozeChoice): void;
   onSnoozeMenu(open: boolean): void;
   onToggle(): void;
+  /** Set on a snoozed row: it wakes instead of snoozing. */
+  onWake?(): void;
   rowKey: string;
   selected: boolean;
   /** Show the root's Threads under it, as the sidebar did. */
@@ -565,6 +568,7 @@ function InboxRowBody(
             onDone={props.onDone}
             onSnooze={props.onSnooze}
             onSnoozeMenu={props.onSnoozeMenu}
+            onWake={props.onWake}
             snoozeMenuOpen={props.snoozeMenuOpen}
           />
         </div>
@@ -580,6 +584,7 @@ function ExpandedActions(props: {
   onDone?(): void;
   onSnooze?(choice: SnoozeChoice): void;
   onSnoozeMenu(open: boolean): void;
+  onWake?(): void;
   snoozeMenuOpen: boolean;
 }) {
   return (
@@ -596,6 +601,12 @@ function ExpandedActions(props: {
       ) : null}
       {props.conversation?.isParticipant ? (
         <ExpandedPin conversation={props.conversation} />
+      ) : null}
+      {props.onWake ? (
+        <Button onClick={props.onWake} variant="quiet">
+          <AlarmClockOff aria-hidden="true" size={15} />
+          Wake
+        </Button>
       ) : null}
       {props.onSnooze ? (
         <Popover onOpenChange={props.onSnoozeMenu} open={props.snoozeMenuOpen}>

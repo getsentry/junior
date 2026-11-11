@@ -37,7 +37,6 @@ import { useInboxListState } from "./inboxListState";
 import {
   automationSections,
   INBOX_VIEW_LABELS,
-  inboxRowReason,
   inboxViewPath,
   sweepOf,
   TIME_SECTIONS,
@@ -189,8 +188,15 @@ export function InboxList(props: {
     linkedClosed && !done.items.some((item) => item.id === linkedClosed.id)
       ? [linkedClosed, ...done.items]
       : done.items;
+  // A snoozed item is still open. Its link opens Snoozed, with its row.
+  const snoozedKey = linkedId
+    ? data.snoozedRows.find((row) =>
+        row.items.some((item) => item.id === linkedId),
+      )?.key
+    : undefined;
   const linkedRowKey = (() => {
     if (!linkedId) return undefined;
+    if (view === "snoozed") return snoozedKey;
     if (view === "done")
       return doneItems.some((item) => item.id === linkedId)
         ? linkedId
@@ -223,6 +229,12 @@ export function InboxList(props: {
       );
       return;
     }
+    if (snoozedKey) {
+      navigate(inboxViewPath("snoozed", { itemId: linkedId }), {
+        replace: true,
+      });
+      return;
+    }
     if (!linkedLoaded) return;
     if (linked.error) {
       navigate(listPath, { replace: true });
@@ -250,6 +262,7 @@ export function InboxList(props: {
     listPath,
     navigate,
     setExpandedKey,
+    snoozedKey,
     view,
   ]);
 
@@ -280,6 +293,8 @@ export function InboxList(props: {
       drag?: PinnedRowDrag;
       itemRow?: boolean;
       key?: string;
+      /** A snoozed row wakes instead of snoozing. */
+      snoozed?: boolean;
       time?: string;
     } = {},
   ) => {
@@ -297,10 +312,15 @@ export function InboxList(props: {
         itemTitle={options.itemRow ? row.newest.title : undefined}
         key={key}
         onDone={() => void markDone(row)}
-        onSnooze={(choice) => {
-          snoozes.snooze(row, choice);
-          setSnoozeKey(undefined);
-        }}
+        onSnooze={
+          options.snoozed
+            ? undefined
+            : (choice) => {
+                snoozes.snooze(row, choice);
+                setSnoozeKey(undefined);
+              }
+        }
+        onWake={options.snoozed ? () => snoozes.wake(row) : undefined}
         onSnoozeMenu={(open) => setSnoozeKey(open ? key : undefined)}
         onToggle={() => toggle(key)}
         rowKey={key}
@@ -367,7 +387,10 @@ export function InboxList(props: {
           : view === "done"
             ? [donePages]
             : [];
-  const more = hidden > 0 || pages.some((source) => source.hasMore);
+  const failed = pages.filter((source) => source.failed);
+  const more =
+    failed.length === 0 &&
+    (hidden > 0 || pages.some((source) => source.hasMore));
   const loadingMore = pages.some((source) => source.loadingMore);
   const loadNext = useEffectEvent(() => {
     if (hidden > 0) state.showMore();
@@ -392,16 +415,29 @@ export function InboxList(props: {
     observer.observe(node);
     return () => observer.disconnect();
   }, [more, progress, ready, view]);
-  const listEnd =
-    ready && more ? (
-      <div
-        className="py-3 text-center font-sans text-xs text-dashboard-text-muted"
-        ref={sentinel}
-        role="status"
+  const listEnd = !ready ? null : failed.length > 0 ? (
+    <div className="flex items-center justify-center gap-2 py-3 text-xs">
+      <InlineError className="w-auto">Could not load more.</InlineError>
+      <Button
+        className="h-7 px-2 text-xs"
+        disabled={loadingMore}
+        onClick={() => {
+          for (const source of failed) source.retry();
+        }}
+        variant="quiet"
       >
-        {hidden > 0 || loadingMore ? "Loading more…" : null}
-      </div>
-    ) : null;
+        Try again
+      </Button>
+    </div>
+  ) : more ? (
+    <div
+      className="py-3 text-center font-sans text-xs text-dashboard-text-muted"
+      ref={sentinel}
+      role="status"
+    >
+      {hidden > 0 || loadingMore ? "Loading more…" : null}
+    </div>
+  ) : null;
 
   const stream = () => {
     const shown = streamRows.slice(0, state.loaded);
@@ -484,7 +520,11 @@ export function InboxList(props: {
               ) : null
             }
             collapsed={todoCollapsed}
-            count={data.todoCount}
+            // The rows show without the server count, which may still load
+            // or have failed.
+            count={
+              data.todoCount || data.todoRows.length + data.automations.length
+            }
             label="To do"
             onToggle={() => setTodoCollapsed(!todoCollapsed)}
           >
@@ -546,25 +586,9 @@ export function InboxList(props: {
       data.snoozedRows.length === 0 ? (
         <EmptyState label="Nothing snoozed" />
       ) : (
+        // Snoozed rows expand in place like the others, and wake there.
         <ul className="m-0 grid gap-2 p-0 pt-1">
-          {data.snoozedRows.map((row) => (
-            <li
-              className="flex min-w-0 list-none items-center gap-3 rounded-lg border border-dashboard-border bg-dashboard-surface-panel px-3 py-2.5"
-              key={row.key}
-            >
-              <span className="grid min-w-0 flex-1 gap-0.5">
-                <span className="truncate font-sans text-sm font-medium text-dashboard-text">
-                  {titleOf(row.conversationId) ?? row.newest.title}
-                </span>
-                <span className="truncate text-xs text-dashboard-text-muted">
-                  {inboxRowReason(row) ?? row.newest.title}
-                </span>
-              </span>
-              <Button onClick={() => snoozes.wake(row)} variant="quiet">
-                Wake
-              </Button>
-            </li>
-          ))}
+          {data.snoozedRows.map((row) => bundleRow(row, { snoozed: true }))}
         </ul>
       );
   } else {
