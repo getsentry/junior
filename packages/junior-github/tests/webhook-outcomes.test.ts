@@ -5,17 +5,14 @@ import {
   type EventInput,
   type EventMatch,
 } from "@sentry/junior-plugin-api";
-import { createLocalPgliteFixture } from "@sentry/junior-testing/pglite";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  githubSqlSchema,
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
-import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import {
   listGitHubAssignedWork,
@@ -79,6 +76,7 @@ function checkSuitePullRequest(
 }
 
 import {
+  createEmptyGitHubFixture,
   createGitHubFixture,
   type GitHubFixture,
   migrationSql,
@@ -1926,7 +1924,7 @@ describe("GitHub-owned issue outcomes", () => {
 
 describe("GitHub-owned pull request outcomes", () => {
   it("upgrades existing pull requests with nullable composition and empty conversations", async () => {
-    const fixture = await createLocalPgliteFixture<GitHubDb>(githubSqlSchema);
+    const fixture = await createEmptyGitHubFixture();
     try {
       await fixture.execute(
         await migrationSql("0000_pull_request_outcomes.sql"),
