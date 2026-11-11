@@ -159,7 +159,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
   egress: PluginEgress;
   log: PluginLogger;
   events: { canSubscribe: boolean };
-  slack?: { conversationLink?: { url?: string } };
+  conversationLink?: { url: string };
   source?: Source;
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
@@ -206,7 +206,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
                   currentBody,
                 ),
                 nonEmptyString(ctx.conversationId, "conversationId"),
-                ctx.slack?.conversationLink?.url,
+                ctx.conversationLink?.url,
               ),
             }
           : undefined),
