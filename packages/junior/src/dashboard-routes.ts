@@ -199,6 +199,7 @@ function dashboardHostRoutePaths(
     `${pagePath("plugins")}/*`,
     pagePath("settings"),
     `${pagePath("settings")}/*`,
+    `${pagePath("walkthroughs")}/*`,
   ];
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 

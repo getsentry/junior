@@ -75,6 +75,11 @@ const BoardPage = lazy(() =>
     default: module.BoardPage,
   })),
 );
+const WalkthroughPage = lazy(() =>
+  import("./walkthrough/WalkthroughPage").then((module) => ({
+    default: module.WalkthroughPage,
+  })),
+);
 const CodePage = lazy(() =>
   import("./pages/code/CodePage").then((module) => ({
     default: module.CodePage,
@@ -332,6 +337,7 @@ export function DashboardShell() {
           enabled={
             workspace ||
             location.pathname === "/review" ||
+            location.pathname.startsWith("/walkthroughs/") ||
             hasAutomationDetailsFrame(location.pathname) ||
             hasWorkspaceDetailsFrame(location.pathname) ||
             isMemoryLibraryPath(location.pathname)
@@ -556,6 +562,11 @@ export function DashboardShell() {
             />
             {/* The Board is an experiment, so no navigation links to it. */}
             <Route element={<BoardPage />} path="/board" />
+            {/* Walkthroughs open from a code change, not from navigation. */}
+            <Route
+              element={<WalkthroughPage />}
+              path="/walkthroughs/:walkthroughId"
+            />
             <Route element={<CodePage />} path="/code" />
             {codeRepositoryTabs.map((tab) => (
               <Route

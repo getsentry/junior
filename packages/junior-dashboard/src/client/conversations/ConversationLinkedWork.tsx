@@ -1,4 +1,4 @@
-import type { ObjectType } from "@sentry/junior-plugin-api";
+import type { ObjectFacts, ObjectType } from "@sentry/junior-plugin-api";
 import type { ReactNode } from "react";
 import type {
   ConversationDetailReport,
@@ -12,6 +12,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
+import {
+  WalkthroughAction,
+  useWalkthroughTarget,
+} from "../walkthrough/WalkthroughAction";
 import { WatchDetails, WatchDetailsRow } from "./ConversationWatches";
 import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
 
@@ -22,7 +26,7 @@ type ConversationAnnotation = NonNullable<
 /** One annotation that links to work outside Junior. */
 export type ConversationLink = {
   description?: string;
-  facts?: { type: string };
+  facts?: ObjectFacts;
   key: string;
   label: string;
   objectType: ObjectType;
@@ -108,7 +112,7 @@ export function ConversationLinkedWork(props: {
       itemKey={(link) => link.key}
       items={props.links}
       renderItem={(link) => {
-        const row = <LinkRow link={link} />;
+        const row = <LinkRowWithActions link={link} />;
         const watches = props.watchesByUrl.get(link.url);
         if (!watches) {
           return props.watchesByUrl.size > 0 ? (
@@ -134,6 +138,20 @@ function ChevronSpace(props: { children: ReactNode }) {
     <div className="flex min-w-0 items-start gap-0.5">
       <div className="min-w-0 flex-1">{props.children}</div>
       <span aria-hidden="true" className="size-8 shrink-0" />
+    </div>
+  );
+}
+
+/** A row with the actions its object supports, such as a Walkthrough. */
+function LinkRowWithActions(props: { link: ConversationLink }) {
+  const walkthrough = useWalkthroughTarget(props.link.plugin, props.link.facts);
+  if (!walkthrough) return <LinkRow link={props.link} />;
+  return (
+    <div className="flex min-w-0 items-start gap-0.5">
+      <div className="min-w-0 flex-1">
+        <LinkRow link={props.link} />
+      </div>
+      <WalkthroughAction target={walkthrough} variant="icon" />
     </div>
   );
 }

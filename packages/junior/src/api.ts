@@ -51,6 +51,7 @@ import {
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export { isAllowedSignInEmail } from "./chat/sign-in/allowlist";
+export { isExperimentalFeatureEnabled } from "./chat/experimental";
 export {
   DEFAULT_AUTO_ARCHIVE_SETTINGS,
   readUserAutoArchiveSettings,

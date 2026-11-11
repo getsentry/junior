@@ -79,7 +79,15 @@ export function githubObjectAnnotation(input: {
     objectType: input.objectType,
     status: input.status,
     displayType: input.objectType === "code_change" ? "Pull request" : "Issue",
-    facts: input.facts,
+    facts:
+      input.objectType === "code_change"
+        ? {
+            ...(input.facts?.type === "code_change" ? input.facts : undefined),
+            type: "code_change",
+            repository: input.repo,
+            number: input.number,
+          }
+        : input.facts,
     description: input.description,
     sourceUpdatedAt: input.sourceUpdatedAt,
   };

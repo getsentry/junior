@@ -95,6 +95,7 @@ import {
   readMockCodeRepository,
 } from "./code-repository";
 import { readMockBoard } from "./board";
+import { createMockWalkthroughRoutes } from "./walkthroughs";
 import {
   NOW_MS,
   readMockConversationChildAgents,
@@ -194,6 +195,7 @@ export function createMockReportingApi(): Hono<{
   app.get("/board", () =>
     jsonResponse(boardReportSchema, readMockBoard(Date.now())),
   );
+  app.route("/walkthroughs", createMockWalkthroughRoutes());
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );

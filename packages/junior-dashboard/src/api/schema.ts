@@ -59,6 +59,8 @@ export const dashboardConfigSchema = z
     basePath: z.string(),
     sentryConversationLinks: z.boolean(),
     version: z.string().min(1),
+    /** Whether the app enables the `walkthroughs` experiment. */
+    walkthroughs: z.boolean(),
   })
   .strict();
 

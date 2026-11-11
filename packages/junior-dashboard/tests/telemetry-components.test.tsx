@@ -123,6 +123,7 @@ function systemData(): SystemData {
       basePath: "/",
       sentryConversationLinks: false,
       version: "0.0.0-test",
+      walkthroughs: false,
     },
     me: { user: { email: "viewer@example.com", isAdmin: false } },
     conversationStats: {

@@ -661,6 +661,7 @@ describe("dashboard routes", () => {
       basePath: "/",
       sentryConversationLinks: true,
       version: expect.stringMatching(/\S+/),
+      walkthroughs: false,
     });
   });
 

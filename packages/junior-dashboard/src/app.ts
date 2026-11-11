@@ -7,6 +7,7 @@ import {
   jsonResponse,
   readViewerAvatarUrl,
   DEFAULT_AUTO_ARCHIVE_SETTINGS,
+  isExperimentalFeatureEnabled,
   readUserAutoArchiveSettings,
   resolveViewerUser,
   updateUserAutoArchiveSettings,
@@ -649,6 +650,11 @@ export function createDashboardApp(
     basePath,
     sentryConversationLinks: hasSentryConversationLinks(),
     version: JUNIOR_VERSION,
+    // Mock reporting serves fixture Walkthroughs, so visual QA sees the
+    // entry points without the experiment.
+    walkthroughs:
+      options.mockConversations === true ||
+      isExperimentalFeatureEnabled("walkthroughs"),
   });
   app.get("/api/config", () =>
     jsonResponse(dashboardConfigSchema, dashboardConfig()),

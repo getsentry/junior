@@ -8,6 +8,10 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
   // Code changes: keep lifecycle, review, and checks separate.
   z.strictObject({
     type: z.literal("code_change"),
+    // The provider's names for the code change, so the dashboard can address
+    // it without parsing a provider URL, such as to start a Walkthrough.
+    repository: text.optional(),
+    number: z.number().int().positive().optional(),
     author: text.optional(),
     sourceBranch: text.optional(),
     targetBranch: text.optional(),

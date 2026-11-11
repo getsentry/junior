@@ -121,7 +121,7 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
   };
 }
 
-const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+export const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
@@ -454,6 +454,26 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         createdAt: startedAt,
         updatedAt: iso(Date.parse(startedAt), 12_000),
       },
+      // Names its code change in facts, so it offers a Walkthrough.
+      {
+        kind: "object",
+        key: "getsentry/junior#3071",
+        label: "getsentry/junior#3071",
+        title: "ref(conversations): Share one filter for listed Conversations",
+        displayType: "Pull request",
+        objectType: "code_change",
+        plugin: "github",
+        status: "open",
+        url: "https://github.com/getsentry/junior/pull/3071",
+        facts: {
+          type: "code_change",
+          repository: "getsentry/junior",
+          number: 3071,
+          sourceBranch: "listed-conversation-predicate",
+        },
+        createdAt: startedAt,
+        updatedAt: iso(Date.parse(startedAt), 24_000),
+      },
     ],
     auxiliaryCosts: {
       costUsd: 0.003,
@@ -655,6 +675,9 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           "Next step: compare the pre/post deploy spans, then decide whether to",
           "roll back or patch the slow serializer path.",
         ].join("\n"),
+        cards: [
+          { kind: "object", plugin: "github", key: "getsentry/junior#3071" },
+        ],
       }),
       reportEvent(7, iso(Date.parse(startedAt), 40_000), {
         type: "message",

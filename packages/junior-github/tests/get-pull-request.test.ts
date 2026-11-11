@@ -62,6 +62,8 @@ describe("getPullRequest", () => {
           sourceUpdatedAt: "2026-09-25T13:00:00Z",
           facts: {
             type: "code_change",
+            repository: "getsentry/junior",
+            number: 691,
             author: "alex",
             reviewers: ["sam"],
             sourceBranch: "feat/events",

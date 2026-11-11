@@ -14,6 +14,10 @@ import {
 } from "../components/ui/collapsible";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { OutboundLink } from "../components/OutboundLink";
+import {
+  WalkthroughAction,
+  useWalkthroughTarget,
+} from "../walkthrough/WalkthroughAction";
 
 /** Show the latest saved annotation. Opening a source is always explicit. */
 export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
@@ -31,6 +35,11 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
       />
     );
   }
+  return <OwnedObjectCard card={card} />;
+}
+
+function OwnedObjectCard({ card }: { card: OwnedObjectAnnotation }) {
+  const walkthrough = useWalkthroughTarget(card.plugin, card.facts);
   const fields = objectFactFields(card.facts);
   const presentation = objectPresentation(card);
   const type = card.displayType ?? presentation.label;
@@ -105,14 +114,21 @@ export function ObjectCard({ card }: { card: OwnedObjectAnnotation }) {
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
-        {card.url && (
-          <OutboundLink
-            href={card.url}
-            className="font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
-          >
-            Open {type.toLowerCase()}
-          </OutboundLink>
-        )}
+        {card.url || walkthrough ? (
+          <span className="flex flex-wrap items-center gap-4">
+            {card.url && (
+              <OutboundLink
+                href={card.url}
+                className="font-medium text-dashboard-text hover:underline focus-visible:outline-dashboard-focus"
+              >
+                Open {type.toLowerCase()}
+              </OutboundLink>
+            )}
+            {walkthrough ? (
+              <WalkthroughAction target={walkthrough} variant="card" />
+            ) : null}
+          </span>
+        ) : null}
         <span className="text-dashboard-text-muted">Latest saved state</span>
       </div>
     </section>

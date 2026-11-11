@@ -30,6 +30,15 @@ export {
 export type { MessageCard } from "../chat/conversations/cards";
 export { boardReportSchema } from "./schema/board";
 export type { BoardCard, BoardColumn, BoardReport } from "./schema/board";
+export { walkthroughVersionSchema } from "./schema/walkthrough";
+export type { WalkthroughVersionResponse } from "./schema/walkthrough";
+export { codeExcerptId } from "../chat/walkthroughs/schema";
+export type {
+  WalkthroughChapter,
+  WalkthroughDocument,
+  WalkthroughEvidence,
+  WalkthroughExcerpt,
+} from "../chat/walkthroughs/schema";
 export { dailyConversationActivitySchema } from "./activity";
 export { conversationChildAgentTotalsSchema } from "./schema/child-agent-totals";
 export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
