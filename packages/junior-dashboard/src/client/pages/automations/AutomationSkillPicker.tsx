@@ -15,6 +15,7 @@ import {
   PopoverTrigger,
 } from "../../components/ui/popover";
 import { MatchedLabel } from "../../components/MatchedLabel";
+import { skillLabel } from "../../components/SkillLink";
 import { cn } from "../../styles";
 import { searchSkills, type SkillSearchRow } from "./skillSearch";
 
@@ -44,7 +45,8 @@ export function AutomationSkillPicker(props: {
       skills: props.skills.filter((skill) => skill.pluginProvider),
     },
   ].filter((group) => group.skills.length > 0);
-  const search = query.trim();
+  // Names show as `$skill-name`, so a pasted label still searches by name.
+  const search = query.trim().replace(/^\$/, "");
   const choose = (skill: string) => {
     props.onChange(skill);
     setOpen(false);
@@ -75,7 +77,7 @@ export function AutomationSkillPicker(props: {
                       "text-dashboard-text-muted line-through decoration-dashboard-text-muted/60",
                   )}
                 >
-                  {props.value}
+                  {skillLabel(props.value)}
                 </span>
                 {missing ? (
                   <SkillBadge tone="danger">Not found</SkillBadge>
@@ -153,6 +155,7 @@ function SkillOption(props: {
       <span className="grid min-w-0 flex-1 gap-0.5">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate font-mono">
+            $
             <MatchedLabel label={skill.name} matches={props.row.nameMatches} />
           </span>
           {skill.disableModelInvocation ? (

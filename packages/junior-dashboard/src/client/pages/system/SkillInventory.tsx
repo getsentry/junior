@@ -4,6 +4,7 @@ import { getDashboardAgentName } from "../../agentName";
 
 import { Card } from "../../components/layout/Card";
 import { SectionIntro } from "../../components/layout/SectionIntro";
+import { SkillLink } from "../../components/SkillLink";
 import { formatCompactNumber } from "../../format";
 
 type SkillGroup = { pluginProvider?: string; skills: SkillReport[] };
@@ -81,12 +82,11 @@ function SkillGroupCard(props: { group: SkillGroup }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {props.group.skills.map((skill) => (
-          <span
-            className="rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
+          <SkillLink
+            className="rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 text-xs hover:border-dashboard-border-heavy hover:no-underline"
             key={skill.name}
-          >
-            {skill.name}
-          </span>
+            name={skill.name}
+          />
         ))}
       </div>
     </article>

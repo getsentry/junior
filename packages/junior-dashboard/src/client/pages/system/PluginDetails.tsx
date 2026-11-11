@@ -1,8 +1,10 @@
 import { Boxes, KeyRound, Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Card } from "../../components/layout/Card";
 import { anchorTitleId } from "../../components/layout/AnchorHeading";
 import { SectionIntro } from "../../components/layout/SectionIntro";
+import { SkillLink } from "../../components/SkillLink";
 import type { SystemPlugin } from "./SystemPlugins";
 
 /** Render non-reporting plugin metadata. */
@@ -28,6 +30,9 @@ export function PluginDetails(props: { plugin: SystemPlugin }) {
           <CapabilityList
             emptyText="No plugin-provided skills were discovered."
             items={props.plugin.skills.map((skill) => skill.name)}
+            renderItem={(name) => (
+              <SkillLink className={SKILL_CHIP_CLASS} key={name} name={name} />
+            )}
             title="Skills"
           />
           {props.plugin.configKeys.length ? (
@@ -66,9 +71,14 @@ function Detail(props: { icon: typeof Boxes; label: string; value: string }) {
   );
 }
 
+const CHIP_CLASS =
+  "rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 font-mono text-xs";
+const SKILL_CHIP_CLASS = `${CHIP_CLASS} hover:border-dashboard-border-heavy hover:no-underline`;
+
 function CapabilityList(props: {
   emptyText: string;
   items: string[];
+  renderItem?(item: string): ReactNode;
   title: string;
 }) {
   return (
@@ -78,14 +88,17 @@ function CapabilityList(props: {
       </h3>
       {props.items.length ? (
         <div className="mt-2.5 flex flex-wrap gap-2">
-          {props.items.map((item) => (
-            <span
-              className="rounded-md border border-dashboard-border bg-dashboard-overlay-soft px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted"
-              key={item}
-            >
-              {item}
-            </span>
-          ))}
+          {props.items.map(
+            (item) =>
+              props.renderItem?.(item) ?? (
+                <span
+                  className={`${CHIP_CLASS} text-dashboard-text-muted`}
+                  key={item}
+                >
+                  {item}
+                </span>
+              ),
+          )}
         </div>
       ) : (
         <p className="mt-2 mb-0 font-sans text-xs leading-relaxed text-dashboard-text-muted">
