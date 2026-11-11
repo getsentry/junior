@@ -893,6 +893,15 @@ test("Done lists closed items, and a row expands in place", async ({
     }),
   ).toContainText("Dashboard User closed this");
   expect(page.url()).toBe(url);
+  // Collapsing the row's section hides it; it opens no other row.
+  await page
+    .getByRole("region")
+    .filter({ has: done })
+    .getByRole("button", { expanded: true, name: /^(Today|This week|Earlier)/ })
+    .click();
+  await expect(
+    page.getByRole("region", { name: /: how it closed$/ }),
+  ).toHaveCount(0);
 });
 
 test("a sweep clears only FYI items, with an Undo", async ({
