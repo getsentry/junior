@@ -12,7 +12,6 @@ import {
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
-import { SearchInput } from "../components/SearchInput";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
@@ -46,7 +45,6 @@ import {
 } from "./conversationRoutes";
 import { pinnedFirst } from "./conversationSections";
 import { buildConversations, getDashboardTimeZone } from "../format";
-import { useDebouncedValue } from "../debouncedValue";
 import { usePushNotificationsTip } from "../notifications/pushNotificationsTip";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
@@ -57,11 +55,7 @@ import { useWaitingConversations } from "../review-desk/queries";
 import { UnsentAnswersProvider } from "../review-desk/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import { useSidebarFits } from "./conversationSidebarLayout";
-import {
-  ListPane,
-  PaneCollapsedControls,
-  usePaneTabValue,
-} from "../components/layout/PaneNav";
+import { ListPane, PaneCollapsedControls } from "../components/layout/PaneNav";
 
 const CONVERSATION_PAGE_SIZE = 20;
 
@@ -74,24 +68,18 @@ export function ConversationWorkspace(props: {
   detail: ConversationData;
 }) {
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_PAGE_SIZE);
-  // The tab keeps its search while another tab shows.
-  const [query, setQuery] = usePaneTabValue("conversations:search");
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
   const { showArchiveError, showArchived } = useConversationActionToasts();
   useConversationPageArchiveResult(showArchived, showArchiveError);
   const sidebarFits = useSidebarFits();
-  // Only the stacked home has a search box. The sidebar lists every
-  // conversation; the command palette searches them. Debounce only the typed
-  // text, so the sidebar drops a stale search at once.
-  const debouncedQuery = useDebouncedValue(query.trim());
-  const search = sidebarFits ? "" : debouncedQuery;
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const selectedId = params.conversationId;
   const home = !selectedId;
-  const feed = useConversationsData(search);
+  // Lists show every conversation; the command palette searches them.
+  const feed = useConversationsData();
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const reorderPins = useReorderPinnedConversations();
   const createConversation = useCreateConversation();
@@ -108,9 +96,8 @@ export function ConversationWorkspace(props: {
       applyPendingArchiveUpdates(
         buildConversations(feed.data?.conversations ?? []),
         pendingArchiveUpdates,
-        Boolean(search),
       ),
-    [feed.data?.conversations, pendingArchiveUpdates, search],
+    [feed.data?.conversations, pendingArchiveUpdates],
   );
   const openCreate = () => {
     createConversation.reset();
@@ -141,12 +128,6 @@ export function ConversationWorkspace(props: {
   );
   const hiddenCount = orderedConversations.length - visibleConversations.length;
   const homeList = useRef<HTMLDivElement>(null);
-  // A new search starts at the top. Otherwise the shorter list leaves the
-  // loader row in view, and it loads more before the results arrive.
-  useEffect(() => {
-    setVisibleCount(CONVERSATION_PAGE_SIZE);
-    homeList.current?.scrollTo({ top: 0 });
-  }, [search]);
   const loadMoreRef = useAutoLoadHistoryPage({
     edge: "bottom",
     enabled: hiddenCount > 0,
@@ -269,21 +250,13 @@ export function ConversationWorkspace(props: {
           ref={homeList}
         >
           <section aria-label="Conversations" className="grid gap-3 pt-4">
-            <SearchInput
-              className="w-full sm:ml-auto sm:w-72"
-              label="Search your conversations"
-              onChange={setQuery}
-              placeholder="Search conversations…"
-              value={query}
-            />
             <ConversationHomeList
               conversations={visibleConversations}
               emptyLabel={feed.error?.message}
               loading={feed.isPending}
-              // Search, or more pins than the list shows yet, shows only
-              // some pins, so a drop could not place the rest.
+              // More pins than the list shows yet: a drop could not place
+              // the rest.
               onReorderPins={
-                search ||
                 conversations.filter((conversation) => conversation.pinnedAt)
                   .length > visibleCount
                   ? undefined
@@ -453,7 +426,6 @@ function NewConversationView(props: {
 function applyPendingArchiveUpdates(
   conversations: Conversation[],
   updates: PendingArchiveConversationUpdate[],
-  includeArchived: boolean,
 ): Conversation[] {
   // The optimistic cache write in useArchiveConversation sets archivedAt on
   // success too, ahead of the feed invalidation settling. Drop already-
@@ -461,11 +433,11 @@ function applyPendingArchiveUpdates(
   // "pending" but the stale cache has not refetched yet.
   const byId = new Map(
     conversations
-      .filter((conversation) => includeArchived || !conversation.archivedAt)
+      .filter((conversation) => !conversation.archivedAt)
       .map((conversation) => [conversation.id, conversation]),
   );
   for (const update of updates) {
-    if (update.archived && !includeArchived) {
+    if (update.archived) {
       byId.delete(update.conversationId);
       continue;
     }
@@ -476,12 +448,7 @@ function applyPendingArchiveUpdates(
         ? buildConversations([update.conversation])[0]
         : undefined);
     if (!conversation) continue;
-    byId.set(update.conversationId, {
-      ...conversation,
-      archivedAt: update.archived
-        ? (conversation.archivedAt ?? conversation.lastSeenAt)
-        : null,
-    });
+    byId.set(update.conversationId, { ...conversation, archivedAt: null });
   }
   const rows = [...byId.values()].sort((a, b) =>
     b.lastSeenAt.localeCompare(a.lastSeenAt),
@@ -493,7 +460,7 @@ function applyPendingArchiveUpdates(
       .map((update) => update.conversationId),
   );
   // Keep row identity when nothing is pending, so memoized rows skip renders.
-  return includeArchived || archivedIds.size === 0
+  return archivedIds.size === 0
     ? rows
     : withoutThreads(rows, (thread) => archivedIds.has(thread.id));
 }

@@ -103,6 +103,21 @@ test("collapses the other tabs to icons in a narrow pane", async ({
   await expect(conversations.getByText("Conversations")).toBeHidden();
 });
 
+test("names New after the tab that shows", async ({ page, dashboard }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const [path, name] of [
+    ["/", "New conversation"],
+    ["/review", "New conversation"],
+    ["/automations", "New automation"],
+  ] as const) {
+    await page.goto(`${dashboard.baseURL}${path}`);
+    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  // New on Automations starts the ask in a new conversation.
+  await page.getByRole("button", { name: "New automation" }).click();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+});
+
 test("hides the pane and keeps the choice", async ({ page, dashboard }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${dashboard.baseURL}/automations`);

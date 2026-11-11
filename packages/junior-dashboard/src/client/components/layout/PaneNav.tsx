@@ -33,8 +33,8 @@ import {
 } from "../../conversations/conversationSidebarLayout";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
+import { NEW_CONVERSATION_PATH } from "../../conversations/conversationRoutes";
 import { cn } from "../../styles";
-import { SIDEBAR_ROW_GRID_CLASS } from "./sidebarGrid";
 import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
@@ -76,8 +76,6 @@ type PaneNavValue = {
   tabPaths: Record<PaneTab, string>;
   /** Scroll offsets of each tab's list, kept while the tab is away. */
   tabScroll: Map<PaneTab, number>;
-  tabValues: Record<string, string>;
-  setTabValue(key: string, value: string): void;
   /** The tab the highlight sat on last, so a remounted pane slides from it. */
   shownTab: { get(): string | undefined; set(key: string | undefined): void };
   zen: ZenMode;
@@ -164,7 +162,6 @@ export function PaneNavProvider(props: {
   const zenActive = zenOn && zenAvailable;
   const location = useLocation();
   const [tabPaths, setTabPaths] = useState<Record<PaneTab, string>>(TAB_ROOTS);
-  const [tabValues, setTabValues] = useState<Record<string, string>>({});
   const tabScroll = useRef(new Map<PaneTab, number>()).current;
   const shownTabKey = useRef<string | undefined>(undefined);
   const shownTab = useMemo(
@@ -174,11 +171,6 @@ export function PaneNavProvider(props: {
         shownTabKey.current = key;
       },
     }),
-    [],
-  );
-  const setTabValue = useCallback(
-    (key: string, value: string) =>
-      setTabValues((current) => ({ ...current, [key]: value })),
     [],
   );
   // Remember where each tab was, so switching back reopens its selection,
@@ -238,11 +230,9 @@ export function PaneNavProvider(props: {
       profile: props.profile,
       setOpen,
       spend: props.spend,
-      setTabValue,
       shownTab,
       tabPaths,
       tabScroll,
-      tabValues,
       takeToggleFocus: () => {
         const take = focusToggle.current;
         focusToggle.current = false;
@@ -260,11 +250,9 @@ export function PaneNavProvider(props: {
       props.spend,
       props.workspaceActive,
       setOpen,
-      setTabValue,
       shownTab,
       tabPaths,
       tabScroll,
-      tabValues,
       zen,
     ],
   );
@@ -697,70 +685,66 @@ function runNewAction(
   else navigate(action.to);
 }
 
-/**
- * A full-width button under the list, above the profile footer. It names
- * what the tab creates, such as "New conversation".
- */
-function NewBar(props: { action: PaneNewAction }) {
+/** New where a page names nothing else, such as the Inbox and areas. */
+const NEW_CONVERSATION_ACTION: PaneNewAction = {
+  label: "New conversation",
+  to: NEW_CONVERSATION_PATH,
+};
+
+/** A square "+" in the pane header. Its name says what the tab creates. */
+function NewButton(props: { action: PaneNewAction }) {
   const navigate = useNavigate();
   return (
-    <div className={cn("px-3 pt-2 max-md:hidden", PANE_EDGE_CLASS)}>
-      <button
-        className="flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-0 bg-dashboard-accent font-sans text-sm font-semibold text-dashboard-text-inverse transition-colors hover:bg-dashboard-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-        onClick={() => runNewAction(props.action, navigate)}
-        type="button"
-      >
-        <Plus aria-hidden="true" className="size-4" strokeWidth={2.4} />
-        {props.action.label}
-      </button>
-    </div>
+    <HeaderIconButton
+      label={props.action.label}
+      onClick={() => runNewAction(props.action, navigate)}
+    >
+      <Plus aria-hidden="true" size={16} strokeWidth={2.2} />
+    </HeaderIconButton>
   );
 }
 
 /**
- * Head the pane: home and the pane toggle in the header row, then the tabs
- * and the search bar under its rule.
+ * Head the pane in one row at the page header height: home, the search bar,
+ * New, and the pane toggle. The tabs sit under its rule.
  */
-function PaneNavHeader() {
+function PaneNavHeader(props: { newAction: PaneNewAction }) {
   const name = getDashboardAgentName();
   return (
     <div className={cn("max-md:hidden", PANE_EDGE_CLASS)}>
       {/* Same height and rule as the page headers. The logo sits on the
-          icon axis and the name on the label edge. The toggle ends on the
-          right content edge, 24px in, like row dates and counts. */}
-      <div className="box-content h-header border-b border-b-dashboard-border px-3">
-        <div className={cn(SIDEBAR_ROW_GRID_CLASS, "h-full items-center pr-1")}>
-          <Link
-            aria-label={`${name} home`}
-            className="col-span-2 grid min-w-0 grid-cols-subgrid items-center rounded-lg text-inherit no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
-            to="/"
-          >
-            <JuniorLogo size="sm" />
-            <span className="truncate font-sans text-sm font-semibold">
-              {name}
-            </span>
-          </Link>
-          <PaneToggle open />
-        </div>
-      </div>
-      <div className="grid gap-2 border-b border-b-dashboard-border-subtle px-3 py-3">
-        <PaneTabs />
+          icon axis; the toggle ends on the right content edge, 24px in,
+          like row dates and counts. */}
+      <div className="box-content flex h-header items-center gap-1.5 border-b border-b-dashboard-border pr-4 pl-3">
+        <Link
+          aria-label={`${name} home`}
+          className="grid size-8 shrink-0 place-items-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+          to="/"
+        >
+          <JuniorLogo size="sm" />
+        </Link>
         <PaneSearchBar />
+        <NewButton action={props.newAction} />
+        <PaneToggle open />
+      </div>
+      <div className="border-b border-b-dashboard-border-subtle px-3 py-3">
+        <PaneTabs />
       </div>
     </div>
   );
 }
 
 /**
- * Open the command palette from a full-width bar, with its shortcut shown.
- * The page header keeps the compact `PaneSearch` while the pane is hidden.
+ * Open the command palette from a bar that fills the header row, with its
+ * shortcut shown. The page header keeps the compact `PaneSearch` while the
+ * pane is hidden.
  */
 function PaneSearchBar() {
   const pane = usePaneNav();
   return (
     <button
       aria-keyshortcuts="Meta+K Control+K"
-      className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-control px-3 text-left font-sans text-sm text-dashboard-text-muted transition-colors hover:border-dashboard-border-interactive hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
+      className="flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-control px-2.5 text-left font-sans text-sm text-dashboard-text-muted transition-colors hover:border-dashboard-border-interactive hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
       onClick={pane.onSearch}
       type="button"
     >
@@ -824,17 +808,6 @@ function findScroller(root: HTMLElement | null): HTMLElement | undefined {
     }
   }
   return undefined;
-}
-
-/** Read and set one value that a tab keeps while it is away, like a search. */
-export function usePaneTabValue(
-  key: string,
-): [string, (value: string) => void] {
-  const pane = usePaneNav();
-  return [
-    pane.tabValues[key] ?? "",
-    (value: string) => pane.setTabValue(key, value),
-  ];
 }
 
 /**
@@ -915,7 +888,7 @@ function PaneResizeHandle() {
  * profile. A page without a list passes no children. Phones show only the
  * list, under the app header. Children draw their own pane edge, like
  * `PANE_EDGE_CLASS`. On desktop the pane takes the shared width. `newAction`
- * puts New under the list.
+ * names what New in the header creates; a new conversation by default.
  */
 export function ListPane(props: {
   children?: ReactNode;
@@ -933,7 +906,7 @@ export function ListPane(props: {
         props.className,
       )}
     >
-      <PaneNavHeader />
+      <PaneNavHeader newAction={props.newAction ?? NEW_CONVERSATION_ACTION} />
       <div
         className={cn(
           "relative min-h-0 flex-1",
@@ -944,7 +917,6 @@ export function ListPane(props: {
       >
         {props.children}
       </div>
-      {props.newAction ? <NewBar action={props.newAction} /> : null}
       {pane.profile ? (
         <div className={cn("px-3 pb-3 pt-2 max-md:hidden", PANE_EDGE_CLASS)}>
           {pane.profile}

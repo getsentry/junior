@@ -208,13 +208,21 @@ export async function mockReviewItems(
       });
     if (path === "" || path === "/") {
       const linked = url.searchParams.get("conversationId");
-      // A status list has only closed items, newest closed first.
+      const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      // A status list has only closed items, newest closed first. A search
+      // matches title or body, and also finds closed items after the open.
       const closed = (url.searchParams.get("status") ?? "open") !== "open";
       const list = (
         closed
           ? [...archived].sort((x, y) => y.closedAt.localeCompare(x.closedAt))
-          : open
-      ).filter((i) => !linked || i.conversationIds.includes(linked));
+          : q
+            ? [...open, ...archived]
+            : open
+      ).filter(
+        (i) =>
+          (!linked || i.conversationIds.includes(linked)) &&
+          `${i.title}\n${i.body}`.toLowerCase().includes(q),
+      );
       // The cursor is the index of the first item of the page.
       const start = Number(url.searchParams.get("cursor") ?? 0);
       const end = start + (options.pageSize ?? list.length);

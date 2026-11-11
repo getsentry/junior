@@ -18,7 +18,7 @@ import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { automationPath } from "../../format";
-import { pathWithSearch, useDebouncedSearchParam } from "../../searchParams";
+import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
 import { automationNeedsAttention } from "./AutomationStatus";
@@ -29,14 +29,9 @@ const EMPTY: AutomationSummary[] = [];
 const LANDING_PAGE_SIZE = "100";
 
 // Groups set the order and show every Automation, so the page reads only
-// the filters it shows. Old scope, sort, and page links fall back to all.
-const LANDING_FILTERS = [
-  "q",
-  "type",
-  "state",
-  "creator",
-  "destination",
-] as const;
+// the filters it shows. Old search, scope, sort, and page links fall back
+// to all; the command palette finds an Automation by name.
+const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
 type AutomationGroup = {
   automations: AutomationSummary[];
@@ -54,7 +49,6 @@ export function AutomationsPage(props: { enabled: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [searchText, setSearchText] = useDebouncedSearchParam("q");
   // Ignore only invalid URL values. One bad field must not reset other filters.
   const filters = automationListQuerySchema.parse(
     Object.fromEntries(
@@ -97,8 +91,6 @@ export function AutomationsPage(props: { enabled: boolean }) {
         data={query.data}
         filters={filters}
         onChange={setFilter}
-        onSearch={setSearchText}
-        searchText={searchText}
       />
       {loading ? (
         <PageContentSkeleton label="Loading automations" variant="list" />

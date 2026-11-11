@@ -13,7 +13,6 @@ import {
 } from "../../components/ui/popover";
 import { Button } from "../../components/ui/button";
 import { FilterGroup } from "../../components/FilterBar";
-import { SearchInput } from "../../components/SearchInput";
 import { NativeSelect } from "../../components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { DESKTOP_LAYOUT_QUERY } from "../../layoutMedia";
@@ -41,8 +40,6 @@ export function AutomationFilters(props: {
   filters: AutomationListQuery;
   data: AutomationList | undefined;
   onChange(key: string, value: string): void;
-  searchText: string;
-  onSearch(value: string): void;
 }) {
   const { filters, data, onChange } = props;
   const [expanded, setExpanded] = useState(false);
@@ -99,15 +96,7 @@ export function AutomationFilters(props: {
   );
   return (
     <div className="grid gap-3">
-      <div className="flex items-center gap-2">
-        <SearchInput
-          className="flex-1"
-          size="default"
-          label="Search automations"
-          placeholder="Search automations"
-          value={props.searchText}
-          onChange={props.onSearch}
-        />
+      <div className="flex items-center justify-end gap-2">
         {desktop ? (
           <Popover open={expanded} onOpenChange={setExpanded}>
             <PopoverTrigger render={trigger} />

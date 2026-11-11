@@ -184,9 +184,6 @@ test("starts a new conversation from a centered compose empty state", async ({
     name: "Your conversations",
   });
   await expect(conversationList.getByRole("listitem").first()).toBeVisible();
-  await expect(
-    page.getByRole("searchbox", { name: "Search your conversations" }),
-  ).toBeVisible();
 
   // A short new transcript must not leave the reply composer mid-screen.
   const releaseCreate = await holdCreate(page);

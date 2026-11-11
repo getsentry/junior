@@ -5,17 +5,12 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { useAutomationsData } from "../../api";
-import { SearchInput } from "../../components/SearchInput";
-import {
-  usePaneTabValue,
-  type PaneNewAction,
-} from "../../components/layout/PaneNav";
+import type { PaneNewAction } from "../../components/layout/PaneNav";
 import {
   restoreStoredDraftText,
   takeStoredDraftText,
 } from "../../conversations/ConversationComposer";
 import { Skeleton } from "../../components/ui/skeleton";
-import { useDebouncedValue } from "../../debouncedValue";
 import { automationPath } from "../../format";
 import { cn } from "../../styles";
 import { WaitingMarker } from "../../components/WaitingMarker";
@@ -23,6 +18,8 @@ import { ConversationSectionHeading } from "../../conversations/ConversationSect
 import { automationAttentionReason } from "./automationAttention";
 
 const NEW_AUTOMATION_PROMPT = "Set up an automation that ";
+/** The list the tab reads. The command palette reads it too, from the cache. */
+export const AUTOMATION_LIST_SEARCH = "pageSize=100";
 // Blocked, an unavailable trigger, or a last run that failed or blocked.
 const ATTENTION_SEARCH = "scope=attention&pageSize=100";
 
@@ -48,7 +45,7 @@ export function useNewAutomationAction(): PaneNewAction {
 }
 
 /** Where the list opens an Automation: its editor, unless it cannot change. */
-function automationSelectPath(automation: AutomationSummary): string {
+export function automationSelectPath(automation: AutomationSummary): string {
   return automation.status === "completed"
     ? automationPath(automation.id)
     : automationPath(automation.id, "edit");
@@ -144,16 +141,12 @@ function AutomationSidebarRow(props: {
 
 /**
  * The Automations tab list: every Automation the viewer can see, grouped by
- * what needs them. A row opens its editor in the main pane. The search stays
- * while another tab shows.
+ * what needs them. A row opens its editor in the main pane. The command
+ * palette finds one by name.
  */
 export function AutomationSidebarList(props: { className?: string }) {
   const { pathname } = useLocation();
-  const [search, setSearch] = usePaneTabValue("automations:search");
-  const q = useDebouncedValue(search.trim());
-  const params = new URLSearchParams({ pageSize: "100" });
-  if (q) params.set("q", q);
-  const query = useAutomationsData(true, params.toString());
+  const query = useAutomationsData(true, AUTOMATION_LIST_SEARCH);
   const selectedId = selectedAutomationId(pathname);
   const attention = useAutomationsData(true, ATTENTION_SEARCH);
   const needsYou = new Set(
@@ -173,19 +166,11 @@ export function AutomationSidebarList(props: { className?: string }) {
     <aside
       aria-label="Automations"
       className={cn(
-        "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] border-r border-dashboard-border bg-dashboard-surface-panel",
+        "grid h-full min-h-0 grid-rows-[minmax(0,1fr)] border-r border-dashboard-border bg-dashboard-surface-panel",
         props.className,
       )}
     >
-      <div className="px-3 pt-3 pb-2">
-        <SearchInput
-          label="Filter automations"
-          onChange={setSearch}
-          placeholder="Filter automations…"
-          value={search}
-        />
-      </div>
-      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain px-1.5 pb-4">
+      <div className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain px-1.5 pt-2 pb-4">
         {query.isPending ? (
           <div aria-busy="true" className="grid gap-1 pt-2" role="status">
             <span className="sr-only">Loading automations</span>
@@ -198,7 +183,7 @@ export function AutomationSidebarList(props: { className?: string }) {
           </div>
         ) : groups.length === 0 ? (
           <p className="m-0 px-3 py-6 text-sm text-dashboard-text-muted">
-            {q ? `No automations match "${q}".` : "No automations yet."}
+            No automations yet.
           </p>
         ) : (
           groups.map((group, index) => (

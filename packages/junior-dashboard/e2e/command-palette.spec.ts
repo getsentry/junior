@@ -1,6 +1,7 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
+import { mockReviewItems, rollout } from "./review-desk-fixture";
 import { expect, test } from "./test";
 
 const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
@@ -102,7 +103,10 @@ test("switches conversations from the command palette without a server search", 
   const palette = page.getByRole("dialog", { name: "Go to conversation" });
   const input = palette.getByRole("combobox");
   await expect(input).toBeFocused();
-  await expect(palette.getByRole("group", { name: "Recent" })).toBeVisible();
+  // The Conversations tab shows, so its recent rows lead under its name.
+  await expect(palette.getByRole("group").first()).toHaveAccessibleName(
+    "Conversations",
+  );
 
   // Scattered letters match.
   await input.fill("chk tri");
@@ -215,7 +219,8 @@ test("jumps to a page from the command palette", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ height: 800, width: 1280 });
-  await page.goto(dashboard.baseURL);
+  // A page outside the tabs, so no tab's rows lead.
+  await page.goto(`${dashboard.baseURL}/settings`);
 
   await page.keyboard.press("ControlOrMeta+k");
   const palette = page.getByRole("dialog", { name: "Go to conversation" });
@@ -228,4 +233,35 @@ test("jumps to a page from the command palette", async ({
 
   await expect(page).toHaveURL(/\/code$/);
   await expect(palette).toHaveCount(0);
+});
+
+test("ranks the active tab's results first", async ({ page, dashboard }) => {
+  await page.setViewportSize({ height: 800, width: 1280 });
+  await mockReviewItems(page);
+  const palette = page.getByRole("dialog", { name: "Go to conversation" });
+  for (const [path, group] of [
+    ["/automations", "Automations"],
+    ["/review", "Inbox"],
+  ] as const) {
+    await page.goto(`${dashboard.baseURL}${path}`);
+    await page.keyboard.press("ControlOrMeta+k");
+    await expect(palette.getByRole("group").first()).toHaveAccessibleName(
+      group,
+    );
+    await page.keyboard.press("Escape");
+  }
+
+  // On the Inbox, a match in an item's body text leads, and picking it
+  // opens the Inbox with that item expanded.
+  await page.keyboard.press("ControlOrMeta+k");
+  await palette.getByRole("combobox").fill("canary error");
+  const inbox = palette.getByRole("group").first();
+  await expect(inbox).toHaveAccessibleName("Inbox");
+  const match = inbox.getByRole("option").first();
+  await expect(match).toHaveAccessibleName(new RegExp(rollout.title));
+  await match.click();
+  await expect(page).toHaveURL(new RegExp(`[?&]item=${rollout.id}`));
+  await expect(
+    page.getByRole("button", { name: new RegExp(rollout.title) }),
+  ).toHaveAttribute("aria-expanded", "true");
 });

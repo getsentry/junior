@@ -116,11 +116,8 @@ test("opens scheduled and event automations in the native Automations view", asy
   const issueSummary = page
     .getByRole("main")
     .getByText("Closed issue summary", { exact: true });
-  await page.getByLabel("Search automations").fill("closed issue");
-  await expect(weeklySummary).not.toBeVisible();
-  await expect(issueSummary).toBeVisible();
-  await page.getByLabel("Search automations").fill("");
   await expect(weeklySummary).toBeVisible();
+  await expect(issueSummary).toBeVisible();
   await expect(page.getByLabel("Scheduled automation")).toBeVisible();
   await expect(page.getByLabel("github event automation")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
@@ -422,8 +419,13 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     "dev@example.com",
   );
   await page.keyboard.press("Escape");
+  const setState = async (state: string) => {
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    await page.getByLabel("Filter by state").selectOption(state);
+    await page.keyboard.press("Escape");
+  };
   delayList = true;
-  await page.getByLabel("Search automations").fill("no match");
+  await setState("blocked");
   await expect(page.getByText("Updating results…")).toBeVisible();
   await expect(weeklySummary).toBeVisible();
   delayList = false;
@@ -432,12 +434,17 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     page.getByText("No automations matched these filters."),
   ).toBeVisible();
   failList = true;
-  await page.getByLabel("Search automations").fill("weekly");
+  // A filter not read yet, so the list cannot come from the cache.
+  await setState("paused");
   await expect(
     page.getByText("Automations could not be loaded."),
   ).toBeVisible();
   failList = false;
   await page.getByRole("button", { name: "Try again" }).click();
+  await expect(
+    page.getByText("Automations could not be loaded."),
+  ).toBeHidden();
+  await setState("active");
   await expect(weeklySummary).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileFilters = page.getByRole("button", { name: /^Filters/ });

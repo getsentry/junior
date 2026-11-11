@@ -309,6 +309,7 @@ export function DashboardShell() {
         workspaceActive={workspace}
       >
         <ShellCommandPalette
+          activeTab={paneTabForPath(location.pathname)}
           currentConversationId={conversationId}
           navItems={[...primaryNavItems, ...profileNavItems]}
           onOpenChange={setCommandPaletteOpen}
