@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { enqueueAgentInvocationResult } from "@/chat/agent-invocations/result";
+import {
+  enqueueAgentInvocationResult,
+  enqueueAgentReplyToParent,
+} from "@/chat/agent-invocations/result";
 import {
   createAgentInvocation,
   createAgentInvocationForMessage,
@@ -20,6 +23,7 @@ import type {
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { stopConversation } from "@/chat/conversations/stop";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -191,6 +195,44 @@ describe("stopping child agents", () => {
     }
   });
 
+  it("ends a running child's Turn at its next step after a stored stop", async () => {
+    const harness = await createHarness({
+      run: async (run) => {
+        // Only the stored stop is set. No stop request reaches the worker.
+        await markConversationsStopped([run.conversationId!], {
+          cancelWatches: false,
+        });
+        // The agent loop checks for a stop at each step boundary.
+        await run.durability?.checkStop?.();
+        run.signal?.throwIfAborted();
+        throw new Error("The stored stop did not abort the run");
+      },
+    });
+    try {
+      const running = await harness.spawn({ idempotencyKey: "stored-stop" });
+
+      await expect(
+        harness.processNext(running.childConversationId),
+      ).resolves.toMatchObject({ status: "completed" });
+
+      await expect(
+        getAgentInvocation(running.invocationId),
+      ).resolves.toMatchObject({ status: "stopped" });
+      await expect(
+        loadTurnEvents(running.childConversationId),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            outcome: "cancelled",
+            type: "turn_completed",
+          }),
+        }),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("never runs a stopped pending child and reports other stops to the parent", async () => {
     const runner = abortableAgentRunner();
     const harness = await createHarness(runner.agentRunner);
@@ -295,14 +337,21 @@ describe("stopping child agents", () => {
         idempotencyKey: "tree-done-helper",
         parentConversationId: child.childConversationId,
       });
+      // A completed helper sends nothing, so this one ends blocked.
       const doneResult = (await completeAgentInvocation({
+        errorMessage: "Helper needs a token.",
         invocationId: doneHelper.invocationId,
-        result: "Helper fact: 42.",
-        status: "completed",
+        status: "blocked",
       })) as TerminalAgentInvocation;
-      // The result reaches the child mailbox before the stop.
+      // The result and a `reply` reach the child mailbox before the stop.
       await enqueueAgentInvocationResult(doneResult, {
         queue: harness.queue,
+        state: harness.state,
+      });
+      await enqueueAgentReplyToParent({
+        queue: harness.queue,
+        reply: { text: "Open helper finding.", toolCallId: "call-reply" },
+        sender: openHelper,
         state: harness.state,
       });
       // The child finished its own turn while its helpers still work.
@@ -337,12 +386,13 @@ describe("stopping child agents", () => {
         getAgentInvocation(doneHelper.invocationId),
       ).resolves.toMatchObject({
         parentMailboxStatus: "skipped",
-        status: "completed",
+        status: "blocked",
       });
-      // The child already had the result in its mailbox. It starts no work.
+      // The child already had the result and the reply in its mailbox. They
+      // start no work.
       await expect(
         harness.mailbox(child.childConversationId),
-      ).resolves.toHaveLength(1);
+      ).resolves.toHaveLength(2);
       await expect(
         harness.processNext(child.childConversationId),
       ).resolves.toMatchObject({ status: "completed" });

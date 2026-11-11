@@ -7,7 +7,6 @@ import {
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
-  boardReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
@@ -198,16 +197,6 @@ export function useCodeOverviewData(enabled = true) {
     queryKey: ["dashboard", "code"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
-    retry: false,
-  });
-}
-
-/** Fetch the viewer's Board of code changes and tickets. */
-export function useBoardData() {
-  return useQuery({
-    queryKey: ["dashboard", "board"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(boardReportSchema, "/api/board", signal),
     retry: false,
   });
 }

@@ -312,10 +312,10 @@ describe("Pi tool adapter integration", () => {
         messageAgent,
         parentConversationId: "local:test:parent",
         spawnAgent,
-        // Every model-only tool at once, which no single Turn kind loads.
+        // Every model-only tool at once, as an agent Turn on a child loads.
         turnTools: {
           ...runtimeContext().turnTools,
-          reply: true,
+          reply: "parent",
           noReply: true,
           reportBlocked: "parent",
         },

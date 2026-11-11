@@ -11,11 +11,12 @@ import {
   juniorAgentInvocations,
   juniorConversations,
 } from "@/db/schema";
-import { getAgentInvocationIdForResult } from "./ids";
+import { getAgentInvocationIdForResult, isAgentReplyMessageId } from "./ids";
 import {
   invocationFromRow,
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+  sendsResultToParent,
 } from "./store";
 import {
   CHILD_AGENT_RESULTS,
@@ -197,18 +198,24 @@ export async function listChildAgents(
 /**
  * List the other child agents of one parent whose results have not reached
  * the parent yet. A child counts while it runs and after it finishes until its
- * result is appended to the parent mailbox.
+ * result is appended to the parent mailbox. A running child whose `reply` is
+ * already in `parentInboundMessageIds`, the ids that reached the parent's
+ * mailbox, has answered, so it does not count.
  */
 export async function listUnreportedSiblingAgents(
   parentConversationId: string,
   childConversationId: string,
+  parentInboundMessageIds: readonly string[],
 ): Promise<ChildAgent[]> {
-  const [children, pendingResults] = await Promise.all([
+  const db = getSqlExecutor().db();
+  const [children, pendingResults, openInvocations] = await Promise.all([
     listChildAgents(parentConversationId),
-    getSqlExecutor()
-      .db()
-      .selectDistinct({
+    db
+      .select({
         childConversationId: juniorAgentInvocations.childConversationId,
+        invocationId: juniorAgentInvocations.invocationId,
+        result: juniorAgentInvocations.result,
+        status: juniorAgentInvocations.status,
       })
       .from(juniorAgentInvocations)
       .where(
@@ -217,16 +224,49 @@ export async function listUnreportedSiblingAgents(
           eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
         ),
       ),
+    db
+      .select({
+        childConversationId: juniorAgentInvocations.childConversationId,
+        invocationId: juniorAgentInvocations.invocationId,
+      })
+      .from(juniorAgentInvocations)
+      .where(
+        and(
+          eq(juniorAgentInvocations.parentConversationId, parentConversationId),
+          inArray(juniorAgentInvocations.status, [
+            ...NON_TERMINAL_AGENT_INVOCATION_STATUSES,
+          ]),
+        ),
+      ),
   ]);
+  // A result that is not sent is not waited for.
   const withPendingResult = new Set(
-    pendingResults.map((row) => row.childConversationId),
+    pendingResults
+      .filter((row) => sendsResultToParent(row, parentInboundMessageIds))
+      .map((row) => row.childConversationId),
+  );
+  const unanswered = new Set(
+    openInvocations
+      .filter(
+        (row) =>
+          !parentInboundMessageIds.some((messageId) =>
+            isAgentReplyMessageId(messageId, row.invocationId),
+          ),
+      )
+      .map((row) => row.childConversationId),
+  );
+  const answered = new Set(
+    openInvocations
+      .map((row) => row.childConversationId)
+      .filter((child) => !unanswered.has(child)),
   );
   return children.filter(
     (child) =>
       child.childConversationId !== childConversationId &&
-      ((NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
+      (((NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
         child.status,
-      ) ||
+      ) &&
+        !answered.has(child.childConversationId)) ||
         withPendingResult.has(child.childConversationId)),
   );
 }

@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { CodeChangeInput } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import { codePersonReportSchema } from "@/api/schema";
+import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -100,6 +101,17 @@ describe("people code API", () => {
       await recordCodeChange(fixture.sql.db(), "github", aliceChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceStaleChange);
       await recordCodeChange(fixture.sql.db(), "github", bobChange);
+      const codeChanges = createCodeChangePublisher("github");
+      const activity = { number: 10, repositoryProviderId: "repository-1" };
+      await codeChanges.recordActivity({
+        ...activity,
+        at: new Date("2026-08-23T09:00:00.000Z"),
+      });
+      // Late webhook deliveries do not move activity back in time.
+      await codeChanges.recordActivity({
+        ...activity,
+        at: new Date("2026-08-01T09:00:00.000Z"),
+      });
 
       const response = await createJuniorApi().request(
         "http://localhost/api/people/alice@example.com/code",
@@ -116,7 +128,11 @@ describe("people code API", () => {
         open: 1,
       });
       expect(report.changes).toEqual([
-        expect.objectContaining({ number: 10, state: "open" }),
+        expect.objectContaining({
+          lastActivityAt: "2026-08-23T09:00:00.000Z",
+          number: 10,
+          state: "open",
+        }),
         expect.objectContaining({
           number: 11,
           repository: "getsentry/junior",

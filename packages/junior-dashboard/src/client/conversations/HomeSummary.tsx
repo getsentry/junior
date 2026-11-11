@@ -52,12 +52,12 @@ export function HomeSummary() {
 
   const nowMs = Date.parse(code.data.generatedAt);
   const merges = weeklyMerges(code.data.activityDays);
-  // Oldest first: the newest change is still on the viewer's mind.
+  // Longest idle first: a PR that nobody touched needs a nudge, however old.
   const open = code.data.changes
     .filter((change) => change.state === "open")
-    .sort((a, b) => a.openedAt.localeCompare(b.openedAt));
-  const oldCount = open.filter(
-    (change) => ageDays(nowMs, change) > OLD_DAYS,
+    .sort((a, b) => lastActivity(a).localeCompare(lastActivity(b)));
+  const idleCount = open.filter(
+    (change) => idleDays(nowMs, change) > IDLE_RED_DAYS,
   ).length;
   const needsViewer = reviewCount.data?.needsViewer ?? 0;
   if (
@@ -86,12 +86,12 @@ export function HomeSummary() {
         />
         <SummaryCard
           detail={
-            open.length === 0 ? null : oldCount > 0 ? (
+            open.length === 0 ? null : idleCount > 0 ? (
               <StatusText tone="bg-rose-300">
                 <span className="font-medium text-dashboard-text">
-                  {oldCount}
+                  {idleCount}
                 </span>{" "}
-                older than {OLD_DAYS}d
+                idle {IDLE_RED_DAYS}d+
               </StatusText>
             ) : (
               <StatusText tone="bg-emerald-300">all moving</StatusText>
@@ -184,7 +184,7 @@ function MergeDelta(props: { lastWeek: number; thisWeek: number }) {
 }
 
 /**
- * Open code changes, oldest first. The label row holds the only control, a
+ * Open code changes, longest idle first. The label row holds the only control, a
  * sort toggle, so the list has no table header. The last row expands it.
  */
 function OpenChangeList(props: {
@@ -204,7 +204,9 @@ function OpenChangeList(props: {
         </h3>
         {sorted.length < 2 ? null : (
           <button
-            aria-label={recentFirst ? "Newest first" : "Oldest first"}
+            aria-label={
+              recentFirst ? "Newest activity first" : "Oldest activity first"
+            }
             className={quietButtonClass}
             onClick={() => setRecentFirst(!recentFirst)}
             type="button"
@@ -273,44 +275,54 @@ function OpenChangeRow(props: {
           <span className="tabular-nums">#{change.number}</span>
         </span>
         <span className="w-10 text-right tabular-nums">
-          <AgeText change={change} nowMs={props.nowMs} />
+          <IdleText change={change} nowMs={props.nowMs} />
         </span>
       </div>
     </li>
   );
 }
 
-/** Open days past this turn red. 4 days up to this turn amber. */
-const OLD_DAYS = 7;
+/** Idle days past this turn red. 4 days up to this turn amber. */
+const IDLE_RED_DAYS = 7;
 
-function ageDays(nowMs: number, change: CodeChangeSummaryReport): number {
-  return Math.floor((nowMs - Date.parse(change.openedAt)) / DAY_MS);
+// Until a code plugin records activity, opening is the last known activity.
+function lastActivity(change: CodeChangeSummaryReport): string {
+  return change.lastActivityAt ?? change.openedAt;
 }
 
-/** Time since the PR opened, colored by how long it has waited. */
-function AgeText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
-  const days = ageDays(props.nowMs, props.change);
+function idleDays(nowMs: number, change: CodeChangeSummaryReport): number {
+  return Math.floor((nowMs - Date.parse(lastActivity(change))) / DAY_MS);
+}
+
+/** Time since the last push, review, or comment, colored by idle days. */
+function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
+  const days = idleDays(props.nowMs, props.change);
+  const idle = formatSince(props.nowMs, lastActivity(props.change));
+  const opened = formatSince(props.nowMs, props.change.openedAt);
+  const touched =
+    props.change.lastActivityAt !== undefined &&
+    props.change.lastActivityAt > props.change.openedAt;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <span
             className={cn(
-              days > OLD_DAYS && "font-medium text-rose-300",
-              days >= 4 && days <= OLD_DAYS && "font-medium text-amber-300",
+              days > IDLE_RED_DAYS && "font-medium text-rose-300",
+              days >= 4 &&
+                days <= IDLE_RED_DAYS &&
+                "font-medium text-amber-300",
             )}
           />
         }
       >
-        {formatSince(props.nowMs, props.change.openedAt)}
+        {idle}
       </TooltipTrigger>
       <TooltipContent size="compact">
-        Opened{" "}
-        {new Date(props.change.openedAt).toLocaleDateString(undefined, {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        })}
+        {/* PRs opened before tracking started can have untracked activity. */}
+        {touched
+          ? `Last activity ${idle} ago · opened ${opened} ago`
+          : `Opened ${opened} ago`}
       </TooltipContent>
     </Tooltip>
   );

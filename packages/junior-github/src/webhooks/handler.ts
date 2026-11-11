@@ -34,6 +34,7 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
+import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
 import {
   loadCheckSuiteFacts,
   needsCheckSuitePullRequestFacts,
@@ -347,6 +348,13 @@ export function createGitHubWebhookRoute(args: {
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
         });
+      }
+      const pullRequestActivity = normalizeGitHubPullRequestActivity({
+        body,
+        eventName,
+      });
+      if (pullRequestActivity) {
+        await args.codeChanges.recordActivity(pullRequestActivity);
       }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
